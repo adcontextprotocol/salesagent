@@ -26,12 +26,13 @@ class TestProductCompliance:
             "product_id": "test_minimal",
             "name": "Minimal Product",
             "description": "A minimal test product",
-            "formats": ["display_300x250"],  # Format IDs per updated AdCP spec
+            "format_ids": ["display_300x250"],
+            "property_tags": ["premium_display"],  # Format IDs per AdCP spec
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
         }
 
-        response = {"products": [minimal_product]}
+        response = {"adcp_version": "1.0.0", "products": [minimal_product]}
         await validator.validate_response("get-products", response)
 
     @pytest.mark.asyncio
@@ -41,10 +42,11 @@ class TestProductCompliance:
             "product_id": "test_comprehensive",
             "name": "Comprehensive Product",
             "description": "A product with all AdCP fields populated for testing",
-            "formats": [
+            "format_ids": [
                 "display_300x250",  # Medium Rectangle
                 "video_preroll",  # Pre-Roll Video
             ],
+            "property_tags": ["premium_display"],
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
             "cpm": 12.50,
@@ -65,7 +67,7 @@ class TestProductCompliance:
             "expires_at": "2025-12-31T23:59:59Z",
         }
 
-        response = {"products": [comprehensive_product]}
+        response = {"adcp_version": "1.0.0", "products": [comprehensive_product]}
         try:
             await validator.validate_response("get-products", response)
         except Exception as e:
@@ -85,7 +87,8 @@ class TestProductCompliance:
                 "product_id": "guaranteed_product",
                 "name": "Guaranteed Product",
                 "description": "A guaranteed delivery product",
-                "formats": ["display_300x250"],
+                "format_ids": ["display_300x250"],
+                "property_tags": ["premium_display"],
                 "delivery_type": "guaranteed",
                 "is_fixed_price": True,
                 "cpm": 15.0,
@@ -94,13 +97,14 @@ class TestProductCompliance:
                 "product_id": "non_guaranteed_product",
                 "name": "Non-Guaranteed Product",
                 "description": "A non-guaranteed delivery product",
-                "formats": ["display_728x90"],
+                "format_ids": ["display_728x90"],
+                "property_tags": ["premium_display"],
                 "delivery_type": "non_guaranteed",
                 "is_fixed_price": False,
             },
         ]
 
-        response = {"products": products}
+        response = {"adcp_version": "1.0.0", "products": products}
         await validator.validate_response("get-products", response)
 
     @pytest.mark.asyncio
@@ -128,14 +132,15 @@ class TestProductCompliance:
                     "product_id": f"measurement_test_{i}",
                     "name": f"Measurement Test {i}",
                     "description": f"Testing measurement type: {measurement['type']}",
-                    "formats": ["display_300x250"],
+                    "format_ids": ["display_300x250"],
+                    "property_tags": ["premium_display"],
                     "delivery_type": "guaranteed",
                     "is_fixed_price": True,
                     "measurement": measurement,
                 }
             )
 
-        response = {"products": products}
+        response = {"adcp_version": "1.0.0", "products": products}
         await validator.validate_response("get-products", response)
 
     @pytest.mark.asyncio
@@ -154,14 +159,15 @@ class TestProductCompliance:
                     "product_id": f"policy_test_{i}",
                     "name": f"Policy Test {i}",
                     "description": f"Testing creative policy: {policy['co_branding']}",
-                    "formats": ["display_300x250"],
+                    "format_ids": ["display_300x250"],
+                    "property_tags": ["premium_display"],
                     "delivery_type": "guaranteed",
                     "is_fixed_price": True,
                     "creative_policy": policy,
                 }
             )
 
-        response = {"products": products}
+        response = {"adcp_version": "1.0.0", "products": products}
         await validator.validate_response("get-products", response)
 
 
@@ -180,13 +186,14 @@ class TestFormatCompliance:
                     "product_id": f"{format_type}_product",
                     "name": f"{format_type.title()} Product",
                     "description": f"Product for {format_type} formats",
-                    "formats": [f"{format_type}_test"],
+                    "format_ids": [f"{format_type}_test"],
+                    "property_tags": ["premium_display"],
                     "delivery_type": "guaranteed",
                     "is_fixed_price": True,
                 }
             )
 
-        response = {"products": products}
+        response = {"adcp_version": "1.0.0", "products": products}
         await validator.validate_response("get-products", response)
 
     @pytest.mark.asyncio
@@ -202,7 +209,7 @@ class TestFormatCompliance:
                 {
                     "asset_type": "image",
                     "quantity": 2,
-                    "requirements": {"min_width": 300, "min_height": 200, "formats": ["jpg", "png"]},
+                    "requirements": {"min_width": 300, "min_height": 200, "format_ids": ["jpg", "png"]},
                 },
             ],
         }
@@ -211,12 +218,13 @@ class TestFormatCompliance:
             "product_id": "native_test",
             "name": "Native Test Product",
             "description": "Testing native format with required assets",
-            "formats": ["native_composite"],  # Format ID per updated AdCP spec
+            "format_ids": ["native_composite"],
+            "property_tags": ["premium_display"],  # Format ID per updated AdCP spec
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
         }
 
-        response = {"products": [product]}
+        response = {"adcp_version": "1.0.0", "products": [product]}
         await validator.validate_response("get-products", response)
 
 
@@ -226,7 +234,7 @@ class TestEdgeCasesAndValidation:
     @pytest.mark.asyncio
     async def test_empty_products_list(self, validator):
         """Test valid empty products response."""
-        response = {"products": []}
+        response = {"adcp_version": "1.0.0", "products": []}
         await validator.validate_response("get-products", response)
 
     @pytest.mark.asyncio
@@ -236,32 +244,34 @@ class TestEdgeCasesAndValidation:
             "product_id": "invalid_delivery",
             "name": "Invalid Product",
             "description": "Product with invalid delivery type",
-            "formats": ["display_300x250"],
+            "format_ids": ["display_300x250"],
+            "property_tags": ["premium_display"],
             "delivery_type": "invalid_type",  # Invalid value
             "is_fixed_price": True,
         }
 
-        response = {"products": [invalid_product]}
+        response = {"adcp_version": "1.0.0", "products": [invalid_product]}
 
         with pytest.raises(SchemaValidationError):
             await validator.validate_response("get-products", response)
 
     @pytest.mark.asyncio
-    async def test_invalid_format_type(self, validator):
-        """Test that invalid format type is rejected."""
-        invalid_product = {
-            "product_id": "invalid_format",
-            "name": "Invalid Format Product",
-            "description": "Product with invalid format type",
-            "formats": ["invalid_format"],  # Invalid format for testing
+    async def test_custom_format_ids_allowed(self, validator):
+        """Test that custom/arbitrary format IDs are accepted (schema doesn't validate against enum)."""
+        custom_format_product = {
+            "product_id": "custom_format",
+            "name": "Custom Format Product",
+            "description": "Product with custom format ID",
+            "format_ids": ["custom_format_xyz"],  # Custom format IDs are allowed
+            "property_tags": ["premium_display"],
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
         }
 
-        response = {"products": [invalid_product]}
+        response = {"adcp_version": "1.0.0", "products": [custom_format_product]}
 
-        with pytest.raises(SchemaValidationError):
-            await validator.validate_response("get-products", response)
+        # Should pass - schema accepts any string as format_id
+        await validator.validate_response("get-products", response)
 
     @pytest.mark.asyncio
     async def test_missing_required_fields(self, validator):
@@ -272,7 +282,7 @@ class TestEdgeCasesAndValidation:
             # Missing required fields: description, formats, delivery_type, is_fixed_price
         }
 
-        response = {"products": [incomplete_product]}
+        response = {"adcp_version": "1.0.0", "products": [incomplete_product]}
 
         with pytest.raises(SchemaValidationError):
             await validator.validate_response("get-products", response)
@@ -284,13 +294,14 @@ class TestEdgeCasesAndValidation:
             "product_id": "extra_field",
             "name": "Product with Extra Field",
             "description": "This product has an extra field",
-            "formats": ["display_300x250"],
+            "format_ids": ["display_300x250"],
+            "property_tags": ["premium_display"],
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
             "non_spec_field": "This field is not in the AdCP spec",  # Should be rejected
         }
 
-        response = {"products": [product_with_extra_field]}
+        response = {"adcp_version": "1.0.0", "products": [product_with_extra_field]}
 
         with pytest.raises(SchemaValidationError):
             await validator.validate_response("get-products", response)
@@ -306,7 +317,8 @@ class TestRealWorldScenarios:
             "product_id": "homepage_takeover_premium",
             "name": "Homepage Takeover - Premium",
             "description": "Premium guaranteed placement on homepage with brand lift measurement and co-branding requirements",
-            "formats": ["display_970x250"],  # Billboard format
+            "format_ids": ["display_970x250"],
+            "property_tags": ["premium_display"],  # Billboard format
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
             "cpm": 45.0,
@@ -322,7 +334,7 @@ class TestRealWorldScenarios:
             "brief_relevance": "Premium homepage placement provides maximum brand visibility with guaranteed impressions and brand lift measurement for your awareness campaign",
         }
 
-        response = {"products": [homepage_product]}
+        response = {"adcp_version": "1.0.0", "products": [homepage_product]}
         await validator.validate_response("get-products", response)
 
     @pytest.mark.asyncio
@@ -332,7 +344,8 @@ class TestRealWorldScenarios:
             "product_id": "video_preroll_standard",
             "name": "Video Pre-Roll Standard",
             "description": "Standard 15-30 second pre-roll video with completion rate measurement and VAST compliance",
-            "formats": ["video_preroll_16_9"],  # Pre-Roll Video 16:9
+            "format_ids": ["video_preroll_16_9"],
+            "property_tags": ["premium_display"],  # Pre-Roll Video 16:9
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "min_spend": 2000.0,
@@ -346,5 +359,5 @@ class TestRealWorldScenarios:
             "is_custom": False,
         }
 
-        response = {"products": [video_product]}
+        response = {"adcp_version": "1.0.0", "products": [video_product]}
         await validator.validate_response("get-products", response)
