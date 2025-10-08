@@ -84,16 +84,22 @@ def test_db_path():
             pass  # Ignore cleanup errors
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=True, scope="function")
 def test_environment(monkeypatch):
     """Configure test environment variables without global pollution."""
     # Set testing flags
     monkeypatch.setenv("ADCP_TESTING", "true")
     monkeypatch.setenv("ADCP_AUTH_TEST_MODE", "true")  # Enable test mode for auth
 
-    # Set default test values if not already configured
-    if "DATABASE_URL" not in os.environ:
-        monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    # IMPORTANT: Unit tests should NEVER use real database connections
+    # Remove ALL database-related env vars to prevent accidental connections
+    # Integration tests will set their own DATABASE_URL via integration_db fixture
+    if "DATABASE_URL" in os.environ:
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+    if "TEST_DATABASE_URL" in os.environ:
+        monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+    if "ADCP_TEST_DB_URL" in os.environ:
+        monkeypatch.delenv("ADCP_TEST_DB_URL", raising=False)
 
     # Set test API keys and credentials
     monkeypatch.setenv("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "test_key_for_mocking"))
@@ -102,7 +108,16 @@ def test_environment(monkeypatch):
     monkeypatch.setenv("SUPER_ADMIN_EMAILS", os.environ.get("SUPER_ADMIN_EMAILS", "test@example.com"))
 
     yield
-    # Cleanup happens automatically with monkeypatch
+
+    # Cleanup: Reset engine to ensure clean state for next test
+    # This prevents test isolation issues from module-level state
+    try:
+        from src.core.database.database_session import reset_engine
+
+        reset_engine()
+    except Exception:
+        # Ignore errors during cleanup (e.g., if module not yet loaded)
+        pass
 
 
 # NOTE: db_session fixture is now imported from conftest_db.py
