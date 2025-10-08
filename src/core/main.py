@@ -2770,6 +2770,107 @@ def _create_media_buy_impl(
                     error_msg = f"Package {package.buyer_ref} must contain at least one product."
                     raise ValueError(error_msg)
 
+        # 4. Currency-specific budget validation
+        from decimal import Decimal
+
+        from sqlalchemy import select
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import CurrencyLimit
+        from src.core.database.models import Product as ProductModel
+
+        # Get currency from budget (AdCP v2.4) or default to USD
+        request_currency = None
+        if req.budget:
+            request_currency = req.budget.currency
+        elif req.packages and req.packages[0].budget:
+            request_currency = req.packages[0].budget.currency
+        else:
+            request_currency = "USD"  # Default
+
+        # Get currency limits for this tenant and currency
+        with get_db_session() as session:
+            stmt = select(CurrencyLimit).where(
+                CurrencyLimit.tenant_id == tenant["tenant_id"], CurrencyLimit.currency_code == request_currency
+            )
+            currency_limit = session.scalars(stmt).first()
+
+            # Check if tenant supports this currency
+            if not currency_limit:
+                error_msg = (
+                    f"Currency {request_currency} is not supported by this publisher. "
+                    f"Contact the publisher to add support for this currency."
+                )
+                raise ValueError(error_msg)
+
+            # Validate minimum product spend
+            if currency_limit.min_product_spend:
+                # Get products from database to check per-product minimums
+                stmt = select(ProductModel).where(
+                    ProductModel.tenant_id == tenant["tenant_id"], ProductModel.product_id.in_(product_ids)
+                )
+                products = session.scalars(stmt).all()
+
+                # Build map of product_id -> minimum spend
+                product_min_spends = {}
+                for product in products:
+                    # Use product-specific override if set, otherwise use currency limit minimum
+                    min_spend = product.min_spend if product.min_spend is not None else currency_limit.min_product_spend
+                    if min_spend is not None:
+                        product_min_spends[product.product_id] = Decimal(str(min_spend))
+
+                # Validate budget against minimum spend requirements
+                if product_min_spends:
+                    # For packages, validate each package's budget against its products
+                    if req.packages:
+                        for package in req.packages:
+                            # Get the minimum spend requirement for products in this package
+                            package_product_ids = package.products if package.products else []
+                            applicable_min_spends = [
+                                product_min_spends[pid] for pid in package_product_ids if pid in product_min_spends
+                            ]
+
+                            if applicable_min_spends:
+                                # Use the highest minimum spend among all products in package
+                                required_min_spend = max(applicable_min_spends)
+                                package_budget = Decimal(str(package.budget.amount)) if package.budget else Decimal("0")
+
+                                if package_budget < required_min_spend:
+                                    error_msg = (
+                                        f"Package budget ({package_budget} {request_currency}) does not meet minimum spend requirement "
+                                        f"({required_min_spend} {request_currency}) for products in this package"
+                                    )
+                                    raise ValueError(error_msg)
+                    else:
+                        # Legacy mode: single total_budget for all products
+                        applicable_min_spends = list(product_min_spends.values())
+                        if applicable_min_spends:
+                            required_min_spend = max(applicable_min_spends)
+                            budget_decimal = Decimal(str(total_budget))
+
+                            if budget_decimal < required_min_spend:
+                                error_msg = (
+                                    f"Total budget ({total_budget} {request_currency}) does not meet minimum spend requirement "
+                                    f"({required_min_spend} {request_currency}) for the selected products"
+                                )
+                                raise ValueError(error_msg)
+
+            # Validate maximum daily spend (if set)
+            if currency_limit.max_daily_spend:
+                # Calculate daily budget from total budget and flight duration
+                flight_days = (req.end_time - req.start_time).days
+                if flight_days <= 0:
+                    flight_days = 1
+                daily_budget = Decimal(str(total_budget)) / Decimal(str(flight_days))
+
+                if daily_budget > currency_limit.max_daily_spend:
+                    error_msg = (
+                        f"Daily budget ({daily_budget} {request_currency}) exceeds maximum daily spend limit "
+                        f"({currency_limit.max_daily_spend} {request_currency}). "
+                        f"This protects against accidental large budgets."
+                    )
+                    raise ValueError(error_msg)
+
         # Validate targeting doesn't use managed-only dimensions
         if req.targeting_overlay:
             from src.services.targeting_capabilities import validate_overlay_targeting
