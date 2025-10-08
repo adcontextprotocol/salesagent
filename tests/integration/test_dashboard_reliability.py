@@ -140,7 +140,7 @@ class TestDashboardReliability:
             assert "success" in activity["metadata"]
 
     @pytest.mark.requires_db
-    def test_dashboard_service_caching_works(self, test_tenant):
+    def test_dashboard_service_caching_works(self, integration_db, test_tenant):
         """Test that dashboard service correctly caches tenant lookups."""
         service = DashboardService(test_tenant.tenant_id)
 
