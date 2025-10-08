@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -95,9 +96,19 @@ def test_environment(monkeypatch, request):
     is_integration_test = "integration" in str(request.fspath)
     adcp_test_db_url = os.environ.get("ADCP_TEST_DB_URL")
 
+    # Check if this is a unittest.TestCase (which manages its own DATABASE_URL)
+    # Pytest calls these as "UnitTestCase" in the node hierarchy
+    is_unittest_class = (
+        hasattr(request, "cls") and request.cls is not None and issubclass(request.cls, unittest.TestCase)
+    )
+
     # IMPORTANT: Unit tests should NEVER use real database connections
-    # Remove database-related env vars UNLESS this is an integration test with ADCP_TEST_DB_URL set
-    if not (is_integration_test and adcp_test_db_url):
+    # Remove database-related env vars UNLESS:
+    # 1. This is an integration test with ADCP_TEST_DB_URL set (pytest fixtures), OR
+    # 2. This is a unittest.TestCase class (manages its own DATABASE_URL in setUpClass)
+    should_preserve_db = is_integration_test and (adcp_test_db_url or is_unittest_class)
+
+    if not should_preserve_db:
         if "DATABASE_URL" in os.environ:
             monkeypatch.delenv("DATABASE_URL", raising=False)
         if "TEST_DATABASE_URL" in os.environ:
