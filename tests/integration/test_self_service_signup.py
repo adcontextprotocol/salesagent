@@ -23,7 +23,7 @@ from src.core.database.models import AdapterConfig, Tenant, User
 class TestSelfServiceSignupFlow:
     """Test self-service tenant signup flow."""
 
-    def test_landing_page_accessible_without_auth(self, client):
+    def test_landing_page_accessible_without_auth(self, integration_db, client):
         """Test that landing page is accessible without authentication."""
         response = client.get("/signup")
         assert response.status_code == 200
