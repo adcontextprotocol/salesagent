@@ -294,20 +294,6 @@ jobs:
         export PATH="$HOME/.cargo/bin:$PATH"
         uv sync --extra dev
 
-    - name: Run database migrations
-      env:
-        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv run python scripts/ops/migrate.py
-
-    - name: Initialize test data
-      env:
-        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv run python scripts/setup/init_database.py
-
     - name: Install Docker Compose
       run: |
         sudo apt-get update
