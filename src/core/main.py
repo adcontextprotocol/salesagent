@@ -2823,9 +2823,16 @@ def _create_media_buy_impl(
 
                 # Validate budget against minimum spend requirements
                 if product_min_spends:
-                    # For packages, validate each package's budget against its products
-                    if req.packages:
+                    # Check if we're in legacy mode (packages without budgets)
+                    is_legacy_mode = req.packages and all(not pkg.budget for pkg in req.packages)
+
+                    # For packages with budgets, validate each package's budget
+                    if req.packages and not is_legacy_mode:
                         for package in req.packages:
+                            # Skip packages without budgets (shouldn't happen in v2.4 format)
+                            if not package.budget:
+                                continue
+
                             # Get the minimum spend requirement for products in this package
                             package_product_ids = package.products if package.products else []
                             applicable_min_spends = [
@@ -2835,7 +2842,7 @@ def _create_media_buy_impl(
                             if applicable_min_spends:
                                 # Use the highest minimum spend among all products in package
                                 required_min_spend = max(applicable_min_spends)
-                                package_budget = Decimal(str(package.budget.total)) if package.budget else Decimal("0")
+                                package_budget = Decimal(str(package.budget.total))
 
                                 if package_budget < required_min_spend:
                                     error_msg = (
@@ -2864,10 +2871,15 @@ def _create_media_buy_impl(
                 if flight_days <= 0:
                     flight_days = 1
 
-                # For packages, validate each package's daily budget
-                if req.packages:
+                # Check if we're in legacy mode (packages without budgets)
+                is_legacy_mode = req.packages and all(not pkg.budget for pkg in req.packages)
+
+                # For packages with budgets, validate each package's daily budget
+                if req.packages and not is_legacy_mode:
                     for package in req.packages:
-                        package_budget = Decimal(str(package.budget.total)) if package.budget else Decimal("0")
+                        if not package.budget:
+                            continue
+                        package_budget = Decimal(str(package.budget.total))
                         package_daily_budget = package_budget / Decimal(str(flight_days))
 
                         if package_daily_budget > currency_limit.max_daily_package_spend:

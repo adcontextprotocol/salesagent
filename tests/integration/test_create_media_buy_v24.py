@@ -80,14 +80,22 @@ class TestCreateMediaBuyV24Format:
             )
             session.add(product)
 
-            # Add currency limit for USD
-            currency_limit = CurrencyLimit(
+            # Add currency limits for USD and EUR
+            currency_limit_usd = CurrencyLimit(
                 tenant_id="test_tenant_v24",
                 currency_code="USD",
                 min_package_budget=1000.0,
                 max_daily_package_spend=10000.0,
             )
-            session.add(currency_limit)
+            session.add(currency_limit_usd)
+
+            currency_limit_eur = CurrencyLimit(
+                tenant_id="test_tenant_v24",
+                currency_code="EUR",
+                min_package_budget=1000.0,
+                max_daily_package_spend=10000.0,
+            )
+            session.add(currency_limit_eur)
 
             session.commit()
 
