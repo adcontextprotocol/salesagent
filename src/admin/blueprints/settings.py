@@ -25,6 +25,28 @@ tenant_management_settings_bp = Blueprint("tenant_management_settings", __name__
 settings_bp = Blueprint("settings", __name__)
 
 
+def validate_naming_template(template: str, field_name: str) -> str | None:
+    """Validate naming template.
+
+    Returns error message if invalid, None if valid.
+    """
+    if not template:
+        return f"{field_name} cannot be empty"
+
+    if len(template) > 500:
+        return f"{field_name} exceeds 500 character limit ({len(template)} chars)"
+
+    # Check for balanced braces
+    if template.count("{") != template.count("}"):
+        return f"{field_name} has unbalanced braces"
+
+    # Check for empty variable names
+    if "{}" in template:
+        return f"{field_name} contains empty variable placeholder {{}}"
+
+    return None
+
+
 # Tenant management settings routes
 @tenant_management_settings_bp.route("/settings")
 @require_auth(admin_only=True)
@@ -115,12 +137,67 @@ def update_general(tenant_id):
 
                 tenant.virtual_host = virtual_host or None
 
-            # Update other fields if they exist
-            if "max_daily_budget" in request.form:
+            # Update currency limits
+            from decimal import Decimal, InvalidOperation
+
+            from src.core.database.models import CurrencyLimit
+
+            # Get all existing currency limits
+            stmt = select(CurrencyLimit).filter_by(tenant_id=tenant_id)
+            existing_limits = {limit.currency_code: limit for limit in db_session.scalars(stmt).all()}
+
+            # Process currency_limits form data
+            # Format: currency_limits[USD][min_package_budget], currency_limits[USD][max_daily_package_spend]
+            processed_currencies = set()
+
+            for key in request.form.keys():
+                if key.startswith("currency_limits["):
+                    # Extract currency code from key like "currency_limits[USD][min_package_budget]"
+                    parts = key.split("[")
+                    if len(parts) >= 2:
+                        currency_code = parts[1].rstrip("]")
+                        processed_currencies.add(currency_code)
+
+            # Update or create currency limits
+            for currency_code in processed_currencies:
+                # Check if marked for deletion
+                delete_key = f"currency_limits[{currency_code}][_delete]"
+                if delete_key in request.form and request.form.get(delete_key) == "true":
+                    # Delete this currency limit
+                    if currency_code in existing_limits:
+                        db_session.delete(existing_limits[currency_code])
+                    continue
+
+                # Get min and max values
+                min_key = f"currency_limits[{currency_code}][min_package_budget]"
+                max_key = f"currency_limits[{currency_code}][max_daily_package_spend]"
+
+                min_value_str = request.form.get(min_key, "").strip()
+                max_value_str = request.form.get(max_key, "").strip()
+
                 try:
-                    tenant.max_daily_budget = int(request.form.get("max_daily_budget", 10000))
-                except ValueError:
-                    tenant.max_daily_budget = 10000
+                    min_value = Decimal(min_value_str) if min_value_str else None
+                    max_value = Decimal(max_value_str) if max_value_str else None
+                except (ValueError, InvalidOperation):
+                    flash(f"Invalid currency limit values for {currency_code}", "error")
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="general"))
+
+                # Update or create
+                if currency_code in existing_limits:
+                    # Update existing
+                    limit = existing_limits[currency_code]
+                    limit.min_package_budget = min_value
+                    limit.max_daily_package_spend = max_value
+                    limit.updated_at = datetime.now(UTC)
+                else:
+                    # Create new
+                    limit = CurrencyLimit(
+                        tenant_id=tenant_id,
+                        currency_code=currency_code,
+                        min_package_budget=min_value,
+                        max_daily_package_spend=max_value,
+                    )
+                    db_session.add(limit)
 
             if "enable_axe_signals" in request.form:
                 tenant.enable_axe_signals = request.form.get("enable_axe_signals") == "on"
@@ -551,3 +628,158 @@ def test_domain_access(tenant_id):
         flash("Error testing email access", "error")
 
     return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="access"))
+
+
+@settings_bp.route("/business-rules", methods=["POST"])
+@require_tenant_access()
+def update_business_rules(tenant_id):
+    """Update business rules (budget, naming, approvals, features)."""
+    try:
+        # Get form data
+        data = request.get_json() if request.is_json else request.form
+
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                if request.is_json:
+                    return jsonify({"success": False, "error": "Tenant not found"}), 404
+                flash("Tenant not found", "error")
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
+
+            # Update budget controls
+            if "max_daily_budget" in data:
+                try:
+                    tenant.max_daily_budget = int(data.get("max_daily_budget"))
+                except (ValueError, TypeError):
+                    if request.is_json:
+                        return jsonify({"success": False, "error": "Invalid max_daily_budget value"}), 400
+                    flash("Invalid maximum daily budget value", "error")
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
+
+            # Update currency limits
+            from decimal import Decimal, InvalidOperation
+
+            from src.core.database.models import CurrencyLimit
+
+            # Get all existing currency limits
+            stmt = select(CurrencyLimit).filter_by(tenant_id=tenant_id)
+            existing_limits = {limit.currency_code: limit for limit in db_session.scalars(stmt).all()}
+
+            # Process currency_limits form data
+            # Format: currency_limits[USD][min_package_budget], currency_limits[USD][max_daily_package_spend]
+            processed_currencies = set()
+
+            for key in data.keys():
+                if key.startswith("currency_limits["):
+                    # Extract currency code from key like "currency_limits[USD][min_package_budget]"
+                    parts = key.split("[")
+                    if len(parts) >= 2:
+                        currency_code = parts[1].rstrip("]")
+                        processed_currencies.add(currency_code)
+
+            # Update or create currency limits
+            for currency_code in processed_currencies:
+                # Check if marked for deletion
+                delete_key = f"currency_limits[{currency_code}][_delete]"
+                if delete_key in data and data.get(delete_key) in ["true", True]:
+                    # Delete this currency limit
+                    if currency_code in existing_limits:
+                        db_session.delete(existing_limits[currency_code])
+                    continue
+
+                # Get min and max values
+                min_key = f"currency_limits[{currency_code}][min_package_budget]"
+                max_key = f"currency_limits[{currency_code}][max_daily_package_spend]"
+
+                min_value_str = data.get(min_key, "").strip() if data.get(min_key) else ""
+                max_value_str = data.get(max_key, "").strip() if data.get(max_key) else ""
+
+                try:
+                    min_value = Decimal(min_value_str) if min_value_str else None
+                    max_value = Decimal(max_value_str) if max_value_str else None
+                except (ValueError, InvalidOperation):
+                    if request.is_json:
+                        return (
+                            jsonify({"success": False, "error": f"Invalid currency limit values for {currency_code}"}),
+                            400,
+                        )
+                    flash(f"Invalid currency limit values for {currency_code}", "error")
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
+
+                # Update or create
+                if currency_code in existing_limits:
+                    # Update existing
+                    limit = existing_limits[currency_code]
+                    limit.min_package_budget = min_value
+                    limit.max_daily_package_spend = max_value
+                    limit.updated_at = datetime.now(UTC)
+                else:
+                    # Create new
+                    limit = CurrencyLimit(
+                        tenant_id=tenant_id,
+                        currency_code=currency_code,
+                        min_package_budget=min_value,
+                        max_daily_package_spend=max_value,
+                    )
+                    db_session.add(limit)
+
+            # Update naming templates with validation
+            if "order_name_template" in data:
+                order_template = data.get("order_name_template", "").strip()
+                if order_template:
+                    # Validate template
+                    validation_error = validate_naming_template(order_template, "Order name template")
+                    if validation_error:
+                        if request.is_json:
+                            return jsonify({"success": False, "error": validation_error}), 400
+                        flash(validation_error, "error")
+                        return redirect(
+                            url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules")
+                        )
+                    tenant.order_name_template = order_template
+
+            if "line_item_name_template" in data:
+                line_item_template = data.get("line_item_name_template", "").strip()
+                if line_item_template:
+                    # Validate template
+                    validation_error = validate_naming_template(line_item_template, "Line item name template")
+                    if validation_error:
+                        if request.is_json:
+                            return jsonify({"success": False, "error": validation_error}), 400
+                        flash(validation_error, "error")
+                        return redirect(
+                            url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules")
+                        )
+                    tenant.line_item_name_template = line_item_template
+
+            # Update approval workflow
+            if "human_review_required" in data:
+                tenant.human_review_required = data.get("human_review_required") in [True, "true", "on", 1, "1"]
+            elif not request.is_json:
+                # Checkbox not present in form data means unchecked
+                tenant.human_review_required = False
+
+            # Update features
+            if "enable_axe_signals" in data:
+                tenant.enable_axe_signals = data.get("enable_axe_signals") in [True, "true", "on", 1, "1"]
+            elif not request.is_json:
+                # Checkbox not present in form data means unchecked
+                tenant.enable_axe_signals = False
+
+            tenant.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+            if request.is_json:
+                return jsonify({"success": True, "message": "Business rules updated successfully"}), 200
+
+            flash("Business rules updated successfully", "success")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
+
+    except Exception as e:
+        logger.error(f"Error updating business rules: {e}", exc_info=True)
+
+        if request.is_json:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+        flash(f"Error updating business rules: {str(e)}", "error")
+        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))

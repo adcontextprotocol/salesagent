@@ -220,6 +220,12 @@ def tenant_settings(tenant_id, section=None):
             # Get A2A port (for agent cards)
             a2a_port = int(os.environ.get("A2A_PORT", 8091)) if not is_production else None
 
+            # Get currency limits for this tenant
+            from src.core.database.models import CurrencyLimit
+
+            stmt = select(CurrencyLimit).filter_by(tenant_id=tenant_id).order_by(CurrencyLimit.currency_code)
+            currency_limits = db_session.scalars(stmt).all()
+
             return render_template(
                 "tenant_settings.html",
                 tenant=tenant,
@@ -244,6 +250,7 @@ def tenant_settings(tenant_id, section=None):
                 creative_formats=creative_formats,
                 inventory_count=inventory_count,
                 ad_units_count=ad_units_count,
+                currency_limits=currency_limits,
                 placements_count=placements_count,
             )
 
