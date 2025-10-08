@@ -85,21 +85,25 @@ def test_db_path():
 
 
 @pytest.fixture(autouse=True, scope="function")
-def test_environment(monkeypatch):
+def test_environment(monkeypatch, request):
     """Configure test environment variables without global pollution."""
     # Set testing flags
     monkeypatch.setenv("ADCP_TESTING", "true")
     monkeypatch.setenv("ADCP_AUTH_TEST_MODE", "true")  # Enable test mode for auth
 
+    # Check if this is an integration test that needs the database
+    is_integration_test = "integration" in str(request.fspath)
+    adcp_test_db_url = os.environ.get("ADCP_TEST_DB_URL")
+
     # IMPORTANT: Unit tests should NEVER use real database connections
-    # Remove ALL database-related env vars to prevent accidental connections
-    # Integration tests will set their own DATABASE_URL via integration_db fixture
-    if "DATABASE_URL" in os.environ:
-        monkeypatch.delenv("DATABASE_URL", raising=False)
-    if "TEST_DATABASE_URL" in os.environ:
-        monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
-    if "ADCP_TEST_DB_URL" in os.environ:
-        monkeypatch.delenv("ADCP_TEST_DB_URL", raising=False)
+    # Remove database-related env vars UNLESS this is an integration test with ADCP_TEST_DB_URL set
+    if not (is_integration_test and adcp_test_db_url):
+        if "DATABASE_URL" in os.environ:
+            monkeypatch.delenv("DATABASE_URL", raising=False)
+        if "TEST_DATABASE_URL" in os.environ:
+            monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+        if "ADCP_TEST_DB_URL" in os.environ:
+            monkeypatch.delenv("ADCP_TEST_DB_URL", raising=False)
 
     # Set test API keys and credentials
     monkeypatch.setenv("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "test_key_for_mocking"))
