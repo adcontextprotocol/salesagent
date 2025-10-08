@@ -197,6 +197,24 @@ def tenant_settings(tenant_id, section=None):
             stmt = select(CreativeFormat).filter_by(tenant_id=tenant_id)
             creative_formats = db_session.scalars(stmt).all()
 
+            # Get inventory counts
+            from src.core.database.models import GAMInventory
+
+            stmt = select(func.count()).select_from(GAMInventory).filter_by(tenant_id=tenant_id)
+            inventory_count = db_session.scalar(stmt) or 0
+
+            stmt = (
+                select(func.count()).select_from(GAMInventory).filter_by(tenant_id=tenant_id, inventory_type="ad_unit")
+            )
+            ad_units_count = db_session.scalar(stmt) or 0
+
+            stmt = (
+                select(func.count())
+                .select_from(GAMInventory)
+                .filter_by(tenant_id=tenant_id, inventory_type="placement")
+            )
+            placements_count = db_session.scalar(stmt) or 0
+
             # Get admin port
             admin_port = int(os.environ.get("ADMIN_UI_PORT", 8001))
 
@@ -221,6 +239,9 @@ def tenant_settings(tenant_id, section=None):
                 active_products=active_products,
                 draft_products=draft_products,
                 creative_formats=creative_formats,
+                inventory_count=inventory_count,
+                ad_units_count=ad_units_count,
+                placements_count=placements_count,
             )
 
     except Exception as e:
