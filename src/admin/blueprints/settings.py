@@ -25,6 +25,28 @@ tenant_management_settings_bp = Blueprint("tenant_management_settings", __name__
 settings_bp = Blueprint("settings", __name__)
 
 
+def validate_naming_template(template: str, field_name: str) -> str | None:
+    """Validate naming template.
+
+    Returns error message if invalid, None if valid.
+    """
+    if not template:
+        return f"{field_name} cannot be empty"
+
+    if len(template) > 500:
+        return f"{field_name} exceeds 500 character limit ({len(template)} chars)"
+
+    # Check for balanced braces
+    if template.count("{") != template.count("}"):
+        return f"{field_name} has unbalanced braces"
+
+    # Check for empty variable names
+    if "{}" in template:
+        return f"{field_name} contains empty variable placeholder {{}}"
+
+    return None
+
+
 # Tenant management settings routes
 @tenant_management_settings_bp.route("/settings")
 @require_auth(admin_only=True)
@@ -579,15 +601,33 @@ def update_business_rules(tenant_id):
                     flash("Invalid maximum daily budget value", "error")
                     return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
 
-            # Update naming templates
+            # Update naming templates with validation
             if "order_name_template" in data:
                 order_template = data.get("order_name_template", "").strip()
                 if order_template:
+                    # Validate template
+                    validation_error = validate_naming_template(order_template, "Order name template")
+                    if validation_error:
+                        if request.is_json:
+                            return jsonify({"success": False, "error": validation_error}), 400
+                        flash(validation_error, "error")
+                        return redirect(
+                            url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules")
+                        )
                     tenant.order_name_template = order_template
 
             if "line_item_name_template" in data:
                 line_item_template = data.get("line_item_name_template", "").strip()
                 if line_item_template:
+                    # Validate template
+                    validation_error = validate_naming_template(line_item_template, "Line item name template")
+                    if validation_error:
+                        if request.is_json:
+                            return jsonify({"success": False, "error": validation_error}), 400
+                        flash(validation_error, "error")
+                        return redirect(
+                            url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules")
+                        )
                     tenant.line_item_name_template = line_item_template
 
             # Update approval workflow

@@ -443,7 +443,7 @@
 
         <a class="settings-nav-item" data-section="business-rules">
             <span class="settings-nav-icon">📋</span>
-            <span>Business Rules</span>
+            <span>Policies & Workflows</span>
         </a>
 
         <div class="settings-nav-separator"></div>
@@ -701,100 +701,6 @@
                         <small class="form-text text-muted">The GAM user ID who will create line items. Auto-detected when you click "Auto-detect Network" above.</small>
                     </div>
 
-                    <div class="form-section" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #e5e7eb;">
-                        <h3>Naming Templates</h3>
-                        <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1.5rem;">
-                            Configure how orders and line items are named in Google Ad Manager. Use variables like <code>{campaign_name}</code>, <code>{promoted_offering}</code>, <code>{date_range}</code>, etc.
-                        </p>
-
-                        <!-- Preset Template Buttons -->
-                        <div class="form-group">
-                            <label>Quick Start Templates</label>
-                            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('simple')">
-                                    📊 Simple
-                                </button>
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('campaign')">
-                                    🎯 Campaign-First
-                                </button>
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('detailed')">
-                                    📅 Detailed
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="gam_order_name_template">Order Name Template</label>
-                            <input type="text" id="gam_order_name_template" class="form-control"
-                                   value="{{ adapter_config.get('order_name_template', '{campaign_name|promoted_offering} - {date_range}') if adapter_config else '{campaign_name|promoted_offering} - {date_range}' }}"
-                                   placeholder="{campaign_name|promoted_offering} - {date_range}"
-                                   oninput="updateNamingPreview()">
-                            <details style="margin-top: 0.5rem;">
-                                <summary style="cursor: pointer; color: #666; font-size: 0.875rem;">Show available variables</summary>
-                                <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.875rem;">
-                                    <strong>Available variables:</strong>
-                                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                                        <li><code>{campaign_name}</code> - Campaign name (optional - may be empty)</li>
-                                        <li><code>{promoted_offering}</code> - What's being advertised (always present)</li>
-                                        <li><code>{buyer_ref}</code> - Buyer's internal reference (optional)</li>
-                                        <li><code>{date_range}</code> - Flight dates (e.g., "Oct 7-14, 2025")</li>
-                                        <li><code>{month_year}</code> - Month and year (e.g., "Oct 2025")</li>
-                                        <li><code>{package_count}</code> - Number of packages in order</li>
-                                    </ul>
-                                    <strong>Fallback syntax:</strong> <code>{var1|var2}</code> uses var1 if present, otherwise var2
-                                    <br><strong>Example:</strong> <code>{campaign_name|promoted_offering}</code> tries campaign_name first, falls back to promoted_offering
-                                </div>
-                            </details>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="gam_line_item_name_template">Line Item Name Template</label>
-                            <input type="text" id="gam_line_item_name_template" class="form-control"
-                                   value="{{ adapter_config.get('line_item_name_template', '{order_name} - {product_name}') if adapter_config else '{order_name} - {product_name}' }}"
-                                   placeholder="{order_name} - {product_name}"
-                                   oninput="updateNamingPreview()">
-                            <details style="margin-top: 0.5rem;">
-                                <summary style="cursor: pointer; color: #666; font-size: 0.875rem;">Show available variables</summary>
-                                <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.875rem;">
-                                    <strong>Available variables:</strong>
-                                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                                        <li><code>{product_name}</code> - Product/inventory name (e.g., "Display 300x250")</li>
-                                        <li><code>{order_name}</code> - Parent order name (provides campaign context)</li>
-                                        <li><code>{package_index}</code> - Package position number (1, 2, 3...)</li>
-                                    </ul>
-                                    <strong>Tip:</strong> Including <code>{order_name}</code> helps identify campaigns in line-item reports
-                                </div>
-                            </details>
-                        </div>
-
-                        <!-- Live Preview -->
-                        <div class="form-group" style="margin-top: 1.5rem;">
-                            <label>Preview with Sample Data</label>
-                            <div id="naming-preview" style="padding: 1rem; background: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 8px;">
-                                <div style="margin-bottom: 0.75rem;">
-                                    <strong style="color: #1e40af;">Order Name:</strong>
-                                    <div id="order-preview" style="padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.25rem; font-family: monospace; color: #059669;">
-                                        Nike Shoes Q1 - Oct 7-14, 2025
-                                    </div>
-                                </div>
-                                <div>
-                                    <strong style="color: #1e40af;">Line Item Names:</strong>
-                                    <div id="lineitem-preview" style="padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.25rem; font-family: monospace; color: #059669;">
-                                        1. Nike Shoes Q1 - Oct 7-14, 2025 - Display 300x250<br>
-                                        2. Nike Shoes Q1 - Oct 7-14, 2025 - Video Pre-roll<br>
-                                        3. Nike Shoes Q1 - Oct 7-14, 2025 - Native Article
-                                    </div>
-                                </div>
-                                <div id="validation-messages" style="margin-top: 0.75rem; font-size: 0.875rem;">
-                                    <!-- Validation messages will appear here -->
-                                </div>
-                                <small style="color: #64748b; display: block; margin-top: 0.5rem;">
-                                    Using sample: campaign_name=null, promoted_offering="Nike Shoes Q1", dates=Oct 7-14, 2025, 3 products
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="form-group" style="margin-top: 2rem;">
                         <button onclick="saveGAMConfig()" class="btn btn-primary">Save GAM Configuration</button>
                         {% if adapter_config and adapter_config.get('refresh_token') %}
@@ -813,10 +719,10 @@
             </div>
         </div>
 
-        <!-- Business Rules Section -->
+        <!-- Policies & Workflows Section -->
         <div id="business-rules" class="settings-section">
             <div class="settings-header">
-                <h2>Business Rules</h2>
+                <h2>Policies & Workflows</h2>
                 <p>Configure how your organization operates: budgets, naming conventions, approval workflows</p>
             </div>
 
@@ -1945,6 +1851,24 @@ function applyTemplateVariables(template, context) {
     return result;
 }
 
+// Validate template variables against known variables
+function validateTemplateVariables(template, knownVars) {
+    const warnings = [];
+    const pattern = /\{([^}]+)\}/g;
+    let match;
+
+    while ((match = pattern.exec(template)) !== null) {
+        const variables = match[1].split('|').map(v => v.trim());
+        const hasValidVar = variables.some(v => knownVars.includes(v));
+
+        if (!hasValidVar) {
+            warnings.push(`Unknown variable: ${match[0]} (available: ${variables.map(v => knownVars.includes(v) ? v : v + '?').join('|')})`);
+        }
+    }
+
+    return warnings;
+}
+
 // Update live preview
 function updateNamingPreview() {
     // Support both GAM section (gam_* IDs) and Business Rules section (no prefix)
@@ -1995,6 +1919,23 @@ function updateNamingPreview() {
     const validationDiv = document.getElementById('validation-messages');
     const errors = [];
 
+    // Known variables for validation
+    const orderKnownVars = ['campaign_name', 'promoted_offering', 'buyer_ref', 'date_range', 'month_year', 'package_count', 'start_date', 'end_date'];
+    const lineItemKnownVars = ['order_name', 'product_name', 'package_index'];
+
+    // Check for unknown variables
+    const orderVarWarnings = validateTemplateVariables(orderTemplate, orderKnownVars);
+    const lineItemVarWarnings = validateTemplateVariables(lineItemTemplate, lineItemKnownVars);
+
+    orderVarWarnings.forEach(warning => {
+        errors.push('⚠️ Order template: ' + warning);
+    });
+
+    lineItemVarWarnings.forEach(warning => {
+        errors.push('⚠️ Line item template: ' + warning);
+    });
+
+    // Check result length and content
     if (!orderName || orderName.trim() === '') {
         errors.push('⚠️ Order template produces empty name - add fallback variables');
     }

@@ -387,7 +387,7 @@ Settings are organized around clear conceptual buckets:
 - Network codes and IDs
 - Connection testing
 
-**📋 Business Rules** (How You Operate) ⭐ **NEW**
+**📋 Policies & Workflows** (How You Operate) ⭐ **NEW**
 - **Budget Controls**: Max daily budget
 - **Naming Conventions**: Order/line item templates with live preview
   - Works across all adapters (GAM, Mock, Kevel)
@@ -416,9 +416,9 @@ Settings are organized around clear conceptual buckets:
 - Delete tenant, reset data
 
 **Key Changes (October 2025):**
-- Naming templates moved from Ad Server to Business Rules
-- Budget controls moved from Account to Business Rules
-- Feature flags moved from Account to Business Rules
+- Naming templates moved from Ad Server to Policies & Workflows
+- Budget controls moved from Account to Policies & Workflows
+- Feature flags moved from Account to Policies & Workflows
 - Settings reduced from 11 to 8 sections
 - Naming templates now work across all adapters
 
