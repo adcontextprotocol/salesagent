@@ -415,11 +415,20 @@ def get_gam_custom_targeting_keys(tenant_id):
             if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                 return jsonify({"error": "GAM not configured for this tenant"}), 400
 
-            # Initialize GAM inventory discovery
-            discovery = GAMInventoryDiscovery(
-                network_code=adapter_config.gam_network_code,
+            # Create OAuth2 client
+            from googleads import oauth2
+
+            oauth2_client = oauth2.GoogleRefreshTokenClient(
+                client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
+                client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
                 refresh_token=adapter_config.gam_refresh_token,
             )
+
+            # Create GAM client
+            client = ad_manager.AdManagerClient(oauth2_client, adapter_config.gam_network_code)
+
+            # Initialize GAM inventory discovery
+            discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
 
             # Get custom targeting keys
             keys = discovery.discover_custom_targeting()
@@ -452,11 +461,20 @@ def sync_gam_inventory(tenant_id):
             if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                 return jsonify({"success": False, "error": "GAM not configured for this tenant"}), 400
 
-            # Initialize GAM inventory discovery
-            discovery = GAMInventoryDiscovery(
-                network_code=adapter_config.gam_network_code,
+            # Create OAuth2 client
+            from googleads import oauth2
+
+            oauth2_client = oauth2.GoogleRefreshTokenClient(
+                client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
+                client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
                 refresh_token=adapter_config.gam_refresh_token,
             )
+
+            # Create GAM client
+            client = ad_manager.AdManagerClient(oauth2_client, adapter_config.gam_network_code)
+
+            # Initialize GAM inventory discovery
+            discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
 
             # Perform full inventory discovery
             ad_units = discovery.discover_ad_units()
