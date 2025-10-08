@@ -45,8 +45,8 @@ class TestMinimumSpendValidation:
             currency_limit_usd = CurrencyLimit(
                 tenant_id="test_minspend_tenant",
                 currency_code="USD",
-                min_product_spend=Decimal("1000.00"),  # $1000 minimum per product
-                max_daily_spend=Decimal("50000.00"),  # $50k daily maximum
+                min_package_budget=Decimal("1000.00"),  # $1000 minimum per product
+                max_daily_package_spend=Decimal("50000.00"),  # $50k daily maximum
             )
             session.add(currency_limit_usd)
 
@@ -54,8 +54,8 @@ class TestMinimumSpendValidation:
             currency_limit_eur = CurrencyLimit(
                 tenant_id="test_minspend_tenant",
                 currency_code="EUR",
-                min_product_spend=Decimal("900.00"),  # €900 minimum per product
-                max_daily_spend=Decimal("45000.00"),  # €45k daily maximum
+                min_package_budget=Decimal("900.00"),  # €900 minimum per product
+                max_daily_package_spend=Decimal("45000.00"),  # €45k daily maximum
             )
             session.add(currency_limit_eur)
 
@@ -299,8 +299,8 @@ class TestMinimumSpendValidation:
             currency_limit_gbp = CurrencyLimit(
                 tenant_id="test_minspend_tenant",
                 currency_code="GBP",
-                min_product_spend=None,  # No minimum
-                max_daily_spend=Decimal("40000.00"),  # Only max set
+                min_package_budget=None,  # No minimum
+                max_daily_package_spend=Decimal("40000.00"),  # Only max set
             )
             session.add(currency_limit_gbp)
             session.commit()

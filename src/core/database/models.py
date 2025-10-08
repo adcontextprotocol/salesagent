@@ -169,12 +169,12 @@ class CurrencyLimit(Base):
     )
     currency_code = Column(String(3), primary_key=True)  # ISO 4217: USD, EUR, GBP, etc.
 
-    # Minimum budget per package/line item in this currency
-    min_product_spend: Mapped[Decimal | None] = mapped_column(DECIMAL(15, 2), nullable=True)
+    # Minimum total budget per package/line item in this currency
+    min_package_budget: Mapped[Decimal | None] = mapped_column(DECIMAL(15, 2), nullable=True)
 
     # Maximum daily spend per package/line item in this currency
     # Prevents buyers from creating many small line items to bypass limits
-    max_daily_spend: Mapped[Decimal | None] = mapped_column(DECIMAL(15, 2), nullable=True)
+    max_daily_package_spend: Mapped[Decimal | None] = mapped_column(DECIMAL(15, 2), nullable=True)
 
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())

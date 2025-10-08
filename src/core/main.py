@@ -2804,7 +2804,7 @@ def _create_media_buy_impl(
                 raise ValueError(error_msg)
 
             # Validate minimum product spend
-            if currency_limit.min_product_spend:
+            if currency_limit.min_package_budget:
                 # Get products from database to check per-product minimums
                 stmt = select(ProductModel).where(
                     ProductModel.tenant_id == tenant["tenant_id"], ProductModel.product_id.in_(product_ids)
@@ -2815,7 +2815,9 @@ def _create_media_buy_impl(
                 product_min_spends = {}
                 for product in products:
                     # Use product-specific override if set, otherwise use currency limit minimum
-                    min_spend = product.min_spend if product.min_spend is not None else currency_limit.min_product_spend
+                    min_spend = (
+                        product.min_spend if product.min_spend is not None else currency_limit.min_package_budget
+                    )
                     if min_spend is not None:
                         product_min_spends[product.product_id] = Decimal(str(min_spend))
 
@@ -2857,7 +2859,7 @@ def _create_media_buy_impl(
 
             # Validate maximum daily spend per package (if set)
             # This is per-package to prevent buyers from splitting large budgets across many packages
-            if currency_limit.max_daily_spend:
+            if currency_limit.max_daily_package_spend:
                 flight_days = (req.end_time - req.start_time).days
                 if flight_days <= 0:
                     flight_days = 1
@@ -2868,10 +2870,10 @@ def _create_media_buy_impl(
                         package_budget = Decimal(str(package.budget.amount)) if package.budget else Decimal("0")
                         package_daily_budget = package_budget / Decimal(str(flight_days))
 
-                        if package_daily_budget > currency_limit.max_daily_spend:
+                        if package_daily_budget > currency_limit.max_daily_package_spend:
                             error_msg = (
                                 f"Package daily budget ({package_daily_budget} {request_currency}) exceeds "
-                                f"maximum daily spend per package ({currency_limit.max_daily_spend} {request_currency}). "
+                                f"maximum daily spend per package ({currency_limit.max_daily_package_spend} {request_currency}). "
                                 f"This protects against accidental large budgets and prevents GAM line item proliferation."
                             )
                             raise ValueError(error_msg)
@@ -2879,10 +2881,10 @@ def _create_media_buy_impl(
                     # Legacy mode: validate total budget
                     daily_budget = Decimal(str(total_budget)) / Decimal(str(flight_days))
 
-                    if daily_budget > currency_limit.max_daily_spend:
+                    if daily_budget > currency_limit.max_daily_package_spend:
                         error_msg = (
                             f"Daily budget ({daily_budget} {request_currency}) exceeds maximum daily spend "
-                            f"({currency_limit.max_daily_spend} {request_currency}). "
+                            f"({currency_limit.max_daily_package_spend} {request_currency}). "
                             f"This protects against accidental large budgets."
                         )
                         raise ValueError(error_msg)

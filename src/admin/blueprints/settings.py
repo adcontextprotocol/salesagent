@@ -125,12 +125,12 @@ def update_general(tenant_id):
             existing_limits = {limit.currency_code: limit for limit in db_session.scalars(stmt).all()}
 
             # Process currency_limits form data
-            # Format: currency_limits[USD][min_product_spend], currency_limits[USD][max_daily_spend]
+            # Format: currency_limits[USD][min_package_budget], currency_limits[USD][max_daily_package_spend]
             processed_currencies = set()
 
             for key in request.form.keys():
                 if key.startswith("currency_limits["):
-                    # Extract currency code from key like "currency_limits[USD][min_product_spend]"
+                    # Extract currency code from key like "currency_limits[USD][min_package_budget]"
                     parts = key.split("[")
                     if len(parts) >= 2:
                         currency_code = parts[1].rstrip("]")
@@ -147,8 +147,8 @@ def update_general(tenant_id):
                     continue
 
                 # Get min and max values
-                min_key = f"currency_limits[{currency_code}][min_product_spend]"
-                max_key = f"currency_limits[{currency_code}][max_daily_spend]"
+                min_key = f"currency_limits[{currency_code}][min_package_budget]"
+                max_key = f"currency_limits[{currency_code}][max_daily_package_spend]"
 
                 min_value_str = request.form.get(min_key, "").strip()
                 max_value_str = request.form.get(max_key, "").strip()
@@ -164,16 +164,16 @@ def update_general(tenant_id):
                 if currency_code in existing_limits:
                     # Update existing
                     limit = existing_limits[currency_code]
-                    limit.min_product_spend = min_value
-                    limit.max_daily_spend = max_value
+                    limit.min_package_budget = min_value
+                    limit.max_daily_package_spend = max_value
                     limit.updated_at = datetime.now(UTC)
                 else:
                     # Create new
                     limit = CurrencyLimit(
                         tenant_id=tenant_id,
                         currency_code=currency_code,
-                        min_product_spend=min_value,
-                        max_daily_spend=max_value,
+                        min_package_budget=min_value,
+                        max_daily_package_spend=max_value,
                     )
                     db_session.add(limit)
 
