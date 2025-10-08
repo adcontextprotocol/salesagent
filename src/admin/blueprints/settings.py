@@ -551,3 +551,73 @@ def test_domain_access(tenant_id):
         flash("Error testing email access", "error")
 
     return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="access"))
+
+
+@settings_bp.route("/business-rules", methods=["POST"])
+@require_tenant_access()
+def update_business_rules(tenant_id):
+    """Update business rules (budget, naming, approvals, features)."""
+    try:
+        # Get form data
+        data = request.get_json() if request.is_json else request.form
+
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                if request.is_json:
+                    return jsonify({"success": False, "error": "Tenant not found"}), 404
+                flash("Tenant not found", "error")
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
+
+            # Update budget controls
+            if "max_daily_budget" in data:
+                try:
+                    tenant.max_daily_budget = int(data.get("max_daily_budget"))
+                except (ValueError, TypeError):
+                    if request.is_json:
+                        return jsonify({"success": False, "error": "Invalid max_daily_budget value"}), 400
+                    flash("Invalid maximum daily budget value", "error")
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
+
+            # Update naming templates
+            if "order_name_template" in data:
+                order_template = data.get("order_name_template", "").strip()
+                if order_template:
+                    tenant.order_name_template = order_template
+
+            if "line_item_name_template" in data:
+                line_item_template = data.get("line_item_name_template", "").strip()
+                if line_item_template:
+                    tenant.line_item_name_template = line_item_template
+
+            # Update approval workflow
+            if "human_review_required" in data:
+                tenant.human_review_required = data.get("human_review_required") in [True, "true", "on", 1, "1"]
+            elif not request.is_json:
+                # Checkbox not present in form data means unchecked
+                tenant.human_review_required = False
+
+            # Update features
+            if "enable_axe_signals" in data:
+                tenant.enable_axe_signals = data.get("enable_axe_signals") in [True, "true", "on", 1, "1"]
+            elif not request.is_json:
+                # Checkbox not present in form data means unchecked
+                tenant.enable_axe_signals = False
+
+            tenant.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+            if request.is_json:
+                return jsonify({"success": True, "message": "Business rules updated successfully"}), 200
+
+            flash("Business rules updated successfully", "success")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
+
+    except Exception as e:
+        logger.error(f"Error updating business rules: {e}", exc_info=True)
+
+        if request.is_json:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+        flash(f"Error updating business rules: {str(e)}", "error")
+        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
