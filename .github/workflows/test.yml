@@ -251,21 +251,6 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     needs: [schema-sync]
 
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: adcp_user
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: adcp_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-        ports:
-          - 5432:5432
-
     steps:
     - uses: actions/checkout@v4
 
@@ -301,7 +286,7 @@ jobs:
 
     - name: Run E2E tests
       env:
-        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
+        # Docker Compose manages its own PostgreSQL - don't set DATABASE_URL
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'test_key_for_mocking' }}
         GOOGLE_CLIENT_ID: test_client_id
         GOOGLE_CLIENT_SECRET: test_client_secret
