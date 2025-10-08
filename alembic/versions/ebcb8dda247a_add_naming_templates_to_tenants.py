@@ -19,36 +19,31 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+# Default templates
+DEFAULT_ORDER_TEMPLATE = "{campaign_name|promoted_offering} - {date_range}"
+DEFAULT_LINE_ITEM_TEMPLATE = "{order_name} - {product_name}"
+
+
 def upgrade() -> None:
     """Add naming template columns to tenants table.
 
     Consolidates order and line item naming templates from adapter_config
     to tenant level, making them available across all adapters (GAM, Mock, etc.)
     """
-    # Add naming template columns to tenants table
+    # Step 1: Add naming template columns (nullable, no server_default)
+    # Note: server_default only affects new rows, not existing ones
     op.add_column(
         "tenants",
-        sa.Column(
-            "order_name_template",
-            sa.String(500),
-            nullable=True,
-            server_default="{campaign_name|promoted_offering} - {date_range}",
-        ),
+        sa.Column("order_name_template", sa.String(500), nullable=True),
     )
     op.add_column(
         "tenants",
-        sa.Column(
-            "line_item_name_template",
-            sa.String(500),
-            nullable=True,
-            server_default="{order_name} - {product_name}",
-        ),
+        sa.Column("line_item_name_template", sa.String(500), nullable=True),
     )
 
-    # Migrate existing naming templates from adapter_config to tenants
+    # Step 2: Migrate existing naming templates from adapter_config
     conn = op.get_bind()
 
-    # Get all tenants with GAM adapter configs that have naming templates
     result = conn.execute(
         sa.text(
             """
@@ -64,7 +59,7 @@ def upgrade() -> None:
         )
     )
 
-    # Update tenants with their existing templates
+    # Update tenants with their existing GAM templates
     for row in result:
         tenant_id = row[0]
         order_template = row[1]
@@ -86,18 +81,51 @@ def upgrade() -> None:
             update_sql += ", ".join(updates) + " WHERE tenant_id = :tenant_id"
             conn.execute(sa.text(update_sql), params)
 
-    # Commit the migration transaction
-    conn.commit()
+    # Step 3: Backfill NULL values with defaults for all tenants
+    conn.execute(
+        sa.text(
+            """
+        UPDATE tenants
+        SET order_name_template = :default_order
+        WHERE order_name_template IS NULL
+    """
+        ),
+        {"default_order": DEFAULT_ORDER_TEMPLATE},
+    )
+
+    conn.execute(
+        sa.text(
+            """
+        UPDATE tenants
+        SET line_item_name_template = :default_line_item
+        WHERE line_item_name_template IS NULL
+    """
+        ),
+        {"default_line_item": DEFAULT_LINE_ITEM_TEMPLATE},
+    )
 
     # NOTE: We're keeping the old columns in adapter_config for backward compatibility
     # They can be removed in a future migration after verifying all code uses tenant columns
+    # NOTE: No explicit commit() - Alembic handles transaction management
 
 
 def downgrade() -> None:
-    """Remove naming template columns from tenants table."""
-    # Remove columns
-    op.drop_column("tenants", "line_item_name_template")
-    op.drop_column("tenants", "order_name_template")
+    """Cannot downgrade - would cause data loss.
 
-    # NOTE: This downgrade does NOT restore data to adapter_config
-    # If you need to rollback, you should restore from a backup
+    This migration moves data from adapter_config to tenants table.
+    Downgrading would lose any customizations made after migration.
+
+    To rollback, restore database from backup taken before migration.
+    """
+    raise RuntimeError(
+        "Downgrade not supported for naming template migration. "
+        "Templates have been migrated from adapter_config to tenant level. "
+        "Automatic restoration is not possible without data loss risk. "
+        "\n\n"
+        "To rollback this migration:\n"
+        "1. Restore database from backup taken before migration\n"
+        "2. Run: alembic downgrade e2d9b45ea2bc\n"
+        "3. Redeploy previous application version\n"
+        "\n"
+        "Contact database administrator if you need assistance."
+    )
