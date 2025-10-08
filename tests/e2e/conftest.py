@@ -60,6 +60,10 @@ def docker_services_e2e(request):
     print("Cleaning up any existing Docker services and volumes...")
     subprocess.run(["docker-compose", "down", "-v"], capture_output=True, check=False)
 
+    # Explicitly remove volumes in case docker-compose down -v didn't work
+    print("Explicitly removing Docker volumes...")
+    subprocess.run(["docker", "volume", "prune", "-f"], capture_output=True, check=False)
+
     print("Starting Docker services...")
     subprocess.run(["docker-compose", "up", "-d"], check=True)
 
