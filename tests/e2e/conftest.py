@@ -72,6 +72,9 @@ def docker_services_e2e(request):
 
     if not services_running:
         print("Starting Docker services...")
+        # Clean up any existing volumes to ensure fresh database
+        print("Cleaning up old volumes...")
+        subprocess.run(["docker-compose", "down", "-v"], capture_output=True)
         subprocess.run(["docker-compose", "up", "-d"], check=True)
 
         # Wait for services to be healthy
