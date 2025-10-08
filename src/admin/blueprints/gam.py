@@ -6,6 +6,7 @@ import os
 from datetime import UTC, datetime
 
 from flask import Blueprint, jsonify, render_template, request, session
+from googleads import ad_manager
 from sqlalchemy import select
 
 from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
