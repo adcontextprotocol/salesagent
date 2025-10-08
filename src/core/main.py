@@ -3659,6 +3659,69 @@ def update_media_buy(
             detail=f"Manual approval required. Workflow Step ID: {step.step_id}",
         )
 
+    # Validate currency limits if flight dates or budget changes
+    # This prevents workarounds where buyers extend flight to bypass daily max
+    if req.start_time or req.end_time or req.budget or (req.packages and any(pkg.budget for pkg in req.packages)):
+        from decimal import Decimal
+
+        from sqlalchemy import select
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import CurrencyLimit
+        from src.core.database.models import MediaBuy as MediaBuyModel
+
+        # Get media buy from database to check currency and current dates
+        with get_db_session() as session:
+            stmt = select(MediaBuyModel).where(MediaBuyModel.media_buy_id == req.media_buy_id)
+            media_buy = session.scalars(stmt).first()
+
+            if media_buy:
+                # Determine currency (use updated or existing)
+                request_currency = req.currency or media_buy.currency or "USD"
+
+                # Get currency limit
+                stmt = select(CurrencyLimit).where(
+                    CurrencyLimit.tenant_id == tenant["tenant_id"], CurrencyLimit.currency_code == request_currency
+                )
+                currency_limit = session.scalars(stmt).first()
+
+                if not currency_limit:
+                    error_msg = f"Currency {request_currency} is not supported by this publisher."
+                    ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+                    return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+
+                # Calculate new flight duration
+                start = req.start_time if req.start_time else media_buy.start_time
+                end = req.end_time if req.end_time else media_buy.end_time
+
+                # Parse datetime strings if needed
+                from datetime import datetime as dt
+
+                if isinstance(start, str):
+                    start = dt.fromisoformat(start.replace("Z", "+00:00"))
+                if isinstance(end, str):
+                    end = dt.fromisoformat(end.replace("Z", "+00:00"))
+
+                flight_days = (end - start).days
+                if flight_days <= 0:
+                    flight_days = 1
+
+                # Validate max daily spend for packages
+                if currency_limit.max_daily_package_spend and req.packages:
+                    for pkg_update in req.packages:
+                        if pkg_update.budget:
+                            package_budget = Decimal(str(pkg_update.budget))
+                            package_daily = package_budget / Decimal(str(flight_days))
+
+                            if package_daily > currency_limit.max_daily_package_spend:
+                                error_msg = (
+                                    f"Updated package daily budget ({package_daily} {request_currency}) "
+                                    f"exceeds maximum ({currency_limit.max_daily_package_spend} {request_currency}). "
+                                    f"Flight date changes that reduce daily budget are not allowed to bypass limits."
+                                )
+                                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+                                return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+
     # Handle campaign-level updates
     if req.active is not None:
         action = "resume_media_buy" if req.active else "pause_media_buy"
