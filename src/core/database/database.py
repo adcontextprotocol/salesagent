@@ -3,7 +3,7 @@ import os
 import secrets
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from scripts.ops.migrate import run_migrations
 from src.core.database.database_session import get_db_session
@@ -25,10 +25,11 @@ def init_db(exit_on_error=False):
 
     # Check if we need to create a default tenant
     with get_db_session() as db_session:
-        stmt = select(func.count()).select_from(Tenant)
-        tenant_count = db_session.scalar(stmt)
+        # Check if 'default' tenant already exists (safer than counting)
+        stmt = select(Tenant).where(Tenant.tenant_id == "default")
+        existing_tenant = db_session.scalars(stmt).first()
 
-        if tenant_count == 0:
+        if not existing_tenant:
             # No tenants exist - create a default one for simple use case
             admin_token = secrets.token_urlsafe(32)
 
