@@ -21,9 +21,7 @@ class TestResponseSchemas:
 
     def test_create_media_buy_response_no_context_id(self):
         """Verify CreateMediaBuyResponse doesn't have context_id."""
-        response = CreateMediaBuyResponse(
-            media_buy_id="buy_123", buyer_ref="ref_456", status="completed", packages=[]
-        )
+        response = CreateMediaBuyResponse(media_buy_id="buy_123", buyer_ref="ref_456", status="completed", packages=[])
 
         # Verify context_id is not in the schema
         assert not hasattr(response, "context_id")
@@ -174,12 +172,12 @@ class TestProtocolCompliance:
         response = CreateMediaBuyResponse(
             media_buy_id="buy_456",
             buyer_ref="ref_789",
-            status="active",
+            status="completed",
             packages=[{"package_id": "pkg_1"}],
             message="Media buy created successfully",
         )
 
-        assert response.status == "active"
+        assert response.status == "completed"
         assert response.media_buy_id == "buy_456"
         assert len(response.packages) == 1
         assert response.errors is None

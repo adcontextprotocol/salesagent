@@ -428,6 +428,7 @@ class TestSpecificFieldValidation:
     def test_create_media_buy_accepts_promoted_offering(self):
         """REGRESSION TEST: promoted_offering must be accepted (current issue)."""
         request = CreateMediaBuyRequest(
+            buyer_ref="test_ref",  # Required per AdCP spec
             promoted_offering="Nike Air Jordan 2025",
             po_number="PO-123",
             product_ids=["prod_1"],
