@@ -33,6 +33,7 @@ def init_db(exit_on_error=False):
             admin_token = secrets.token_urlsafe(32)
 
             # Create default tenant with proper columns (no config column after migration 007)
+            # NOTE: max_daily_budget moved to currency_limits table
             new_tenant = Tenant(
                 tenant_id="default",
                 name="Default Publisher",
@@ -42,7 +43,6 @@ def init_db(exit_on_error=False):
                 is_active=True,
                 billing_plan="standard",
                 ad_server="mock",
-                max_daily_budget=10000,
                 enable_axe_signals=True,
                 auto_approve_formats=json.dumps(
                     [
