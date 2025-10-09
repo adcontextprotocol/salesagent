@@ -3,7 +3,7 @@ import os
 import secrets
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from scripts.ops.migrate import run_migrations
 from src.core.database.database_session import get_db_session
@@ -236,6 +236,9 @@ def init_db(exit_on_error=False):
                     """
                 )
         else:
+            # Count tenants for status message
+            stmt_count = select(func.count()).select_from(Tenant)
+            tenant_count = db_session.scalar(stmt_count)
             print(f"Database ready ({tenant_count} tenant(s) configured)")
 
 
