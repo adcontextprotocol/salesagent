@@ -80,13 +80,17 @@ def docker_services_e2e(request):
     print("Explicitly removing Docker volumes...")
     subprocess.run(["docker", "volume", "prune", "-f"], capture_output=True, check=False)
 
-    # Allocate dynamic ports to avoid conflicts
-    mcp_port = find_free_port(10000, 20000)
-    a2a_port = find_free_port(20000, 30000)
-    admin_port = find_free_port(30000, 40000)
-    postgres_port = find_free_port(40000, 50000)
+    # Use environment variable ports if set (CI), otherwise allocate dynamic ports (local)
+    mcp_port = int(os.getenv("ADCP_SALES_PORT")) if os.getenv("ADCP_SALES_PORT") else find_free_port(10000, 20000)
+    a2a_port = int(os.getenv("A2A_PORT")) if os.getenv("A2A_PORT") else find_free_port(20000, 30000)
+    admin_port = int(os.getenv("ADMIN_UI_PORT")) if os.getenv("ADMIN_UI_PORT") else find_free_port(30000, 40000)
+    postgres_port = int(os.getenv("POSTGRES_PORT")) if os.getenv("POSTGRES_PORT") else find_free_port(40000, 50000)
 
-    print(f"Using dynamic ports: MCP={mcp_port}, A2A={a2a_port}, Admin={admin_port}, Postgres={postgres_port}")
+    print(f"Using ports: MCP={mcp_port}, A2A={a2a_port}, Admin={admin_port}, Postgres={postgres_port}")
+    if os.getenv("ADCP_SALES_PORT"):
+        print("(Ports from environment variables)")
+    else:
+        print("(Dynamically allocated ports)")
 
     # Set environment variables for docker-compose
     env = os.environ.copy()
