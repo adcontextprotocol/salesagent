@@ -126,7 +126,7 @@ if [ "$MODE" == "quick" ]; then
 
     echo "🔗 Step 3/3: Running integration tests..."
     # Exclude tests that require a real database connection or running server
-    if ! uv run pytest tests/integration/ -m "not requires_db and not requires_server" -x --tb=line -q; then
+    if ! uv run pytest tests/integration/ -m "not requires_db and not requires_server and not skip_ci" -x --tb=line -q; then
         echo -e "${RED}❌ Integration tests failed!${NC}"
         exit 1
     fi
