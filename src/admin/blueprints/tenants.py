@@ -299,9 +299,18 @@ def update(tenant_id):
 def update_slack(tenant_id):
     """Update tenant Slack settings."""
     try:
+        from src.core.webhook_validator import WebhookURLValidator
+
         # Sanitize form data
         form_data = sanitize_form_data(request.form.to_dict())
         webhook_url = form_data.get("slack_webhook_url", "").strip()
+
+        # Validate webhook URL for SSRF protection
+        if webhook_url:
+            is_valid, error_msg = WebhookURLValidator.validate_webhook_url(webhook_url)
+            if not is_valid:
+                flash(f"Invalid Slack webhook URL: {error_msg}", "error")
+                return redirect(url_for("tenants.settings", tenant_id=tenant_id, section="slack"))
 
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()

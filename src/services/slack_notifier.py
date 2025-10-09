@@ -9,8 +9,6 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
-import requests
-
 logger = logging.getLogger(__name__)
 
 
@@ -62,13 +60,14 @@ class SlackNotifier:
             else:
                 logger.info("Slack audit logging enabled")
 
-    def send_message(self, text: str, blocks: list[dict[str, Any]] | None = None) -> bool:
+    def send_message(self, text: str, blocks: list[dict[str, Any]] | None = None, tenant_id: str | None = None) -> bool:
         """
-        Send a message to Slack.
+        Send a message to Slack with retry logic.
 
         Args:
             text: Plain text message (fallback for notifications)
             blocks: Rich Block Kit blocks for formatted messages
+            tenant_id: Optional tenant ID for tracking delivery
 
         Returns:
             True if successful, False otherwise
@@ -80,15 +79,28 @@ class SlackNotifier:
         if blocks:
             payload["blocks"] = blocks
 
-        try:
-            response = requests.post(
-                self.webhook_url, json=payload, headers={"Content-Type": "application/json"}, timeout=10
+        # Use webhook delivery service with retry logic
+        from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
+
+        delivery = WebhookDelivery(
+            webhook_url=self.webhook_url,
+            payload=payload,
+            headers={"Content-Type": "application/json"},
+            max_retries=3,
+            timeout=10,
+            event_type="slack.notification",
+            tenant_id=tenant_id,
+        )
+
+        success, result = deliver_webhook_with_retry(delivery)
+
+        if not success:
+            logger.error(
+                f"Failed to send Slack notification after {result['attempts']} attempts: "
+                f"{result.get('error', 'Unknown error')}"
             )
-            response.raise_for_status()
-            return True
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to send Slack notification: {e}")
-            return False
+
+        return success
 
     def notify_new_task(
         self,
@@ -393,18 +405,30 @@ class SlackNotifier:
         # Fallback text
         fallback_text = f"{emoji} {operation} by {principal_name} - {'Success' if success else 'Failed'}"
 
-        # Send to audit webhook
+        # Send to audit webhook with retry logic
         payload = {"text": fallback_text, "attachments": attachments}
 
-        try:
-            response = requests.post(
-                self.audit_webhook_url, json=payload, headers={"Content-Type": "application/json"}, timeout=10
+        from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
+
+        delivery = WebhookDelivery(
+            webhook_url=self.audit_webhook_url,
+            payload=payload,
+            headers={"Content-Type": "application/json"},
+            max_retries=3,
+            timeout=10,
+            event_type="slack.audit_log",
+            tenant_id=tenant_name,  # Use tenant_name as identifier
+        )
+
+        success_delivery, result = deliver_webhook_with_retry(delivery)
+
+        if not success_delivery:
+            logger.error(
+                f"Failed to send Slack audit notification after {result['attempts']} attempts: "
+                f"{result.get('error', 'Unknown error')}"
             )
-            response.raise_for_status()
-            return True
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to send Slack audit notification: {e}")
-            return False
+
+        return success_delivery
 
     def _format_details(self, details: dict[str, Any]) -> str:
         """Format task details for Slack message."""
@@ -633,22 +657,36 @@ class SlackNotifier:
         # Use attachment for color coding
         attachments = [{"color": config["color"], "blocks": blocks}] if config["color"] != "good" else None
 
-        # Send message
-        try:
-            payload = {"text": fallback_text}
-            if attachments:
-                payload["attachments"] = attachments
-            else:
-                payload["blocks"] = blocks
+        # Build payload
+        payload = {"text": fallback_text}
+        if attachments:
+            payload["attachments"] = attachments
+        else:
+            payload["blocks"] = blocks
 
-            response = requests.post(
-                self.webhook_url, json=payload, headers={"Content-Type": "application/json"}, timeout=10
+        # Send message with retry logic
+        from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
+
+        delivery = WebhookDelivery(
+            webhook_url=self.webhook_url,
+            payload=payload,
+            headers={"Content-Type": "application/json"},
+            max_retries=3,
+            timeout=10,
+            event_type="slack.media_buy_event",
+            tenant_id=tenant_name,
+            object_id=media_buy_id,
+        )
+
+        success_delivery, result = deliver_webhook_with_retry(delivery)
+
+        if not success_delivery:
+            logger.error(
+                f"Failed to send media buy event notification after {result['attempts']} attempts: "
+                f"{result.get('error', 'Unknown error')}"
             )
-            response.raise_for_status()
-            return True
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to send media buy event notification: {e}")
-            return False
+
+        return success_delivery
 
 
 # Global instance (will be overridden per-tenant in actual usage)

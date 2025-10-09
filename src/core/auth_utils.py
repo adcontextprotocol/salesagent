@@ -38,30 +38,9 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
             tenant = session.scalars(stmt).first()
             if tenant and token == tenant.admin_token:
                 # Set tenant context for admin token
-                from src.core.config_loader import safe_json_loads
+                from src.core.utils.tenant_utils import serialize_tenant_to_dict
 
-                tenant_dict = {
-                    "tenant_id": tenant.tenant_id,
-                    "name": tenant.name,
-                    "subdomain": tenant.subdomain,
-                    "virtual_host": tenant.virtual_host,
-                    "ad_server": tenant.ad_server,
-                    "max_daily_budget": tenant.max_daily_budget,
-                    "enable_axe_signals": tenant.enable_axe_signals,
-                    "authorized_emails": safe_json_loads(tenant.authorized_emails, []),
-                    "authorized_domains": safe_json_loads(tenant.authorized_domains, []),
-                    "slack_webhook_url": tenant.slack_webhook_url,
-                    "admin_token": tenant.admin_token,
-                    "auto_approve_formats": safe_json_loads(tenant.auto_approve_formats, []),
-                    "human_review_required": tenant.human_review_required,
-                    "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
-                    "hitl_webhook_url": tenant.hitl_webhook_url,
-                    "policy_settings": safe_json_loads(tenant.policy_settings, None),
-                    "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
-                    "approval_mode": tenant.approval_mode,
-                    "gemini_api_key": tenant.gemini_api_key,
-                    "creative_review_criteria": tenant.creative_review_criteria,
-                }
+                tenant_dict = serialize_tenant_to_dict(tenant)
                 set_current_tenant(tenant_dict)
                 return f"admin_{tenant.tenant_id}"
         else:
@@ -73,30 +52,9 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                 stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
                 tenant = session.scalars(stmt).first()
                 if tenant:
-                    from src.core.config_loader import safe_json_loads
+                    from src.core.utils.tenant_utils import serialize_tenant_to_dict
 
-                    tenant_dict = {
-                        "tenant_id": tenant.tenant_id,
-                        "name": tenant.name,
-                        "subdomain": tenant.subdomain,
-                        "virtual_host": tenant.virtual_host,
-                        "ad_server": tenant.ad_server,
-                        "max_daily_budget": tenant.max_daily_budget,
-                        "enable_axe_signals": tenant.enable_axe_signals,
-                        "authorized_emails": safe_json_loads(tenant.authorized_emails, []),
-                        "authorized_domains": safe_json_loads(tenant.authorized_domains, []),
-                        "slack_webhook_url": tenant.slack_webhook_url,
-                        "admin_token": tenant.admin_token,
-                        "auto_approve_formats": safe_json_loads(tenant.auto_approve_formats, []),
-                        "human_review_required": tenant.human_review_required,
-                        "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
-                        "hitl_webhook_url": tenant.hitl_webhook_url,
-                        "policy_settings": safe_json_loads(tenant.policy_settings, None),
-                        "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
-                        "approval_mode": tenant.approval_mode,
-                        "gemini_api_key": tenant.gemini_api_key,
-                        "creative_review_criteria": tenant.creative_review_criteria,
-                    }
+                    tenant_dict = serialize_tenant_to_dict(tenant)
                     set_current_tenant(tenant_dict)
                     return principal.principal_id
 

@@ -2,7 +2,9 @@
 
 import json
 import logging
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 # TODO: Missing module - these functions need to be implemented
@@ -32,19 +34,46 @@ logger = logging.getLogger(__name__)
 # Create Blueprint
 creatives_bp = Blueprint("creatives", __name__)
 
+# Global ThreadPoolExecutor for async AI review (managed lifecycle)
+_ai_review_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ai_review_")
+_ai_review_tasks = {}  # task_id -> Future mapping
+_ai_review_lock = threading.Lock()  # Protect _ai_review_tasks dict
 
-def _call_webhook_for_creative_status(webhook_url: str, creative_id: str, status: str, creative_data: dict = None):
-    """Call webhook to notify about creative status change (AdCP task-status spec).
+
+def _cleanup_completed_tasks():
+    """Clean up completed tasks older than 1 hour."""
+    import time
+
+    now = time.time()
+    with _ai_review_lock:
+        completed_tasks = []
+        for task_id, task_info in _ai_review_tasks.items():
+            if task_info["future"].done() and (now - task_info["created_at"]) > 3600:
+                completed_tasks.append(task_id)
+        for task_id in completed_tasks:
+            del _ai_review_tasks[task_id]
+            logger.debug(f"Cleaned up completed AI review task: {task_id}")
+
+
+def _call_webhook_for_creative_status(
+    webhook_url: str, creative_id: str, status: str, creative_data: dict = None, tenant_id: str = None
+):
+    """Call webhook to notify about creative status change with retry logic.
 
     Args:
         webhook_url: URL to POST notification to
         creative_id: Creative ID
         status: New status (approved, rejected, pending)
         creative_data: Optional creative data to include
+        tenant_id: Optional tenant ID for signature verification
+
+    Returns:
+        bool: True if webhook delivered successfully, False otherwise
     """
-    import requests
+    from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
 
     try:
+        # Build payload
         payload = {
             "object_type": "creative",
             "object_id": creative_id,
@@ -55,22 +84,52 @@ def _call_webhook_for_creative_status(webhook_url: str, creative_id: str, status
         if creative_data:
             payload["creative_data"] = creative_data
 
-        response = requests.post(
-            webhook_url,
-            json=payload,
-            headers={"Content-Type": "application/json"},
+        headers = {"Content-Type": "application/json"}
+
+        # Get signing secret from tenant
+        signing_secret = None
+        if tenant_id:
+            try:
+                with get_db_session() as db_session:
+                    stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+                    tenant = db_session.scalars(stmt).first()
+                    if tenant and hasattr(tenant, "admin_token") and tenant.admin_token:
+                        signing_secret = tenant.admin_token
+            except Exception as e:
+                logger.warning(f"Could not fetch tenant for signature: {e}")
+
+        # Create delivery configuration
+        delivery = WebhookDelivery(
+            webhook_url=webhook_url,
+            payload=payload,
+            headers=headers,
+            max_retries=3,
             timeout=10,
+            signing_secret=signing_secret,
+            event_type="creative.status_changed",
+            tenant_id=tenant_id,
+            object_id=creative_id,
         )
 
-        if response.status_code >= 400:
-            logger.warning(
-                f"Webhook call failed for creative {creative_id}: HTTP {response.status_code} - {response.text}"
+        # Deliver with retry
+        success, result = deliver_webhook_with_retry(delivery)
+
+        if success:
+            logger.info(
+                f"Successfully delivered webhook for creative {creative_id} status={status} "
+                f"(attempts={result['attempts']}, delivery_id={result['delivery_id']})"
             )
         else:
-            logger.info(f"Successfully called webhook for creative {creative_id} status={status}")
+            logger.error(
+                f"Failed to deliver webhook for creative {creative_id} after {result['attempts']} attempts: "
+                f"{result.get('error', 'Unknown error')} (delivery_id={result['delivery_id']})"
+            )
+
+        return success
 
     except Exception as e:
-        logger.error(f"Error calling webhook for creative {creative_id}: {e}", exc_info=True)
+        logger.error(f"Error setting up webhook delivery for creative {creative_id}: {e}", exc_info=True)
+        return False
 
 
 @creatives_bp.route("/", methods=["GET"])
@@ -552,7 +611,7 @@ def delete_format(tenant_id, format_id, **kwargs):
 @require_tenant_access()
 def approve_creative(tenant_id, creative_id, **kwargs):
     """Approve a creative."""
-    from src.core.database.models import Creative
+    from src.core.database.models import Creative, CreativeReview
 
     try:
         data = request.get_json() or {}
@@ -563,6 +622,40 @@ def approve_creative(tenant_id, creative_id, **kwargs):
 
             if not creative:
                 return jsonify({"error": "Creative not found"}), 404
+
+            # Check if there was a prior AI review that disagreed
+            prior_ai_review = None
+            stmt = (
+                select(CreativeReview)
+                .filter_by(creative_id=creative_id, review_type="ai")
+                .order_by(CreativeReview.reviewed_at.desc())
+                .limit(1)
+            )
+            prior_ai_review = db_session.scalars(stmt).first()
+
+            # Check if this is a human override (AI recommended reject, human approved)
+            is_override = False
+            if prior_ai_review and prior_ai_review.ai_decision in ["rejected", "reject"]:
+                is_override = True
+
+            # Create human review record
+            review_id = f"review_{uuid.uuid4().hex[:12]}"
+            human_review = CreativeReview(
+                review_id=review_id,
+                creative_id=creative_id,
+                tenant_id=tenant_id,
+                reviewed_at=datetime.now(UTC),
+                review_type="human",
+                reviewer_email=approved_by,
+                ai_decision=None,
+                confidence_score=None,
+                policy_triggered=None,
+                reason="Human approval",
+                recommendations=None,
+                human_override=is_override,
+                final_decision="approved",
+            )
+            db_session.add(human_review)
 
             # Update creative status
             creative.status = "approved"
@@ -594,7 +687,7 @@ def approve_creative(tenant_id, creative_id, **kwargs):
                     "approved_by": approved_by,
                     "approved_at": creative.approved_at.isoformat(),
                 }
-                _call_webhook_for_creative_status(webhook_url, creative_id, "approved", creative_data)
+                _call_webhook_for_creative_status(webhook_url, creative_id, "approved", creative_data, tenant_id)
 
             # Send Slack notification if configured
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
@@ -629,7 +722,7 @@ def approve_creative(tenant_id, creative_id, **kwargs):
 @require_tenant_access()
 def reject_creative(tenant_id, creative_id, **kwargs):
     """Reject a creative with comments."""
-    from src.core.database.models import Creative
+    from src.core.database.models import Creative, CreativeReview
 
     try:
         data = request.get_json() or {}
@@ -644,6 +737,40 @@ def reject_creative(tenant_id, creative_id, **kwargs):
 
             if not creative:
                 return jsonify({"error": "Creative not found"}), 404
+
+            # Check if there was a prior AI review that disagreed
+            prior_ai_review = None
+            stmt = (
+                select(CreativeReview)
+                .filter_by(creative_id=creative_id, review_type="ai")
+                .order_by(CreativeReview.reviewed_at.desc())
+                .limit(1)
+            )
+            prior_ai_review = db_session.scalars(stmt).first()
+
+            # Check if this is a human override (AI recommended approve, human rejected)
+            is_override = False
+            if prior_ai_review and prior_ai_review.ai_decision in ["approved", "approve"]:
+                is_override = True
+
+            # Create human review record
+            review_id = f"review_{uuid.uuid4().hex[:12]}"
+            human_review = CreativeReview(
+                review_id=review_id,
+                creative_id=creative_id,
+                tenant_id=tenant_id,
+                reviewed_at=datetime.now(UTC),
+                review_type="human",
+                reviewer_email=rejected_by,
+                ai_decision=None,
+                confidence_score=None,
+                policy_triggered=None,
+                reason=rejection_reason,
+                recommendations=None,
+                human_override=is_override,
+                final_decision="rejected",
+            )
+            db_session.add(human_review)
 
             # Update creative status
             creative.status = "rejected"
@@ -687,7 +814,7 @@ def reject_creative(tenant_id, creative_id, **kwargs):
                     "rejection_reason": rejection_reason,
                     "rejected_at": creative.data["rejected_at"],
                 }
-                _call_webhook_for_creative_status(webhook_url, creative_id, "rejected", creative_data)
+                _call_webhook_for_creative_status(webhook_url, creative_id, "rejected", creative_data, tenant_id)
 
             # Send Slack notification if configured
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
@@ -718,6 +845,179 @@ def reject_creative(tenant_id, creative_id, **kwargs):
         return jsonify({"error": str(e)}), 500
 
 
+def _ai_review_creative_async(creative_id: str, tenant_id: str, webhook_url: str | None = None):
+    """Background task to review creative with AI (thread-safe).
+
+    This function runs in a background thread and:
+    1. Creates its own database session (thread-safe)
+    2. Calls _ai_review_creative_impl() for the actual review
+    3. Updates creative status in database
+    4. Calls webhook if configured
+
+    Args:
+        creative_id: Creative to review
+        tenant_id: Tenant ID
+        webhook_url: Optional webhook to call on completion
+    """
+    logger.info(f"[AI Review Async] Starting background review for creative {creative_id}")
+
+    # Get fresh DB session (thread-safe - each thread gets its own)
+    try:
+        with get_db_session() as session:
+            # Run AI review
+            ai_result = _ai_review_creative_impl(
+                tenant_id=tenant_id, creative_id=creative_id, db_session=session, promoted_offering=None
+            )
+
+            logger.info(f"[AI Review Async] Review completed for {creative_id}: {ai_result['status']}")
+
+            # Update creative status in database
+            from src.core.database.models import Creative
+
+            stmt = select(Creative).filter_by(tenant_id=tenant_id, creative_id=creative_id)
+            creative = session.scalars(stmt).first()
+
+            if creative:
+                creative.status = ai_result["status"]
+
+                # Store AI reasoning in creative data
+                if not isinstance(creative.data, dict):
+                    creative.data = {}
+                creative.data["ai_review"] = {
+                    "decision": ai_result["status"],
+                    "reason": ai_result.get("reason", ""),
+                    "confidence": ai_result.get("confidence", "medium"),
+                    "reviewed_at": datetime.now(UTC).isoformat(),
+                }
+
+                from sqlalchemy.orm import attributes
+
+                attributes.flag_modified(creative, "data")
+                session.commit()
+
+                logger.info(f"[AI Review Async] Database updated for {creative_id}: status={ai_result['status']}")
+
+                # Call webhook if configured
+                if webhook_url:
+                    creative_data = {
+                        "creative_id": creative.creative_id,
+                        "name": creative.name,
+                        "format": creative.format,
+                        "status": creative.status,
+                        "ai_review": creative.data.get("ai_review"),
+                    }
+                    _call_webhook_for_creative_status(
+                        webhook_url, creative_id, creative.status, creative_data, tenant_id
+                    )
+                    logger.info(f"[AI Review Async] Webhook called for {creative_id}")
+
+            else:
+                logger.error(f"[AI Review Async] Creative not found: {creative_id}")
+
+    except Exception as e:
+        logger.error(f"[AI Review Async] Error reviewing creative {creative_id}: {e}", exc_info=True)
+
+        # Try to mark creative as pending with error
+        try:
+            with get_db_session() as session:
+                from src.core.database.models import Creative
+
+                stmt = select(Creative).filter_by(tenant_id=tenant_id, creative_id=creative_id)
+                creative = session.scalars(stmt).first()
+
+                if creative:
+                    creative.status = "pending"
+                    if not isinstance(creative.data, dict):
+                        creative.data = {}
+                    creative.data["ai_review_error"] = {
+                        "error": str(e),
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(creative, "data")
+                    session.commit()
+                    logger.info(f"[AI Review Async] Creative {creative_id} marked as pending due to error")
+        except Exception as inner_e:
+            logger.error(f"[AI Review Async] Failed to mark creative as pending: {inner_e}")
+
+
+def get_ai_review_status(task_id: str) -> dict:
+    """Get status of an AI review background task.
+
+    Args:
+        task_id: Task identifier
+
+    Returns:
+        Dict with keys: status (running|completed|failed), result (if completed), error (if failed)
+    """
+    _cleanup_completed_tasks()
+
+    with _ai_review_lock:
+        if task_id not in _ai_review_tasks:
+            return {"status": "not_found", "error": "Task ID not found"}
+
+        task_info = _ai_review_tasks[task_id]
+        future = task_info["future"]
+
+        if not future.done():
+            return {"status": "running", "creative_id": task_info["creative_id"]}
+
+        # Task is done - get result or exception
+        try:
+            result = future.result()
+            return {"status": "completed", "result": result, "creative_id": task_info["creative_id"]}
+        except Exception as e:
+            return {"status": "failed", "error": str(e), "creative_id": task_info["creative_id"]}
+
+
+def _create_review_record(db_session, creative_id: str, tenant_id: str, ai_result: dict):
+    """Create a CreativeReview record from AI review result.
+
+    Args:
+        db_session: Database session
+        creative_id: Creative ID
+        tenant_id: Tenant ID
+        ai_result: Result dict from AI review with keys:
+            - status: "approved", "pending", or "rejected"
+            - reason: Explanation from AI
+            - confidence: "high", "medium", or "low"
+            - confidence_score: Float 0.0-1.0
+            - policy_triggered: Policy that was triggered
+            - ai_recommendation: Optional AI recommendation if different from final
+    """
+    from src.core.database.models import CreativeReview
+
+    try:
+        review_id = f"review_{uuid.uuid4().hex[:12]}"
+
+        review_record = CreativeReview(
+            review_id=review_id,
+            creative_id=creative_id,
+            tenant_id=tenant_id,
+            reviewed_at=datetime.now(UTC),
+            review_type="ai",
+            reviewer_email=None,
+            ai_decision=ai_result.get("ai_recommendation") or ai_result["status"],
+            confidence_score=ai_result.get("confidence_score"),
+            policy_triggered=ai_result.get("policy_triggered"),
+            reason=ai_result.get("reason"),
+            recommendations=None,
+            human_override=False,
+            final_decision=ai_result["status"],
+        )
+
+        db_session.add(review_record)
+        db_session.commit()
+
+        logger.debug(f"Created review record {review_id} for creative {creative_id}")
+
+    except Exception as e:
+        logger.error(f"Error creating review record for creative {creative_id}: {e}", exc_info=True)
+        # Don't fail the review if we can't create the record
+        db_session.rollback()
+
+
 def _ai_review_creative_impl(tenant_id, creative_id, db_session=None, promoted_offering=None):
     """Internal implementation: Run AI review and return dict result.
 
@@ -727,9 +1027,21 @@ def _ai_review_creative_impl(tenant_id, creative_id, db_session=None, promoted_o
     - confidence: "high", "medium", or "low"
     - error: error message if failed
     """
+    import time
+
     from sqlalchemy import select
 
     from src.core.database.models import Creative
+    from src.core.metrics import (
+        active_ai_reviews,
+        ai_review_confidence,
+        ai_review_duration,
+        ai_review_errors,
+        ai_review_total,
+    )
+
+    start_time = time.time()
+    active_ai_reviews.labels(tenant_id=tenant_id).inc()
 
     try:
         # Use provided session or create new one
@@ -826,20 +1138,164 @@ Respond with a JSON object containing:
 
             review_result = json.loads(response_text)
 
-            # Map AI decision to status
-            decision = review_result.get("decision", "REQUIRE HUMAN APPROVAL").upper()
-            if "APPROVE" in decision and "REQUIRE" not in decision:
-                status = "approved"
-            elif "REJECT" in decision:
-                status = "rejected"
-            else:
-                status = "pending"
+            # Parse confidence as float (map string values to numeric)
+            confidence_str = review_result.get("confidence", "medium").lower()
+            confidence_map = {"low": 0.3, "medium": 0.6, "high": 0.9}
+            confidence_score = confidence_map.get(confidence_str, 0.6)
 
-            return {
-                "status": status,
-                "reason": review_result.get("reason", ""),
-                "confidence": review_result.get("confidence", "medium"),
+            # Get AI policy from tenant (with defaults)
+            ai_policy_data = tenant.ai_policy if tenant.ai_policy else {}
+            auto_approve_threshold = ai_policy_data.get("auto_approve_threshold", 0.90)
+            auto_reject_threshold = ai_policy_data.get("auto_reject_threshold", 0.10)
+            sensitive_categories = ai_policy_data.get(
+                "always_require_human_for", ["political", "healthcare", "financial"]
+            )
+
+            # Check if creative is in sensitive category (extract from data or infer from tags)
+            creative_category = None
+            if creative.data:
+                creative_category = creative.data.get("category")
+                # Also check tags if available
+                if not creative_category and "tags" in creative.data:
+                    for tag in creative.data.get("tags", []):
+                        if tag.lower() in [cat.lower() for cat in sensitive_categories]:
+                            creative_category = tag.lower()
+                            break
+
+            # Check if this creative requires human review by category
+            if creative_category and creative_category.lower() in [cat.lower() for cat in sensitive_categories]:
+                result_dict = {
+                    "status": "pending",
+                    "reason": f"Category '{creative_category}' requires human review per policy",
+                    "confidence": confidence_str,
+                    "confidence_score": confidence_score,
+                    "policy_triggered": "sensitive_category",
+                }
+                _create_review_record(
+                    db_session,
+                    creative_id,
+                    tenant_id,
+                    result_dict,
+                )
+                # Record metrics
+                ai_review_total.labels(
+                    tenant_id=tenant_id, decision="pending", policy_triggered="sensitive_category"
+                ).inc()
+                ai_review_confidence.labels(tenant_id=tenant_id, decision="pending").observe(confidence_score)
+                return result_dict
+
+            # Apply confidence-based thresholds
+            decision = review_result.get("decision", "REQUIRE HUMAN APPROVAL").upper()
+
+            if "APPROVE" in decision and "REQUIRE" not in decision:
+                # AI wants to approve - check confidence threshold
+                if confidence_score >= auto_approve_threshold:
+                    result_dict = {
+                        "status": "approved",
+                        "reason": review_result.get("reason", ""),
+                        "confidence": confidence_str,
+                        "confidence_score": confidence_score,
+                        "policy_triggered": "auto_approve",
+                    }
+                    _create_review_record(
+                        db_session,
+                        creative_id,
+                        tenant_id,
+                        result_dict,
+                    )
+                    # Record metrics
+                    ai_review_total.labels(
+                        tenant_id=tenant_id, decision="approved", policy_triggered="auto_approve"
+                    ).inc()
+                    ai_review_confidence.labels(tenant_id=tenant_id, decision="approved").observe(confidence_score)
+                    return result_dict
+                else:
+                    result_dict = {
+                        "status": "pending",
+                        "reason": f"AI approved but confidence {confidence_score:.0%} below threshold {auto_approve_threshold:.0%}. Human review recommended.",
+                        "confidence": confidence_str,
+                        "confidence_score": confidence_score,
+                        "policy_triggered": "low_confidence_approval",
+                        "ai_recommendation": "approve",
+                        "ai_reason": review_result.get("reason", ""),
+                    }
+                    _create_review_record(
+                        db_session,
+                        creative_id,
+                        tenant_id,
+                        result_dict,
+                    )
+                    # Record metrics
+                    ai_review_total.labels(
+                        tenant_id=tenant_id, decision="pending", policy_triggered="low_confidence_approval"
+                    ).inc()
+                    ai_review_confidence.labels(tenant_id=tenant_id, decision="pending").observe(confidence_score)
+                    return result_dict
+
+            elif "REJECT" in decision:
+                # AI wants to reject - check confidence threshold
+                if confidence_score <= auto_reject_threshold:
+                    result_dict = {
+                        "status": "rejected",
+                        "reason": review_result.get("reason", ""),
+                        "confidence": confidence_str,
+                        "confidence_score": confidence_score,
+                        "policy_triggered": "auto_reject",
+                    }
+                    _create_review_record(
+                        db_session,
+                        creative_id,
+                        tenant_id,
+                        result_dict,
+                    )
+                    # Record metrics
+                    ai_review_total.labels(
+                        tenant_id=tenant_id, decision="rejected", policy_triggered="auto_reject"
+                    ).inc()
+                    ai_review_confidence.labels(tenant_id=tenant_id, decision="rejected").observe(confidence_score)
+                    return result_dict
+                else:
+                    result_dict = {
+                        "status": "pending",
+                        "reason": f"AI rejected but not confident enough ({confidence_score:.0%}). Human review recommended.",
+                        "confidence": confidence_str,
+                        "confidence_score": confidence_score,
+                        "policy_triggered": "uncertain_rejection",
+                        "ai_recommendation": "reject",
+                        "ai_reason": review_result.get("reason", ""),
+                    }
+                    _create_review_record(
+                        db_session,
+                        creative_id,
+                        tenant_id,
+                        result_dict,
+                    )
+                    # Record metrics
+                    ai_review_total.labels(
+                        tenant_id=tenant_id, decision="pending", policy_triggered="uncertain_rejection"
+                    ).inc()
+                    ai_review_confidence.labels(tenant_id=tenant_id, decision="pending").observe(confidence_score)
+                    return result_dict
+
+            # Default: uncertain or "REQUIRE HUMAN APPROVAL"
+            result_dict = {
+                "status": "pending",
+                "reason": "AI could not make confident decision. Human review required.",
+                "confidence": confidence_str,
+                "confidence_score": confidence_score,
+                "policy_triggered": "uncertain",
+                "ai_reason": review_result.get("reason", ""),
             }
+            _create_review_record(
+                db_session,
+                creative_id,
+                tenant_id,
+                result_dict,
+            )
+            # Record metrics
+            ai_review_total.labels(tenant_id=tenant_id, decision="pending", policy_triggered="uncertain").inc()
+            ai_review_confidence.labels(tenant_id=tenant_id, decision="pending").observe(confidence_score)
+            return result_dict
 
         finally:
             if should_close:
@@ -847,7 +1303,14 @@ Respond with a JSON object containing:
 
     except Exception as e:
         logger.error(f"Error running AI review: {e}", exc_info=True)
+        # Record error metrics
+        ai_review_errors.labels(tenant_id=tenant_id, error_type=type(e).__name__).inc()
         return {"status": "pending", "error": str(e), "reason": "AI review failed - requires manual approval"}
+    finally:
+        # Record duration and decrement active reviews
+        duration = time.time() - start_time
+        ai_review_duration.labels(tenant_id=tenant_id).observe(duration)
+        active_ai_reviews.labels(tenant_id=tenant_id).dec()
 
 
 @creatives_bp.route("/review/<creative_id>/ai-review", methods=["POST"])

@@ -194,6 +194,14 @@ def health_config():
         )
 
 
+@core_bp.route("/metrics")
+def metrics():
+    """Prometheus metrics endpoint."""
+    from src.core.metrics import get_metrics_text
+
+    return get_metrics_text(), 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+
 @core_bp.route("/create_tenant", methods=["GET", "POST"])
 @require_auth(admin_only=True)
 def create_tenant():

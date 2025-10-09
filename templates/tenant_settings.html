@@ -984,6 +984,72 @@ REJECT - Creative cannot be approved:
 ✗ Contains competitor branding or logos</pre>
                             </div>
                         </details>
+
+                        <!-- AI Policy Configuration -->
+                        <div class="form-group" style="margin-top: 2rem;">
+                            <h4 style="margin-bottom: 1rem; color: #111827;">AI Confidence Thresholds</h4>
+                            <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                                Configure how confident the AI must be before automatically approving or rejecting creatives.
+                                Lower confidence decisions will require human review.
+                            </p>
+
+                            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                                <div class="form-group">
+                                    <label for="auto_approve_threshold">
+                                        Auto-Approve Threshold
+                                        <span style="color: #10b981; font-weight: 600; margin-left: 0.5rem;" id="approve_threshold_value">90%</span>
+                                    </label>
+                                    <input type="range" id="auto_approve_threshold" name="auto_approve_threshold"
+                                           min="0.5" max="1.0" step="0.05"
+                                           value="{{ (tenant.ai_policy.auto_approve_threshold if tenant.ai_policy else 0.90) }}"
+                                           class="form-control" style="margin-bottom: 0.5rem;"
+                                           oninput="document.getElementById('approve_threshold_value').textContent = Math.round(this.value * 100) + '%'">
+                                    <small>AI must be at least this confident to auto-approve (default: 90%)</small>
+                                </div>
+
+                                <div class="form-group" style="margin-top: 1rem;">
+                                    <label for="auto_reject_threshold">
+                                        Auto-Reject Threshold
+                                        <span style="color: #ef4444; font-weight: 600; margin-left: 0.5rem;" id="reject_threshold_value">10%</span>
+                                    </label>
+                                    <input type="range" id="auto_reject_threshold" name="auto_reject_threshold"
+                                           min="0.0" max="0.5" step="0.05"
+                                           value="{{ (tenant.ai_policy.auto_reject_threshold if tenant.ai_policy else 0.10) }}"
+                                           class="form-control" style="margin-bottom: 0.5rem;"
+                                           oninput="document.getElementById('reject_threshold_value').textContent = Math.round(this.value * 100) + '%'">
+                                    <small>AI must be this certain or less to auto-reject (default: 10%)</small>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="sensitive_categories">Always Require Human Review For</label>
+                                <input type="text" id="sensitive_categories" name="sensitive_categories"
+                                       value="{{ (tenant.ai_policy.always_require_human_for|join(', ') if tenant.ai_policy and tenant.ai_policy.always_require_human_for else 'political, healthcare, financial') }}"
+                                       class="form-control"
+                                       placeholder="political, healthcare, financial">
+                                <small>Categories that always require human review, regardless of AI confidence (comma-separated)</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="learn_from_overrides" name="learn_from_overrides"
+                                           {% if not tenant.ai_policy or tenant.ai_policy.learn_from_overrides != False %}checked{% endif %}>
+                                    Track when humans disagree with AI decisions
+                                </label>
+                                <small style="display: block; margin-top: 0.25rem;">
+                                    Enable learning from human overrides to improve AI accuracy over time
+                                </small>
+                            </div>
+
+                            <div style="background: #eff6ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #2563eb; margin-top: 1rem;">
+                                <strong>How It Works:</strong>
+                                <ul style="margin: 0.5rem 0 0 1.5rem; font-size: 0.875rem;">
+                                    <li><strong>High Confidence (≥90%):</strong> AI approvals/rejections are automatic</li>
+                                    <li><strong>Medium Confidence (10%-90%):</strong> Sent to human review queue with AI recommendation</li>
+                                    <li><strong>Sensitive Categories:</strong> Always require human review, regardless of confidence</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

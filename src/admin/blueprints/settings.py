@@ -306,8 +306,23 @@ def update_adapter(tenant_id):
 def update_slack(tenant_id):
     """Update Slack integration settings."""
     try:
+        from src.core.webhook_validator import WebhookURLValidator
+
         webhook_url = request.form.get("slack_webhook_url", "").strip()
         audit_webhook_url = request.form.get("slack_audit_webhook_url", "").strip()
+
+        # Validate webhook URLs for SSRF protection
+        if webhook_url:
+            is_valid, error_msg = WebhookURLValidator.validate_webhook_url(webhook_url)
+            if not is_valid:
+                flash(f"Invalid Slack webhook URL: {error_msg}", "error")
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
+
+        if audit_webhook_url:
+            is_valid, error_msg = WebhookURLValidator.validate_webhook_url(audit_webhook_url)
+            if not is_valid:
+                flash(f"Invalid Slack audit webhook URL: {error_msg}", "error")
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
 
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
@@ -772,6 +787,60 @@ def update_business_rules(tenant_id):
                     creative_review_criteria = creative_review_criteria.strip()
                     # Allow empty string or set to None if empty
                     tenant.creative_review_criteria = creative_review_criteria if creative_review_criteria else None
+
+            # Update AI policy configuration
+            if any(
+                key in data
+                for key in [
+                    "auto_approve_threshold",
+                    "auto_reject_threshold",
+                    "sensitive_categories",
+                    "learn_from_overrides",
+                ]
+            ):
+                # Get existing AI policy or create new dict
+                ai_policy = tenant.ai_policy if tenant.ai_policy else {}
+
+                # Update thresholds
+                if "auto_approve_threshold" in data:
+                    try:
+                        threshold = float(data.get("auto_approve_threshold"))
+                        if 0.0 <= threshold <= 1.0:
+                            ai_policy["auto_approve_threshold"] = threshold
+                    except (ValueError, TypeError):
+                        pass  # Keep existing value
+
+                if "auto_reject_threshold" in data:
+                    try:
+                        threshold = float(data.get("auto_reject_threshold"))
+                        if 0.0 <= threshold <= 1.0:
+                            ai_policy["auto_reject_threshold"] = threshold
+                    except (ValueError, TypeError):
+                        pass  # Keep existing value
+
+                # Update sensitive categories
+                if "sensitive_categories" in data:
+                    categories_str = data.get("sensitive_categories", "").strip()
+                    if categories_str:
+                        # Parse comma-separated list
+                        categories = [cat.strip() for cat in categories_str.split(",") if cat.strip()]
+                        ai_policy["always_require_human_for"] = categories
+                    else:
+                        ai_policy["always_require_human_for"] = []
+
+                # Update learn from overrides
+                if "learn_from_overrides" in data:
+                    ai_policy["learn_from_overrides"] = data.get("learn_from_overrides") in [True, "true", "on", 1, "1"]
+                elif not request.is_json:
+                    # Checkbox not present means unchecked
+                    ai_policy["learn_from_overrides"] = False
+
+                # Save updated policy
+                tenant.ai_policy = ai_policy
+                # Mark as modified for JSONB update
+                from sqlalchemy.orm import attributes
+
+                attributes.flag_modified(tenant, "ai_policy")
 
             # Update features
             if "enable_axe_signals" in data:

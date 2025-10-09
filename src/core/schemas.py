@@ -923,6 +923,37 @@ class CreativePolicy(BaseModel):
     templates_available: bool = Field(..., description="Whether creative templates are provided")
 
 
+class AIReviewPolicy(BaseModel):
+    """Configuration for AI-powered creative review with confidence thresholds.
+
+    This policy defines how AI confidence scores map to approval decisions:
+    - High confidence approvals/rejections are automatic
+    - Low confidence or sensitive categories require human review
+    - Confidence thresholds are configurable per tenant
+    """
+
+    auto_approve_threshold: float = Field(
+        0.90,
+        ge=0.0,
+        le=1.0,
+        description="Confidence threshold for auto-approval (>= this value). AI must be at least this confident to auto-approve.",
+    )
+    auto_reject_threshold: float = Field(
+        0.10,
+        ge=0.0,
+        le=1.0,
+        description="Confidence threshold for auto-rejection (<= this value). AI must be this certain or less to auto-reject.",
+    )
+    always_require_human_for: list[str] = Field(
+        default_factory=lambda: ["political", "healthcare", "financial"],
+        description="Creative categories that always require human review regardless of AI confidence",
+    )
+    learn_from_overrides: bool = Field(
+        True,
+        description="Track when humans disagree with AI decisions for model improvement",
+    )
+
+
 class Product(BaseModel):
     product_id: str
     name: str

@@ -176,29 +176,9 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                     if tenant and token == tenant.admin_token:
                         console.print(f"[green]Token matches admin token for tenant '{tenant_id}'[/green]")
                         # Set tenant context for admin token
-                        from src.core.config_loader import safe_json_loads
+                        from src.core.utils.tenant_utils import serialize_tenant_to_dict
 
-                        tenant_dict = {
-                            "tenant_id": tenant.tenant_id,
-                            "name": tenant.name,
-                            "subdomain": tenant.subdomain,
-                            "virtual_host": tenant.virtual_host,
-                            "ad_server": tenant.ad_server,
-                            "enable_axe_signals": tenant.enable_axe_signals,
-                            "authorized_emails": safe_json_loads(tenant.authorized_emails, []),
-                            "authorized_domains": safe_json_loads(tenant.authorized_domains, []),
-                            "slack_webhook_url": tenant.slack_webhook_url,
-                            "admin_token": tenant.admin_token,
-                            "auto_approve_formats": safe_json_loads(tenant.auto_approve_formats, []),
-                            "human_review_required": tenant.human_review_required,
-                            "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
-                            "hitl_webhook_url": tenant.hitl_webhook_url,
-                            "policy_settings": safe_json_loads(tenant.policy_settings, None),
-                            "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
-                            "approval_mode": tenant.approval_mode,
-                            "gemini_api_key": tenant.gemini_api_key,
-                            "creative_review_criteria": tenant.creative_review_criteria,
-                        }
+                        tenant_dict = serialize_tenant_to_dict(tenant)
                         set_current_tenant(tenant_dict)
                         return f"{tenant_id}_admin"
                     console.print(f"[red]Token not found in tenant '{tenant_id}' and doesn't match admin token[/red]")
@@ -231,29 +211,9 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
             stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
             tenant = session.scalars(stmt).first()
             if tenant:
-                from src.core.config_loader import safe_json_loads
+                from src.core.utils.tenant_utils import serialize_tenant_to_dict
 
-                tenant_dict = {
-                    "tenant_id": tenant.tenant_id,
-                    "name": tenant.name,
-                    "subdomain": tenant.subdomain,
-                    "virtual_host": tenant.virtual_host,
-                    "ad_server": tenant.ad_server,
-                    "enable_axe_signals": tenant.enable_axe_signals,
-                    "authorized_emails": safe_json_loads(tenant.authorized_emails, []),
-                    "authorized_domains": safe_json_loads(tenant.authorized_domains, []),
-                    "slack_webhook_url": tenant.slack_webhook_url,
-                    "admin_token": tenant.admin_token,
-                    "auto_approve_formats": safe_json_loads(tenant.auto_approve_formats, []),
-                    "human_review_required": tenant.human_review_required,
-                    "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
-                    "hitl_webhook_url": tenant.hitl_webhook_url,
-                    "policy_settings": safe_json_loads(tenant.policy_settings, None),
-                    "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
-                    "approval_mode": tenant.approval_mode,
-                    "gemini_api_key": tenant.gemini_api_key,
-                    "creative_review_criteria": tenant.creative_review_criteria,
-                }
+                tenant_dict = serialize_tenant_to_dict(tenant)
                 set_current_tenant(tenant_dict)
                 console.print(f"[bold green]Set tenant context to '{tenant.tenant_id}'[/bold green]")
 
@@ -1608,28 +1568,45 @@ def _sync_creatives_impl(
                                 existing_creative.status = "approved"
                                 needs_approval = False
                             elif approval_mode == "ai-powered":
-                                # Run AI review
-                                from src.admin.blueprints.creatives import _ai_review_creative_impl
+                                # Submit to background AI review (async)
 
-                                ai_result = _ai_review_creative_impl(
-                                    tenant_id=tenant["tenant_id"],
-                                    creative_id=existing_creative.creative_id,
-                                    db_session=session,
+                                from src.admin.blueprints.creatives import (
+                                    _ai_review_executor,
+                                    _ai_review_lock,
+                                    _ai_review_tasks,
                                 )
-                                existing_creative.status = ai_result["status"]
-                                needs_approval = ai_result["status"] in ["pending", "rejected"]
-                                # Store AI reasoning in creative data
-                                data = existing_creative.data or {}
-                                data["ai_review"] = {
-                                    "decision": ai_result["status"],
-                                    "reason": ai_result["reason"],
-                                    "confidence": ai_result.get("confidence", "medium"),
-                                    "reviewed_at": datetime.now(UTC).isoformat(),
-                                }
-                                existing_creative.data = data
-                                from sqlalchemy.orm import attributes
 
-                                attributes.flag_modified(existing_creative, "data")
+                                # Set status to pending immediately
+                                existing_creative.status = "pending"
+                                needs_approval = True
+
+                                # Submit background task
+                                task_id = f"ai_review_{existing_creative.creative_id}_{uuid.uuid4().hex[:8]}"
+
+                                # Need to flush to ensure creative_id is available
+                                session.flush()
+
+                                # Import the async function
+                                from src.admin.blueprints.creatives import _ai_review_creative_async
+
+                                future = _ai_review_executor.submit(
+                                    _ai_review_creative_async,
+                                    creative_id=existing_creative.creative_id,
+                                    tenant_id=tenant["tenant_id"],
+                                    webhook_url=webhook_url,
+                                )
+
+                                # Track the task
+                                with _ai_review_lock:
+                                    _ai_review_tasks[task_id] = {
+                                        "future": future,
+                                        "creative_id": existing_creative.creative_id,
+                                        "created_at": time.time(),
+                                    }
+
+                                logger.info(
+                                    f"[sync_creatives] Submitted AI review for {existing_creative.creative_id} (task: {task_id})"
+                                )
                             else:  # require-human
                                 existing_creative.status = "pending"
                                 needs_approval = True
@@ -1774,29 +1751,42 @@ def _sync_creatives_impl(
                             db_creative.status = "approved"
                             needs_approval = False
                         elif approval_mode == "ai-powered":
-                            # Run AI review on newly created creative
-                            from src.admin.blueprints.creatives import _ai_review_creative_impl
+                            # Submit to background AI review (async)
 
-                            ai_result = _ai_review_creative_impl(
-                                tenant_id=tenant["tenant_id"],
-                                creative_id=db_creative.creative_id,
-                                db_session=session,
+                            from src.admin.blueprints.creatives import (
+                                _ai_review_executor,
+                                _ai_review_lock,
+                                _ai_review_tasks,
                             )
-                            logger.info(f"AI review result for {db_creative.creative_id}: {ai_result}")
-                            db_creative.status = ai_result["status"]
-                            needs_approval = ai_result["status"] in ["pending", "rejected"]
-                            # Store AI reasoning in creative data - update the dict directly
-                            if not isinstance(db_creative.data, dict):
-                                db_creative.data = {}
-                            db_creative.data["ai_review"] = {
-                                "decision": ai_result["status"],
-                                "reason": ai_result.get("reason", ""),
-                                "confidence": ai_result.get("confidence", "medium"),
-                                "reviewed_at": datetime.now(UTC).isoformat(),
-                            }
-                            from sqlalchemy.orm import attributes
 
-                            attributes.flag_modified(db_creative, "data")
+                            # Set status to pending immediately
+                            db_creative.status = "pending"
+                            needs_approval = True
+
+                            # Submit background task
+                            task_id = f"ai_review_{db_creative.creative_id}_{uuid.uuid4().hex[:8]}"
+
+                            # Import the async function
+                            from src.admin.blueprints.creatives import _ai_review_creative_async
+
+                            future = _ai_review_executor.submit(
+                                _ai_review_creative_async,
+                                creative_id=db_creative.creative_id,
+                                tenant_id=tenant["tenant_id"],
+                                webhook_url=webhook_url,
+                            )
+
+                            # Track the task
+                            with _ai_review_lock:
+                                _ai_review_tasks[task_id] = {
+                                    "future": future,
+                                    "creative_id": db_creative.creative_id,
+                                    "created_at": time.time(),
+                                }
+
+                            logger.info(
+                                f"[sync_creatives] Submitted AI review for new creative {db_creative.creative_id} (task: {task_id})"
+                            )
                         else:  # require-human
                             db_creative.status = "pending"
                             needs_approval = True
@@ -1809,9 +1799,8 @@ def _sync_creatives_impl(
                                 "name": creative.get("name"),
                                 "status": db_creative.status,  # Include status for Slack notification
                             }
-                            # Include AI review reason if available
-                            if approval_mode == "ai-powered" and ai_result:
-                                creative_info["ai_review_reason"] = ai_result.get("reason")
+                            # AI review reason will be added asynchronously when review completes
+                            # No ai_result available yet in async mode
                             creatives_needing_approval.append(creative_info)
 
                         # Record result for created creative

@@ -1,5 +1,6 @@
 """SQLAlchemy models for database schema."""
 
+import logging
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -24,6 +25,8 @@ from sqlalchemy.sql import func
 
 from src.core.database.json_type import JSONType
 from src.core.json_validators import JSONValidatorMixin
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -60,10 +63,13 @@ class Tenant(Base, JSONValidatorMixin):
     policy_settings = Column(JSONType)  # JSON object
     signals_agent_config = Column(JSONType)  # JSON object for upstream signals discovery agent configuration
     creative_review_criteria = Column(Text, nullable=True)  # AI review prompt for creative approval
-    gemini_api_key = Column(String(500), nullable=True)  # Tenant-specific Gemini API key for AI reviews
+    _gemini_api_key = Column("gemini_api_key", String(500), nullable=True)  # Encrypted Gemini API key
     approval_mode = Column(
         String(50), nullable=False, default="require-human"
     )  # auto-approve, require-human, ai-powered
+    ai_policy = Column(
+        JSONType, nullable=True, comment="AI review policy configuration with confidence thresholds"
+    )  # Stores AIReviewPolicy as JSON
 
     # Naming templates (business rules - shared across all adapters)
     order_name_template = Column(
@@ -94,6 +100,30 @@ class Tenant(Base, JSONValidatorMixin):
 
     # JSON validators are inherited from JSONValidatorMixin
     # No need for duplicate validators here
+
+    @property
+    def gemini_api_key(self) -> str | None:
+        """Get decrypted Gemini API key."""
+        if not self._gemini_api_key:
+            return None
+        from src.core.utils.encryption import decrypt_api_key
+
+        try:
+            return decrypt_api_key(self._gemini_api_key)
+        except ValueError:
+            logger.warning(f"Failed to decrypt Gemini API key for tenant {self.tenant_id}")
+            return None
+
+    @gemini_api_key.setter
+    def gemini_api_key(self, value: str | None) -> None:
+        """Set encrypted Gemini API key."""
+        if not value:
+            self._gemini_api_key = None
+            return
+
+        from src.core.utils.encryption import encrypt_api_key
+
+        self._gemini_api_key = encrypt_api_key(value)
 
 
 class CreativeFormat(Base):
@@ -274,6 +304,7 @@ class Creative(Base):
 
     # Relationships
     tenant = relationship("Tenant", backref="creatives")
+    reviews = relationship("CreativeReview", back_populates="creative", cascade="all, delete-orphan")
 
     __table_args__ = (
         ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
@@ -281,6 +312,53 @@ class Creative(Base):
         Index("idx_creatives_tenant", "tenant_id"),
         Index("idx_creatives_principal", "tenant_id", "principal_id"),
         Index("idx_creatives_status", "status"),
+    )
+
+
+class CreativeReview(Base):
+    """Creative review records for analytics and learning.
+
+    Stores AI and human review decisions to enable:
+    - Review history tracking per creative
+    - AI accuracy measurement and improvement
+    - Human override analytics
+    - Confidence threshold tuning
+    """
+
+    __tablename__ = "creative_reviews"
+
+    review_id = Column(String(100), primary_key=True)
+    creative_id = Column(String(100), ForeignKey("creatives.creative_id", ondelete="CASCADE"), nullable=False)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+
+    # Review metadata
+    reviewed_at = Column(DateTime, nullable=False, server_default=func.now())
+    review_type = Column(String(20), nullable=False)  # "ai" or "human"
+    reviewer_email = Column(String(255), nullable=True)  # For human reviews
+
+    # AI decision
+    ai_decision = Column(String(20), nullable=True)  # "approve" or "reject" or null for human-only
+    confidence_score = Column(Float, nullable=True)  # 0.0-1.0
+    policy_triggered = Column(String(100), nullable=True)  # "auto_approve", "low_confidence_approval", etc.
+
+    # Review details
+    reason = Column(Text, nullable=True)
+    recommendations = Column(JSONType, nullable=True)  # Suggestions for improvement
+
+    # Learning system
+    human_override = Column(Boolean, nullable=False, default=False)  # Did human disagree with AI?
+    final_decision = Column(String(20), nullable=False)  # "approved" or "rejected" or "pending"
+
+    # Relationships
+    creative = relationship("Creative", back_populates="reviews")
+    tenant = relationship("Tenant")
+
+    __table_args__ = (
+        Index("ix_creative_reviews_creative_id", "creative_id"),
+        Index("ix_creative_reviews_tenant_id", "tenant_id"),
+        Index("ix_creative_reviews_reviewed_at", "reviewed_at"),
+        Index("ix_creative_reviews_review_type", "review_type"),
+        Index("ix_creative_reviews_final_decision", "final_decision"),
     )
 
 
@@ -1006,4 +1084,45 @@ class PushNotificationConfig(Base, JSONValidatorMixin):
         ),
         Index("idx_push_notification_configs_tenant", "tenant_id"),
         Index("idx_push_notification_configs_principal", "tenant_id", "principal_id"),
+    )
+
+
+class WebhookDeliveryRecord(Base):
+    """Tracks webhook delivery attempts with retry history.
+
+    Records all webhook POST requests for audit and debugging purposes.
+    Enables tracking of delivery success rates, retry patterns, and failures.
+    """
+
+    __tablename__ = "webhook_deliveries"
+
+    delivery_id = Column(String(100), primary_key=True)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    webhook_url = Column(String(500), nullable=False)
+    payload = Column(JSONType, nullable=False)  # Full JSON payload sent
+    event_type = Column(String(100), nullable=False)  # "creative.status_changed", "media_buy.approved", etc.
+    object_id = Column(String(100), nullable=True)  # Related object ID (creative_id, media_buy_id, etc.)
+
+    # Delivery tracking
+    status = Column(String(20), nullable=False, default="pending")  # pending, delivered, failed
+    attempts = Column(Integer, nullable=False, default=0)
+    last_attempt_at = Column(DateTime, nullable=True)
+    delivered_at = Column(DateTime, nullable=True)
+
+    # Error tracking
+    last_error = Column(Text, nullable=True)
+    response_code = Column(Integer, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+    # Relationships
+    tenant = relationship("Tenant")
+
+    __table_args__ = (
+        Index("idx_webhook_deliveries_tenant", "tenant_id"),
+        Index("idx_webhook_deliveries_status", "status"),
+        Index("idx_webhook_deliveries_event_type", "event_type"),
+        Index("idx_webhook_deliveries_object_id", "object_id"),
+        Index("idx_webhook_deliveries_created", "created_at"),
     )
