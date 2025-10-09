@@ -425,8 +425,100 @@ def webhook():
 - **API Reference**: https://adcontextprotocol.org/docs/
 - **Issues**: https://github.com/adcontextprotocol/salesagent/issues
 
+## AdCP Delivery Webhooks (Enhanced Security)
+
+For delivery reporting webhooks (impressions, spend, etc.), see the enhanced webhook service with additional security and reliability features.
+
+### Enhanced Security Features (AdCP PR #86)
+
+The delivery webhook service implements advanced security and reliability:
+
+**Security:**
+- HMAC-SHA256 signatures with `X-ADCP-Signature` header
+- Replay attack prevention (5-minute window)
+- Minimum 32-character secrets required
+- Constant-time signature comparison
+
+**Reliability:**
+- Circuit breaker pattern (CLOSED/OPEN/HALF_OPEN states)
+- Exponential backoff with jitter
+- Bounded queues (1000 webhooks per endpoint)
+- Per-endpoint isolation
+
+**New Payload Fields:**
+- `is_adjusted`: Boolean flag for late-arriving data corrections
+- `notification_type`: `"scheduled"`, `"final"`, or `"adjusted"`
+
+### Using Enhanced Delivery Webhooks
+
+```python
+from src.services.webhook_delivery_service_v2 import enhanced_webhook_delivery_service
+
+# Send delivery webhook with security
+enhanced_webhook_delivery_service.send_delivery_webhook(
+    media_buy_id="buy_123",
+    tenant_id="tenant_1",
+    principal_id="buyer_1",
+    reporting_period_start=datetime(2025, 10, 1, tzinfo=UTC),
+    reporting_period_end=datetime(2025, 10, 2, tzinfo=UTC),
+    impressions=100000,
+    spend=500.00,
+    is_adjusted=False,  # True for late-arriving data
+)
+```
+
+### Verifying Delivery Webhooks
+
+```python
+from src.services.webhook_verification import verify_adcp_webhook, WebhookVerificationError
+
+@app.post("/webhooks/adcp/delivery")
+def receive_delivery_webhook(request):
+    try:
+        # Verify signature and timestamp
+        verify_adcp_webhook(
+            webhook_secret="your-32-char-secret",
+            payload=request.json(),
+            request_headers=dict(request.headers)
+        )
+
+        # Process verified webhook
+        data = request.json()
+        if data.get("is_adjusted"):
+            # Update historical data
+            update_delivery_data(data)
+        else:
+            # Add new delivery data
+            record_delivery_data(data)
+
+        return {"status": "success"}
+
+    except WebhookVerificationError as e:
+        logger.warning(f"Invalid webhook: {e}")
+        return {"error": str(e)}, 401
+```
+
+### Circuit Breaker Monitoring
+
+```python
+# Check endpoint health
+state, failures = enhanced_webhook_delivery_service.get_circuit_breaker_state(
+    "https://buyer.example.com/webhooks"
+)
+
+# Manual recovery if needed
+enhanced_webhook_delivery_service.reset_circuit_breaker(
+    "https://buyer.example.com/webhooks"
+)
+```
+
+For complete documentation on delivery webhook security, see the implementation in:
+- `src/services/webhook_delivery_service_v2.py`
+- `src/services/webhook_verification.py`
+
 ## Changelog
 
+- **2025-10-09**: Added enhanced delivery webhooks with circuit breakers and HMAC-SHA256 (AdCP PR #86)
 - **2025-10-04**: Added HMAC-SHA256 authentication support
 - **2025-10-04**: Added SSRF protection for webhook URLs
 - **2025-09-15**: Initial webhook support
