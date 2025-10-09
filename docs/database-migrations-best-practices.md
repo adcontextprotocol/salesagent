@@ -45,7 +45,7 @@ We use a **multi-layered defense** to prevent and fix multiple heads:
 - **When**: Before pushing to remote
 - **What**: Final check before code reaches GitHub
 - **Action**: Offers to auto-merge or blocks push
-- **Installed**: Run `./scripts/setup/install_git_hooks.sh`
+- **Installed**: Run `./scripts/setup/setup_hooks.sh`
 
 ```bash
 # Runs automatically on 'git push'
@@ -306,13 +306,13 @@ Bash script for interactive migration merging.
 CI=1 ./scripts/ops/auto_merge_migrations.sh
 ```
 
-### `scripts/setup/install_git_hooks.sh`
+### `scripts/setup/setup_hooks.sh`
 Installs pre-push hook with migration checking.
 
 **Usage:**
 ```bash
 # Install hooks
-./scripts/setup/install_git_hooks.sh
+./scripts/setup/setup_hooks.sh
 
 # Check what's installed
 cat .git/hooks/pre-push

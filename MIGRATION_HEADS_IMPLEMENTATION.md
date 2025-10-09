@@ -7,7 +7,7 @@ Install the solution in 2 steps:
 ```bash
 # 1. Install git hooks (includes migration head checking)
 cd /Users/brianokelley/Developer/salesagent/.conductor/salvador
-./scripts/setup/install_git_hooks.sh
+./scripts/setup/setup_hooks.sh
 
 # 2. Update pre-commit hooks (already done in this commit)
 cd /Users/brianokelley/Developer/salesagent
@@ -77,7 +77,7 @@ CI=1 ./scripts/ops/auto_merge_migrations.sh
 ```
 
 ### 4. Pre-Push Hook
-**File:** `scripts/setup/install_git_hooks.sh` (new)
+**File:** `scripts/setup/setup_hooks.sh (updated)` (new)
 
 **What it does:**
 - Runs on every `git push`
@@ -87,7 +87,7 @@ CI=1 ./scripts/ops/auto_merge_migrations.sh
 
 **Install:**
 ```bash
-./scripts/setup/install_git_hooks.sh
+./scripts/setup/setup_hooks.sh
 ```
 
 ### 5. Documentation
@@ -288,7 +288,7 @@ pre-commit autoupdate  # Updates versions
 pre-commit install     # Reinstalls
 
 # Pre-push hooks (manual installation)
-./scripts/setup/install_git_hooks.sh  # Reinstalls
+./scripts/setup/setup_hooks.sh  # Reinstalls
 ```
 
 ### Monitoring Effectiveness
@@ -327,14 +327,14 @@ git checkout HEAD~1 -- .git/hooks/pre-push
 # 3. Remove scripts (optional)
 rm scripts/ops/check_migration_heads.py
 rm scripts/ops/auto_merge_migrations.sh
-rm scripts/setup/install_git_hooks.sh
+rm scripts/setup/setup_hooks.sh (updated)
 ```
 
 ## Next Steps
 
 1. **Install the hooks** (if not done):
    ```bash
-   ./scripts/setup/install_git_hooks.sh
+   ./scripts/setup/setup_hooks.sh
    ```
 
 2. **Test it works**:
@@ -382,7 +382,7 @@ If you encounter issues:
 **Installation:**
 ```bash
 # One command to protect your repo:
-./scripts/setup/install_git_hooks.sh
+./scripts/setup/setup_hooks.sh
 ```
 
 Done! 🎉

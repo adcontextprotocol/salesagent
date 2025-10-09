@@ -133,7 +133,7 @@ CI=1 ./scripts/ops/auto_merge_migrations.sh
 
 ### 4. Pre-Push Hook
 
-**File:** New hook installed via `scripts/setup/install_git_hooks.sh`
+**File:** New hook installed via `scripts/setup/setup_hooks.sh (updated)`
 
 **Behavior:**
 - Checks migration heads BEFORE running tests
@@ -143,7 +143,7 @@ CI=1 ./scripts/ops/auto_merge_migrations.sh
 
 **Installation:**
 ```bash
-./scripts/setup/install_git_hooks.sh
+./scripts/setup/setup_hooks.sh
 ```
 
 ### 5. Documentation
@@ -211,7 +211,7 @@ git commit -m "Merge Alembic migration heads"
 
 ```bash
 cd /Users/brianokelley/Developer/salesagent/.conductor/salvador
-./scripts/setup/install_git_hooks.sh
+./scripts/setup/setup_hooks.sh
 ```
 
 This installs the pre-push hook with migration checking.
@@ -320,7 +320,7 @@ uv --version
 
 **Solution:** Reinstall hooks:
 ```bash
-./scripts/setup/install_git_hooks.sh
+./scripts/setup/setup_hooks.sh
 ```
 
 Verify installation:
@@ -448,13 +448,13 @@ Track these metrics to measure effectiveness:
 **Installation:**
 ```bash
 # One command to install protection:
-./scripts/setup/install_git_hooks.sh
+./scripts/setup/setup_hooks.sh
 ```
 
 **Files Created/Modified:**
 - ✅ `scripts/ops/check_migration_heads.py` - Detection script
 - ✅ `scripts/ops/auto_merge_migrations.sh` - Auto-merge tool
-- ✅ `scripts/setup/install_git_hooks.sh` - Hook installer
+- ✅ `scripts/setup/setup_hooks.sh (updated)` - Hook installer
 - ✅ `.pre-commit-config.yaml` - Added migration head check
 - ✅ `docs/database-migrations-best-practices.md` - Complete guide
 - ✅ `MIGRATION_HEADS_IMPLEMENTATION.md` - Implementation details
@@ -468,7 +468,7 @@ Track these metrics to measure effectiveness:
 
 1. **Install hooks:**
    ```bash
-   ./scripts/setup/install_git_hooks.sh
+   ./scripts/setup/setup_hooks.sh
    ```
 
 2. **Test the solution:**
