@@ -295,7 +295,7 @@ function formatCurrency(amount, currency) {
 }
 
 function viewOrderDetails(orderId) {
-    fetch(`/api/tenant/${tenantId}/orders/${orderId}`, {
+    fetch(`{{ script_name }}/api/tenant/${tenantId}/orders/${orderId}`, {
         credentials: 'same-origin'  // Include session cookies
     })
     .then(response => response.json())
@@ -469,7 +469,7 @@ function syncOrders() {
         headers['X-API-Key'] = apiKey;
     }
 
-    fetch(`/api/tenant/${tenantId}/sync/orders`, {
+    fetch(`{{ script_name }}/api/tenant/${tenantId}/sync/orders`, {
         method: 'POST',
         credentials: 'same-origin',  // Include session cookies
         headers: headers

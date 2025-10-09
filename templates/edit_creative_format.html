@@ -173,7 +173,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (fileSize) formData.max_file_size_kb = parseInt(fileSize);
 
         try {
-            const response = await fetch(`/tenant/{{ tenant_id }}/creative-formats/{{ format.format_id }}/update`, {
+            const response = await fetch(`{{ script_name }}/tenant/{{ tenant_id }}/creative-formats/{{ format.format_id }}/update`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
