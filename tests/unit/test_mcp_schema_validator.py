@@ -72,9 +72,10 @@ async def get_products(
     min_exposures: int | None = None,
     filters: dict | None = None,
     strategy_id: str | None = None,
+    webhook_url: str | None = None,
     context: Context = None,
 ) -> GetProductsResponse:
-    """Get products - includes adcp_version!"""
+    """Get products - includes adcp_version and webhook_url!"""
     req = GetProductsRequest(
         brief=brief,
         promoted_offering=promoted_offering,
@@ -82,6 +83,7 @@ async def get_products(
         min_exposures=min_exposures,
         filters=filters,
         strategy_id=strategy_id,
+        webhook_url=webhook_url,
     )
     return req
 '''
