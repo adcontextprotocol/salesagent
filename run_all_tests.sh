@@ -181,7 +181,8 @@ if [ "$MODE" == "ci" ]; then
     echo "�� Step 4/4: Running e2e tests..."
     # E2E tests manage their own Docker Compose stack (matches GitHub Actions exactly)
     # conftest.py will start/stop services with --build flag to ensure fresh images
-    if ! ADCP_TESTING=true ADCP_SALES_PORT=8080 A2A_PORT=8091 GEMINI_API_KEY="${GEMINI_API_KEY:-test_key}" uv run pytest tests/e2e/ -x --tb=short -q; then
+    # Unset CONDUCTOR_* ports so E2E tests use standard ports (8092, 8094, 8093)
+    if ! env -u CONDUCTOR_MCP_PORT -u CONDUCTOR_A2A_PORT -u CONDUCTOR_ADMIN_PORT -u CONDUCTOR_POSTGRES_PORT ADCP_TESTING=true GEMINI_API_KEY="${GEMINI_API_KEY:-test_key}" uv run pytest tests/e2e/ -x --tb=short -q; then
         echo -e "${RED}❌ E2E tests failed!${NC}"
         exit 1
     fi
