@@ -33,7 +33,6 @@ logger = logging.getLogger(__name__)
 
 # Database models
 from product_catalog_providers.factory import get_product_catalog_provider
-from scripts.setup.init_database import init_db
 
 # Other imports
 from src.core.config_loader import (
@@ -44,6 +43,7 @@ from src.core.config_loader import (
     set_current_tenant,
 )
 from src.core.context_manager import get_context_manager
+from src.core.database.database import init_db
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AdapterConfig, AuthorizedProperty, MediaBuy, PropertyTag, Tenant
 from src.core.database.models import Principal as ModelPrincipal

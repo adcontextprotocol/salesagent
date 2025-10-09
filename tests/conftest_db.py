@@ -95,7 +95,7 @@ def test_database(test_database_url):
     db_session_module._scoped_session = scoped_session(db_session_module._session_factory)
 
     # Initialize with test data
-    from scripts.setup.init_database import init_db
+    from src.core.database.database import init_db
 
     init_db(exit_on_error=False)
 
@@ -175,7 +175,7 @@ def clean_db(test_database):
         conn.commit()
 
     # Re-initialize with test data
-    from scripts.setup.init_database import init_db
+    from src.core.database.database import init_db
 
     init_db(exit_on_error=False)
 
