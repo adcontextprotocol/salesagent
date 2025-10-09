@@ -1170,7 +1170,7 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
     return GetProductsResponse(products=modified_products, message=final_message, status=status)
 
 
-@mcp.tool
+@mcp.tool()
 async def get_products(
     promoted_offering: str,
     brief: str = "",
@@ -2204,7 +2204,7 @@ def list_creatives(
     )
 
 
-@mcp.tool
+@mcp.tool()
 async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:
     """Optional endpoint for discovering available signals (audiences, contextual, etc.)
 
@@ -2368,7 +2368,7 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
     return GetSignalsResponse(signals=signals, status=status)
 
 
-@mcp.tool
+@mcp.tool()
 async def activate_signal(
     signal_id: str,
     campaign_id: str = None,
@@ -2591,7 +2591,7 @@ def _list_authorized_properties_impl(
         raise ToolError("PROPERTIES_ERROR", f"Failed to list authorized properties: {str(e)}")
 
 
-@mcp.tool
+@mcp.tool()
 def list_authorized_properties(
     req: ListAuthorizedPropertiesRequest = None, context: Context = None
 ) -> ListAuthorizedPropertiesResponse:
@@ -3626,7 +3626,7 @@ def create_media_buy(
 
 
 # Unified update tools
-@mcp.tool
+@mcp.tool()
 def update_media_buy(
     media_buy_id: str,
     buyer_ref: str = None,
@@ -4185,7 +4185,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
     return response
 
 
-@mcp.tool
+@mcp.tool()
 def get_media_buy_delivery(
     media_buy_ids: list[str] = None,
     buyer_refs: list[str] = None,
@@ -4231,7 +4231,7 @@ def _require_admin(context: Context) -> None:
         raise PermissionError("This operation requires admin privileges")
 
 
-@mcp.tool
+@mcp.tool()
 def update_performance_index(
     media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None
 ) -> UpdatePerformanceIndexResponse:
