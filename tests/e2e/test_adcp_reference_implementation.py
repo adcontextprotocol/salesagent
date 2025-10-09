@@ -135,8 +135,8 @@ class TestAdCPReferenceImplementation:
             print(f"   ✓ Found product: {product['name']} ({product_id})")
             print(f"   ✓ Formats: {product['formats']}")
 
-            # Get creative formats
-            formats_result = await client.call_tool("list_creative_formats", {"req": {}})
+            # Get creative formats (no req wrapper - takes optional params directly)
+            formats_result = await client.call_tool("list_creative_formats", {})
             formats_data = json.loads(formats_result.content[0].text)
 
             assert "formats" in formats_data, "Response must contain formats"
