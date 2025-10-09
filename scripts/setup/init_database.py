@@ -300,8 +300,19 @@ def init_db(exit_on_error=False):
                     )
                     session.add(product)
 
-            # Commit all changes
-            session.commit()
+            # Commit all changes (ignore if already exists - idempotent for testing/CI)
+            try:
+                session.commit()
+            except Exception as e:
+                # If tenant already exists (race condition during startup), rollback and continue
+                session.rollback()
+                print(f"ℹ️  Default tenant may already exist (this is normal): {e}")
+                # Refresh the existing tenant to use it
+                stmt = select(Tenant).filter_by(tenant_id="default")
+                existing_tenant = session.scalars(stmt).first()
+                if not existing_tenant:
+                    # Really failed - re-raise
+                    raise
 
             # Update the print statement based on whether sample data was created
             if os.environ.get("CREATE_SAMPLE_DATA", "false").lower() == "true":
