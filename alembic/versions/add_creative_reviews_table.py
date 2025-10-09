@@ -17,7 +17,6 @@ The migration also includes data migration logic to copy existing ai_review
 data from creatives.data JSONB column into the new table.
 """
 
-
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import text
@@ -86,7 +85,7 @@ def upgrade():
             creative_id,
             tenant_id,
             COALESCE(
-                (data->>'ai_review'->'reviewed_at')::timestamp,
+                (data->'ai_review'->>'reviewed_at')::timestamp,
                 updated_at,
                 created_at,
                 now()
@@ -106,7 +105,7 @@ def upgrade():
         WHERE data IS NOT NULL
             AND data::jsonb ? 'ai_review'
             AND data->'ai_review' IS NOT NULL
-            AND data->'ai_review' != 'null'::jsonb;
+            AND data->'ai_review'::text != 'null';
         """
     )
 
