@@ -768,7 +768,7 @@ class MockAdServer(AdServerAdapter):
 
         return CreateMediaBuyResponse(
             status="completed",  # Mock adapter completes immediately
-            buyer_ref=request.buyer_ref or media_buy_id,  # Use media_buy_id as fallback
+            buyer_ref=request.buyer_ref,  # Required field per AdCP spec
             media_buy_id=media_buy_id,
             creative_deadline=datetime.now(UTC) + timedelta(days=2),
         )

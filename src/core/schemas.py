@@ -2001,13 +2001,13 @@ class Package(BaseModel):
 
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(BaseModel):
-    # Required AdCP fields
+    # Required AdCP fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
     promoted_offering: str = Field(
         ..., description="Description of advertiser and what is being promoted (REQUIRED per AdCP spec)"
     )
+    buyer_ref: str = Field(..., description="Buyer reference for tracking (REQUIRED per AdCP spec)")
 
-    # New AdCP v2.4 fields (optional for backward compatibility)
-    buyer_ref: str | None = Field(None, description="Buyer reference for tracking")
+    # New AdCP v2.4 fields
     packages: list[Package] | None = Field(None, description="Array of packages with products and budgets")
     start_time: datetime | None = Field(None, description="Campaign start time (ISO 8601)")
     end_time: datetime | None = Field(None, description="Campaign end time (ISO 8601)")
