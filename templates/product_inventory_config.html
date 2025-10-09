@@ -175,7 +175,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadCurrentConfig() {
-    fetch(`/api/tenant/${tenantId}/product/${productId}/inventory`)
+    fetch(`{{ script_name }}/api/tenant/${tenantId}/product/${productId}/inventory`)
         .then(response => response.json())
         .then(data => {
             const configDiv = document.getElementById('currentConfig');
@@ -220,7 +220,7 @@ function loadCurrentConfig() {
 }
 
 function loadInventoryTree() {
-    fetch(`/api/tenant/${tenantId}/inventory/tree`)
+    fetch(`{{ script_name }}/api/tenant/${tenantId}/inventory/tree`)
         .then(response => response.json())
         .then(data => {
             inventoryData = data;
@@ -341,7 +341,7 @@ function getSuggestions() {
     const params = new URLSearchParams();
     sizes.forEach(size => params.append('sizes', size));
 
-    fetch(`/api/tenant/${tenantId}/inventory/suggest?${params}`)
+    fetch(`{{ script_name }}/api/tenant/${tenantId}/inventory/suggest?${params}`)
         .then(response => response.json())
         .then(data => {
             showSuggestions(data.suggestions || []);
@@ -397,7 +397,7 @@ function saveConfiguration() {
         placement_ids: [] // Not implemented in this basic version
     };
 
-    fetch(`/api/tenant/${tenantId}/product/${productId}/inventory`, {
+    fetch(`{{ script_name }}/api/tenant/${tenantId}/product/${productId}/inventory`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'

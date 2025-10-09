@@ -362,7 +362,7 @@ function approveCreative(creativeId) {
         return;
     }
 
-    fetch(`/admin/tenant/{{ tenant_id }}/creatives/review/${creativeId}/approve`, {
+    fetch(`{{ script_name }}/tenant/{{ tenant_id }}/creatives/review/${creativeId}/approve`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -411,7 +411,7 @@ function confirmReject() {
         return;
     }
 
-    fetch(`/admin/tenant/{{ tenant_id }}/creatives/review/${currentCreativeId}/reject`, {
+    fetch(`{{ script_name }}/tenant/{{ tenant_id }}/creatives/review/${currentCreativeId}/reject`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -449,7 +449,7 @@ function runAIReview(creativeId) {
     aiSection.style.display = 'block';
     aiContent.innerHTML = '<p style="margin: 0;"><em>Running AI review...</em></p>';
 
-    fetch(`/admin/tenant/{{ tenant_id }}/creatives/review/${creativeId}/ai-review`, {
+    fetch(`{{ script_name }}/tenant/{{ tenant_id }}/creatives/review/${creativeId}/ai-review`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

@@ -1185,7 +1185,7 @@ document.querySelectorAll('.filter-button').forEach(button => {
 });
 
 function fetchChartData(period) {
-    fetch(`/api/tenant/{{ tenant.tenant_id }}/revenue-chart?period=${period}`)
+    fetch(`{{ script_name }}/api/tenant/{{ tenant.tenant_id }}/revenue-chart?period=${period}`)
         .then(response => response.json())
         .then(data => {
             revenueChart.data.labels = data.labels;

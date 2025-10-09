@@ -301,7 +301,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
 async function fetchCustomTargetingMappings() {
     try {
-        const response = await fetch('/api/tenant/{{ tenant_id }}/gam/custom-targeting-keys', {
+        const response = await fetch('{{ script_name }}/api/tenant/{{ tenant_id }}/gam/custom-targeting-keys', {
             method: 'GET',
             credentials: 'include',
             headers: {
@@ -343,7 +343,7 @@ async function loadLineItem() {
 
     try {
         console.log('Fetching line item from API...');
-        const response = await fetch(`/api/tenant/{{ tenant_id }}/gam/line-item/${lineItemId}`, {
+        const response = await fetch(`{{ script_name }}/api/tenant/{{ tenant_id }}/gam/line-item/${lineItemId}`, {
             method: 'GET',
             credentials: 'include',
             headers: {

@@ -204,7 +204,7 @@ let targetingData = {
 // Load all targeting data
 async function loadTargetingData() {
     try {
-        const response = await fetch(`/api/tenant/${tenantId}/targeting/all`, {
+        const response = await fetch(`{{ script_name }}/api/tenant/${tenantId}/targeting/all`, {
             credentials: 'same-origin'
         });
 
@@ -494,7 +494,7 @@ document.getElementById('sync-targeting').addEventListener('click', async () => 
     modal.show();
 
     try {
-        const response = await fetch(`/api/tenant/${tenantId}/inventory/sync`, {
+        const response = await fetch(`{{ script_name }}/api/tenant/${tenantId}/inventory/sync`, {
             method: 'POST'
         });
 

@@ -379,7 +379,7 @@ function testMCPCall() {
     document.getElementById('response_details').innerHTML = '<span style="color: #6b7280;">Sending request...</span>';
 
     // Make the API call
-    fetch('/api/mcp-test/call', {
+    fetch('{{ script_name }}/api/mcp-test/call', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

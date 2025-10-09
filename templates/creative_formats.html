@@ -350,7 +350,7 @@ async function deleteFormat(formatId) {
     }
 
     try {
-        const response = await fetch(`/tenant/{{ tenant_id }}/creative-formats/${formatId}/delete`, {
+        const response = await fetch(`{{ script_name }}/tenant/{{ tenant_id }}/creative-formats/${formatId}/delete`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -403,7 +403,7 @@ document.addEventListener('DOMContentLoaded', function() {
         discoverBtn.disabled = true;
 
         try {
-            const response = await fetch('/tenant/{{ tenant_id }}/creative-formats/discover', {
+            const response = await fetch('{{ script_name }}/tenant/{{ tenant_id }}/creative-formats/discover', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -495,7 +495,7 @@ async function saveSelectedFormats() {
     saveBtn.disabled = true;
 
     try {
-        const response = await fetch('/tenant/{{ tenant_id }}/creative-formats/save-multiple', {
+        const response = await fetch('{{ script_name }}/tenant/{{ tenant_id }}/creative-formats/save-multiple', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
