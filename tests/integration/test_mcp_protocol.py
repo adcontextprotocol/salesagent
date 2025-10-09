@@ -216,6 +216,7 @@ class TestMCPProtocol:
                 pytest.skip("get_signals tool not implemented (optional)")
 
     @pytest.mark.requires_server
+    @pytest.mark.requires_db  # Needs running MCP server - skip in quick mode
     async def test_auth_header_required(self):
         """Test that authentication via x-adcp-auth header is required."""
         # Create client without auth header
