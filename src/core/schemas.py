@@ -1201,6 +1201,7 @@ class GetProductsResponse(BaseModel):
     products: list[Product] = Field(...)
 
     # Optional AdCP fields
+    message: str | None = None
     status: Literal["completed", "working", "submitted"] | None = Field(None, description="Task status")
     errors: list[Error] | None = None
 
@@ -1219,7 +1220,7 @@ class GetProductsResponse(BaseModel):
             data["products"] = []
 
         # Add other fields, excluding None values for AdCP compliance
-        if hasattr(self, "message") and self.message is not None:
+        if self.message is not None:
             data["message"] = self.message
         if self.errors is not None:
             data["errors"] = self.errors

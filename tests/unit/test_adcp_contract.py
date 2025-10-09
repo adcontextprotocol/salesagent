@@ -39,9 +39,11 @@ from src.core.schemas import (
     Measurement,
     MediaBuyDeliveryData,
     Package,
+    Pagination,
     Property,
     PropertyIdentifier,
     PropertyTagMetadata,
+    QuerySummary,
     Signal,
     SignalDeployment,
     SignalPricing,
@@ -1158,31 +1160,44 @@ class TestAdCPContract:
 
         response = ListCreativesResponse(
             creatives=[creative1, creative2],
-            total_count=2,
-            page=1,  # Required field
-            limit=50,  # Required field
-            has_more=False,
-            message="Found 2 creatives",  # Optional field
+            query_summary=QuerySummary(
+                total_matching=2,
+                returned=2,
+                filters_applied=[],
+            ),
+            pagination=Pagination(
+                limit=50,
+                offset=0,
+                has_more=False,
+                total_pages=1,
+                current_page=1,
+            ),
+            message="Found 2 creatives",
         )
 
         # Test model_dump
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields are present
-        adcp_required_fields = ["creatives", "total_count", "page", "limit", "has_more"]
+        adcp_required_fields = ["creatives", "query_summary", "pagination", "message"]
         for field in adcp_required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify AdCP optional fields are present
-        adcp_optional_fields = ["message"]
-        for field in adcp_optional_fields:
-            assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
-
         # Verify response structure requirements
         assert isinstance(adcp_response["creatives"], list), "Creatives must be array"
-        assert isinstance(adcp_response["total_count"], int), "Total count must be integer"
-        assert adcp_response["total_count"] >= 0, "Total count must be non-negative"
+        assert isinstance(adcp_response["query_summary"], dict), "Query summary must be dict"
+        assert isinstance(adcp_response["pagination"], dict), "Pagination must be dict"
+
+        # Verify query_summary structure
+        assert "total_matching" in adcp_response["query_summary"]
+        assert "returned" in adcp_response["query_summary"]
+        assert adcp_response["query_summary"]["total_matching"] >= 0
+
+        # Verify pagination structure
+        assert "limit" in adcp_response["pagination"]
+        assert "offset" in adcp_response["pagination"]
+        assert "has_more" in adcp_response["pagination"]
 
         # Test creative object structure in response
         if len(adcp_response["creatives"]) > 0:
@@ -1380,41 +1395,44 @@ class TestAdCPContract:
 
         # Create successful update response
         response = UpdateMediaBuyResponse(
-            status="accepted",
+            status="completed",
+            media_buy_id="buy_123",
+            buyer_ref="ref_123",
             implementation_date=datetime.now() + timedelta(hours=1),
-            detail="Budget update scheduled for implementation",
-            reason=None,
+            affected_packages=[],
         )
 
         # Test AdCP-compliant response
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["status"]
+        required_fields = ["status", "media_buy_id", "buyer_ref"]
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
         # Verify optional AdCP fields present (can be null)
-        optional_fields = ["implementation_date", "detail", "reason"]
+        optional_fields = ["implementation_date", "affected_packages"]
         for field in optional_fields:
             assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
 
         # Verify specific field types and constraints
         assert isinstance(adcp_response["status"], str), "status must be string"
-        assert adcp_response["status"] in ["accepted", "rejected", "pending"], "status must be valid value"
+        assert adcp_response["status"] in ["completed", "working", "submitted", "input-required"], "status must be valid value"
 
         # Test error response case
         error_response = UpdateMediaBuyResponse(
-            status="rejected",
+            status="input-required",
+            media_buy_id="buy_123",
+            buyer_ref="ref_123",
             implementation_date=None,
-            detail="Invalid budget amount",
-            reason="Budget must be positive",
+            errors=[Error(code="INVALID_BUDGET", message="Budget must be positive")],
         )
 
         error_adcp_response = error_response.model_dump()
-        assert error_adcp_response["status"] == "rejected"
-        assert error_adcp_response["reason"] == "Budget must be positive"
+        assert error_adcp_response["status"] == "input-required"
+        assert len(error_adcp_response["errors"]) == 1
+        assert error_adcp_response["errors"][0]["message"] == "Budget must be positive"
 
         # Verify field count (4 fields total - only non-None fields included)
         assert len(adcp_response) <= 4, f"UpdateMediaBuyResponse should have at most 4 fields, got {len(adcp_response)}"

@@ -767,8 +767,9 @@ class MockAdServer(AdServerAdapter):
             self.log(f"Would return: Campaign ID '{media_buy_id}' with status 'pending_creative'")
 
         return CreateMediaBuyResponse(
+            status="completed",  # Mock adapter completes immediately
+            buyer_ref=request.buyer_ref or media_buy_id,  # Use media_buy_id as fallback
             media_buy_id=media_buy_id,
-            buyer_ref=request.buyer_ref,
             creative_deadline=datetime.now(UTC) + timedelta(days=2),
         )
 

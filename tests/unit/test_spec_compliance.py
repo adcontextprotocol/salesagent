@@ -22,15 +22,14 @@ class TestResponseSchemas:
     def test_create_media_buy_response_no_context_id(self):
         """Verify CreateMediaBuyResponse doesn't have context_id."""
         response = CreateMediaBuyResponse(
-            media_buy_id="buy_123", buyer_ref="ref_456", status="active", packages=[], message="Created successfully"
+            media_buy_id="buy_123", buyer_ref="ref_456", status="completed", packages=[]
         )
 
         # Verify context_id is not in the schema
         assert not hasattr(response, "context_id")
 
         # Verify new fields are present
-        assert response.status == "active"
-        assert response.message == "Created successfully"
+        assert response.status == "completed"
         assert response.buyer_ref == "ref_456"
 
     def test_get_products_response_no_context_id(self):
@@ -67,12 +66,12 @@ class TestResponseSchemas:
         """Verify error reporting is protocol-compliant."""
         response = CreateMediaBuyResponse(
             media_buy_id="",
-            status="failed",
-            message="Creation failed",
+            buyer_ref="ref_123",
+            status="input-required",
             errors=[Error(code="validation_error", message="Invalid budget", details={"budget": -100})],
         )
 
-        assert response.status == "failed"
+        assert response.status == "input-required"
         assert response.errors is not None
         assert len(response.errors) == 1
         assert response.errors[0].code == "validation_error"
@@ -148,27 +147,26 @@ class TestProtocolCompliance:
 
     def test_create_media_buy_async_states(self):
         """Test that create_media_buy response handles async states correctly."""
-        # Pending approval state
+        # Pending approval state (use "submitted" for async operations)
         response = CreateMediaBuyResponse(
             media_buy_id="pending_123",
-            status="pending_manual",
-            detail="Requires approval",
-            message="Your request has been submitted for review",
+            buyer_ref="ref_123",
+            status="submitted",
+            task_id="task_456",
         )
 
-        assert response.status == "pending_manual"
-        assert response.detail == "Requires approval"
-        assert "review" in response.message.lower()
+        assert response.status == "submitted"
+        assert response.task_id == "task_456"
 
-        # Failed state
+        # Input required state
         response = CreateMediaBuyResponse(
             media_buy_id="",
-            status="failed",
-            message="Budget validation failed",
+            buyer_ref="ref_123",
+            status="input-required",
             errors=[Error(code="invalid_budget", message="Budget must be positive")],
         )
 
-        assert response.status == "failed"
+        assert response.status == "input-required"
         assert response.errors is not None
         assert response.media_buy_id == ""  # Empty on failure
 
