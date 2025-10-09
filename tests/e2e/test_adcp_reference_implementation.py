@@ -122,7 +122,7 @@ class TestAdCPReferenceImplementation:
 
             products_result = await client.call_tool(
                 "get_products",
-                {"req": {"promoted_offering": "Premium Athletic Footwear", "brief": "display advertising"}},
+                {"promoted_offering": "Premium Athletic Footwear", "brief": "display advertising"},
             )
             products_data = json.loads(products_result.content[0].text)
 
@@ -163,8 +163,8 @@ class TestAdCPReferenceImplementation:
                 webhook_url=webhook_server["url"],  # Async notifications!
             )
 
-            # Create media buy
-            media_buy_result = await client.call_tool("create_media_buy", {"req": media_buy_request})
+            # Create media buy (pass params directly - no req wrapper)
+            media_buy_result = await client.call_tool("create_media_buy", media_buy_request)
             media_buy_data = json.loads(media_buy_result.content[0].text)
 
             assert "media_buy_id" in media_buy_data, "Response must contain media_buy_id"
@@ -201,7 +201,7 @@ class TestAdCPReferenceImplementation:
             # Sync creatives
             sync_request = build_sync_creatives_request(creatives=[creative_1, creative_2])
 
-            sync_result = await client.call_tool("sync_creatives", {"req": sync_request})
+            sync_result = await client.call_tool("sync_creatives", sync_request)
             sync_data = json.loads(sync_result.content[0].text)
 
             assert "synced_creatives" in sync_data, "Response must contain synced_creatives"
@@ -215,7 +215,7 @@ class TestAdCPReferenceImplementation:
             print("\n📊 PHASE 4: Get Delivery Metrics")
 
             delivery_result = await client.call_tool(
-                "get_media_buy_delivery", {"req": {"media_buy_id": media_buy_id}}
+                "get_media_buy_delivery", {"media_buy_id": media_buy_id}
             )
             delivery_data = json.loads(delivery_result.content[0].text)
 
@@ -242,7 +242,7 @@ class TestAdCPReferenceImplementation:
                 webhook_url=webhook_server["url"],  # Expect async notification
             )
 
-            update_result = await client.call_tool("update_media_buy", {"req": update_request})
+            update_result = await client.call_tool("update_media_buy", update_request)
             update_data = json.loads(update_result.content[0].text)
 
             assert "media_buy_id" in update_data or "buyer_ref" in update_data
@@ -287,7 +287,7 @@ class TestAdCPReferenceImplementation:
             # ================================================================
             print("\n📋 PHASE 7: List Creatives (verify final state)")
 
-            list_result = await client.call_tool("list_creatives", {"req": {}})
+            list_result = await client.call_tool("list_creatives", {})
             list_data = json.loads(list_result.content[0].text)
 
             assert "creatives" in list_data, "Response must contain creatives"
