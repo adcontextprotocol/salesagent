@@ -897,14 +897,17 @@
 
                     <!-- AI Configuration (shown only for ai-powered mode) -->
                     <div id="ai-config-section" style="display: none; margin-top: 1rem;">
-                        {% if not tenant.gemini_api_key %}
+                        {% if not has_gemini_key %}
                         <div class="alert alert-warning" style="padding: 0.75rem; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; margin-bottom: 1rem;">
                             <strong>⚠️ Gemini API Key Required</strong>
-                            <p style="margin: 0.5rem 0 0;">AI review requires a Gemini API key. Please set your key in <a href="#general" onclick="showSection('general')">General Settings → AI Services</a>.</p>
+                            <p style="margin: 0.5rem 0 0;">AI review requires a Gemini API key. Please set your key in <a href="#" onclick="event.preventDefault(); switchSettingsSection('general')">General Settings → AI Services</a>.</p>
                         </div>
                         {% else %}
                         <div class="alert alert-success" style="padding: 0.75rem; background: #d1fae5; border: 1px solid #34d399; border-radius: 6px; margin-bottom: 1rem;">
                             <strong>✅ Gemini API Key Configured</strong>
+                            {% if not tenant.gemini_api_key %}
+                            <p style="margin: 0.5rem 0 0; font-size: 0.875rem; color: #059669;">Using environment variable GEMINI_API_KEY</p>
+                            {% endif %}
                         </div>
                         {% endif %}
 
@@ -2219,8 +2222,8 @@ function saveGAMConfig() {
     const networkCode = document.getElementById('gam_network_code').value;
     const refreshToken = document.getElementById('gam_refresh_token').value;
     const traffickerId = document.getElementById('gam_trafficker_id').value;
-    const orderNameTemplate = document.getElementById('gam_order_name_template').value;
-    const lineItemNameTemplate = document.getElementById('gam_line_item_name_template').value;
+    const orderNameTemplate = (document.getElementById('gam_order_name_template') || document.getElementById('order_name_template'))?.value || '';
+    const lineItemNameTemplate = (document.getElementById('gam_line_item_name_template') || document.getElementById('line_item_name_template'))?.value || '';
 
     if (!refreshToken) {
         alert('Please provide a Refresh Token');
