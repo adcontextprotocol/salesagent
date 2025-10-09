@@ -2496,6 +2496,10 @@ class UpdateMediaBuyRequest(BaseModel):
     end_time: datetime | None = None  # AdCP uses datetime, not date
     budget: Budget | None = None  # Budget object contains currency/pacing
     packages: list[AdCPPackageUpdate] | None = None
+    push_notification_config: dict[str, Any] | None = Field(
+        None,
+        description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
+    )
     today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
     @model_validator(mode="after")
