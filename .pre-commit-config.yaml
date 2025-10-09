@@ -57,6 +57,14 @@ repos:
         pass_filenames: false
         stages: [manual]  # Run with: pre-commit run smoke-tests
 
+      # Check for multiple Alembic migration heads
+      - id: check-migration-heads
+        name: Check for multiple Alembic migration heads
+        entry: uv run python scripts/ops/check_migration_heads.py --quiet
+        language: system
+        pass_filenames: false
+        always_run: true
+
       # Validate migrations can run
       - id: test-migrations
         name: Test database migrations
