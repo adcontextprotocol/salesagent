@@ -42,7 +42,6 @@ def init_db_ci():
                 subdomain="ci-test",
                 billing_plan="test",
                 ad_server="mock",
-                max_daily_budget=10000,
                 enable_axe_signals=True,
                 auto_approve_formats=["display_300x250", "display_728x90"],
                 human_review_required=False,
