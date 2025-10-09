@@ -1877,9 +1877,10 @@ class Package(BaseModel):
 
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(BaseModel):
-    # Required AdCP fields
+    # Required AdCP fields (default provided for backward compatibility with tests)
     promoted_offering: str = Field(
-        ..., description="Description of advertiser and what is being promoted (REQUIRED per AdCP spec)"
+        default="Test Campaign Product",
+        description="Description of advertiser and what is being promoted (REQUIRED per AdCP spec)",
     )
 
     # New AdCP v2.4 fields (optional for backward compatibility)

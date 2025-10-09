@@ -319,10 +319,10 @@ class TestAdCPFullLifecycle:
             assert isinstance(formats, list), f"Product {i} formats must be a list"
             assert len(formats) > 0, f"Product {i} must have at least one format"
 
-            # Validate format structure
-            for j, format_info in enumerate(formats):
-                assert "format_id" in format_info, f"Product {i} format {j} missing format_id"
-                assert "name" in format_info, f"Product {i} format {j} missing name"
+            # Validate format IDs (formats is a list of format ID strings per AdCP spec)
+            for j, format_id in enumerate(formats):
+                assert isinstance(format_id, str), f"Product {i} format {j} must be a string format_id"
+                assert len(format_id) > 0, f"Product {i} format {j} format_id cannot be empty"
 
             # Additional validation for pricing if present
             if "pricing" in product:
@@ -381,24 +381,33 @@ class TestAdCPFullLifecycle:
         assert isinstance(products["products"], list), "Products must be a list"
         assert len(products["products"]) > 0, "Must return at least one product"
 
-        # Extract and validate formats from products
-        all_formats = []
+        # Extract format IDs from products (formats is a list of format ID strings per AdCP spec)
+        all_format_ids = []
         for product in products["products"]:
             assert "formats" in product, "Product must contain formats"
-            for format_info in product["formats"]:
-                all_formats.append(format_info)
+            for format_id in product["formats"]:
+                assert isinstance(format_id, str), "Format ID must be a string"
+                all_format_ids.append(format_id)
 
-                # Validate required format fields
-                assert "format_id" in format_info, "Format missing format_id"
-                assert "name" in format_info, "Format missing name"
-                assert "type" in format_info, "Format missing type"
+        # Now call list_creative_formats to get full format details
+        formats_response = await test_client.call_mcp_tool("list_creative_formats", {})
+        assert "formats" in formats_response, "Response must contain 'formats' field"
+        assert isinstance(formats_response["formats"], list), "Formats must be a list"
 
-                # Validate format type
-                valid_types = ["video", "audio", "display", "native", "dooh"]
-                assert format_info["type"] in valid_types, f"Invalid format type: {format_info['type']}"
+        # Validate full format details
+        for format_info in formats_response["formats"]:
+            # Validate required format fields
+            assert "format_id" in format_info, "Format missing format_id"
+            assert "name" in format_info, "Format missing name"
+            assert "type" in format_info, "Format missing type"
 
-        print(f"✓ Discovered {len(all_formats)} creative formats across {len(products['products'])} products")
-        for i, format_info in enumerate(all_formats[:5]):  # Show first 5
+            # Validate format type
+            valid_types = ["video", "audio", "display", "native", "dooh"]
+            assert format_info["type"] in valid_types, f"Invalid format type: {format_info['type']}"
+
+        print(f"✓ Discovered {len(all_format_ids)} format IDs in {len(products['products'])} products")
+        print(f"✓ Retrieved {len(formats_response['formats'])} full format details via list_creative_formats")
+        for i, format_info in enumerate(formats_response["formats"][:5]):  # Show first 5
             print(f"  ✓ Format {i+1}: {format_info['name']} ({format_info['type']})")
 
     @pytest.mark.asyncio

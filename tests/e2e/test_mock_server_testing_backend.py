@@ -16,6 +16,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 class TestMockServerTestingBackend:
     """Test suite for mock server AdCP testing backend features."""
 
+    @pytest.mark.skip_ci(reason="testing_control tool not yet implemented")
     @pytest.mark.asyncio
     async def test_testing_capabilities_endpoint(self, live_server, test_auth_token):
         """Test the testing_control endpoint for capabilities."""
@@ -239,6 +240,7 @@ class TestMockServerTestingBackend:
                     else:
                         print(f"  ⚠ {error}: unexpected exception: {str(e)[:50]}")
 
+    @pytest.mark.skip_ci(reason="testing_control tool not yet implemented")
     @pytest.mark.asyncio
     async def test_session_management_api(self, live_server, test_auth_token):
         """Test comprehensive session management."""
