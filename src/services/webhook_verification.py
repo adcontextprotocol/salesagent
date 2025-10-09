@@ -176,7 +176,7 @@ def verify_adcp_webhook(
     Example:
         try:
             verify_adcp_webhook(
-                webhook_secret="your-secret-at-least-32-chars",
+                webhook_secret=os.environ["WEBHOOK_SECRET"],
                 payload=request.json(),
                 request_headers=dict(request.headers)
             )
