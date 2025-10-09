@@ -905,9 +905,7 @@
                         {% else %}
                         <div class="alert alert-success" style="padding: 0.75rem; background: #d1fae5; border: 1px solid #34d399; border-radius: 6px; margin-bottom: 1rem;">
                             <strong>✅ Gemini API Key Configured</strong>
-                            {% if not tenant.gemini_api_key %}
-                            <p style="margin: 0.5rem 0 0; font-size: 0.875rem; color: #059669;">Using environment variable GEMINI_API_KEY</p>
-                            {% endif %}
+                            <p style="margin: 0.5rem 0 0; font-size: 0.875rem; color: #059669;">AI-powered creative review is enabled.</p>
                         </div>
                         {% endif %}
 
@@ -1352,18 +1350,32 @@ REJECT - Creative cannot be approved:
 
             <div class="form-section">
                 <h3>AI Services</h3>
+                <p class="form-section-description">
+                    Configure AI-powered features like creative review. Each tenant must provide their own API keys.
+                </p>
+
+                {% if not tenant.gemini_api_key %}
+                <div class="alert alert-warning" style="padding: 0.75rem; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; margin-bottom: 1rem;">
+                    <strong>⚠️ Gemini API Key Required</strong>
+                    <p style="margin: 0.5rem 0 0;">AI-powered creative review is not available without a Gemini API key. Please add your key below.</p>
+                </div>
+                {% else %}
+                <div class="alert alert-success" style="padding: 0.75rem; background: #d1fae5; border: 1px solid #34d399; border-radius: 6px; margin-bottom: 1rem;">
+                    <strong>✅ Gemini API Key Configured</strong>
+                    <p style="margin: 0.5rem 0 0;">AI-powered creative review is enabled.</p>
+                </div>
+                {% endif %}
+
                 <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/ai">
                     <div class="form-group">
-                        <label for="gemini_api_key">Gemini API Key</label>
+                        <label for="gemini_api_key">Gemini API Key <span style="color: #ef4444;">*</span></label>
                         <input type="password" id="gemini_api_key" name="gemini_api_key"
                                value="{{ tenant.gemini_api_key or '' }}"
-                               placeholder="Enter your Gemini API key">
+                               placeholder="Enter your Gemini API key"
+                               required>
                         <small>
-                            Required for AI-powered creative review.
-                            {% if has_gemini_key and not tenant.gemini_api_key %}
-                            Currently using environment variable GEMINI_API_KEY.
-                            {% endif %}
-                            <a href="https://aistudio.google.com/app/apikey" target="_blank">Get an API key</a>
+                            Required for AI-powered creative review. Each tenant provides their own key for usage tracking and billing.
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank">Get an API key from Google AI Studio</a>
                         </small>
                     </div>
 

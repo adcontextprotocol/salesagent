@@ -226,8 +226,8 @@ def tenant_settings(tenant_id, section=None):
             stmt = select(CurrencyLimit).filter_by(tenant_id=tenant_id).order_by(CurrencyLimit.currency_code)
             currency_limits = db_session.scalars(stmt).all()
 
-            # Check for Gemini API key (tenant-specific or environment fallback)
-            has_gemini_key = bool(tenant.gemini_api_key or os.environ.get("GEMINI_API_KEY"))
+            # Check for Gemini API key (tenant-specific only - no environment fallback in production)
+            has_gemini_key = bool(tenant.gemini_api_key)
 
             return render_template(
                 "tenant_settings.html",
