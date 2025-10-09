@@ -1635,6 +1635,12 @@ class SyncCreativesRequest(BaseModel):
         "strict",
         description="Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid creatives and reports errors.",
     )
+    push_notification_config: "PushNotificationConfig | None" = Field(
+        None,
+        description="Optional webhook configuration for async sync notifications. "
+        "Publisher will send webhook when sync completes if operation takes longer than immediate response time "
+        "(typically for large bulk operations or manual approval/HITL).",
+    )
 
 
 class SyncCreativesResponse(BaseModel):
@@ -2959,3 +2965,8 @@ class ListAuthorizedPropertiesResponse(BaseModel):
         if data.get("errors") is None:
             data["errors"] = []
         return data
+
+
+# Rebuild models with forward references
+SyncCreativesRequest.model_rebuild()
+UpdateMediaBuyRequest.model_rebuild()
