@@ -156,83 +156,13 @@ def live_server(docker_services_e2e):
 
 @pytest.fixture
 def test_auth_token(live_server):
-    """Create or get a test principal with auth token."""
-    # Try to create a test principal via Docker exec
-    # This ensures we have a valid token for testing
+    """Create or get a test principal with auth token.
 
-    # First, find the running ADCP server container
-    container_result = subprocess.run(
-        ["docker", "ps", "--format", "{{.Names}}", "--filter", "name=adcp-server"],
-        capture_output=True,
-        text=True,
-    )
-
-    if container_result.returncode != 0 or not container_result.stdout.strip():
-        # Fallback to known working token if container discovery fails
-        return "1sNG-OxWfEsELsey-6H6IGg1HCxrpbtneGfW4GkSb10"
-
-    container_name = container_result.stdout.strip().split("\n")[0]
-
-    result = subprocess.run(
-        [
-            "docker",
-            "exec",
-            "-i",
-            container_name,
-            "python",
-            "-c",
-            """
-import sys
-sys.path.insert(0, '/app')
-from src.core.database.models import Principal, Tenant
-from src.core.database.connection import get_db_session
-from sqlalchemy import select
-import secrets
-
-with get_db_session() as session:
-    # Use the default tenant that already exists
-    tenant = session.scalars(select(Tenant).filter_by(tenant_id='default')).first()
-    if not tenant:
-        # Create default tenant if it doesn't exist
-        tenant = Tenant(
-            tenant_id='default',
-            name='Default Publisher',
-            subdomain='default',
-            ad_server='mock',
-            admin_token=secrets.token_urlsafe(32)
-        )
-        session.add(tenant)
-        session.commit()
-
-    # Check if test principal exists in default tenant
-    principal = session.scalars(select(Principal).filter_by(
-        tenant_id='default',
-        name='E2E Test Advertiser'
-    )).first()
-
-    if not principal:
-        principal = Principal(
-            tenant_id='default',
-            principal_id='e2e-test-principal',
-            name='E2E Test Advertiser',
-            access_token=secrets.token_urlsafe(32),
-            platform_mappings={'mock': {'advertiser_id': 'test_123'}}
-        )
-        session.add(principal)
-        session.commit()
-
-    print(principal.access_token)
-""",
-        ],
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode == 0 and result.stdout:
-        return result.stdout.strip()
-    else:
-        # Fallback to known working token from previous tests
-        return "1sNG-OxWfEsELsey-6H6IGg1HCxrpbtneGfW4GkSb10"
+    This token must match the one created by init_database_ci.py.
+    """
+    # Return the CI test token that is created by scripts/setup/init_database_ci.py
+    # This ensures consistency between database initialization and E2E tests
+    return "ci-test-token"
 
 
 @pytest.fixture

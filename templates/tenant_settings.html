@@ -905,9 +905,7 @@
                         {% else %}
                         <div class="alert alert-success" style="padding: 0.75rem; background: #d1fae5; border: 1px solid #34d399; border-radius: 6px; margin-bottom: 1rem;">
                             <strong>✅ Gemini API Key Configured</strong>
-                            {% if not tenant.gemini_api_key %}
-                            <p style="margin: 0.5rem 0 0; font-size: 0.875rem; color: #059669;">Using environment variable GEMINI_API_KEY</p>
-                            {% endif %}
+                            <p style="margin: 0.5rem 0 0; font-size: 0.875rem; color: #059669;">AI-powered creative review is enabled.</p>
                         </div>
                         {% endif %}
 
@@ -1326,6 +1324,31 @@ REJECT - Creative cannot be approved:
 
             <div class="form-section">
                 <h3>Slack Integration</h3>
+                <p class="form-section-description">
+                    Receive real-time notifications for creative approvals, tasks, and audit logs in your Slack workspace.
+                </p>
+
+                <details style="margin-bottom: 1rem; padding: 1rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;">
+                    <summary style="cursor: pointer; font-weight: 500; color: #374151;">
+                        📖 How to set up a Slack webhook
+                    </summary>
+                    <div style="margin-top: 1rem; padding-left: 0.5rem;">
+                        <ol style="margin: 0.5rem 0; padding-left: 1.5rem; line-height: 1.8;">
+                            <li>Go to <a href="https://api.slack.com/apps" target="_blank" rel="noopener">api.slack.com/apps</a> and create a new app (or select an existing one)</li>
+                            <li>Click on <strong>Incoming Webhooks</strong> in the left sidebar</li>
+                            <li>Toggle <strong>Activate Incoming Webhooks</strong> to On</li>
+                            <li>Click <strong>Add New Webhook to Workspace</strong></li>
+                            <li>Select the channel where you want notifications</li>
+                            <li>Copy the webhook URL (starts with <code>https://hooks.slack.com/services/...</code>)</li>
+                            <li>Paste it into the fields below</li>
+                        </ol>
+                        <img src="/static/images/slack-webhook-setup.png" alt="Slack Incoming Webhooks setup page" style="max-width: 100%; border: 1px solid #e5e7eb; border-radius: 6px; margin-top: 1rem;">
+                        <p style="margin-top: 1rem; font-size: 0.875rem; color: #6b7280;">
+                            💡 <strong>Tip:</strong> You can use the same webhook for both notifications and audit logs, or create separate webhooks for different channels.
+                        </p>
+                    </div>
+                </details>
+
                 <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/slack">
                     <div class="form-group">
                         <label for="slack_webhook_url">Task Notifications Webhook URL</label>
@@ -1352,18 +1375,32 @@ REJECT - Creative cannot be approved:
 
             <div class="form-section">
                 <h3>AI Services</h3>
+                <p class="form-section-description">
+                    Configure AI-powered features like creative review. Each tenant must provide their own API keys.
+                </p>
+
+                {% if not tenant.gemini_api_key %}
+                <div class="alert alert-warning" style="padding: 0.75rem; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; margin-bottom: 1rem;">
+                    <strong>⚠️ Gemini API Key Required</strong>
+                    <p style="margin: 0.5rem 0 0;">AI-powered creative review is not available without a Gemini API key. Please add your key below.</p>
+                </div>
+                {% else %}
+                <div class="alert alert-success" style="padding: 0.75rem; background: #d1fae5; border: 1px solid #34d399; border-radius: 6px; margin-bottom: 1rem;">
+                    <strong>✅ Gemini API Key Configured</strong>
+                    <p style="margin: 0.5rem 0 0;">AI-powered creative review is enabled.</p>
+                </div>
+                {% endif %}
+
                 <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/ai">
                     <div class="form-group">
-                        <label for="gemini_api_key">Gemini API Key</label>
+                        <label for="gemini_api_key">Gemini API Key <span style="color: #ef4444;">*</span></label>
                         <input type="password" id="gemini_api_key" name="gemini_api_key"
                                value="{{ tenant.gemini_api_key or '' }}"
-                               placeholder="Enter your Gemini API key">
+                               placeholder="Enter your Gemini API key"
+                               required>
                         <small>
-                            Required for AI-powered creative review.
-                            {% if has_gemini_key and not tenant.gemini_api_key %}
-                            Currently using environment variable GEMINI_API_KEY.
-                            {% endif %}
-                            <a href="https://aistudio.google.com/app/apikey" target="_blank">Get an API key</a>
+                            Required for AI-powered creative review. Each tenant provides their own key for usage tracking and billing.
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank">Get an API key from Google AI Studio</a>
                         </small>
                     </div>
 

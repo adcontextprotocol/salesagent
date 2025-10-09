@@ -364,10 +364,10 @@ def update_ai(tenant_id):
             # Update Gemini API key (encrypted via property setter)
             if gemini_api_key:
                 tenant.gemini_api_key = gemini_api_key
-                flash("AI services settings updated successfully", "success")
+                flash("Gemini API key saved successfully. AI-powered creative review is now enabled.", "success")
             else:
                 tenant.gemini_api_key = None
-                flash("Gemini API key removed (will fall back to environment variable if set)", "info")
+                flash("Gemini API key removed. AI-powered creative review is now disabled.", "warning")
 
             tenant.updated_at = datetime.now(UTC)
             db_session.commit()

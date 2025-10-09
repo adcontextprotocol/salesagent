@@ -226,9 +226,13 @@ def tenant_settings(tenant_id, section=None):
             stmt = select(CurrencyLimit).filter_by(tenant_id=tenant_id).order_by(CurrencyLimit.currency_code)
             currency_limits = db_session.scalars(stmt).all()
 
+            # Check for Gemini API key (tenant-specific only - no environment fallback in production)
+            has_gemini_key = bool(tenant.gemini_api_key)
+
             return render_template(
                 "tenant_settings.html",
                 tenant=tenant,
+                has_gemini_key=has_gemini_key,
                 tenant_id=tenant_id,
                 section=section or "general",
                 active_adapter=active_adapter,
@@ -302,9 +306,18 @@ def update(tenant_id):
 def update_slack(tenant_id):
     """Update tenant Slack settings."""
     try:
+        from src.core.webhook_validator import WebhookURLValidator
+
         # Sanitize form data
         form_data = sanitize_form_data(request.form.to_dict())
         webhook_url = form_data.get("slack_webhook_url", "").strip()
+
+        # Validate webhook URL for SSRF protection
+        if webhook_url:
+            is_valid, error_msg = WebhookURLValidator.validate_webhook_url(webhook_url)
+            if not is_valid:
+                flash(f"Invalid Slack webhook URL: {error_msg}", "error")
+                return redirect(url_for("tenants.settings", tenant_id=tenant_id, section="slack"))
 
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
