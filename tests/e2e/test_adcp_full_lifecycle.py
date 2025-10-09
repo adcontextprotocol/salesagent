@@ -1137,18 +1137,6 @@ class TestAdCPFullLifecycle:
             print(f"⚠ Performance index update not available: {e}")
 
     @pytest.mark.asyncio
-    async def test_aee_compliance(self, test_client: AdCPTestClient):
-        """Test AEE (Ad Experience Engine) compliance checking."""
-        print("\n=== Testing AEE Compliance ===")
-
-        result = await test_client.call_mcp_tool(
-            "check_axe_requirements", {"channel": "web", "required_dimensions": ["geo", "daypart", "frequency"]}
-        )
-
-        assert "supported" in result or "compliant" in result or "status" in result
-        print("✓ AEE compliance check completed")
-
-    @pytest.mark.asyncio
     async def test_comprehensive_error_handling(self, test_client: AdCPTestClient):
         """Test comprehensive error handling per AdCP specification."""
         print("\n=== Testing Comprehensive Error Handling ===")

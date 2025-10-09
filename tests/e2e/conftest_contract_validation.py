@@ -31,6 +31,7 @@ ACTUAL_MCP_TOOLS = {
 # Tools that are intentionally called for error handling tests
 INTENTIONAL_NONEXISTENT_TOOLS = {
     'nonexistent_tool',  # Used in error handling tests
+    'check_axe_requirements',  # Optional tool tested in try/except blocks
 }
 
 

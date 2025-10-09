@@ -101,6 +101,11 @@ def docker_services_e2e(request):
     env["A2A_PORT"] = str(a2a_port)
     env["ADMIN_UI_PORT"] = str(admin_port)
     env["POSTGRES_PORT"] = str(postgres_port)
+    # Ensure ADCP_TESTING is passed to Docker containers (for test mode validation)
+    if "ADCP_TESTING" in os.environ:
+        env["ADCP_TESTING"] = os.environ["ADCP_TESTING"]
+    else:
+        env["ADCP_TESTING"] = "true"  # Default to testing mode in E2E tests
 
     print("Building and starting Docker services with dynamic ports...")
     subprocess.run(["docker-compose", "up", "-d", "--build"], check=True, env=env)

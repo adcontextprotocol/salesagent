@@ -50,6 +50,9 @@ services:
       # Optional: Dry run mode
       # ADCP_DRY_RUN: true
 
+      # Testing mode (for E2E tests - relaxes validation)
+      ADCP_TESTING: ${ADCP_TESTING:-false}
+
     depends_on:
       postgres:
         condition: service_healthy
