@@ -299,6 +299,24 @@ class GAMCreativesManager:
                 placeholder_width = placeholder_size.get("width", 0)
                 placeholder_height = placeholder_size.get("height", 0)
 
+                # 1x1 placeholders are wildcards in GAM (native templates or programmatic)
+                # They accept creatives of any size
+                if placeholder_width == 1 and placeholder_height == 1:
+                    matching_placeholders_found = True
+                    template_id = placeholder.get("creativeTemplateId")
+                    if template_id:
+                        logger.info(
+                            f"Creative {asset_width}x{asset_height} matches 1x1 placeholder "
+                            f"with GAM native template {template_id}"
+                        )
+                    else:
+                        logger.info(
+                            f"Creative {asset_width}x{asset_height} matches 1x1 wildcard placeholder "
+                            f"(programmatic/third-party)"
+                        )
+                    break
+
+                # Standard placeholders require exact dimension match
                 if asset_width == placeholder_width and asset_height == placeholder_height:
                     matching_placeholders_found = True
                     break

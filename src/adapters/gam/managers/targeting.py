@@ -171,11 +171,19 @@ class GAMTargetingManager:
                     else:
                         logger.warning(f"Metro code '{metro}' not in GAM mapping")
 
-        # City and postal require real GAM API lookup - for now we log a warning
+        # City and postal code targeting not supported - fail loudly
         if targeting_overlay.geo_city_any_of:
-            logger.warning("City targeting requires GAM geo service lookup (not implemented)")
+            raise ValueError(
+                f"City targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for cities: {targeting_overlay.geo_city_any_of}. "
+                f"Use geo_metro_any_of for metropolitan area targeting instead."
+            )
         if targeting_overlay.geo_zip_any_of:
-            logger.warning("Postal code targeting requires GAM geo service lookup (not implemented)")
+            raise ValueError(
+                f"Postal code targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for postal codes: {targeting_overlay.geo_zip_any_of}. "
+                f"Use geo_metro_any_of for metropolitan area targeting instead."
+            )
 
         # Build excluded locations - only for supported geo features
         if any(
@@ -206,11 +214,17 @@ class GAMTargetingManager:
                     if metro in self.geo_metro_map:
                         geo_targeting["excludedLocations"].append({"id": self.geo_metro_map[metro]})
 
-        # City and postal exclusions
+        # City and postal code exclusions not supported - fail loudly
         if targeting_overlay.geo_city_none_of:
-            logger.warning("City exclusion requires GAM geo service lookup (not implemented)")
+            raise ValueError(
+                f"City exclusion requested but not supported. "
+                f"Cannot fulfill buyer contract for excluded cities: {targeting_overlay.geo_city_none_of}."
+            )
         if targeting_overlay.geo_zip_none_of:
-            logger.warning("Postal code exclusion requires GAM geo service lookup (not implemented)")
+            raise ValueError(
+                f"Postal code exclusion requested but not supported. "
+                f"Cannot fulfill buyer contract for excluded postal codes: {targeting_overlay.geo_zip_none_of}."
+            )
 
         if geo_targeting:
             gam_targeting["geoTargeting"] = geo_targeting
@@ -263,6 +277,54 @@ class GAMTargetingManager:
 
         if custom_targeting:
             gam_targeting["customTargeting"] = custom_targeting
+
+        # Audience segment targeting
+        # Map AdCP audiences_any_of and signals to GAM audience segment IDs
+        if targeting_overlay.audiences_any_of or targeting_overlay.signals:
+            # Note: This requires GAM audience segment ID mapping configured per tenant
+            # For now, we fail loudly to indicate it's not fully implemented
+            audience_list = []
+            if targeting_overlay.audiences_any_of:
+                audience_list.extend(targeting_overlay.audiences_any_of)
+            if targeting_overlay.signals:
+                audience_list.extend(targeting_overlay.signals)
+
+            raise ValueError(
+                f"Audience/signal targeting requested but GAM audience segment mapping not configured. "
+                f"Cannot fulfill buyer contract for: {', '.join(audience_list)}. "
+                f"Configure audience segment ID mappings in tenant adapter config to support this targeting."
+            )
+
+        # Media type targeting - map to GAM environmentType
+        # This should be set on line items, not in targeting dict
+        # We'll store it for the line item creation logic to use
+        if targeting_overlay.media_type_any_of:
+            # Validate only one media type (GAM line items have single environmentType)
+            if len(targeting_overlay.media_type_any_of) > 1:
+                raise ValueError(
+                    f"Multiple media types requested but GAM supports only one environmentType per line item. "
+                    f"Requested: {targeting_overlay.media_type_any_of}. "
+                    f"Create separate packages for each media type."
+                )
+
+            media_type = targeting_overlay.media_type_any_of[0]
+            # Map AdCP media types to GAM environmentType
+            media_type_map = {
+                "video": "VIDEO_PLAYER",
+                "display": "BROWSER",
+                "native": "BROWSER",
+                # audio and dooh not directly supported by GAM
+            }
+
+            if media_type in media_type_map:
+                # Store for line item creation - will be picked up by orders manager
+                gam_targeting["_media_type_environment"] = media_type_map[media_type]
+                logger.info(f"Media type '{media_type}' mapped to GAM environmentType: {media_type_map[media_type]}")
+            else:
+                raise ValueError(
+                    f"Media type '{media_type}' is not supported in GAM. "
+                    f"Supported types: {', '.join(media_type_map.keys())}"
+                )
 
         logger.info(f"Applying GAM targeting: {list(gam_targeting.keys())}")
         return gam_targeting

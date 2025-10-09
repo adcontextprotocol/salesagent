@@ -217,6 +217,8 @@ def tenant_settings(tenant_id, section=None):
 
             # Get admin port
             admin_port = int(os.environ.get("ADMIN_UI_PORT", 8001))
+            # Get A2A port (for agent cards)
+            a2a_port = int(os.environ.get("A2A_PORT", 8091)) if not is_production else None
 
             # Get currency limits for this tenant
             from src.core.database.models import CurrencyLimit
@@ -237,6 +239,7 @@ def tenant_settings(tenant_id, section=None):
                 advertiser_count=advertiser_count,
                 active_advertisers=active_advertisers,
                 mcp_port=mcp_port,
+                a2a_port=a2a_port,
                 admin_port=admin_port,
                 is_production=is_production,
                 authorized_domains=authorized_domains,

@@ -3174,7 +3174,16 @@ def _create_media_buy_impl(
                 message="Media buy creation failed: missing required datetime fields",
                 errors=[{"code": "invalid_datetime", "message": error_msg}],
             )
-        response = adapter.create_media_buy(req, packages, req.start_time, req.end_time)
+
+        # Call adapter with detailed error logging
+        try:
+            response = adapter.create_media_buy(req, packages, req.start_time, req.end_time)
+        except Exception as adapter_error:
+            import traceback
+
+            error_traceback = traceback.format_exc()
+            logger.error(f"Adapter create_media_buy failed with traceback:\n{error_traceback}")
+            raise
 
         # Store the media buy in memory (for backward compatibility)
         media_buys[response.media_buy_id] = (req, principal_id)
@@ -3212,20 +3221,42 @@ def _create_media_buy_impl(
             session.add(new_media_buy)
             session.commit()
 
-        # Handle creative_ids in packages if provided
+        # Handle creative_ids in packages if provided (immediate association)
         if req.packages:
             with get_db_session() as session:
+                from src.core.database.models import Creative as DBCreative
                 from src.core.database.models import CreativeAssignment as DBAssignment
+
+                # Batch load all creatives upfront to avoid N+1 queries
+                all_creative_ids = []
+                for package in req.packages:
+                    if package.creative_ids:
+                        all_creative_ids.extend(package.creative_ids)
+
+                creatives_map: dict[str, Any] = {}
+                if all_creative_ids:
+                    creative_stmt = select(DBCreative).where(
+                        DBCreative.tenant_id == tenant["tenant_id"],
+                        DBCreative.creative_id.in_(all_creative_ids),
+                    )
+                    creatives_list = session.scalars(creative_stmt).all()
+                    creatives_map = {str(c.creative_id): c for c in creatives_list}
 
                 for i, package in enumerate(req.packages):
                     if package.creative_ids:
                         package_id = f"{response.media_buy_id}_pkg_{i+1}"
-                        for creative_id in package.creative_ids:
-                            # Verify the creative exists
-                            from src.core.database.models import Creative as DBCreative
 
-                            stmt = select(DBCreative).filter_by(tenant_id=tenant["tenant_id"], creative_id=creative_id)
-                            creative = session.scalars(stmt).first()
+                        # Get platform_line_item_id from response if available
+                        platform_line_item_id = None
+                        if response.packages and i < len(response.packages):
+                            platform_line_item_id = response.packages[i].get("platform_line_item_id")
+
+                        # Collect platform creative IDs for association
+                        platform_creative_ids = []
+
+                        for creative_id in package.creative_ids:
+                            # Get creative from batch-loaded map
+                            creative = creatives_map.get(creative_id)
 
                             if not creative:
                                 logger.warning(
@@ -3233,7 +3264,19 @@ def _create_media_buy_impl(
                                 )
                                 continue
 
-                            # Create assignment with generated assignment_id
+                            # Create database assignment (always create, even if not yet uploaded to GAM)
+                            # Get platform_creative_id from creative.data JSON
+                            platform_creative_id = creative.data.get("platform_creative_id") if creative.data else None
+                            if platform_creative_id:
+                                # Add to association list for immediate GAM association
+                                platform_creative_ids.append(platform_creative_id)
+                            else:
+                                logger.warning(
+                                    f"Creative {creative_id} has not been uploaded to ad server yet (no platform_creative_id). "
+                                    f"Database assignment will be created, but GAM association will be skipped until creative is uploaded."
+                                )
+
+                            # Create database assignment
                             assignment_id = f"assign_{uuid.uuid4().hex[:12]}"
                             assignment = DBAssignment(
                                 assignment_id=assignment_id,
@@ -3244,7 +3287,37 @@ def _create_media_buy_impl(
                             )
                             session.add(assignment)
 
-                session.commit()
+                        session.commit()
+
+                        # Associate creatives with line items in ad server immediately
+                        if platform_line_item_id and platform_creative_ids:
+                            try:
+                                console.print(
+                                    f"[cyan]Associating {len(platform_creative_ids)} pre-synced creatives with line item {platform_line_item_id}[/cyan]"
+                                )
+                                association_results = adapter.associate_creatives(
+                                    [platform_line_item_id], platform_creative_ids
+                                )
+
+                                # Log results
+                                for result in association_results:
+                                    if result.get("status") == "success":
+                                        console.print(
+                                            f"  ✓ Associated creative {result['creative_id']} with line item {result['line_item_id']}"
+                                        )
+                                    else:
+                                        console.print(
+                                            f"  ✗ Failed to associate creative {result['creative_id']}: {result.get('error', 'Unknown error')}"
+                                        )
+                            except Exception as e:
+                                logger.error(
+                                    f"Failed to associate creatives with line item {platform_line_item_id}: {e}"
+                                )
+                        elif platform_creative_ids:
+                            logger.warning(
+                                f"Package {package_id} has {len(platform_creative_ids)} creatives but no platform_line_item_id from adapter. "
+                                f"Creatives will need to be associated via sync_creatives."
+                            )
 
         # Handle creatives if provided
         if req.creatives:

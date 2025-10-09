@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS creative_formats (
     extends TEXT,  -- Reference to foundational format_id
     modifications TEXT,  -- JSON with modifications to base format
     source_url TEXT,  -- URL where format was discovered
+    platform_config TEXT,  -- JSON with platform-specific config (e.g., GAM creative template IDs)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE,
     FOREIGN KEY (extends) REFERENCES creative_formats(format_id) ON DELETE RESTRICT
@@ -184,6 +185,7 @@ CREATE TABLE IF NOT EXISTS creative_formats (
     extends VARCHAR(50),  -- Reference to foundational format_id
     modifications JSONB,  -- JSON with modifications to base format
     source_url TEXT,  -- URL where format was discovered
+    platform_config JSONB,  -- Platform-specific config (e.g., GAM creative template IDs)
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE,

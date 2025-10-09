@@ -24,6 +24,8 @@ from src.core.database.models import Tenant
 from src.core.schemas import Product as ProductSchema
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
+pytestmark = pytest.mark.requires_db
+
 
 class TestDatabaseProductsIntegration:
     """Integration tests using real database without excessive mocking."""

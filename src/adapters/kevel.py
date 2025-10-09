@@ -414,6 +414,27 @@ class Kevel(AdServerAdapter):
 
         return created_asset_statuses
 
+    def associate_creatives(self, line_item_ids: list[str], platform_creative_ids: list[str]) -> list[dict[str, Any]]:
+        """Associate already-uploaded creatives with flights (Kevel line items).
+
+        Note: Kevel doesn't have a separate association step - creatives are
+        associated during flight creation. This method is a no-op for Kevel.
+        """
+        self.log(
+            "[yellow]Kevel: Creative association happens during flight creation (no separate step needed)[/yellow]"
+        )
+
+        return [
+            {
+                "line_item_id": line_item_id,
+                "creative_id": creative_id,
+                "status": "skipped",
+                "message": "Kevel associates creatives during flight creation",
+            }
+            for line_item_id in line_item_ids
+            for creative_id in platform_creative_ids
+        ]
+
     def check_media_buy_status(self, media_buy_id: str, today: datetime) -> CheckMediaBuyStatusResponse:
         """Checks the status of a media buy on Kevel."""
         self.log(f"Kevel.check_media_buy_status for media buy '{media_buy_id}'", dry_run_prefix=False)

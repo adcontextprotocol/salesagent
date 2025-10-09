@@ -304,6 +304,27 @@ class TritonDigital(AdServerAdapter):
 
         return created_asset_statuses
 
+    def associate_creatives(self, line_item_ids: list[str], platform_creative_ids: list[str]) -> list[dict[str, Any]]:
+        """Associate already-uploaded creatives with flights.
+
+        Note: Triton typically associates creatives during campaign creation.
+        This method is a no-op for Triton.
+        """
+        self.log(
+            "[yellow]Triton: Creative association happens during campaign creation (no separate step needed)[/yellow]"
+        )
+
+        return [
+            {
+                "line_item_id": line_item_id,
+                "creative_id": creative_id,
+                "status": "skipped",
+                "message": "Triton associates creatives during campaign creation",
+            }
+            for line_item_id in line_item_ids
+            for creative_id in platform_creative_ids
+        ]
+
     def check_media_buy_status(self, media_buy_id: str, today: datetime) -> CheckMediaBuyStatusResponse:
         """Checks the status of a Campaign in the Triton TAP API."""
         self.log(f"TritonDigital.check_media_buy_status for media buy '{media_buy_id}'", dry_run_prefix=False)
