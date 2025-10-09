@@ -7,8 +7,10 @@ Supports variable substitution with fallback syntax:
 - {month_year} - Month and year (e.g., "Oct 2025")
 - {promoted_offering} - What's being advertised
 - {buyer_ref} - Buyer's reference ID
-- {product_name} - Product name (for line items)
+- {product_name} - Product name from database (for line items)
+- {package_name} - Package name from MediaPackage.name (for line items)
 - {package_count} - Number of packages in order
+- {package_index} - Package index in order (1-based, for line items)
 """
 
 from datetime import datetime
@@ -126,13 +128,15 @@ def build_order_name_context(
 def build_line_item_name_context(
     order_name: str,
     product_name: str,
+    package_name: str = None,
     package_index: int = None,
 ) -> dict:
     """Build context dictionary for line item name template.
 
     Args:
         order_name: Name of the parent order
-        product_name: Name of the product/package
+        product_name: Name of the product/package (from database)
+        package_name: Name from the package itself (from MediaPackage.name)
         package_index: Optional index of package in order (1-based)
 
     Returns:
@@ -141,6 +145,7 @@ def build_line_item_name_context(
     context = {
         "order_name": order_name,
         "product_name": product_name,
+        "package_name": package_name or product_name,  # Fallback to product_name
     }
 
     if package_index is not None:

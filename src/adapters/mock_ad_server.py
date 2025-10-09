@@ -819,6 +819,26 @@ class MockAdServer(AdServerAdapter):
         # Return pending status for all assets
         return [AssetStatus(creative_id=asset["id"], status="pending") for asset in assets]
 
+    def associate_creatives(self, line_item_ids: list[str], platform_creative_ids: list[str]) -> list[dict[str, Any]]:
+        """Associate already-uploaded creatives with line items (mock simulation)."""
+        self.log(
+            f"[cyan]Mock: Associating {len(platform_creative_ids)} creatives with {len(line_item_ids)} line items[/cyan]"
+        )
+
+        results = []
+        for line_item_id in line_item_ids:
+            for creative_id in platform_creative_ids:
+                self.log(f"  ✓ Associated creative {creative_id} with line item {line_item_id}")
+                results.append(
+                    {
+                        "line_item_id": line_item_id,
+                        "creative_id": creative_id,
+                        "status": "success",
+                    }
+                )
+
+        return results
+
     def _add_creative_assets_sync_with_delay(
         self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
     ) -> list[AssetStatus]:

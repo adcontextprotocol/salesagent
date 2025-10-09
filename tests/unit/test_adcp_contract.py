@@ -2014,6 +2014,50 @@ class TestAdCPContract:
         data_no_status = response_no_status.model_dump()
         assert "status" not in data_no_status  # Should be excluded when None
 
+    def test_package_excludes_internal_fields(self):
+        """Test that Package model_dump excludes internal fields from AdCP responses.
+
+        Internal fields like platform_line_item_id, tenant_id, etc. should NOT appear
+        in external AdCP responses but SHOULD appear in internal database operations.
+        """
+        # Create package with internal fields
+        pkg = Package(
+            package_id="pkg_test_123",
+            status="active",
+            buyer_ref="test_ref_123",
+            # Internal fields (should be excluded from external responses)
+            platform_line_item_id="gam_987654321",
+            tenant_id="tenant_test",
+            media_buy_id="mb_test_456",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            metadata={"internal_key": "internal_value"},
+        )
+
+        # External response (AdCP protocol) - should exclude internal fields
+        external_dump = pkg.model_dump()
+        assert "package_id" in external_dump
+        assert "status" in external_dump
+        assert "buyer_ref" in external_dump
+        assert "platform_line_item_id" not in external_dump, "platform_line_item_id should NOT be in AdCP response"
+        assert "tenant_id" not in external_dump, "tenant_id should NOT be in AdCP response"
+        assert "media_buy_id" not in external_dump, "media_buy_id should NOT be in AdCP response"
+        assert "created_at" not in external_dump, "created_at should NOT be in AdCP response"
+        assert "updated_at" not in external_dump, "updated_at should NOT be in AdCP response"
+        assert "metadata" not in external_dump, "metadata should NOT be in AdCP response"
+
+        # Internal database dump - should include internal fields
+        internal_dump = pkg.model_dump_internal()
+        assert "package_id" in internal_dump
+        assert "status" in internal_dump
+        assert "buyer_ref" in internal_dump
+        assert "platform_line_item_id" in internal_dump, "platform_line_item_id SHOULD be in internal dump"
+        assert internal_dump["platform_line_item_id"] == "gam_987654321"
+        assert "tenant_id" in internal_dump, "tenant_id SHOULD be in internal dump"
+        assert internal_dump["tenant_id"] == "tenant_test"
+        assert "media_buy_id" in internal_dump, "media_buy_id SHOULD be in internal dump"
+        assert internal_dump["media_buy_id"] == "mb_test_456"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -107,7 +107,8 @@ class AuditLogger:
                     adapter_id=adapter_id,
                     success=success,
                     error_message=error if not success else None,
-                    details=json.dumps(details) if details else None,
+                    # Pass dict directly - JSONType column handles serialization
+                    details=details or {},
                 )
                 db_session.add(audit_log)
                 db_session.commit()

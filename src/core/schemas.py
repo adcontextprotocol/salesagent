@@ -80,6 +80,9 @@ class Format(BaseModel):
     assets_required: list[AssetRequirement] | None = Field(
         None, description="Array of required assets for composite formats"
     )
+    platform_config: dict[str, Any] | None = Field(
+        None, description="Platform-specific configuration (e.g., gam, kevel) for creative mapping"
+    )
 
 
 # Format Registry for AdCP Compliance
@@ -195,6 +198,16 @@ FORMAT_REGISTRY: dict[str, Format] = {
             "duration_max": 30,
             "aspect_ratio": "16:9",
             "codecs": ["h264", "vp9"],
+        },
+        platform_config={
+            "gam": {
+                "creative_placeholder": {
+                    "width": 1280,
+                    "height": 720,
+                    "creative_size_type": "PIXEL",  # Video uses PIXEL, not a special type
+                },
+                "environment_type": "VIDEO_PLAYER",
+            }
         },
     ),
     "video_1920x1080": Format(
@@ -1949,6 +1962,9 @@ class Package(BaseModel):
     # Internal fields (not in AdCP spec)
     tenant_id: str | None = Field(None, description="Internal: Tenant ID for multi-tenancy")
     media_buy_id: str | None = Field(None, description="Internal: Associated media buy ID")
+    platform_line_item_id: str | None = Field(
+        None, description="Internal: Platform-specific line item ID for creative association"
+    )
     created_at: datetime | None = Field(None, description="Internal: Creation timestamp")
     updated_at: datetime | None = Field(None, description="Internal: Last update timestamp")
     metadata: dict[str, Any] | None = Field(None, description="Internal: Additional metadata")
@@ -1959,7 +1975,9 @@ class Package(BaseModel):
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
             # Add internal fields to exclude by default
-            exclude.update({"tenant_id", "media_buy_id", "created_at", "updated_at", "metadata"})
+            exclude.update(
+                {"tenant_id", "media_buy_id", "platform_line_item_id", "created_at", "updated_at", "metadata"}
+            )
             kwargs["exclude"] = exclude
 
         data = super().model_dump(**kwargs)
