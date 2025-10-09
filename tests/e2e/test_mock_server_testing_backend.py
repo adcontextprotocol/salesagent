@@ -53,7 +53,7 @@ class TestMockServerTestingBackend:
                     "create_media_buy",
                     {
                         "req": {
-                            "product_ids": [products["products"][0]["id"]],
+                            "product_ids": [products["products"][0]["product_id"]],
                             "total_budget": 10000.0,
                             "flight_start_date": "2025-10-01",
                             "flight_end_date": "2025-10-31",
@@ -110,7 +110,7 @@ class TestMockServerTestingBackend:
                 "create_media_buy",
                 {
                     "req": {
-                        "product_ids": [products["products"][0]["id"]],
+                        "product_ids": [products["products"][0]["product_id"]],
                         "total_budget": 20000.0,
                         "flight_start_date": "2025-11-01",
                         "flight_end_date": "2025-11-30",
@@ -164,7 +164,7 @@ class TestMockServerTestingBackend:
                 "create_media_buy",
                 {
                     "req": {
-                        "product_ids": [products["products"][0]["id"]],
+                        "product_ids": [products["products"][0]["product_id"]],
                         "total_budget": 5000.0,
                         "flight_start_date": "2025-12-01",
                         "flight_end_date": "2025-12-31",
@@ -243,7 +243,7 @@ class TestMockServerTestingBackend:
                 "create_media_buy",
                 {
                     "req": {
-                        "product_ids": [products["products"][0]["id"]],
+                        "product_ids": [products["products"][0]["product_id"]],
                         "total_budget": 50000.0,
                         "flight_start_date": "2025-10-01",
                         "flight_end_date": "2025-10-31",
@@ -313,7 +313,7 @@ class TestMockServerTestingBackend:
                         "create_media_buy",
                         {
                             "req": {
-                                "product_ids": [products["products"][0]["id"]],
+                                "product_ids": [products["products"][0]["product_id"]],
                                 "total_budget": 10000.0,
                                 "flight_start_date": "2025-10-01",
                                 "flight_end_date": "2025-10-31",

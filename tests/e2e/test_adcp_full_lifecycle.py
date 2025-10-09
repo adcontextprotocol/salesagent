@@ -390,7 +390,7 @@ class TestAdCPFullLifecycle:
                 all_format_ids.append(format_id)
 
         # Now call list_creative_formats to get full format details
-        formats_response = await test_client.call_mcp_tool("list_creative_formats", {})
+        formats_response = await test_client.call_mcp_tool("list_creative_formats", {"req": {}})
         assert "formats" in formats_response, "Response must contain 'formats' field"
         assert isinstance(formats_response["formats"], list), "Formats must be a list"
 
@@ -446,6 +446,7 @@ class TestAdCPFullLifecycle:
         # Test comprehensive media buy creation with targeting
         media_buy_request = {
             "buyer_ref": "e2e_comprehensive_" + str(uuid.uuid4().hex[:8]),
+            "promoted_offering": "Test Campaign Product",
             "packages": [
                 {
                     "buyer_ref": "pkg_comp_" + str(uuid.uuid4().hex[:6]),
@@ -547,7 +548,13 @@ class TestAdCPFullLifecycle:
         # Create a media buy to associate creatives with
         media_buy = await test_client.call_mcp_tool(
             "create_media_buy",
-            {"product_ids": product_ids, "budget": 15000.0, "start_date": "2025-09-01", "end_date": "2025-09-30"},
+            {
+                "promoted_offering": "Test Campaign Product",
+                "product_ids": product_ids,
+                "budget": 15000.0,
+                "start_date": "2025-09-01",
+                "end_date": "2025-09-30",
+            },
         )
         media_buy_id = media_buy.get("media_buy_id") or media_buy.get("id")
         print(f"✓ Created media buy: {media_buy_id}")
@@ -681,6 +688,7 @@ class TestAdCPFullLifecycle:
         media_buy = await test_client.call_mcp_tool(
             "create_media_buy",
             {
+                "promoted_offering": "Test Campaign Product",
                 "product_ids": [products["products"][0].get("product_id", products["products"][0].get("id"))],
                 "budget": 20000.0,
                 "start_date": "2025-09-01",
@@ -1111,6 +1119,7 @@ class TestAdCPFullLifecycle:
         media_buy = await test_client.call_mcp_tool(
             "create_media_buy",
             {
+                "promoted_offering": "Test Campaign Product",
                 "product_ids": [products["products"][0].get("product_id", products["products"][0].get("id"))],
                 "budget": 5000.0,
                 "start_date": "2025-09-01",
@@ -1169,6 +1178,7 @@ class TestAdCPFullLifecycle:
                 result = await test_client.call_mcp_tool(
                     "create_media_buy",
                     {
+                        "promoted_offering": "Test Campaign Product",
                         "product_ids": scenario["product_ids"],
                         "budget": 1000.0,
                         "start_date": "2025-09-01",
@@ -1213,6 +1223,7 @@ class TestAdCPFullLifecycle:
                     result = await test_client.call_mcp_tool(
                         "create_media_buy",
                         {
+                            "promoted_offering": "Test Campaign Product",
                             "product_ids": [valid_product_id],
                             "budget": scenario["budget"],
                             "start_date": "2025-09-01",
@@ -1249,6 +1260,7 @@ class TestAdCPFullLifecycle:
                     result = await test_client.call_mcp_tool(
                         "create_media_buy",
                         {
+                            "promoted_offering": "Test Campaign Product",
                             "product_ids": [valid_product_id],
                             "budget": 1000.0,
                             "start_date": scenario["start_date"],
@@ -1369,6 +1381,7 @@ class TestAdCPFullLifecycle:
         media_buy = await test_client.call_mcp_tool(
             "create_media_buy",
             {
+                "promoted_offering": "Test Campaign Product",
                 "product_ids": [product_id],
                 "budget": 25000.0,
                 "start_date": "2025-09-01",
@@ -1486,6 +1499,7 @@ class TestAdCPFullLifecycle:
         media_buy = await test_client.call_mcp_tool(
             "create_media_buy",
             {
+                "promoted_offering": "Test Campaign Product",
                 "product_ids": [product_id],
                 "budget": 75000.0,
                 "start_date": "2025-09-01",
@@ -1659,6 +1673,7 @@ class TestAdCPFullLifecycle:
         media_buy = await test_client.call_mcp_tool(
             "create_media_buy",
             {
+                "promoted_offering": "Test Campaign Product",
                 "product_ids": product_ids,
                 "budget": 125000.0,
                 "start_date": "2025-12-15",
@@ -1743,6 +1758,7 @@ class TestAdCPFullLifecycle:
             media_buy = await test_client.call_mcp_tool(
                 "create_media_buy",
                 {
+                    "promoted_offering": "Test Campaign Product",
                     "product_ids": [product_id],
                     "budget": freq_config["budget"],
                     "start_date": "2025-12-01",
@@ -1939,6 +1955,7 @@ class TestAdCPFullLifecycle:
                 result = await test_client.call_mcp_tool(
                     "create_media_buy",
                     {
+                        "promoted_offering": "Test Campaign Product",
                         "product_ids": [product_id],
                         "budget": 10000.0,
                         "start_date": "2025-10-01",
@@ -1966,6 +1983,7 @@ class TestAdCPFullLifecycle:
             result = await test_client.call_mcp_tool(
                 "create_media_buy",
                 {
+                    "promoted_offering": "Test Campaign Product",
                     "product_ids": [product_id],
                     "budget": 15000.0,
                     "start_date": "2025-10-01",
@@ -2013,6 +2031,7 @@ class TestAdCPFullLifecycle:
                 result = await test_client.call_mcp_tool(
                     "create_media_buy",
                     {
+                        "promoted_offering": "Test Campaign Product",
                         "product_ids": [product_id],
                         "budget": case["budget"],
                         "start_date": case["start_date"],
@@ -2052,6 +2071,7 @@ class TestAdCPFullLifecycle:
                 result = await test_client.call_mcp_tool(
                     "create_media_buy",
                     {
+                        "promoted_offering": "Test Campaign Product",
                         "product_ids": [product_id],
                         "budget": case["budget"],
                         "start_date": case["start_date"],
@@ -2071,6 +2091,7 @@ class TestAdCPFullLifecycle:
             result = await test_client.call_mcp_tool(
                 "create_media_buy",
                 {
+                    "promoted_offering": "Test Campaign Product",
                     "product_ids": [product_id],
                     "budget": 25000.0,
                     "start_date": "2025-11-01",
@@ -2106,6 +2127,7 @@ class TestAdCPFullLifecycle:
         media_buy = await test_client.call_mcp_tool(
             "create_media_buy",
             {
+                "promoted_offering": "Test Campaign Product",
                 "product_ids": [product_id],
                 "budget": 30000.0,  # Set budget that we'll exceed
                 "start_date": "2025-10-01",
@@ -2193,6 +2215,7 @@ class TestAdCPFullLifecycle:
         media_buy = await test_client.call_mcp_tool(
             "create_media_buy",
             {
+                "promoted_offering": "Test Campaign Product",
                 "product_ids": [product_id],
                 "budget": 50000.0,
                 "start_date": "2025-11-01",
@@ -2272,6 +2295,7 @@ class TestAdCPFullLifecycle:
         media_buy = await test_client.call_mcp_tool(
             "create_media_buy",
             {
+                "promoted_offering": "Test Campaign Product",
                 "product_ids": [product_id],
                 "budget": 60000.0,
                 "start_date": "2025-09-01",
@@ -2448,6 +2472,7 @@ class TestAdCPFullLifecycle:
         media_buy = await test_client.call_mcp_tool(
             "create_media_buy",
             {
+                "promoted_offering": "Test Campaign Product",
                 "product_ids": [product_id],
                 "budget": 45000.0,
                 "start_date": "2026-05-01",
@@ -2593,6 +2618,7 @@ class TestAdCPFullLifecycle:
         initial_media_buy = await test_client.call_mcp_tool(
             "create_media_buy",
             {
+                "promoted_offering": "Test Campaign Product",
                 "product_ids": [product_id],
                 "budget": 35000.0,
                 "start_date": "2026-06-01",
