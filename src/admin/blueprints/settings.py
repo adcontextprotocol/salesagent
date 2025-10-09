@@ -348,6 +348,37 @@ def update_slack(tenant_id):
     return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
 
 
+@settings_bp.route("/ai", methods=["POST"])
+@require_tenant_access()
+def update_ai(tenant_id):
+    """Update AI services settings (Gemini API key)."""
+    try:
+        gemini_api_key = request.form.get("gemini_api_key", "").strip()
+
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
+
+            # Update Gemini API key (encrypted via property setter)
+            if gemini_api_key:
+                tenant.gemini_api_key = gemini_api_key
+                flash("AI services settings updated successfully", "success")
+            else:
+                tenant.gemini_api_key = None
+                flash("Gemini API key removed (will fall back to environment variable if set)", "info")
+
+            tenant.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+    except Exception as e:
+        logger.error(f"Error updating AI settings: {e}", exc_info=True)
+        flash(f"Error updating AI settings: {str(e)}", "error")
+
+    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
+
+
 @settings_bp.route("/signals", methods=["POST"])
 @require_tenant_access()
 def update_signals(tenant_id):
