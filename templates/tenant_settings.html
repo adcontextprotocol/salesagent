@@ -2241,7 +2241,7 @@ function saveBusinessRules() {
         creative_review_criteria: document.getElementById('creative_review_criteria').value,
     };
 
-    fetch('/tenant/{{ tenant.tenant_id }}/settings/business-rules', {
+    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings/business-rules', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
