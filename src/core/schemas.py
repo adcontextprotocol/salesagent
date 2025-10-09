@@ -1635,6 +1635,10 @@ class SyncCreativesRequest(BaseModel):
         "strict",
         description="Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid creatives and reports errors.",
     )
+    push_notification_config: dict[str, Any] | None = Field(
+        None,
+        description="Optional webhook configuration for async update notifications",
+    )
 
 
 class SyncCreativesResponse(BaseModel):
