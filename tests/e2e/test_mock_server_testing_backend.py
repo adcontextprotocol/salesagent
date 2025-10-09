@@ -16,36 +16,6 @@ from fastmcp.client.transports import StreamableHttpTransport
 class TestMockServerTestingBackend:
     """Test suite for mock server AdCP testing backend features."""
 
-    @pytest.mark.skip_ci(reason="testing_control tool not yet implemented")
-    @pytest.mark.asyncio
-    async def test_testing_capabilities_endpoint(self, live_server, test_auth_token):
-        """Test the testing_control endpoint for capabilities."""
-        headers = {"x-adcp-auth": test_auth_token}
-        transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
-
-        async with Client(transport=transport) as client:
-            result = await client.call_tool("testing_control", {"req": {"action": "get_capabilities"}})
-
-            response = json.loads(result.content[0].text)
-            assert response["success"] is True
-            assert "data" in response
-
-            capabilities = response["data"]
-            assert "supported_headers" in capabilities
-            assert "lifecycle_events" in capabilities
-            assert "error_scenarios" in capabilities
-
-            # Verify key testing headers are supported
-            headers_list = capabilities["supported_headers"]
-            assert "X-Dry-Run" in headers_list
-            assert "X-Mock-Time" in headers_list
-            assert "X-Jump-To-Event" in headers_list
-            assert "X-Test-Session-ID" in headers_list
-
-            print(
-                f"✓ Testing capabilities: {len(headers_list)} headers, {len(capabilities['lifecycle_events'])} events"
-            )
-
     @pytest.mark.asyncio
     async def test_comprehensive_time_simulation(self, live_server, test_auth_token):
         """Test comprehensive time simulation with multiple scenarios."""
@@ -239,52 +209,6 @@ class TestMockServerTestingBackend:
                         print(f"  ✓ {error}: exception thrown as expected: {str(e)[:50]}")
                     else:
                         print(f"  ⚠ {error}: unexpected exception: {str(e)[:50]}")
-
-    @pytest.mark.skip_ci(reason="testing_control tool not yet implemented")
-    @pytest.mark.asyncio
-    async def test_session_management_api(self, live_server, test_auth_token):
-        """Test comprehensive session management."""
-        headers = {"x-adcp-auth": test_auth_token}
-        transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
-
-        async with Client(transport=transport) as client:
-            # Create a test session
-            session_id = f"mgmt_test_{uuid.uuid4().hex[:8]}"
-
-            create_result = await client.call_tool(
-                "testing_control", {"req": {"action": "create_session", "session_id": session_id}}
-            )
-
-            create_response = json.loads(create_result.content[0].text)
-            assert create_response["success"] is True
-            assert session_id in create_response["message"]
-
-            # List sessions - should include our session
-            list_result = await client.call_tool("testing_control", {"req": {"action": "list_sessions"}})
-
-            list_response = json.loads(list_result.content[0].text)
-            assert list_response["success"] is True
-            assert "data" in list_response
-            assert "sessions" in list_response["data"]
-
-            sessions = list_response["data"]["sessions"]
-            assert session_id in sessions
-
-            # Inspect context (should work without specific session)
-            inspect_result = await client.call_tool("testing_control", {"req": {"action": "inspect_context"}})
-
-            inspect_response = json.loads(inspect_result.content[0].text)
-            assert inspect_response["success"] is True
-
-            # Cleanup session
-            cleanup_result = await client.call_tool(
-                "testing_control", {"req": {"action": "cleanup_session", "session_id": session_id}}
-            )
-
-            cleanup_response = json.loads(cleanup_result.content[0].text)
-            assert cleanup_response["success"] is True
-
-            print(f"✓ Session management: created, listed, inspected, cleaned up {session_id}")
 
     @pytest.mark.asyncio
     async def test_production_isolation_guarantees(self, live_server, test_auth_token):

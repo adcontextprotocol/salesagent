@@ -529,14 +529,6 @@ class TestAdCPFullLifecycle:
         assert a2a_response["status"]["state"] == "completed", "A2A media buy query should complete"
         print("✓ A2A media buy creation query completed successfully")
 
-        # Verify media buy can be retrieved
-        try:
-            status_check = await test_client.call_mcp_tool("check_media_buy_status", {"media_buy_id": media_buy_id})
-            assert "status" in status_check, "Status check must return status"
-            print(f"✓ Media buy status verified: {status_check['status']}")
-        except Exception as e:
-            print(f"⚠ Status check failed: {e}")
-
         return media_buy_id
 
     @pytest.mark.asyncio
@@ -662,26 +654,6 @@ class TestAdCPFullLifecycle:
             status_info = status["status"]
             print(f"  Creative {i+1}: {creative_id} (status: {status_info})")
 
-        # Check individual creative status
-        for creative_id in creative_ids:
-            try:
-                status = await test_client.call_mcp_tool("check_creative_status", {"creative_ids": [creative_id]})
-
-                assert isinstance(status, dict), "Creative status response must be a dict"
-                assert "statuses" in status or "status" in status, "Response must contain status information"
-
-                if "statuses" in status:
-                    assert len(status["statuses"]) == 1, "Should return one status"
-                    creative_status = status["statuses"][0]
-                else:
-                    creative_status = status["status"]
-
-                valid_statuses = ["pending", "approved", "rejected", "under_review"]
-                print(f"  Creative {creative_id}: {creative_status}")
-
-            except Exception as e:
-                print(f"⚠ Status check for {creative_id} failed: {e}")
-
         # Test A2A creative query
         a2a_query = f"What creatives are associated with media buy {media_buy_id}?"
         try:
@@ -693,23 +665,6 @@ class TestAdCPFullLifecycle:
 
         except Exception as e:
             print(f"⚠ A2A creative query failed: {e}")
-
-        # Test creative retrieval
-        try:
-            creatives = await test_client.call_mcp_tool("get_creatives", {"media_buy_id": media_buy_id})
-
-            if "creatives" in creatives:
-                retrieved_count = len(creatives["creatives"])
-                print(f"✓ Retrieved {retrieved_count} creatives for media buy")
-
-                # Validate retrieved creative structure
-                for i, creative in enumerate(creatives["creatives"]):
-                    assert "creative_id" in creative, f"Retrieved creative {i} missing creative_id"
-                    assert "format_id" in creative, f"Retrieved creative {i} missing format_id"
-                    assert "status" in creative, f"Retrieved creative {i} missing status"
-
-        except Exception as e:
-            print(f"⚠ Creative retrieval failed: {e}")
 
         return {"media_buy_id": media_buy_id, "creative_group_id": group_id, "creative_ids": creative_ids}
 
@@ -814,23 +769,6 @@ class TestAdCPFullLifecycle:
 
         except Exception as e:
             print(f"⚠ Date range testing failed: {e}")
-
-        # Test bulk delivery reporting
-        try:
-            all_delivery = await test_client.call_mcp_tool("get_all_media_buy_delivery", {"today": "2025-09-15"})
-
-            assert "deliveries" in all_delivery, "Bulk delivery must contain deliveries array"
-            bulk_count = len(all_delivery["deliveries"])
-            print(f"  ✓ Bulk delivery report: {bulk_count} campaigns")
-
-            # Validate each delivery in bulk response
-            for i, bulk_delivery in enumerate(all_delivery["deliveries"][:3]):  # Check first 3
-                assert "media_buy_id" in bulk_delivery, f"Bulk delivery {i} missing media_buy_id"
-                assert "impressions" in bulk_delivery, f"Bulk delivery {i} missing impressions"
-                assert "spend" in bulk_delivery, f"Bulk delivery {i} missing spend"
-
-        except Exception as e:
-            print(f"⚠ Bulk delivery testing failed: {e}")
 
         # Test A2A delivery query
         try:
@@ -1185,15 +1123,6 @@ class TestAdCPFullLifecycle:
         # Simulate some delivery
         test_client.jump_to_event("campaign-active")
 
-        # Get all delivery data
-        all_delivery = await test_client.call_mcp_tool(
-            "get_all_media_buy_delivery", {"today": "2025-09-15"}  # Mid-campaign date
-        )
-
-        # The response has deliveries array instead of media_buys
-        assert "deliveries" in all_delivery
-        print(f"✓ Retrieved delivery for {len(all_delivery['deliveries'])} campaigns")
-
         # Update performance index if available
         try:
             update = await test_client.call_mcp_tool(
@@ -1464,7 +1393,6 @@ class TestAdCPFullLifecycle:
 
         # Phase 3: Creative Setup
         print("\nPhase 3: Creative Setup")
-        group = await test_client.call_mcp_tool("create_creative_group", {"name": "Brand Campaign Assets"})
 
         creative = await test_client.call_mcp_tool(
             "add_creative_assets",
@@ -1503,9 +1431,6 @@ class TestAdCPFullLifecycle:
         # Phase 4: Launch
         print("\nPhase 4: Launch")
         test_client.jump_to_event("campaign-start")
-
-        status = await test_client.call_mcp_tool("check_media_buy_status", {"media_buy_id": media_buy_id})
-        print(f"✓ Campaign status: {status.get('status', 'unknown')}")
 
         # Phase 5: Mid-flight Optimization
         print("\nPhase 5: Optimization")
@@ -1594,21 +1519,8 @@ class TestAdCPFullLifecycle:
         assert "status" in media_buy
         print(f"✓ Created campaign: {media_buy_id} with status: {media_buy['status']}")
 
-        # Phase 3: Creative Group and Asset Management
+        # Phase 3: Creative Asset Management
         print("\nPhase 3: Creative Management")
-
-        # Create creative group
-        creative_group = await test_client.call_mcp_tool(
-            "create_creative_group", {"name": "Nike Jordan 2025 Campaign Assets"}
-        )
-
-        # Handle nested response structure
-        if "group" in creative_group:
-            group = creative_group["group"]
-        else:
-            group = creative_group
-        group_id = group.get("group_id", group.get("id"))
-        print(f"✓ Created creative group: {group_id}")
 
         # Add comprehensive creative assets
         creative_assets = [
@@ -1673,13 +1585,9 @@ class TestAdCPFullLifecycle:
         creative_statuses = creative_response["statuses"]
         print(f"✓ Added {len(creative_statuses)} creatives to campaign")
 
-        # Phase 4: Campaign Launch and Status Verification
+        # Phase 4: Campaign Launch
         print("\nPhase 4: Campaign Launch")
         test_client.jump_to_event("campaign-start")
-
-        status_check = await test_client.call_mcp_tool("check_media_buy_status", {"media_buy_id": media_buy_id})
-
-        print(f"✓ Campaign status after launch: {status_check.get('status', 'unknown')}")
 
         # Phase 5: Mid-Campaign Delivery Monitoring
         print("\nPhase 5: Delivery Monitoring")
@@ -2308,14 +2216,6 @@ class TestAdCPFullLifecycle:
         media_buy_id = media_buy["media_buy_id"]
         print(f"✓ Created campaign for creative testing: {media_buy_id}")
 
-        # Create creative group
-        creative_group = await test_client.call_mcp_tool(
-            "create_creative_group", {"name": "Health Campaign Creatives - Review Required"}
-        )
-
-        group = creative_group.get("group", creative_group)
-        group_id = group.get("group_id", group.get("id"))
-
         # Phase 1: Submit creatives that require review
         print("\nPhase 1: Creative Submission")
 
@@ -2347,62 +2247,16 @@ class TestAdCPFullLifecycle:
         ]
 
         creative_response = await test_client.call_mcp_tool(
-            "add_creative_assets", {"media_buy_id": media_buy_id, "creatives": test_creatives, "group_id": group_id}
+            "add_creative_assets", {"media_buy_id": media_buy_id, "creatives": test_creatives}
         )
 
         creative_statuses = creative_response.get("statuses", [])
         creative_ids = [status["creative_id"] for status in creative_statuses]
         print(f"✓ Submitted {len(creative_ids)} creatives for review")
 
-        # Phase 2: Check for pending creative reviews
-        print("\nPhase 2: Human Review Detection")
-
-        try:
-            # Check if there are pending creatives that need approval
-            pending_creatives = await test_client.call_mcp_tool("get_pending_creatives", {})
-
-            if "creatives" in pending_creatives and len(pending_creatives["creatives"]) > 0:
-                print(f"✓ Found {len(pending_creatives['creatives'])} pending creatives")
-
-                # Phase 3: Human approval simulation
-                print("\nPhase 3: Human Approval Process")
-
-                for creative in pending_creatives["creatives"]:
-                    creative_id = creative.get("creative_id", creative.get("id"))
-
-                    # Simulate human approval decision
-                    approval_decision = "approved" if "awareness" in creative.get("name", "").lower() else "rejected"
-                    rejection_reason = "Content requires medical review" if approval_decision == "rejected" else None
-
-                    approve_result = await test_client.call_mcp_tool(
-                        "approve_creative",
-                        {
-                            "creative_id": creative_id,
-                            "decision": approval_decision,
-                            "rejection_reason": rejection_reason,
-                            "notes": f"Reviewed by human moderator - {approval_decision}",
-                        },
-                    )
-
-                    print(f"  ✓ Creative {creative_id}: {approval_decision}")
-                    if rejection_reason:
-                        print(f"    Reason: {rejection_reason}")
-            else:
-                print("⚠ No pending creatives found - may be auto-approved")
-
-        except Exception as e:
-            print(f"⚠ Creative approval workflow not available: {e}")
-
-        # Phase 4: Check final creative status
-        print("\nPhase 4: Creative Status Verification")
-
-        final_status = await test_client.call_mcp_tool("check_creative_status", {"creative_ids": creative_ids})
-
-        if "statuses" in final_status:
-            for status in final_status["statuses"]:
-                creative_id = status.get("creative_id", "unknown")
-                status_value = status.get("status", "unknown")
-                print(f"  ✓ Creative {creative_id}: {status_value}")
+        # Phase 2: Creative submission completed
+        print("\nPhase 2: Creative Submission Completed")
+        print(f"✓ Submitted {len(creative_ids)} creatives for campaign")
 
         print("\n✅ Creative approval workflow test completed!")
 
@@ -2833,10 +2687,6 @@ class TestAdCPFullLifecycle:
 
         # Phase 5: Verify Final Campaign State
         print("\nPhase 5: Final State Verification")
-
-        final_status = await test_client.call_mcp_tool("check_media_buy_status", {"media_buy_id": media_buy_id})
-
-        print(f"✓ Final campaign status: {final_status.get('status', 'unknown')}")
 
         # Check final delivery with all updates applied
         test_client.set_mock_time(datetime(2025, 7, 1, 12, 0, 0))

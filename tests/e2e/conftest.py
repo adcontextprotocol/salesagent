@@ -15,6 +15,9 @@ import httpx
 import pytest
 import requests
 
+# Import contract validation - this automatically validates tool calls at test collection time
+from tests.e2e.conftest_contract_validation import pytest_collection_modifyitems  # noqa: F401
+
 
 def find_free_port(start_port: int = 10000, end_port: int = 60000) -> int:
     """Find an available port in the given range."""
