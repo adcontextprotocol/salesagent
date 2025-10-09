@@ -42,7 +42,6 @@ def init_db(exit_on_error=False):
                 is_active=True,
                 billing_plan="standard",
                 ad_server="mock",
-                max_daily_budget=10000,
                 enable_axe_signals=True,
                 auto_approve_formats=json.dumps(
                     [
