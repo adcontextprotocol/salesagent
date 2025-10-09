@@ -125,16 +125,16 @@ if [ "$MODE" == "quick" ]; then
     echo ""
 
     echo "🔗 Step 3/3: Running integration tests..."
-    # Exclude tests that require a real database connection
-    if ! uv run pytest tests/integration/ -m "not requires_db" -x --tb=line -q; then
+    # Exclude tests that require a real database connection or running server
+    if ! uv run pytest tests/integration/ -m "not requires_db and not requires_server" -x --tb=line -q; then
         echo -e "${RED}❌ Integration tests failed!${NC}"
         exit 1
     fi
 
     echo -e "${GREEN}✅ All quick tests passed${NC}"
     echo ""
-    echo -e "${YELLOW}ℹ️  Note: E2E tests and database-dependent tests not run in quick mode${NC}"
-    echo "   Run './run_all_tests.sh full' for complete validation"
+    echo -e "${YELLOW}ℹ️  Note: E2E tests, database tests, and server-dependent tests not run in quick mode${NC}"
+    echo "   Run './run_all_tests.sh ci' for complete validation"
     exit 0
 fi
 
