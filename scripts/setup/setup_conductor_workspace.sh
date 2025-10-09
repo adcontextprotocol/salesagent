@@ -198,6 +198,15 @@ echo "# Server Ports (unique for Conductor workspace: $CONDUCTOR_WORKSPACE_NAME)
 echo "POSTGRES_PORT=$POSTGRES_PORT" >> .env
 echo "ADCP_SALES_PORT=$ADCP_PORT" >> .env
 echo "ADMIN_UI_PORT=$ADMIN_PORT" >> .env
+echo "" >> .env
+echo "# Docker Compose E2E Test Ports (CONDUCTOR_* for worktree isolation)" >> .env
+echo "# These are used by e2e tests to avoid port conflicts between worktrees" >> .env
+echo "# Admin UI uses a different port for e2e (doesn't need OAuth on 8001-8004)" >> .env
+echo "CONDUCTOR_POSTGRES_PORT=$POSTGRES_PORT" >> .env
+echo "CONDUCTOR_MCP_PORT=$ADCP_PORT" >> .env
+echo "CONDUCTOR_A2A_PORT=$((ADCP_PORT + 11))" >> .env
+echo "CONDUCTOR_ADMIN_PORT=$((ADCP_PORT + 21))" >> .env
+echo "" >> .env
 echo "DATABASE_URL=postgresql://adcp_user:secure_password_change_me@localhost:$POSTGRES_PORT/adcp" >> .env
 
 echo "✓ Updated .env with unique ports"
@@ -371,7 +380,6 @@ if grep -q "ui-tests" pyproject.toml 2>/dev/null; then
 
         # Configure UI test environment
         if [ -d "ui_tests" ]; then
-            echo "export ADMIN_UI_PORT=$ADMIN_PORT" >> .env
             echo "✓ UI tests configured for Admin UI port $ADMIN_PORT"
         fi
     else
