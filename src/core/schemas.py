@@ -1666,6 +1666,10 @@ class SyncCreativesRequest(BaseModel):
         "strict",
         description="Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid creatives and reports errors.",
     )
+    push_notification_config: dict[str, Any] | None = Field(
+        None,
+        description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
+    )
 
 
 class SyncSummary(BaseModel):
@@ -2045,6 +2049,10 @@ class CreateMediaBuyRequest(BaseModel):
     webhook_auth_token: str | None = Field(
         None,
         description="Optional authentication token for webhook callbacks (MCP protocol). Used as Bearer token in Authorization header.",
+    )
+    push_notification_config: dict[str, Any] | None = Field(
+        None,
+        description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
     )
 
     @model_validator(mode="before")
