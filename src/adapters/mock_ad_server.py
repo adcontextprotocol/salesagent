@@ -628,6 +628,28 @@ class MockAdServer(AdServerAdapter):
         tenant = get_current_tenant()
         tenant_id = tenant.get("tenant_id", "unknown") if tenant else "unknown"
 
+        # Generate order name using naming template
+        from sqlalchemy import select
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Tenant
+        from src.core.utils.naming import apply_naming_template, build_order_name_context
+
+        order_name_template = "{campaign_name|promoted_offering} - {date_range}"  # Default
+        try:
+            with get_db_session() as db_session:
+                if tenant_id and tenant_id != "unknown":
+                    tenant_obj = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+                    if tenant_obj and tenant_obj.order_name_template:
+                        order_name_template = tenant_obj.order_name_template
+        except Exception:
+            # Database not available (e.g., in unit tests) - use default template
+            pass
+
+        # Build context and apply template
+        context = build_order_name_context(request, packages, start_time, end_time)
+        order_name = apply_naming_template(order_name_template, context)
+
         # Strategy-aware behavior modifications
         if self._is_simulation():
             strategy_id = getattr(self.strategy_context, "strategy_id", "unknown")
@@ -686,6 +708,7 @@ class MockAdServer(AdServerAdapter):
                 total_budget = adjusted_budget
 
         self.log(f"Creating media buy with ID: {media_buy_id}")
+        self.log(f"Order name: {order_name}")
         self.log(f"Using template: {template_name} (priority: {template['priority']})")
         self.log(f"Budget: ${total_budget:,.2f}")
         self.log(f"Flight dates: {start_time.date()} to {end_time.date()}")
@@ -695,7 +718,7 @@ class MockAdServer(AdServerAdapter):
             self.log("Would call: MockAdServer.createCampaign()")
             self.log("  API Request: {")
             self.log(f"    'advertiser_id': '{self.adapter_principal_id}',")
-            self.log(f"    'campaign_name': 'AdCP Campaign {media_buy_id}',")
+            self.log(f"    'campaign_name': '{order_name}',")
             self.log(f"    'budget': {total_budget},")
             self.log(f"    'start_date': '{start_time.isoformat()}',")
             self.log(f"    'end_date': '{end_time.isoformat()}',")
@@ -717,6 +740,7 @@ class MockAdServer(AdServerAdapter):
         if not self.dry_run:
             self._media_buys[media_buy_id] = {
                 "id": media_buy_id,
+                "name": order_name,
                 "po_number": request.po_number,
                 "buyer_ref": request.buyer_ref,
                 "packages": [p.model_dump() for p in packages],
@@ -727,6 +751,7 @@ class MockAdServer(AdServerAdapter):
             }
             self.log("✓ Media buy created successfully")
             self.log(f"  Campaign ID: {media_buy_id}")
+            self.log(f"  Campaign Name: {order_name}")
             # Log successful creation
             self.audit_logger.log_success(f"Created Mock Order ID: {media_buy_id}")
 
@@ -793,6 +818,26 @@ class MockAdServer(AdServerAdapter):
 
         # Return pending status for all assets
         return [AssetStatus(creative_id=asset["id"], status="pending") for asset in assets]
+
+    def associate_creatives(self, line_item_ids: list[str], platform_creative_ids: list[str]) -> list[dict[str, Any]]:
+        """Associate already-uploaded creatives with line items (mock simulation)."""
+        self.log(
+            f"[cyan]Mock: Associating {len(platform_creative_ids)} creatives with {len(line_item_ids)} line items[/cyan]"
+        )
+
+        results = []
+        for line_item_id in line_item_ids:
+            for creative_id in platform_creative_ids:
+                self.log(f"  ✓ Associated creative {creative_id} with line item {line_item_id}")
+                results.append(
+                    {
+                        "line_item_id": line_item_id,
+                        "creative_id": creative_id,
+                        "status": "success",
+                    }
+                )
+
+        return results
 
     def _add_creative_assets_sync_with_delay(
         self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime

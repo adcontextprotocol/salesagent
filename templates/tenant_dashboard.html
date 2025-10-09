@@ -532,7 +532,7 @@
         </div>
     </div>
 
-    <div class="metric-card workflows">
+    <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/media-buys{% if metrics.needs_creatives > 0 %}?status=needs_creatives{% elif metrics.needs_approval > 0 %}?status=needs_approval{% endif %}" class="metric-card workflows" style="text-decoration: none; color: inherit; cursor: pointer;">
         <div class="metric-label">Needs Attention</div>
         <div class="metric-value">{{ metrics.needs_attention }}</div>
         <div class="metric-change {{ 'negative' if metrics.needs_attention > 0 else 'positive' }}">
@@ -547,7 +547,7 @@
                 All media buys ready
             {% endif %}
         </div>
-    </div>
+    </a>
 
     <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings#advertisers" class="metric-card advertisers" style="text-decoration: none; color: inherit;">
         <div class="metric-label">Active Advertisers</div>

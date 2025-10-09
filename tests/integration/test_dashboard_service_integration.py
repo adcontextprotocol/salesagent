@@ -15,6 +15,7 @@ from src.core.database.models import Principal, Product, Tenant
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
+@pytest.mark.requires_db
 class TestDashboardServiceIntegration:
     """Integration tests for DashboardService with real database data."""
 

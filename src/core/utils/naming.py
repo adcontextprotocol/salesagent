@@ -1,4 +1,6 @@
-"""Naming template utilities for GAM orders and line items.
+"""Naming template utilities for orders and line items.
+
+Adapter-agnostic utilities that work across all ad servers (GAM, Mock, Kevel, etc.)
 
 Supports variable substitution with fallback syntax:
 - {campaign_name} - Direct substitution
@@ -7,10 +9,9 @@ Supports variable substitution with fallback syntax:
 - {month_year} - Month and year (e.g., "Oct 2025")
 - {promoted_offering} - What's being advertised
 - {buyer_ref} - Buyer's reference ID
-- {product_name} - Product name from database (for line items)
-- {package_name} - Package name from MediaPackage.name (for line items)
+- {product_name} - Product name (for line items)
 - {package_count} - Number of packages in order
-- {package_index} - Package index in order (1-based, for line items)
+- {package_index} - Package position number (1, 2, 3...)
 """
 
 from datetime import datetime
@@ -66,6 +67,10 @@ def apply_naming_template(
         ... })
         "Nike Shoes"
     """
+    # Ensure template is a string (handle MagicMock in tests)
+    if not isinstance(template, str):
+        template = str(template)
+
     result = template
 
     # Find all {variable} or {var1|var2} patterns
@@ -128,15 +133,13 @@ def build_order_name_context(
 def build_line_item_name_context(
     order_name: str,
     product_name: str,
-    package_name: str = None,
-    package_index: int = None,
+    package_index: int | None = None,
 ) -> dict:
     """Build context dictionary for line item name template.
 
     Args:
         order_name: Name of the parent order
-        product_name: Name of the product/package (from database)
-        package_name: Name from the package itself (from MediaPackage.name)
+        product_name: Name of the product/package
         package_index: Optional index of package in order (1-based)
 
     Returns:
@@ -145,7 +148,6 @@ def build_line_item_name_context(
     context = {
         "order_name": order_name,
         "product_name": product_name,
-        "package_name": package_name or product_name,  # Fallback to product_name
     }
 
     if package_index is not None:

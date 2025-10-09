@@ -36,6 +36,7 @@ class TestGAMAutomationBasics:
 
 
 @pytest.mark.skip_ci
+@pytest.mark.requires_db
 class TestGAMProductConfiguration:
     """Test database-backed product configuration for automation."""
 

@@ -143,9 +143,9 @@ class GAMWorkflowManager:
         # Use naming template from adapter config, or fallback to default
         from sqlalchemy import select
 
-        from src.adapters.gam.utils.naming import apply_naming_template, build_order_name_context
         from src.core.database.database_session import get_db_session
         from src.core.database.models import AdapterConfig
+        from src.core.utils.naming import apply_naming_template, build_order_name_context
 
         order_name_template = "{campaign_name|promoted_offering} - {date_range}"  # Default
         with get_db_session() as db_session:
