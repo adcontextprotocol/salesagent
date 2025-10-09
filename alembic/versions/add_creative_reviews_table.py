@@ -105,7 +105,7 @@ def upgrade():
         WHERE data IS NOT NULL
             AND data::jsonb ? 'ai_review'
             AND data->'ai_review' IS NOT NULL
-            AND data->'ai_review'::text != 'null';
+            AND (data->'ai_review')::text NOT IN ('null', 'None', '');
         """
     )
 
