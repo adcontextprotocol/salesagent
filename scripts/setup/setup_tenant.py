@@ -23,7 +23,6 @@ def create_tenant(args):
     # Extract configuration values
     auto_approve_formats = ["display_300x250", "display_728x90"]
     human_review_required = not args.auto_approve_all
-    max_daily_budget = args.max_daily_budget
     admin_token = args.admin_token or secrets.token_urlsafe(32)
 
     # Process access control options
@@ -57,7 +56,6 @@ def create_tenant(args):
             name=args.name,
             subdomain=subdomain,
             ad_server=args.adapter,
-            max_daily_budget=max_daily_budget,
             enable_axe_signals=True,
             admin_token=admin_token,
             auto_approve_formats=auto_approve_formats,
@@ -184,7 +182,6 @@ def main():
     # Common options
     parser.add_argument("--manual-approval", action="store_true", help="Require manual approval for operations")
     parser.add_argument("--auto-approve-all", action="store_true", help="Auto-approve all creative formats")
-    parser.add_argument("--max-daily-budget", type=int, default=10000, help="Maximum daily budget (default: 10000)")
     parser.add_argument("--admin-token", help="Admin token (default: generated)")
 
     args = parser.parse_args()

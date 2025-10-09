@@ -360,9 +360,16 @@ class GAMInventoryDiscovery:
         return discovered_labels
 
     @with_retry(operation_name="discover_custom_targeting")
-    def discover_custom_targeting(self) -> dict[str, Any]:
-        """Discover all custom targeting keys and their values."""
-        logger.info("Discovering custom targeting keys and values")
+    def discover_custom_targeting(self, max_values_per_key: int | None = None) -> dict[str, Any]:
+        """Discover all custom targeting keys and their values.
+
+        Args:
+            max_values_per_key: Optional limit on number of values to fetch per key
+        """
+        logger.info(
+            "Discovering custom targeting keys and values"
+            + (f" (max {max_values_per_key} values per key)" if max_values_per_key else "")
+        )
 
         custom_targeting_service = self.client.GetService("CustomTargetingService")
         discovered_keys = []
@@ -391,7 +398,7 @@ class GAMInventoryDiscovery:
         # Discover values for each key
         total_values = 0
         for key in discovered_keys:
-            values = self._discover_custom_targeting_values(key.id)
+            values = self._discover_custom_targeting_values(key.id, max_values=max_values_per_key)
             self.custom_targeting_values[key.id] = values
             total_values += len(values)
 
@@ -399,8 +406,15 @@ class GAMInventoryDiscovery:
 
         return {"keys": discovered_keys, "total_values": total_values}
 
-    def _discover_custom_targeting_values(self, key_id: str) -> list[CustomTargetingValue]:
-        """Discover values for a specific custom targeting key."""
+    def _discover_custom_targeting_values(
+        self, key_id: str, max_values: int | None = None
+    ) -> list[CustomTargetingValue]:
+        """Discover values for a specific custom targeting key.
+
+        Args:
+            key_id: The custom targeting key ID
+            max_values: Optional maximum number of values to fetch
+        """
         custom_targeting_service = self.client.GetService("CustomTargetingService")
         discovered_values = []
 
@@ -409,6 +423,10 @@ class GAMInventoryDiscovery:
             .Where("customTargetingKeyId = :keyId")
             .WithBindVariable("keyId", int(key_id))
         )
+
+        # Apply limit if specified
+        if max_values:
+            statement_builder.limit = max_values
 
         while True:
             response = custom_targeting_service.getCustomTargetingValuesByStatement(statement_builder.ToStatement())
@@ -420,6 +438,11 @@ class GAMInventoryDiscovery:
                     value = CustomTargetingValue.from_gam_object(gam_value_dict)
                     discovered_values.append(value)
 
+                    # Check if we've hit the limit
+                    if max_values and len(discovered_values) >= max_values:
+                        logger.info(f"Reached limit of {max_values} values for key {key_id}")
+                        return discovered_values
+
                 statement_builder.offset += len(response["results"])
             else:
                 break
@@ -427,9 +450,13 @@ class GAMInventoryDiscovery:
         return discovered_values
 
     @with_retry(operation_name="discover_audience_segments")
-    def discover_audience_segments(self) -> list[AudienceSegment]:
-        """Discover audience segments (first-party and third-party)."""
-        logger.info("Discovering audience segments")
+    def discover_audience_segments(self, max_segments: int | None = None) -> list[AudienceSegment]:
+        """Discover audience segments (first-party and third-party).
+
+        Args:
+            max_segments: Optional maximum number of segments to fetch
+        """
+        logger.info("Discovering audience segments" + (f" (max {max_segments})" if max_segments else ""))
 
         # Note: The exact service and method names may vary based on GAM API version
         # This is a representative implementation
@@ -437,6 +464,10 @@ class GAMInventoryDiscovery:
         discovered_segments = []
 
         statement_builder = ad_manager.StatementBuilder(version="v202505")
+
+        # Apply limit if specified
+        if max_segments:
+            statement_builder.limit = max_segments
 
         while True:
             try:
@@ -449,6 +480,11 @@ class GAMInventoryDiscovery:
                         segment = AudienceSegment.from_gam_object(gam_segment_dict)
                         discovered_segments.append(segment)
                         self.audience_segments[segment.id] = segment
+
+                        # Check if we've hit the limit
+                        if max_segments and len(discovered_segments) >= max_segments:
+                            logger.info(f"Reached limit of {max_segments} audience segments")
+                            return discovered_segments
 
                     statement_builder.offset += len(response["results"])
                 else:
@@ -659,6 +695,90 @@ class GAMInventoryDiscovery:
         }
 
         logger.info(f"Inventory sync completed: {summary}")
+        return summary
+
+    def sync_selective(
+        self,
+        sync_types: list[str],
+        custom_targeting_limit: int | None = None,
+        audience_segment_limit: int | None = None,
+    ) -> dict[str, Any]:
+        """
+        Sync only specified inventory types from GAM.
+
+        Args:
+            sync_types: List of types to sync: "ad_units", "placements", "labels",
+                       "custom_targeting", "audience_segments"
+            custom_targeting_limit: Maximum number of custom targeting values to sync per key
+            audience_segment_limit: Maximum number of audience segments to sync
+
+        Returns:
+            Summary of synced data
+        """
+        logger.info(f"Starting selective inventory sync for tenant {self.tenant_id}: {sync_types}")
+
+        start_time = datetime.now()
+        summary = {
+            "tenant_id": self.tenant_id,
+            "sync_time": datetime.now().isoformat(),
+            "sync_types": sync_types,
+        }
+
+        # Sync ad units
+        if "ad_units" in sync_types:
+            self.ad_units.clear()
+            ad_units = self.discover_ad_units()
+            summary["ad_units"] = {
+                "total": len(ad_units),
+                "active": len([u for u in ad_units if u.status == AdUnitStatus.ACTIVE]),
+                "with_children": len([u for u in ad_units if u.has_children]),
+            }
+
+        # Sync placements
+        if "placements" in sync_types:
+            self.placements.clear()
+            placements = self.discover_placements()
+            summary["placements"] = {
+                "total": len(placements),
+                "active": len([p for p in placements if p.status == "ACTIVE"]),
+            }
+
+        # Sync labels
+        if "labels" in sync_types:
+            self.labels.clear()
+            labels = self.discover_labels()
+            summary["labels"] = {"total": len(labels), "active": len([l for l in labels if l.is_active])}
+
+        # Sync custom targeting with optional limit
+        if "custom_targeting" in sync_types:
+            self.custom_targeting_keys.clear()
+            self.custom_targeting_values.clear()
+            custom_targeting = self.discover_custom_targeting(max_values_per_key=custom_targeting_limit)
+            summary["custom_targeting"] = {
+                "total_keys": len(self.custom_targeting_keys),
+                "total_values": custom_targeting.get("total_values", 0),
+                "predefined_keys": len([k for k in self.custom_targeting_keys.values() if k.type == "PREDEFINED"]),
+                "freeform_keys": len([k for k in self.custom_targeting_keys.values() if k.type == "FREEFORM"]),
+            }
+            if custom_targeting_limit:
+                summary["custom_targeting"]["limit_applied"] = custom_targeting_limit
+
+        # Sync audience segments with optional limit
+        if "audience_segments" in sync_types:
+            self.audience_segments.clear()
+            audience_segments = self.discover_audience_segments(max_segments=audience_segment_limit)
+            summary["audience_segments"] = {
+                "total": len(audience_segments),
+                "first_party": len([s for s in audience_segments if s.type == "FIRST_PARTY"]),
+                "third_party": len([s for s in audience_segments if s.type == "THIRD_PARTY"]),
+            }
+            if audience_segment_limit:
+                summary["audience_segments"]["limit_applied"] = audience_segment_limit
+
+        self.last_sync = datetime.now()
+        summary["duration_seconds"] = (self.last_sync - start_time).total_seconds()
+
+        logger.info(f"Selective inventory sync completed: {summary}")
         return summary
 
     def save_to_cache(self, cache_dir: str) -> None:

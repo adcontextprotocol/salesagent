@@ -740,65 +740,6 @@
                     </div>
                 </div>
 
-                <!-- Currency Limits -->
-                <div class="form-section">
-                    <h3>Currency Limits</h3>
-                    <p style="color: #6b7280; margin-bottom: 1.5rem;">
-                        Configure budget limits for each currency you accept. This prevents errors and typos while avoiding foreign exchange complications.
-                    </p>
-
-                    <div id="currency-limits-container">
-                        {% if currency_limits %}
-                            {% for limit in currency_limits %}
-                            <div class="currency-limit-row" data-currency="{{ limit.currency_code }}">
-                                <div class="form-grid" style="grid-template-columns: 120px 1fr 1fr 60px; align-items: start; gap: 1rem; padding: 1rem; background: #f9fafb; border-radius: 8px; margin-bottom: 1rem;">
-                                    <div>
-                                        <strong style="font-size: 1.125rem; color: #111827;">{{ limit.currency_code }}</strong>
-                                        <br><small style="color: #6b7280;">Currency</small>
-                                    </div>
-                                    <div class="form-group" style="margin: 0;">
-                                        <label for="min_spend_{{ limit.currency_code }}">Minimum Per Package</label>
-                                        <input type="number" id="min_spend_{{ limit.currency_code }}"
-                                               name="currency_limits[{{ limit.currency_code }}][min_package_budget]"
-                                               value="{{ limit.min_package_budget if limit.min_package_budget else '' }}"
-                                               min="0" step="0.01" placeholder="No minimum">
-                                        <small style="color: #6b7280;">
-                                            Total budget per package/line item<br>
-                                            <em>Example: Set to 1,000 → rejects packages under $1k</em>
-                                        </small>
-                                    </div>
-                                    <div class="form-group" style="margin: 0;">
-                                        <label for="max_daily_{{ limit.currency_code }}">Maximum Daily Per Package</label>
-                                        <input type="number" id="max_daily_{{ limit.currency_code }}"
-                                               name="currency_limits[{{ limit.currency_code }}][max_daily_package_spend]"
-                                               value="{{ limit.max_daily_package_spend if limit.max_daily_package_spend else '' }}"
-                                               min="0" step="0.01" placeholder="No maximum">
-                                        <small style="color: #6b7280;">
-                                            Max daily spend per package (prevents line item proliferation)<br>
-                                            <em>Example: Set to 10,000 → rejects $100k package over 5 days ($20k/day)</em>
-                                        </small>
-                                    </div>
-                                    <div style="padding-top: 1.5rem;">
-                                        <button type="button" class="btn-danger" onclick="removeCurrencyLimit('{{ limit.currency_code }}')">
-                                            Remove
-                                        </button>
-                                        <input type="hidden" name="currency_limits[{{ limit.currency_code }}][_delete]" value="false">
-                                    </div>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        {% endif %}
-                    </div>
-
-                    <div style="margin-top: 1rem;">
-                        <label for="new_currency_code">Add New Currency</label>
-                        <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
-                            <input type="text" id="new_currency_code" placeholder="USD, EUR, GBP..." maxlength="3" style="width: 100px; text-transform: uppercase;">
-                            <button type="button" class="btn btn-secondary" onclick="addCurrencyLimit()">Add Currency</button>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Naming Conventions -->
                 <div class="form-section">
                     <h3>Naming Conventions</h3>
@@ -915,14 +856,201 @@
                     </div>
                 </div>
 
-                <!-- Features -->
+                <!-- Creative Review -->
                 <div class="form-section">
-                    <h3>Features</h3>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="enable_axe_signals" name="enable_axe_signals"
-                               {% if tenant.enable_axe_signals %}checked{% endif %}>
-                        <label for="enable_axe_signals">Enable AXE environmental signals</label>
-                        <small>Pass carbon intensity and sustainability data to campaigns</small>
+                    <h3>Creative Review</h3>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                        Configure how uploaded creatives are reviewed and approved
+                    </p>
+
+                    <div class="form-group">
+                        <label for="approval_mode">Creative Approval Mode</label>
+                        <select id="approval_mode" name="approval_mode" class="form-control" onchange="updateApprovalModeUI()">
+                            <option value="auto-approve" {% if tenant.approval_mode == 'auto-approve' %}selected{% endif %}>
+                                ✅ Auto-approve all creatives
+                            </option>
+                            <option value="require-human" {% if tenant.approval_mode == 'require-human' or not tenant.approval_mode %}selected{% endif %}>
+                                👤 Require human approval
+                            </option>
+                            <option value="ai-powered" {% if tenant.approval_mode == 'ai-powered' %}selected{% endif %}>
+                                🤖 AI-powered review
+                            </option>
+                        </select>
+                        <small>Choose how creatives are handled when uploaded</small>
+                    </div>
+
+                    <!-- Mode Descriptions -->
+                    <div id="mode-description" style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #2563eb;">
+                        <div id="desc-auto-approve" style="display: none;">
+                            <strong>✅ Auto-approve Mode:</strong>
+                            <p style="margin: 0.5rem 0 0 0;">All uploaded creatives are immediately approved and ready to use.</p>
+                        </div>
+                        <div id="desc-require-human" style="display: none;">
+                            <strong>👤 Human Review Mode:</strong>
+                            <p style="margin: 0.5rem 0 0 0;">All creatives remain pending until manually reviewed and approved by a human.</p>
+                        </div>
+                        <div id="desc-ai-powered" style="display: none;">
+                            <strong>🤖 AI-Powered Mode:</strong>
+                            <p style="margin: 0.5rem 0 0 0;">Creatives are automatically reviewed by AI based on your criteria below.</p>
+                        </div>
+                    </div>
+
+                    <!-- AI Configuration (shown only for ai-powered mode) -->
+                    <div id="ai-config-section" style="display: none; margin-top: 1rem;">
+                        {% if not has_gemini_key %}
+                        <div class="alert alert-warning" style="padding: 0.75rem; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; margin-bottom: 1rem;">
+                            <strong>⚠️ Gemini API Key Required</strong>
+                            <p style="margin: 0.5rem 0 0;">AI review requires a Gemini API key. Please set your key in <a href="#" onclick="event.preventDefault(); switchSettingsSection('integrations')">Integrations → AI Services</a>.</p>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-success" style="padding: 0.75rem; background: #d1fae5; border: 1px solid #34d399; border-radius: 6px; margin-bottom: 1rem;">
+                            <strong>✅ Gemini API Key Configured</strong>
+                            <p style="margin: 0.5rem 0 0; font-size: 0.875rem; color: #059669;">AI-powered creative review is enabled.</p>
+                        </div>
+                        {% endif %}
+
+                        <div class="form-group">
+                            <label for="creative_review_criteria">AI Review Criteria</label>
+                            <textarea id="creative_review_criteria" name="creative_review_criteria" class="form-control" rows="6"
+                                      placeholder="Enter your creative review criteria..."
+                                      style="font-family: monospace; font-size: 0.875rem;">{{ tenant.creative_review_criteria or '' }}</textarea>
+                            <small>Define when to <strong>approve</strong>, <strong>require human approval</strong>, or <strong>reject</strong> creatives. The AI will use these criteria to make three-state decisions.</small>
+                        </div>
+
+                        <details style="margin-top: 0.5rem;">
+                            <summary style="cursor: pointer; color: #2563eb; font-weight: 500; font-size: 0.875rem;">📝 Show Example Criteria</summary>
+                            <div style="margin-top: 0.75rem; padding: 0.75rem; background: #f8f9fa; border-radius: 6px; font-size: 0.875rem;">
+                                <strong>Example 1: Simple Three-State Review</strong>
+                                <pre style="background: white; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto; white-space: pre-wrap;">APPROVE if:
+✓ Creative clearly matches promoted offering
+✓ Professional quality (clear, readable)
+✓ Appropriate for general audiences
+
+REQUIRE HUMAN APPROVAL if:
+⚠️ Unsure about promoted offering match
+⚠️ Borderline quality or unclear messaging
+⚠️ Contains sensitive content that may need review
+⚠️ Novel or unusual creative approach
+
+REJECT if:
+✗ Wrong product/service advertised
+✗ Poor quality or unprofessional
+✗ Inappropriate or offensive content
+✗ Misleading claims</pre>
+
+                                <strong>Example 2: Brand Safety Focus</strong>
+                                <pre style="background: white; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto; white-space: pre-wrap;">APPROVE if all conditions met:
+- Clearly promotes the advertised product
+- No offensive, violent, or inappropriate content
+- No false or misleading claims
+- Professional image quality
+
+REQUIRE HUMAN APPROVAL if:
+- Contains claims that need fact-checking
+- Uses controversial themes or messaging
+- Quality is acceptable but not ideal
+- Uncertain about brand guideline compliance
+
+REJECT if any condition met:
+- Violates advertising standards
+- Contains competitor branding
+- Promotes wrong or unrelated products
+- Unprofessional or low quality</pre>
+
+                                <strong>Example 3: Detailed Guidelines</strong>
+                                <pre style="background: white; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto; white-space: pre-wrap;">Review each creative and respond with one of three actions:
+
+APPROVE - Creative is ready to go live:
+✓ Promoted offering matches creative content
+✓ Professional quality (clear images, readable text)
+✓ Appropriate for all audiences
+✓ No misleading claims or fine print issues
+✓ Brand/product clearly visible
+✓ Meets industry advertising standards
+
+REQUIRE HUMAN APPROVAL - Needs manual review:
+⚠️ Uncertain about promoted offering alignment
+⚠️ Questionable claims that may need verification
+⚠️ Sensitive topics or mature themes
+⚠️ Unusual format or creative approach
+⚠️ Borderline quality or professionalism
+⚠️ Potential legal or compliance concerns
+
+REJECT - Creative cannot be approved:
+✗ Wrong product/service advertised
+✗ Poor quality or unprofessional appearance
+✗ Inappropriate, offensive, or explicit content
+✗ Misleading, deceptive, or false claims
+✗ Violates advertising regulations
+✗ Contains competitor branding or logos</pre>
+                            </div>
+                        </details>
+
+                        <!-- AI Policy Configuration -->
+                        <div class="form-group" style="margin-top: 2rem;">
+                            <h4 style="margin-bottom: 1rem; color: #111827;">AI Confidence Thresholds</h4>
+                            <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                                Configure how confident the AI must be before automatically approving or rejecting creatives.
+                                Lower confidence decisions will require human review.
+                            </p>
+
+                            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                                <div class="form-group">
+                                    <label for="auto_approve_threshold">
+                                        Auto-Approve Threshold
+                                        <span style="color: #10b981; font-weight: 600; margin-left: 0.5rem;" id="approve_threshold_value">90%</span>
+                                    </label>
+                                    <input type="range" id="auto_approve_threshold" name="auto_approve_threshold"
+                                           min="0.5" max="1.0" step="0.05"
+                                           value="{{ (tenant.ai_policy.auto_approve_threshold if tenant.ai_policy else 0.90) }}"
+                                           class="form-control" style="margin-bottom: 0.5rem;"
+                                           oninput="document.getElementById('approve_threshold_value').textContent = Math.round(this.value * 100) + '%'">
+                                    <small>AI must be at least this confident to auto-approve (default: 90%)</small>
+                                </div>
+
+                                <div class="form-group" style="margin-top: 1rem;">
+                                    <label for="auto_reject_threshold">
+                                        Auto-Reject Threshold
+                                        <span style="color: #ef4444; font-weight: 600; margin-left: 0.5rem;" id="reject_threshold_value">10%</span>
+                                    </label>
+                                    <input type="range" id="auto_reject_threshold" name="auto_reject_threshold"
+                                           min="0.0" max="0.5" step="0.05"
+                                           value="{{ (tenant.ai_policy.auto_reject_threshold if tenant.ai_policy else 0.10) }}"
+                                           class="form-control" style="margin-bottom: 0.5rem;"
+                                           oninput="document.getElementById('reject_threshold_value').textContent = Math.round(this.value * 100) + '%'">
+                                    <small>AI must be this certain or less to auto-reject (default: 10%)</small>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="sensitive_categories">Always Require Human Review For</label>
+                                <input type="text" id="sensitive_categories" name="sensitive_categories"
+                                       value="{{ (tenant.ai_policy.always_require_human_for|join(', ') if tenant.ai_policy and tenant.ai_policy.always_require_human_for else 'political, healthcare, financial') }}"
+                                       class="form-control"
+                                       placeholder="political, healthcare, financial">
+                                <small>Categories that always require human review, regardless of AI confidence (comma-separated)</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="learn_from_overrides" name="learn_from_overrides"
+                                           {% if not tenant.ai_policy or tenant.ai_policy.learn_from_overrides != False %}checked{% endif %}>
+                                    Track when humans disagree with AI decisions
+                                </label>
+                                <small style="display: block; margin-top: 0.25rem;">
+                                    Enable learning from human overrides to improve AI accuracy over time
+                                </small>
+                            </div>
+
+                            <div style="background: #eff6ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #2563eb; margin-top: 1rem;">
+                                <strong>How It Works:</strong>
+                                <ul style="margin: 0.5rem 0 0 1.5rem; font-size: 0.875rem;">
+                                    <li><strong>High Confidence (≥90%):</strong> AI approvals/rejections are automatic</li>
+                                    <li><strong>Medium Confidence (10%-90%):</strong> Sent to human review queue with AI recommendation</li>
+                                    <li><strong>Sensitive Categories:</strong> Always require human review, regardless of confidence</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1196,6 +1324,31 @@
 
             <div class="form-section">
                 <h3>Slack Integration</h3>
+                <p class="form-section-description">
+                    Receive real-time notifications for creative approvals, tasks, and audit logs in your Slack workspace.
+                </p>
+
+                <details style="margin-bottom: 1rem; padding: 1rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;">
+                    <summary style="cursor: pointer; font-weight: 500; color: #374151;">
+                        📖 How to set up a Slack webhook
+                    </summary>
+                    <div style="margin-top: 1rem; padding-left: 0.5rem;">
+                        <ol style="margin: 0.5rem 0; padding-left: 1.5rem; line-height: 1.8;">
+                            <li>Go to <a href="https://api.slack.com/apps" target="_blank" rel="noopener">api.slack.com/apps</a> and create a new app (or select an existing one)</li>
+                            <li>Click on <strong>Incoming Webhooks</strong> in the left sidebar</li>
+                            <li>Toggle <strong>Activate Incoming Webhooks</strong> to On</li>
+                            <li>Click <strong>Add New Webhook to Workspace</strong></li>
+                            <li>Select the channel where you want notifications</li>
+                            <li>Copy the webhook URL (starts with <code>https://hooks.slack.com/services/...</code>)</li>
+                            <li>Paste it into the fields below</li>
+                        </ol>
+                        <img src="/static/images/slack-webhook-setup.png" alt="Slack Incoming Webhooks setup page" style="max-width: 100%; border: 1px solid #e5e7eb; border-radius: 6px; margin-top: 1rem;">
+                        <p style="margin-top: 1rem; font-size: 0.875rem; color: #6b7280;">
+                            💡 <strong>Tip:</strong> You can use the same webhook for both notifications and audit logs, or create separate webhooks for different channels.
+                        </p>
+                    </div>
+                </details>
+
                 <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/slack">
                     <div class="form-group">
                         <label for="slack_webhook_url">Task Notifications Webhook URL</label>
@@ -1216,6 +1369,43 @@
                     <div class="button-group">
                         <button type="submit" class="btn btn-primary">Save Slack Settings</button>
                         <button type="button" onclick="testSlack()" class="btn btn-secondary">Test Connection</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="form-section">
+                <h3>AI Services</h3>
+                <p class="form-section-description">
+                    Configure AI-powered features like creative review. Each tenant must provide their own API keys.
+                </p>
+
+                {% if not tenant.gemini_api_key %}
+                <div class="alert alert-warning" style="padding: 0.75rem; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; margin-bottom: 1rem;">
+                    <strong>⚠️ Gemini API Key Required</strong>
+                    <p style="margin: 0.5rem 0 0;">AI-powered creative review is not available without a Gemini API key. Please add your key below.</p>
+                </div>
+                {% else %}
+                <div class="alert alert-success" style="padding: 0.75rem; background: #d1fae5; border: 1px solid #34d399; border-radius: 6px; margin-bottom: 1rem;">
+                    <strong>✅ Gemini API Key Configured</strong>
+                    <p style="margin: 0.5rem 0 0;">AI-powered creative review is enabled.</p>
+                </div>
+                {% endif %}
+
+                <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/ai">
+                    <div class="form-group">
+                        <label for="gemini_api_key">Gemini API Key <span style="color: #ef4444;">*</span></label>
+                        <input type="password" id="gemini_api_key" name="gemini_api_key"
+                               value="{{ tenant.gemini_api_key or '' }}"
+                               placeholder="Enter your Gemini API key"
+                               required>
+                        <small>
+                            Required for AI-powered creative review. Each tenant provides their own key for usage tracking and billing.
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank">Get an API key from Google AI Studio</a>
+                        </small>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary">Save AI Settings</button>
                     </div>
                 </form>
             </div>
@@ -2047,17 +2237,23 @@ function saveBusinessRules() {
         order_name_template: document.getElementById('order_name_template').value,
         line_item_name_template: document.getElementById('line_item_name_template').value,
         human_review_required: document.getElementById('human_review_required').checked,
-        enable_axe_signals: document.getElementById('enable_axe_signals').checked,
+        approval_mode: document.getElementById('approval_mode').value,
+        creative_review_criteria: document.getElementById('creative_review_criteria').value,
     };
 
-    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings/business-rules', {
+    fetch('/tenant/{{ tenant.tenant_id }}/settings/business-rules', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(data)
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             // Show success message
@@ -2076,7 +2272,7 @@ function saveBusinessRules() {
         }
     })
     .catch(error => {
-        console.error('Error:', error);
+        console.error('Error details:', error);
         alert('Error updating business rules: ' + error.message);
     });
 }
@@ -2086,8 +2282,8 @@ function saveGAMConfig() {
     const networkCode = document.getElementById('gam_network_code').value;
     const refreshToken = document.getElementById('gam_refresh_token').value;
     const traffickerId = document.getElementById('gam_trafficker_id').value;
-    const orderNameTemplate = document.getElementById('gam_order_name_template').value;
-    const lineItemNameTemplate = document.getElementById('gam_line_item_name_template').value;
+    const orderNameTemplate = (document.getElementById('gam_order_name_template') || document.getElementById('order_name_template'))?.value || '';
+    const lineItemNameTemplate = (document.getElementById('gam_line_item_name_template') || document.getElementById('line_item_name_template'))?.value || '';
 
     if (!refreshToken) {
         alert('Please provide a Refresh Token');
@@ -2708,82 +2904,33 @@ function confirmDeactivation() {
     );
 }
 
-// Currency Limits Management
-function addCurrencyLimit() {
-    const input = document.getElementById('new_currency_code');
-    const currencyCode = input.value.trim().toUpperCase();
+// Creative Review: Update UI based on selected approval mode
+function updateApprovalModeUI() {
+    const mode = document.getElementById('approval_mode').value;
+    const aiConfigSection = document.getElementById('ai-config-section');
 
-    if (!currencyCode || currencyCode.length !== 3) {
-        alert('Please enter a valid 3-letter currency code (e.g., USD, EUR, GBP)');
-        return;
-    }
+    // Hide all mode descriptions
+    document.getElementById('desc-auto-approve').style.display = 'none';
+    document.getElementById('desc-require-human').style.display = 'none';
+    document.getElementById('desc-ai-powered').style.display = 'none';
 
-    // Check if currency already exists
-    const existing = document.querySelector(`.currency-limit-row[data-currency="${currencyCode}"]`);
-    if (existing) {
-        alert(`Currency ${currencyCode} already exists`);
-        return;
-    }
-
-    // Create new currency limit row
-    const container = document.getElementById('currency-limits-container');
-    const newRow = document.createElement('div');
-    newRow.className = 'currency-limit-row';
-    newRow.setAttribute('data-currency', currencyCode);
-    newRow.innerHTML = `
-        <div class="form-grid" style="grid-template-columns: 120px 1fr 1fr 60px; align-items: start; gap: 1rem; padding: 1rem; background: #f9fafb; border-radius: 8px; margin-bottom: 1rem;">
-            <div>
-                <strong style="font-size: 1.125rem; color: #111827;">${currencyCode}</strong>
-                <br><small style="color: #6b7280;">Currency</small>
-            </div>
-            <div class="form-group" style="margin: 0;">
-                <label for="min_spend_${currencyCode}">Minimum Per Package</label>
-                <input type="number" id="min_spend_${currencyCode}"
-                       name="currency_limits[${currencyCode}][min_package_budget]"
-                       min="0" step="0.01" placeholder="No minimum">
-                <small style="color: #6b7280;">
-                    Total budget per package/line item<br>
-                    <em>Example: Set to 1,000 → rejects packages under $1k</em>
-                </small>
-            </div>
-            <div class="form-group" style="margin: 0;">
-                <label for="max_daily_${currencyCode}">Maximum Daily Per Package</label>
-                <input type="number" id="max_daily_${currencyCode}"
-                       name="currency_limits[${currencyCode}][max_daily_package_spend]"
-                       min="0" step="0.01" placeholder="No maximum">
-                <small style="color: #6b7280;">
-                    Max daily spend per package (prevents line item proliferation)<br>
-                    <em>Example: Set to 10,000 → rejects $100k package over 5 days ($20k/day)</em>
-                </small>
-            </div>
-            <div style="padding-top: 1.5rem;">
-                <button type="button" class="btn-danger" onclick="removeCurrencyLimit('${currencyCode}')">
-                    Remove
-                </button>
-                <input type="hidden" name="currency_limits[${currencyCode}][_delete]" value="false">
-            </div>
-        </div>
-    `;
-
-    container.appendChild(newRow);
-    input.value = '';
-}
-
-function removeCurrencyLimit(currencyCode) {
-    if (!confirm(`Remove ${currencyCode} currency limits?`)) {
-        return;
-    }
-
-    const row = document.querySelector(`.currency-limit-row[data-currency="${currencyCode}"]`);
-    if (row) {
-        // Mark for deletion
-        const deleteInput = row.querySelector(`input[name="currency_limits[${currencyCode}][_delete]"]`);
-        if (deleteInput) {
-            deleteInput.value = 'true';
-        }
-        row.style.display = 'none';
+    // Show selected mode description
+    if (mode === 'auto-approve') {
+        document.getElementById('desc-auto-approve').style.display = 'block';
+        aiConfigSection.style.display = 'none';
+    } else if (mode === 'require-human') {
+        document.getElementById('desc-require-human').style.display = 'block';
+        aiConfigSection.style.display = 'none';
+    } else if (mode === 'ai-powered') {
+        document.getElementById('desc-ai-powered').style.display = 'block';
+        aiConfigSection.style.display = 'block';
     }
 }
+
+// Initialize approval mode UI on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateApprovalModeUI();
+});
 </script>
 
 <!-- Edit Principal Mappings Modal -->

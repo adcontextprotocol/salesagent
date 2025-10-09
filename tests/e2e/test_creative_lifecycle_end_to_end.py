@@ -174,25 +174,25 @@ class CreativeLifecycleTestSuite:
         await self._validate_response("sync_creatives", sync_data)
 
         # Verify sync results
-        assert len(sync_data["synced_creatives"]) == 3
+        assert len(sync_data["creatives"]) == 3
         assert len(sync_data["failed_creatives"]) == 0
         assert len(sync_data["assignments"]) == 6  # 3 creatives × 2 packages
 
         # Store for later tests
-        self.test_creatives = [c["creative_id"] for c in sync_data["synced_creatives"]]
+        self.test_creatives = [c["creative_id"] for c in sync_data["creatives"]]
         self.test_assignments = sync_data["assignments"]
 
         # Verify creative data integrity
-        display_creative = next((c for c in sync_data["synced_creatives"] if c["format"] == "display_300x250"), None)
+        display_creative = next((c for c in sync_data["creatives"] if c["format"] == "display_300x250"), None)
         assert display_creative is not None
         assert display_creative["width"] == 300
         assert display_creative["height"] == 250
 
-        video_creative = next((c for c in sync_data["synced_creatives"] if c["format"] == "video_pre_roll"), None)
+        video_creative = next((c for c in sync_data["creatives"] if c["format"] == "video_pre_roll"), None)
         assert video_creative is not None
         assert video_creative["duration"] == 15.0
 
-        native_creative = next((c for c in sync_data["synced_creatives"] if c["format"] == "native_content"), None)
+        native_creative = next((c for c in sync_data["creatives"] if c["format"] == "native_content"), None)
         assert native_creative is not None
         assert native_creative["snippet"] is not None
         assert native_creative["template_variables"] is not None
@@ -287,10 +287,10 @@ class CreativeLifecycleTestSuite:
         await self._validate_response("sync_creatives", upsert_data)
 
         # Verify update succeeded
-        assert len(upsert_data["synced_creatives"]) == 1
+        assert len(upsert_data["creatives"]) == 1
         assert len(upsert_data["failed_creatives"]) == 0
 
-        updated = upsert_data["synced_creatives"][0]
+        updated = upsert_data["creatives"][0]
         assert updated["name"] == "UPDATED E2E Display Ad 300x250"
         assert updated["url"] == "https://e2e-test.example.com/updated_display.jpg"
 
@@ -363,7 +363,7 @@ class CreativeLifecycleTestSuite:
         sync_data = sync_result.content if hasattr(sync_result, "content") else sync_result
         assert len(sync_data["assignments"]) == 0  # No assignments requested
 
-        unassigned_creative_id = sync_data["synced_creatives"][0]["creative_id"]
+        unassigned_creative_id = sync_data["creatives"][0]["creative_id"]
 
         # Now assign it to packages
         assign_result = await self.mcp_client.tools.sync_creatives(
@@ -405,7 +405,7 @@ class CreativeLifecycleTestSuite:
         sync_data = sync_result.content if hasattr(sync_result, "content") else sync_result
 
         # Should have failures but still return structured response
-        assert len(sync_data["synced_creatives"]) == 0
+        assert len(sync_data["creatives"]) == 0
         assert len(sync_data["failed_creatives"]) == 1
 
         failed_creative = sync_data["failed_creatives"][0]
@@ -457,9 +457,9 @@ class CreativeLifecycleTestSuite:
         assert sync_response.status_code == 200
         sync_data = sync_response.json()
         assert sync_data.get("success") is True
-        assert len(sync_data["synced_creatives"]) == 1
+        assert len(sync_data["creatives"]) == 1
 
-        a2a_creative_id = sync_data["synced_creatives"][0]["creative_id"]
+        a2a_creative_id = sync_data["creatives"][0]["creative_id"]
 
         # Test list_creatives via A2A
         list_payload = {
@@ -519,7 +519,7 @@ class CreativeLifecycleTestSuite:
         print("✅ Creative lifecycle end-to-end test completed successfully!")
 
         # Summary statistics
-        total_creatives_synced = len(results["sync_basic"]["synced_creatives"])
+        total_creatives_synced = len(results["sync_basic"]["creatives"])
         total_assignments_created = len(results["sync_basic"]["assignments"])
 
         results["summary"] = {
@@ -557,10 +557,10 @@ async def test_creative_lifecycle_comprehensive(docker_services_e2e):
 
         # Validate overall test results
         assert results["setup"]["media_buy_id"] is not None
-        assert results["sync_basic"]["synced_creatives"] is not None
-        assert len(results["sync_basic"]["synced_creatives"]) >= 3
+        assert results["sync_basic"]["creatives"] is not None
+        assert len(results["sync_basic"]["creatives"]) >= 3
         assert results["list_basic"]["total_count"] >= 3
-        assert results["upsert"]["synced_creatives"] is not None
+        assert results["upsert"]["creatives"] is not None
         assert results["assignments"]["assignment"] is not None
         assert results["errors"]["failed_creative"] is not None
         assert results["a2a"]["a2a_creative_id"] is not None
@@ -596,7 +596,7 @@ async def test_creative_lifecycle_error_scenarios(docker_services_e2e):
         # Test 1: Empty creatives array
         empty_result = await test_suite.mcp_client.tools.sync_creatives(creatives=[])
         empty_data = empty_result.content if hasattr(empty_result, "content") else empty_result
-        assert empty_data["synced_creatives"] == []
+        assert empty_data["creatives"] == []
         assert empty_data["failed_creatives"] == []
 
         # Test 2: Invalid media buy reference
@@ -674,7 +674,7 @@ async def test_creative_lifecycle_performance(docker_services_e2e):
         sync_data = sync_result.content if hasattr(sync_result, "content") else sync_result
 
         # Verify batch operation succeeded
-        assert len(sync_data["synced_creatives"]) == batch_size
+        assert len(sync_data["creatives"]) == batch_size
         assert len(sync_data["failed_creatives"]) == 0
         assert len(sync_data["assignments"]) == batch_size * 2  # 2 packages per creative
 

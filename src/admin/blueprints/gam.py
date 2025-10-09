@@ -2,9 +2,11 @@
 
 import json
 import logging
+import os
 from datetime import UTC, datetime
 
 from flask import Blueprint, jsonify, render_template, request, session
+from googleads import ad_manager
 from sqlalchemy import select
 
 from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
@@ -415,11 +417,22 @@ def get_gam_custom_targeting_keys(tenant_id):
             if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                 return jsonify({"error": "GAM not configured for this tenant"}), 400
 
-            # Initialize GAM inventory discovery
-            discovery = GAMInventoryDiscovery(
-                network_code=adapter_config.gam_network_code,
+            # Create OAuth2 client
+            from googleads import oauth2
+
+            oauth2_client = oauth2.GoogleRefreshTokenClient(
+                client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
+                client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
                 refresh_token=adapter_config.gam_refresh_token,
             )
+
+            # Create GAM client
+            client = ad_manager.AdManagerClient(
+                oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
+            )
+
+            # Initialize GAM inventory discovery
+            discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
 
             # Get custom targeting keys
             keys = discovery.discover_custom_targeting()
@@ -452,61 +465,31 @@ def sync_gam_inventory(tenant_id):
             if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                 return jsonify({"success": False, "error": "GAM not configured for this tenant"}), 400
 
-            # Initialize GAM inventory discovery
-            discovery = GAMInventoryDiscovery(
-                network_code=adapter_config.gam_network_code,
+            # Create OAuth2 client
+            from googleads import oauth2
+
+            oauth2_client = oauth2.GoogleRefreshTokenClient(
+                client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
+                client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
                 refresh_token=adapter_config.gam_refresh_token,
             )
 
-            # Perform full inventory discovery
-            ad_units = discovery.discover_ad_units()
-            placements = discovery.discover_placements()
-            targeting = discovery.discover_custom_targeting()
+            # Create GAM client
+            client = ad_manager.AdManagerClient(
+                oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
+            )
 
-            # Store in database
+            # Initialize GAM inventory discovery
+            discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
+
+            # Perform full inventory sync
+            result = discovery.sync_all()
+
+            # Save to database
             from src.services.gam_inventory_service import GAMInventoryService
 
             inventory_service = GAMInventoryService(db_session)
-
-            # Save ad units
-            for ad_unit in ad_units:
-                inventory_service.save_ad_unit(
-                    tenant_id=tenant_id,
-                    ad_unit_id=str(ad_unit["id"]),
-                    name=ad_unit["name"],
-                    ad_unit_code=ad_unit.get("adUnitCode", ""),
-                    parent_id=str(ad_unit.get("parentId", "")),
-                    ad_unit_sizes=ad_unit.get("adUnitSizes", []),
-                    targeting_preset_id=ad_unit.get("targetingPresetId"),
-                    description=ad_unit.get("description", ""),
-                    explicitly_targeted=ad_unit.get("explicitlyTargeted", False),
-                    status=ad_unit.get("status", "ACTIVE"),
-                )
-
-            # Save placements
-            for placement in placements:
-                inventory_service.save_placement(
-                    tenant_id=tenant_id,
-                    placement_id=str(placement["id"]),
-                    name=placement["name"],
-                    description=placement.get("description", ""),
-                    placement_code=placement.get("placementCode", ""),
-                    status=placement.get("status", "ACTIVE"),
-                    targeted_ad_unit_ids=[str(aid) for aid in placement.get("targetedAdUnitIds", [])],
-                )
-
-            # Save custom targeting keys
-            for key in targeting:
-                inventory_service.save_targeting_key(
-                    tenant_id=tenant_id,
-                    key_id=str(key["id"]),
-                    name=key["name"],
-                    display_name=key.get("displayName", key["name"]),
-                    key_type=key.get("type", "FREEFORM"),
-                    status=key.get("status", "ACTIVE"),
-                )
-
-            db_session.commit()
+            inventory_service._save_inventory_to_db(tenant_id, discovery)
 
             # Update tenant's last sync time
             tenant.last_inventory_sync = datetime.now(UTC)
@@ -518,9 +501,11 @@ def sync_gam_inventory(tenant_id):
                 {
                     "success": True,
                     "message": "Inventory synced successfully",
-                    "ad_units_count": len(ad_units),
-                    "placements_count": len(placements),
-                    "targeting_count": len(targeting),
+                    "ad_units": result.get("ad_units", {}),
+                    "placements": result.get("placements", {}),
+                    "labels": result.get("labels", {}),
+                    "custom_targeting": result.get("custom_targeting", {}),
+                    "audience_segments": result.get("audience_segments", {}),
                 }
             )
 

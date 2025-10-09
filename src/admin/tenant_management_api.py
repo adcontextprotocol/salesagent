@@ -120,6 +120,8 @@ def create_tenant():
 
     with get_db_session() as db_session:
         try:
+            from src.core.webhook_validator import WebhookURLValidator
+
             data = request.get_json()
 
             # Validate required fields
@@ -127,6 +129,19 @@ def create_tenant():
             for field in required_fields:
                 if field not in data:
                     return jsonify({"error": f"Missing required field: {field}"}), 400
+
+            # Validate webhook URLs for SSRF protection
+            webhook_fields = {
+                "slack_webhook_url": "Slack webhook URL",
+                "slack_audit_webhook_url": "Slack audit webhook URL",
+                "hitl_webhook_url": "HITL webhook URL",
+            }
+            for field_name, field_label in webhook_fields.items():
+                url = data.get(field_name)
+                if url:
+                    is_valid, error_msg = WebhookURLValidator.validate_webhook_url(url)
+                    if not is_valid:
+                        return jsonify({"error": f"Invalid {field_label}: {error_msg}"}), 400
 
             # Generate tenant ID
             tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
@@ -358,7 +373,21 @@ def update_tenant(tenant_id):
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
+            from src.core.webhook_validator import WebhookURLValidator
+
             data = request.get_json()
+
+            # Validate webhook URLs before updating for SSRF protection
+            webhook_fields = {
+                "slack_webhook_url": "Slack webhook URL",
+                "slack_audit_webhook_url": "Slack audit webhook URL",
+                "hitl_webhook_url": "HITL webhook URL",
+            }
+            for field_name, field_label in webhook_fields.items():
+                if field_name in data and data[field_name]:
+                    is_valid, error_msg = WebhookURLValidator.validate_webhook_url(data[field_name])
+                    if not is_valid:
+                        return jsonify({"error": f"Invalid {field_label}: {error_msg}"}), 400
 
             # Update fields based on provided data
             if "name" in data:

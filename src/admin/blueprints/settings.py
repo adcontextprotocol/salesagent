@@ -306,7 +306,23 @@ def update_adapter(tenant_id):
 def update_slack(tenant_id):
     """Update Slack integration settings."""
     try:
+        from src.core.webhook_validator import WebhookURLValidator
+
         webhook_url = request.form.get("slack_webhook_url", "").strip()
+        audit_webhook_url = request.form.get("slack_audit_webhook_url", "").strip()
+
+        # Validate webhook URLs for SSRF protection
+        if webhook_url:
+            is_valid, error_msg = WebhookURLValidator.validate_webhook_url(webhook_url)
+            if not is_valid:
+                flash(f"Invalid Slack webhook URL: {error_msg}", "error")
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
+
+        if audit_webhook_url:
+            is_valid, error_msg = WebhookURLValidator.validate_webhook_url(audit_webhook_url)
+            if not is_valid:
+                flash(f"Invalid Slack audit webhook URL: {error_msg}", "error")
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
 
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
@@ -314,12 +330,13 @@ def update_slack(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            # Update Slack webhook
-            tenant.slack_webhook_url = webhook_url
+            # Update Slack webhooks
+            tenant.slack_webhook_url = webhook_url if webhook_url else None
+            tenant.slack_audit_webhook_url = audit_webhook_url if audit_webhook_url else None
             tenant.updated_at = datetime.now(UTC)
             db_session.commit()
 
-            if webhook_url:
+            if webhook_url or audit_webhook_url:
                 flash("Slack integration updated successfully", "success")
             else:
                 flash("Slack integration disabled", "info")
@@ -327,6 +344,37 @@ def update_slack(tenant_id):
     except Exception as e:
         logger.error(f"Error updating Slack settings: {e}", exc_info=True)
         flash(f"Error updating Slack settings: {str(e)}", "error")
+
+    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
+
+
+@settings_bp.route("/ai", methods=["POST"])
+@require_tenant_access()
+def update_ai(tenant_id):
+    """Update AI services settings (Gemini API key)."""
+    try:
+        gemini_api_key = request.form.get("gemini_api_key", "").strip()
+
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
+
+            # Update Gemini API key (encrypted via property setter)
+            if gemini_api_key:
+                tenant.gemini_api_key = gemini_api_key
+                flash("Gemini API key saved successfully. AI-powered creative review is now enabled.", "success")
+            else:
+                tenant.gemini_api_key = None
+                flash("Gemini API key removed. AI-powered creative review is now disabled.", "warning")
+
+            tenant.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+    except Exception as e:
+        logger.error(f"Error updating AI settings: {e}", exc_info=True)
+        flash(f"Error updating AI settings: {str(e)}", "error")
 
     return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
 
@@ -646,17 +694,7 @@ def update_business_rules(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
-            # Update budget controls
-            if "max_daily_budget" in data:
-                try:
-                    tenant.max_daily_budget = int(data.get("max_daily_budget"))
-                except (ValueError, TypeError):
-                    if request.is_json:
-                        return jsonify({"success": False, "error": "Invalid max_daily_budget value"}), 400
-                    flash("Invalid maximum daily budget value", "error")
-                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
-
-            # Update currency limits
+            # Update currency limits (max_daily_budget moved to currency_limits table)
             from decimal import Decimal, InvalidOperation
 
             from src.core.database.models import CurrencyLimit
@@ -722,7 +760,6 @@ def update_business_rules(tenant_id):
                         max_daily_package_spend=max_value,
                     )
                     db_session.add(limit)
-
             # Update naming templates with validation
             if "order_name_template" in data:
                 order_template = data.get("order_name_template", "").strip()
@@ -758,6 +795,73 @@ def update_business_rules(tenant_id):
             elif not request.is_json:
                 # Checkbox not present in form data means unchecked
                 tenant.human_review_required = False
+
+            # Update creative review settings
+            if "approval_mode" in data:
+                approval_mode = data.get("approval_mode", "").strip()
+                if approval_mode in ["auto-approve", "require-human", "ai-powered"]:
+                    tenant.approval_mode = approval_mode
+
+            if "creative_review_criteria" in data:
+                creative_review_criteria = data.get("creative_review_criteria")
+                if creative_review_criteria is not None:
+                    creative_review_criteria = creative_review_criteria.strip()
+                    # Allow empty string or set to None if empty
+                    tenant.creative_review_criteria = creative_review_criteria if creative_review_criteria else None
+
+            # Update AI policy configuration
+            if any(
+                key in data
+                for key in [
+                    "auto_approve_threshold",
+                    "auto_reject_threshold",
+                    "sensitive_categories",
+                    "learn_from_overrides",
+                ]
+            ):
+                # Get existing AI policy or create new dict
+                ai_policy = tenant.ai_policy if tenant.ai_policy else {}
+
+                # Update thresholds
+                if "auto_approve_threshold" in data:
+                    try:
+                        threshold = float(data.get("auto_approve_threshold"))
+                        if 0.0 <= threshold <= 1.0:
+                            ai_policy["auto_approve_threshold"] = threshold
+                    except (ValueError, TypeError):
+                        pass  # Keep existing value
+
+                if "auto_reject_threshold" in data:
+                    try:
+                        threshold = float(data.get("auto_reject_threshold"))
+                        if 0.0 <= threshold <= 1.0:
+                            ai_policy["auto_reject_threshold"] = threshold
+                    except (ValueError, TypeError):
+                        pass  # Keep existing value
+
+                # Update sensitive categories
+                if "sensitive_categories" in data:
+                    categories_str = data.get("sensitive_categories", "").strip()
+                    if categories_str:
+                        # Parse comma-separated list
+                        categories = [cat.strip() for cat in categories_str.split(",") if cat.strip()]
+                        ai_policy["always_require_human_for"] = categories
+                    else:
+                        ai_policy["always_require_human_for"] = []
+
+                # Update learn from overrides
+                if "learn_from_overrides" in data:
+                    ai_policy["learn_from_overrides"] = data.get("learn_from_overrides") in [True, "true", "on", 1, "1"]
+                elif not request.is_json:
+                    # Checkbox not present means unchecked
+                    ai_policy["learn_from_overrides"] = False
+
+                # Save updated policy
+                tenant.ai_policy = ai_policy
+                # Mark as modified for JSONB update
+                from sqlalchemy.orm import attributes
+
+                attributes.flag_modified(tenant, "ai_policy")
 
             # Update features
             if "enable_axe_signals" in data:

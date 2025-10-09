@@ -4,6 +4,15 @@
 
 {% block content %}
 <div class="container-fluid mt-4">
+    <!-- Breadcrumb Navigation -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('core.index') }}">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant.tenant_id) }}">{{ tenant.name }}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Inventory Browser</li>
+        </ol>
+    </nav>
+
     <div class="row">
         <div class="col-12">
             <h2>GAM Inventory Browser</h2>
@@ -21,9 +30,14 @@
                             <h5 class="card-title mb-1">Inventory Status</h5>
                             <p class="mb-0" id="syncStatus">Loading...</p>
                         </div>
-                        <button class="btn btn-primary" onclick="syncInventory()" id="syncBtn">
-                            <i class="bi bi-arrow-clockwise"></i> Sync Now
-                        </button>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" onclick="syncInventory()" id="syncBtn">
+                                <i class="bi bi-arrow-clockwise"></i> Sync All
+                            </button>
+                            <button class="btn btn-outline-primary" onclick="showSelectiveSync()">
+                                <i class="bi bi-sliders"></i> Selective
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -301,7 +315,11 @@ function syncInventory() {
 
     fetch(`{{ script_name }}/api/tenant/${tenantId}/inventory/sync`, {
         method: 'POST',
-        credentials: 'same-origin'
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})  // Send empty JSON object for full sync
     })
         .then(response => response.json())
         .then(data => {
@@ -321,7 +339,7 @@ function syncInventory() {
         })
         .finally(() => {
             btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync Now';
+            btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync All';
         });
 }
 
@@ -580,6 +598,71 @@ function copyInventoryId(id) {
     });
 }
 
+// Selective sync modal
+function showSelectiveSync() {
+    new bootstrap.Modal(document.getElementById('selectiveSyncModal')).show();
+}
+
+function performSelectiveSync() {
+    const types = [];
+    if (document.getElementById('sync_ad_units').checked) types.push('ad_units');
+    if (document.getElementById('sync_placements').checked) types.push('placements');
+    if (document.getElementById('sync_labels').checked) types.push('labels');
+    if (document.getElementById('sync_custom_targeting').checked) types.push('custom_targeting');
+    if (document.getElementById('sync_audience_segments').checked) types.push('audience_segments');
+
+    if (types.length === 0) {
+        alert('Please select at least one inventory type to sync');
+        return;
+    }
+
+    const customTargetingLimit = document.getElementById('custom_targeting_limit').value;
+    const audienceSegmentLimit = document.getElementById('audience_segment_limit').value;
+
+    const requestBody = { types };
+    if (customTargetingLimit) requestBody.custom_targeting_limit = parseInt(customTargetingLimit);
+    if (audienceSegmentLimit) requestBody.audience_segment_limit = parseInt(audienceSegmentLimit);
+
+    const btn = document.getElementById('selectiveSyncBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
+
+    fetch(`{{ script_name }}/api/tenant/${tenantId}/inventory/sync`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            let message = 'Selective sync completed!\n\n';
+            if (data.ad_units) message += `Ad Units: ${data.ad_units.total}\n`;
+            if (data.placements) message += `Placements: ${data.placements.total}\n`;
+            if (data.labels) message += `Labels: ${data.labels.total}\n`;
+            if (data.custom_targeting) message += `Custom Targeting Keys: ${data.custom_targeting.total_keys}, Values: ${data.custom_targeting.total_values}\n`;
+            if (data.audience_segments) message += `Audience Segments: ${data.audience_segments.total}\n`;
+            message += `\nDuration: ${data.duration_seconds.toFixed(2)}s`;
+
+            alert(message);
+
+            // Close modal and reload
+            bootstrap.Modal.getInstance(document.getElementById('selectiveSyncModal')).hide();
+            window.location.reload();
+        })
+        .catch(error => {
+            alert('Selective sync failed: ' + error.message);
+            console.error('Selective sync error:', error);
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = 'Sync Selected';
+        });
+}
+
 // Add enter key support for search
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('searchQuery').addEventListener('keypress', function(e) {
@@ -589,4 +672,76 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+
+<!-- Selective Sync Modal -->
+<div class="modal fade" id="selectiveSyncModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Selective Inventory Sync</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Select which inventory types to sync. Use limits for large datasets to reduce sync time.</p>
+
+                <div class="mb-3">
+                    <h6>Inventory Types</h6>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sync_ad_units" checked>
+                        <label class="form-check-label" for="sync_ad_units">
+                            <strong>Ad Units</strong> - Ad slots where ads are displayed
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sync_placements" checked>
+                        <label class="form-check-label" for="sync_placements">
+                            <strong>Placements</strong> - Groups of ad units
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sync_labels" checked>
+                        <label class="form-check-label" for="sync_labels">
+                            <strong>Labels</strong> - Organization tags
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sync_custom_targeting" checked>
+                        <label class="form-check-label" for="sync_custom_targeting">
+                            <strong>Custom Targeting</strong> - Key-value pairs for targeting
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sync_audience_segments" checked>
+                        <label class="form-check-label" for="sync_audience_segments">
+                            <strong>Audience Segments</strong> - First/third-party audiences
+                        </label>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <h6>Limits (Optional)</h6>
+                    <small class="text-muted d-block mb-2">For publishers with 10K+ targeting values/segments, use limits to speed up sync</small>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="custom_targeting_limit" class="form-label">Custom Targeting Values (per key)</label>
+                            <input type="number" class="form-control" id="custom_targeting_limit" placeholder="e.g., 1000">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="audience_segment_limit" class="form-label">Audience Segments</label>
+                            <input type="number" class="form-control" id="audience_segment_limit" placeholder="e.g., 500">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="selectiveSyncBtn" onclick="performSelectiveSync()">
+                    Sync Selected
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

@@ -95,6 +95,7 @@ from src.core.tools import (
 from src.core.tools import (
     update_performance_index_raw as core_update_performance_index_tool,
 )
+from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -199,6 +200,33 @@ class AdCPRequestHandler(RequestHandler):
         except Exception as e:
             logger.warning(f"Failed to log A2A operation: {e}")
 
+    async def _send_protocol_webhook(
+        self,
+        task: Task,
+        status: str,
+        result: dict[str, Any] | None = None,
+        error: str | None = None,
+    ):
+        """Send protocol-level push notification if configured."""
+        try:
+            # Check if task has push notification config in metadata
+            if not task.metadata or "push_notification_config" not in task.metadata:
+                return
+
+            webhook_config = task.metadata["push_notification_config"]
+            webhook_service = get_protocol_webhook_service()
+
+            await webhook_service.send_notification(
+                webhook_config=webhook_config,
+                task_id=task.id,
+                status=status,
+                result=result,
+                error=error,
+            )
+        except Exception as e:
+            # Don't fail the task if webhook fails
+            logger.warning(f"Failed to send protocol-level webhook for task {task.id}: {e}")
+
     async def on_message_send(
         self,
         params: MessageSendParams,
@@ -262,6 +290,15 @@ class AdCPRequestHandler(RequestHandler):
         msg_id = str(params.message.message_id) if hasattr(params.message, "message_id") else None
         context_id = params.message.context_id or msg_id or f"ctx_{task_id}"
 
+        # Extract push notification config from protocol layer (A2A MessageSendConfiguration)
+        push_notification_config = None
+        if hasattr(params, "configuration") and params.configuration:
+            if hasattr(params.configuration, "pushNotificationConfig"):
+                push_notification_config = params.configuration.pushNotificationConfig
+                logger.info(
+                    f"Protocol-level push notification config provided for task {task_id}: {push_notification_config.url}"
+                )
+
         # Prepare task metadata with both invocation types
         task_metadata = {
             "request_text": combined_text,
@@ -269,6 +306,28 @@ class AdCPRequestHandler(RequestHandler):
         }
         if skill_invocations:
             task_metadata["skills_requested"] = [inv["skill"] for inv in skill_invocations]
+
+        # Store push notification config in metadata if provided
+        if push_notification_config:
+            task_metadata["push_notification_config"] = {
+                "url": push_notification_config.url,
+                "authentication": (
+                    {
+                        "schemes": (
+                            push_notification_config.authentication.schemes
+                            if push_notification_config.authentication
+                            else []
+                        ),
+                        "credentials": (
+                            push_notification_config.authentication.credentials
+                            if push_notification_config.authentication
+                            else None
+                        ),
+                    }
+                    if push_notification_config.authentication
+                    else None
+                ),
+            }
 
         task = Task(
             id=task_id,
@@ -327,6 +386,11 @@ class AdCPRequestHandler(RequestHandler):
                 if failed_skills and not successful_skills:
                     # All skills failed - mark task as failed
                     task.status = TaskStatus(state=TaskState.failed)
+
+                    # Send protocol-level webhook notification for failure
+                    error_messages = [res.get("error", "Unknown error") for res in results if not res["success"]]
+                    await self._send_protocol_webhook(task, status="failed", error="; ".join(error_messages))
+
                     return task
                 elif successful_skills:
                     # Log successful skill invocations
@@ -502,6 +566,18 @@ class AdCPRequestHandler(RequestHandler):
             # Mark task as completed
             task.status = TaskStatus(state=TaskState.completed)
 
+            # Send protocol-level webhook notification if configured
+            result_data = {}
+            if task.artifacts:
+                # Extract result from artifacts
+                for artifact in task.artifacts:
+                    if hasattr(artifact, "parts") and artifact.parts:
+                        for part in artifact.parts:
+                            if hasattr(part, "data") and part.data:
+                                result_data[artifact.name] = part.data
+
+            await self._send_protocol_webhook(task, status="completed", result=result_data)
+
         except ServerError:
             # Re-raise ServerError as-is (will be caught by JSON-RPC handler)
             raise
@@ -529,6 +605,11 @@ class AdCPRequestHandler(RequestHandler):
                 {"error_type": type(e).__name__},
                 str(e),
             )
+
+            # Send protocol-level webhook notification for failure if configured
+            task.status = TaskStatus(state=TaskState.failed)
+            await self._send_protocol_webhook(task, status="failed", error=str(e))
+
             # Raise ServerError instead of creating failed task
             raise ServerError(InternalError(message=f"Message processing failed: {str(e)}"))
 
@@ -1095,13 +1176,24 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Convert response to A2A format
+            # Convert response to A2A format (using AdCP spec field names)
             return {
-                "success": True,
-                "synced_creatives": [creative.model_dump() for creative in response.synced_creatives],
-                "failed_creatives": response.failed_creatives,
-                "assignments": [assignment.model_dump() for assignment in response.assignments],
-                "message": response.message or "Creatives synced successfully",
+                "success": response.status == "completed",
+                "status": response.status,
+                "message": response.message,
+                "summary": response.summary.model_dump() if response.summary else None,
+                "results": [result.model_dump() for result in response.results] if response.results else [],
+                "assignments_summary": (
+                    response.assignments_summary.model_dump() if response.assignments_summary else None
+                ),
+                "assignment_results": (
+                    [result.model_dump() for result in response.assignment_results]
+                    if response.assignment_results
+                    else []
+                ),
+                "dry_run": response.dry_run,
+                "context_id": response.context_id,
+                "task_id": response.task_id,
             }
 
         except Exception as e:

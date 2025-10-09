@@ -895,9 +895,9 @@ class Targeting(BaseModel):
 
 
 class Budget(BaseModel):
-    """Budget object with multi-currency support."""
+    """Budget object with multi-currency support (AdCP spec compliant)."""
 
-    total: float = Field(..., description="Total budget amount")
+    total: float = Field(..., description="Total budget amount (AdCP spec field name)")
     currency: str = Field(..., description="ISO 4217 currency code (e.g., 'USD', 'EUR')")
     daily_cap: float | None = Field(None, description="Optional daily spending limit")
     pacing: Literal["even", "asap", "daily_budget"] = Field("even", description="Budget pacing strategy")
@@ -934,6 +934,37 @@ class CreativePolicy(BaseModel):
         ..., description="Landing page requirements"
     )
     templates_available: bool = Field(..., description="Whether creative templates are provided")
+
+
+class AIReviewPolicy(BaseModel):
+    """Configuration for AI-powered creative review with confidence thresholds.
+
+    This policy defines how AI confidence scores map to approval decisions:
+    - High confidence approvals/rejections are automatic
+    - Low confidence or sensitive categories require human review
+    - Confidence thresholds are configurable per tenant
+    """
+
+    auto_approve_threshold: float = Field(
+        0.90,
+        ge=0.0,
+        le=1.0,
+        description="Confidence threshold for auto-approval (>= this value). AI must be at least this confident to auto-approve.",
+    )
+    auto_reject_threshold: float = Field(
+        0.10,
+        ge=0.0,
+        le=1.0,
+        description="Confidence threshold for auto-rejection (<= this value). AI must be this certain or less to auto-reject.",
+    )
+    always_require_human_for: list[str] = Field(
+        default_factory=lambda: ["political", "healthcare", "financial"],
+        description="Creative categories that always require human review regardless of AI confidence",
+    )
+    learn_from_overrides: bool = Field(
+        True,
+        description="Track when humans disagree with AI decisions for model improvement",
+    )
 
 
 class Product(BaseModel):
@@ -1160,19 +1191,19 @@ class Error(BaseModel):
 
 
 class GetProductsResponse(BaseModel):
-    """Response for get_products tool.
+    """Response for get_products tool (AdCP spec compliant).
 
-    Now only contains AdCP spec fields. Context management is handled
-    automatically by the MCP wrapper at the protocol layer.
+    Context management is handled automatically by the MCP wrapper at the protocol layer.
     """
 
-    adcp_version: str = Field(
-        default="1.0.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response"
-    )
-    products: list[Product]
-    message: str | None = None  # Optional human-readable message
-    errors: list[Error] | None = None  # Optional error reporting
-    status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
+    # Required AdCP fields
+    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version")
+    products: list[Product] = Field(...)
+
+    # Optional AdCP fields
+    message: str | None = None
+    status: Literal["completed", "working", "submitted"] | None = Field(None, description="Task status")
+    errors: list[Error] | None = None
 
     def model_dump(self, **kwargs):
         """Override to ensure products use AdCP-compliant serialization."""
@@ -1635,17 +1666,90 @@ class SyncCreativesRequest(BaseModel):
         "strict",
         description="Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid creatives and reports errors.",
     )
+    push_notification_config: dict[str, Any] | None = Field(
+        None,
+        description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
+    )
+
+
+class SyncSummary(BaseModel):
+    """Summary of sync operation results."""
+
+    total_processed: int = Field(..., ge=0, description="Total number of creatives processed")
+    created: int = Field(..., ge=0, description="Number of new creatives created")
+    updated: int = Field(..., ge=0, description="Number of existing creatives updated")
+    unchanged: int = Field(..., ge=0, description="Number of creatives that were already up-to-date")
+    failed: int = Field(..., ge=0, description="Number of creatives that failed validation or processing")
+    deleted: int = Field(0, ge=0, description="Number of creatives deleted/archived (when delete_missing=true)")
+
+
+class SyncCreativeResult(BaseModel):
+    """Detailed result for a single creative in sync operation."""
+
+    creative_id: str = Field(..., description="Creative ID from the request")
+    action: Literal["created", "updated", "unchanged", "failed", "deleted"] = Field(
+        ..., description="Action taken for this creative"
+    )
+    status: str | None = Field(None, description="Current approval status of the creative")
+    platform_id: str | None = Field(None, description="Platform-specific ID assigned to the creative")
+    changes: list[str] = Field(
+        default_factory=list, description="List of field names that were modified (for 'updated' action)"
+    )
+    errors: list[str] = Field(default_factory=list, description="Validation or processing errors (for 'failed' action)")
+    warnings: list[str] = Field(default_factory=list, description="Non-fatal warnings about this creative")
+    review_feedback: str | None = Field(None, description="Feedback from platform review process")
+
+
+class AssignmentsSummary(BaseModel):
+    """Summary of assignment operations."""
+
+    total_assignments_processed: int = Field(
+        ..., ge=0, description="Total number of creative-package assignment operations processed"
+    )
+    assigned: int = Field(..., ge=0, description="Number of successful creative-package assignments")
+    unassigned: int = Field(..., ge=0, description="Number of creative-package unassignments")
+    failed: int = Field(..., ge=0, description="Number of assignment operations that failed")
+
+
+class AssignmentResult(BaseModel):
+    """Detailed result for creative-package assignments."""
+
+    creative_id: str = Field(..., description="Creative that was assigned/unassigned")
+    assigned_packages: list[str] = Field(
+        default_factory=list, description="Packages successfully assigned to this creative"
+    )
+    unassigned_packages: list[str] = Field(
+        default_factory=list, description="Packages successfully unassigned from this creative"
+    )
+    failed_packages: list[dict[str, str]] = Field(
+        default_factory=list, description="Packages that failed to assign/unassign (package_id + error)"
+    )
 
 
 class SyncCreativesResponse(BaseModel):
     """Response from syncing creative assets (AdCP spec compliant)."""
 
-    synced_creatives: list[Creative] = Field(..., description="Successfully synced creatives")
-    failed_creatives: list[dict[str, Any]] = Field(
-        default_factory=list, description="Failed creatives with error details"
+    adcp_version: str = Field(
+        "2.3.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response"
     )
-    assignments: list[CreativeAssignment] = Field(default_factory=list, description="Creative assignments to packages")
-    message: str | None = Field(None, description="Human-readable status message")
+    message: str = Field(..., description="Human-readable result message summarizing the sync operation")
+    status: Literal["completed", "working", "submitted"] = Field(
+        "completed",
+        description="Current task state - 'completed' for immediate success, 'working' for operations under 120s, 'submitted' for long-running",
+    )
+    context_id: str | None = Field(None, description="Context ID for tracking async operations")
+    task_id: str | None = Field(
+        None, description="Unique identifier for tracking this async operation (present for submitted/working status)"
+    )
+    dry_run: bool = Field(False, description="Whether this was a dry run (no actual changes made)")
+    summary: SyncSummary | None = Field(None, description="High-level summary of sync operation results")
+    results: list[SyncCreativeResult] | None = Field(None, description="Detailed results for each creative processed")
+    assignments_summary: AssignmentsSummary | None = Field(
+        None, description="Summary of assignment operations (when assignments were included)"
+    )
+    assignment_results: list[AssignmentResult] | None = Field(
+        None, description="Detailed assignment results (when assignments were included)"
+    )
 
 
 class ListCreativesRequest(BaseModel):
@@ -1686,15 +1790,39 @@ class ListCreativesRequest(BaseModel):
         return self
 
 
+class QuerySummary(BaseModel):
+    """Summary of the query that was executed."""
+
+    total_matching: int = Field(..., ge=0, description="Total creatives matching filters")
+    returned: int = Field(..., ge=0, description="Number of creatives in this response")
+    filters_applied: list[str] = Field(default_factory=list)
+    sort_applied: dict[str, str] | None = None
+
+
+class Pagination(BaseModel):
+    """Pagination information for navigating results."""
+
+    limit: int = Field(..., ge=1)
+    offset: int = Field(..., ge=0)
+    has_more: bool = Field(...)
+    total_pages: int | None = Field(None, ge=0)
+    current_page: int | None = Field(None, ge=1)
+
+
 class ListCreativesResponse(BaseModel):
     """Response from listing creative assets (AdCP spec compliant)."""
 
+    # Required AdCP fields
+    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
+    message: str = Field(...)
+    query_summary: QuerySummary = Field(...)
+    pagination: Pagination = Field(...)
     creatives: list[Creative] = Field(..., description="Array of creative assets")
-    total_count: int = Field(..., description="Total number of creatives matching filters")
-    page: int = Field(..., description="Current page number")
-    limit: int = Field(..., description="Results per page")
-    has_more: bool = Field(..., description="Whether more pages are available")
-    message: str | None = Field(None, description="Human-readable status message")
+
+    # Optional AdCP fields
+    context_id: str | None = None
+    format_summary: dict[str, int] | None = None
+    status_summary: dict[str, int] | None = None
 
 
 class CheckCreativeStatusRequest(BaseModel):
@@ -1877,13 +2005,13 @@ class Package(BaseModel):
 
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(BaseModel):
-    # Required AdCP fields
+    # Required AdCP fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
     promoted_offering: str = Field(
         ..., description="Description of advertiser and what is being promoted (REQUIRED per AdCP spec)"
     )
+    buyer_ref: str = Field(..., description="Buyer reference for tracking (REQUIRED per AdCP spec)")
 
-    # New AdCP v2.4 fields (optional for backward compatibility)
-    buyer_ref: str | None = Field(None, description="Buyer reference for tracking")
+    # New AdCP v2.4 fields
     packages: list[Package] | None = Field(None, description="Array of packages with products and budgets")
     start_time: datetime | None = Field(None, description="Campaign start time (ISO 8601)")
     end_time: datetime | None = Field(None, description="Campaign end time (ISO 8601)")
@@ -1921,6 +2049,10 @@ class CreateMediaBuyRequest(BaseModel):
     webhook_auth_token: str | None = Field(
         None,
         description="Optional authentication token for webhook callbacks (MCP protocol). Used as Bearer token in Authorization header.",
+    )
+    push_notification_config: dict[str, Any] | None = Field(
+        None,
+        description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
     )
 
     @model_validator(mode="before")
@@ -2045,21 +2177,26 @@ class CreateMediaBuyRequest(BaseModel):
 
 
 class CreateMediaBuyResponse(BaseModel):
-    """Response from create_media_buy operation.
+    """Response from create_media_buy operation (AdCP spec compliant).
 
     This is an async operation that may require manual approval or additional steps.
     The status field indicates the current state of the media buy creation.
     """
 
-    media_buy_id: str
-    buyer_ref: str | None = None  # May not have buyer_ref if failed
-    status: str | None = None  # TaskStatus values: submitted, working, input-required, completed, failed, etc.
-    detail: str | None = None  # Additional status details
-    message: str | None = None  # Human-readable message
-    packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
+    # Required AdCP fields
+    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
+    status: Literal["completed", "working", "submitted", "input-required"] = Field(...)
+    buyer_ref: str = Field(...)
+
+    # Optional AdCP fields
+    task_id: str | None = None
+    media_buy_id: str | None = None
     creative_deadline: datetime | None = None
-    errors: list[Error] | None = None  # Protocol-compliant error reporting
-    workflow_step_id: str | None = None  # HITL workflow step ID for manual approval operations
+    packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
+    errors: list[Error] | None = None
+
+    # Internal fields (excluded from AdCP responses)
+    workflow_step_id: str | None = None
 
     def model_dump(self, **kwargs):
         """Override to provide AdCP-compliant responses while preserving internal fields."""
@@ -2263,21 +2400,30 @@ class AssetStatus(BaseModel):
 
 
 class UpdateMediaBuyResponse(BaseModel):
-    media_buy_id: str | None = None  # Media buy identifier
-    status: str  # Status: accepted, submitted, failed, etc.
+    """Response from update_media_buy operation (AdCP spec compliant)."""
+
+    # Required AdCP fields
+    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
+    status: Literal["completed", "working", "submitted", "input-required"] = Field(...)
+    media_buy_id: str = Field(...)
+    buyer_ref: str = Field(...)
+
+    # Optional AdCP fields
+    task_id: str | None = None
     implementation_date: datetime | None = None
-    reason: str | None = None
-    detail: str | None = None
-    message: str | None = None  # Human-readable message
-    workflow_step_id: str | None = None  # HITL workflow step ID for manual approval
+    affected_packages: list[dict[str, Any]] = Field(default_factory=list)
+    errors: list[Error] | None = None
+
+    # Internal fields (excluded from AdCP responses)
+    workflow_step_id: str | None = None
 
     def model_dump(self, **kwargs):
         """Override to provide AdCP-compliant responses while preserving internal fields."""
         # Default to excluding internal fields for AdCP compliance
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
-            # Add internal fields to exclude by default - per AdCP spec only include: status, implementation_date, detail, reason
-            exclude.update({"media_buy_id", "message", "workflow_step_id"})
+            # Add internal fields to exclude by default
+            exclude.add("workflow_step_id")
             kwargs["exclude"] = exclude
         return super().model_dump(**kwargs)
 
@@ -2358,6 +2504,10 @@ class UpdateMediaBuyRequest(BaseModel):
     end_time: datetime | None = None  # AdCP uses datetime, not date
     budget: Budget | None = None  # Budget object contains currency/pacing
     packages: list[AdCPPackageUpdate] | None = None
+    push_notification_config: dict[str, Any] | None = Field(
+        None,
+        description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
+    )
     today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
     @model_validator(mode="after")

@@ -325,21 +325,8 @@ function findUnitById(units, unitId) {
 }
 
 function refreshInventory() {
-    if (!confirm('This will sync the latest inventory from GAM. Continue?')) return;
-
-    fetch(`/api/tenant/${tenantId}/inventory/sync`, { method: 'POST' })
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                alert('Sync failed: ' + data.error);
-            } else {
-                alert('Inventory synced successfully!');
-                loadInventoryTree();
-            }
-        })
-        .catch(error => {
-            alert('Error syncing inventory: ' + error.message);
-        });
+    // Redirect to Inventory Browser for syncing
+    window.location.href = `/tenant/${tenantId}/inventory`;
 }
 
 function getSuggestions() {

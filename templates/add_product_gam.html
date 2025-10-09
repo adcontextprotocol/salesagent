@@ -10,8 +10,8 @@
     <div class="alert alert-warning" style="margin-bottom: 2rem; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
         <h4 style="margin-top: 0; color: #856404;">⚠️ Inventory Not Synced</h4>
         <p style="margin-bottom: 1rem;">GAM inventory has not been synced yet. You won't be able to select ad units or placements until inventory is synced.</p>
-        <a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant_id) }}" class="btn btn-primary">
-            <i class="bi bi-arrow-clockwise"></i> Go to Settings to Sync
+        <a href="{{ url_for('inventory.inventory_browser', tenant_id=tenant_id) }}" class="btn btn-primary">
+            📊 Go to Inventory Browser to Sync
         </a>
     </div>
     {% endif %}
@@ -246,7 +246,7 @@ function loadInventory(type, search = '') {
             }
 
             if (data.items.length === 0) {
-                list.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;">No items found. Try syncing inventory first.</div>';
+                list.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;">No items found. <a href="{{ url_for(\'inventory.inventory_browser\', tenant_id=tenant_id) }}">Sync inventory</a> first.</div>';
                 return;
             }
 

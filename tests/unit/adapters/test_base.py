@@ -45,6 +45,7 @@ def test_mock_ad_server_create_media_buy(sample_packages, mocker):
     # CreateMediaBuyRequest now uses product_ids, not selected_packages
     request = CreateMediaBuyRequest(
         promoted_offering="Premium basketball shoes for sports enthusiasts",
+        buyer_ref="ref_12345",  # Required per AdCP spec
         product_ids=["pkg_1"],
         start_date=start_time.date(),
         end_date=end_time.date(),
@@ -60,8 +61,8 @@ def test_mock_ad_server_create_media_buy(sample_packages, mocker):
 
     # Assert
     assert response.media_buy_id == "buy_PO-12345"
-    # buyer_ref is None since not provided by client (it's their identifier, not ours)
-    assert response.buyer_ref is None
+    # buyer_ref should echo back the request buyer_ref per AdCP spec
+    assert response.buyer_ref == "ref_12345"
 
     # Check the internal state of the mock server
     internal_buy = adapter._media_buys.get("buy_PO-12345")
