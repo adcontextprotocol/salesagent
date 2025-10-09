@@ -64,11 +64,12 @@ class TestMCPContractValidation:
 
     def test_create_media_buy_minimal(self):
         """Test create_media_buy with just po_number."""
-        request = CreateMediaBuyRequest(promoted_offering="Nike Air Jordan 2025 basketball shoes", po_number="PO-12345")
+        request = CreateMediaBuyRequest(
+            buyer_ref="test_ref", promoted_offering="Nike Air Jordan 2025 basketball shoes", po_number="PO-12345"
+        )
 
         assert request.po_number == "PO-12345"
-        # buyer_ref should NOT be auto-generated (it's the buyer's identifier)
-        assert request.buyer_ref is None
+        assert request.buyer_ref == "test_ref"
         assert request.packages is None
         assert request.pacing == "even"  # Should have default
 
@@ -82,6 +83,7 @@ class TestMCPContractValidation:
 
         # Test 1: Package with products=None
         request = CreateMediaBuyRequest(
+            buyer_ref="test_ref_1",
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
             po_number="PO-12345",
             packages=[Package(buyer_ref="pkg1", products=None)],
@@ -90,6 +92,7 @@ class TestMCPContractValidation:
 
         # Test 2: Package with empty products list
         request = CreateMediaBuyRequest(
+            buyer_ref="test_ref_2",
             promoted_offering="Adidas UltraBoost 2025 running shoes",
             po_number="PO-12346",
             packages=[Package(buyer_ref="pkg2", products=[])],
@@ -98,6 +101,7 @@ class TestMCPContractValidation:
 
         # Test 3: Mixed packages (some None, some with products)
         request = CreateMediaBuyRequest(
+            buyer_ref="test_ref_3",
             promoted_offering="Puma RS-X 2025 training shoes",
             po_number="PO-12347",
             packages=[
@@ -208,7 +212,9 @@ class TestSchemaDefaultValues:
         assert req.brief == ""  # Empty string, not None
 
         # CreateMediaBuyRequest
-        req = CreateMediaBuyRequest(promoted_offering="Nike Air Jordan 2025 basketball shoes", po_number="test")
+        req = CreateMediaBuyRequest(
+            buyer_ref="test_ref", promoted_offering="Nike Air Jordan 2025 basketball shoes", po_number="test"
+        )
         assert req.pacing == "even"  # Sensible default
         assert req.enable_creative_macro is False  # Explicit boolean default
 

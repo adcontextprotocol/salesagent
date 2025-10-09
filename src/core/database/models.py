@@ -1069,6 +1069,7 @@ class PushNotificationConfig(Base, JSONValidatorMixin):
     authentication_type = Column(String(50), nullable=True)  # bearer, basic, none
     authentication_token = Column(Text, nullable=True)
     validation_token = Column(Text, nullable=True)  # For validating webhook ownership
+    webhook_secret = Column(String(500), nullable=True)  # HMAC-SHA256 secret (min 32 chars)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
     is_active = Column(Boolean, default=True)

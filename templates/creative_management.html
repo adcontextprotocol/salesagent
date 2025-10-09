@@ -1,0 +1,498 @@
+{% extends "base.html" %}
+
+{% block title %}Creative Management - {{ tenant_name }} - Sales Agent Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <div>
+            <h2>🎨 Creative Management - {{ tenant_name }}</h2>
+            <p style="margin: 0.5rem 0 0 0; color: #666;">View, review, and manage all uploaded creatives</p>
+        </div>
+        <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
+    </div>
+
+    <!-- Summary Stats -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        {% set pending_count = creatives|selectattr('status', 'equalto', 'pending')|list|length %}
+        {% set approved_count = creatives|selectattr('status', 'equalto', 'approved')|list|length %}
+        {% set rejected_count = creatives|selectattr('status', 'equalto', 'rejected')|list|length %}
+
+        <div style="padding: 1rem; background: #fff7ed; border-radius: 8px; border-left: 4px solid #f59e0b;">
+            <div style="font-size: 2rem; font-weight: bold; color: #f59e0b;">{{ pending_count }}</div>
+            <div style="color: #666;">Pending Review</div>
+        </div>
+        <div style="padding: 1rem; background: #f0fdf4; border-radius: 8px; border-left: 4px solid #10b981;">
+            <div style="font-size: 2rem; font-weight: bold; color: #10b981;">{{ approved_count }}</div>
+            <div style="color: #666;">Approved</div>
+        </div>
+        <div style="padding: 1rem; background: #fef2f2; border-radius: 8px; border-left: 4px solid #ef4444;">
+            <div style="font-size: 2rem; font-weight: bold; color: #ef4444;">{{ rejected_count }}</div>
+            <div style="color: #666;">Rejected</div>
+        </div>
+        <div style="padding: 1rem; background: #f8fafc; border-radius: 8px; border-left: 4px solid #64748b;">
+            <div style="font-size: 2rem; font-weight: bold; color: #64748b;">{{ creatives|length }}</div>
+            <div style="color: #666;">Total Creatives</div>
+        </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem;">
+        <button class="filter-tab active" data-filter="all" onclick="filterCreatives('all')">
+            All <span class="badge">{{ creatives|length }}</span>
+        </button>
+        <button class="filter-tab" data-filter="pending" onclick="filterCreatives('pending')">
+            Pending <span class="badge">{{ pending_count }}</span>
+        </button>
+        <button class="filter-tab" data-filter="approved" onclick="filterCreatives('approved')">
+            Approved <span class="badge">{{ approved_count }}</span>
+        </button>
+        <button class="filter-tab" data-filter="rejected" onclick="filterCreatives('rejected')">
+            Rejected <span class="badge">{{ rejected_count }}</span>
+        </button>
+    </div>
+
+    {% if creatives|length == 0 %}
+    <!-- No creatives -->
+    <div style="text-align: center; padding: 3rem; background: #f9f9f9; border-radius: 8px;">
+        <div style="font-size: 4rem; margin-bottom: 1rem;">📭</div>
+        <h3 style="color: #666; margin-bottom: 0.5rem;">No Creatives Yet</h3>
+        <p style="color: #999;">Upload your first creative to get started.</p>
+    </div>
+    {% else %}
+    <!-- Creatives Grid -->
+    <div style="display: grid; gap: 1.5rem;">
+        {% for creative in creatives %}
+        <div class="creative-card" id="{{ creative.creative_id }}" data-status="{{ creative.status }}" data-creative-id="{{ creative.creative_id }}">
+            <!-- Header -->
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                <div style="flex: 1;">
+                    <h3 style="margin: 0 0 0.5rem 0;">{{ creative.name }}</h3>
+                    <div style="color: #666; font-size: 0.9rem;">
+                        <strong>Advertiser:</strong> {{ creative.principal_name }} |
+                        <strong>Format:</strong> <span class="format-badge">{{ creative.format }}</span>
+                        {% if creative.promoted_offering %}
+                        | <strong>Promoted Offering:</strong> {{ creative.promoted_offering }}
+                        {% endif %}
+                    </div>
+                    <div style="color: #999; font-size: 0.85rem; margin-top: 0.25rem;">
+                        Uploaded {{ creative.created_at.strftime('%b %d, %Y at %I:%M %p') }}
+                        {% if creative.approved_at %}
+                        | Approved {{ creative.approved_at.strftime('%b %d, %Y at %I:%M %p') }}
+                        {% endif %}
+                    </div>
+                </div>
+                <span class="status-badge status-{{ creative.status }}">
+                    {% if creative.status == 'pending' %}⏳ Pending
+                    {% elif creative.status == 'approved' %}✅ Approved
+                    {% elif creative.status == 'rejected' %}❌ Rejected
+                    {% else %}{{ creative.status|title }}
+                    {% endif %}
+                </span>
+            </div>
+
+            <!-- AI Creative Summary (if available) -->
+            {% if creative.data.get('ai_summary') %}
+            <div style="margin-bottom: 1rem; padding: 1rem; background: #f0fdf4; border-left: 4px solid #10b981; border-radius: 4px;">
+                <div style="font-weight: 600; color: #047857; margin-bottom: 0.5rem;">🤖 AI Summary</div>
+                <div style="color: #374151; font-size: 0.9rem; line-height: 1.5;">{{ creative.data.get('ai_summary') }}</div>
+            </div>
+            {% endif %}
+
+            <!-- AI Review Reasoning (if available) -->
+            {% if creative.data and creative.data.get('ai_review') %}
+            {% set ai_review = creative.data.get('ai_review') %}
+            {% if ai_review.decision == 'approved' %}
+                {% set bg_color = '#f0fdf4' %}
+                {% set border_color = '#10b981' %}
+                {% set text_color = '#065f46' %}
+                {% set icon = '✅' %}
+            {% elif ai_review.decision == 'rejected' %}
+                {% set bg_color = '#fef2f2' %}
+                {% set border_color = '#ef4444' %}
+                {% set text_color = '#991b1b' %}
+                {% set icon = '❌' %}
+            {% else %}
+                {% set bg_color = '#fffbeb' %}
+                {% set border_color = '#f59e0b' %}
+                {% set text_color = '#92400e' %}
+                {% set icon = '⚠️' %}
+            {% endif %}
+            <div style="margin-bottom: 1rem; padding: 1rem; background: {{ bg_color }}; border-left: 4px solid {{ border_color }}; border-radius: 4px;">
+                <details open>
+                    <summary style="cursor: pointer; font-weight: 600; color: {{ text_color }};">
+                        {{ icon }} AI Review: {{ ai_review.decision|title }}
+                    </summary>
+                    <div style="margin-top: 0.75rem; color: #374151; font-size: 0.9rem;">
+                        <p style="margin: 0 0 0.5rem 0;"><strong>Reason:</strong> {{ ai_review.reason }}</p>
+                        <p style="margin: 0 0 0.5rem 0;"><strong>Confidence:</strong> {{ ai_review.confidence }}</p>
+                        {% if ai_review.reviewed_at %}
+                        <p style="margin: 0; color: #666; font-size: 0.875rem;">Reviewed: {{ ai_review.reviewed_at }}</p>
+                        {% endif %}
+                    </div>
+                </details>
+            </div>
+            {% endif %}
+
+            <!-- Media Buy Assignments -->
+            {% if creative.media_buys|length > 0 %}
+            <div style="margin-bottom: 1rem;">
+                <strong style="font-size: 0.9rem; color: #666;">📊 Campaigns ({{ creative.assignment_count }}):</strong>
+                <div style="margin-top: 0.5rem; display: flex; flex-wrap: gap: 0.5rem;">
+                    {% for buy in creative.media_buys %}
+                    <a href="{{ url_for('operations.operations_dashboard', tenant_id=tenant_id) }}#{{ buy.media_buy_id }}"
+                       style="padding: 0.25rem 0.75rem; background: #f3f4f6; border-radius: 4px; text-decoration: none; color: #374151; font-size: 0.85rem;">
+                        {{ buy.order_name }} ({{ buy.status }})
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Action Buttons -->
+            <div style="display: flex; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
+                {% if creative.status == 'pending' %}
+                <button onclick="approveCreative('{{ creative.creative_id }}')" class="btn btn-sm btn-primary">
+                    ✅ Approve
+                </button>
+                <button onclick="rejectCreative('{{ creative.creative_id }}')" class="btn btn-sm btn-secondary">
+                    ❌ Reject
+                </button>
+                {% if has_ai_review %}
+                <button onclick="aiReviewCreative('{{ creative.creative_id }}')" class="btn btn-sm btn-secondary">
+                    🤖 AI Review
+                </button>
+                {% endif %}
+                {% elif creative.status == 'rejected' %}
+                <button onclick="approveCreative('{{ creative.creative_id }}')" class="btn btn-sm btn-primary">
+                    ✅ Approve Anyway
+                </button>
+                {% elif creative.status == 'approved' %}
+                <button onclick="rejectCreative('{{ creative.creative_id }}')" class="btn btn-sm btn-secondary">
+                    ❌ Revoke Approval
+                </button>
+                {% endif %}
+                <button onclick="viewCreativeDetails('{{ creative.creative_id }}', {{ creative.data|tojson|safe }})" class="btn btn-sm btn-secondary">
+                    👁️ View Preview
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Preview Modal -->
+<div id="previewModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 1000; overflow: auto;">
+    <div style="max-width: 900px; margin: 2rem auto; background: white; border-radius: 8px; padding: 2rem; position: relative;">
+        <button onclick="closePreview()" style="position: absolute; top: 1rem; right: 1rem; background: #ef4444; color: white; border: none; border-radius: 4px; padding: 0.5rem 1rem; cursor: pointer; font-weight: 600;">
+            ✕ Close
+        </button>
+        <h2 id="previewTitle" style="margin: 0 0 1.5rem 0;">Creative Preview</h2>
+        <div id="previewContent" style="min-height: 200px;">
+            <!-- Preview content will be injected here -->
+        </div>
+    </div>
+</div>
+
+<style>
+.creative-card {
+    padding: 1.5rem;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.creative-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.status-badge {
+    padding: 0.375rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.status-pending {
+    background: #fff7ed;
+    color: #f59e0b;
+    border: 1px solid #fed7aa;
+}
+
+.status-approved {
+    background: #f0fdf4;
+    color: #10b981;
+    border: 1px solid #bbf7d0;
+}
+
+.status-rejected {
+    background: #fef2f2;
+    color: #ef4444;
+    border: 1px solid #fecaca;
+}
+
+.format-badge {
+    padding: 0.125rem 0.5rem;
+    background: #f3f4f6;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-family: monospace;
+}
+
+.filter-tab {
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+    color: #6b7280;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.filter-tab:hover {
+    color: #111827;
+}
+
+.filter-tab.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+}
+
+.filter-tab .badge {
+    margin-left: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    background: #e5e7eb;
+    border-radius: 10px;
+    font-size: 0.75rem;
+}
+
+.filter-tab.active .badge {
+    background: #dbeafe;
+    color: #2563eb;
+}
+</style>
+
+<script>
+const tenantId = '{{ tenant_id }}';
+const scriptName = '{{ script_name }}';
+
+// Filter creatives by status
+function filterCreatives(status) {
+    const cards = document.querySelectorAll('.creative-card');
+    const tabs = document.querySelectorAll('.filter-tab');
+
+    // Update active tab
+    tabs.forEach(tab => tab.classList.remove('active'));
+    document.querySelector(`[data-filter="${status}"]`).classList.add('active');
+
+    // Show/hide cards
+    cards.forEach(card => {
+        if (status === 'all' || card.dataset.status === status) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+// Approve creative
+function approveCreative(creativeId) {
+    if (!confirm('Are you sure you want to approve this creative?')) return;
+
+    fetch(`${scriptName}/tenant/${tenantId}/creative-formats/review/${creativeId}/approve`, {
+        method: 'POST',
+        credentials: 'same-origin',
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ Creative approved successfully!');
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Failed to approve creative: ' + error);
+    });
+}
+
+// Reject creative
+function rejectCreative(creativeId) {
+    const reason = prompt('Please provide a reason for rejection (optional):');
+    if (reason === null) return; // User cancelled
+
+    fetch(`${scriptName}/tenant/${tenantId}/creative-formats/review/${creativeId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ reason: reason })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('❌ Creative rejected.');
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Failed to reject creative: ' + error);
+    });
+}
+
+// AI review creative
+function aiReviewCreative(creativeId) {
+    if (!confirm('Request AI review for this creative?')) return;
+
+    const button = event.target;
+    button.disabled = true;
+    button.textContent = '🤖 Reviewing...';
+
+    fetch(`${scriptName}/tenant/${tenantId}/creative-formats/review/${creativeId}/ai-review`, {
+        method: 'POST',
+        credentials: 'same-origin',
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`AI Review Complete:\n\nDecision: ${data.decision}\n\nReasoning: ${data.reasoning}`);
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+            button.disabled = false;
+            button.textContent = '🤖 AI Review';
+        }
+    })
+    .catch(error => {
+        alert('Failed to run AI review: ' + error);
+        button.disabled = false;
+        button.textContent = '🤖 AI Review';
+    });
+}
+
+// View creative details and preview
+function viewCreativeDetails(creativeId, creativeData) {
+    const modal = document.getElementById('previewModal');
+    const content = document.getElementById('previewContent');
+    const title = document.getElementById('previewTitle');
+
+    title.textContent = `Creative Preview - ${creativeId.substring(0, 8)}...`;
+
+    // Build preview content based on creative data
+    let html = '<div style="padding: 1rem;">';
+
+    if (creativeData && creativeData.url) {
+        const url = creativeData.url;
+        const format = creativeData.format || '';
+
+        // Display ad
+        if (format.startsWith('display_') || url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+            html += `<div style="text-align: center; padding: 2rem; background: #f9fafb; border-radius: 8px;">
+                        <img src="${url}" alt="Creative" style="max-width: 100%; max-height: 600px; border: 1px solid #ddd; border-radius: 4px;">
+                     </div>`;
+        }
+        // Video ad
+        else if (format.startsWith('video_') || url.match(/\.(mp4|webm|mov)$/i)) {
+            html += `<div style="text-align: center; padding: 2rem; background: #000; border-radius: 8px;">
+                        <video controls style="max-width: 100%; max-height: 600px; border-radius: 4px;">
+                            <source src="${url}" type="video/mp4">
+                            Your browser does not support video playback.
+                        </video>
+                     </div>`;
+        }
+        // Native ad
+        else if (format.startsWith('native_')) {
+            html += `<div style="max-width: 400px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">`;
+            if (creativeData.image_url) {
+                html += `<img src="${creativeData.image_url}" style="width: 100%; height: auto;">`;
+            }
+            html += `<div style="padding: 1.5rem;">
+                        <h3 style="margin: 0 0 0.5rem 0;">${creativeData.title || 'Native Ad'}</h3>
+                        ${creativeData.body ? `<p style="color: #666; margin: 0 0 1rem 0;">${creativeData.body}</p>` : ''}
+                        ${creativeData.cta_text ? `<button class="btn btn-primary" disabled>${creativeData.cta_text}</button>` : ''}
+                     </div>
+                  </div>`;
+        }
+        // Generic/unknown format
+        else {
+            html += `<div style="text-align: center; padding: 2rem;">
+                        <a href="${url}" target="_blank" class="btn btn-primary">Open Creative in New Tab</a>
+                        <p style="margin-top: 1rem; color: #666; font-size: 0.9rem; word-break: break-all;">${url}</p>
+                     </div>`;
+        }
+    } else {
+        html += `<div style="text-align: center; padding: 3rem; color: #999;">
+                    <p>No preview available for this creative.</p>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">Creative data: ${JSON.stringify(creativeData || {}, null, 2)}</p>
+                 </div>`;
+    }
+
+    // Add AI review information if present
+    if (creativeData && creativeData.ai_review) {
+        const review = creativeData.ai_review;
+        const statusColor = review.decision === 'approved' ? '#10b981' :
+                           review.decision === 'rejected' ? '#ef4444' : '#f59e0b';
+        const statusIcon = review.decision === 'approved' ? '✅' :
+                          review.decision === 'rejected' ? '❌' : '⚠️';
+
+        html += `<div style="margin-top: 1.5rem; padding: 1rem; background: #f9fafb; border-left: 4px solid ${statusColor}; border-radius: 4px;">
+                    <h4 style="margin: 0 0 0.5rem 0; display: flex; align-items: center;">
+                        ${statusIcon} AI Review
+                    </h4>
+                    <p style="margin: 0 0 0.5rem 0;"><strong>Decision:</strong> ${review.decision}</p>
+                    <p style="margin: 0 0 0.5rem 0;"><strong>Reason:</strong> ${review.reason}</p>
+                    <p style="margin: 0 0 0.5rem 0;"><strong>Confidence:</strong> ${review.confidence}</p>
+                    ${review.reviewed_at ? `<p style="margin: 0; color: #666; font-size: 0.875rem;">Reviewed: ${new Date(review.reviewed_at).toLocaleString()}</p>` : ''}
+                 </div>`;
+    }
+
+    html += '</div>';
+    content.innerHTML = html;
+    modal.style.display = 'block';
+}
+
+// Close preview modal
+function closePreview() {
+    document.getElementById('previewModal').style.display = 'none';
+}
+
+// Close modal on background click
+document.getElementById('previewModal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closePreview();
+    }
+});
+
+// Scroll to and highlight creative if hash is present
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.location.hash) {
+        const creativeId = window.location.hash.substring(1);
+        const creativeCard = document.getElementById(creativeId);
+
+        if (creativeCard) {
+            // Scroll to the creative with smooth behavior
+            setTimeout(() => {
+                creativeCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                // Highlight the creative briefly
+                creativeCard.style.transition = 'all 0.3s ease';
+                creativeCard.style.boxShadow = '0 0 0 4px #3b82f6';
+                creativeCard.style.transform = 'scale(1.02)';
+
+                // Remove highlight after 2 seconds
+                setTimeout(() => {
+                    creativeCard.style.boxShadow = '';
+                    creativeCard.style.transform = '';
+                }, 2000);
+            }, 100);
+        }
+    }
+});
+</script>
+{% endblock %}

@@ -374,6 +374,89 @@ def analyze_ad_server_inventory(tenant_id):
         return jsonify({"error": str(e)}), 500
 
 
+@inventory_bp.route("/api/tenant/<tenant_id>/inventory/sync", methods=["POST"])
+@require_tenant_access(api_mode=True)
+def sync_inventory(tenant_id):
+    """Sync GAM inventory for a tenant with optional selective sync.
+
+    Request body (optional):
+    {
+        "types": ["ad_units", "placements", "labels", "custom_targeting", "audience_segments"],
+        "custom_targeting_limit": 1000,  // Optional: limit number of custom targeting values
+        "audience_segment_limit": 500    // Optional: limit number of audience segments
+    }
+
+    If no body provided, syncs everything (backwards compatible).
+    """
+    try:
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+
+            if not tenant:
+                return jsonify({"error": "Tenant not found"}), 404
+
+            # Check if GAM is configured
+            from src.core.database.models import AdapterConfig
+
+            adapter_config = db_session.scalars(
+                select(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type="google_ad_manager")
+            ).first()
+
+            if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
+                return jsonify({"error": "GAM not configured for this tenant"}), 400
+
+            # Parse request body for selective sync options
+            data = request.get_json() or {}
+            sync_types = data.get("types", None)  # None means sync all
+            custom_targeting_limit = data.get("custom_targeting_limit")
+            audience_segment_limit = data.get("audience_segment_limit")
+
+            # Import and use GAM inventory discovery
+            import os
+
+            from googleads import ad_manager, oauth2
+
+            from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
+
+            # Create OAuth2 client
+            oauth2_client = oauth2.GoogleRefreshTokenClient(
+                client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
+                client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
+                refresh_token=adapter_config.gam_refresh_token,
+            )
+
+            # Create GAM client
+            client = ad_manager.AdManagerClient(
+                oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
+            )
+
+            # Initialize GAM inventory discovery
+            discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
+
+            # Perform selective or full sync
+            if sync_types:
+                result = discovery.sync_selective(
+                    sync_types=sync_types,
+                    custom_targeting_limit=custom_targeting_limit,
+                    audience_segment_limit=audience_segment_limit,
+                )
+            else:
+                # Full sync (backwards compatible)
+                result = discovery.sync_all()
+
+            # Save to database
+            from src.services.gam_inventory_service import GAMInventoryService
+
+            inventory_service = GAMInventoryService(db_session)
+            inventory_service._save_inventory_to_db(tenant_id, discovery)
+
+            return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Error syncing inventory: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @inventory_bp.route("/api/tenant/<tenant_id>/inventory-list", methods=["GET"])
 @require_tenant_access(api_mode=True)
 def get_inventory_list(tenant_id):

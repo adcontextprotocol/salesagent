@@ -44,6 +44,9 @@ services:
       GAM_OAUTH_CLIENT_ID: ${GAM_OAUTH_CLIENT_ID:-}
       GAM_OAUTH_CLIENT_SECRET: ${GAM_OAUTH_CLIENT_SECRET:-}
 
+      # Encryption key for sensitive data
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+
       # Skip nginx for standalone service
       SKIP_NGINX: "true"
 
@@ -97,6 +100,9 @@ services:
       GAM_OAUTH_CLIENT_SECRET: ${GAM_OAUTH_CLIENT_SECRET:-}
       # Test mode
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-false}
+
+      # Encryption key for sensitive data
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
 
       # Server ports - external ports for agent cards
       ADCP_SALES_PORT: ${ADCP_SALES_PORT:-8080}

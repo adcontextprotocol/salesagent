@@ -2,16 +2,191 @@
 
 ## Overview
 
-Webhooks allow you to receive real-time notifications when events occur in your ad campaigns (creative approvals, media buy status changes, etc.). This guide explains how to register and securely verify webhooks.
+This guide covers two types of webhooks in the AdCP Sales Agent:
 
-## Quick Start
+1. **Protocol-Level Push Notifications** - Operation status updates (configured at A2A/MCP transport layer)
+2. **Application-Level Webhooks** - Event notifications like creative approvals and delivery reports (configured in Admin UI)
+
+## Protocol vs Application-Level Webhooks
+
+| Feature | Protocol-Level | Application-Level |
+|---------|---------------|-------------------|
+| **Purpose** | Operation status updates | Event notifications & delivery reports |
+| **Configuration** | Protocol layer (A2A/MCP) | Admin UI per principal |
+| **Trigger** | Task state changes | Events (approvals, status changes) |
+| **Frequency** | Per operation | Per event or scheduled |
+| **Duration** | Short (seconds) | Ongoing (campaign lifetime) |
+| **Auth Schemes** | HMAC-SHA256, Bearer, None | HMAC-SHA256 |
+
+---
+
+# Part 1: Protocol-Level Push Notifications
+
+Protocol-level push notifications provide asynchronous status updates for long-running operations. These are configured at the **protocol transport layer** (A2A/MCP), distinct from application-level webhooks.
+
+## When to Use Protocol-Level Push Notifications
+
+- Operations taking longer than 120 seconds
+- Async task tracking and status updates
+- Operations transitioning through states (working → completed/failed)
+
+Most AdCP operations complete synchronously (<120s), so protocol-level webhooks are primarily useful for:
+1. Large batch operations
+2. Operations requiring external approvals
+3. Complex creative processing workflows
+
+## A2A Configuration
+
+Push notifications are configured via `MessageSendConfiguration.pushNotificationConfig`:
+
+```python
+from a2a.types import (
+    MessageSendParams,
+    MessageSendConfiguration,
+    PushNotificationConfig,
+    PushNotificationAuthenticationInfo,
+    Message,
+    Part
+)
+
+params = MessageSendParams(
+    message=Message(
+        parts=[Part(
+            type="data",
+            data={
+                "skill": "create_media_buy",
+                "input": {
+                    "promoted_offering": "Example Campaign",
+                    "packages": [...],
+                }
+            }
+        )]
+    ),
+    configuration=MessageSendConfiguration(
+        pushNotificationConfig=PushNotificationConfig(
+            url="https://buyer.example.com/webhooks/status",
+            authentication=PushNotificationAuthenticationInfo(
+                schemes=["HMAC-SHA256"],
+                credentials="your_32_char_secret_key_here"
+            )
+        )
+    )
+)
+```
+
+## MCP Configuration
+
+MCP clients provide push notification config via custom HTTP headers:
+
+```bash
+curl -X POST http://localhost:8080/mcp/ \
+  -H "Content-Type: application/json" \
+  -H "x-adcp-auth: your_auth_token" \
+  -H "X-Push-Notification-Url: https://buyer.example.com/webhooks/status" \
+  -H "X-Push-Notification-Auth-Scheme: HMAC-SHA256" \
+  -H "X-Push-Notification-Credentials: your_32_char_secret_key" \
+  -d '{
+    "method": "create_media_buy",
+    "params": {
+      "promoted_offering": "Example Campaign",
+      ...
+    }
+  }'
+```
+
+### MCP Headers
+
+| Header | Description | Required |
+|--------|-------------|----------|
+| `X-Push-Notification-Url` | Webhook endpoint URL | Yes |
+| `X-Push-Notification-Auth-Scheme` | `HMAC-SHA256`, `Bearer`, or `None` | No (default: `None`) |
+| `X-Push-Notification-Credentials` | Shared secret or Bearer token | If auth scheme != `None` |
+
+## Protocol-Level Webhook Payload
+
+### Success Payload
+
+```json
+{
+  "task_id": "task_123",
+  "status": "completed",
+  "timestamp": "2025-10-09T14:30:00Z",
+  "adcp_version": "2.3.0",
+  "result": {
+    "media_buy_id": "mb_456",
+    "buyer_ref": "br_789",
+    "packages": [...]
+  }
+}
+```
+
+### Failure Payload
+
+```json
+{
+  "task_id": "task_123",
+  "status": "failed",
+  "timestamp": "2025-10-09T14:30:00Z",
+  "adcp_version": "2.3.0",
+  "error": "Insufficient budget: requested $10000 but limit is $5000"
+}
+```
+
+### Status Values
+
+- `working` - Operation in progress
+- `completed` - Operation succeeded
+- `failed` - Operation failed
+
+## Verifying Protocol-Level Webhooks
+
+```python
+import hmac
+import hashlib
+
+def verify_protocol_webhook(request_body: bytes, signature_header: str, secret: str) -> bool:
+    """Verify HMAC-SHA256 signature on protocol-level webhook."""
+    expected = hmac.new(
+        secret.encode('utf-8'),
+        request_body,
+        hashlib.sha256
+    ).hexdigest()
+
+    received = signature_header.replace('sha256=', '')
+    return hmac.compare_digest(expected, received)
+
+# Flask example:
+@app.route('/webhooks/status', methods=['POST'])
+def handle_status_webhook():
+    signature = request.headers.get('X-AdCP-Signature')
+    timestamp = request.headers.get('X-AdCP-Timestamp')
+
+    if not verify_protocol_webhook(request.data, signature, SECRET_KEY):
+        return 'Invalid signature', 401
+
+    if abs(time.time() - int(timestamp)) > 300:  # 5 minutes
+        return 'Timestamp too old', 401
+
+    payload = request.json
+    # Process task status update...
+
+    return 'OK', 200
+```
+
+---
+
+# Part 2: Application-Level Webhooks
+
+Application-level webhooks send notifications for events like creative approvals, media buy status changes, and delivery reports. These are configured per principal in the Admin UI.
+
+## Quick Start (Application-Level Webhooks)
 
 1. **Register a webhook** in the Admin UI under Principal → Webhooks
 2. **Choose HMAC-SHA256 authentication** (recommended for production)
 3. **Implement verification** in your webhook endpoint (examples below)
 4. **Test the integration** with a sample webhook
 
-## Security
+## Application-Level Webhook Security
 
 ### SSRF Protection
 
@@ -31,9 +206,9 @@ Webhooks are signed with HMAC-SHA256 to ensure authenticity:
 - **Timestamp Header**: `X-Webhook-Timestamp: <unix_timestamp>`
 - **Replay Protection**: Timestamps older than 5 minutes are rejected
 
-## Webhook Payload Format
+## Application-Level Webhook Payload Format
 
-All webhooks send JSON payloads with this structure:
+Application-level webhooks send JSON payloads with this structure:
 
 ```json
 {
@@ -425,8 +600,100 @@ def webhook():
 - **API Reference**: https://adcontextprotocol.org/docs/
 - **Issues**: https://github.com/adcontextprotocol/salesagent/issues
 
+## AdCP Delivery Webhooks (Enhanced Security)
+
+For delivery reporting webhooks (impressions, spend, etc.), see the enhanced webhook service with additional security and reliability features.
+
+### Enhanced Security Features (AdCP PR #86)
+
+The delivery webhook service implements advanced security and reliability:
+
+**Security:**
+- HMAC-SHA256 signatures with `X-ADCP-Signature` header
+- Replay attack prevention (5-minute window)
+- Minimum 32-character secrets required
+- Constant-time signature comparison
+
+**Reliability:**
+- Circuit breaker pattern (CLOSED/OPEN/HALF_OPEN states)
+- Exponential backoff with jitter
+- Bounded queues (1000 webhooks per endpoint)
+- Per-endpoint isolation
+
+**New Payload Fields:**
+- `is_adjusted`: Boolean flag for late-arriving data corrections
+- `notification_type`: `"scheduled"`, `"final"`, or `"adjusted"`
+
+### Using Enhanced Delivery Webhooks
+
+```python
+from src.services.webhook_delivery_service_v2 import enhanced_webhook_delivery_service
+
+# Send delivery webhook with security
+enhanced_webhook_delivery_service.send_delivery_webhook(
+    media_buy_id="buy_123",
+    tenant_id="tenant_1",
+    principal_id="buyer_1",
+    reporting_period_start=datetime(2025, 10, 1, tzinfo=UTC),
+    reporting_period_end=datetime(2025, 10, 2, tzinfo=UTC),
+    impressions=100000,
+    spend=500.00,
+    is_adjusted=False,  # True for late-arriving data
+)
+```
+
+### Verifying Delivery Webhooks
+
+```python
+from src.services.webhook_verification import verify_adcp_webhook, WebhookVerificationError
+
+@app.post("/webhooks/adcp/delivery")
+def receive_delivery_webhook(request):
+    try:
+        # Verify signature and timestamp
+        verify_adcp_webhook(
+            webhook_secret="your-32-char-secret",
+            payload=request.json(),
+            request_headers=dict(request.headers)
+        )
+
+        # Process verified webhook
+        data = request.json()
+        if data.get("is_adjusted"):
+            # Update historical data
+            update_delivery_data(data)
+        else:
+            # Add new delivery data
+            record_delivery_data(data)
+
+        return {"status": "success"}
+
+    except WebhookVerificationError as e:
+        logger.warning(f"Invalid webhook: {e}")
+        return {"error": str(e)}, 401
+```
+
+### Circuit Breaker Monitoring
+
+```python
+# Check endpoint health
+state, failures = enhanced_webhook_delivery_service.get_circuit_breaker_state(
+    "https://buyer.example.com/webhooks"
+)
+
+# Manual recovery if needed
+enhanced_webhook_delivery_service.reset_circuit_breaker(
+    "https://buyer.example.com/webhooks"
+)
+```
+
+For complete documentation on delivery webhook security, see the implementation in:
+- `src/services/webhook_delivery_service_v2.py`
+- `src/services/webhook_verification.py`
+
 ## Changelog
 
+- **2025-10-09**: Added enhanced delivery webhooks with circuit breakers and HMAC-SHA256 (AdCP PR #86)
 - **2025-10-04**: Added HMAC-SHA256 authentication support
 - **2025-10-04**: Added SSRF protection for webhook URLs
 - **2025-09-15**: Initial webhook support

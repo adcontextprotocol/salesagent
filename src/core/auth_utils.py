@@ -38,12 +38,9 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
             tenant = session.scalars(stmt).first()
             if tenant and token == tenant.admin_token:
                 # Set tenant context for admin token
-                tenant_dict = {
-                    "tenant_id": tenant.tenant_id,
-                    "name": tenant.name,
-                    "subdomain": tenant.subdomain,
-                    "ad_server": tenant.ad_server,
-                }
+                from src.core.utils.tenant_utils import serialize_tenant_to_dict
+
+                tenant_dict = serialize_tenant_to_dict(tenant)
                 set_current_tenant(tenant_dict)
                 return f"admin_{tenant.tenant_id}"
         else:
@@ -55,12 +52,9 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                 stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
                 tenant = session.scalars(stmt).first()
                 if tenant:
-                    tenant_dict = {
-                        "tenant_id": tenant.tenant_id,
-                        "name": tenant.name,
-                        "subdomain": tenant.subdomain,
-                        "ad_server": tenant.ad_server,
-                    }
+                    from src.core.utils.tenant_utils import serialize_tenant_to_dict
+
+                    tenant_dict = serialize_tenant_to_dict(tenant)
                     set_current_tenant(tenant_dict)
                     return principal.principal_id
 

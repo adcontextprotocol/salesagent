@@ -176,22 +176,9 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                     if tenant and token == tenant.admin_token:
                         console.print(f"[green]Token matches admin token for tenant '{tenant_id}'[/green]")
                         # Set tenant context for admin token
-                        tenant_dict = {
-                            "tenant_id": tenant.tenant_id,
-                            "name": tenant.name,
-                            "subdomain": tenant.subdomain,
-                            "ad_server": tenant.ad_server,
-                            "enable_axe_signals": tenant.enable_axe_signals,
-                            "authorized_emails": tenant.authorized_emails or [],
-                            "authorized_domains": tenant.authorized_domains or [],
-                            "slack_webhook_url": tenant.slack_webhook_url,
-                            "admin_token": tenant.admin_token,
-                            "auto_approve_formats": tenant.auto_approve_formats or [],
-                            "human_review_required": tenant.human_review_required,
-                            "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
-                            "hitl_webhook_url": tenant.hitl_webhook_url,
-                            "policy_settings": tenant.policy_settings,
-                        }
+                        from src.core.utils.tenant_utils import serialize_tenant_to_dict
+
+                        tenant_dict = serialize_tenant_to_dict(tenant)
                         set_current_tenant(tenant_dict)
                         return f"{tenant_id}_admin"
                     console.print(f"[red]Token not found in tenant '{tenant_id}' and doesn't match admin token[/red]")
@@ -224,22 +211,9 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
             stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
             tenant = session.scalars(stmt).first()
             if tenant:
-                tenant_dict = {
-                    "tenant_id": tenant.tenant_id,
-                    "name": tenant.name,
-                    "subdomain": tenant.subdomain,
-                    "ad_server": tenant.ad_server,
-                    "enable_axe_signals": tenant.enable_axe_signals,
-                    "authorized_emails": tenant.authorized_emails or [],
-                    "authorized_domains": tenant.authorized_domains or [],
-                    "slack_webhook_url": tenant.slack_webhook_url,
-                    "admin_token": tenant.admin_token,
-                    "auto_approve_formats": tenant.auto_approve_formats or [],
-                    "human_review_required": tenant.human_review_required,
-                    "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
-                    "hitl_webhook_url": tenant.hitl_webhook_url,
-                    "policy_settings": tenant.policy_settings,
-                }
+                from src.core.utils.tenant_utils import serialize_tenant_to_dict
+
+                tenant_dict = serialize_tenant_to_dict(tenant)
                 set_current_tenant(tenant_dict)
                 console.print(f"[bold green]Set tenant context to '{tenant.tenant_id}'[/bold green]")
 
@@ -271,6 +245,34 @@ def _get_header_case_insensitive(headers: dict, header_name: str) -> str | None:
         if key.lower() == header_name_lower:
             return value
     return None
+
+
+def get_push_notification_config_from_headers(headers: dict[str, str] | None) -> dict[str, Any] | None:
+    """
+    Extract protocol-level push notification config from MCP HTTP headers.
+
+    MCP clients can provide push notification config via custom headers:
+    - X-Push-Notification-Url: Webhook URL
+    - X-Push-Notification-Auth-Scheme: Authentication scheme (HMAC-SHA256, Bearer, None)
+    - X-Push-Notification-Credentials: Shared secret or Bearer token
+
+    Returns:
+        Push notification config dict matching A2A structure, or None if not provided
+    """
+    if not headers:
+        return None
+
+    url = _get_header_case_insensitive(headers, "x-push-notification-url")
+    if not url:
+        return None
+
+    auth_scheme = _get_header_case_insensitive(headers, "x-push-notification-auth-scheme") or "None"
+    credentials = _get_header_case_insensitive(headers, "x-push-notification-credentials")
+
+    return {
+        "url": url,
+        "authentication": {"schemes": [auth_scheme], "credentials": credentials} if auth_scheme != "None" else None,
+    }
 
 
 def get_principal_from_context(context: Context | None) -> str | None:
@@ -1177,19 +1179,44 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
     return GetProductsResponse(products=modified_products, message=final_message, status=status)
 
 
-@mcp.tool()
-async def get_products(req: GetProductsRequest, context: Context = None) -> GetProductsResponse:
+@mcp.tool
+async def get_products(
+    promoted_offering: str,
+    brief: str = "",
+    adcp_version: str = "1.0.0",
+    min_exposures: int | None = None,
+    filters: dict | None = None,
+    strategy_id: str | None = None,
+    webhook_url: str | None = None,
+    context: Context = None,
+) -> GetProductsResponse:
     """Get available products matching the brief.
 
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        req: Request containing query parameters for product discovery
+        promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        brief: Brief description of the advertising campaign or requirements (optional)
+        adcp_version: AdCP schema version for this request (default: 1.0.0)
+        min_exposures: Minimum impressions needed for measurement validity (AdCP PR #79, optional)
+        filters: Structured filters for product discovery (optional)
+        strategy_id: Optional strategy ID for linking operations (optional)
+        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
         GetProductsResponse containing matching products
     """
+    # Build request object for shared implementation
+    req = GetProductsRequest(
+        promoted_offering=promoted_offering,
+        brief=brief,
+        adcp_version=adcp_version,
+        min_exposures=min_exposures,
+        filters=filters,
+        strategy_id=strategy_id,
+        webhook_url=webhook_url,
+    )
     # Call shared implementation
     return await _get_products_impl(req, context)
 
@@ -1341,6 +1368,7 @@ def list_creative_formats(
     standard_only: bool | None = None,
     category: str | None = None,
     format_ids: list[str] | None = None,
+    webhook_url: str | None = None,
     context: Context = None,
 ) -> ListCreativeFormatsResponse:
     """List all available creative formats (AdCP spec endpoint).
@@ -1353,6 +1381,7 @@ def list_creative_formats(
         standard_only: Only return IAB standard formats
         category: Filter by format category (standard, custom)
         format_ids: Filter by specific format IDs
+        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -1375,6 +1404,7 @@ def _sync_creatives_impl(
     delete_missing: bool = False,
     dry_run: bool = False,
     validation_mode: str = "strict",
+    webhook_url: str | None = None,
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
@@ -1431,18 +1461,28 @@ def _sync_creatives_impl(
     if not tenant:
         raise ToolError("No tenant context available")
 
-    # Track synced and failed creatives
+    # Track actions per creative for AdCP-compliant response
+    from src.core.schemas import SyncCreativeResult
+
+    results: list[SyncCreativeResult] = []
+    created_count = 0
+    updated_count = 0
+    unchanged_count = 0
+    failed_count = 0
+
+    # Legacy tracking (still used internally)
     synced_creatives = []
     failed_creatives = []
-    # Note: Don't shadow the assignments parameter - use assignment_list for results
-    # assignments = []  # REMOVED - was shadowing the parameter!
 
     # Track creatives requiring approval for workflow creation
     creatives_needing_approval = []
 
     # Get tenant creative approval settings
-    auto_approve_formats = tenant.get("auto_approve_formats", [])
-    human_review_required = tenant.get("human_review_required", True)
+    # approval_mode: "auto-approve", "require-human", "ai-powered"
+    logger.info(f"[sync_creatives] Tenant dict keys: {list(tenant.keys())}")
+    logger.info(f"[sync_creatives] Tenant approval_mode field: {tenant.get('approval_mode', 'NOT FOUND')}")
+    approval_mode = tenant.get("approval_mode", "require-human")
+    logger.info(f"[sync_creatives] Final approval mode: {approval_mode} (from tenant: {tenant.get('tenant_id')})")
 
     with get_db_session() as session:
         # Process each creative with proper transaction isolation
@@ -1498,8 +1538,16 @@ def _sync_creatives_impl(
 
                 except (ValidationError, ValueError) as validation_error:
                     # Creative failed validation - add to failed list
-                    failed_creatives.append(
-                        {"creative_id": creative.get("creative_id", "unknown"), "error": str(validation_error)}
+                    creative_id = creative.get("creative_id", "unknown")
+                    error_msg = str(validation_error)
+                    failed_creatives.append({"creative_id": creative_id, "error": error_msg})
+                    failed_count += 1
+                    results.append(
+                        SyncCreativeResult(
+                            creative_id=creative_id,
+                            action="failed",
+                            errors=[error_msg],
+                        )
                     )
                     continue  # Skip to next creative
 
@@ -1519,23 +1567,81 @@ def _sync_creatives_impl(
                         # Update existing creative (respects patch vs full upsert)
                         existing_creative.updated_at = datetime.now(UTC)
 
+                        # Track changes for result
+                        changes = []
+
                         # Update fields based on patch mode
                         if patch:
                             # Patch mode: only update provided fields
-                            if creative.get("name") is not None:
+                            if creative.get("name") is not None and creative.get("name") != existing_creative.name:
                                 existing_creative.name = creative.get("name")
+                                changes.append("name")
                             if creative.get("format_id") or creative.get("format"):
-                                existing_creative.format = creative.get("format_id") or creative.get("format")
+                                new_format = creative.get("format_id") or creative.get("format")
+                                if new_format != existing_creative.format:
+                                    existing_creative.format = new_format
+                                    changes.append("format")
                         else:
                             # Full upsert mode: replace all fields
-                            existing_creative.name = creative.get("name")
-                            existing_creative.format = creative.get("format_id") or creative.get("format")
+                            if creative.get("name") != existing_creative.name:
+                                existing_creative.name = creative.get("name")
+                                changes.append("name")
+                            new_format = creative.get("format_id") or creative.get("format")
+                            if new_format != existing_creative.format:
+                                existing_creative.format = new_format
+                                changes.append("format")
 
-                        # Determine if creative needs approval (when format changes or new creative)
+                        # Determine creative status based on approval mode
                         creative_format = creative.get("format_id") or creative.get("format")
                         if creative_format:  # Only update approval status if format is provided
-                            needs_approval = human_review_required and creative_format not in auto_approve_formats
-                            existing_creative.status = "pending" if needs_approval else "approved"
+                            if approval_mode == "auto-approve":
+                                existing_creative.status = "approved"
+                                needs_approval = False
+                            elif approval_mode == "ai-powered":
+                                # Submit to background AI review (async)
+
+                                from src.admin.blueprints.creatives import (
+                                    _ai_review_executor,
+                                    _ai_review_lock,
+                                    _ai_review_tasks,
+                                )
+
+                                # Set status to pending immediately
+                                existing_creative.status = "pending"
+                                needs_approval = True
+
+                                # Submit background task
+                                task_id = f"ai_review_{existing_creative.creative_id}_{uuid.uuid4().hex[:8]}"
+
+                                # Need to flush to ensure creative_id is available
+                                session.flush()
+
+                                # Import the async function
+                                from src.admin.blueprints.creatives import _ai_review_creative_async
+
+                                future = _ai_review_executor.submit(
+                                    _ai_review_creative_async,
+                                    creative_id=existing_creative.creative_id,
+                                    tenant_id=tenant["tenant_id"],
+                                    webhook_url=webhook_url,
+                                    slack_webhook_url=tenant.get("slack_webhook_url"),
+                                    principal_name=principal_id,
+                                )
+
+                                # Track the task
+                                with _ai_review_lock:
+                                    _ai_review_tasks[task_id] = {
+                                        "future": future,
+                                        "creative_id": existing_creative.creative_id,
+                                        "created_at": time.time(),
+                                    }
+
+                                logger.info(
+                                    f"[sync_creatives] Submitted AI review for {existing_creative.creative_id} (task: {task_id})"
+                                )
+                            else:  # require-human
+                                existing_creative.status = "pending"
+                                needs_approval = True
                         else:
                             needs_approval = False
 
@@ -1543,21 +1649,32 @@ def _sync_creatives_impl(
                         if patch:
                             # Patch mode: merge with existing data
                             data = existing_creative.data or {}
-                            if creative.get("url") is not None:
+                            if creative.get("url") is not None and data.get("url") != creative.get("url"):
                                 data["url"] = creative.get("url")
-                            if creative.get("click_url") is not None:
+                                changes.append("url")
+                            if creative.get("click_url") is not None and data.get("click_url") != creative.get(
+                                "click_url"
+                            ):
                                 data["click_url"] = creative.get("click_url")
-                            if creative.get("width") is not None:
+                                changes.append("click_url")
+                            if creative.get("width") is not None and data.get("width") != creative.get("width"):
                                 data["width"] = creative.get("width")
-                            if creative.get("height") is not None:
+                                changes.append("width")
+                            if creative.get("height") is not None and data.get("height") != creative.get("height"):
                                 data["height"] = creative.get("height")
-                            if creative.get("duration") is not None:
+                                changes.append("height")
+                            if creative.get("duration") is not None and data.get("duration") != creative.get(
+                                "duration"
+                            ):
                                 data["duration"] = creative.get("duration")
+                                changes.append("duration")
                             if creative.get("snippet") is not None:
                                 data["snippet"] = creative.get("snippet")
                                 data["snippet_type"] = creative.get("snippet_type")
+                                changes.append("snippet")
                             if creative.get("template_variables") is not None:
                                 data["template_variables"] = creative.get("template_variables")
+                                changes.append("template_variables")
                         else:
                             # Full upsert mode: replace all data
                             data = {
@@ -1572,6 +1689,8 @@ def _sync_creatives_impl(
                                 data["snippet_type"] = creative.get("snippet_type")
                             if creative.get("template_variables"):
                                 data["template_variables"] = creative.get("template_variables")
+                            # In full upsert, consider all fields as changed
+                            changes.extend(["url", "click_url", "width", "height", "duration"])
 
                         existing_creative.data = data
 
@@ -1582,13 +1701,36 @@ def _sync_creatives_impl(
 
                         # Track creatives needing approval for workflow creation
                         if needs_approval:
-                            creatives_needing_approval.append(
-                                {
-                                    "creative_id": existing_creative.creative_id,
-                                    "format": creative_format,
-                                    "name": creative.get("name"),
-                                }
+                            creative_info = {
+                                "creative_id": existing_creative.creative_id,
+                                "format": creative_format,
+                                "name": creative.get("name"),
+                                "status": existing_creative.status,
+                            }
+                            # Include AI review reason if available
+                            if (
+                                approval_mode == "ai-powered"
+                                and existing_creative.data
+                                and existing_creative.data.get("ai_review")
+                            ):
+                                creative_info["ai_review_reason"] = existing_creative.data["ai_review"].get("reason")
+                            creatives_needing_approval.append(creative_info)
+
+                        # Record result for updated creative
+                        action = "updated" if changes else "unchanged"
+                        if action == "updated":
+                            updated_count += 1
+                        else:
+                            unchanged_count += 1
+
+                        results.append(
+                            SyncCreativeResult(
+                                creative_id=existing_creative.creative_id,
+                                action=action,
+                                status=existing_creative.status,
+                                changes=changes,
                             )
+                        )
 
                     else:
                         # Create new creative
@@ -1611,10 +1753,12 @@ def _sync_creatives_impl(
                         if creative.get("template_variables"):
                             data["template_variables"] = creative.get("template_variables")
 
-                        # Determine if creative needs approval
+                        # Determine creative status based on approval mode
                         creative_format = creative.get("format_id") or creative.get("format")
-                        needs_approval = human_review_required and creative_format not in auto_approve_formats
-                        creative_status = "pending" if needs_approval else "approved"
+
+                        # Create initial creative with pending status for AI review
+                        creative_status = "pending"
+                        needs_approval = False
 
                         db_creative = DBCreative(
                             tenant_id=tenant["tenant_id"],
@@ -1634,23 +1778,90 @@ def _sync_creatives_impl(
                         if not creative.get("creative_id"):
                             creative["creative_id"] = db_creative.creative_id
 
+                        # Now apply approval mode logic
+                        if approval_mode == "auto-approve":
+                            db_creative.status = "approved"
+                            needs_approval = False
+                        elif approval_mode == "ai-powered":
+                            # Submit to background AI review (async)
+
+                            from src.admin.blueprints.creatives import (
+                                _ai_review_executor,
+                                _ai_review_lock,
+                                _ai_review_tasks,
+                            )
+
+                            # Set status to pending immediately
+                            db_creative.status = "pending"
+                            needs_approval = True
+
+                            # Submit background task
+                            task_id = f"ai_review_{db_creative.creative_id}_{uuid.uuid4().hex[:8]}"
+
+                            # Import the async function
+                            from src.admin.blueprints.creatives import _ai_review_creative_async
+
+                            future = _ai_review_executor.submit(
+                                _ai_review_creative_async,
+                                creative_id=db_creative.creative_id,
+                                tenant_id=tenant["tenant_id"],
+                                webhook_url=webhook_url,
+                                slack_webhook_url=tenant.get("slack_webhook_url"),
+                                principal_name=principal_id,
+                            )
+
+                            # Track the task
+                            with _ai_review_lock:
+                                _ai_review_tasks[task_id] = {
+                                    "future": future,
+                                    "creative_id": db_creative.creative_id,
+                                    "created_at": time.time(),
+                                }
+
+                            logger.info(
+                                f"[sync_creatives] Submitted AI review for new creative {db_creative.creative_id} (task: {task_id})"
+                            )
+                        else:  # require-human
+                            db_creative.status = "pending"
+                            needs_approval = True
+
                         # Track creatives needing approval for workflow creation
                         if needs_approval:
-                            creatives_needing_approval.append(
-                                {
-                                    "creative_id": db_creative.creative_id,
-                                    "format": creative_format,
-                                    "name": creative.get("name"),
-                                }
+                            creative_info = {
+                                "creative_id": db_creative.creative_id,
+                                "format": creative_format,
+                                "name": creative.get("name"),
+                                "status": db_creative.status,  # Include status for Slack notification
+                            }
+                            # AI review reason will be added asynchronously when review completes
+                            # No ai_result available yet in async mode
+                            creatives_needing_approval.append(creative_info)
+
+                        # Record result for created creative
+                        created_count += 1
+                        results.append(
+                            SyncCreativeResult(
+                                creative_id=db_creative.creative_id,
+                                action="created",
+                                status=db_creative.status,
                             )
+                        )
 
                     # If we reach here, creative processing succeeded
                     synced_creatives.append(creative)
 
             except Exception as e:
                 # Savepoint automatically rolls back this creative only
-                failed_creatives.append(
-                    {"creative_id": creative.get("creative_id"), "name": creative.get("name"), "error": str(e)}
+                creative_id = creative.get("creative_id", "unknown")
+                error_msg = str(e)
+                failed_creatives.append({"creative_id": creative_id, "name": creative.get("name"), "error": error_msg})
+                failed_count += 1
+                results.append(
+                    SyncCreativeResult(
+                        creative_id=creative_id,
+                        action="failed",
+                        errors=[error_msg],
+                    )
                 )
 
         # Commit all successful creative operations
@@ -1726,19 +1937,38 @@ def _sync_creatives_impl(
 
         with get_db_session() as session:
             for creative_info in creatives_needing_approval:
+                # Build appropriate comment based on status
+                status = creative_info.get("status", "pending")
+                if status == "rejected":
+                    comment = f"Creative '{creative_info['name']}' (format: {creative_info['format']}) was rejected by AI review"
+                elif status == "pending":
+                    if approval_mode == "ai-powered":
+                        comment = f"Creative '{creative_info['name']}' (format: {creative_info['format']}) requires human review per AI recommendation"
+                    else:
+                        comment = f"Creative '{creative_info['name']}' (format: {creative_info['format']}) requires manual approval"
+                else:
+                    comment = f"Creative '{creative_info['name']}' (format: {creative_info['format']}) requires review"
+
                 # Create workflow step for creative approval
+                request_data_for_workflow = {
+                    "creative_id": creative_info["creative_id"],
+                    "format": creative_info["format"],
+                    "name": creative_info["name"],
+                    "status": status,
+                    "approval_mode": approval_mode,
+                }
+                # Store webhook_url if provided for async notification
+                if webhook_url:
+                    request_data_for_workflow["webhook_url"] = webhook_url
+
                 step = ctx_manager.create_workflow_step(
                     context_id=persistent_ctx.context_id,
                     step_type="creative_approval",
                     owner="publisher",
                     status="requires_approval",
                     tool_name="sync_creatives",
-                    request_data={
-                        "creative_id": creative_info["creative_id"],
-                        "format": creative_info["format"],
-                        "name": creative_info["name"],
-                    },
-                    initial_comment=f"Creative '{creative_info['name']}' (format: {creative_info['format']}) requires manual approval",
+                    request_data=request_data_for_workflow,
+                    initial_comment=comment,
                 )
 
                 # Create ObjectWorkflowMapping to link creative to workflow step
@@ -1755,6 +1985,47 @@ def _sync_creatives_impl(
             console.print(
                 f"[blue]📋 Created {len(creatives_needing_approval)} workflow steps for creative approval[/blue]"
             )
+
+        # Send Slack notification for pending/rejected creative reviews
+        # Note: For ai-powered mode, notifications are sent AFTER AI review completes (with AI reasoning)
+        # Only send immediate notifications for require-human mode or existing creatives with AI review results
+        logger.info(
+            f"Checking Slack notification: creatives={len(creatives_needing_approval)}, webhook={tenant.get('slack_webhook_url')}, approval_mode={approval_mode}"
+        )
+        if creatives_needing_approval and tenant.get("slack_webhook_url") and approval_mode == "require-human":
+            from src.services.slack_notifier import get_slack_notifier
+
+            logger.info(
+                f"Sending Slack notifications for {len(creatives_needing_approval)} creatives (require-human mode)"
+            )
+            tenant_config = {"features": {"slack_webhook_url": tenant["slack_webhook_url"]}}
+            notifier = get_slack_notifier(tenant_config)
+
+            for creative_info in creatives_needing_approval:
+                status = creative_info.get("status", "pending")
+                ai_review_reason = creative_info.get("ai_review_reason")
+
+                if status == "rejected":
+                    # For rejected creatives, send a different notification
+                    # TODO: Add notify_creative_rejected method to SlackNotifier
+                    notifier.notify_creative_pending(
+                        creative_id=creative_info["creative_id"],
+                        principal_name=principal_id,
+                        format_type=creative_info["format"],
+                        media_buy_id=None,
+                        tenant_id=tenant["tenant_id"],
+                        ai_review_reason=ai_review_reason,
+                    )
+                else:
+                    # For pending creatives (human review required)
+                    notifier.notify_creative_pending(
+                        creative_id=creative_info["creative_id"],
+                        principal_name=principal_id,
+                        format_type=creative_info["format"],
+                        media_buy_id=None,
+                        tenant_id=tenant["tenant_id"],
+                        ai_review_reason=ai_review_reason,
+                    )
 
     # Audit logging
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -1776,69 +2047,42 @@ def _sync_creatives_impl(
     # Log activity
     log_tool_activity(context, "sync_creatives", start_time)
 
-    message = f"Synced {len(synced_creatives)} creatives"
-    if failed_creatives:
-        message += f", {len(failed_creatives)} failed"
+    # Build message
+    message = f"Synced {created_count + updated_count} creatives"
+    if created_count:
+        message += f" ({created_count} created"
+        if updated_count:
+            message += f", {updated_count} updated"
+        message += ")"
+    elif updated_count:
+        message += f" ({updated_count} updated)"
+    if unchanged_count:
+        message += f", {unchanged_count} unchanged"
+    if failed_count:
+        message += f", {failed_count} failed"
     if assignment_list:
         message += f", {len(assignment_list)} assignments created"
     if creatives_needing_approval:
         message += f", {len(creatives_needing_approval)} require approval"
 
-    # Convert synced creative dictionaries to schema objects for AdCP-compliant response
-    synced_creative_schemas = []
-    for creative_dict in synced_creatives:
-        # Get the database object to populate internal fields
-        with get_db_session() as session:
-            from src.core.database.models import Creative as DBCreative
+    # Build AdCP-compliant response
+    from src.core.schemas import SyncSummary
 
-            stmt = select(DBCreative).filter_by(
-                tenant_id=tenant["tenant_id"], creative_id=creative_dict.get("creative_id")
-            )
-            db_creative = session.scalars(stmt).first()
-            if db_creative:
-                # Create schema object with populated internal fields
-                # Using aliased field names for construction
-                # Handle mutually exclusive media content vs snippet
-                schema_data = {
-                    "creative_id": db_creative.creative_id,
-                    "name": db_creative.name,
-                    "format_id": db_creative.format,  # Use correct field name
-                    "click_through_url": db_creative.data.get("click_url"),  # From data field
-                    "width": db_creative.data.get("width"),
-                    "height": db_creative.data.get("height"),
-                    "duration": db_creative.data.get("duration"),
-                    "status": db_creative.status,
-                    "template_variables": db_creative.data.get("template_variables") or {},
-                    "principal_id": db_creative.principal_id,
-                    "created_at": db_creative.created_at or datetime.now(UTC),
-                    "updated_at": db_creative.updated_at or datetime.now(UTC),
-                }
-
-                # Handle content_uri - required field even for snippet creatives
-                # For snippet creatives, provide an HTML-looking URL to pass validation
-                if db_creative.data.get("snippet"):
-                    schema_data.update(
-                        {
-                            "snippet": db_creative.data.get("snippet"),
-                            "snippet_type": db_creative.data.get("snippet_type"),
-                            # Use HTML snippet-looking URL to pass _is_html_snippet() validation
-                            "content_uri": db_creative.data.get("url")
-                            or "<script>/* Snippet-based creative */</script>",
-                        }
-                    )
-                else:
-                    schema_data["content_uri"] = (
-                        db_creative.data.get("url") or "https://placeholder.example.com/missing.jpg"
-                    )
-
-                creative_schema = Creative(**schema_data)
-                synced_creative_schemas.append(creative_schema)
+    total_processed = created_count + updated_count + unchanged_count + failed_count
 
     return SyncCreativesResponse(
-        synced_creatives=synced_creative_schemas,
-        failed_creatives=failed_creatives,
-        assignments=assignment_list,
+        adcp_version="2.3.0",
         message=message,
+        status="completed",
+        summary=SyncSummary(
+            total_processed=total_processed,
+            created=created_count,
+            updated=updated_count,
+            unchanged=unchanged_count,
+            failed=failed_count,
+        ),
+        results=results,
+        dry_run=dry_run,
     )
 
 
@@ -1850,6 +2094,7 @@ def sync_creatives(
     delete_missing: bool = False,
     dry_run: bool = False,
     validation_mode: str = "strict",
+    webhook_url: str | None = None,
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
@@ -1863,6 +2108,7 @@ def sync_creatives(
         delete_missing: Delete creatives not in sync payload (use with caution)
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
+        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -1875,6 +2121,7 @@ def sync_creatives(
         delete_missing=delete_missing,
         dry_run=dry_run,
         validation_mode=validation_mode,
+        webhook_url=webhook_url,
         context=context,
     )
 
@@ -2151,6 +2398,7 @@ def list_creatives(
     limit: int = 50,
     sort_by: str = "created_date",
     sort_order: str = "desc",
+    webhook_url: str | None = None,
     context: Context = None,
 ) -> ListCreativesResponse:
     """List and filter creative assets from the centralized library.
@@ -2572,7 +2820,7 @@ def _list_authorized_properties_impl(
 
 @mcp.tool()
 def list_authorized_properties(
-    req: ListAuthorizedPropertiesRequest = None, context: Context = None
+    req: ListAuthorizedPropertiesRequest = None, webhook_url: str | None = None, context: Context = None
 ) -> ListAuthorizedPropertiesResponse:
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
 
@@ -2580,6 +2828,7 @@ def list_authorized_properties(
 
     Args:
         req: Request parameters including optional tag filters
+        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: FastMCP context for authentication
 
     Returns:
@@ -2893,12 +3142,10 @@ def _create_media_buy_impl(
 
         # Return proper error response instead of raising ToolError
         return CreateMediaBuyResponse(
-            media_buy_id="",
-            status=TaskStatus.FAILED,
-            detail=str(e),
-            creative_deadline=None,
-            message=f"Media buy creation failed: {str(e)}",
-            errors=[{"code": "validation_error", "message": str(e)}],
+            adcp_version="2.3.0",
+            status="completed",  # Failed is still "completed" status with errors
+            buyer_ref=buyer_ref or "unknown",
+            errors=[Error(code="validation_error", message=str(e))],
         )
 
     # Get the Principal object (needed for adapter)
@@ -2907,12 +3154,10 @@ def _create_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return CreateMediaBuyResponse(
-            media_buy_id="",
-            status=TaskStatus.FAILED,
-            detail=error_msg,
-            creative_deadline=None,
-            message=f"Media buy creation failed: {error_msg}",
-            errors=[{"code": "authentication_error", "message": error_msg}],
+            adcp_version="2.3.0",
+            status="completed",
+            buyer_ref=buyer_ref or "unknown",
+            errors=[Error(code="authentication_error", message=error_msg)],
         )
 
     try:
@@ -3107,11 +3352,11 @@ def _create_media_buy_impl(
                 console.print(f"[yellow]⚠️ Failed to send configuration approval Slack notification: {e}[/yellow]")
 
             return CreateMediaBuyResponse(
-                media_buy_id=pending_media_buy_id,
-                status=TaskStatus.INPUT_REQUIRED,
-                detail=response_msg,
-                creative_deadline=None,
-                message=f"This media buy requires manual approval due to {reason.lower()}. Your request has been submitted for review.",
+                adcp_version="2.3.0",
+                status="input-required",
+                buyer_ref=req.buyer_ref,
+                task_id=step.step_id,
+                workflow_step_id=step.step_id,
             )
 
         # Continue with synchronized media buy creation
@@ -3146,12 +3391,10 @@ def _create_media_buy_impl(
             error_msg = "start_time and end_time are required but were not properly set"
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return CreateMediaBuyResponse(
-                media_buy_id="",
-                status=TaskStatus.FAILED,
-                detail=error_msg,
-                creative_deadline=None,
-                message="Media buy creation failed: missing required datetime fields",
-                errors=[{"code": "invalid_datetime", "message": error_msg}],
+                adcp_version="2.3.0",
+                status="completed",
+                buyer_ref=req.buyer_ref,
+                errors=[Error(code="invalid_datetime", message=error_msg)],
             )
 
         # Call adapter with detailed error logging
@@ -3344,12 +3587,12 @@ def _create_media_buy_impl(
 
         # Create AdCP v2.4 compliant response
         adcp_response = CreateMediaBuyResponse(
-            media_buy_id=response.media_buy_id,
+            adcp_version="2.3.0",
+            status="working",  # Media buy creation in progress (async operation)
             buyer_ref=req.buyer_ref,
-            status=TaskStatus.WORKING,  # Media buy creation in progress (async operation)
+            media_buy_id=response.media_buy_id,
             packages=response_packages,
             creative_deadline=response.creative_deadline,
-            message="Media buy created successfully and is being activated",
         )
 
         # Log activity
@@ -3549,6 +3792,7 @@ def create_media_buy(
     required_axe_signals: list = None,
     enable_creative_macro: bool = False,
     strategy_id: str = None,
+    webhook_url: str | None = None,
     context: Context = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
@@ -3575,6 +3819,7 @@ def create_media_buy(
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
+        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -3621,6 +3866,7 @@ def update_media_buy(
     daily_budget: float = None,
     packages: list = None,
     creatives: list = None,
+    webhook_url: str | None = None,
     context: Context = None,
 ) -> UpdateMediaBuyResponse:
     """Update a media buy with campaign-level and/or package-level changes.
@@ -3640,6 +3886,7 @@ def update_media_buy(
         daily_budget: Daily spend cap across all packages
         packages: Package-specific updates
         creatives: Add new creatives
+        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -4171,6 +4418,7 @@ def get_media_buy_delivery(
     status_filter: str = None,
     start_date: str = None,
     end_date: str = None,
+    webhook_url: str | None = None,
     context: Context = None,
 ) -> GetMediaBuyDeliveryResponse:
     """Get delivery data for media buys.
@@ -4183,6 +4431,7 @@ def get_media_buy_delivery(
         status_filter: Filter by status - single status or array: 'active', 'pending', 'paused', 'completed', 'failed', 'all' (optional)
         start_date: Start date for reporting period in YYYY-MM-DD format (optional)
         end_date: End date for reporting period in YYYY-MM-DD format (optional)
+        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -4212,13 +4461,14 @@ def _require_admin(context: Context) -> None:
 
 @mcp.tool()
 def update_performance_index(
-    media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None
+    media_buy_id: str, performance_data: list[dict[str, Any]], webhook_url: str | None = None, context: Context = None
 ) -> UpdatePerformanceIndexResponse:
     """Update performance index data for a media buy.
 
     Args:
         media_buy_id: ID of the media buy to update
         performance_data: List of performance data objects
+        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:

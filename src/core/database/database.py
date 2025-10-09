@@ -25,11 +25,11 @@ def init_db(exit_on_error=False):
 
     # Check if we need to create a default tenant
     with get_db_session() as db_session:
-        # Check if default tenant already exists
-        stmt = select(Tenant).filter_by(tenant_id="default")
-        default_tenant = db_session.scalars(stmt).first()
+        # Check if 'default' tenant already exists (safer than counting)
+        stmt = select(Tenant).where(Tenant.tenant_id == "default")
+        existing_tenant = db_session.scalars(stmt).first()
 
-        if default_tenant is None:
+        if not existing_tenant:
             # No tenants exist - create a default one for simple use case
             admin_token = secrets.token_urlsafe(32)
 
@@ -246,9 +246,9 @@ def init_db(exit_on_error=False):
                     """
                 )
         else:
-            # Default tenant already exists - count all tenants for status message
-            stmt = select(func.count()).select_from(Tenant)
-            tenant_count = db_session.scalar(stmt)
+            # Count tenants for status message
+            stmt_count = select(func.count()).select_from(Tenant)
+            tenant_count = db_session.scalar(stmt_count)
             print(f"Database ready ({tenant_count} tenant(s) configured)")
 
 

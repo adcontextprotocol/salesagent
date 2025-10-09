@@ -57,24 +57,9 @@ def get_default_tenant() -> dict[str, Any] | None:
                 tenant = db_session.scalars(stmt).first()
 
             if tenant:
-                return {
-                    "tenant_id": tenant.tenant_id,
-                    "name": tenant.name,
-                    "subdomain": tenant.subdomain,
-                    "virtual_host": tenant.virtual_host,
-                    "ad_server": tenant.ad_server,
-                    "enable_axe_signals": tenant.enable_axe_signals,
-                    "authorized_emails": safe_json_loads(tenant.authorized_emails, []),
-                    "authorized_domains": safe_json_loads(tenant.authorized_domains, []),
-                    "slack_webhook_url": tenant.slack_webhook_url,
-                    "admin_token": tenant.admin_token,
-                    "auto_approve_formats": safe_json_loads(tenant.auto_approve_formats, []),
-                    "human_review_required": tenant.human_review_required,
-                    "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
-                    "hitl_webhook_url": tenant.hitl_webhook_url,
-                    "policy_settings": safe_json_loads(tenant.policy_settings, None),
-                    "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
-                }
+                from src.core.utils.tenant_utils import serialize_tenant_to_dict
+
+                return serialize_tenant_to_dict(tenant)
             return None
     except Exception as e:
         # If table doesn't exist or other DB errors, return None
@@ -157,24 +142,9 @@ def get_tenant_by_subdomain(subdomain: str) -> dict[str, Any] | None:
             tenant = db_session.scalars(stmt).first()
 
             if tenant:
-                return {
-                    "tenant_id": tenant.tenant_id,
-                    "name": tenant.name,
-                    "subdomain": tenant.subdomain,
-                    "virtual_host": tenant.virtual_host,
-                    "ad_server": tenant.ad_server,
-                    "enable_axe_signals": tenant.enable_axe_signals,
-                    "authorized_emails": safe_json_loads(tenant.authorized_emails, []),
-                    "authorized_domains": safe_json_loads(tenant.authorized_domains, []),
-                    "slack_webhook_url": tenant.slack_webhook_url,
-                    "admin_token": tenant.admin_token,
-                    "auto_approve_formats": safe_json_loads(tenant.auto_approve_formats, []),
-                    "human_review_required": tenant.human_review_required,
-                    "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
-                    "hitl_webhook_url": tenant.hitl_webhook_url,
-                    "policy_settings": safe_json_loads(tenant.policy_settings, None),
-                    "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
-                }
+                from src.core.utils.tenant_utils import serialize_tenant_to_dict
+
+                return serialize_tenant_to_dict(tenant)
             return None
     except Exception as e:
         # If table doesn't exist or other DB errors, return None
@@ -191,24 +161,9 @@ def get_tenant_by_virtual_host(virtual_host: str) -> dict[str, Any] | None:
             tenant = db_session.scalars(stmt).first()
 
             if tenant:
-                return {
-                    "tenant_id": tenant.tenant_id,
-                    "name": tenant.name,
-                    "subdomain": tenant.subdomain,
-                    "virtual_host": tenant.virtual_host,
-                    "ad_server": tenant.ad_server,
-                    "enable_axe_signals": tenant.enable_axe_signals,
-                    "authorized_emails": safe_json_loads(tenant.authorized_emails, []),
-                    "authorized_domains": safe_json_loads(tenant.authorized_domains, []),
-                    "slack_webhook_url": tenant.slack_webhook_url,
-                    "admin_token": tenant.admin_token,
-                    "auto_approve_formats": safe_json_loads(tenant.auto_approve_formats, []),
-                    "human_review_required": tenant.human_review_required,
-                    "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
-                    "hitl_webhook_url": tenant.hitl_webhook_url,
-                    "policy_settings": safe_json_loads(tenant.policy_settings, None),
-                    "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
-                }
+                from src.core.utils.tenant_utils import serialize_tenant_to_dict
+
+                return serialize_tenant_to_dict(tenant)
             return None
     except Exception as e:
         # If table doesn't exist or other DB errors, return None

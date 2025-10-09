@@ -14,8 +14,13 @@ pytestmark = pytest.mark.integration
 def policy_service():
     """Create a policy service without API key for basic testing."""
     # Service without AI will just allow everything with a warning
-    # Explicitly pass None to ensure AI is disabled, regardless of environment
-    return PolicyCheckService(gemini_api_key=None)
+    # Must clear GEMINI_API_KEY env var to ensure AI is truly disabled
+    with patch.dict("os.environ", {}, clear=False):
+        # Remove GEMINI_API_KEY if present
+        import os
+
+        os.environ.pop("GEMINI_API_KEY", None)
+        return PolicyCheckService(gemini_api_key=None)
 
 
 @pytest.fixture
