@@ -183,6 +183,7 @@ class TestSchemaConstructionValidation:
 
         # These deprecated fields should be handled by model_validator
         req = CreateMediaBuyRequest(
+            buyer_ref="test_ref",
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
             po_number="TEST-003",
             product_ids=["prod_1"],
@@ -253,6 +254,7 @@ class TestParameterToSchemaMapping:
         from src.core.schemas import CreateMediaBuyRequest
 
         req = CreateMediaBuyRequest(
+            buyer_ref="test_ref",
             promoted_offering="Adidas UltraBoost 2025 running shoes",
             po_number="TEST-004",
             product_ids=["prod_1", "prod_2"],
