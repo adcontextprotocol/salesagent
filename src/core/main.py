@@ -247,6 +247,34 @@ def _get_header_case_insensitive(headers: dict, header_name: str) -> str | None:
     return None
 
 
+def get_push_notification_config_from_headers(headers: dict[str, str] | None) -> dict[str, Any] | None:
+    """
+    Extract protocol-level push notification config from MCP HTTP headers.
+
+    MCP clients can provide push notification config via custom headers:
+    - X-Push-Notification-Url: Webhook URL
+    - X-Push-Notification-Auth-Scheme: Authentication scheme (HMAC-SHA256, Bearer, None)
+    - X-Push-Notification-Credentials: Shared secret or Bearer token
+
+    Returns:
+        Push notification config dict matching A2A structure, or None if not provided
+    """
+    if not headers:
+        return None
+
+    url = _get_header_case_insensitive(headers, "x-push-notification-url")
+    if not url:
+        return None
+
+    auth_scheme = _get_header_case_insensitive(headers, "x-push-notification-auth-scheme") or "None"
+    credentials = _get_header_case_insensitive(headers, "x-push-notification-credentials")
+
+    return {
+        "url": url,
+        "authentication": {"schemes": [auth_scheme], "credentials": credentials} if auth_scheme != "None" else None,
+    }
+
+
 def get_principal_from_context(context: Context | None) -> str | None:
     """Extract principal ID from the FastMCP context using x-adcp-auth header.
 
@@ -1594,6 +1622,8 @@ def _sync_creatives_impl(
                                     creative_id=existing_creative.creative_id,
                                     tenant_id=tenant["tenant_id"],
                                     webhook_url=webhook_url,
+                                    slack_webhook_url=tenant.get("slack_webhook_url"),
+                                    principal_name=principal_id,
                                 )
 
                                 # Track the task
@@ -1774,6 +1804,8 @@ def _sync_creatives_impl(
                                 creative_id=db_creative.creative_id,
                                 tenant_id=tenant["tenant_id"],
                                 webhook_url=webhook_url,
+                                slack_webhook_url=tenant.get("slack_webhook_url"),
+                                principal_name=principal_id,
                             )
 
                             # Track the task
@@ -1953,13 +1985,17 @@ def _sync_creatives_impl(
             )
 
         # Send Slack notification for pending/rejected creative reviews
+        # Note: For ai-powered mode, notifications are sent AFTER AI review completes (with AI reasoning)
+        # Only send immediate notifications for require-human mode or existing creatives with AI review results
         logger.info(
-            f"Checking Slack notification: creatives={len(creatives_needing_approval)}, webhook={tenant.get('slack_webhook_url')}"
+            f"Checking Slack notification: creatives={len(creatives_needing_approval)}, webhook={tenant.get('slack_webhook_url')}, approval_mode={approval_mode}"
         )
-        if creatives_needing_approval and tenant.get("slack_webhook_url"):
+        if creatives_needing_approval and tenant.get("slack_webhook_url") and approval_mode == "require-human":
             from src.services.slack_notifier import get_slack_notifier
 
-            logger.info(f"Sending Slack notifications for {len(creatives_needing_approval)} creatives")
+            logger.info(
+                f"Sending Slack notifications for {len(creatives_needing_approval)} creatives (require-human mode)"
+            )
             tenant_config = {"features": {"slack_webhook_url": tenant["slack_webhook_url"]}}
             notifier = get_slack_notifier(tenant_config)
 

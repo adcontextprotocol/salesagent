@@ -694,17 +694,7 @@ def update_business_rules(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
-            # Update budget controls
-            if "max_daily_budget" in data:
-                try:
-                    tenant.max_daily_budget = int(data.get("max_daily_budget"))
-                except (ValueError, TypeError):
-                    if request.is_json:
-                        return jsonify({"success": False, "error": "Invalid max_daily_budget value"}), 400
-                    flash("Invalid maximum daily budget value", "error")
-                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
-
-            # Update currency limits
+            # Update currency limits (max_daily_budget moved to currency_limits table)
             from decimal import Decimal, InvalidOperation
 
             from src.core.database.models import CurrencyLimit

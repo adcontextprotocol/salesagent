@@ -845,19 +845,28 @@ def reject_creative(tenant_id, creative_id, **kwargs):
         return jsonify({"error": str(e)}), 500
 
 
-def _ai_review_creative_async(creative_id: str, tenant_id: str, webhook_url: str | None = None):
+def _ai_review_creative_async(
+    creative_id: str,
+    tenant_id: str,
+    webhook_url: str | None = None,
+    slack_webhook_url: str | None = None,
+    principal_name: str | None = None,
+):
     """Background task to review creative with AI (thread-safe).
 
     This function runs in a background thread and:
     1. Creates its own database session (thread-safe)
     2. Calls _ai_review_creative_impl() for the actual review
     3. Updates creative status in database
-    4. Calls webhook if configured
+    4. Sends Slack notification if configured
+    5. Calls webhook if configured
 
     Args:
         creative_id: Creative to review
         tenant_id: Tenant ID
         webhook_url: Optional webhook to call on completion
+        slack_webhook_url: Optional Slack webhook for notifications
+        principal_name: Principal name for Slack notification
     """
     logger.info(f"[AI Review Async] Starting background review for creative {creative_id}")
 
@@ -896,6 +905,27 @@ def _ai_review_creative_async(creative_id: str, tenant_id: str, webhook_url: str
                 session.commit()
 
                 logger.info(f"[AI Review Async] Database updated for {creative_id}: status={ai_result['status']}")
+
+                # Send Slack notification with AI review results if configured
+                if slack_webhook_url and principal_name:
+                    try:
+                        from src.services.slack_notifier import get_slack_notifier
+
+                        tenant_config = {"features": {"slack_webhook_url": slack_webhook_url}}
+                        notifier = get_slack_notifier(tenant_config)
+
+                        ai_review_reason = creative.data.get("ai_review", {}).get("reason")
+                        notifier.notify_creative_pending(
+                            creative_id=creative.creative_id,
+                            principal_name=principal_name,
+                            format_type=creative.format,
+                            media_buy_id=None,
+                            tenant_id=tenant_id,
+                            ai_review_reason=ai_review_reason,
+                        )
+                        logger.info(f"[AI Review Async] Slack notification sent for {creative_id}")
+                    except Exception as slack_e:
+                        logger.warning(f"[AI Review Async] Failed to send Slack notification: {slack_e}")
 
                 # Call webhook if configured
                 if webhook_url:
