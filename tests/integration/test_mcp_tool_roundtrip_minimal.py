@@ -17,6 +17,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 @pytest.mark.integration
 @pytest.mark.asyncio
 @pytest.mark.skip_ci  # Requires running MCP server
+@pytest.mark.requires_db  # Needs running MCP server - skip in quick mode
 class TestMCPToolRoundtripMinimal:
     """Test MCP tools with minimal parameters to catch schema construction bugs.
 
