@@ -361,7 +361,6 @@ async def create_test_tenant_with_principal(**kwargs) -> dict:
             is_active=tenant["is_active"],
             billing_plan=tenant["billing_plan"],
             ad_server=tenant.get("ad_server", "mock"),
-            max_daily_budget=10000,
             enable_axe_signals=True,
             authorized_emails=["test@example.com"],
             authorized_domains=["example.com"],
