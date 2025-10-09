@@ -6,6 +6,7 @@ Implements testing hooks from https://github.com/adcontextprotocol/adcp/pull/34
 """
 
 import os
+import socket
 import subprocess
 import time
 import uuid
@@ -13,6 +14,18 @@ import uuid
 import httpx
 import pytest
 import requests
+
+
+def find_free_port(start_port: int = 10000, end_port: int = 60000) -> int:
+    """Find an available port in the given range."""
+    for port in range(start_port, end_port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise RuntimeError(f"No free ports found in range {start_port}-{end_port}")
 
 
 def pytest_addoption(parser):
@@ -33,8 +46,10 @@ def docker_services_e2e(request):
         print("Skipping Docker setup (--skip-docker flag provided)")
         # Just verify services are accessible
         try:
-            mcp_port = os.getenv("ADCP_SALES_PORT", "8092")  # Matches docker-compose default
-            a2a_port = os.getenv("A2A_PORT", "8094")  # Matches docker-compose default
+            mcp_port = int(os.getenv("ADCP_SALES_PORT", "8092"))
+            a2a_port = int(os.getenv("A2A_PORT", "8094"))
+            admin_port = int(os.getenv("ADMIN_UI_PORT", "8093"))
+            postgres_port = int(os.getenv("POSTGRES_PORT", "5435"))
 
             # Quick health check
             response = requests.get(f"http://localhost:{a2a_port}/.well-known/agent.json", timeout=2)
@@ -42,12 +57,13 @@ def docker_services_e2e(request):
                 print(f"✓ A2A server is accessible on port {a2a_port}")
 
             print(f"✓ Assuming MCP server is on port {mcp_port}")
-            yield
+            yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
             return
         except Exception as e:
             print(f"Warning: Could not verify services are running: {e}")
             print("Proceeding anyway since --skip-docker was specified")
-            yield
+            # Use default ports if services couldn't be verified
+            yield {"mcp_port": 8092, "a2a_port": 8094, "admin_port": 8093, "postgres_port": 5435}
             return
 
     # Check if Docker is available
@@ -64,8 +80,23 @@ def docker_services_e2e(request):
     print("Explicitly removing Docker volumes...")
     subprocess.run(["docker", "volume", "prune", "-f"], capture_output=True, check=False)
 
-    print("Building and starting Docker services...")
-    subprocess.run(["docker-compose", "up", "-d", "--build"], check=True)
+    # Allocate dynamic ports to avoid conflicts
+    mcp_port = find_free_port(10000, 20000)
+    a2a_port = find_free_port(20000, 30000)
+    admin_port = find_free_port(30000, 40000)
+    postgres_port = find_free_port(40000, 50000)
+
+    print(f"Using dynamic ports: MCP={mcp_port}, A2A={a2a_port}, Admin={admin_port}, Postgres={postgres_port}")
+
+    # Set environment variables for docker-compose
+    env = os.environ.copy()
+    env["ADCP_SALES_PORT"] = str(mcp_port)
+    env["A2A_PORT"] = str(a2a_port)
+    env["ADMIN_UI_PORT"] = str(admin_port)
+    env["POSTGRES_PORT"] = str(postgres_port)
+
+    print("Building and starting Docker services with dynamic ports...")
+    subprocess.run(["docker-compose", "up", "-d", "--build"], check=True, env=env)
 
     # Wait for services to be healthy
     max_wait = 120  # Increased from 60 to 120 seconds for CI
@@ -73,10 +104,6 @@ def docker_services_e2e(request):
 
     mcp_ready = False
     a2a_ready = False
-
-    # Use standard port environment variables (ADCP_SALES_PORT, A2A_PORT)
-    mcp_port = os.getenv("ADCP_SALES_PORT", "8092")
-    a2a_port = os.getenv("A2A_PORT", "8094")
 
     print(f"Waiting for services (max {max_wait}s)...")
     print(f"  MCP: http://localhost:{mcp_port}/health")
@@ -130,7 +157,8 @@ def docker_services_e2e(request):
         if not a2a_ready:
             pytest.fail(f"A2A server did not become healthy in time (waited {max_wait}s, port {a2a_port})")
 
-    yield
+    # Yield port information for use by other fixtures
+    yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
 
     # Cleanup based on --keep-data flag
     # Note: pytest.config.getoption is not available in yield, would need request fixture
@@ -140,17 +168,15 @@ def docker_services_e2e(request):
 
 @pytest.fixture
 def live_server(docker_services_e2e):
-    """Provide URLs for live services with correct ports from environment."""
-    mcp_port = os.getenv("ADCP_SALES_PORT", "8092")  # Matches docker-compose default
-    a2a_port = os.getenv("A2A_PORT", "8094")  # Matches docker-compose default
-    admin_port = os.getenv("ADMIN_UI_PORT", "8093")  # Matches docker-compose default
-    postgres_port = os.getenv("POSTGRES_PORT", "5435")  # Matches docker-compose default
+    """Provide URLs for live services with dynamically allocated ports."""
+    # Get dynamically allocated ports from docker_services_e2e fixture
+    ports = docker_services_e2e
 
     return {
-        "mcp": f"http://localhost:{mcp_port}",
-        "a2a": f"http://localhost:{a2a_port}",
-        "admin": f"http://localhost:{admin_port}",
-        "postgres": f"postgresql://adcp_user:secure_password_change_me@localhost:{postgres_port}/adcp",
+        "mcp": f"http://localhost:{ports['mcp_port']}",
+        "a2a": f"http://localhost:{ports['a2a_port']}",
+        "admin": f"http://localhost:{ports['admin_port']}",
+        "postgres": f"postgresql://adcp_user:secure_password_change_me@localhost:{ports['postgres_port']}/adcp",
     }
 
 
