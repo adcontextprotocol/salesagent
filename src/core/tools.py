@@ -428,6 +428,7 @@ def update_media_buy_raw(
     daily_budget: float = None,
     packages: list = None,
     creatives: list = None,
+    push_notification_config: dict = None,
     context: Context = None,
 ):
     """Update an existing media buy (raw function for A2A server use).
@@ -449,6 +450,7 @@ def update_media_buy_raw(
         daily_budget: Daily budget cap
         packages: Package updates
         creatives: Creative updates
+        push_notification_config: Optional webhook configuration for async notifications
         context: Context for authentication
 
     Returns:
@@ -472,6 +474,7 @@ def update_media_buy_raw(
         daily_budget=daily_budget,
         packages=packages,
         creatives=creatives,
+        push_notification_config=push_notification_config,
         context=context,
     )
 

@@ -1,5 +1,6 @@
 # from .xandr import XandrAdapter  # Temporarily disabled - needs schema updates
 from .base import AdServerAdapter as AdServerAdapter
+from .broadsign import BroadsignAdapter
 from .creative_engine import CreativeEngineAdapter
 from .google_ad_manager import GoogleAdManager as GAMAdapter
 from .kevel import Kevel as KevelAdapter
@@ -11,6 +12,7 @@ ADAPTER_REGISTRY = {
     "google_ad_manager": GAMAdapter,
     "kevel": KevelAdapter,
     "triton": TritonAdapter,
+    "broadsign": BroadsignAdapter,
     "creative_engine": CreativeEngineAdapter,
     # 'xandr': XandrAdapter,
     # 'microsoft_monetize': XandrAdapter

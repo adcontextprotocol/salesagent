@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block title %}Broadsign DOOH Configuration - {{ product.name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>🎬 Broadsign DOOH Configuration</h2>
+    <p>Configure digital out-of-home settings for: <strong>{{ product.name }}</strong></p>
+
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+
+    {% if success %}
+    <div class="alert alert-success">Configuration saved successfully!</div>
+    {% endif %}
+
+    <form method="POST" id="broadsignConfigForm">
+        <!-- Campaign Settings -->
+        <h3 style="margin-top: 2rem;">📝 Campaign Settings</h3>
+
+        <div class="form-group">
+            <label for="campaign_name_template">Campaign Name Template</label>
+            <input type="text" id="campaign_name_template" name="campaign_name_template"
+                   value="{{ config.get('campaign_name_template', '{promoted_offering} - {date_range}') }}">
+            <small style="color: #666;">
+                Available variables: {promoted_offering}, {date_range}, {po_number}, {principal_name}
+            </small>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="default_hold_duration_hours">Hold Duration (hours)</label>
+                <input type="number" id="default_hold_duration_hours" name="default_hold_duration_hours"
+                       value="{{ config.get('default_hold_duration_hours', 48) }}" min="1" max="168" step="1">
+                <small style="color: #666;">How long to hold inventory before requiring booking</small>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="auto_book_on_availability"
+                           {% if config.get('auto_book_on_availability') %}checked{% endif %}>
+                    Auto-book when available
+                </label>
+                <small style="color: #666; display: block; margin-left: 1.5rem;">
+                    Automatically book campaigns when inventory is confirmed available
+                </small>
+            </div>
+        </div>
+
+        <!-- Screen Network Configuration -->
+        <h3 style="margin-top: 2rem;">📺 Screen Network & Targeting</h3>
+
+        <div class="alert alert-info" style="background-color: #e3f2fd; border-left: 4px solid #2196F3; padding: 1rem; margin-bottom: 1rem;">
+            <strong>ℹ️ Screen Networks</strong><br>
+            Configure which screens and venues this product can target. Use the Inventory Sync to discover available screens from your Broadsign account.
+        </div>
+
+        <div class="form-group">
+            <label for="preferred_venue_categories">Venue Categories</label>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.5rem;">
+                {% set venue_categories = [
+                    (1, '✈️ Airports'),
+                    (2, '🚇 Transit/Subway'),
+                    (3, '🏬 Shopping Malls'),
+                    (4, '🏢 Office Buildings'),
+                    (5, '🏃 Gyms/Fitness'),
+                    (6, '🎬 Entertainment'),
+                    (7, '🍔 Restaurants/QSR'),
+                    (8, '⛽ Gas Stations'),
+                    (9, '🏥 Healthcare'),
+                    (10, '🎓 Education'),
+                    (11, '🏨 Hotels'),
+                    (12, '🛒 Convenience Stores')
+                ] %}
+                {% for cat_id, cat_name in venue_categories %}
+                <label style="display: flex; align-items: center; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <input type="checkbox" name="venue_category_{{ cat_id }}" value="{{ cat_id }}"
+                           {% if cat_id in config.get('preferred_venue_categories', []) %}checked{% endif %}
+                           style="margin-right: 0.5rem;">
+                    <span style="font-size: 0.9rem;">{{ cat_name }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="min_screens_per_campaign">Minimum Screens</label>
+                <input type="number" id="min_screens_per_campaign" name="min_screens_per_campaign"
+                       value="{{ config.get('min_screens_per_campaign', 10) }}" min="1" max="10000" step="1">
+                <small style="color: #666;">Minimum screens required for a campaign</small>
+            </div>
+
+            <div class="form-group">
+                <label for="max_screens_per_campaign">Maximum Screens</label>
+                <input type="number" id="max_screens_per_campaign" name="max_screens_per_campaign"
+                       value="{{ config.get('max_screens_per_campaign', 1000) }}" min="1" max="10000" step="1">
+                <small style="color: #666;">Maximum screens allowed per campaign</small>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="excluded_screen_ids">Excluded Screen IDs</label>
+            <input type="text" id="excluded_screen_ids" name="excluded_screen_ids"
+                   value="{{ config.get('excluded_screen_ids', [])|join(', ') }}"
+                   placeholder="screen_123, screen_456">
+            <small style="color: #666;">Comma-separated list of screen IDs to always exclude</small>
+        </div>
+
+        <!-- Buying Strategy -->
+        <h3 style="margin-top: 2rem;">💰 Buying Strategy</h3>
+
+        <div class="form-group">
+            <label for="default_buying_mode">Buying Mode</label>
+            <select id="default_buying_mode" name="default_buying_mode">
+                <option value="frequency" {% if config.get('default_buying_mode', 'frequency') == 'frequency' %}selected{% endif %}>
+                    Frequency-Based (plays per hour)
+                </option>
+                <option value="share_of_voice" {% if config.get('default_buying_mode') == 'share_of_voice' %}selected{% endif %}>
+                    Share of Voice (percentage of ad time)
+                </option>
+                <option value="impressions" {% if config.get('default_buying_mode') == 'impressions' %}selected{% endif %}>
+                    Impressions (CPM-based)
+                </option>
+            </select>
+            <small style="color: #666;">How buyers will purchase this inventory</small>
+        </div>
+
+        <!-- Frequency Settings -->
+        <div id="frequency_settings" style="margin-top: 1rem; padding: 1rem; background: #f5f5f5; border-radius: 4px;">
+            <h4 style="margin-top: 0;">Frequency Settings</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="plays_per_hour">Plays per Hour</label>
+                    <input type="number" id="plays_per_hour" name="plays_per_hour"
+                           value="{{ config.get('frequency_settings', {}).get('plays_per_hour', 4) }}"
+                           min="1" max="60" step="1">
+                </div>
+                <div class="form-group">
+                    <label for="min_spot_length_seconds">Min Spot Length (sec)</label>
+                    <input type="number" id="min_spot_length_seconds" name="min_spot_length_seconds"
+                           value="{{ config.get('frequency_settings', {}).get('min_spot_length_seconds', 15) }}"
+                           min="5" max="120" step="5">
+                </div>
+                <div class="form-group">
+                    <label for="max_spot_length_seconds">Max Spot Length (sec)</label>
+                    <input type="number" id="max_spot_length_seconds" name="max_spot_length_seconds"
+                           value="{{ config.get('frequency_settings', {}).get('max_spot_length_seconds', 30) }}"
+                           min="5" max="120" step="5">
+                </div>
+            </div>
+        </div>
+
+        <!-- Share of Voice Settings -->
+        <div id="sov_settings" style="margin-top: 1rem; padding: 1rem; background: #f5f5f5; border-radius: 4px; display: none;">
+            <h4 style="margin-top: 0;">Share of Voice Settings</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="min_sov_percentage">Minimum SOV (%)</label>
+                    <input type="number" id="min_sov_percentage" name="min_sov_percentage"
+                           value="{{ config.get('share_of_voice_settings', {}).get('min_sov_percentage', 10.0) }}"
+                           min="1" max="100" step="1">
+                </div>
+                <div class="form-group">
+                    <label for="max_sov_percentage">Maximum SOV (%)</label>
+                    <input type="number" id="max_sov_percentage" name="max_sov_percentage"
+                           value="{{ config.get('share_of_voice_settings', {}).get('max_sov_percentage', 100.0) }}"
+                           min="1" max="100" step="1">
+                </div>
+            </div>
+        </div>
+
+        <!-- Creative Specifications -->
+        <h3 style="margin-top: 2rem;">🎨 Creative Specifications</h3>
+
+        <div class="form-group">
+            <label>Supported Creative Formats</label>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 0.5rem;">
+                {% set formats = [
+                    ('1920x1080', '16:9', 'landscape', '🖥️ HD Landscape (1920×1080)'),
+                    ('1080x1920', '9:16', 'portrait', '📱 Portrait (1080×1920)'),
+                    ('3840x2160', '16:9', 'landscape', '📺 4K Landscape (3840×2160)'),
+                    ('2160x3840', '9:16', 'portrait', '📱 4K Portrait (2160×3840)'),
+                    ('1920x1920', '1:1', 'square', '⬜ Square (1920×1920)'),
+                    ('7680x1080', '64:9', 'landscape', '🖼️ Ultra-wide (7680×1080)')
+                ] %}
+                {% for resolution, ratio, orientation, label in formats %}
+                <label style="display: flex; align-items: center; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <input type="checkbox" name="format_{{ resolution }}" value="{{ resolution }}"
+                           data-ratio="{{ ratio }}" data-orientation="{{ orientation }}"
+                           {% if config.get('supported_creative_specs', []) | selectattr('resolution', 'equalto', resolution) | list | length > 0 %}checked{% endif %}
+                           style="margin-right: 0.5rem;">
+                    <span style="font-size: 0.85rem;">{{ label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="default_spot_duration_seconds">Default Spot Duration (seconds)</label>
+            <input type="number" id="default_spot_duration_seconds" name="default_spot_duration_seconds"
+                   value="{{ config.get('default_spot_duration_seconds', 15) }}" min="5" max="120" step="5">
+            <small style="color: #666;">Default duration for creative spots</small>
+        </div>
+
+        <!-- Reporting & Attribution -->
+        <h3 style="margin-top: 2rem;">📊 Reporting & Attribution</h3>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="attribution_model">Attribution Model</label>
+                <select id="attribution_model" name="attribution_model">
+                    <option value="audience_based" {% if config.get('attribution_model', 'audience_based') == 'audience_based' %}selected{% endif %}>
+                        Audience-Based (multiply by venue traffic)
+                    </option>
+                    <option value="loop_based" {% if config.get('attribution_model') == 'loop_based' %}selected{% endif %}>
+                        Loop-Based (count plays)
+                    </option>
+                    <option value="time_based" {% if config.get('attribution_model') == 'time_based' %}selected{% endif %}>
+                        Time-Based (calculate from duration)
+                    </option>
+                </select>
+                <small style="color: #666;">How to calculate impressions from screen plays</small>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="use_traffic_estimation"
+                           {% if config.get('use_traffic_estimation', True) %}checked{% endif %}>
+                    Use Traffic Estimation
+                </label>
+                <small style="color: #666; display: block; margin-left: 1.5rem;">
+                    Use foot traffic estimation for impression calculations
+                </small>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="require_proof_of_play"
+                       {% if config.get('require_proof_of_play', True) %}checked{% endif %}>
+                Require Proof-of-Play
+            </label>
+            <small style="color: #666; display: block; margin-left: 1.5rem;">
+                Require proof-of-play verification for accurate billing
+            </small>
+        </div>
+
+        <!-- Advanced Features -->
+        <h3 style="margin-top: 2rem;">⚙️ Advanced Features</h3>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="enable_dayparting"
+                           {% if config.get('enable_dayparting') %}checked{% endif %}>
+                    Enable Dayparting
+                </label>
+                <small style="color: #666; display: block; margin-left: 1.5rem;">
+                    Allow time-of-day targeting (if available in account)
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="enable_weather_targeting"
+                           {% if config.get('enable_weather_targeting') %}checked{% endif %}>
+                    Enable Weather Targeting
+                </label>
+                <small style="color: #666; display: block; margin-left: 1.5rem;">
+                    Enable weather-based ad triggering
+                </small>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="priority_level">Campaign Priority</label>
+                <input type="number" id="priority_level" name="priority_level"
+                       value="{{ config.get('priority_level', 5) }}" min="1" max="10" step="1">
+                <small style="color: #666;">Priority level (1=highest, 10=lowest)</small>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="require_manual_approval"
+                           {% if config.get('require_manual_approval') %}checked{% endif %}>
+                    Require Manual Approval
+                </label>
+                <small style="color: #666; display: block; margin-left: 1.5rem;">
+                    Human approval required before booking
+                </small>
+            </div>
+        </div>
+
+        <!-- Inventory Sync Settings -->
+        <h3 style="margin-top: 2rem;">🔄 Inventory Sync</h3>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="auto_sync_screens"
+                           {% if config.get('auto_sync_screens', True) %}checked{% endif %}>
+                    Auto-sync Screens
+                </label>
+                <small style="color: #666; display: block; margin-left: 1.5rem;">
+                    Automatically sync available screens from Broadsign
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label for="sync_interval_hours">Sync Interval (hours)</label>
+                <input type="number" id="sync_interval_hours" name="sync_interval_hours"
+                       value="{{ config.get('sync_interval_hours', 24) }}" min="1" max="168" step="1">
+                <small style="color: #666;">How often to refresh screen availability</small>
+            </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="form-group">
+            <label for="internal_notes">Internal Notes</label>
+            <textarea id="internal_notes" name="internal_notes" rows="3"
+                      placeholder="Internal notes about this product configuration...">{{ config.get('internal_notes', '') }}</textarea>
+        </div>
+
+        <div style="margin-top: 2rem;">
+            <button type="submit" class="btn">💾 Save Configuration</button>
+            <a href="{{ url_for('products.list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+// Toggle buying mode settings visibility
+function updateBuyingModeSettings() {
+    const mode = document.getElementById('default_buying_mode').value;
+    const frequencySettings = document.getElementById('frequency_settings');
+    const sovSettings = document.getElementById('sov_settings');
+
+    if (mode === 'frequency') {
+        frequencySettings.style.display = 'block';
+        sovSettings.style.display = 'none';
+    } else if (mode === 'share_of_voice') {
+        frequencySettings.style.display = 'none';
+        sovSettings.style.display = 'block';
+    } else {
+        frequencySettings.style.display = 'none';
+        sovSettings.style.display = 'none';
+    }
+}
+
+document.getElementById('default_buying_mode').addEventListener('change', updateBuyingModeSettings);
+// Initialize on page load
+updateBuyingModeSettings();
+
+// Form validation
+document.getElementById('broadsignConfigForm').addEventListener('submit', function(e) {
+    const minScreens = parseInt(document.getElementById('min_screens_per_campaign').value);
+    const maxScreens = parseInt(document.getElementById('max_screens_per_campaign').value);
+
+    if (maxScreens < minScreens) {
+        e.preventDefault();
+        alert('Maximum screens must be greater than or equal to minimum screens');
+        return false;
+    }
+});
+</script>
+{% endblock %}

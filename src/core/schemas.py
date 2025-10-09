@@ -1635,6 +1635,12 @@ class SyncCreativesRequest(BaseModel):
         "strict",
         description="Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid creatives and reports errors.",
     )
+    push_notification_config: "PushNotificationConfig | None" = Field(
+        None,
+        description="Optional webhook configuration for async sync notifications. "
+        "Publisher will send webhook when sync completes if operation takes longer than immediate response time "
+        "(typically for large bulk operations or manual approval/HITL).",
+    )
 
 
 class SyncCreativesResponse(BaseModel):
@@ -2288,6 +2294,45 @@ class UpdateMediaBuyResponse(BaseModel):
         return super().model_dump(**kwargs)
 
 
+# --- Webhook Configuration Models ---
+class PushNotificationAuthentication(BaseModel):
+    """Authentication configuration for webhook delivery (A2A-compatible)."""
+
+    schemes: list[Literal["Bearer", "HMAC-SHA256"]] = Field(
+        ...,
+        description="Array of authentication schemes. Supported: ['Bearer'] for simple token auth, "
+        "['HMAC-SHA256'] for signature verification (recommended for production)",
+        min_length=1,
+        max_length=1,
+    )
+    credentials: str = Field(
+        ...,
+        description="Credentials for authentication. For Bearer: token sent in Authorization header. "
+        "For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. "
+        "Exchanged out-of-band during onboarding.",
+        min_length=32,
+    )
+
+
+class PushNotificationConfig(BaseModel):
+    """Webhook configuration for asynchronous task notifications.
+
+    Uses A2A-compatible PushNotificationConfig structure.
+    Supports Bearer tokens (simple) or HMAC signatures (production-recommended).
+    """
+
+    url: str = Field(..., description="Webhook endpoint URL for task status notifications")
+    token: str | None = Field(
+        None,
+        description="Optional client-provided token for webhook validation. "
+        "Echoed back in webhook payload to validate request authenticity.",
+        min_length=16,
+    )
+    authentication: PushNotificationAuthentication = Field(
+        ..., description="Authentication configuration for webhook delivery (A2A-compatible)"
+    )
+
+
 # Unified update models
 class PackageUpdate(BaseModel):
     """Updates to apply to a specific package."""
@@ -2358,6 +2403,11 @@ class UpdateMediaBuyRequest(BaseModel):
     end_time: datetime | None = None  # AdCP uses datetime, not date
     budget: Budget | None = None  # Budget object contains currency/pacing
     packages: list[AdCPPackageUpdate] | None = None
+    push_notification_config: PushNotificationConfig | None = Field(
+        None,
+        description="Optional webhook configuration for async update notifications. "
+        "Publisher will send webhook when update completes if operation takes longer than immediate response time.",
+    )
     today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
     @model_validator(mode="after")
@@ -2915,3 +2965,8 @@ class ListAuthorizedPropertiesResponse(BaseModel):
         if data.get("errors") is None:
             data["errors"] = []
         return data
+
+
+# Rebuild models with forward references
+SyncCreativesRequest.model_rebuild()
+UpdateMediaBuyRequest.model_rebuild()

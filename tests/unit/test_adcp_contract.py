@@ -1953,8 +1953,8 @@ class TestAdCPContract:
             assert issubclass(w[0].category, DeprecationWarning)
             assert "flight_start_date is deprecated" in str(w[0].message)
 
-        # Verify field count (6-7 fields including oneOf field that might be None)
-        assert len(adcp_response_id) <= 7, f"AdCP request should have at most 7 fields, got {len(adcp_response_id)}"
+        # Verify field count (7-8 fields including oneOf field that might be None and push_notification_config)
+        assert len(adcp_response_id) <= 8, f"AdCP request should have at most 8 fields, got {len(adcp_response_id)}"
 
     def test_task_status_mcp_integration(self):
         """Test TaskStatus integration with MCP response schemas (AdCP PR #77)."""

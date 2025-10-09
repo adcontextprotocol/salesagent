@@ -3642,6 +3642,7 @@ def update_media_buy(
     daily_budget: float = None,
     packages: list = None,
     creatives: list = None,
+    push_notification_config: dict = None,
     context: Context = None,
 ) -> UpdateMediaBuyResponse:
     """Update a media buy with campaign-level and/or package-level changes.
@@ -3661,6 +3662,7 @@ def update_media_buy(
         daily_budget: Daily spend cap across all packages
         packages: Package-specific updates
         creatives: Add new creatives
+        push_notification_config: Optional webhook configuration for async update notifications
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -3682,6 +3684,7 @@ def update_media_buy(
         daily_budget=daily_budget,
         packages=packages,
         creatives=creatives,
+        push_notification_config=push_notification_config,
     )
 
     _verify_principal(req.media_buy_id, context)
