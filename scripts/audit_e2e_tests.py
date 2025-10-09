@@ -8,31 +8,23 @@ Audit E2E tests for quality issues:
 """
 import re
 import sys
-from pathlib import Path
 from collections import defaultdict
-from typing import Dict, List, Set
+from pathlib import Path
 
-# Actual tools that exist (extracted from src/core/main.py)
-ACTUAL_TOOLS = {
-    'activate_signal',
-    'create_media_buy',
-    'get_media_buy_delivery',
-    'get_products',
-    'get_signals',
-    'list_authorized_properties',
-    'list_creative_formats',
-    'list_creatives',
-    'sync_creatives',
-    'update_media_buy',
-    'update_performance_index',
-}
+# Import the authoritative tool lists from contract validation
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from tests.e2e.conftest_contract_validation import ACTUAL_MCP_TOOLS, INTENTIONAL_NONEXISTENT_TOOLS
+
+# Use the same lists as runtime contract validation
+ACTUAL_TOOLS = ACTUAL_MCP_TOOLS
+ALLOWED_NONEXISTENT_TOOLS = INTENTIONAL_NONEXISTENT_TOOLS
 
 
-def find_non_existent_tool_calls(test_dir: Path) -> Dict[str, List[tuple]]:
-    """Find tests calling tools that don't exist."""
+def find_non_existent_tool_calls(test_dir: Path) -> dict[str, list[tuple]]:
+    """Find tests calling tools that don't exist (excluding intentionally allowed nonexistent tools)."""
     issues = defaultdict(list)
 
-    for test_file in test_dir.glob('test_*.py'):
+    for test_file in test_dir.glob("test_*.py"):
         with open(test_file) as f:
             lines = f.readlines()
 
@@ -41,11 +33,12 @@ def find_non_existent_tool_calls(test_dir: Path) -> Dict[str, List[tuple]]:
             match = re.search(r'call(?:_mcp)?_tool\(["\'](\w+)["\']', line)
             if match:
                 tool_name = match.group(1)
-                if tool_name not in ACTUAL_TOOLS:
+                # Skip if tool exists OR is intentionally allowed for error handling tests
+                if tool_name not in ACTUAL_TOOLS and tool_name not in ALLOWED_NONEXISTENT_TOOLS:
                     # Find the test function this is in
                     test_func = None
-                    for j in range(i-1, -1, -1):
-                        func_match = re.match(r'\s*(?:async\s+)?def\s+(test_\w+)', lines[j])
+                    for j in range(i - 1, -1, -1):
+                        func_match = re.match(r"\s*(?:async\s+)?def\s+(test_\w+)", lines[j])
                         if func_match:
                             test_func = func_match.group(1)
                             break
@@ -55,19 +48,19 @@ def find_non_existent_tool_calls(test_dir: Path) -> Dict[str, List[tuple]]:
     return issues
 
 
-def find_skip_ci_tests(test_dir: Path) -> Dict[str, List[tuple]]:
+def find_skip_ci_tests(test_dir: Path) -> dict[str, list[tuple]]:
     """Find tests marked with skip_ci."""
     issues = defaultdict(list)
 
-    for test_file in test_dir.glob('test_*.py'):
+    for test_file in test_dir.glob("test_*.py"):
         with open(test_file) as f:
             lines = f.readlines()
 
         for i, line in enumerate(lines, 1):
-            if '@pytest.mark.skip_ci' in line:
+            if "@pytest.mark.skip_ci" in line:
                 # Find the test function
-                for j in range(i, min(i+5, len(lines))):
-                    func_match = re.match(r'\s*(?:async\s+)?def\s+(test_\w+)', lines[j])
+                for j in range(i, min(i + 5, len(lines))):
+                    func_match = re.match(r"\s*(?:async\s+)?def\s+(test_\w+)", lines[j])
                     if func_match:
                         test_func = func_match.group(1)
                         # Extract reason if present
@@ -79,11 +72,11 @@ def find_skip_ci_tests(test_dir: Path) -> Dict[str, List[tuple]]:
     return issues
 
 
-def find_large_tests(test_dir: Path, threshold: int = 200) -> Dict[str, List[tuple]]:
+def find_large_tests(test_dir: Path, threshold: int = 200) -> dict[str, list[tuple]]:
     """Find overly large test functions (candidates for splitting)."""
     issues = defaultdict(list)
 
-    for test_file in test_dir.glob('test_*.py'):
+    for test_file in test_dir.glob("test_*.py"):
         with open(test_file) as f:
             lines = f.readlines()
 
@@ -93,7 +86,7 @@ def find_large_tests(test_dir: Path, threshold: int = 200) -> Dict[str, List[tup
         test_lines = 0
 
         for i, line in enumerate(lines, 1):
-            func_match = re.match(r'\s*(?:async\s+)?def\s+(test_\w+)', line)
+            func_match = re.match(r"\s*(?:async\s+)?def\s+(test_\w+)", line)
             if func_match:
                 # Save previous test if it was large
                 if in_test and test_lines > threshold:
@@ -117,7 +110,7 @@ def find_large_tests(test_dir: Path, threshold: int = 200) -> Dict[str, List[tup
 
 
 def main():
-    test_dir = Path(__file__).parent.parent / 'tests' / 'e2e'
+    test_dir = Path(__file__).parent.parent / "tests" / "e2e"
 
     print("=" * 80)
     print("E2E TEST AUDIT")
@@ -194,5 +187,5 @@ def main():
         return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
