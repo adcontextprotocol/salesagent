@@ -32,9 +32,13 @@ def upgrade() -> None:
     # Add ai_policy column (JSON/JSONB)
     op.add_column("tenants", sa.Column("ai_policy", sa.JSON(), nullable=True))
 
+    # Add gemini_api_key column
+    op.add_column("tenants", sa.Column("gemini_api_key", sa.String(length=500), nullable=True))
+
 
 def downgrade() -> None:
     """Remove creative review and AI policy fields from tenants table."""
+    op.drop_column("tenants", "gemini_api_key")
     op.drop_column("tenants", "ai_policy")
     op.drop_column("tenants", "approval_mode")
     op.drop_column("tenants", "creative_review_criteria")
