@@ -292,6 +292,7 @@ class TestSelfServiceSignupFlow:
                     db_session.commit()
 
     @pytest.mark.skip_ci  # OAuth mocking requires complex app context setup
+    @pytest.mark.requires_db  # Uses database - skip in quick mode
     def test_oauth_callback_redirects_to_onboarding_for_signup_flow(self, client):
         """Test that OAuth callback redirects to onboarding when signup_flow is active.
 
