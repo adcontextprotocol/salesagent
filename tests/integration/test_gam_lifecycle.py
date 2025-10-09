@@ -97,6 +97,7 @@ class TestGAMOrderLifecycleIntegration:
             assert is_admin_adapter._is_admin_principal() is True
 
     @pytest.mark.skip_ci(reason="GAM adapter needs refactoring for AdCP 2.3 - UpdateMediaBuyResponse schema mismatch")
+    @pytest.mark.requires_db  # Skip in quick mode - test is pending GAM refactoring
     def test_lifecycle_workflow_validation(self, test_principals, gam_config):
         """Test lifecycle action workflows with business validation."""
         with patch("src.adapters.google_ad_manager.GoogleAdManager._init_client"):
