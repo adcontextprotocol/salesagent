@@ -74,9 +74,9 @@ def docker_services_e2e(request):
     mcp_ready = False
     a2a_ready = False
 
-    # Use CONDUCTOR_* ports for worktree isolation, fall back to regular ports
-    mcp_port = os.getenv("CONDUCTOR_MCP_PORT", os.getenv("ADCP_SALES_PORT", "8092"))
-    a2a_port = os.getenv("CONDUCTOR_A2A_PORT", os.getenv("A2A_PORT", "8094"))
+    # Use standard port environment variables (ADCP_SALES_PORT, A2A_PORT)
+    mcp_port = os.getenv("ADCP_SALES_PORT", "8092")
+    a2a_port = os.getenv("A2A_PORT", "8094")
 
     print(f"Waiting for services (max {max_wait}s)...")
     print(f"  MCP: http://localhost:{mcp_port}/health")
