@@ -204,9 +204,9 @@ class TestAdCPReferenceImplementation:
             sync_result = await client.call_tool("sync_creatives", sync_request)
             sync_data = json.loads(sync_result.content[0].text)
 
-            assert "synced_creatives" in sync_data, "Response must contain synced_creatives"
-            assert len(sync_data["synced_creatives"]) == 2, "Should sync 2 creatives"
-            print(f"   ✓ Synced {len(sync_data['synced_creatives'])} creatives")
+            assert "results" in sync_data, "Response must contain results"
+            assert len(sync_data["results"]) == 2, "Should sync 2 creatives"
+            print(f"   ✓ Synced {len(sync_data['results'])} creatives")
             print(f"   ✓ Creative IDs: {creative_id_1}, {creative_id_2}")
 
             # ================================================================
@@ -214,9 +214,7 @@ class TestAdCPReferenceImplementation:
             # ================================================================
             print("\n📊 PHASE 4: Get Delivery Metrics")
 
-            delivery_result = await client.call_tool(
-                "get_media_buy_delivery", {"media_buy_id": media_buy_id}
-            )
+            delivery_result = await client.call_tool("get_media_buy_delivery", {"media_buy_id": media_buy_id})
             delivery_data = json.loads(delivery_result.content[0].text)
 
             # Verify delivery response structure
@@ -246,7 +244,7 @@ class TestAdCPReferenceImplementation:
             update_data = json.loads(update_result.content[0].text)
 
             assert "media_buy_id" in update_data or "buyer_ref" in update_data
-            print(f"   ✓ Budget update requested: $5000 → $7500")
+            print("   ✓ Budget update requested: $5000 → $7500")
             print(f"   ✓ Update status: {update_data.get('status', 'unknown')}")
 
             # ================================================================
@@ -297,7 +295,7 @@ class TestAdCPReferenceImplementation:
             creative_ids_in_list = {c["creative_id"] for c in list_data["creatives"]}
             assert creative_id_1 in creative_ids_in_list, f"Creative {creative_id_1} should be in list"
             assert creative_id_2 in creative_ids_in_list, f"Creative {creative_id_2} should be in list"
-            print(f"   ✓ Both synced creatives found in list")
+            print("   ✓ Both synced creatives found in list")
 
             # ================================================================
             # SUCCESS
