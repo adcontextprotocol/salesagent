@@ -20,7 +20,7 @@ pytestmark = [
 
 
 @pytest.fixture
-def mock_adapter():
+def mock_adapter(integration_db):
     """Create a mock adapter with test principal."""
     with get_db_session() as session:
         # Create test tenant
