@@ -1368,6 +1368,7 @@ def list_creative_formats(
     category: str | None = None,
     format_ids: list[str] | None = None,
     webhook_url: str | None = None,
+    agentConfig: dict | None = None,
     context: Context = None,
 ) -> ListCreativeFormatsResponse:
     """List all available creative formats (AdCP spec endpoint).
@@ -2094,6 +2095,7 @@ def sync_creatives(
     dry_run: bool = False,
     validation_mode: str = "strict",
     webhook_url: str | None = None,
+    agentConfig: dict | None = None,
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
@@ -2398,6 +2400,7 @@ def list_creatives(
     sort_by: str = "created_date",
     sort_order: str = "desc",
     webhook_url: str | None = None,
+    agentConfig: dict | None = None,
     context: Context = None,
 ) -> ListCreativesResponse:
     """List and filter creative assets from the centralized library.
@@ -3792,6 +3795,7 @@ def create_media_buy(
     enable_creative_macro: bool = False,
     strategy_id: str = None,
     webhook_url: str | None = None,
+    agentConfig: dict | None = None,
     context: Context = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.

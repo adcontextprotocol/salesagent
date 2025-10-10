@@ -74,20 +74,32 @@ class ToolSchemaValidator:
                 # Check if this function has @mcp.tool decorator
                 has_mcp_tool = False
                 for decorator in node.decorator_list:
+                    # Handle @mcp.tool
                     if isinstance(decorator, ast.Attribute):
                         if decorator.attr == "tool":
                             has_mcp_tool = True
                             break
+                    # Handle @tool
                     elif isinstance(decorator, ast.Name):
                         if decorator.id == "tool":
                             has_mcp_tool = True
                             break
+                    # Handle @mcp.tool() with parentheses
+                    elif isinstance(decorator, ast.Call):
+                        if isinstance(decorator.func, ast.Attribute):
+                            if decorator.func.attr == "tool":
+                                has_mcp_tool = True
+                                break
+                        elif isinstance(decorator.func, ast.Name):
+                            if decorator.func.id == "tool":
+                                has_mcp_tool = True
+                                break
 
                 if has_mcp_tool:
-                    # Extract parameter names (skip context, self, cls)
+                    # Extract parameter names (skip context, self, cls, agentConfig)
                     params = []
                     for arg in node.args.args:
-                        if arg.arg not in ["context", "self", "cls"]:
+                        if arg.arg not in ["context", "self", "cls", "agentConfig"]:
                             params.append(arg.arg)
 
                     tools[node.name] = params
@@ -257,7 +269,7 @@ class ToolSchemaValidator:
                                     original_raw_params.append(arg.arg)
 
                 if original_raw_params == ["req"]:
-                    print(f"  ✅ Schema-first A2A function (takes 'req' parameter)")
+                    print("  ✅ Schema-first A2A function (takes 'req' parameter)")
                 else:
                     # Validate like a normal tool
                     self.validate_tool(raw_function_name, raw_params, schema_class)
