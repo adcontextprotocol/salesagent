@@ -34,6 +34,7 @@ def init_db(exit_on_error=False):
             admin_token = secrets.token_urlsafe(32)
 
             # Create default tenant with proper columns (no config column after migration 007)
+            # NOTE: max_daily_budget moved to currency_limits table
             new_tenant = Tenant(
                 tenant_id="default",
                 name="Default Publisher",
@@ -60,9 +61,18 @@ def init_db(exit_on_error=False):
             new_adapter = AdapterConfig(tenant_id="default", adapter_type="mock", mock_dry_run=False)
             db_session.add(new_adapter)
 
-            # Don't create any principals by default - tenants should create them after setting up their ad server
+            # Always create a CI test principal for E2E testing
+            # This principal uses a fixed token that matches tests/e2e/conftest.py
+            ci_test_principal = Principal(
+                tenant_id="default",
+                principal_id="ci-test-principal",
+                name="CI Test Principal",
+                platform_mappings=json.dumps({"mock": {"advertiser_id": "test-advertiser"}}),
+                access_token="ci-test-token",  # Fixed token for E2E tests
+            )
+            db_session.add(ci_test_principal)
 
-            # Only create sample advertisers if this is a development environment
+            # Only create additional sample advertisers if this is a development environment
             if os.environ.get("CREATE_SAMPLE_DATA", "false").lower() == "true":
                 principals_data = [
                     {

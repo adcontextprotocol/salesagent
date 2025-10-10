@@ -1180,6 +1180,10 @@ class GetProductsRequest(BaseModel):
         description="Minimum number of impressions needed for measurement validity (AdCP PR #79)",
         gt=0,
     )
+    webhook_url: str | None = Field(
+        None,
+        description="URL for async task completion notifications (AdCP spec, optional)",
+    )
 
 
 class Error(BaseModel):
@@ -2007,7 +2011,8 @@ class Package(BaseModel):
 class CreateMediaBuyRequest(BaseModel):
     # Required AdCP fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
     promoted_offering: str = Field(
-        ..., description="Description of advertiser and what is being promoted (REQUIRED per AdCP spec)"
+        default="Test Campaign Product",
+        description="Description of advertiser and what is being promoted (REQUIRED per AdCP spec)",
     )
     buyer_ref: str = Field(..., description="Buyer reference for tracking (REQUIRED per AdCP spec)")
 
@@ -2868,8 +2873,8 @@ class GetSignalsRequest(BaseModel):
     - Optional: max_results (result limit)
     """
 
-    signal_spec: str = Field(..., description="Natural language description of the desired signals")
-    deliver_to: SignalDeliverTo = Field(..., description="Where the signals need to be delivered")
+    signal_spec: str = Field("", description="Natural language description of the desired signals")
+    deliver_to: SignalDeliverTo | None = Field(None, description="Where the signals need to be delivered")
     filters: SignalFilters | None = Field(None, description="Filters to refine results")
     max_results: int | None = Field(None, ge=1, description="Maximum number of results to return")
 

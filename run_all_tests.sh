@@ -125,16 +125,16 @@ if [ "$MODE" == "quick" ]; then
     echo ""
 
     echo "🔗 Step 3/3: Running integration tests..."
-    # Exclude tests that require a real database connection
-    if ! uv run pytest tests/integration/ -m "not requires_db" -x --tb=line -q; then
+    # Exclude tests that require a real database connection or running server
+    if ! uv run pytest tests/integration/ -m "not requires_db and not requires_server and not skip_ci" -x --tb=line -q; then
         echo -e "${RED}❌ Integration tests failed!${NC}"
         exit 1
     fi
 
     echo -e "${GREEN}✅ All quick tests passed${NC}"
     echo ""
-    echo -e "${YELLOW}ℹ️  Note: E2E tests and database-dependent tests not run in quick mode${NC}"
-    echo "   Run './run_all_tests.sh full' for complete validation"
+    echo -e "${YELLOW}ℹ️  Note: E2E tests, database tests, and server-dependent tests not run in quick mode${NC}"
+    echo "   Run './run_all_tests.sh ci' for complete validation"
     exit 0
 fi
 
@@ -179,8 +179,10 @@ if [ "$MODE" == "ci" ]; then
     echo ""
 
     echo "�� Step 4/4: Running e2e tests..."
-    # Set TEST_DATABASE_URL to use PostgreSQL container, unset DATABASE_URL to avoid conflicts
-    if ! env -u DATABASE_URL TEST_DATABASE_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/e2e/ -x --tb=short -q --skip-docker; then
+    # E2E tests manage their own Docker Compose stack (matches GitHub Actions exactly)
+    # conftest.py will start/stop services with --build flag to ensure fresh images
+    # Explicitly set standard ports (overrides any workspace-specific CONDUCTOR_* vars)
+    if ! ADCP_SALES_PORT=8092 A2A_PORT=8094 ADMIN_UI_PORT=8093 POSTGRES_PORT=5435 ADCP_TESTING=true GEMINI_API_KEY="${GEMINI_API_KEY:-test_key}" uv run pytest tests/e2e/ -x --tb=short -q; then
         echo -e "${RED}❌ E2E tests failed!${NC}"
         exit 1
     fi
@@ -203,10 +205,11 @@ echo "  quick  - Unit tests + integration tests (no database)"
 echo "           Fast validation for rapid iteration (~1 min)"
 echo "           Skips database-dependent tests"
 echo ""
-echo "  ci     - Full test suite with PostgreSQL (DEFAULT)"
-echo "           Runs unit + integration + e2e with real database (~3-5 min)"
-echo "           Automatically starts/stops PostgreSQL container"
-echo "           Matches production environment and GitHub Actions"
+echo "  ci     - Full test suite with PostgreSQL + Docker Compose (DEFAULT)"
+echo "           Runs unit + integration + e2e with real database (~5-10 min)"
+echo "           Starts PostgreSQL container for integration tests"
+echo "           Starts full Docker Compose stack for e2e tests (builds images)"
+echo "           EXACTLY matches GitHub Actions CI environment"
 echo ""
 echo "Examples:"
 echo "  ./run_all_tests.sh            # Run CI mode (default, recommended)"

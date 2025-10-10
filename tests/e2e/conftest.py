@@ -5,8 +5,8 @@ These fixtures are for complete system tests that exercise the full AdCP protoco
 Implements testing hooks from https://github.com/adcontextprotocol/adcp/pull/34
 """
 
-import json
 import os
+import socket
 import subprocess
 import time
 import uuid
@@ -14,6 +14,21 @@ import uuid
 import httpx
 import pytest
 import requests
+
+# Import contract validation - this automatically validates tool calls at test collection time
+from tests.e2e.conftest_contract_validation import pytest_collection_modifyitems  # noqa: F401
+
+
+def find_free_port(start_port: int = 10000, end_port: int = 60000) -> int:
+    """Find an available port in the given range."""
+    for port in range(start_port, end_port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise RuntimeError(f"No free ports found in range {start_port}-{end_port}")
 
 
 def pytest_addoption(parser):
@@ -34,8 +49,10 @@ def docker_services_e2e(request):
         print("Skipping Docker setup (--skip-docker flag provided)")
         # Just verify services are accessible
         try:
-            mcp_port = os.getenv("ADCP_SALES_PORT", "8080")
-            a2a_port = os.getenv("A2A_PORT", "8091")
+            mcp_port = int(os.getenv("ADCP_SALES_PORT", "8092"))
+            a2a_port = int(os.getenv("A2A_PORT", "8094"))
+            admin_port = int(os.getenv("ADMIN_UI_PORT", "8093"))
+            postgres_port = int(os.getenv("POSTGRES_PORT", "5435"))
 
             # Quick health check
             response = requests.get(f"http://localhost:{a2a_port}/.well-known/agent.json", timeout=2)
@@ -43,12 +60,13 @@ def docker_services_e2e(request):
                 print(f"✓ A2A server is accessible on port {a2a_port}")
 
             print(f"✓ Assuming MCP server is on port {mcp_port}")
-            yield
+            yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
             return
         except Exception as e:
             print(f"Warning: Could not verify services are running: {e}")
             print("Proceeding anyway since --skip-docker was specified")
-            yield
+            # Use default ports if services couldn't be verified
+            yield {"mcp_port": 8092, "a2a_port": 8094, "admin_port": 8093, "postgres_port": 5435}
             return
 
     # Check if Docker is available
@@ -57,68 +75,102 @@ def docker_services_e2e(request):
     except (subprocess.CalledProcessError, FileNotFoundError):
         pytest.skip("Docker not available")
 
-    # Check if services are already running
-    result = subprocess.run(["docker-compose", "ps", "--format", "json"], capture_output=True, text=True)
+    # Always clean up existing services and volumes to ensure fresh state
+    print("Cleaning up any existing Docker services and volumes...")
+    subprocess.run(["docker-compose", "down", "-v"], capture_output=True, check=False)
 
-    services_running = False
-    if result.returncode == 0 and result.stdout:
-        try:
-            # Parse JSON output to check service status
-            services = json.loads(result.stdout) if result.stdout.startswith("[") else [json.loads(result.stdout)]
-            services_running = any(s.get("State") == "running" for s in services)
-        except (json.JSONDecodeError, TypeError):
-            # Fallback to simple check
-            services_running = "running" in result.stdout.lower()
+    # Explicitly remove volumes in case docker-compose down -v didn't work
+    print("Explicitly removing Docker volumes...")
+    subprocess.run(["docker", "volume", "prune", "-f"], capture_output=True, check=False)
 
-    if not services_running:
-        print("Starting Docker services...")
-        subprocess.run(["docker-compose", "up", "-d"], check=True)
+    # Use environment variable ports if set (CI), otherwise allocate dynamic ports (local)
+    mcp_port = int(os.getenv("ADCP_SALES_PORT")) if os.getenv("ADCP_SALES_PORT") else find_free_port(10000, 20000)
+    a2a_port = int(os.getenv("A2A_PORT")) if os.getenv("A2A_PORT") else find_free_port(20000, 30000)
+    admin_port = int(os.getenv("ADMIN_UI_PORT")) if os.getenv("ADMIN_UI_PORT") else find_free_port(30000, 40000)
+    postgres_port = int(os.getenv("POSTGRES_PORT")) if os.getenv("POSTGRES_PORT") else find_free_port(40000, 50000)
 
-        # Wait for services to be healthy
-        max_wait = 60
-        start_time = time.time()
-
-        mcp_ready = False
-        a2a_ready = False
-
-        while time.time() - start_time < max_wait:
-            # Check MCP server health
-            if not mcp_ready:
-                try:
-                    mcp_port = os.getenv("ADCP_SALES_PORT", "8126")
-                    response = requests.get(f"http://localhost:{mcp_port}/health", timeout=2)
-                    if response.status_code == 200:
-                        print("✓ MCP server is ready")
-                        mcp_ready = True
-                except requests.RequestException:
-                    pass
-
-            # Check A2A server health
-            if not a2a_ready:
-                try:
-                    # A2A server typically responds to a basic GET request
-                    a2a_port = os.getenv("A2A_PORT", "8091")
-                    response = requests.get(f"http://localhost:{a2a_port}/", timeout=2)
-                    if response.status_code in [200, 404, 405]:  # Any response means it's up
-                        print("✓ A2A server is ready")
-                        a2a_ready = True
-                except requests.RequestException:
-                    pass
-
-            # Both services ready
-            if mcp_ready and a2a_ready:
-                break
-
-            time.sleep(2)
-        else:
-            if not mcp_ready:
-                pytest.fail("MCP server did not become healthy in time")
-            if not a2a_ready:
-                pytest.fail("A2A server did not become healthy in time")
+    print(f"Using ports: MCP={mcp_port}, A2A={a2a_port}, Admin={admin_port}, Postgres={postgres_port}")
+    if os.getenv("ADCP_SALES_PORT"):
+        print("(Ports from environment variables)")
     else:
-        print("✓ Docker services already running")
+        print("(Dynamically allocated ports)")
 
-    yield
+    # Set environment variables for docker-compose
+    env = os.environ.copy()
+    env["ADCP_SALES_PORT"] = str(mcp_port)
+    env["A2A_PORT"] = str(a2a_port)
+    env["ADMIN_UI_PORT"] = str(admin_port)
+    env["POSTGRES_PORT"] = str(postgres_port)
+    # Ensure ADCP_TESTING is passed to Docker containers (for test mode validation)
+    if "ADCP_TESTING" in os.environ:
+        env["ADCP_TESTING"] = os.environ["ADCP_TESTING"]
+    else:
+        env["ADCP_TESTING"] = "true"  # Default to testing mode in E2E tests
+
+    print("Building and starting Docker services with dynamic ports...")
+    subprocess.run(["docker-compose", "up", "-d", "--build"], check=True, env=env)
+
+    # Wait for services to be healthy
+    max_wait = 120  # Increased from 60 to 120 seconds for CI
+    start_time = time.time()
+
+    mcp_ready = False
+    a2a_ready = False
+
+    print(f"Waiting for services (max {max_wait}s)...")
+    print(f"  MCP: http://localhost:{mcp_port}/health")
+    print(f"  A2A: http://localhost:{a2a_port}/")
+
+    while time.time() - start_time < max_wait:
+        elapsed = int(time.time() - start_time)
+
+        # Check MCP server health
+        if not mcp_ready:
+            try:
+                response = requests.get(f"http://localhost:{mcp_port}/health", timeout=2)
+                if response.status_code == 200:
+                    print(f"✓ MCP server is ready (after {elapsed}s)")
+                    mcp_ready = True
+            except requests.RequestException as e:
+                if elapsed % 10 == 0:  # Log every 10 seconds
+                    print(f"  MCP not ready yet ({elapsed}s): {type(e).__name__}")
+
+        # Check A2A server health
+        if not a2a_ready:
+            try:
+                response = requests.get(f"http://localhost:{a2a_port}/", timeout=2)
+                if response.status_code in [200, 404, 405]:  # Any response means it's up
+                    print(f"✓ A2A server is ready (after {elapsed}s)")
+                    a2a_ready = True
+            except requests.RequestException as e:
+                if elapsed % 10 == 0:  # Log every 10 seconds
+                    print(f"  A2A not ready yet ({elapsed}s): {type(e).__name__}")
+
+        # Both services ready
+        if mcp_ready and a2a_ready:
+            break
+
+        time.sleep(2)
+    else:
+        # Timeout - try to get container logs for debugging
+        print("\n❌ Health check timeout. Attempting to get container logs...")
+        try:
+            result = subprocess.run(
+                ["docker-compose", "logs", "--tail=50", "adcp-server"], capture_output=True, text=True, timeout=5
+            )
+            if result.stdout:
+                print("MCP server logs:")
+                print(result.stdout)
+        except Exception as e:
+            print(f"Could not get logs: {e}")
+
+        if not mcp_ready:
+            pytest.fail(f"MCP server did not become healthy in time (waited {max_wait}s, port {mcp_port})")
+        if not a2a_ready:
+            pytest.fail(f"A2A server did not become healthy in time (waited {max_wait}s, port {a2a_port})")
+
+    # Yield port information for use by other fixtures
+    yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
 
     # Cleanup based on --keep-data flag
     # Note: pytest.config.getoption is not available in yield, would need request fixture
@@ -128,99 +180,27 @@ def docker_services_e2e(request):
 
 @pytest.fixture
 def live_server(docker_services_e2e):
-    """Provide URLs for live services with correct ports from environment."""
-    mcp_port = os.getenv("ADCP_SALES_PORT", "8126")
-    a2a_port = os.getenv("A2A_PORT", "8091")
-    admin_port = os.getenv("ADMIN_UI_PORT", "8087")
-    postgres_port = os.getenv("POSTGRES_PORT", "5518")
+    """Provide URLs for live services with dynamically allocated ports."""
+    # Get dynamically allocated ports from docker_services_e2e fixture
+    ports = docker_services_e2e
 
     return {
-        "mcp": f"http://localhost:{mcp_port}",
-        "a2a": f"http://localhost:{a2a_port}",
-        "admin": f"http://localhost:{admin_port}",
-        "postgres": f"postgresql://adcp_user:secure_password_change_me@localhost:{postgres_port}/adcp",
+        "mcp": f"http://localhost:{ports['mcp_port']}",
+        "a2a": f"http://localhost:{ports['a2a_port']}",
+        "admin": f"http://localhost:{ports['admin_port']}",
+        "postgres": f"postgresql://adcp_user:secure_password_change_me@localhost:{ports['postgres_port']}/adcp",
     }
 
 
 @pytest.fixture
 def test_auth_token(live_server):
-    """Create or get a test principal with auth token."""
-    # Try to create a test principal via Docker exec
-    # This ensures we have a valid token for testing
+    """Create or get a test principal with auth token.
 
-    # First, find the running ADCP server container
-    container_result = subprocess.run(
-        ["docker", "ps", "--format", "{{.Names}}", "--filter", "name=adcp-server"],
-        capture_output=True,
-        text=True,
-    )
-
-    if container_result.returncode != 0 or not container_result.stdout.strip():
-        # Fallback to known working token if container discovery fails
-        return "1sNG-OxWfEsELsey-6H6IGg1HCxrpbtneGfW4GkSb10"
-
-    container_name = container_result.stdout.strip().split("\n")[0]
-
-    result = subprocess.run(
-        [
-            "docker",
-            "exec",
-            "-i",
-            container_name,
-            "python",
-            "-c",
-            """
-import sys
-sys.path.insert(0, '/app')
-from src.core.database.models import Principal, Tenant
-from src.core.database.connection import get_db_session
-from sqlalchemy import select
-import secrets
-
-with get_db_session() as session:
-    # Use the default tenant that already exists
-    tenant = session.scalars(select(Tenant).filter_by(tenant_id='default')).first()
-    if not tenant:
-        # Create default tenant if it doesn't exist
-        tenant = Tenant(
-            tenant_id='default',
-            name='Default Publisher',
-            subdomain='default',
-            ad_server='mock',
-            admin_token=secrets.token_urlsafe(32)
-        )
-        session.add(tenant)
-        session.commit()
-
-    # Check if test principal exists in default tenant
-    principal = session.scalars(select(Principal).filter_by(
-        tenant_id='default',
-        name='E2E Test Advertiser'
-    )).first()
-
-    if not principal:
-        principal = Principal(
-            tenant_id='default',
-            principal_id='e2e-test-principal',
-            name='E2E Test Advertiser',
-            access_token=secrets.token_urlsafe(32),
-            platform_mappings={'mock': {'advertiser_id': 'test_123'}}
-        )
-        session.add(principal)
-        session.commit()
-
-    print(principal.access_token)
-""",
-        ],
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode == 0 and result.stdout:
-        return result.stdout.strip()
-    else:
-        # Fallback to known working token from previous tests
-        return "1sNG-OxWfEsELsey-6H6IGg1HCxrpbtneGfW4GkSb10"
+    This token must match the one created by init_database_ci.py.
+    """
+    # Return the CI test token that is created by scripts/setup/init_database_ci.py
+    # This ensures consistency between database initialization and E2E tests
+    return "ci-test-token"
 
 
 @pytest.fixture

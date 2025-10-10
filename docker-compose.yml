@@ -53,6 +53,9 @@ services:
       # Optional: Dry run mode
       # ADCP_DRY_RUN: true
 
+      # Testing mode (for E2E tests - relaxes validation)
+      ADCP_TESTING: ${ADCP_TESTING:-false}
+
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,7 +82,7 @@ services:
     command: python -m src.admin.server
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
-      ADMIN_UI_PORT: 8001
+      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8001}
       FLASK_ENV: production
       FLASK_DEBUG: ${FLASK_DEBUG:-0}
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-dev-secret-key-change-in-production}

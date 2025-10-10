@@ -11,17 +11,17 @@ from pydantic_settings import BaseSettings
 class GAMOAuthConfig(BaseSettings):
     """Google Ad Manager OAuth configuration."""
 
-    client_id: str = Field(..., description="GAM OAuth Client ID from Google Cloud Console")
-    client_secret: str = Field(..., description="GAM OAuth Client Secret from Google Cloud Console")
+    client_id: str = Field(default="", description="GAM OAuth Client ID from Google Cloud Console")
+    client_secret: str = Field(default="", description="GAM OAuth Client Secret from Google Cloud Console")
 
     model_config = ConfigDict(env_prefix="GAM_OAUTH_", case_sensitive=False)
 
     @field_validator("client_id")
     @classmethod
     def validate_client_id(cls, v):
-        """Validate GAM OAuth Client ID format."""
+        """Validate GAM OAuth Client ID format (only if provided)."""
         if not v:
-            raise ValueError("GAM OAuth Client ID cannot be empty")
+            return v  # Allow empty - validation happens when GAM adapter is used
         if not v.endswith(".apps.googleusercontent.com"):
             raise ValueError("GAM OAuth Client ID must end with '.apps.googleusercontent.com'")
         return v
@@ -29,9 +29,9 @@ class GAMOAuthConfig(BaseSettings):
     @field_validator("client_secret")
     @classmethod
     def validate_client_secret(cls, v):
-        """Validate GAM OAuth Client Secret format."""
+        """Validate GAM OAuth Client Secret format (only if provided)."""
         if not v:
-            raise ValueError("GAM OAuth Client Secret cannot be empty")
+            return v  # Allow empty - validation happens when GAM adapter is used
         if not v.startswith("GOCSPX-"):
             raise ValueError("GAM OAuth Client Secret must start with 'GOCSPX-'")
         return v

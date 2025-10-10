@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+# Sentinel value to distinguish "not provided" from "explicitly None"
+_UNSET = object()
+
 
 class PolicyStatus(str, Enum):
     """Policy compliance status options."""
@@ -33,13 +36,20 @@ class PolicyCheckResult(BaseModel):
 class PolicyCheckService:
     """Service for checking advertising briefs against policy compliance rules."""
 
-    def __init__(self, gemini_api_key: str | None = None):
+    def __init__(self, gemini_api_key: str | None | object = _UNSET):
         """Initialize the policy check service.
 
         Args:
             gemini_api_key: Optional API key for Gemini. If not provided, uses GEMINI_API_KEY env var.
+                           Pass explicit None to disable AI even if env var is set.
         """
-        self.api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
+        # If no argument provided, check environment
+        if gemini_api_key is _UNSET:
+            self.api_key = os.getenv("GEMINI_API_KEY")
+        else:
+            # Explicit argument provided (could be None or a key)
+            self.api_key = gemini_api_key
+
         if not self.api_key:
             logger.warning("No Gemini API key provided. Policy checks will use basic rules only.")
             self.ai_enabled = False
