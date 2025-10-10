@@ -1250,6 +1250,24 @@ class GetProductsResponse(BaseModel):
 
         return data
 
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field.
+
+        FastMCP uses str() to generate the 'content' field for tool responses.
+        This should be a natural language summary, not JSON.
+        """
+        if self.message:
+            return self.message
+
+        # Fallback: generate message from product count
+        count = len(self.products)
+        if count == 0:
+            return "No products matched your requirements."
+        elif count == 1:
+            return "Found 1 product that matches your requirements."
+        else:
+            return f"Found {count} products that match your requirements."
+
 
 class ListCreativeFormatsRequest(BaseModel):
     """Request for list_creative_formats tool.
