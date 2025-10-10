@@ -481,6 +481,231 @@ This allows delivery methods to use the test scenario without requiring another 
 
 ---
 
+## Simulation Control Capabilities
+
+Beyond AI-powered test orchestration, the mock adapter provides extensive simulation controls for realistic testing scenarios.
+
+### Delivery Simulation
+
+**Time-Accelerated Campaigns**: Test full campaign lifecycles in seconds/minutes instead of days/weeks.
+
+**Configuration via Admin UI:**
+1. Navigate to **Products** → Select mock product → **Configure**
+2. Scroll to **Delivery Simulation** section
+3. Configure:
+   - **Enable Delivery Simulation**: Turn on/off
+   - **Time Acceleration**: Real seconds = Simulated hours (default: `3600` = 1 sec = 1 hour)
+   - **Update Interval**: Webhook frequency in real-time seconds (default: `1.0`)
+
+**Example Scenarios:**
+
+```
+Fast Testing (1 second = 1 hour):
+- Time Acceleration: 3600
+- Update Interval: 1.0 seconds
+- Result: 7-day campaign completes in 168 seconds (~2.8 minutes)
+- Webhooks: Every 1 second (= 1 hour of campaign time)
+
+Ultra-Fast Testing (1 second = 1 day):
+- Time Acceleration: 86400
+- Update Interval: 1.0 seconds
+- Result: 7-day campaign completes in 7 seconds
+- Webhooks: Every 1 second (= 1 day of campaign time)
+
+Slow Motion (1 second = 1 minute):
+- Time Acceleration: 60
+- Update Interval: 1.0 seconds
+- Result: 7-day campaign completes in 10,080 seconds (~2.8 hours)
+- Useful for watching delivery in "real-ish" time
+```
+
+**Webhook Payload**: AdCP V2.3 compliant `GetMediaBuyDeliveryResponse`
+- `notification_type`: `scheduled` (periodic) or `final` (completed)
+- `sequence_number`: Incremental counter starting at 1
+- `next_expected_at`: ISO timestamp for next webhook
+- `media_buy_deliveries`: Array with impressions, spend, clicks, CTR
+
+### Human-in-the-Loop (HITL) Simulation
+
+**Test approval workflows** without requiring actual human intervention.
+
+**Configuration** (via principal's `platform_mappings.mock.hitl_config`):
+
+```json
+{
+  "mock": {
+    "hitl_config": {
+      "enabled": true,
+      "mode": "sync",  // or "async" or "mixed"
+      "sync_settings": {
+        "delay_ms": 2000,
+        "streaming_updates": true,
+        "update_interval_ms": 500
+      },
+      "async_settings": {
+        "auto_complete": true,
+        "auto_complete_delay_ms": 10000,
+        "webhook_url": "https://your-app.com/webhooks/hitl"
+      },
+      "approval_simulation": {
+        "enabled": true,
+        "approval_probability": 0.8,
+        "rejection_reasons": [
+          "Budget exceeds limits",
+          "Invalid targeting"
+        ]
+      }
+    }
+  }
+}
+```
+
+**HITL Modes:**
+- **`sync`**: Delays response by configured time (simulates slow approval)
+- **`async`**: Returns pending status, completes via webhook later
+- **`mixed`**: Per-operation mode overrides
+
+**Example - Sync Mode:**
+```python
+# Principal configured with 2-second HITL delay
+start = time.time()
+result = await client.tools.create_media_buy(...)
+elapsed = time.time() - start
+
+# Should take ~2 seconds due to HITL delay
+assert 1.8 <= elapsed <= 2.5
+assert result.status == "active"
+```
+
+**Example - Async Mode:**
+```python
+# Returns immediately with pending status
+result = await client.tools.create_media_buy(...)
+assert result.status == "pending"
+
+# Webhook fired after auto_complete_delay_ms
+# Agent receives completion notification
+```
+
+### Traffic & Performance Simulation
+
+**Configure via Admin UI** (Mock Product → Configure):
+
+**Traffic Simulation:**
+- **Impressions**: Volume per day (e.g., 100,000)
+- **Fill Rate**: Percentage of requests filled (e.g., 85%)
+- **CTR**: Click-through rate (e.g., 1.2%)
+- **Viewability**: Percentage viewable (e.g., 70%)
+
+**Performance Simulation:**
+- **Latency**: API response time in milliseconds (e.g., 150ms)
+- **Error Rate**: Percentage of failed requests (e.g., 2%)
+
+**Test Scenarios** (predefined modes):
+- **Normal**: Standard behavior
+- **High Demand**: Increased traffic and competition
+- **Degraded**: Slow responses, partial failures
+- **Outage**: Complete service failure
+
+### Targeting Capabilities
+
+**Mock adapter supports ALL targeting dimensions** (unlike real adapters with limitations):
+
+✅ **Geographic**: Countries, regions, metros
+✅ **Device Types**: Desktop, mobile, tablet, CTV, DOOH, audio
+✅ **Operating Systems**: iOS, Android, Windows, etc.
+✅ **Browsers**: Chrome, Safari, Firefox, etc.
+✅ **Content Categories**: IAB taxonomy
+✅ **Keywords**: Contextual targeting
+✅ **Custom Key-Value Pairs**: AEE integration, custom signals
+
+**Example - Complex Targeting:**
+```python
+result = await client.tools.create_media_buy(
+    promoted_offering="Multi-dimension targeting test",
+    product_ids=["prod_1"],
+    total_budget=5000.0,
+    flight_start_date="2025-10-10",
+    flight_end_date="2025-10-17",
+    targeting_overlay={
+        "geo_country_any_of": ["US", "CA"],
+        "geo_region_any_of": ["CA", "NY", "TX"],
+        "device_type_any_of": ["mobile", "tablet"],
+        "os_any_of": ["ios", "android"],
+        "browser_any_of": ["chrome", "safari"],
+        "content_cat_any_of": ["sports", "entertainment"],
+        "keywords_any_of": ["basketball", "playoffs"],
+        "key_value_pairs": [
+            {"key": "aee_audience", "value": "sports_enthusiasts"},
+            {"key": "content_rating", "value": "family_friendly"}
+        ]
+    }
+)
+# Mock adapter accepts ALL targeting without errors
+```
+
+**Note**: For testing targeting errors, configure mock to reject specific dimensions.
+
+### Combining AI Orchestration + Simulation
+
+**Powerful combination** for comprehensive testing:
+
+```python
+# 1. AI-controlled test scenario
+await client.tools.create_media_buy(
+    promoted_offering="""
+        Simulate slow delivery ramp-up for first 3 days,
+        then simulate platform issues on day 4,
+        followed by recovery with accelerated delivery.
+    """,
+    product_ids=["prod_mock_1"],
+    total_budget=10000.0,
+    flight_start_date="2025-10-10",
+    flight_end_date="2025-10-17"
+)
+
+# 2. Delivery simulation running at 3600x speed (1 sec = 1 hour)
+# 3. HITL enabled with 2-second approval delay
+# 4. Webhooks firing every 1 second with realistic metrics
+# 5. Agent responds to delivery updates in real-time
+
+# Result: Full campaign lifecycle tested in ~3 minutes
+```
+
+### Setting Up Webhook Endpoints
+
+**For delivery simulation webhooks:**
+
+1. **Register webhook in Admin UI:**
+   - Navigate to **Principals** → Select principal → **Manage Webhooks**
+   - Add webhook URL with authentication
+   - Test webhook delivery
+
+2. **Enable delivery simulation** in product config (see above)
+
+3. **Create media buy** → Simulation starts automatically, webhooks begin firing
+
+**Sample webhook handler:**
+```python
+async def handle_delivery_webhook(payload):
+    """Process AdCP V2.3 delivery webhook."""
+    delivery = payload["data"]["media_buy_deliveries"][0]
+    progress = delivery["totals"]["impressions"]
+    budget_spent = delivery["totals"]["spend"]
+
+    # Check pacing
+    if is_under_pacing(progress, budget_spent):
+        await increase_bids()
+    elif is_over_pacing(progress, budget_spent):
+        await decrease_bids()
+
+    # Check if completed
+    if payload["data"]["notification_type"] == "final":
+        await generate_final_report()
+```
+
+---
+
 ## Migration from Old System
 
 ### What Was Removed
