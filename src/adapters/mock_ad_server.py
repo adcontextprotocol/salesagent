@@ -41,9 +41,6 @@ class MockAdServer(AdServerAdapter):
         # Initialize HITL configuration from principal's platform_mappings
         self._initialize_hitl_config()
 
-        # Initialize GAM-like object hierarchy for this instance
-        self._initialize_mock_objects()
-
     def _is_simulation(self) -> bool:
         """Check if we're running in simulation mode."""
         return (
@@ -134,156 +131,6 @@ class MockAdServer(AdServerAdapter):
             self.log(f"🤖 HITL mode enabled: {self.hitl_mode}")
             if self.hitl_mode == "mixed":
                 self.log(f"   Operation overrides: {self.operation_modes}")
-
-    def _initialize_mock_objects(self):
-        """Create realistic GAM-like objects for testing."""
-        # Ad unit hierarchy (like GAM's inventory structure)
-        self.ad_units = {
-            "root": {
-                "id": "1001",
-                "name": "Publisher Network",
-                "path": "/",
-                "children": ["homepage", "sports", "news", "entertainment"],
-            },
-            "homepage": {
-                "id": "2001",
-                "name": "Homepage",
-                "path": "/homepage",
-                "parent": "root",
-                "children": ["homepage_top", "homepage_sidebar", "homepage_footer"],
-            },
-            "homepage_top": {
-                "id": "2101",
-                "name": "Homepage - Top Banner",
-                "path": "/homepage/top",
-                "parent": "homepage",
-                "sizes": ["728x90", "970x250", "320x50"],
-            },
-            "homepage_sidebar": {
-                "id": "2102",
-                "name": "Homepage - Sidebar",
-                "path": "/homepage/sidebar",
-                "parent": "homepage",
-                "sizes": ["300x250", "300x600"],
-            },
-            "sports": {
-                "id": "3001",
-                "name": "Sports Section",
-                "path": "/sports",
-                "parent": "root",
-                "children": ["sports_article", "sports_scores"],
-            },
-            "news": {
-                "id": "4001",
-                "name": "News Section",
-                "path": "/news",
-                "parent": "root",
-                "children": ["news_article", "news_breaking"],
-            },
-        }
-
-        # Custom targeting keys (like GAM's key-value targeting)
-        self.targeting_keys = {
-            "content_category": {
-                "id": "key_1",
-                "name": "content_category",
-                "values": ["sports", "news", "entertainment", "business", "technology"],
-            },
-            "article_type": {
-                "id": "key_2",
-                "name": "article_type",
-                "values": ["breaking", "feature", "opinion", "analysis", "review"],
-            },
-            "user_segment": {
-                "id": "key_3",
-                "name": "user_segment",
-                "values": ["premium", "registered", "anonymous", "subscriber"],
-            },
-            "page_position": {
-                "id": "key_4",
-                "name": "page_position",
-                "values": ["above_fold", "below_fold", "sticky", "interstitial"],
-            },
-            "aee_audience": {
-                "id": "key_5",
-                "name": "aee_audience",
-                "values": [
-                    "auto_intenders",
-                    "luxury_travel",
-                    "sports_enthusiasts",
-                    "tech_buyers",
-                ],
-            },
-        }
-
-        # Predefined line item templates (for common product types)
-        self.line_item_templates = {
-            "standard_display": {
-                "type": "STANDARD",
-                "priority": 8,
-                "creative_sizes": ["300x250", "728x90"],
-                "targeting": {
-                    "ad_units": ["homepage", "news", "sports"],
-                    "device_categories": ["DESKTOP", "TABLET"],
-                },
-            },
-            "mobile_app": {
-                "type": "STANDARD",
-                "priority": 8,
-                "creative_sizes": ["320x50", "300x250"],
-                "targeting": {
-                    "device_categories": ["MOBILE"],
-                    "operating_systems": ["IOS", "ANDROID"],
-                },
-            },
-            "video_preroll": {
-                "type": "STANDARD",
-                "priority": 6,
-                "creative_sizes": ["VIDEO"],
-                "targeting": {
-                    "ad_units": ["video_player"],
-                    "content_category": ["sports", "entertainment"],
-                },
-            },
-            "programmatic_guaranteed": {
-                "type": "SPONSORSHIP",
-                "priority": 4,
-                "creative_sizes": ["300x250", "728x90", "970x250"],
-                "targeting": {
-                    "ad_units": ["homepage_top"],
-                    "user_segment": ["premium", "subscriber"],
-                },
-            },
-        }
-
-        # Creative placeholders
-        self.creative_library = {
-            "300x250": {
-                "id": "creative_1",
-                "name": "Standard Medium Rectangle",
-                "size": "300x250",
-                "type": "IMAGE",
-            },
-            "728x90": {
-                "id": "creative_2",
-                "name": "Leaderboard",
-                "size": "728x90",
-                "type": "IMAGE",
-            },
-            "VIDEO": {
-                "id": "creative_3",
-                "name": "Video Creative",
-                "size": "VIDEO",
-                "type": "VIDEO",
-                "duration": 30,
-            },
-        }
-
-        self.log("Mock ad server initialized with GAM-like object hierarchy")
-        self.log(f"  - {len(self.ad_units)} ad units in hierarchy")
-        self.log(f"  - {len(self.targeting_keys)} custom targeting keys")
-        self.log(f"  - {len(self.line_item_templates)} line item templates")
-        self.log(f"  - {len(self.creative_library)} creative templates")
 
     def _validate_targeting(self, targeting_overlay):
         """Mock adapter accepts all targeting."""
@@ -486,6 +333,63 @@ class MockAdServer(AdServerAdapter):
         end_time: datetime,
     ) -> CreateMediaBuyResponse:
         """Simulates the creation of a media buy using GAM-like templates."""
+        from src.adapters.ai_test_orchestrator import AITestOrchestrator
+
+        # AI-powered test orchestration (check promoted_offering/brief for test instructions)
+        # For mock adapter, buyers put test directives in the brief (promoted_offering field)
+        scenario = None
+        test_message = request.promoted_offering
+        if test_message and isinstance(test_message, str) and test_message.strip():
+            try:
+                orchestrator = AITestOrchestrator()
+                scenario = orchestrator.interpret_message(test_message, "create_media_buy")
+                self.log(f"🤖 AI Test Scenario: {scenario}")
+            except Exception as e:
+                self.log(f"⚠️ AI orchestrator unavailable: {e}")
+
+        # Execute AI scenario if present
+        if scenario:
+            # Handle error simulation
+            if scenario.error_message:
+                raise Exception(scenario.error_message)
+
+            # Handle rejection
+            if scenario.should_reject:
+                raise Exception(f"Media buy rejected: {scenario.rejection_reason or 'Test rejection'}")
+
+            # Handle question asking (return pending with question)
+            if scenario.should_ask_question:
+                return CreateMediaBuyResponse(
+                    media_buy_id=f"pending_question_{id(request)}",
+                    status="pending",
+                    message=scenario.question_text or "Additional information needed",
+                    creative_deadline=None,
+                    buyer_ref=request.buyer_ref,
+                )
+
+            # Handle async mode
+            if scenario.use_async:
+                return self._create_media_buy_async(request, packages, start_time, end_time)
+
+            # Handle delay
+            if scenario.delay_seconds:
+                import time
+
+                self.log(f"⏱️ Test delay: {scenario.delay_seconds} seconds")
+                time.sleep(scenario.delay_seconds)
+
+            # Handle HITL simulation
+            if scenario.simulate_hitl:
+                self.log("👤 Simulating human-in-the-loop approval")
+                # Use sync mode with delay
+                original_delay = self.sync_delay_ms
+                self.sync_delay_ms = (scenario.hitl_delay_minutes or 1) * 60 * 1000
+                try:
+                    result = self._create_media_buy_sync_with_delay(request, packages, start_time, end_time)
+                finally:
+                    self.sync_delay_ms = original_delay
+                return result
+
         # NO QUIET FAILURES policy - Check for unsupported targeting
         if request.targeting_overlay:
             # Mock adapter mirrors GAM behavior - these targeting types are not supported
@@ -522,6 +426,7 @@ class MockAdServer(AdServerAdapter):
         # GAM-like validation (based on real GAM behavior)
         self._validate_media_buy_request(request, packages, start_time, end_time)
 
+        # If no AI scenario or scenario accepts, proceed with normal flow
         # HITL Mode Processing
         operation_mode = self._get_operation_mode("create_media_buy")
 
@@ -531,7 +436,7 @@ class MockAdServer(AdServerAdapter):
             return self._create_media_buy_sync_with_delay(request, packages, start_time, end_time)
 
         # Continue with immediate processing (default behavior)
-        return self._create_media_buy_immediate(request, packages, start_time, end_time)
+        return self._create_media_buy_immediate(request, packages, start_time, end_time, scenario)
 
     def _create_media_buy_async(
         self,
@@ -614,9 +519,9 @@ class MockAdServer(AdServerAdapter):
         packages: list[MediaPackage],
         start_time: datetime,
         end_time: datetime,
+        scenario=None,
     ) -> CreateMediaBuyResponse:
         """Create media buy immediately (original behavior)."""
-
         # Generate a unique media_buy_id
         import uuid
 
@@ -667,16 +572,8 @@ class MockAdServer(AdServerAdapter):
             if self._should_force_error("inventory_unavailable"):
                 raise Exception("Simulated error: Requested inventory not available")
 
-        # Select appropriate template based on packages
-        template_name = "standard_display"  # Default
-        if any(p.name and "video" in p.name.lower() for p in packages):
-            template_name = "video_preroll"
-        elif any(p.name and "mobile" in p.name.lower() for p in packages):
-            template_name = "mobile_app"
-        elif any(p.delivery_type == "guaranteed" for p in packages):
-            template_name = "programmatic_guaranteed"
-
-        template = self.line_item_templates.get(template_name, self.line_item_templates["standard_display"])
+        # Default priority for campaigns (standard = 8, guaranteed = 4)
+        priority = 4 if any(p.delivery_type == "guaranteed" for p in packages) else 8
 
         # Log operation start
         self.audit_logger.log_operation(
@@ -709,7 +606,7 @@ class MockAdServer(AdServerAdapter):
 
         self.log(f"Creating media buy with ID: {media_buy_id}")
         self.log(f"Order name: {order_name}")
-        self.log(f"Using template: {template_name} (priority: {template['priority']})")
+        self.log(f"Campaign priority: {priority}")
         self.log(f"Budget: ${total_budget:,.2f}")
         self.log(f"Flight dates: {start_time.date()} to {end_time.date()}")
 
@@ -748,6 +645,7 @@ class MockAdServer(AdServerAdapter):
                 "start_time": start_time,
                 "end_time": end_time,
                 "creatives": [],
+                "test_scenario": scenario.__dict__ if scenario else None,
             }
             self.log("✓ Media buy created successfully")
             self.log(f"  Campaign ID: {media_buy_id}")
@@ -889,6 +787,16 @@ class MockAdServer(AdServerAdapter):
         self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
     ) -> list[AssetStatus]:
         """Add creative assets immediately (original behavior)."""
+        from src.adapters.ai_test_orchestrator import AITestOrchestrator
+
+        # AI-powered test orchestration - each creative's name controls its own outcome
+        orchestrator = None
+        try:
+            from src.adapters.ai_test_orchestrator import AITestOrchestrator
+
+            orchestrator = AITestOrchestrator()
+        except Exception as e:
+            self.log(f"⚠️ AI orchestrator unavailable: {e}")
 
         # Log operation
         self.audit_logger.log_operation(
@@ -923,7 +831,52 @@ class MockAdServer(AdServerAdapter):
             self._media_buys[media_buy_id]["creatives"].extend(assets)
             self.log(f"✓ Successfully uploaded {len(assets)} creatives")
 
-        return [AssetStatus(creative_id=asset["id"], status="approved") for asset in assets]
+        # Process each creative individually with AI interpretation
+        results = []
+        for asset in assets:
+            creative_name = asset.get("name", "")
+
+            # Try AI orchestration first (if available and name has content)
+            if orchestrator and creative_name and creative_name.strip():
+                try:
+                    scenario = orchestrator.interpret_message(creative_name, "sync_creatives")
+
+                    # Check if AI returned a specific action
+                    if scenario.should_reject or (
+                        scenario.creative_actions
+                        and any(a.get("action") == "reject" for a in scenario.creative_actions)
+                    ):
+                        reason = scenario.rejection_reason or "Test rejection"
+                        self.log(f"   ❌ AI: Rejecting creative '{creative_name}' - {reason}")
+                        results.append(AssetStatus(creative_id=asset["id"], status="rejected"))
+                        continue
+                    elif scenario.creative_actions:
+                        # Check for other actions (request_changes, ask_for_field)
+                        action = scenario.creative_actions[0] if scenario.creative_actions else {}
+                        action_type = action.get("action", "approve")
+                        reason = action.get("reason", "")
+
+                        if action_type == "request_changes":
+                            self.log(f"   🔄 AI: Requesting changes for creative '{creative_name}' - {reason}")
+                            results.append(AssetStatus(creative_id=asset["id"], status="pending"))
+                            continue
+                        elif action_type == "ask_for_field":
+                            self.log(f"   ❓ AI: Asking for field in creative '{creative_name}' - {reason}")
+                            results.append(AssetStatus(creative_id=asset["id"], status="pending"))
+                            continue
+
+                    # AI didn't specify rejection/changes - approve
+                    self.log(f"   ✅ AI: Approving creative '{creative_name}'")
+                    results.append(AssetStatus(creative_id=asset["id"], status="approved"))
+                    continue
+
+                except Exception as e:
+                    self.log(f"   ⚠️ AI interpretation failed for '{creative_name}': {e}, auto-approving")
+
+            # Default behavior - auto-approve
+            results.append(AssetStatus(creative_id=asset["id"], status="approved"))
+
+        return results
 
     def check_media_buy_status(self, media_buy_id: str, today: datetime) -> CheckMediaBuyStatusResponse:
         """Simulates checking the status of a media buy."""
@@ -992,6 +945,15 @@ class MockAdServer(AdServerAdapter):
             start_time = buy["start_time"]
             end_time = buy["end_time"]
 
+            # Load AI test scenario if present
+            from src.adapters.ai_test_orchestrator import TestScenario
+
+            test_scenario_data = buy.get("test_scenario")
+            test_scenario = None
+            if test_scenario_data:
+                # Reconstruct TestScenario from stored dict
+                test_scenario = TestScenario(**test_scenario_data)
+
             # Ensure consistent timezone handling for arithmetic operations
             # Convert today to match timezone of stored dates or vice versa
             if start_time.tzinfo and not today.tzinfo:
@@ -1003,6 +965,12 @@ class MockAdServer(AdServerAdapter):
             # Calculate campaign progress
             campaign_duration = (end_time - start_time).total_seconds() / 86400  # days
             elapsed_duration = (today - start_time).total_seconds() / 86400  # days
+            current_day = int(elapsed_duration) + 1  # Day 1, 2, 3, etc.
+
+            # Check for AI scenario outage simulation
+            if test_scenario and test_scenario.simulate_outage:
+                self.log(f"🚨 AI Test Scenario: Simulating platform outage on day {current_day}")
+                raise Exception(f"Simulated platform outage on day {current_day} (AI test scenario)")
 
             if elapsed_duration <= 0:
                 # Campaign hasn't started
@@ -1017,41 +985,61 @@ class MockAdServer(AdServerAdapter):
                 progress_ratio = elapsed_duration / campaign_duration
                 daily_budget = total_budget / campaign_duration
 
-                # Apply strategy-based pacing multiplier
-                pacing_multiplier = 1.0
-                if self.strategy_context and hasattr(self.strategy_context, "get_pacing_multiplier"):
-                    pacing_multiplier = self.strategy_context.get_pacing_multiplier()
+                # Apply AI test scenario delivery profile if present
+                if test_scenario and test_scenario.delivery_profile:
+                    delivery_progress = self._calculate_delivery_progress(
+                        test_scenario.delivery_profile, current_day, int(campaign_duration)
+                    )
+                    self.log(
+                        f"📋 AI Test Scenario delivery profile '{test_scenario.delivery_profile}': "
+                        f"{delivery_progress * 100:.1f}% complete on day {current_day}"
+                    )
+                    spend = total_budget * delivery_progress
+                    impressions = int(spend / 0.01)  # $10 CPM
+                    # Skip normal pacing logic
+                elif test_scenario and test_scenario.delivery_percentage is not None:
+                    # Override with specific percentage
+                    delivery_progress = test_scenario.delivery_percentage / 100.0
+                    self.log(f"📋 AI Test Scenario delivery override: {test_scenario.delivery_percentage}% complete")
+                    spend = total_budget * delivery_progress
+                    impressions = int(spend / 0.01)  # $10 CPM
+                else:
+                    # Normal pacing logic
+                    # Apply strategy-based pacing multiplier
+                    pacing_multiplier = 1.0
+                    if self.strategy_context and hasattr(self.strategy_context, "get_pacing_multiplier"):
+                        pacing_multiplier = self.strategy_context.get_pacing_multiplier()
+                        if self._is_simulation():
+                            self.log(f"🚀 Strategy pacing multiplier: {pacing_multiplier:.2f}")
+
+                    # Strategy-aware spend calculation
                     if self._is_simulation():
-                        self.log(f"🚀 Strategy pacing multiplier: {pacing_multiplier:.2f}")
+                        scenario = self._get_simulation_scenario()
 
-                # Strategy-aware spend calculation
-                if self._is_simulation():
-                    scenario = self._get_simulation_scenario()
-
-                    # Check for forced budget exceeded error
-                    if self._should_force_error("budget_exceeded"):
-                        spend = total_budget * 1.15  # Overspend by 15%
-                        self.log("🚨 Simulating budget exceeded scenario")
-                    elif scenario == "high_performance":
-                        spend = daily_budget * elapsed_duration * pacing_multiplier * 1.3
-                        self.log("📈 High performance scenario - accelerated spend")
-                    elif scenario == "underperforming":
-                        spend = daily_budget * elapsed_duration * pacing_multiplier * 0.6
-                        self.log("📉 Underperforming scenario - reduced spend")
+                        # Check for forced budget exceeded error
+                        if self._should_force_error("budget_exceeded"):
+                            spend = total_budget * 1.15  # Overspend by 15%
+                            self.log("🚨 Simulating budget exceeded scenario")
+                        elif scenario == "high_performance":
+                            spend = daily_budget * elapsed_duration * pacing_multiplier * 1.3
+                            self.log("📈 High performance scenario - accelerated spend")
+                        elif scenario == "underperforming":
+                            spend = daily_budget * elapsed_duration * pacing_multiplier * 0.6
+                            self.log("📉 Underperforming scenario - reduced spend")
+                        else:
+                            # Normal variance with strategy pacing
+                            daily_variance = random.uniform(0.8, 1.2)
+                            spend = daily_budget * elapsed_duration * daily_variance * pacing_multiplier
                     else:
-                        # Normal variance with strategy pacing
+                        # Production mode - normal variance with strategy pacing
                         daily_variance = random.uniform(0.8, 1.2)
                         spend = daily_budget * elapsed_duration * daily_variance * pacing_multiplier
-                else:
-                    # Production mode - normal variance with strategy pacing
-                    daily_variance = random.uniform(0.8, 1.2)
-                    spend = daily_budget * elapsed_duration * daily_variance * pacing_multiplier
 
-                # Cap at total budget (unless simulating budget exceeded)
-                if not self._should_force_error("budget_exceeded"):
-                    spend = min(spend, total_budget)
+                    # Cap at total budget (unless simulating budget exceeded)
+                    if not self._should_force_error("budget_exceeded"):
+                        spend = min(spend, total_budget)
 
-                impressions = int(spend / 0.01)  # $10 CPM
+                    impressions = int(spend / 0.01)  # $10 CPM
         else:
             # Fallback for missing media buy
             impressions = random.randint(8000, 12000)
@@ -1200,6 +1188,48 @@ class MockAdServer(AdServerAdapter):
             errors.append("Latency cannot be negative")
 
         return errors
+
+    def _calculate_delivery_progress(self, profile: str, current_day: int, total_days: int) -> float:
+        """Calculate delivery progress based on profile.
+
+        Args:
+            profile: Delivery profile ("slow", "fast", "uneven", or "normal")
+            current_day: Current day of campaign (1-indexed)
+            total_days: Total campaign duration in days
+
+        Returns:
+            Progress ratio (0.0 to 1.0)
+        """
+        if profile == "slow":
+            # Slow ramp: 10% day 1, 30% day 3, linear to 100% at end
+            if current_day <= 1:
+                return 0.1
+            elif current_day <= 3:
+                return 0.3
+            else:
+                # Linear from 30% to 100% over remaining days
+                days_after_3 = current_day - 3
+                remaining_days = total_days - 3
+                if remaining_days <= 0:
+                    return 1.0
+                return 0.3 + (days_after_3 / remaining_days) * 0.7
+
+        elif profile == "fast":
+            # Fast delivery: 50% day 1, 100% day 2
+            if current_day <= 1:
+                return 0.5
+            else:
+                return 1.0
+
+        elif profile == "uneven":
+            # Uneven with random spikes
+            base_progress = current_day / total_days
+            spike = random.uniform(-0.1, 0.2)  # Random variance
+            return min(1.0, max(0.0, base_progress + spike))
+
+        else:  # "normal" or unknown
+            # Linear pacing
+            return min(1.0, current_day / total_days)
 
     def _start_delivery_simulation(
         self,
