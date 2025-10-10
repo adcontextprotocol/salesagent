@@ -1110,6 +1110,10 @@ class UpdatePerformanceIndexResponse(BaseModel):
     status: str
     detail: str
 
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        return self.detail
+
 
 # --- Discovery ---
 class FormatType(str, Enum):
@@ -1298,6 +1302,13 @@ class ListCreativeFormatsResponse(BaseModel):
     errors: list[Error] | None = None  # Optional error reporting
     specification_version: str | None = Field(None, description="AdCP format specification version")
     status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
+
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        if self.message:
+            return self.message
+        count = len(self.formats)
+        return f"Found {count} creative format{'s' if count != 1 else ''}."
 
 
 # --- Creative Lifecycle ---
@@ -1769,6 +1780,10 @@ class SyncCreativesResponse(BaseModel):
         None, description="Detailed assignment results (when assignments were included)"
     )
 
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        return self.message
+
 
 class ListCreativesRequest(BaseModel):
     """Request to list and search creative library (AdCP spec compliant)."""
@@ -1842,6 +1857,10 @@ class ListCreativesResponse(BaseModel):
     format_summary: dict[str, int] | None = None
     status_summary: dict[str, int] | None = None
 
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        return self.message
+
 
 class CheckCreativeStatusRequest(BaseModel):
     creative_ids: list[str]
@@ -1877,6 +1896,10 @@ class CreateCreativeResponse(BaseModel):
     creative: Creative
     status: CreativeStatus
     suggested_adaptations: list[CreativeAdaptation] = Field(default_factory=list)
+
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        return f"Creative {self.creative.creative_id} created with status: {self.status.status}"
 
 
 class AssignCreativeRequest(BaseModel):
@@ -2232,6 +2255,18 @@ class CreateMediaBuyResponse(BaseModel):
         kwargs.pop("exclude", None)  # Remove any exclude parameter
         return super().model_dump(**kwargs)
 
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        if self.status == "completed":
+            return f"Media buy {self.media_buy_id or self.buyer_ref} created successfully."
+        elif self.status == "working":
+            return f"Media buy {self.buyer_ref} is being created..."
+        elif self.status == "submitted":
+            return f"Media buy {self.buyer_ref} submitted for approval."
+        elif self.status == "input-required":
+            return f"Media buy {self.buyer_ref} requires additional input."
+        return f"Media buy {self.buyer_ref}: {self.status}"
+
 
 class CheckMediaBuyStatusRequest(BaseModel):
     media_buy_id: str | None = None
@@ -2374,6 +2409,15 @@ class GetMediaBuyDeliveryResponse(BaseModel):
     deliveries: list[MediaBuyDeliveryData] = Field(description="Array of delivery data for each media buy")
     errors: list[dict] | None = Field(None, description="Task-specific errors and warnings")
 
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        count = len(self.deliveries)
+        if count == 0:
+            return "No delivery data found for the specified period."
+        elif count == 1:
+            return f"Retrieved delivery data for 1 media buy."
+        return f"Retrieved delivery data for {count} media buys."
+
 
 # Deprecated - kept for backward compatibility
 class GetAllMediaBuyDeliveryRequest(BaseModel):
@@ -2450,6 +2494,18 @@ class UpdateMediaBuyResponse(BaseModel):
         # Don't exclude internal fields
         kwargs.pop("exclude", None)  # Remove any exclude parameter
         return super().model_dump(**kwargs)
+
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        if self.status == "completed":
+            return f"Media buy {self.media_buy_id} updated successfully."
+        elif self.status == "working":
+            return f"Media buy {self.media_buy_id} is being updated..."
+        elif self.status == "submitted":
+            return f"Media buy {self.media_buy_id} update submitted for approval."
+        elif self.status == "input-required":
+            return f"Media buy {self.media_buy_id} update requires additional input."
+        return f"Media buy {self.media_buy_id}: {self.status}"
 
 
 # Unified update models
@@ -2647,6 +2703,10 @@ class CreateHumanTaskResponse(BaseModel):
     task_id: str
     status: str
     due_by: datetime | None = None
+
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        return f"Task {self.task_id} created with status: {self.status}"
 
 
 class GetPendingTasksRequest(BaseModel):
@@ -2912,6 +2972,15 @@ class GetSignalsResponse(BaseModel):
     signals: list[Signal]
     status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
 
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        count = len(self.signals)
+        if count == 0:
+            return "No signals found matching your criteria."
+        elif count == 1:
+            return "Found 1 signal."
+        return f"Found {count} signals."
+
 
 # --- Signal Activation ---
 class ActivateSignalRequest(BaseModel):
@@ -2931,6 +3000,12 @@ class ActivateSignalResponse(BaseModel):
     activation_details: dict[str, Any] | None = Field(None, description="Platform-specific activation details")
     errors: list[Error] | None = Field(None, description="Optional error reporting")
 
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        if self.message:
+            return self.message
+        return f"Signal {self.signal_id} activated successfully."
+
 
 # --- Simulation and Time Progression Control ---
 class SimulationControlRequest(BaseModel):
@@ -2948,6 +3023,12 @@ class SimulationControlResponse(BaseModel):
     message: str | None = None
     current_state: dict[str, Any] | None = None
     simulation_time: datetime | None = None
+
+    def __str__(self) -> str:
+        """Return human-readable text for MCP content field."""
+        if self.message:
+            return self.message
+        return f"Simulation control: {self.status}"
 
 
 # --- Authorized Properties Constants ---
