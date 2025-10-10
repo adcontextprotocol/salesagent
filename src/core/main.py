@@ -59,6 +59,7 @@ from src.core.schemas import (
     CreativeAssignment,
     CreativeGroup,
     CreativeStatus,
+    Error,
     GetMediaBuyDeliveryRequest,
     GetMediaBuyDeliveryResponse,
     GetProductsRequest,

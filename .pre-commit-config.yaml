@@ -33,6 +33,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Check for missing imports (prevent NameError bugs)
+      - id: check-import-usage
+        name: Check for classes/functions used without imports
+        entry: uv run python .pre-commit-hooks/check_import_usage.py
+        language: system
+        files: '^src/.*\.py$'
+        pass_filenames: true
+
       # Check A2A skill test coverage
       - id: a2a-skill-coverage
         name: Verify 100% A2A skill coverage
