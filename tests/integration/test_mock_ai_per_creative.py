@@ -16,7 +16,6 @@ from src.core.database.models import Principal, Tenant
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.requires_db,
-    pytest.mark.skipif(not os.getenv("GEMINI_API_KEY"), reason="Requires GEMINI_API_KEY"),
 ]
 
 
@@ -63,6 +62,9 @@ def mock_adapter():
 
 def test_per_creative_ai_orchestration(mock_adapter):
     """Test that each creative's name controls its own behavior."""
+    if not os.getenv("GEMINI_API_KEY"):
+        pytest.skip("GEMINI_API_KEY not available in CI environment")
+
     # Create a test media buy first
     media_buy_id = "test_buy_ai_creative"
     mock_adapter._media_buys[media_buy_id] = {
@@ -117,6 +119,9 @@ def test_per_creative_ai_orchestration(mock_adapter):
 
 def test_mixed_creative_behaviors(mock_adapter):
     """Test mixing approved and rejected creatives."""
+    if not os.getenv("GEMINI_API_KEY"):
+        pytest.skip("GEMINI_API_KEY not available in CI environment")
+
     # Create a test media buy first
     media_buy_id = "test_buy_mixed"
     mock_adapter._media_buys[media_buy_id] = {
@@ -165,6 +170,9 @@ def test_mixed_creative_behaviors(mock_adapter):
 
 def test_creative_without_test_instructions(mock_adapter):
     """Test that creatives without test instructions are auto-approved."""
+    if not os.getenv("GEMINI_API_KEY"):
+        pytest.skip("GEMINI_API_KEY not available in CI environment")
+
     # Create a test media buy first
     media_buy_id = "test_buy_normal"
     mock_adapter._media_buys[media_buy_id] = {
