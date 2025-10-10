@@ -62,8 +62,9 @@ def mock_adapter():
 
 def test_per_creative_ai_orchestration(mock_adapter):
     """Test that each creative's name controls its own behavior."""
-    if not os.getenv("GEMINI_API_KEY"):
-        pytest.skip("GEMINI_API_KEY not available in CI environment")
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or api_key == "test_key_for_mocking":
+        pytest.skip("Real GEMINI_API_KEY not available in CI environment")
 
     # Create a test media buy first
     media_buy_id = "test_buy_ai_creative"
@@ -119,8 +120,9 @@ def test_per_creative_ai_orchestration(mock_adapter):
 
 def test_mixed_creative_behaviors(mock_adapter):
     """Test mixing approved and rejected creatives."""
-    if not os.getenv("GEMINI_API_KEY"):
-        pytest.skip("GEMINI_API_KEY not available in CI environment")
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or api_key == "test_key_for_mocking":
+        pytest.skip("Real GEMINI_API_KEY not available in CI environment")
 
     # Create a test media buy first
     media_buy_id = "test_buy_mixed"
@@ -170,8 +172,9 @@ def test_mixed_creative_behaviors(mock_adapter):
 
 def test_creative_without_test_instructions(mock_adapter):
     """Test that creatives without test instructions are auto-approved."""
-    if not os.getenv("GEMINI_API_KEY"):
-        pytest.skip("GEMINI_API_KEY not available in CI environment")
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or api_key == "test_key_for_mocking":
+        pytest.skip("Real GEMINI_API_KEY not available in CI environment")
 
     # Create a test media buy first
     media_buy_id = "test_buy_normal"
