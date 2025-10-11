@@ -1132,16 +1132,14 @@ class AdCPRequestHandler(RequestHandler):
             )
 
             # Convert response to A2A format
-            # Note: response.packages is already list[dict] per CreateMediaBuyResponse schema
-            # See src/core/schemas.py:2034 - packages field is list[dict[str, Any]]
-            return {
-                "success": True,
-                "media_buy_id": response.media_buy_id,
-                "status": response.status,
-                "message": str(response),  # Use __str__ method for human-readable message
-                "packages": response.packages if response.packages else [],  # Already list of dicts
-                "next_steps": response.next_steps if hasattr(response, "next_steps") else [],
-            }
+            # Use model_dump() to ensure all fields (including errors) are included
+            result = response.model_dump(exclude_none=False, mode="json")
+
+            # Add A2A-specific fields
+            result["success"] = response.errors is None or len(response.errors) == 0
+            result["message"] = str(response)  # Human-readable message via __str__
+
+            return result
 
         except Exception as e:
             logger.error(f"Error in create_media_buy skill: {e}")

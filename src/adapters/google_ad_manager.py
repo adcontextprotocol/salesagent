@@ -42,6 +42,7 @@ from src.core.schemas import (
     CheckMediaBuyStatusResponse,
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
+    Error,
     GetMediaBuyDeliveryResponse,
     MediaPackage,
     UpdateMediaBuyResponse,
@@ -262,7 +263,12 @@ class GoogleAdManager(AdServerAdapter):
             error_msg += ", ".join(missing)
 
             self.log(f"[red]Error: {error_msg}[/red]")
-            return CreateMediaBuyResponse(media_buy_id="", status="failed", message=error_msg)
+            return CreateMediaBuyResponse(
+                media_buy_id="",
+                status="failed",
+                message=error_msg,
+                errors=[Error(code="configuration_error", message=error_msg)],
+            )
 
         # Get products to access implementation_config
 
@@ -292,7 +298,12 @@ class GoogleAdManager(AdServerAdapter):
         if unsupported_features:
             error_msg = f"Unsupported targeting features: {', '.join(unsupported_features)}"
             self.log(f"[red]Error: {error_msg}[/red]")
-            return CreateMediaBuyResponse(media_buy_id="", status="failed", message=error_msg)
+            return CreateMediaBuyResponse(
+                media_buy_id="",
+                status="failed",
+                message=error_msg,
+                errors=[Error(code="unsupported_targeting", message=error_msg)],
+            )
 
         # Build base targeting from targeting overlay
         base_targeting = self._build_targeting(request.targeting_overlay)
@@ -376,7 +387,12 @@ class GoogleAdManager(AdServerAdapter):
         except Exception as e:
             error_msg = f"Order created but failed to create line items: {str(e)}"
             self.log(f"[red]Error: {error_msg}[/red]")
-            return CreateMediaBuyResponse(media_buy_id=order_id, status="failed", message=error_msg)
+            return CreateMediaBuyResponse(
+                media_buy_id=order_id,
+                status="failed",
+                message=error_msg,
+                errors=[Error(code="line_item_creation_failed", message=error_msg)],
+            )
 
         # Check if activation approval is needed (guaranteed line items require human approval)
         has_guaranteed, item_types = self._check_order_has_guaranteed_items(order_id)
