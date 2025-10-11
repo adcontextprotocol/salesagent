@@ -2987,9 +2987,6 @@ def _create_media_buy_impl(
 
     # Register push notification config if provided (MCP/A2A protocol support)
     if push_notification_config:
-        import uuid
-        from datetime import UTC, datetime
-
         from src.core.database.database_session import get_db_session
         from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
 
@@ -3052,8 +3049,6 @@ def _create_media_buy_impl(
             raise ValueError(error_msg)
 
         # 2. DateTime validation
-        from datetime import datetime
-
         now = datetime.now(UTC)
 
         # Validate start_time
