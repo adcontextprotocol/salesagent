@@ -1067,7 +1067,7 @@ class AdCPRequestHandler(RequestHandler):
                 products_list = products
             else:
                 products = response.products
-                message = response.message or "Products retrieved successfully"
+                message = str(response)  # Use __str__ method for human-readable message
                 products_list = [product.model_dump() for product in products]
 
             # Convert to A2A response format
@@ -1138,7 +1138,7 @@ class AdCPRequestHandler(RequestHandler):
                 "success": True,
                 "media_buy_id": response.media_buy_id,
                 "status": response.status,
-                "message": response.message or "Media buy created successfully",
+                "message": str(response),  # Use __str__ method for human-readable message
                 "packages": response.packages if response.packages else [],  # Already list of dicts
                 "next_steps": response.next_steps if hasattr(response, "next_steps") else [],
             }
@@ -1180,7 +1180,7 @@ class AdCPRequestHandler(RequestHandler):
             return {
                 "success": response.status == "completed",
                 "status": response.status,
-                "message": response.message,
+                "message": str(response),  # Use __str__ method for human-readable message
                 "summary": response.summary.model_dump() if response.summary else None,
                 "results": [result.model_dump() for result in response.results] if response.results else [],
                 "assignments_summary": (
@@ -1240,7 +1240,7 @@ class AdCPRequestHandler(RequestHandler):
                 page = response.page
                 limit = response.limit
                 has_more = response.has_more
-                message = response.message or "Creatives retrieved successfully"
+                message = str(response)  # Use __str__ method for human-readable message
 
             # Convert response to A2A format
             return {
@@ -1303,7 +1303,7 @@ class AdCPRequestHandler(RequestHandler):
             # Convert response to A2A format
             return {
                 "success": True,
-                "message": response.message or "Creative assets added successfully",
+                "message": str(response),  # Use __str__ method for human-readable message
                 "creative_ids": response.creative_ids if hasattr(response, "creative_ids") else [],
                 "status": response.status if hasattr(response, "status") else "pending_review",
             }
@@ -1348,7 +1348,7 @@ class AdCPRequestHandler(RequestHandler):
             return {
                 "success": True,
                 "creative_id": response.creative_id,
-                "message": response.message or "Creative created successfully in library",
+                "message": str(response),  # Use __str__ method for human-readable message
                 "status": response.status if hasattr(response, "status") else "created",
             }
 
@@ -1424,7 +1424,7 @@ class AdCPRequestHandler(RequestHandler):
             return {
                 "success": True,
                 "assignment_id": response.assignment_id,
-                "message": response.message or "Creative assigned successfully to media buy package",
+                "message": str(response),  # Use __str__ method for human-readable message
                 "status": response.status if hasattr(response, "status") else "assigned",
             }
 
@@ -1548,7 +1548,7 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 # Response is ListCreativeFormatsResponse object
                 formats = response.formats
-                message = response.message or "Creative formats retrieved successfully"
+                message = str(response)  # Use __str__ method for human-readable message
                 # Serialize Format objects to dicts
                 formats_list = [format_obj.model_dump() for format_obj in formats]
 
@@ -1763,7 +1763,7 @@ class AdCPRequestHandler(RequestHandler):
             # Convert to A2A response format
             return {
                 "products": [product.model_dump() for product in response.products],
-                "message": response.message or "Products retrieved successfully",
+                "message": str(response),  # Use __str__ method for human-readable message
             }
 
         except Exception as e:
