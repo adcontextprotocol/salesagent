@@ -41,6 +41,14 @@ repos:
         files: '^src/.*\.py$'
         pass_filenames: true
 
+      # Check for unsafe response attribute access (prevent AttributeError bugs)
+      - id: check-response-attribute-access
+        name: Detect unsafe response attribute access patterns
+        entry: uv run python scripts/hooks/check_response_attribute_access.py
+        language: system
+        files: '^src/.*\.py$'
+        pass_filenames: true
+
       # Check A2A skill test coverage
       - id: a2a-skill-coverage
         name: Verify 100% A2A skill coverage
