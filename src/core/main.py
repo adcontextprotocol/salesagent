@@ -3897,8 +3897,7 @@ def create_media_buy(
 
 
 # Unified update tools
-@mcp.tool()
-def update_media_buy(
+def _update_media_buy_impl(
     media_buy_id: str,
     buyer_ref: str = None,
     active: bool = None,
@@ -3916,7 +3915,9 @@ def update_media_buy(
     webhook_url: str | None = None,
     context: Context = None,
 ) -> UpdateMediaBuyResponse:
-    """Update a media buy with campaign-level and/or package-level changes.
+    """Shared implementation for update_media_buy (used by both MCP and A2A).
+
+    Update a media buy with campaign-level and/or package-level changes.
 
     Args:
         media_buy_id: Media buy ID to update (required)
@@ -4237,6 +4238,70 @@ def update_media_buy(
         status="accepted",
         implementation_date=datetime.combine(today, datetime.min.time()),
         detail="Media buy updated successfully",
+    )
+
+
+@mcp.tool()
+def update_media_buy(
+    media_buy_id: str,
+    buyer_ref: str = None,
+    active: bool = None,
+    flight_start_date: str = None,
+    flight_end_date: str = None,
+    budget: float = None,
+    currency: str = None,
+    targeting_overlay: dict = None,
+    start_time: str = None,
+    end_time: str = None,
+    pacing: str = None,
+    daily_budget: float = None,
+    packages: list = None,
+    creatives: list = None,
+    webhook_url: str | None = None,
+    context: Context = None,
+) -> UpdateMediaBuyResponse:
+    """Update a media buy with campaign-level and/or package-level changes.
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        media_buy_id: Media buy ID to update (required)
+        buyer_ref: Update buyer reference
+        active: True to activate, False to pause entire campaign
+        flight_start_date: Change start date (if not started)
+        flight_end_date: Extend or shorten campaign
+        budget: Update total budget
+        currency: Update currency (ISO 4217)
+        targeting_overlay: Update global targeting
+        start_time: Update start datetime
+        end_time: Update end datetime
+        pacing: Pacing strategy (even, asap, daily_budget)
+        daily_budget: Daily spend cap across all packages
+        packages: Package-specific updates
+        creatives: Add new creatives
+        webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        UpdateMediaBuyResponse with updated media buy details
+    """
+    return _update_media_buy_impl(
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        active=active,
+        flight_start_date=flight_start_date,
+        flight_end_date=flight_end_date,
+        budget=budget,
+        currency=currency,
+        targeting_overlay=targeting_overlay,
+        start_time=start_time,
+        end_time=end_time,
+        pacing=pacing,
+        daily_budget=daily_budget,
+        packages=packages,
+        creatives=creatives,
+        webhook_url=webhook_url,
+        context=context,
     )
 
 
