@@ -108,6 +108,17 @@ def create_tenant(args):
             )
             session.add(admin_user)
 
+        # Add default currency limit for USD (required for media buy creation)
+        from src.core.database.models import CurrencyLimit
+
+        default_currency_limit = CurrencyLimit(
+            tenant_id=tenant_id,
+            currency_code="USD",
+            min_package_budget=1000.0,
+            max_daily_package_spend=10000.0,
+        )
+        session.add(default_currency_limit)
+
         session.commit()
 
     # Build access control summary
@@ -126,6 +137,7 @@ def create_tenant(args):
 Publisher: {args.name}
 Tenant ID: {tenant_id}
 Subdomain: {subdomain}
+Currency: USD (configured, min budget: $1,000)
 
 🔐 Access Control:
 {access_info}
@@ -139,6 +151,7 @@ Subdomain: {subdomain}
 3. Add more authorized domains/emails in the Users & Access section
 4. Create principals for each advertiser who will buy inventory
 5. Share API tokens with advertisers to access the MCP API
+6. Add more currencies in Admin UI if needed (EUR, GBP, etc.)
 
 💡 Remember: Principals represent advertisers, not the publisher.
    Each advertiser gets their own principal with unique API access.

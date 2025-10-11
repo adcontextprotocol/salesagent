@@ -376,6 +376,18 @@ Route mapping:
 - **A2A**: Standard `python-a2a` library (no custom protocol code)
 - **Testing Backend**: Full AdCP testing spec implementation
 
+### 6. Push Notification (Webhook) Registration
+**Both MCP and A2A support webhook registration:**
+
+- **MCP**: Pass `push_notification_config` parameter to `create_media_buy`
+- **A2A**: Use `set_task_push_notification_config` endpoint (pushNotifications capability enabled)
+
+**Implementation Notes:**
+- Parameter extraction follows A2A spec (snake_case attributes via Pydantic)
+- Authentication format: `schemes` array + `credentials` string (HMAC-SHA256)
+- Database persistence in `push_notification_configs` table
+- Tenant setup script creates default USD currency limit (required for media buy creation)
+
 ## Core Components
 
 ```

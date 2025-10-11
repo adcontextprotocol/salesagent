@@ -772,33 +772,40 @@ class AdCPRequestHandler(RequestHandler):
             # Resolve tenant and principal from auth token
             tool_context = self._create_tool_context_from_a2a(auth_token, "set_push_notification_config")
 
-            # Extract parameters
-            if isinstance(params, dict):
-                url = params.get("url")
-                authentication = params.get("authentication")
-                config_id = params.get("id") or f"pnc_{uuid.uuid4().hex[:16]}"
-                validation_token = params.get("token")
-                session_id = params.get("session_id")
-            else:
-                url = getattr(params, "url", None)
-                authentication = getattr(params, "authentication", None)
-                config_id = getattr(params, "id", None) or f"pnc_{uuid.uuid4().hex[:16]}"
-                validation_token = getattr(params, "token", None)
-                session_id = getattr(params, "session_id", None)
+            # Extract parameters (A2A spec format)
+            # Params structure: {task_id, push_notification_config: {url, authentication}}
+            # Note: params comes as Pydantic object with snake_case attributes
+            logger.info(f"[DEBUG] Received params type: {type(params)}, value: {params}")
+
+            task_id = getattr(params, "task_id", None)
+            push_config = getattr(params, "push_notification_config", None)
+
+            logger.info(f"[DEBUG] task_id: {task_id}, push_config: {push_config}, type: {type(push_config)}")
+
+            # Extract URL and authentication from push_config object
+            url = getattr(push_config, "url", None) if push_config else None
+            authentication = getattr(push_config, "authentication", None) if push_config else None
+            config_id = getattr(push_config, "id", None) if push_config else None
+            config_id = config_id or f"pnc_{uuid.uuid4().hex[:16]}"
+            validation_token = getattr(push_config, "token", None) if push_config else None
+            session_id = None  # Not in A2A spec
 
             if not url:
                 raise ServerError(InvalidParamsError(message="Missing required parameter: url"))
 
-            # Extract authentication details
+            # Extract authentication details (A2A spec format: schemes, credentials)
             auth_type = None
             auth_token_value = None
             if authentication:
                 if isinstance(authentication, dict):
-                    auth_type = authentication.get("type")
-                    auth_token_value = authentication.get("token")
+                    # A2A spec uses "schemes" (array) and "credentials" (string)
+                    schemes = authentication.get("schemes", [])
+                    auth_type = schemes[0] if schemes else None
+                    auth_token_value = authentication.get("credentials")
                 else:
-                    auth_type = getattr(authentication, "type", None)
-                    auth_token_value = getattr(authentication, "token", None)
+                    schemes = getattr(authentication, "schemes", [])
+                    auth_type = schemes[0] if schemes else None
+                    auth_token_value = getattr(authentication, "credentials", None)
 
             # Create or update configuration
             with get_db_session() as db:
@@ -838,14 +845,23 @@ class AdCPRequestHandler(RequestHandler):
                     f"Push notification config {'updated' if existing_config else 'created'}: {config_id} for tenant {tool_context.tenant_id}"
                 )
 
-                # Return A2A response
-                return {
-                    "id": config_id,
-                    "url": url,
-                    "authentication": {"type": auth_type or "none", "token": auth_token_value} if auth_type else None,
-                    "token": validation_token,
-                    "status": "active",
-                }
+                # Return A2A response (TaskPushNotificationConfig format)
+                from a2a.types import (
+                    PushNotificationAuthenticationInfo,
+                    PushNotificationConfig,
+                    TaskPushNotificationConfig,
+                )
+
+                # Build authentication info if present
+                auth_info = None
+                if auth_type and auth_token_value:
+                    auth_info = PushNotificationAuthenticationInfo(schemes=[auth_type], credentials=auth_token_value)
+
+                # Build push notification config
+                pnc = PushNotificationConfig(url=url, authentication=auth_info, id=config_id, token=validation_token)
+
+                # Return TaskPushNotificationConfig
+                return TaskPushNotificationConfig(task_id=task_id or "*", push_notification_config=pnc)
 
         except ServerError:
             raise
@@ -1938,7 +1954,7 @@ def create_agent_card() -> AgentCard:
         description="AI agent for programmatic advertising campaigns via AdCP protocol",
         version="1.0.0",
         protocol_version="1.0",
-        capabilities=AgentCapabilities(),
+        capabilities=AgentCapabilities(pushNotifications=True),
         default_input_modes=["message"],
         default_output_modes=["message"],
         skills=[
