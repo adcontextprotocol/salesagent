@@ -305,6 +305,7 @@ function approveCreative(creativeId) {
 
     fetch(`${scriptName}/tenant/${tenantId}/creative-formats/review/${creativeId}/approve`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
     })
     .then(response => response.json())
@@ -356,6 +357,7 @@ function aiReviewCreative(creativeId) {
 
     fetch(`${scriptName}/tenant/${tenantId}/creative-formats/review/${creativeId}/ai-review`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
     })
     .then(response => response.json())

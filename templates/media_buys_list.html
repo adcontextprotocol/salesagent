@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Media Buys - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h1>Media Buys</h1>
+            <p class="text-muted">{{ tenant.name }}</p>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">
+                ← Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Status Filter -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="btn-group" role="group">
+                <a href="{{ url_for('tenants.media_buys_list', tenant_id=tenant_id) }}"
+                   class="btn btn-sm {{ 'btn-primary' if not status_filter else 'btn-outline-primary' }}">
+                    All
+                </a>
+                <a href="{{ url_for('tenants.media_buys_list', tenant_id=tenant_id, status='needs_creatives') }}"
+                   class="btn btn-sm {{ 'btn-warning' if status_filter == 'needs_creatives' else 'btn-outline-warning' }}">
+                    Needs Creatives
+                </a>
+                <a href="{{ url_for('tenants.media_buys_list', tenant_id=tenant_id, status='needs_approval') }}"
+                   class="btn btn-sm {{ 'btn-warning' if status_filter == 'needs_approval' else 'btn-outline-warning' }}">
+                    Needs Approval
+                </a>
+                <a href="{{ url_for('tenants.media_buys_list', tenant_id=tenant_id, status='ready') }}"
+                   class="btn btn-sm {{ 'btn-info' if status_filter == 'ready' else 'btn-outline-info' }}">
+                    Ready
+                </a>
+                <a href="{{ url_for('tenants.media_buys_list', tenant_id=tenant_id, status='live') }}"
+                   class="btn btn-sm {{ 'btn-success' if status_filter == 'live' else 'btn-outline-success' }}">
+                    Live
+                </a>
+                <a href="{{ url_for('tenants.media_buys_list', tenant_id=tenant_id, status='completed') }}"
+                   class="btn btn-sm {{ 'btn-secondary' if status_filter == 'completed' else 'btn-outline-secondary' }}">
+                    Completed
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Media Buys Table -->
+    <div class="row">
+        <div class="col">
+            {% if media_buys %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Principal</th>
+                            <th>Products</th>
+                            <th>Budget</th>
+                            <th>Dates</th>
+                            <th>Status</th>
+                            <th>Readiness</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in media_buys %}
+                        {% set mb = item.media_buy %}
+                        <tr>
+                            <td>
+                                <code style="font-size: 0.85em;">{{ mb.media_buy_id[:12] }}...</code>
+                            </td>
+                            <td>
+                                <strong>{{ mb.order_name or 'Untitled' }}</strong>
+                            </td>
+                            <td>
+                                {{ item.principal_name }}
+                            </td>
+                            <td>
+                                {% if item.product_names %}
+                                    {{ item.product_names | join(', ') }}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if mb.budget %}
+                                    ${{ "{:,.2f}".format(mb.budget) }}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if mb.start_date and mb.end_date %}
+                                    <small>{{ mb.start_date.strftime('%Y-%m-%d') }} to {{ mb.end_date.strftime('%Y-%m-%d') }}</small>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if mb.status == 'active' else 'secondary' }}">
+                                    {{ mb.status }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-{{
+                                    'success' if item.readiness_state == 'live'
+                                    else 'warning' if item.readiness_state in ['needs_creatives', 'needs_approval']
+                                    else 'info' if item.readiness_state == 'ready'
+                                    else 'secondary'
+                                }}">
+                                    {{ item.readiness_state }}
+                                </span>
+                                {% if item.packages_total > 0 %}
+                                <small class="text-muted d-block">
+                                    {{ item.packages_ready }}/{{ item.packages_total }} packages ready
+                                </small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('operations.media_buy_detail', tenant_id=tenant_id, media_buy_id=mb.media_buy_id) }}"
+                                   class="btn btn-sm btn-outline-primary">
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                        {% if item.blocking_issues %}
+                        <tr>
+                            <td colspan="9" style="background: #fff3cd; padding: 0.5rem 1rem;">
+                                <small>
+                                    <strong>⚠️ Issues:</strong> {{ item.blocking_issues | join(', ') }}
+                                </small>
+                            </td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <p class="mb-0">
+                    {% if status_filter %}
+                        No media buys found with status "{{ status_filter }}".
+                    {% else %}
+                        No media buys found. Create one through the API to get started.
+                    {% endif %}
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.table th {
+    font-weight: 600;
+    background: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+.btn-group .btn {
+    margin-right: 0;
+}
+</style>
+{% endblock %}

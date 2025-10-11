@@ -246,7 +246,8 @@ function loadInventory(type, search = '') {
             }
 
             if (data.items.length === 0) {
-                list.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;">No items found. <a href="{{ url_for(\'inventory.inventory_browser\', tenant_id=tenant_id) }}">Sync inventory</a> first.</div>';
+                const inventoryUrl = "{{ url_for('inventory.inventory_browser', tenant_id=tenant_id) }}";
+                list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #666;">No items found. <a href="${inventoryUrl}">Sync inventory</a> first.</div>`;
                 return;
             }
 
