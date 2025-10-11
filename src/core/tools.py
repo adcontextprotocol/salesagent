@@ -225,6 +225,7 @@ def create_media_buy_raw(
     required_axe_signals: list = None,
     enable_creative_macro: bool = False,
     strategy_id: str = None,
+    push_notification_config: dict = None,
     budget: dict = None,
     context: Context = None,
 ) -> CreateMediaBuyResponse:
@@ -252,6 +253,7 @@ def create_media_buy_raw(
         required_axe_signals: Required signals
         enable_creative_macro: Enable creative macro
         strategy_id: Strategy ID
+        push_notification_config: Push notification config for status updates
         budget: Budget dict
         context: FastMCP context (automatically provided)
 
@@ -282,6 +284,7 @@ def create_media_buy_raw(
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
+        push_notification_config=push_notification_config,
         context=context,
     )
 

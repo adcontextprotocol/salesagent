@@ -2897,6 +2897,7 @@ def _create_media_buy_impl(
     required_axe_signals: list = None,
     enable_creative_macro: bool = False,
     strategy_id: str = None,
+    push_notification_config: dict = None,
     context: Context = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
@@ -2921,6 +2922,7 @@ def _create_media_buy_impl(
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
+        push_notification_config: Push notification config for status updates (MCP/A2A)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -2982,6 +2984,64 @@ def _create_media_buy_impl(
         tool_name="create_media_buy",
         request_data=req.model_dump(mode="json"),
     )
+
+    # Register push notification config if provided (MCP/A2A protocol support)
+    if push_notification_config:
+        import uuid
+        from datetime import UTC, datetime
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+
+        logger.info(f"[MCP/A2A] Registering push notification config from request: {push_notification_config}")
+
+        # Extract config details
+        url = push_notification_config.get("url")
+        authentication = push_notification_config.get("authentication", {})
+
+        if url:
+            # Extract authentication details (A2A format: schemes + credentials)
+            schemes = authentication.get("schemes", []) if authentication else []
+            auth_type = schemes[0] if schemes else None
+            credentials = authentication.get("credentials") if authentication else None
+
+            # Generate config ID
+            config_id = push_notification_config.get("id") or f"pnc_{uuid.uuid4().hex[:16]}"
+
+            # Save to database
+            with get_db_session() as db:
+                # Check if config already exists
+                from sqlalchemy import select
+
+                stmt = select(DBPushNotificationConfig).filter_by(
+                    id=config_id, tenant_id=tenant["tenant_id"], principal_id=principal_id
+                )
+                existing_config = db.scalars(stmt).first()
+
+                if existing_config:
+                    # Update existing
+                    existing_config.url = url
+                    existing_config.authentication_type = auth_type
+                    existing_config.authentication_token = credentials
+                    existing_config.updated_at = datetime.now(UTC)
+                    existing_config.is_active = True
+                else:
+                    # Create new
+                    new_config = DBPushNotificationConfig(
+                        id=config_id,
+                        tenant_id=tenant["tenant_id"],
+                        principal_id=principal_id,
+                        url=url,
+                        authentication_type=auth_type,
+                        authentication_token=credentials,
+                        is_active=True,
+                    )
+                    db.add(new_config)
+
+                db.commit()
+                logger.info(
+                    f"[MCP/A2A] Push notification config {'updated' if existing_config else 'created'}: {config_id}"
+                )
 
     try:
         # Validate input parameters
@@ -3839,6 +3899,7 @@ def create_media_buy(
     required_axe_signals: list = None,
     enable_creative_macro: bool = False,
     strategy_id: str = None,
+    push_notification_config: dict = None,
     webhook_url: str | None = None,
     context: Context = None,
 ) -> CreateMediaBuyResponse:
@@ -3860,13 +3921,14 @@ def create_media_buy(
         total_budget: Legacy: Total budget (converted to Budget object)
         targeting_overlay: Targeting overlay configuration
         pacing: Pacing strategy (even, asap, daily_budget)
-        daily_budget: Daily budget limit
+        daily_budget: Daily_budget limit
         creatives: Creative assets for the campaign
         reporting_webhook: Webhook configuration for automated reporting delivery
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        push_notification_config: Push notification config dict with url, authentication
+        webhook_url: Legacy URL for async task completion notifications (use push_notification_config instead)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -3892,6 +3954,7 @@ def create_media_buy(
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
+        push_notification_config=push_notification_config,
         context=context,
     )
 
