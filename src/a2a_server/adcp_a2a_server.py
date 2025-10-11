@@ -1379,7 +1379,7 @@ class AdCPRequestHandler(RequestHandler):
             return {
                 "success": True,
                 "creatives": [creative.model_dump() for creative in response.creatives],
-                "message": response.message or f"Found {len(response.creatives)} creatives",
+                "message": str(response),  # Use __str__ method for human-readable message
                 "total_count": len(response.creatives),
             }
 
