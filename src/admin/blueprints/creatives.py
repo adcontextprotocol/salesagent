@@ -614,7 +614,8 @@ def approve_creative(tenant_id, creative_id, **kwargs):
     from src.core.database.models import Creative, CreativeReview
 
     try:
-        data = request.get_json() or {}
+        # Support both JSON and form data
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
         approved_by = data.get("approved_by", "admin")
 
         with get_db_session() as db_session:
@@ -725,7 +726,8 @@ def reject_creative(tenant_id, creative_id, **kwargs):
     from src.core.database.models import Creative, CreativeReview
 
     try:
-        data = request.get_json() or {}
+        # Support both JSON and form data
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
         rejected_by = data.get("rejected_by", "admin")
         rejection_reason = data.get("rejection_reason", "")
 

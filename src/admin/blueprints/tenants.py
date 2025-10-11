@@ -816,3 +816,80 @@ def delete_principal(tenant_id, principal_id):
     except Exception as e:
         logger.error(f"Error deleting principal {principal_id}: {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
+
+
+@tenants_bp.route("/<tenant_id>/media-buys", methods=["GET"])
+@require_tenant_access()
+def media_buys_list(tenant_id):
+    """List media buys with optional status filter."""
+    from src.admin.services.media_buy_readiness_service import MediaBuyReadinessService
+    from src.core.database.models import MediaBuy, Product
+
+    try:
+        # Get status filter from query params
+        status_filter = request.args.get("status")
+
+        with get_db_session() as db_session:
+            # Get tenant
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
+
+            # Get all media buys
+            stmt = select(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc())
+            all_media_buys = db_session.scalars(stmt).all()
+
+            # Calculate readiness state for each and filter
+            media_buys_with_state = []
+            for media_buy in all_media_buys:
+                readiness = MediaBuyReadinessService.get_readiness_state(
+                    media_buy.media_buy_id, tenant_id, session=db_session
+                )
+
+                # Apply status filter if specified
+                if status_filter and readiness["state"] != status_filter:
+                    continue
+
+                # Get principal name
+                principal = None
+                if media_buy.principal_id:
+                    stmt = select(Principal).filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id)
+                    principal = db_session.scalars(stmt).first()
+
+                # Get product names from packages
+                product_names = []
+                if media_buy.raw_request and "packages" in media_buy.raw_request:
+                    for package in media_buy.raw_request["packages"]:
+                        product_id = package.get("product_id")
+                        if product_id:
+                            stmt = select(Product).filter_by(product_id=product_id)
+                            product = db_session.scalars(stmt).first()
+                            if product:
+                                product_names.append(product.name)
+
+                media_buys_with_state.append(
+                    {
+                        "media_buy": media_buy,
+                        "readiness_state": readiness["state"],
+                        "is_ready": readiness["is_ready_to_activate"],
+                        "principal_name": principal.name if principal else "Unknown",
+                        "product_names": product_names,
+                        "packages_ready": readiness["packages_ready"],
+                        "packages_total": readiness["packages_total"],
+                        "blocking_issues": readiness.get("blocking_issues", []),
+                    }
+                )
+
+            return render_template(
+                "media_buys_list.html",
+                tenant=tenant,
+                tenant_id=tenant_id,
+                media_buys=media_buys_with_state,
+                status_filter=status_filter,
+            )
+
+    except Exception as e:
+        logger.error(f"Error listing media buys: {e}", exc_info=True)
+        flash("Error loading media buys", "error")
+        return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
