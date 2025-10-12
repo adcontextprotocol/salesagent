@@ -70,7 +70,7 @@
                 </thead>
                 <tbody>
                     {% for buy in media_buys %}
-                    <tr data-status="{{ buy.status }}">
+                    <tr id="{{ buy.media_buy_id }}" data-status="{{ buy.status }}">
                         <td><code>{{ buy.media_buy_id }}</code></td>
                         <td>{{ buy.order_name }}</td>
                         <td>{{ buy.advertiser_name }}</td>
@@ -296,9 +296,66 @@ details summary {
 details summary:hover {
     text-decoration: underline;
 }
+
+/* Highlight media buy when navigating via anchor */
+tr.highlight-row {
+    background-color: #fff3cd !important;
+    animation: highlight-fade 3s ease-in-out;
+}
+
+@keyframes highlight-fade {
+    0% {
+        background-color: #ffd700;
+    }
+    100% {
+        background-color: transparent;
+    }
+}
 </style>
 
 <script>
+// Handle anchor navigation to media buy
+function handleAnchorNavigation() {
+    const hash = window.location.hash;
+    if (hash) {
+        const mediaBuyId = hash.substring(1); // Remove the #
+        const targetRow = document.getElementById(mediaBuyId);
+
+        if (targetRow) {
+            // Make sure the Media Buys tab is active
+            const mediaBuysTab = document.querySelector('.tab[data-tab="media-buys"]');
+            const mediaBuysContent = document.getElementById('media-buys');
+
+            if (mediaBuysTab && mediaBuysContent) {
+                // Switch to Media Buys tab
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                mediaBuysTab.classList.add('active');
+                mediaBuysContent.classList.add('active');
+            }
+
+            // Scroll to the row with smooth scrolling
+            setTimeout(() => {
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                // Add highlight effect
+                targetRow.classList.add('highlight-row');
+
+                // Remove highlight after animation completes
+                setTimeout(() => {
+                    targetRow.classList.remove('highlight-row');
+                }, 3000);
+            }, 100);
+        }
+    }
+}
+
+// Run on page load
+document.addEventListener('DOMContentLoaded', handleAnchorNavigation);
+
+// Run when hash changes (e.g., clicking a link with anchor)
+window.addEventListener('hashchange', handleAnchorNavigation);
+
 function filterMediaBuys() {
     const filter = document.getElementById('media-buy-filter').value;
     const rows = document.querySelectorAll('#media-buys tbody tr');

@@ -1098,7 +1098,7 @@ function addActivity(activity, isNewActivity = true) {
 
                     ${activity.type === 'media-buy' && activity.full_details.media_buy_id ? `
                         <div class="action-buttons">
-                            <a href="/tenant/{{ tenant.tenant_id }}/media-buy/${safeMediaBuyId}"
+                            <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/media-buy/${safeMediaBuyId}"
                                class="btn btn-primary" style="text-decoration: none; display: inline-block;">View Media Buy</a>
                         </div>
                     ` : ''}
