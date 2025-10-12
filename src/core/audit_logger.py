@@ -130,8 +130,6 @@ class AuditLogger:
 
         # Send to Slack audit channel if configured
         try:
-            # Lazy import to avoid circular dependency
-
             # Get tenant name and config for context
             tenant_name = None
             if tenant_id:
@@ -178,6 +176,24 @@ class AuditLogger:
                     should_notify = True
 
             if should_notify:
+                from src.core.utils.tenant_utils import tenant_to_dict
+                from src.services.slack_notifier import get_slack_notifier
+
+                # Get tenant config for Slack notifier
+                tenant_config = None
+                if tenant_id:
+                    try:
+                        with get_db_session() as db_session:
+                            from src.core.database.models import Tenant
+
+                            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+                            tenant = db_session.scalars(stmt).first()
+                            if tenant:
+                                tenant_config = tenant_to_dict(tenant)
+                    except:
+                        pass
+
+                slack_notifier = get_slack_notifier(tenant_config=tenant_config)
                 slack_notifier.notify_audit_log(
                     operation=operation,
                     principal_name=principal_name,
@@ -231,11 +247,12 @@ class AuditLogger:
 
         # Send security alert to Slack
         try:
-            # Lazy import to avoid circular dependency
-            from slack_notifier import slack_notifier
+            from src.core.utils.tenant_utils import tenant_to_dict
+            from src.services.slack_notifier import get_slack_notifier
 
-            # Get tenant name
+            # Get tenant name and config
             tenant_name = None
+            tenant_config = None
             if tenant_id:
                 try:
                     with get_db_session() as db_session:
@@ -245,9 +262,11 @@ class AuditLogger:
                         tenant = db_session.scalars(stmt).first()
                         if tenant:
                             tenant_name = tenant.name
+                            tenant_config = tenant_to_dict(tenant)
                 except:
                     pass
 
+            slack_notifier = get_slack_notifier(tenant_config=tenant_config)
             slack_notifier.notify_audit_log(
                 operation=operation,
                 principal_name=f"UNAUTHORIZED: {principal_id}",
