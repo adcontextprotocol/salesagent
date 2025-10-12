@@ -65,6 +65,14 @@ repos:
         files: '^(tests/.*\.py|src/a2a_server/adcp_a2a_server\.py)$'
         pass_filenames: true
 
+      # Check roundtrip tests exist for all apply_testing_hooks calls
+      - id: check-roundtrip-tests
+        name: Verify roundtrip tests exist for apply_testing_hooks operations
+        entry: uv run python .pre-commit-hooks/check_roundtrip_tests.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
       # Ensure smoke tests pass
       - id: smoke-tests
         name: Run smoke tests (critical paths)
