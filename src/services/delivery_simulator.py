@@ -36,6 +36,101 @@ class DeliverySimulator:
         # Register graceful shutdown
         atexit.register(self._shutdown)
 
+    def restart_active_simulations(self):
+        """Restart delivery simulations for active media buys.
+
+        Called on server startup to resume simulations that were running
+        before a server restart. Daemon threads don't survive restarts.
+        """
+        try:
+
+            from sqlalchemy import select
+
+            from src.core.database.database_session import get_db_session
+            from src.core.database.models import MediaBuy, Product, PushNotificationConfig
+
+            logger.info("🔄 Checking for active media buys to restart simulations...")
+
+            with get_db_session() as session:
+                # Find active media buys with webhook configs
+                stmt = (
+                    select(MediaBuy, PushNotificationConfig)
+                    .join(PushNotificationConfig, MediaBuy.media_buy_id == PushNotificationConfig.media_buy_id)
+                    .where(MediaBuy.status.in_(["active", "working"]))
+                    .where(PushNotificationConfig.enabled == True)  # noqa: E712
+                )
+
+                results = session.execute(stmt).all()
+
+                restarted_count = 0
+                for media_buy, _webhook_config in results:
+                    # Check if simulation is already running
+                    if media_buy.media_buy_id in self._active_simulations:
+                        continue
+
+                    # Extract product IDs from the media buy packages
+                    raw_request = media_buy.raw_request or {}
+                    packages = raw_request.get("packages", [])
+                    if not packages:
+                        continue
+
+                    # Get the first product (for simulation config)
+                    first_package = packages[0]
+                    product_id = first_package.get("product_id") or (first_package.get("products") or [None])[0]
+                    if not product_id:
+                        continue
+
+                    # Look up the product
+                    product_stmt = select(Product).where(
+                        Product.tenant_id == media_buy.tenant_id, Product.product_id == product_id
+                    )
+                    product = session.scalars(product_stmt).first()
+                    if not product:
+                        continue
+
+                    # Only restart for mock adapter products
+                    if product.adapter_type != "mock":
+                        continue
+
+                    # Get simulation config from product
+                    impl_config = product.implementation_config or {}
+                    delivery_sim_config = impl_config.get("delivery_simulation", {})
+
+                    # Skip if simulation is disabled
+                    if not delivery_sim_config.get("enabled", True):
+                        continue
+
+                    logger.info(
+                        f"🚀 Restarting simulation for {media_buy.media_buy_id} " f"(product: {product.product_id})"
+                    )
+
+                    try:
+                        self.start_simulation(
+                            media_buy_id=media_buy.media_buy_id,
+                            tenant_id=media_buy.tenant_id,
+                            principal_id=media_buy.principal_id,
+                            start_time=media_buy.start_time,
+                            end_time=media_buy.end_time,
+                            total_budget=float(media_buy.total_budget),
+                            time_acceleration=delivery_sim_config.get("time_acceleration", 3600),
+                            update_interval_seconds=delivery_sim_config.get("update_interval_seconds", 1.0),
+                        )
+                        restarted_count += 1
+                    except Exception as e:
+                        logger.error(f"Failed to restart simulation for {media_buy.media_buy_id}: {e}")
+
+                if restarted_count > 0:
+                    logger.info(f"✅ Restarted {restarted_count} delivery simulation(s)")
+                else:
+                    logger.info("✅ No active simulations to restart")
+
+        except Exception as e:
+            logger.error(f"⚠️ Failed to restart delivery simulations: {e}")
+            # Don't crash the server if restart fails
+            import traceback
+
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
     def start_simulation(
         self,
         media_buy_id: str,

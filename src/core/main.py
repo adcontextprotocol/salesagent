@@ -3085,6 +3085,10 @@ def _create_media_buy_impl(
 
         # 3. Package/Product validation
         product_ids = req.get_product_ids()
+        logger.info(f"DEBUG: Extracted product_ids: {product_ids}")
+        logger.info(
+            f"DEBUG: Request packages: {[{'package_id': p.package_id, 'product_id': p.product_id, 'products': p.products, 'buyer_ref': p.buyer_ref} for p in (req.packages or [])]}"
+        )
         if not product_ids:
             error_msg = "At least one product is required."
             raise ValueError(error_msg)
