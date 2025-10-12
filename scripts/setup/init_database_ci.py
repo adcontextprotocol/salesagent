@@ -17,7 +17,7 @@ def init_db_ci():
         from database_session import get_db_session
         from migrate import run_migrations
 
-        from src.core.database.models import Principal, Tenant
+        from src.core.database.models import AuthorizedProperty, CurrencyLimit, Principal, Tenant
 
         print("Applying database migrations for CI...")
         run_migrations()
@@ -59,8 +59,30 @@ def init_db_ci():
             )
             session.add(principal)
 
+            # Add currency limits (required for setup checklist)
+            for currency in ["USD", "EUR", "GBP"]:
+                currency_limit = CurrencyLimit(
+                    tenant_id=tenant_id,
+                    currency_code=currency,
+                    min_package_budget=0.0,
+                    max_daily_package_spend=100000.0,
+                )
+                session.add(currency_limit)
+
+            # Add authorized property (required for setup checklist)
+            authorized_property = AuthorizedProperty(
+                tenant_id=tenant_id,
+                property_id="ci-test-property",
+                property_name="CI Test Property",
+                property_url="https://example.com",
+                is_approved=True,
+            )
+            session.add(authorized_property)
+
             session.commit()
             print(f"Created default tenant (ID: {tenant_id}) and principal (ID: {principal_id})")
+            print("Added currency limits: USD, EUR, GBP")
+            print("Added authorized property: ci-test-property")
 
         print("Database initialized successfully")
     except ImportError as e:
