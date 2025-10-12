@@ -3744,7 +3744,20 @@ def _create_media_buy_impl(
         response_data = apply_testing_hooks(response_data, testing_ctx, "create_media_buy", campaign_info)
 
         # Reconstruct response from modified data
-        modified_response = CreateMediaBuyResponse(**response_data)
+        # Filter out testing hook fields that aren't part of CreateMediaBuyResponse schema
+        valid_fields = {
+            "adcp_version",
+            "status",
+            "buyer_ref",
+            "task_id",
+            "media_buy_id",
+            "creative_deadline",
+            "packages",
+            "errors",
+            "workflow_step_id",
+        }
+        filtered_data = {k: v for k, v in response_data.items() if k in valid_fields}
+        modified_response = CreateMediaBuyResponse(**filtered_data)
 
         # Mark workflow step as completed on success
         ctx_manager.update_workflow_step(step.step_id, status="completed")

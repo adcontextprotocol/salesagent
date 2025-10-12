@@ -154,11 +154,11 @@ class SlackNotifier:
         # Add action buttons with tenant-specific URL
         admin_url = os.getenv("ADMIN_UI_URL", "http://localhost:8001")
         if tenant_id:
-            # Tenant-specific operations page
-            operations_url = f"{admin_url}/tenant/{tenant_id}/operations"
+            # Tenant-specific workflows page
+            operations_url = f"{admin_url}/tenant/{tenant_id}/workflows"
         else:
-            # Global operations page (fallback)
-            operations_url = f"{admin_url}/operations"
+            # Global workflows page (fallback)
+            operations_url = f"{admin_url}/workflows"
 
         blocks.append(
             {
@@ -294,8 +294,8 @@ class SlackNotifier:
             # Correct URL pattern: /tenant/{tenant_id}/creative-formats/review#{creative_id}
             review_url = f"{admin_url}/tenant/{tenant_id}/creative-formats/review#{creative_id}"
         else:
-            # Fallback to operations page if tenant_id not provided
-            review_url = f"{admin_url}/operations"
+            # Fallback to workflows page if tenant_id not provided
+            review_url = f"{admin_url}/workflows"
 
         blocks.extend(
             [
@@ -637,13 +637,13 @@ class SlackNotifier:
         admin_url = os.getenv("ADMIN_UI_URL", "http://localhost:8001")
         if tenant_id and media_buy_id:
             # Link to specific media buy in tenant context
-            operations_url = f"{admin_url}/tenant/{tenant_id}/operations#{media_buy_id}"
+            operations_url = f"{admin_url}/tenant/{tenant_id}/workflows#{media_buy_id}"
         elif tenant_id:
-            # Tenant-specific operations page
-            operations_url = f"{admin_url}/tenant/{tenant_id}/operations"
+            # Tenant-specific workflows page
+            operations_url = f"{admin_url}/tenant/{tenant_id}/workflows"
         else:
-            # Global operations page (fallback)
-            operations_url = f"{admin_url}/operations"
+            # Global workflows page (fallback)
+            operations_url = f"{admin_url}/workflows"
 
         blocks.append(
             {

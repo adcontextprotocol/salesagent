@@ -644,8 +644,53 @@ tests/
 3. **Integration over Mocking**: Use real DB, mock only external services
 4. **Test What You Import**: If imported, test it's callable
 5. **Never Skip or Weaken Tests**: Fix the underlying issue, never bypass with `skip_ci` or `--no-verify`
+6. **Roundtrip Tests for Testing Hooks**: Every operation using `apply_testing_hooks` MUST have a roundtrip test
 
 **🚨 MANDATORY**: When CI tests fail, FIX THE TESTS PROPERLY. Skipping or weakening tests to make CI pass is NEVER acceptable. The tests exist to catch real issues - if they fail, there's a problem that needs fixing, not hiding.
+
+### Testing Hooks Roundtrip Pattern (MANDATORY)
+
+**Rule**: If an operation uses `apply_testing_hooks()`, it MUST have a roundtrip test.
+
+**Why**: Testing hooks add extra fields (`is_test`, `dry_run`, `test_session_id`, `response_headers`) that can break response reconstruction.
+
+**Pattern**:
+```python
+def test_{operation}_with_testing_hooks_roundtrip():
+    """Test {Operation}Response survives apply_testing_hooks roundtrip."""
+    # 1. Create valid response
+    response = {Operation}Response(field1="value", field2="value")
+
+    # 2. Convert to dict
+    response_data = response.model_dump_internal()
+
+    # 3. Apply testing hooks (adds extra fields)
+    testing_ctx = TestingContext(dry_run=True, test_session_id="test")
+    campaign_info = {"start_date": datetime.now(), "end_date": datetime.now(), "total_budget": 1000}
+    modified_data = apply_testing_hooks(response_data, testing_ctx, "{operation}", campaign_info)
+
+    # 4. Filter out testing hook fields
+    valid_fields = {"field1", "field2", "field3"}  # Only schema fields
+    filtered_data = {k: v for k, v in modified_data.items() if k in valid_fields}
+
+    # 5. Reconstruct response - this MUST not raise validation error
+    reconstructed = {Operation}Response(**filtered_data)
+
+    # 6. Verify reconstruction
+    assert reconstructed.field1 == "value"
+```
+
+**Examples**:
+- `tests/integration/test_create_media_buy_roundtrip.py`
+- `test_create_media_buy_response_survives_testing_hooks_roundtrip()`
+- `test_get_media_buy_delivery_survives_testing_hooks_roundtrip()`
+
+**Enforcement**: Pre-commit hook `check-roundtrip-tests` verifies all operations using `apply_testing_hooks` have roundtrip tests.
+
+**When Adding Testing Hooks**:
+1. Add `apply_testing_hooks` to your operation
+2. Immediately write roundtrip test (before committing)
+3. Pre-commit hook will fail if test is missing
 
 ### Testing Workflow - MANDATORY for Refactoring
 
