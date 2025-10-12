@@ -3328,6 +3328,7 @@ def _create_media_buy_impl(
                     principal_name=principal_name,
                     details=notification_details,
                     tenant_name=tenant.get("name", "Unknown"),
+                    tenant_id=tenant.get("tenant_id"),
                     success=True,
                 )
                 console.print("[green]📧 Sent manual approval notification to Slack[/green]")
@@ -3335,6 +3336,7 @@ def _create_media_buy_impl(
                 console.print(f"[yellow]⚠️ Failed to send manual approval Slack notification: {e}[/yellow]")
 
             return CreateMediaBuyResponse(
+                buyer_ref=req.buyer_ref,
                 media_buy_id=pending_media_buy_id,
                 status=TaskStatus.INPUT_REQUIRED,
                 detail=response_msg,
@@ -3390,6 +3392,7 @@ def _create_media_buy_impl(
                 )
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return CreateMediaBuyResponse(
+                    buyer_ref=req.buyer_ref,
                     media_buy_id="",
                     status=TaskStatus.FAILED,
                     detail=error_detail,
@@ -3452,6 +3455,7 @@ def _create_media_buy_impl(
                     principal_name=principal_name,
                     details=notification_details,
                     tenant_name=tenant.get("name", "Unknown"),
+                    tenant_id=tenant.get("tenant_id"),
                     success=True,
                 )
                 console.print(f"[green]📧 Sent {reason.lower()} approval notification to Slack[/green]")
@@ -3783,6 +3787,7 @@ def _create_media_buy_impl(
                 principal_name=principal_name,
                 details=success_details,
                 tenant_name=tenant.get("name", "Unknown"),
+                tenant_id=tenant.get("tenant_id"),
                 success=True,
             )
 
@@ -3850,6 +3855,7 @@ def _create_media_buy_impl(
                 principal_name=principal_name,
                 details=failure_details,
                 tenant_name=tenant.get("name", "Unknown"),
+                tenant_id=tenant.get("tenant_id"),
                 success=False,
                 error_message=str(e),
             )
