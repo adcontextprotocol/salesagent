@@ -3239,10 +3239,10 @@ def _create_media_buy_impl(
         # Update workflow step as failed
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
 
-        # Return proper error response instead of raising ToolError
+        # Return proper error response per AdCP spec (status=failed for validation errors)
         return CreateMediaBuyResponse(
             adcp_version="2.3.0",
-            status="completed",  # Failed is still "completed" status with errors
+            status="failed",  # AdCP spec: failed status for execution errors
             buyer_ref=buyer_ref or "unknown",
             errors=[Error(code="validation_error", message=str(e))],
         )
@@ -3254,7 +3254,7 @@ def _create_media_buy_impl(
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return CreateMediaBuyResponse(
             adcp_version="2.3.0",
-            status="completed",
+            status="rejected",  # AdCP spec: rejected status for auth failures before execution
             buyer_ref=buyer_ref or "unknown",
             errors=[Error(code="authentication_error", message=error_msg)],
         )
@@ -3491,7 +3491,7 @@ def _create_media_buy_impl(
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return CreateMediaBuyResponse(
                 adcp_version="2.3.0",
-                status="completed",
+                status="failed",  # AdCP spec: failed status for validation errors
                 buyer_ref=req.buyer_ref,
                 errors=[Error(code="invalid_datetime", message=error_msg)],
             )

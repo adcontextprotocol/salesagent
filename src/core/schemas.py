@@ -2234,7 +2234,14 @@ class CreateMediaBuyResponse(BaseModel):
 
     # Required AdCP fields
     adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
-    status: Literal["completed", "working", "submitted", "input-required"] = Field(...)
+    status: Literal[
+        "submitted", "working", "input-required", "completed", "canceled", "failed", "rejected", "auth-required"
+    ] = Field(
+        ...,
+        description="Task status per AdCP spec: submitted (queued), working (processing), completed (success), "
+        "failed (error during execution), rejected (not started), input-required (needs user input), "
+        "auth-required (needs auth), canceled (user canceled)",
+    )
     buyer_ref: str = Field(...)
 
     # Optional AdCP fields
