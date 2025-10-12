@@ -268,10 +268,10 @@ def add_product(tenant_id):
                                 flash("Property tags must be 2-50 characters", "error")
                                 return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
-                            # Character whitelist validation
-                            if not re.match(r"^[a-z0-9_-]+$", tag):
+                            # Character whitelist validation (AdCP spec: ^[a-z0-9_]+$)
+                            if not re.match(r"^[a-z0-9_]+$", tag):
                                 flash(
-                                    f"Invalid tag '{tag}': use only lowercase letters, numbers, hyphens, underscores",
+                                    f"Invalid tag '{tag}': use only lowercase letters, numbers, and underscores",
                                     "error",
                                 )
                                 return redirect(url_for("products.add_product", tenant_id=tenant_id))

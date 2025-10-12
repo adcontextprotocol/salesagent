@@ -227,20 +227,27 @@ function validatePropertySelection() {
             return false;
         }
 
-        // Validate tag format
-        const tags = tagsValue.split(',').map(t => t.trim()).filter(t => t);
-        const invalidTags = tags.filter(t => !/^[a-z0-9_-]+$/i.test(t));
+        // Validate tag format (AdCP spec: ^[a-z0-9_]+$)
+        const tags = tagsValue.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+        const invalidTags = tags.filter(t => !/^[a-z0-9_]+$/.test(t));
 
         if (invalidTags.length > 0) {
-            alert('Invalid tags: ' + invalidTags.join(', ') + '\n\nUse only letters, numbers, hyphens, and underscores.');
+            alert('Invalid tags: ' + invalidTags.join(', ') + '\n\nUse only lowercase letters, numbers, and underscores.');
             tagsInput.focus();
             return false;
         }
 
-        // Check for minimum length
+        // Check for length constraints (2-50 characters per AdCP spec)
         const shortTags = tags.filter(t => t.length < 2);
         if (shortTags.length > 0) {
-            alert('Tags too short: ' + shortTags.join(', ') + '\n\nTags must be at least 2 characters.');
+            alert('Tags too short: ' + shortTags.join(', ') + '\n\nTags must be 2-50 characters.');
+            tagsInput.focus();
+            return false;
+        }
+
+        const longTags = tags.filter(t => t.length > 50);
+        if (longTags.length > 0) {
+            alert('Tags too long: ' + longTags.join(', ') + '\n\nTags must be 2-50 characters.');
             tagsInput.focus();
             return false;
         }
