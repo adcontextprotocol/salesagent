@@ -69,17 +69,41 @@ class AssetRequirement(BaseModel):
 
 
 class Format(BaseModel):
-    format_id: str
-    name: str
-    type: Literal["video", "audio", "display", "native", "dooh"]  # Extended beyond spec
-    is_standard: bool | None = Field(None, description="Whether this follows IAB standards")
+    """Creative format definition per AdCP v2.4 spec.
+
+    Represents a creative format with its requirements. The agent_url field identifies
+    the authoritative creative agent that provides this format (e.g., the reference
+    creative agent at https://creative.adcontextprotocol.org).
+    """
+
+    format_id: str = Field(..., description="Unique identifier for the format")
+    agent_url: str | None = Field(
+        None,
+        description="Base URL of the agent that provides this format (authoritative source). "
+        "E.g., 'https://creative.adcontextprotocol.org', 'https://dco.example.com'",
+    )
+    name: str = Field(..., description="Human-readable format name")
+    type: Literal["audio", "video", "display", "native", "dooh", "rich_media", "universal"] = Field(
+        ..., description="Media type of this format"
+    )
+    category: Literal["standard", "custom"] | None = Field(None, description="Format category")
+    is_standard: bool | None = Field(
+        None, description="Whether this follows IAB specifications or AdCP standard format definitions"
+    )
     iab_specification: str | None = Field(None, description="Name of the IAB specification (if applicable)")
     requirements: dict[str, Any] | None = Field(
-        None, description="Format-specific requirements (varies by format type)"
+        None, description="Technical specifications for this format (e.g., dimensions, duration, file size limits)"
     )
     assets_required: list[AssetRequirement] | None = Field(
-        None, description="Array of required assets for composite formats"
+        None, description="Array of required assets or asset groups for this format"
     )
+    delivery: dict[str, Any] | None = Field(
+        None, description="Delivery method specifications (e.g., hosted, VAST, third-party tags)"
+    )
+    accepts_3p_tags: bool | None = Field(
+        None, description="Whether this format can accept third-party served creative tags"
+    )
+    supported_macros: list[str] | None = Field(None, description="List of universal macros supported by this format")
     platform_config: dict[str, Any] | None = Field(
         None, description="Platform-specific configuration (e.g., gam, kevel) for creative mapping"
     )
@@ -92,6 +116,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     # Standard IAB Display Formats
     "display_300x250": Format(
         format_id="display_300x250",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Medium Rectangle",
         type="display",
         is_standard=True,
@@ -100,6 +125,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "display_728x90": Format(
         format_id="display_728x90",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Leaderboard",
         type="display",
         is_standard=True,
@@ -108,6 +134,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "display_320x50": Format(
         format_id="display_320x50",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Mobile Banner",
         type="display",
         is_standard=True,
@@ -116,6 +143,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "display_300x600": Format(
         format_id="display_300x600",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Half Page Ad",
         type="display",
         is_standard=True,
@@ -124,6 +152,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "display_970x250": Format(
         format_id="display_970x250",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Billboard",
         type="display",
         is_standard=True,
@@ -132,6 +161,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "display_970x90": Format(
         format_id="display_970x90",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Super Leaderboard",
         type="display",
         is_standard=True,
@@ -141,6 +171,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     # Additional Standard IAB Display Formats
     "display_160x600": Format(
         format_id="display_160x600",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Wide Skyscraper",
         type="display",
         is_standard=True,
@@ -149,6 +180,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "display_320x480": Format(
         format_id="display_320x480",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Mobile Interstitial",
         type="display",
         is_standard=True,
@@ -157,6 +189,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "display_336x280": Format(
         format_id="display_336x280",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Large Rectangle",
         type="display",
         is_standard=True,
@@ -165,6 +198,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "display_970x550": Format(
         format_id="display_970x550",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Panorama",
         type="display",
         is_standard=True,
@@ -174,6 +208,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     # Video Formats (Multiple Aspect Ratios & Resolutions)
     "video_640x360": Format(
         format_id="video_640x360",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Video 360p (16:9)",
         type="video",
         is_standard=True,
@@ -188,6 +223,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "video_1280x720": Format(
         format_id="video_1280x720",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Video 720p HD (16:9)",
         type="video",
         is_standard=True,
@@ -212,6 +248,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "video_1920x1080": Format(
         format_id="video_1920x1080",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Video 1080p Full HD (16:9)",
         type="video",
         is_standard=True,
@@ -226,6 +263,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "video_1080x1920": Format(
         format_id="video_1080x1920",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Vertical Video (9:16)",
         type="video",
         is_standard=True,
@@ -240,6 +278,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "video_1080x1080": Format(
         format_id="video_1080x1080",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Square Video (1:1)",
         type="video",
         is_standard=True,
@@ -255,6 +294,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     # Audio Formats
     "audio_15s": Format(
         format_id="audio_15s",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Audio 15 Second Spot",
         type="audio",
         is_standard=True,
@@ -263,6 +303,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "audio_30s": Format(
         format_id="audio_30s",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Audio 30 Second Spot",
         type="audio",
         is_standard=True,
@@ -271,6 +312,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "audio_60s": Format(
         format_id="audio_60s",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Audio 60 Second Spot",
         type="audio",
         is_standard=True,
@@ -280,6 +322,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     # Native Formats
     "native_article": Format(
         format_id="native_article",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Native Article",
         type="native",
         is_standard=True,
@@ -297,6 +340,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "native_feed": Format(
         format_id="native_feed",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Native Feed Ad",
         type="native",
         is_standard=True,
@@ -317,6 +361,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "native_content": Format(
         format_id="native_content",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Native Content Ad",
         type="native",
         is_standard=True,
@@ -334,6 +379,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     # Digital Out-of-Home (DOOH) Formats
     "dooh_billboard_landscape": Format(
         format_id="dooh_billboard_landscape",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Digital Billboard Landscape",
         type="dooh",
         is_standard=True,
@@ -342,6 +388,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "dooh_billboard_portrait": Format(
         format_id="dooh_billboard_portrait",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Digital Billboard Portrait",
         type="dooh",
         is_standard=True,
@@ -350,6 +397,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "dooh_transit_screen": Format(
         format_id="dooh_transit_screen",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Transit Digital Screen",
         type="dooh",
         is_standard=True,
@@ -358,6 +406,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "dooh_mall_kiosk": Format(
         format_id="dooh_mall_kiosk",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Mall Kiosk Display",
         type="dooh",
         is_standard=True,
@@ -373,6 +422,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     # Rich Media & Interactive Formats
     "rich_media_expandable": Format(
         format_id="rich_media_expandable",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Expandable Rich Media",
         type="display",
         is_standard=True,
@@ -398,6 +448,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "rich_media_interstitial": Format(
         format_id="rich_media_interstitial",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Rich Media Interstitial",
         type="display",
         is_standard=True,
@@ -407,6 +458,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     # Connected TV (CTV) Formats
     "ctv_preroll": Format(
         format_id="ctv_preroll",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Connected TV Pre-Roll",
         type="video",
         is_standard=True,
@@ -422,6 +474,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "ctv_midroll": Format(
         format_id="ctv_midroll",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Connected TV Mid-Roll",
         type="video",
         is_standard=True,
@@ -438,6 +491,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     # Social Media Optimized Formats
     "social_story": Format(
         format_id="social_story",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Social Media Story",
         type="video",
         is_standard=False,
@@ -445,6 +499,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "social_feed_video": Format(
         format_id="social_feed_video",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Social Feed Video",
         type="video",
         is_standard=False,
@@ -453,6 +508,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     # Foundational Formats (AdCP Standard Extensions)
     "foundation_immersive_canvas": Format(
         format_id="foundation_immersive_canvas",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Immersive Canvas",
         type="display",
         is_standard=True,
@@ -494,6 +550,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "foundation_product_showcase_carousel": Format(
         format_id="foundation_product_showcase_carousel",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Product Showcase Carousel",
         type="display",
         is_standard=True,
@@ -554,6 +611,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "foundation_expandable_display": Format(
         format_id="foundation_expandable_display",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Expandable Display",
         type="display",
         is_standard=True,
@@ -599,6 +657,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "foundation_scroll_triggered_experience": Format(
         format_id="foundation_scroll_triggered_experience",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Scroll-Triggered Experience",
         type="display",
         is_standard=True,
@@ -658,6 +717,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     ),
     "foundation_universal_video": Format(
         format_id="foundation_universal_video",
+        agent_url="https://creative.adcontextprotocol.org",
         name="Universal Video",
         type="video",
         is_standard=True,
@@ -714,6 +774,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
     # HTML5 Interactive Format (for testing and interactive content)
     "html5_interactive": Format(
         format_id="html5_interactive",
+        agent_url="https://creative.adcontextprotocol.org",
         name="HTML5 Interactive Banner",
         type="display",
         is_standard=False,
