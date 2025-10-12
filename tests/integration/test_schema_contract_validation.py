@@ -458,6 +458,7 @@ class TestGetProductsResponseContract:
                 is_fixed_price=True,
                 cpm=10.0,
                 is_custom=False,
+                property_tags=["all_inventory"],  # Required per AdCP spec
             ),
             Product(
                 product_id="response_test_2",
@@ -467,6 +468,7 @@ class TestGetProductsResponseContract:
                 delivery_type="non_guaranteed",
                 is_fixed_price=False,
                 is_custom=True,
+                property_tags=["all_inventory"],  # Required per AdCP spec
             ),
         ]
 
@@ -508,6 +510,7 @@ class TestSchemaEvolutionSafety:
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         # Should still work with existing data
@@ -555,6 +558,7 @@ class TestSchemaEvolutionSafety:
             cpm=Decimal("15.50"),  # Decimal input
             min_spend=Decimal("2000.00"),  # Decimal input
             is_custom=False,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         adcp_output = product_with_decimal.model_dump()
