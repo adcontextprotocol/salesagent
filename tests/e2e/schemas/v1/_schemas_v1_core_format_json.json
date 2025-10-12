@@ -18,6 +18,20 @@
       "type": "string",
       "description": "Human-readable format name"
     },
+    "description": {
+      "type": "string",
+      "description": "Plain text explanation of what this format does and what assets it requires"
+    },
+    "preview_image": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional preview image URL for format browsing/discovery UI"
+    },
+    "example_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional URL to showcase page with examples and interactive demos of this format"
+    },
     "type": {
       "type": "string",
       "description": "Media type of this format - determines rendering method and asset requirements",
@@ -71,7 +85,8 @@
                   "text",
                   "html",
                   "javascript",
-                  "url"
+                  "url",
+                  "brand_manifest"
                 ]
               },
               "asset_role": {
@@ -138,7 +153,8 @@
                         "text",
                         "html",
                         "javascript",
-                        "url"
+                        "url",
+                        "brand_manifest"
                       ]
                     },
                     "asset_role": {
