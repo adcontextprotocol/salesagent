@@ -3328,6 +3328,7 @@ def _create_media_buy_impl(
                     principal_name=principal_name,
                     details=notification_details,
                     tenant_name=tenant.get("name", "Unknown"),
+                    tenant_id=tenant.get("tenant_id"),
                     success=True,
                 )
                 console.print("[green]📧 Sent manual approval notification to Slack[/green]")
@@ -3454,6 +3455,7 @@ def _create_media_buy_impl(
                     principal_name=principal_name,
                     details=notification_details,
                     tenant_name=tenant.get("name", "Unknown"),
+                    tenant_id=tenant.get("tenant_id"),
                     success=True,
                 )
                 console.print(f"[green]📧 Sent {reason.lower()} approval notification to Slack[/green]")
@@ -3785,6 +3787,7 @@ def _create_media_buy_impl(
                 principal_name=principal_name,
                 details=success_details,
                 tenant_name=tenant.get("name", "Unknown"),
+                tenant_id=tenant.get("tenant_id"),
                 success=True,
             )
 
@@ -3852,6 +3855,7 @@ def _create_media_buy_impl(
                 principal_name=principal_name,
                 details=failure_details,
                 tenant_name=tenant.get("name", "Unknown"),
+                tenant_id=tenant.get("tenant_id"),
                 success=False,
                 error_message=str(e),
             )

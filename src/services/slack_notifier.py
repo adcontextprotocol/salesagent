@@ -110,6 +110,7 @@ class SlackNotifier:
         media_buy_id: str | None = None,
         details: dict[str, Any] | None = None,
         tenant_name: str | None = None,
+        tenant_id: str | None = None,
     ) -> bool:
         """
         Send notification for a new task requiring approval.
@@ -121,6 +122,7 @@ class SlackNotifier:
             media_buy_id: Associated media buy ID if applicable
             details: Additional task details
             tenant_name: Tenant/publisher name
+            tenant_id: Tenant ID for tenant-specific URL routing
 
         Returns:
             True if notification sent successfully
@@ -149,7 +151,15 @@ class SlackNotifier:
             if detail_text:
                 blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*Details:*\n{detail_text}"}})
 
-        # Add action buttons
+        # Add action buttons with tenant-specific URL
+        admin_url = os.getenv("ADMIN_UI_URL", "http://localhost:8001")
+        if tenant_id:
+            # Tenant-specific operations page
+            operations_url = f"{admin_url}/tenant/{tenant_id}/operations"
+        else:
+            # Global operations page (fallback)
+            operations_url = f"{admin_url}/operations"
+
         blocks.append(
             {
                 "type": "actions",
@@ -157,7 +167,7 @@ class SlackNotifier:
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "View in Admin UI"},
-                        "url": f"{os.getenv('ADMIN_UI_URL', 'http://localhost:8001')}/operations",
+                        "url": operations_url,
                         "style": "primary",
                     }
                 ],
@@ -499,6 +509,7 @@ class SlackNotifier:
         principal_name: str,
         details: dict[str, Any],
         tenant_name: str | None = None,
+        tenant_id: str | None = None,
         success: bool = True,
         error_message: str | None = None,
     ) -> bool:
@@ -511,6 +522,7 @@ class SlackNotifier:
             principal_name: Principal who initiated the action
             details: Event-specific details
             tenant_name: Tenant/publisher name
+            tenant_id: Tenant ID for tenant-specific URL routing
             success: Whether the event was successful
             error_message: Error message if event failed
 
@@ -623,7 +635,18 @@ class SlackNotifier:
             error_text = error_message[:500] + ("..." if len(error_message) > 500 else "")
             blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*Error:*\n```{error_text}```"}})
 
-        # Add action button
+        # Add action button with tenant-specific URL
+        admin_url = os.getenv("ADMIN_UI_URL", "http://localhost:8001")
+        if tenant_id and media_buy_id:
+            # Link to specific media buy in tenant context
+            operations_url = f"{admin_url}/tenant/{tenant_id}/operations#{media_buy_id}"
+        elif tenant_id:
+            # Tenant-specific operations page
+            operations_url = f"{admin_url}/tenant/{tenant_id}/operations"
+        else:
+            # Global operations page (fallback)
+            operations_url = f"{admin_url}/operations"
+
         blocks.append(
             {
                 "type": "actions",
@@ -631,7 +654,7 @@ class SlackNotifier:
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": config["button_text"]},
-                        "url": f"{os.getenv('ADMIN_UI_URL', 'http://localhost:8001')}/operations",
+                        "url": operations_url,
                         "style": config["button_style"],
                     }
                 ],
