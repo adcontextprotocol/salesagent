@@ -91,6 +91,7 @@ from src.core.schemas import (
     UpdatePerformanceIndexResponse,
 )
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
+from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
 from src.services.slack_notifier import get_slack_notifier
 
 # Initialize Rich console
@@ -2965,6 +2966,19 @@ def _create_media_buy_impl(
     # Authentication and tenant setup
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
+
+    # Validate setup completion (only in production, skip for testing)
+    if not testing_ctx.dry_run and not testing_ctx.test_session_id:
+        try:
+            validate_setup_complete(tenant["tenant_id"])
+        except SetupIncompleteError as e:
+            # Return helpful error with missing tasks
+            task_list = "\n".join(f"  - {task['name']}: {task['description']}" for task in e.missing_tasks)
+            error_msg = (
+                f"Setup incomplete. Please complete the following required tasks:\n\n{task_list}\n\n"
+                f"Visit the setup checklist at /tenant/{tenant['tenant_id']}/setup-checklist for details."
+            )
+            raise ToolError(error_msg)
 
     # Context management and workflow step creation - create workflow step FIRST
     ctx_manager = get_context_manager()

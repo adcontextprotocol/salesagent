@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+
+{% block title %}Setup Checklist - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<style>
+    .checklist-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    .checklist-header {
+        text-align: center;
+        margin-bottom: 2rem;
+        padding: 2rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 12px;
+    }
+
+    .checklist-header h1 {
+        margin: 0 0 0.5rem 0;
+        font-size: 2rem;
+        font-weight: 700;
+    }
+
+    .checklist-header .progress-circle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 1rem 0;
+    }
+
+    .task-section {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .task-section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #f3f4f6;
+    }
+
+    .task-section-header .icon {
+        font-size: 1.5rem;
+    }
+
+    .task-section-header h2 {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 700;
+        flex: 1;
+    }
+
+    .task-section-header .badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .badge-critical {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .badge-recommended {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    .badge-optional {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .task-item {
+        display: flex;
+        gap: 1rem;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 0.75rem;
+        border: 2px solid #f3f4f6;
+        transition: all 0.2s;
+    }
+
+    .task-item:hover {
+        border-color: #e5e7eb;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+
+    .task-item.complete {
+        background: #f0fdf4;
+        border-color: #86efac;
+    }
+
+    .task-item.incomplete {
+        background: #fef2f2;
+        border-color: #fecaca;
+    }
+
+    .task-icon {
+        font-size: 1.5rem;
+        line-height: 1;
+    }
+
+    .task-content {
+        flex: 1;
+    }
+
+    .task-name {
+        font-weight: 600;
+        font-size: 1rem;
+        margin-bottom: 0.25rem;
+        color: #111827;
+    }
+
+    .task-description {
+        font-size: 0.875rem;
+        color: #6b7280;
+        margin-bottom: 0.5rem;
+    }
+
+    .task-details {
+        font-size: 0.75rem;
+        color: #9ca3af;
+        font-style: italic;
+    }
+
+    .task-action {
+        align-self: center;
+    }
+
+    .task-action a {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        background: #3b82f6;
+        color: white;
+        border-radius: 6px;
+        text-decoration: none;
+        font-size: 0.875rem;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+
+    .task-action a:hover {
+        background: #2563eb;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    .ready-banner {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .ready-banner h2 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+
+    .ready-banner p {
+        margin: 0;
+        font-size: 1rem;
+        opacity: 0.95;
+    }
+
+    .priority-steps {
+        background: #eff6ff;
+        border: 2px solid #3b82f6;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .priority-steps h3 {
+        margin: 0 0 1rem 0;
+        color: #1e40af;
+        font-size: 1rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .priority-steps ol {
+        margin: 0;
+        padding-left: 1.5rem;
+    }
+
+    .priority-steps li {
+        margin-bottom: 0.5rem;
+        color: #1e40af;
+    }
+</style>
+
+<div class="checklist-container">
+    <!-- Back Button -->
+    <div style="margin-bottom: 1rem;">
+        <a href="/tenant/{{ tenant_id }}" style="color: #6b7280; text-decoration: none; font-size: 0.875rem;">
+            ← Back to Dashboard
+        </a>
+    </div>
+
+    <!-- Header -->
+    <div class="checklist-header">
+        <h1>Setup Checklist</h1>
+        <div class="progress-circle">
+            {{ setup_status.progress_percent }}%
+        </div>
+        <p style="margin: 0.5rem 0 0 0; font-size: 1rem; opacity: 0.95;">
+            {{ setup_status.completed_count }} of {{ setup_status.total_count }} tasks complete
+        </p>
+    </div>
+
+    <!-- Ready Banner (if all critical complete) -->
+    {% if setup_status.ready_for_orders %}
+    <div class="ready-banner">
+        <h2>🎉 You're Ready to Take Orders!</h2>
+        <p>All critical setup tasks are complete. Your sales agent can now accept media buy requests.</p>
+    </div>
+    {% else %}
+    <!-- Priority Next Steps -->
+    <div class="priority-steps">
+        <h3>🎯 Next Steps</h3>
+        <ol>
+            {% for task in setup_status.critical %}
+                {% if not task.is_complete %}
+                <li><strong>{{ task.name }}</strong>: {{ task.description }}</li>
+                {% endif %}
+            {% endfor %}
+        </ol>
+    </div>
+    {% endif %}
+
+    <!-- Critical Tasks -->
+    <div class="task-section">
+        <div class="task-section-header">
+            <span class="icon">🚨</span>
+            <h2>Critical Tasks</h2>
+            <span class="badge badge-critical">Required</span>
+        </div>
+        <p style="color: #6b7280; font-size: 0.875rem; margin: -0.5rem 0 1rem 0;">
+            These tasks must be completed before you can take your first order.
+        </p>
+        {% for task in setup_status.critical %}
+        <div class="task-item {% if task.is_complete %}complete{% else %}incomplete{% endif %}">
+            <div class="task-icon">
+                {% if task.is_complete %}✅{% else %}❌{% endif %}
+            </div>
+            <div class="task-content">
+                <div class="task-name">{{ task.name }}</div>
+                <div class="task-description">{{ task.description }}</div>
+                {% if task.details %}
+                <div class="task-details">{{ task.details }}</div>
+                {% endif %}
+            </div>
+            {% if not task.is_complete and task.action_url %}
+            <div class="task-action">
+                <a href="{{ task.action_url }}">Configure</a>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Recommended Tasks -->
+    <div class="task-section">
+        <div class="task-section-header">
+            <span class="icon">⚠️</span>
+            <h2>Recommended Tasks</h2>
+            <span class="badge badge-recommended">Recommended</span>
+        </div>
+        <p style="color: #6b7280; font-size: 0.875rem; margin: -0.5rem 0 1rem 0;">
+            Highly recommended for a better experience and safer operations.
+        </p>
+        {% for task in setup_status.recommended %}
+        <div class="task-item {% if task.is_complete %}complete{% else %}incomplete{% endif %}">
+            <div class="task-icon">
+                {% if task.is_complete %}✅{% else %}⚠️{% endif %}
+            </div>
+            <div class="task-content">
+                <div class="task-name">{{ task.name }}</div>
+                <div class="task-description">{{ task.description }}</div>
+                {% if task.details %}
+                <div class="task-details">{{ task.details }}</div>
+                {% endif %}
+            </div>
+            {% if not task.is_complete and task.action_url %}
+            <div class="task-action">
+                <a href="{{ task.action_url }}">Configure</a>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Optional Tasks -->
+    <div class="task-section">
+        <div class="task-section-header">
+            <span class="icon">💡</span>
+            <h2>Optional Enhancements</h2>
+            <span class="badge badge-optional">Optional</span>
+        </div>
+        <p style="color: #6b7280; font-size: 0.875rem; margin: -0.5rem 0 1rem 0;">
+            Additional features to enhance your sales agent's capabilities.
+        </p>
+        {% for task in setup_status.optional %}
+        <div class="task-item {% if task.is_complete %}complete{% else %}incomplete{% endif %}">
+            <div class="task-icon">
+                {% if task.is_complete %}✅{% else %}💡{% endif %}
+            </div>
+            <div class="task-content">
+                <div class="task-name">{{ task.name }}</div>
+                <div class="task-description">{{ task.description }}</div>
+                {% if task.details %}
+                <div class="task-details">{{ task.details }}</div>
+                {% endif %}
+            </div>
+            {% if not task.is_complete and task.action_url %}
+            <div class="task-action">
+                <a href="{{ task.action_url }}">Configure</a>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+
+{% endblock %}
