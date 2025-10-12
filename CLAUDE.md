@@ -45,7 +45,7 @@ pytest tests/unit/test_adcp_contract.py -v
 ---
 
 ### PostgreSQL-Only Architecture
-**🚨 DECISION**: This codebase uses PostgreSQL exclusively. No SQLite support.
+**🚨 DECISION**: This codebase uses **PostgreSQL exclusively**. We do NOT support SQLite.
 
 **Why:**
 - Production uses PostgreSQL exclusively
@@ -54,12 +54,16 @@ pytest tests/unit/test_adcp_contract.py -v
 - One database. One source of truth. No hidden bugs.
 
 **What this means:**
-- All tests require PostgreSQL container (run via `./run_all_tests.sh ci`)
-- `db_config.py` only supports PostgreSQL connections
-- Unit tests should mock database access, not use real connections
-- Integration tests require `ADCP_TEST_DB_URL` or will skip
+- ✅ All database code assumes PostgreSQL (JSONB, connection pooling, etc.)
+- ✅ All tests require PostgreSQL container (run via `./run_all_tests.sh ci`)
+- ✅ Alembic migrations use PostgreSQL-specific syntax
+- ❌ NO SQLite support - don't add it, don't test for it
+- ❌ NO cross-database compatibility code - keep it simple
 
-**Migration note:** We removed SQLite support to eliminate cross-database bugs. If you see SQLite references in old docs/code, they're outdated.
+**If you see SQLite references:**
+- Test files (`tests/smoke/`, `tests/unit/test_json_type.py`) - Legacy tests, ignore or delete
+- Simulation tools (`tools/simulations/`) - Uses temp PostgreSQL, not SQLite
+- Documentation - Outdated, needs removal
 
 ---
 
