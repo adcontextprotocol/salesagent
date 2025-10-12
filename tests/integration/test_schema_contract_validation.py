@@ -170,6 +170,7 @@ class TestProductSchemaContract:
                 "max_file_size": "10MB",
             },
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
             "brief_relevance": "Highly relevant for display advertising",
             # Internal fields
             "expires_at": datetime(2025, 12, 31),
@@ -204,6 +205,7 @@ class TestProductSchemaContract:
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "is_custom": True,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         # Internal to external field mappings
@@ -242,6 +244,7 @@ class TestProductSchemaContract:
                 "duration_constraints": {"min": 5, "max": 30},
             },
             "is_custom": True,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
             "brief_relevance": "Perfect match for multi-format campaign requirements",
         }
 
@@ -260,6 +263,7 @@ class TestProductSchemaContract:
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         required_fields = {
@@ -526,6 +530,7 @@ class TestSchemaEvolutionSafety:
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         product = Product(**minimal_data)
