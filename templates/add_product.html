@@ -169,7 +169,7 @@
                 </div>
                 {% else %}
                 <div class="alert" style="background: #fff; border: 1px solid #ddd; padding: 1rem;">
-                    No authorized properties found. <a href="{{ url_for('properties.list_properties', tenant_id=tenant_id) }}">Add authorized properties first</a>.
+                    No authorized properties found. <a href="{{ url_for('authorized_properties.list_authorized_properties', tenant_id=tenant_id) }}">Add authorized properties first</a>.
                 </div>
                 {% endif %}
             </div>
