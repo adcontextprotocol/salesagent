@@ -258,11 +258,42 @@ def add_product(tenant_id):
                         property_tags = [
                             tag.strip().lower().replace("-", "_") for tag in property_tags_str.split(",") if tag.strip()
                         ]
+
+                        # Server-side validation (defense in depth - client-side validation exists)
+                        import re
+
+                        for tag in property_tags:
+                            # Length validation
+                            if len(tag) < 2 or len(tag) > 50:
+                                flash("Property tags must be 2-50 characters", "error")
+                                return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
+                            # Character whitelist validation
+                            if not re.match(r"^[a-z0-9_-]+$", tag):
+                                flash(
+                                    f"Invalid tag '{tag}': use only lowercase letters, numbers, hyphens, underscores",
+                                    "error",
+                                )
+                                return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
+                        # Check for duplicates
+                        if len(property_tags) != len(set(property_tags)):
+                            flash("Duplicate property tags detected", "error")
+                            return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
                         if property_tags:
                             product_kwargs["property_tags"] = property_tags
                 elif property_mode == "full":
                     # Get selected property IDs and load full property objects
-                    property_ids = request.form.getlist("property_ids")
+                    property_ids_str = request.form.getlist("property_ids")
+
+                    # Validate property IDs are integers (security)
+                    try:
+                        property_ids = [int(pid) for pid in property_ids_str]
+                    except (ValueError, TypeError):
+                        flash("Invalid property IDs provided", "error")
+                        return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
                     if property_ids:
                         from src.core.database.models import AuthorizedProperty
 
@@ -271,6 +302,12 @@ def add_product(tenant_id):
                                 AuthorizedProperty.id.in_(property_ids), AuthorizedProperty.tenant_id == tenant_id
                             )
                         ).all()
+
+                        # Verify all requested IDs were found (prevent TOCTOU)
+                        if len(properties) != len(property_ids):
+                            flash("One or more selected properties not found or not authorized", "error")
+                            return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
                         if properties:
                             # Convert to dict format for JSONB storage
                             properties_data = []
