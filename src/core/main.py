@@ -3335,6 +3335,7 @@ def _create_media_buy_impl(
                 console.print(f"[yellow]⚠️ Failed to send manual approval Slack notification: {e}[/yellow]")
 
             return CreateMediaBuyResponse(
+                buyer_ref=req.buyer_ref,
                 media_buy_id=pending_media_buy_id,
                 status=TaskStatus.INPUT_REQUIRED,
                 detail=response_msg,
@@ -3390,6 +3391,7 @@ def _create_media_buy_impl(
                 )
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return CreateMediaBuyResponse(
+                    buyer_ref=req.buyer_ref,
                     media_buy_id="",
                     status=TaskStatus.FAILED,
                     detail=error_detail,
