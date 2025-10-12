@@ -209,6 +209,7 @@ class TestAdCPContract:
             cpm=15.0,
             currency="USD",
             estimated_exposures=50000,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         # Verify AdCP-compliant response includes PR #79 fields
@@ -229,6 +230,7 @@ class TestAdCPContract:
             currency="EUR",
             floor_cpm=5.0,
             recommended_cpm=8.5,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         adcp_response = non_guaranteed_product.model_dump()
@@ -258,6 +260,72 @@ class TestAdCPContract:
         # Should fail without promoted_offering (AdCP requirement)
         with pytest.raises(ValueError):
             GetProductsRequest(brief="Just a brief")
+
+    def test_product_properties_or_tags_required(self):
+        """Test Product schema requires either properties or property_tags per AdCP spec oneOf constraint.
+
+        AdCP spec requires products to have at least one of:
+        - properties: Array of full Property objects for adagents.json validation
+        - property_tags: Array of tag strings (buyers use list_authorized_properties for details)
+        """
+        # Test with property_tags (recommended approach)
+        product_with_tags = ProductSchema(
+            product_id="test_product_tags",
+            name="Product with Tags",
+            description="Product using property tags",
+            formats=["display_300x250"],
+            delivery_type="guaranteed",
+            is_fixed_price=True,
+            cpm=10.0,
+            property_tags=["premium_sports", "local_news"],
+        )
+
+        adcp_response = product_with_tags.model_dump()
+        assert "property_tags" in adcp_response
+        assert adcp_response["property_tags"] == ["premium_sports", "local_news"]
+        assert len(adcp_response["property_tags"]) >= 1
+
+        # Test with full properties
+        from src.core.schemas import Property, PropertyIdentifier
+
+        property_obj = Property(
+            property_type="website",
+            name="Example News Site",
+            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
+            tags=["premium_sports"],
+            publisher_domain="example.com",
+        )
+
+        product_with_properties = ProductSchema(
+            product_id="test_product_properties",
+            name="Product with Properties",
+            description="Product with full property objects",
+            formats=["video_15s"],
+            delivery_type="non_guaranteed",
+            is_fixed_price=False,
+            properties=[property_obj],
+        )
+
+        adcp_response = product_with_properties.model_dump()
+        assert "properties" in adcp_response
+        assert len(adcp_response["properties"]) >= 1
+        assert adcp_response["properties"][0]["property_type"] == "website"
+        assert adcp_response["properties"][0]["publisher_domain"] == "example.com"
+
+        # NOTE: Validation temporarily lenient during migration - will be enforced later
+        # TODO: Uncomment when strict validation is enabled
+        # Test without either properties or property_tags should fail
+        # with pytest.raises(ValueError, match="properties.*property_tags"):
+        #     ProductSchema(
+        #         product_id="test_product_no_props",
+        #         name="Invalid Product",
+        #         description="Missing property information",
+        #         formats=["display_300x250"],
+        #         delivery_type="guaranteed",
+        #         is_fixed_price=True,
+        #         cpm=10.0,
+        #         # Missing both properties and property_tags
+        #     )
 
     def test_adcp_create_media_buy_request(self):
         """Test AdCP create_media_buy request structure."""

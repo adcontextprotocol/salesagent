@@ -249,6 +249,42 @@ def add_product(tenant_id):
                 if countries is not None:
                     product_kwargs["countries"] = countries
 
+                # Handle property authorization (AdCP requirement)
+                property_mode = form_data.get("property_mode", "tags")
+                if property_mode == "tags":
+                    # Parse property tags from comma-separated string
+                    property_tags_str = form_data.get("property_tags", "").strip()
+                    if property_tags_str:
+                        property_tags = [
+                            tag.strip().lower().replace("-", "_") for tag in property_tags_str.split(",") if tag.strip()
+                        ]
+                        if property_tags:
+                            product_kwargs["property_tags"] = property_tags
+                elif property_mode == "full":
+                    # Get selected property IDs and load full property objects
+                    property_ids = request.form.getlist("property_ids")
+                    if property_ids:
+                        from src.core.database.models import AuthorizedProperty
+
+                        properties = db_session.scalars(
+                            select(AuthorizedProperty).filter(
+                                AuthorizedProperty.id.in_(property_ids), AuthorizedProperty.tenant_id == tenant_id
+                            )
+                        ).all()
+                        if properties:
+                            # Convert to dict format for JSONB storage
+                            properties_data = []
+                            for prop in properties:
+                                prop_dict = {
+                                    "property_type": prop.property_type,
+                                    "name": prop.name,
+                                    "identifiers": prop.identifiers or [],
+                                    "tags": prop.tags or [],
+                                    "publisher_domain": prop.publisher_domain,
+                                }
+                                properties_data.append(prop_dict)
+                            product_kwargs["properties"] = properties_data
+
                 # Create product with correct fields matching the Product model
                 product = Product(**product_kwargs)
                 db_session.add(product)
@@ -264,6 +300,26 @@ def add_product(tenant_id):
             return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
     # GET request - show adapter-specific form
+    # Load authorized properties for property selection
+    with get_db_session() as db_session:
+        from src.core.database.models import AuthorizedProperty
+
+        authorized_properties = db_session.scalars(
+            select(AuthorizedProperty).filter_by(tenant_id=tenant_id, verification_status="verified")
+        ).all()
+
+        # Convert to dict for template
+        properties_list = []
+        for prop in authorized_properties:
+            properties_list.append(
+                {
+                    "id": prop.id,
+                    "name": prop.name,
+                    "property_type": prop.property_type,
+                    "tags": prop.tags or [],
+                }
+            )
+
     if adapter_type == "google_ad_manager":
         # For GAM: unified form with inventory selection
         # Check if inventory has been synced
@@ -280,11 +336,17 @@ def add_product(tenant_id):
             tenant_id=tenant_id,
             inventory_synced=inventory_synced,
             formats=get_creative_formats(),
+            authorized_properties=properties_list,
         )
     else:
         # For Mock and other adapters: simple form
         formats = get_creative_formats()
-        return render_template("add_product.html", tenant_id=tenant_id, formats=formats)
+        return render_template(
+            "add_product.html",
+            tenant_id=tenant_id,
+            formats=formats,
+            authorized_properties=properties_list,
+        )
 
 
 @products_bp.route("/<product_id>/edit", methods=["GET", "POST"])

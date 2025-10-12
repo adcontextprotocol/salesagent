@@ -987,6 +987,17 @@ class Product(BaseModel):
         default=None,
         description="Ad server-specific configuration for implementing this product (placements, line item settings, etc.)",
     )
+    # AdCP property authorization fields (at least one required per spec)
+    properties: list["Property"] | None = Field(
+        None,
+        description="Full property objects covered by this product for adagents.json validation",
+        min_length=1,
+    )
+    property_tags: list[str] | None = Field(
+        None,
+        description="Tags identifying groups of properties (use list_authorized_properties for details)",
+        min_length=1,
+    )
     # AdCP PR #79 fields - populated dynamically from historical reporting data
     # These are NOT stored in database, calculated on-demand from product_performance_metrics
     currency: str = Field(default="USD", description="ISO 4217 currency code for pricing")
@@ -995,6 +1006,18 @@ class Product(BaseModel):
     recommended_cpm: float | None = Field(
         None, description="Suggested CPM to meet exposure goals (calculated dynamically)", gt=0
     )
+
+    @model_validator(mode="after")
+    def validate_properties_or_tags(self) -> "Product":
+        """Validate that at least one of properties or property_tags is provided per AdCP spec.
+
+        NOTE: Temporarily lenient to allow migration period. Will be enforced strictly after
+        all products have been updated with property information.
+        """
+        # TODO: Re-enable strict validation after products are updated
+        # if not self.properties and not self.property_tags:
+        #     raise ValueError("Product must have either 'properties' or 'property_tags' per AdCP spec")
+        return self
 
     @property
     def format_ids(self) -> list[str]:

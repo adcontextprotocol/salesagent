@@ -56,6 +56,8 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     "price_guidance": product_obj.price_guidance,
                     "is_custom": product_obj.is_custom,
                     "countries": product_obj.countries,
+                    "properties": product_obj.properties if hasattr(product_obj, "properties") else None,
+                    "property_tags": product_obj.property_tags if hasattr(product_obj, "property_tags") else None,
                 }
 
                 # Handle JSONB fields - PostgreSQL returns them as Python objects, SQLite as strings

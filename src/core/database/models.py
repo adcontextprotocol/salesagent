@@ -182,6 +182,9 @@ class Product(Base, JSONValidatorMixin):
     expires_at = Column(DateTime)
     countries = Column(JSONType)  # JSONB in PostgreSQL
     implementation_config = Column(JSONType)  # JSONB in PostgreSQL
+    # AdCP property authorization fields (at least one required per spec)
+    properties = Column(JSONType, nullable=True)  # JSONB - Full Property objects for validation
+    property_tags = Column(JSONType, nullable=True)  # JSONB - Tag strings array
     # Note: PR #79 fields (currency, estimated_exposures, floor_cpm, recommended_cpm) are NOT stored in database
     # They are calculated dynamically from product_performance_metrics table
 
