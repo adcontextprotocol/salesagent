@@ -24,7 +24,7 @@ class TestSlackNotificationUrls:
     @pytest.fixture
     def mock_webhook_delivery(self):
         """Mock webhook delivery to capture payloads without actually sending."""
-        with patch("src.services.slack_notifier.deliver_webhook_with_retry") as mock:
+        with patch("src.core.webhook_delivery.deliver_webhook_with_retry") as mock:
             mock.return_value = (True, {"attempts": 1})
             yield mock
 

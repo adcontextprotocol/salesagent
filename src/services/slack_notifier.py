@@ -613,8 +613,6 @@ class SlackNotifier:
             detail_parts.append(f"*Products:* {product_text}")
 
         if details.get("start_time") and details.get("end_time"):
-            from datetime import datetime
-
             try:
                 start = datetime.fromisoformat(details["start_time"].replace("Z", "+00:00"))
                 end = datetime.fromisoformat(details["end_time"].replace("Z", "+00:00"))
