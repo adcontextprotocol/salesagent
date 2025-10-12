@@ -2215,12 +2215,18 @@ class CreateMediaBuyRequest(BaseModel):
         return self.total_budget or 0.0
 
     def get_product_ids(self) -> list[str]:
-        """Extract all product IDs from packages for backward compatibility."""
+        """Extract all product IDs from packages for backward compatibility.
+
+        Supports both singular product_id and plural products fields per AdCP spec.
+        """
         if self.packages:
             product_ids = []
             for package in self.packages:
-                if package.products:  # Handle None case
+                # Check both products (array) and product_id (single) fields
+                if package.products:
                     product_ids.extend(package.products)
+                elif package.product_id:
+                    product_ids.append(package.product_id)
             return product_ids
         return self.product_ids or []
 
@@ -2234,7 +2240,14 @@ class CreateMediaBuyResponse(BaseModel):
 
     # Required AdCP fields
     adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
-    status: Literal["completed", "working", "submitted", "input-required"] = Field(...)
+    status: Literal[
+        "submitted", "working", "input-required", "completed", "canceled", "failed", "rejected", "auth-required"
+    ] = Field(
+        ...,
+        description="Task status per AdCP spec: submitted (queued), working (processing), completed (success), "
+        "failed (error during execution), rejected (not started), input-required (needs user input), "
+        "auth-required (needs auth), canceled (user canceled)",
+    )
     buyer_ref: str = Field(...)
 
     # Optional AdCP fields

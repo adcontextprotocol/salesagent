@@ -108,16 +108,18 @@ def create_tenant(args):
             )
             session.add(admin_user)
 
-        # Add default currency limit for USD (required for media buy creation)
+        # Add default currency limits for common currencies (required for media buy creation)
         from src.core.database.models import CurrencyLimit
 
-        default_currency_limit = CurrencyLimit(
-            tenant_id=tenant_id,
-            currency_code="USD",
-            min_package_budget=1000.0,
-            max_daily_package_spend=10000.0,
-        )
-        session.add(default_currency_limit)
+        # Add USD, EUR, GBP with no minimum and generous daily maximum
+        for currency in ["USD", "EUR", "GBP"]:
+            currency_limit = CurrencyLimit(
+                tenant_id=tenant_id,
+                currency_code=currency,
+                min_package_budget=0.0,  # No minimum requirement
+                max_daily_package_spend=100000.0,  # Generous daily limit
+            )
+            session.add(currency_limit)
 
         session.commit()
 
@@ -137,7 +139,7 @@ def create_tenant(args):
 Publisher: {args.name}
 Tenant ID: {tenant_id}
 Subdomain: {subdomain}
-Currency: USD (configured, min budget: $1,000)
+Currencies: USD, EUR, GBP (configured, no minimum budget)
 
 🔐 Access Control:
 {access_info}
