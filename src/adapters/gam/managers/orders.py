@@ -483,7 +483,12 @@ class GAMOrdersManager:
                 goal_units = package.impressions
 
             # Apply line item naming template
-            from src.adapters.gam.utils.naming import apply_naming_template, build_line_item_name_context
+            from src.adapters.gam.utils.constants import GAM_NAME_LIMITS
+            from src.adapters.gam.utils.naming import (
+                apply_naming_template,
+                build_line_item_name_context,
+                truncate_name_with_suffix,
+            )
 
             # Get product name from database for template
             product_name = product.get("product_id", package.name) if product else package.name
@@ -494,7 +499,12 @@ class GAMOrdersManager:
                 package_name=package.name,
                 package_index=package_index,
             )
-            line_item_name = apply_naming_template(line_item_name_template, line_item_name_context)
+            full_line_item_name = apply_naming_template(line_item_name_template, line_item_name_context)
+
+            # Truncate to GAM's 255-character limit
+            line_item_name = truncate_name_with_suffix(
+                full_line_item_name, GAM_NAME_LIMITS["max_line_item_name_length"]
+            )
 
             # Build line item object
             line_item = {
