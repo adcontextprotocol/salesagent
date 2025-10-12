@@ -3091,7 +3091,8 @@ def _create_media_buy_impl(
 
         if req.packages:
             for package in req.packages:
-                if not package.products:
+                # Check both products (array) and product_id (single) fields per AdCP spec
+                if not package.products and not package.product_id:
                     error_msg = f"Package {package.buyer_ref} must contain at least one product."
                     raise ValueError(error_msg)
 
@@ -3159,7 +3160,14 @@ def _create_media_buy_impl(
                                 continue
 
                             # Get the minimum spend requirement for products in this package
-                            package_product_ids = package.products if package.products else []
+                            # Support both products (array) and product_id (single) per AdCP spec
+                            if package.products:
+                                package_product_ids = package.products
+                            elif package.product_id:
+                                package_product_ids = [package.product_id]
+                            else:
+                                package_product_ids = []
+
                             applicable_min_spends = [
                                 product_min_spends[pid] for pid in package_product_ids if pid in product_min_spends
                             ]
