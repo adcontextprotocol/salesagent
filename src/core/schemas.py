@@ -1011,12 +1011,15 @@ class Product(BaseModel):
     def validate_properties_or_tags(self) -> "Product":
         """Validate that at least one of properties or property_tags is provided per AdCP spec.
 
-        NOTE: Temporarily lenient to allow migration period. Will be enforced strictly after
-        all products have been updated with property information.
+        Per AdCP spec, products must have either:
+        - properties: Full Property objects for adagents.json validation
+        - property_tags: Tag strings (buyers use list_authorized_properties for details)
         """
-        # TODO: Re-enable strict validation after products are updated
-        # if not self.properties and not self.property_tags:
-        #     raise ValueError("Product must have either 'properties' or 'property_tags' per AdCP spec")
+        if not self.properties and not self.property_tags:
+            raise ValueError(
+                "Product must have either 'properties' or 'property_tags' per AdCP spec. "
+                "Use property_tags=['all_inventory'] as a default if unsure."
+            )
         return self
 
     @property

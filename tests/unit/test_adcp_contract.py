@@ -97,6 +97,7 @@ class TestAdCPContract:
             "price_guidance": model.price_guidance,
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         # Should be convertible to AdCP schema
@@ -140,6 +141,7 @@ class TestAdCPContract:
             "cpm": None,
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         schema = ProductSchema(**model_dict)
@@ -312,20 +314,18 @@ class TestAdCPContract:
         assert adcp_response["properties"][0]["property_type"] == "website"
         assert adcp_response["properties"][0]["publisher_domain"] == "example.com"
 
-        # NOTE: Validation temporarily lenient during migration - will be enforced later
-        # TODO: Uncomment when strict validation is enabled
-        # Test without either properties or property_tags should fail
-        # with pytest.raises(ValueError, match="properties.*property_tags"):
-        #     ProductSchema(
-        #         product_id="test_product_no_props",
-        #         name="Invalid Product",
-        #         description="Missing property information",
-        #         formats=["display_300x250"],
-        #         delivery_type="guaranteed",
-        #         is_fixed_price=True,
-        #         cpm=10.0,
-        #         # Missing both properties and property_tags
-        #     )
+        # Test without either properties or property_tags should fail (strict validation enabled)
+        with pytest.raises(ValueError, match="properties.*property_tags"):
+            ProductSchema(
+                product_id="test_product_no_props",
+                name="Invalid Product",
+                description="Missing property information",
+                formats=["display_300x250"],
+                delivery_type="guaranteed",
+                is_fixed_price=True,
+                cpm=10.0,
+                # Missing both properties and property_tags
+            )
 
     def test_adcp_create_media_buy_request(self):
         """Test AdCP create_media_buy request structure."""
@@ -433,6 +433,7 @@ class TestAdCPContract:
                 delivery_type=delivery_type,
                 is_fixed_price=True,
                 cpm=10.0,
+                property_tags=["all_inventory"],  # Required per AdCP spec
             )
             assert product.delivery_type in valid_delivery_types
 
@@ -446,6 +447,7 @@ class TestAdCPContract:
                 delivery_type="programmatic",  # Not AdCP compliant
                 is_fixed_price=True,
                 cpm=10.0,
+                property_tags=["all_inventory"],  # Required per AdCP spec
             )
 
     def test_adcp_response_excludes_internal_fields(self):
@@ -460,6 +462,7 @@ class TestAdCPContract:
                 is_fixed_price=True,
                 cpm=10.0,
                 implementation_config={"internal": "data"},  # Should be excluded
+                property_tags=["all_inventory"],  # Required per AdCP spec
             )
         ]
 
@@ -1362,6 +1365,7 @@ class TestAdCPContract:
             measurement=None,
             creative_policy=None,
             is_custom=False,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         # Create response with products

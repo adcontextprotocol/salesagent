@@ -34,39 +34,21 @@ def upgrade() -> None:
 
     # Step 3: Backfill existing products with default property_tags
     # This ensures all products have at least one of properties/property_tags
-    # Use raw SQL to handle both PostgreSQL JSONB and potential SQLite JSON
+    # PostgreSQL-only (per codebase architecture decision)
     connection = op.get_bind()
-
-    # Check if we're using PostgreSQL or SQLite
-    dialect_name = connection.dialect.name
-
-    if dialect_name == "postgresql":
-        # PostgreSQL: Use JSONB array syntax
-        connection.execute(
-            sa.text(
-                """
-                UPDATE products
-                SET property_tags = '["all_inventory"]'::jsonb
-                WHERE property_tags IS NULL
-                  AND properties IS NULL
+    connection.execute(
+        sa.text(
             """
-            )
+            UPDATE products
+            SET property_tags = '["all_inventory"]'::jsonb
+            WHERE property_tags IS NULL
+              AND properties IS NULL
+        """
         )
-    else:
-        # SQLite: Use JSON string syntax
-        connection.execute(
-            sa.text(
-                """
-                UPDATE products
-                SET property_tags = '["all_inventory"]'
-                WHERE property_tags IS NULL
-                  AND properties IS NULL
-            """
-            )
-        )
+    )
 
     # Log the migration
-    print(f"✅ Added property authorization fields to products table ({dialect_name})")
+    print("✅ Added property authorization fields to products table")
     print("📋 Backfilled existing products with property_tags=['all_inventory']")
 
 

@@ -214,12 +214,63 @@ function togglePropertyMode() {
     }
 }
 
+function validatePropertySelection() {
+    const mode = document.querySelector('input[name="property_mode"]:checked').value;
+
+    if (mode === 'tags') {
+        const tagsInput = document.getElementById('property_tags');
+        const tagsValue = tagsInput.value.trim();
+
+        if (!tagsValue) {
+            alert('Please enter at least one property tag');
+            tagsInput.focus();
+            return false;
+        }
+
+        // Validate tag format
+        const tags = tagsValue.split(',').map(t => t.trim()).filter(t => t);
+        const invalidTags = tags.filter(t => !/^[a-z0-9_-]+$/i.test(t));
+
+        if (invalidTags.length > 0) {
+            alert('Invalid tags: ' + invalidTags.join(', ') + '\n\nUse only letters, numbers, hyphens, and underscores.');
+            tagsInput.focus();
+            return false;
+        }
+
+        // Check for minimum length
+        const shortTags = tags.filter(t => t.length < 2);
+        if (shortTags.length > 0) {
+            alert('Tags too short: ' + shortTags.join(', ') + '\n\nTags must be at least 2 characters.');
+            tagsInput.focus();
+            return false;
+        }
+
+    } else {
+        const checkboxes = document.querySelectorAll('input[name="property_ids"]:checked');
+        if (checkboxes.length === 0) {
+            alert('Please select at least one property');
+            return false;
+        }
+    }
+
+    return true;
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     updatePricingFields();
 
     // Add event listener to delivery type dropdown
     document.getElementById('delivery_type').addEventListener('change', updatePricingFields);
+
+    // Add form validation on submit
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        if (!validatePropertySelection()) {
+            e.preventDefault();
+            return false;
+        }
+    });
 
     // Handle country selection
     const countriesSelect = document.getElementById('countries');
