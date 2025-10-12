@@ -30,10 +30,16 @@ class SlackNotifier:
             tenant_config: Tenant configuration dict to check for webhook URLs
         """
         # Only use tenant config - no fallback to env vars
-        if tenant_config and tenant_config.get("features"):
-            features = tenant_config["features"]
-            self.webhook_url = webhook_url or features.get("slack_webhook_url")
-            self.audit_webhook_url = audit_webhook_url or features.get("slack_audit_webhook_url")
+        if tenant_config:
+            # Support both nested features dict and top-level keys
+            if "features" in tenant_config and isinstance(tenant_config["features"], dict):
+                features = tenant_config["features"]
+                self.webhook_url = webhook_url or features.get("slack_webhook_url")
+                self.audit_webhook_url = audit_webhook_url or features.get("slack_audit_webhook_url")
+            else:
+                # Top-level keys (from tenant_utils.tenant_to_dict)
+                self.webhook_url = webhook_url or tenant_config.get("slack_webhook_url")
+                self.audit_webhook_url = audit_webhook_url or tenant_config.get("slack_audit_webhook_url")
         else:
             # If no tenant config, disable Slack
             self.webhook_url = webhook_url

@@ -2,10 +2,11 @@
 
 ## Overview
 
-This guide covers two types of webhooks in the AdCP Sales Agent:
+This guide covers three types of webhooks/notifications in the AdCP Sales Agent:
 
 1. **Protocol-Level Push Notifications** - Operation status updates (configured at A2A/MCP transport layer)
 2. **Application-Level Webhooks** - Event notifications like creative approvals and delivery reports (configured in Admin UI)
+3. **Slack Audit Notifications** - Real-time audit logs sent to Slack (configured per tenant in Admin UI)
 
 ## Protocol vs Application-Level Webhooks
 
@@ -691,8 +692,106 @@ For complete documentation on delivery webhook security, see the implementation 
 - `src/services/webhook_delivery_service_v2.py`
 - `src/services/webhook_verification.py`
 
+---
+
+# Part 3: Slack Audit Notifications
+
+Slack audit notifications provide real-time visibility into sensitive operations, security violations, and high-value transactions. These are configured per tenant in the Admin UI.
+
+## Quick Start (Slack Audit Notifications)
+
+1. **Configure webhook** in Admin UI → Tenant Settings → Integrations → Audit Log Webhook URL
+2. **Use a dedicated Slack channel** for audit logs (separate from general notifications)
+3. **Notifications sent automatically** for sensitive operations, failures, high-value transactions, and security violations
+
+## When Notifications Are Sent
+
+### Automatic Triggers
+
+1. **Sensitive Operations**
+   - `create_media_buy`, `update_media_buy`, `delete_media_buy`
+   - `approve_creative`, `reject_creative`
+   - `manual_approval` actions
+
+2. **High-Value Operations**
+   - Any operation with `budget` or `total_budget` > $10,000
+
+3. **Failed Operations**
+   - All operations that fail (`success=False`)
+
+4. **Security Violations**
+   - Unauthorized access attempts
+   - Cross-tenant access violations
+   - Resource ownership violations
+
+## Notification Format
+
+Audit notifications include:
+- **Operation**: The operation performed (e.g., `create_media_buy`)
+- **Principal**: Who performed the operation
+- **Tenant**: Which publisher/tenant
+- **Status**: Success or failure indicator (✅/❌)
+- **Error Message**: If operation failed
+- **Details**: Budget, campaign info, and other relevant data
+- **Timestamp**: When the event occurred
+- **Adapter**: Which ad server adapter was used
+
+Security violations are highlighted with:
+- 🚨 Security Alert emoji
+- Red danger color
+- UNAUTHORIZED prefix on principal name
+- Violation details
+
+## Configuration
+
+### Per-Tenant Setup
+
+Configure Slack audit notifications in the Admin UI:
+
+1. Navigate to **Tenant Settings** → **Integrations**
+2. Set **Audit Log Webhook URL**
+3. Use a dedicated Slack webhook URL for audit logs (separate from general notifications)
+
+### Webhook URL Format
+
+```
+https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX
+```
+
+Create a Slack webhook:
+1. Go to https://api.slack.com/messaging/webhooks
+2. Create an "Incoming Webhook" app
+3. Select the channel for audit logs
+4. Copy the webhook URL to Admin UI
+
+## Implementation Notes
+
+- Notifications use the existing webhook delivery service with retry logic
+- Failed Slack deliveries do NOT affect core operations
+- All notification code is wrapped in try/except for safety
+- Tenant isolation ensures each tenant only sees their own audit logs
+
+## Troubleshooting
+
+### No Notifications Appearing
+
+Check:
+1. Is `slack_audit_webhook_url` configured in tenant settings?
+2. Is the webhook URL valid and active in Slack?
+3. Are audit logs being created in the database?
+4. Check server logs for delivery failures
+
+### Webhook Delivery Failures
+
+Common causes:
+- Invalid webhook URL
+- Slack API rate limiting
+- Network connectivity issues
+- Webhook URL expired or revoked
+
 ## Changelog
 
+- **2025-10-12**: Added Slack audit notifications (AdCP PR #346)
 - **2025-10-09**: Added enhanced delivery webhooks with circuit breakers and HMAC-SHA256 (AdCP PR #86)
 - **2025-10-04**: Added HMAC-SHA256 authentication support
 - **2025-10-04**: Added SSRF protection for webhook URLs
