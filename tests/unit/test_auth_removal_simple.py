@@ -74,6 +74,7 @@ class TestAuthRemovalChanges:
             is_fixed_price=True,
             cpm=2.50,
             min_spend=1000.0,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         # Simulate the anonymous user logic
@@ -120,6 +121,7 @@ class TestAuthRemovalChanges:
             is_fixed_price=True,
             cpm=2.50,
             min_spend=1000.0,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         # Simulate authenticated user logic
