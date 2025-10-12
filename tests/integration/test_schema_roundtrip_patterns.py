@@ -144,6 +144,7 @@ class TestProductSchemaRoundtrip:
             ),
             "creative_policy": CreativePolicy(co_branding="optional", landing_page="any", templates_available=True),
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         validator.test_model_roundtrip(Product, test_data)
@@ -160,6 +161,7 @@ class TestProductSchemaRoundtrip:
             "cpm": None,  # Test null handling
             "min_spend": 5000.0,
             "is_custom": True,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         validator.test_model_roundtrip(Product, test_data)
@@ -174,6 +176,7 @@ class TestProductSchemaRoundtrip:
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         validator.test_model_roundtrip(Product, test_data)
@@ -197,6 +200,7 @@ class TestProductSchemaRoundtrip:
                 co_branding="required", landing_page="retailer_site_only", templates_available=True
             ),
             "is_custom": True,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
             "brief_relevance": "Highly relevant for video advertising campaigns",
         }
 
