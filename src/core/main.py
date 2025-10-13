@@ -4200,7 +4200,8 @@ def _update_media_buy_impl(
 
             if media_buy:
                 # Determine currency (use updated or existing)
-                request_currency = req.currency or media_buy.currency or "USD"
+                # Extract currency from Budget object if present, otherwise from media buy
+                request_currency = (req.budget.currency if req.budget else None) or media_buy.currency or "USD"
 
                 # Get currency limit
                 stmt = select(CurrencyLimit).where(
@@ -4314,20 +4315,20 @@ def _update_media_buy_impl(
                     )
                     return result
 
-    # Handle budget updates (support both Budget object and float)
+    # Handle budget updates (Budget object from AdCP spec)
     if req.budget is not None:
         if isinstance(req.budget, dict):
-            # Handle Budget object
+            # Handle Budget dict
             total_budget = req.budget.get("total", 0)
             currency = req.budget.get("currency", "USD")
         elif hasattr(req.budget, "total"):
-            # Handle Budget model instance
+            # Handle Budget model instance (standard case)
             total_budget = req.budget.total
             currency = req.budget.currency
         else:
-            # Handle float
-            total_budget = req.budget
-            currency = req.currency or "USD"
+            # Fallback: treat as float (shouldn't happen with Budget object)
+            total_budget = float(req.budget)
+            currency = "USD"  # Default when budget is just a number
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
