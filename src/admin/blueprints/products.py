@@ -6,6 +6,7 @@ import uuid
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import func, select
+from sqlalchemy.orm import joinedload
 
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -185,7 +186,12 @@ def list_products(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            products = db_session.scalars(select(Product).filter_by(tenant_id=tenant_id).order_by(Product.name)).all()
+            products = db_session.scalars(
+                select(Product)
+                .options(joinedload(Product.pricing_options))
+                .filter_by(tenant_id=tenant_id)
+                .order_by(Product.name)
+            ).all()
 
             # Convert products to dict format for template
             products_list = []
