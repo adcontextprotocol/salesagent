@@ -55,7 +55,7 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                 pricing_options_data = get_product_pricing_options(product_obj)
 
                 # Convert to Pydantic PricingOption objects
-                pricing_options = None
+                pricing_options: list[PricingOption] | None = None
                 if pricing_options_data:
                     try:
                         pricing_options = []
@@ -77,8 +77,14 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                                         if po_dict.get("price_guidance")
                                         else None
                                     ),
-                                    parameters=PricingParameters(**po_dict["parameters"]) if po_dict.get("parameters") else None,
+                                    parameters=(
+                                        PricingParameters(**po_dict["parameters"])
+                                        if po_dict.get("parameters")
+                                        else None
+                                    ),
                                     min_spend_per_package=po_dict.get("min_spend_per_package"),
+                                    supported=None,  # Populated dynamically by adapter
+                                    unsupported_reason=None,
                                 )
                             )
                     except Exception as e:
