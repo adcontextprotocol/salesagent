@@ -281,7 +281,27 @@ def add_product(tenant_id):
                             flash("Duplicate property tags detected", "error")
                             return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
+                        # Validate that all property tags exist in the database
                         if property_tags:
+                            from src.core.database.models import PropertyTag
+
+                            existing_tags = db_session.scalars(
+                                select(PropertyTag).filter(
+                                    PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(property_tags)
+                                )
+                            ).all()
+
+                            existing_tag_ids = {tag.tag_id for tag in existing_tags}
+                            missing_tags = set(property_tags) - existing_tag_ids
+
+                            if missing_tags:
+                                flash(
+                                    f"Property tags do not exist: {', '.join(missing_tags)}. "
+                                    f"Please create them in Settings → Authorized Properties first.",
+                                    "error",
+                                )
+                                return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
                             product_kwargs["property_tags"] = property_tags
                 elif property_mode == "full":
                     # Get selected property IDs and load full property objects
