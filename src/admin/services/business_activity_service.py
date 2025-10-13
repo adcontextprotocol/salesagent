@@ -90,6 +90,10 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
                 principal_name = log.principal_name or "System"
 
                 # Create descriptive title based on operation
+                # Skip explicit_skill_invocation events - they're not meaningful business activities
+                if "explicit_skill_invocation" in operation:
+                    continue
+
                 if "get_products" in operation or "list_products" in operation:
                     title = f"{principal_name} searched for products"
                 elif "create_media_buy" in operation:
@@ -100,8 +104,6 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
                     title = f"{principal_name} ran policy check"
                 elif "list_creatives" in operation:
                     title = f"{principal_name} listed creatives"
-                elif "explicit_skill_invocation" in operation:
-                    title = f"{principal_name} invoked skill"
                 else:
                     title = f"{principal_name}: {operation_clean}"
 
