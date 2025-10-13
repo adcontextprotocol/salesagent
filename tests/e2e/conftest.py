@@ -234,9 +234,9 @@ def live_server(docker_services_e2e):
 def test_auth_token(live_server):
     """Create or get a test principal with auth token.
 
-    This token must match the one created by init_database_ci.py.
+    This token must match the one created by src/core/database/database.py::init_db().
     """
-    # Return the CI test token that is created by scripts/setup/init_database_ci.py
+    # Return the CI test token that is created by init_db() in database.py
     # This ensures consistency between database initialization and E2E tests
     return "ci-test-token"
 
