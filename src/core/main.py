@@ -846,6 +846,16 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
     Returns:
         GetProductsResponse containing matching products
     """
+    import sys
+
+    print("=" * 80, file=sys.stderr, flush=True)
+    print(
+        f"🔧 _get_products_impl CALLED: req={req.promoted_offering}, brief={req.brief[:50] if req.brief else 'N/A'}",
+        file=sys.stderr,
+        flush=True,
+    )
+    print("=" * 80, file=sys.stderr, flush=True)
+
     from src.core.tool_context import ToolContext
 
     start_time = time.time()
@@ -1289,6 +1299,16 @@ async def get_products(
     Returns:
         GetProductsResponse containing matching products
     """
+    import sys
+
+    print("=" * 80, file=sys.stderr, flush=True)
+    print(
+        f"🚀 MCP get_products CALLED: offered={promoted_offering}, brief={brief[:50] if brief else 'N/A'}",
+        file=sys.stderr,
+        flush=True,
+    )
+    print("=" * 80, file=sys.stderr, flush=True)
+
     # Build request object for shared implementation
     req = GetProductsRequest(
         promoted_offering=promoted_offering,
