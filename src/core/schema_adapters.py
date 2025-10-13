@@ -633,18 +633,28 @@ class GetMediaBuyDeliveryResponse(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
-    status: str = Field("completed", description="Task status")
-    buyer_ref: str = Field(..., description="Buyer's reference identifier")
-    media_buy_id: str | None = None
-    packages: list[Any] | None = None
-    totals: Any | None = None
-    campaign_dates: Any | None = None
+    # Required AdCP fields
+    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$")
+    reporting_period: Any = Field(..., description="Date range for the report")
+    currency: str = Field(..., pattern=r"^[A-Z]{3}$", description="ISO 4217 currency code")
+    media_buy_deliveries: list[Any] = Field(..., description="Array of delivery data for each media buy")
+
+    # Optional AdCP fields (webhook-specific)
+    notification_type: str | None = None
+    partial_data: bool | None = None
+    unavailable_count: int | None = None
+    sequence_number: int | None = None
+    next_expected_at: str | None = None
     errors: list[Any] | None = None
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer."""
-        return f"Delivery data for media buy {self.media_buy_id or self.buyer_ref}."
+        count = len(self.media_buy_deliveries)
+        if count == 0:
+            return "No delivery data available."
+        elif count == 1:
+            return "Delivery data for 1 media buy."
+        return f"Delivery data for {count} media buys."
 
 
 # ============================================================================
