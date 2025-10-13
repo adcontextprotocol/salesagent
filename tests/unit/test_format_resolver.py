@@ -25,12 +25,12 @@ def mock_db_session():
 
 def test_get_format_from_standard_registry():
     """Test getting standard format from FORMAT_REGISTRY."""
-    format_obj = get_format("display_300x250")
+    format_obj = get_format("display_300x250_image")
 
-    assert format_obj.format_id == "display_300x250"
+    assert format_obj.format_id == "display_300x250_image"
     assert format_obj.type == "display"
-    assert format_obj.requirements["width"] == 300
-    assert format_obj.requirements["height"] == 250
+    assert format_obj.agent_url == "https://creative.adcontextprotocol.org"
+    assert format_obj.category == "standard"
 
 
 def test_get_format_unknown_raises_error():
@@ -102,7 +102,7 @@ def test_get_product_format_override(mock_db_session):
     # Mock product with format override
     impl_config = {
         "format_overrides": {
-            "display_300x250": {
+            "display_300x250_image": {
                 "platform_config": {
                     "gam": {
                         "creative_placeholder": {
@@ -122,13 +122,12 @@ def test_get_product_format_override(mock_db_session):
         None,  # No tenant custom format, will use FORMAT_REGISTRY
     ]
 
-    format_obj = _get_product_format_override("tenant_123", "product_456", "display_300x250")
+    format_obj = _get_product_format_override("tenant_123", "product_456", "display_300x250_image")
 
     assert format_obj is not None
-    assert format_obj.format_id == "display_300x250"
-    # Base format dimensions preserved
-    assert format_obj.requirements["width"] == 300
-    assert format_obj.requirements["height"] == 250
+    assert format_obj.format_id == "display_300x250_image"
+    # Base format type preserved
+    assert format_obj.type == "display"
     # But platform_config overridden
     assert format_obj.platform_config["gam"]["creative_placeholder"]["width"] == 1
     assert format_obj.platform_config["gam"]["creative_placeholder"]["height"] == 1
@@ -140,7 +139,7 @@ def test_get_product_format_override_not_configured(mock_db_session):
     impl_config = {"format_overrides": {}}
     mock_db_session.execute.return_value.fetchone.return_value = (json.dumps(impl_config),)
 
-    format_obj = _get_product_format_override("tenant_123", "product_456", "display_300x250")
+    format_obj = _get_product_format_override("tenant_123", "product_456", "display_300x250_image")
 
     assert format_obj is None
 
@@ -149,7 +148,7 @@ def test_get_product_format_override_no_impl_config(mock_db_session):
     """Test that None is returned when product has no implementation_config."""
     mock_db_session.execute.return_value.fetchone.return_value = (None,)
 
-    format_obj = _get_product_format_override("tenant_123", "product_456", "display_300x250")
+    format_obj = _get_product_format_override("tenant_123", "product_456", "display_300x250_image")
 
     assert format_obj is None
 
@@ -159,7 +158,7 @@ def test_get_format_priority_product_override(mock_db_session):
     # Mock product override
     impl_config = {
         "format_overrides": {
-            "display_300x250": {
+            "display_300x250_image": {
                 "platform_config": {
                     "gam": {
                         "creative_placeholder": {
@@ -177,7 +176,7 @@ def test_get_format_priority_product_override(mock_db_session):
         None,  # No tenant custom format
     ]
 
-    format_obj = get_format("display_300x250", tenant_id="tenant_123", product_id="product_456")
+    format_obj = get_format("display_300x250_image", tenant_id="tenant_123", product_id="product_456")
 
     # Should use product override
     assert format_obj.platform_config["gam"]["creative_placeholder"]["creative_template_id"] == 99999
@@ -216,7 +215,7 @@ def test_list_available_formats_standard_only(mock_db_session):
 
     # Should include all standard formats
     assert len(formats) > 0
-    assert any(f.format_id == "display_300x250" for f in formats)
+    assert any(f.format_id == "display_300x250_image" for f in formats)
     assert any(f.format_id == "video_1280x720" for f in formats)
 
 
@@ -278,7 +277,7 @@ def test_product_override_merges_platform_config(mock_db_session):
     # Product override adds GAM config to format that has Kevel config
     impl_config = {
         "format_overrides": {
-            "display_300x250": {
+            "display_300x250_image": {
                 "platform_config": {
                     "gam": {"creative_placeholder": {"width": 1, "height": 1, "creative_template_id": 99999}}
                 }
@@ -293,14 +292,14 @@ def test_product_override_merges_platform_config(mock_db_session):
     # Assume base format has platform_config for another platform
     with patch("src.core.format_resolver.FORMAT_REGISTRY") as mock_registry:
         mock_registry.get.return_value = Format(
-            format_id="display_300x250",
+            format_id="display_300x250_image",
             name="Display",
             type="display",
             requirements={"width": 300, "height": 250},
             platform_config={"kevel": {"some_config": "value"}},
         )
 
-        format_obj = _get_product_format_override("tenant_123", "product_456", "display_300x250")
+        format_obj = _get_product_format_override("tenant_123", "product_456", "display_300x250_image")
 
     # Should have both platform configs
     assert "kevel" in format_obj.platform_config
