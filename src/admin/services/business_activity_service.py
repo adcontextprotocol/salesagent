@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AuditLog
+from src.core.database.models import AuditLog, Principal
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +58,16 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
             )
             recent_logs = db.scalars(stmt).all()
 
+            # Build a cache of principal_id -> friendly name for this tenant
+            principal_name_cache: dict[str, str] = {}
+            principal_stmt = select(Principal).filter(Principal.tenant_id == tenant_id)
+            principals = db.scalars(principal_stmt).all()
+            for principal in principals:
+                principal_name_cache[str(principal.principal_id)] = str(principal.name)
+
             for log in recent_logs:
                 # Parse details if available
-                details = {}
+                details: dict[str, object] = {}
                 if log.details:
                     try:
                         if isinstance(log.details, str):
@@ -87,7 +94,15 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
 
                 # Build title from operation
                 operation_clean = operation.replace("AdCP.", "").replace("A2A.", "").replace("MCP.", "")
-                principal_name = log.principal_name or "System"
+
+                # Look up friendly principal name from cache, fall back to logged name or "System"
+                principal_name: str = "System"
+                if log.principal_id:
+                    principal_id_str = str(log.principal_id)
+                    if principal_id_str in principal_name_cache:
+                        principal_name = principal_name_cache[principal_id_str]
+                if principal_name == "System" and log.principal_name:
+                    principal_name = str(log.principal_name)
 
                 # Create descriptive title based on operation
                 # Skip successful policy checks - only show failures
