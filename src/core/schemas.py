@@ -2280,9 +2280,10 @@ class BrandManifest(BaseModel):
     """Standardized brand information manifest for creative generation and media buying.
 
     Per AdCP spec, either url OR name is required (at least one must be present).
+    This is a legacy model - prefer using generated schemas from schemas_generated/.
     """
 
-    # At least one required (enforced by model_validator)
+    # At least one required (enforced by anyOf in AdCP spec)
     url: str | None = Field(None, description="Brand website URL")
     name: str | None = Field(None, description="Brand/business name")
 
@@ -2300,8 +2301,8 @@ class BrandManifest(BaseModel):
     contact_info: dict[str, Any] | None = Field(None, description="Contact information")
     metadata: dict[str, Any] | None = Field(None, description="Creation/update metadata")
 
-    # NOTE: No Python validator needed - AdCP schema has anyOf constraint for url/name
-    # Schema validation at /schemas/v1/core/brand-manifest.json enforces this
+    # NOTE: Legacy model kept for backward compatibility with tests
+    # For new code, use generated schemas which properly handle anyOf constraints
 
 
 class BrandManifestRef(BaseModel):

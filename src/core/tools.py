@@ -27,7 +27,6 @@ from src.core.config_loader import (
 from src.core.schema_adapters import (
     CreateMediaBuyResponse,
     GetMediaBuyDeliveryResponse,
-    GetProductsRequest,
     GetProductsResponse,
     GetSignalsResponse,
     ListAuthorizedPropertiesRequest,
@@ -113,24 +112,20 @@ async def get_products_raw(
     """
     # Use lazy import to avoid circular dependencies
     from src.core.main import _get_products_impl
-    from src.core.schemas import ProductFilters
+    from src.core.schema_helpers import create_get_products_request
 
-    # Convert filters dict to ProductFilters if provided
-    filters_obj = ProductFilters(**filters) if filters else None
-
-    # Create request object
-    req = GetProductsRequest(
+    # Create request object using helper (handles generated schema variants)
+    req = create_get_products_request(
         brief=brief or "",
         promoted_offering=promoted_offering,
         brand_manifest=brand_manifest,
         adcp_version=adcp_version,
-        min_exposures=min_exposures,
-        filters=filters_obj,
-        strategy_id=strategy_id,
+        filters=filters,
     )
 
-    # Call shared implementation
-    return await _get_products_impl(req, context)
+    # Call shared implementation with unwrapped variant
+    # GetProductsRequest is a RootModel, so we pass req.root (the actual variant)
+    return await _get_products_impl(req.root, context)  # type: ignore[arg-type]
 
 
 async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:

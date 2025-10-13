@@ -62,7 +62,6 @@ from src.core.schema_adapters import (
     ActivateSignalResponse,
     CreateMediaBuyResponse,
     GetMediaBuyDeliveryResponse,
-    GetProductsRequest,
     GetProductsResponse,
     GetSignalsResponse,
     ListAuthorizedPropertiesRequest,
@@ -107,6 +106,10 @@ from src.core.schemas import (
     UpdatePerformanceIndexResponse,
     VerifyTaskRequest,
     VerifyTaskResponse,
+)
+from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
+    GetProductsRequest1,
+    GetProductsRequest2,
 )
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
@@ -837,14 +840,14 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 # --- MCP Tools (Full Implementation) ---
 
 
-async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetProductsResponse:
+async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, context: Context) -> GetProductsResponse:
     """Shared implementation for get_products.
 
     Contains all business logic for product discovery including policy checks,
     product catalog providers, dynamic pricing, and filtering.
 
     Args:
-        req: GetProductsRequest with all query parameters
+        req: GetProductsRequest variant (GetProductsRequest1 or GetProductsRequest2)
         context: FastMCP Context for tenant/principal resolution
 
     Returns:
@@ -1085,7 +1088,7 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
                 products,
                 tenant_id=tenant["tenant_id"],
                 country_code=country_code,
-                min_exposures=req.min_exposures,
+                min_exposures=getattr(req, "min_exposures", None),
             )
     except Exception as e:
         logger.warning(f"Failed to enrich products with dynamic pricing: {e}. Using defaults.")
@@ -1171,17 +1174,18 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
             logger.info(f"Product {product.product_id} excluded: {reason}")
 
     # Apply min_exposures filtering (AdCP PR #79)
-    if req.min_exposures is not None:
+    min_exposures = getattr(req, "min_exposures", None)
+    if min_exposures is not None:
         filtered_products = []
         for product in eligible_products:
             # For guaranteed products, check estimated_exposures
             if product.delivery_type == "guaranteed":
-                if product.estimated_exposures is not None and product.estimated_exposures >= req.min_exposures:
+                if product.estimated_exposures is not None and product.estimated_exposures >= min_exposures:
                     filtered_products.append(product)
                 else:
                     logger.info(
                         f"Product {product.product_id} excluded: estimated_exposures "
-                        f"({product.estimated_exposures}) < min_exposures ({req.min_exposures})"
+                        f"({product.estimated_exposures}) < min_exposures ({min_exposures})"
                     )
             else:
                 # For non-guaranteed, include if recommended_cpm is set (indicates it can meet min_exposures)
@@ -1277,8 +1281,9 @@ async def get_products(
         brand_manifest=brand_manifest,
         filters=filters,
     )
-    # Call shared implementation
-    return await _get_products_impl(req, context)
+    # Call shared implementation with unwrapped variant
+    # GetProductsRequest is a RootModel, so we pass req.root (the actual variant)
+    return await _get_products_impl(req.root, context)  # type: ignore[arg-type]
 
 
 def _list_creative_formats_impl(

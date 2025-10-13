@@ -17,6 +17,8 @@ from pydantic import AnyUrl
 from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
     BrandManifest,
     BrandManifest8,
+    BrandManifest9,
+    BrandManifest10,
     Filters,
     Filters1,
     GetProductsRequest,
@@ -75,25 +77,15 @@ def create_get_products_request(
         else:
             brand_manifest = {"name": promoted_offering}
 
-    # Convert dict to proper types if needed
-    if isinstance(brand_manifest, dict):
-        # Let Pydantic validate and construct the right type
-        brand_manifest_obj: BrandManifest | BrandManifest8 = BrandManifest(**brand_manifest)
-    elif isinstance(brand_manifest, str):
-        # URL string
-        brand_manifest_obj = AnyUrl(brand_manifest)  # type: ignore[assignment]
-    else:
-        brand_manifest_obj = brand_manifest  # type: ignore[assignment]
-
     # Convert filters dict to proper type if needed
     if isinstance(filters, dict):
         filters_obj: Filters | Filters1 | None = Filters(**filters)
     else:
         filters_obj = filters
 
-    # Determine which variant to use
-    if promoted_offering and not brand_manifest_obj:
-        # Use variant 1 (promoted_offering required)
+    # Determine which variant to use FIRST, then convert brand_manifest to correct type
+    if promoted_offering and not brand_manifest:
+        # Use variant 1 (promoted_offering required, no brand_manifest)
         variant = GetProductsRequest1(
             promoted_offering=promoted_offering,
             brief=brief or None,
@@ -102,6 +94,26 @@ def create_get_products_request(
         )
     else:
         # Use variant 2 (brand_manifest required)
+        # Convert brand_manifest to GetProductsRequest2 types (BrandManifest9/BrandManifest10)
+        if isinstance(brand_manifest, dict):
+            # Choose correct variant based on what's required
+            # BrandManifest9: url is required (name optional)
+            # BrandManifest10: name is required (url optional)
+            if "url" in brand_manifest and brand_manifest["url"] is not None:
+                # Has url - use BrandManifest9 (url-required variant)
+                brand_manifest_obj: BrandManifest9 | BrandManifest10 | AnyUrl = BrandManifest9(**brand_manifest)
+            elif "name" in brand_manifest and brand_manifest["name"] is not None:
+                # Has name but no url - use BrandManifest10 (name-required variant)
+                brand_manifest_obj = BrandManifest10(**brand_manifest)
+            else:
+                # Neither url nor name - will fail validation (AdCP requires one)
+                raise ValueError("brand_manifest requires at least one of: url, name")
+        elif isinstance(brand_manifest, str):
+            # URL string
+            brand_manifest_obj = AnyUrl(brand_manifest)  # type: ignore[assignment]
+        else:
+            brand_manifest_obj = brand_manifest  # type: ignore[assignment]
+
         variant = GetProductsRequest2(
             brand_manifest=brand_manifest_obj,
             promoted_offering=promoted_offering,
