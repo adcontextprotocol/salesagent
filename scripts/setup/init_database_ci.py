@@ -4,8 +4,9 @@ import os
 import sys
 from pathlib import Path
 
-# Add the current directory to Python path to ensure imports work
-sys.path.insert(0, str(Path(__file__).parent))
+# Add the project root directory to Python path to ensure imports work
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
 
 def init_db_ci():
@@ -13,11 +14,12 @@ def init_db_ci():
     try:
         # Import here to ensure path is set up first
         import uuid
+        from datetime import UTC, datetime
 
-        from database_session import get_db_session
-        from migrate import run_migrations
         from sqlalchemy import select
 
+        from scripts.ops.migrate import run_migrations
+        from src.core.database.database_session import get_db_session
         from src.core.database.models import Principal, Product, Tenant
 
         print("Applying database migrations for CI...")
@@ -38,6 +40,7 @@ def init_db_ci():
             tenant_id = str(uuid.uuid4())
 
             # Create default tenant
+            now = datetime.now(UTC)
             tenant = Tenant(
                 tenant_id=tenant_id,
                 name="CI Test Tenant",
@@ -47,6 +50,8 @@ def init_db_ci():
                 enable_axe_signals=True,
                 auto_approve_formats=["display_300x250", "display_728x90"],
                 human_review_required=False,
+                created_at=now,
+                updated_at=now,
             )
             session.add(tenant)
 

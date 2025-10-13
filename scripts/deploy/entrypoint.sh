@@ -81,6 +81,13 @@ if ! python -c "from src.core.database.database import init_db; init_db(exit_on_
     exit 1
 fi
 
+# Initialize CI/test database data (creates default products if needed)
+echo "📦 Initializing default products for testing..."
+if ! python scripts/setup/init_database_ci.py; then
+    echo "⚠️  Product initialization failed - continuing with startup..."
+    echo "ℹ️  Default products may not be available"
+fi
+
 # Start all services (MCP, Admin UI, ADK, nginx)
 echo "🌐 Starting all services with unified routing..."
 exec python scripts/deploy/run_all_services.py
