@@ -47,30 +47,36 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
             # No tenant specified - search globally
             stmt = select(Principal).filter_by(access_token=token)
             principal = session.scalars(stmt).first()
-            print(f"🔍 [AUTH DEBUG] Looking up principal with token: {token[:20]}...")
+            console.print(f"[yellow]🔍 [AUTH DEBUG] Looking up principal with token: {token[:20]}...[/yellow]")
             if principal:
-                print(f"   ✓ Principal found: {principal.principal_id}, tenant_id={principal.tenant_id}")
+                console.print(
+                    f"[green]   ✓ Principal found: {principal.principal_id}, tenant_id={principal.tenant_id}[/green]"
+                )
                 # Found principal - set tenant context
                 stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
                 tenant = session.scalars(stmt).first()
                 if tenant:
-                    print(f"   ✓ Tenant found: {tenant.tenant_id}, is_active={tenant.is_active}")
+                    console.print(f"[green]   ✓ Tenant found: {tenant.tenant_id}, is_active={tenant.is_active}[/green]")
                     from src.core.utils.tenant_utils import serialize_tenant_to_dict
 
                     tenant_dict = serialize_tenant_to_dict(tenant)
                     set_current_tenant(tenant_dict)
                     return principal.principal_id
                 else:
-                    print(f"   ❌ ERROR: Tenant NOT FOUND for tenant_id={principal.tenant_id} with is_active=True")
+                    console.print(
+                        f"[red]   ❌ ERROR: Tenant NOT FOUND for tenant_id={principal.tenant_id} with is_active=True[/red]"
+                    )
                     # Try without is_active filter to see if tenant exists but is_active is wrong
                     stmt_debug = select(Tenant).filter_by(tenant_id=principal.tenant_id)
                     tenant_debug = session.scalars(stmt_debug).first()
                     if tenant_debug:
-                        print(f"      DEBUG: Tenant EXISTS but is_active={tenant_debug.is_active}")
+                        console.print(
+                            f"[yellow]      DEBUG: Tenant EXISTS but is_active={tenant_debug.is_active}[/yellow]"
+                        )
                     else:
-                        print("      DEBUG: Tenant does not exist at all")
+                        console.print("[yellow]      DEBUG: Tenant does not exist at all[/yellow]")
             else:
-                print(f"   ❌ ERROR: Principal NOT FOUND for token {token[:20]}...")
+                console.print(f"[red]   ❌ ERROR: Principal NOT FOUND for token {token[:20]}...[/red]")
 
         return None
 
