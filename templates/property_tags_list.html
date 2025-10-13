@@ -35,8 +35,9 @@
                                            id="tag_id"
                                            name="tag_id"
                                            placeholder="e.g., premium_content"
-                                           pattern="[a-z0-9_-]+"
-                                           required>
+                                           required
+                                           autocomplete="off"
+                                           spellcheck="false">
                                     <small class="form-text text-muted">
                                         Lowercase letters, numbers, underscores, and hyphens only
                                     </small>
@@ -211,15 +212,13 @@
         }
     }
 
-    // Auto-format tag ID input
-    document.getElementById('tag_id').addEventListener('input', function(e) {
-        // Convert to lowercase and replace spaces/special chars with underscores
-        let value = e.target.value.toLowerCase()
-            .replace(/[^a-z0-9_-]/g, '_')
-            .replace(/_+/g, '_')
-            .replace(/^_+|_+$/g, '');
-
-        e.target.value = value;
-    });
+    // Auto-format tag ID input - convert to lowercase only
+    const tagInput = document.getElementById('tag_id');
+    if (tagInput) {
+        tagInput.addEventListener('input', function(e) {
+            // Only convert to lowercase, no other validation
+            e.target.value = e.target.value.toLowerCase();
+        });
+    }
 </script>
 {% endblock %}

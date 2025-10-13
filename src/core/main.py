@@ -619,7 +619,9 @@ context_mgr = ContextManager()
 
 # --- Adapter Configuration ---
 # Get adapter from config, fallback to mock
-SELECTED_ADAPTER = ((config.get("ad_server", {}).get("adapter") or "mock") if config else "mock").lower()
+SELECTED_ADAPTER = (
+    (config.get("ad_server", {}).get("adapter") or "mock") if config else "mock"
+).lower()  # noqa: F841 - used below for adapter selection
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
 # --- In-Memory State (already initialized above, just adding context_map) ---
@@ -990,34 +992,26 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         with get_db_session() as session:
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
-            task_details = {
-                "brief": req.brief,
-                "promoted_offering": req.promoted_offering,
-                "principal_id": principal_id,
-                "policy_status": policy_result.status,
-                "restrictions": policy_result.restrictions,
-                "reason": policy_result.reason,
-            }
-
-            new_task = Task(
-                tenant_id=tenant["tenant_id"],
-                task_id=task_id,
-                media_buy_id=None,  # No media buy associated
-                task_type="policy_review",
-                status="pending",
-                details=task_details,
-                created_at=datetime.now(UTC),
+            # Log policy violation for audit trail and compliance
+            audit_logger.log_operation(
+                operation="get_products_policy_violation",
+                principal_name=principal_id,
+                principal_id=principal_id,
+                adapter_id="policy_engine",
+                success=False,
+                details={
+                    "brief": req.brief,
+                    "promoted_offering": req.promoted_offering,
+                    "policy_status": policy_result.status,
+                    "restrictions": policy_result.restrictions,
+                    "reason": policy_result.reason,
+                },
             )
-            session.add(new_task)
-            session.commit()
 
-        logger.info(f"Created policy review task {task_id} for restricted brief")
-
-        # Return empty list with message about pending review
-        return GetProductsResponse(
-            products=[],
-            message="Request pending manual review due to policy restrictions",
-            context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
+        # Raise error for policy violations - explicit failure, not silent return
+        raise ToolError(
+            "POLICY_VIOLATION",
+            f"Request violates content policy: {policy_result.reason}. Restrictions: {', '.join(policy_result.restrictions)}",
         )
 
     # Determine product catalog configuration based on tenant's signals discovery settings
@@ -1274,6 +1268,7 @@ async def get_products(
         brief: Brief description of the advertising campaign or requirements (optional)
         adcp_version: AdCP schema version for this request (default: 1.0.0)
         min_exposures: Minimum impressions needed for measurement validity (AdCP PR #79, optional)
+        brand_manifest: Brand information manifest providing brand context (optional)
         filters: Structured filters for product discovery (optional)
         strategy_id: Optional strategy ID for linking operations (optional)
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
@@ -1285,10 +1280,10 @@ async def get_products(
     # Build request object for shared implementation
     req = GetProductsRequest(
         promoted_offering=promoted_offering,
-        brand_manifest=brand_manifest,
         brief=brief,
         adcp_version=adcp_version,
         min_exposures=min_exposures,
+        brand_manifest=brand_manifest,
         filters=filters,
         strategy_id=strategy_id,
         webhook_url=webhook_url,
@@ -5624,6 +5619,17 @@ def get_product_catalog() -> list[Product]:
                 "expires_at": product.expires_at,
                 # Note: brief_relevance is populated dynamically when brief is provided
                 "implementation_config": safe_json_parse(product.implementation_config),
+                # Required per AdCP spec: either properties OR property_tags
+                "properties": (
+                    safe_json_parse(product.properties)
+                    if hasattr(product, "properties") and product.properties
+                    else None
+                ),
+                "property_tags": (
+                    safe_json_parse(product.property_tags)
+                    if hasattr(product, "property_tags") and product.property_tags
+                    else ["all_inventory"]  # Default required per AdCP spec
+                ),
             }
             loaded_products.append(Product(**product_data))
 

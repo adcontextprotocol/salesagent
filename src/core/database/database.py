@@ -176,6 +176,7 @@ def init_db(exit_on_error=False):
                             "geo_country_any_of": ["US"],
                         },
                     },
+                    "property_tags": ["all_inventory"],  # Required per AdCP spec
                 },
                 {
                     "product_id": "prod_2",
@@ -202,6 +203,7 @@ def init_db(exit_on_error=False):
                         "key_values": {"tier": "standard"},
                         "targeting": {"geo_country_any_of": ["US", "CA"]},
                     },
+                    "property_tags": ["all_inventory"],  # Required per AdCP spec
                 },
             ]
 
@@ -218,6 +220,7 @@ def init_db(exit_on_error=False):
                     cpm=p.get("cpm"),
                     price_guidance=p.get("price_guidance"),  # Direct dict assignment
                     implementation_config=p.get("implementation_config"),
+                    property_tags=p.get("property_tags"),  # Required per AdCP spec
                 )
                 db_session.add(new_product)
 

@@ -126,6 +126,8 @@
                                 <!-- Tags Section -->
                                 <div class="mb-4">
                                     <label class="form-label">Tags</label>
+                                    <!-- Hidden input to ensure all_inventory is always submitted -->
+                                    <input type="hidden" name="tags" value="all_inventory">
                                     <div class="border rounded p-3 bg-light">
                                         {% if existing_tags %}
                                             {% for tag in existing_tags %}
@@ -133,10 +135,12 @@
                                                 <input class="form-check-input" type="checkbox"
                                                        name="tags" value="{{ tag.tag_id }}"
                                                        id="tag_{{ tag.tag_id }}"
-                                                       {% if property and property.tags and tag.tag_id in property.tags %}checked{% endif %}>
-                                                <label class="form-check-label" for="tag_{{ tag.tag_id }}">
+                                                       {% if property and property.tags and tag.tag_id in property.tags %}checked{% endif %}
+                                                       {% if tag.tag_id == 'all_inventory' %}checked disabled{% endif %}>
+                                                <label class="form-check-label" for="tag_{{ tag.tag_id }}"{% if tag.tag_id == 'all_inventory' %} style="opacity: 0.7;"{% endif %}>
                                                     <strong>{{ tag.name }}</strong>
                                                     <small class="text-muted">- {{ tag.description }}</small>
+                                                    {% if tag.tag_id == 'all_inventory' %}<span class="badge bg-secondary ms-2">Required</span>{% endif %}
                                                 </label>
                                             </div>
                                             {% endfor %}
@@ -504,14 +508,41 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.target.classList.contains('remove-identifier') || e.target.parentElement.classList.contains('remove-identifier')) {
             const row = e.target.closest('.identifier-row');
             row.remove();
+            renumberIdentifiers();
             updateRemoveButtons();
         }
     });
+
+    function renumberIdentifiers() {
+        const rows = document.querySelectorAll('.identifier-row');
+        rows.forEach((row, index) => {
+            // Update data-index attribute
+            row.setAttribute('data-index', index);
+
+            // Renumber the name attributes for type and value inputs
+            const typeInput = row.querySelector('input[name^="identifier_type_"], select[name^="identifier_type_"]');
+            const valueInput = row.querySelector('input[name^="identifier_value_"]');
+
+            if (typeInput) {
+                const oldName = typeInput.getAttribute('name');
+                typeInput.setAttribute('name', `identifier_type_${index}`);
+            }
+            if (valueInput) {
+                const oldName = valueInput.getAttribute('name');
+                valueInput.setAttribute('name', `identifier_value_${index}`);
+            }
+        });
+
+        // Update the global counter to be one more than the last index
+        identifierCount = rows.length;
+    }
 
     function updateRemoveButtons() {
         const rows = document.querySelectorAll('.identifier-row');
         rows.forEach((row, index) => {
             const removeBtn = row.querySelector('.remove-identifier');
+            if (!removeBtn) return; // Skip rows without remove button
+
             if (index === 0 && rows.length === 1) {
                 removeBtn.style.display = 'none';
             } else {
@@ -522,7 +553,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize identifier options and remove button visibility
     updateIdentifierOptions();
+    renumberIdentifiers(); // Renumber on page load to fix any gaps
     updateRemoveButtons();
+
+    // Form validation - ensure at least one tag is selected
+    const form = document.getElementById('property-form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const tagCheckboxes = document.querySelectorAll('input[name="tags"]:checked');
+            if (tagCheckboxes.length === 0) {
+                e.preventDefault();
+                alert('Please select at least one tag for this property. Every property must belong to at least one tag category.');
+                return false;
+            }
+        });
+    }
 });
 </script>
 {% endblock %}

@@ -146,6 +146,98 @@
             <small style="color: #666;">Hold Ctrl/Cmd to select multiple countries. Different pricing may apply per country.</small>
         </div>
 
+        <h3 style="margin-top: 2rem;">Property Authorization (AdCP) *</h3>
+        <div class="alert" style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 1rem; margin-bottom: 1rem;">
+            <strong>Required:</strong> Specify which properties this product covers so buyers can validate against their authorized properties (adagents.json).
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="radio" name="property_mode" value="tags" checked onchange="togglePropertyMode()">
+                Use Property Tags (Recommended)
+            </label>
+            <small style="display: block; color: #666; margin-left: 1.5rem;">Assign tags that group related properties. Buyers use list_authorized_properties to get full details.</small>
+        </div>
+
+        <div class="form-group" style="margin-top: 0.5rem;">
+            <label>
+                <input type="radio" name="property_mode" value="full" onchange="togglePropertyMode()">
+                Specify Full Properties
+            </label>
+            <small style="display: block; color: #666; margin-left: 1.5rem;">Include complete property objects for direct validation.</small>
+        </div>
+
+        <div id="property-tags-section" style="margin-top: 1rem;">
+            <div class="form-group">
+                <label for="property_tags">Property Tags *</label>
+                <input type="text" id="property_tags" name="property_tags" placeholder="e.g., all_inventory, premium_sports, local_radio" value="all_inventory">
+                <small style="color: #666;">Comma-separated tags. Use lowercase with underscores. Example: premium_sports, local_news</small>
+
+                {% set all_tags = [] %}
+
+                {# Get tags from property tag definitions #}
+                {% if property_tags %}
+                    {% for tag in property_tags %}
+                        {% if tag.tag_id not in all_tags %}
+                            {% set _ = all_tags.append(tag.tag_id) %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+
+                {# Also get tags from authorized properties #}
+                {% if authorized_properties and authorized_properties|length > 0 %}
+                    {% for prop in authorized_properties %}
+                        {% if prop.tags %}
+                            {% for tag in prop.tags %}
+                                {% if tag not in all_tags %}
+                                    {% set _ = all_tags.append(tag) %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+
+                {% if all_tags|length > 0 %}
+                <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f5f5f5; border-radius: 4px;">
+                    <strong style="font-size: 0.9em; color: #555;">Available property tags:</strong>
+                    <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                        {% for tag in all_tags|sort %}
+                        <button type="button" class="tag-suggestion" onclick="addTagToInput('{{ tag }}')"
+                                style="padding: 0.25rem 0.5rem; background: #fff; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 0.85em;">
+                            {{ tag }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                    <small style="color: #666; display: block; margin-top: 0.5rem;">Click a tag to add it, or type your own.</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div id="property-full-section" style="margin-top: 1rem; display: none;">
+            <div class="alert" style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 1rem;">
+                <strong>Advanced:</strong> For most cases, using property tags is simpler. Use this only if you need precise property-level control.
+            </div>
+            <div class="form-group">
+                <label>Select Properties</label>
+                {% if authorized_properties and authorized_properties|length > 0 %}
+                <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 0.5rem;">
+                    {% for prop in authorized_properties %}
+                    <label style="display: block; padding: 0.5rem;">
+                        <input type="checkbox" name="property_ids" value="{{ prop.id }}">
+                        {{ prop.name }} ({{ prop.property_type }})
+                        {% if prop.tags %}<span class="badge" style="margin-left: 0.5rem;">{{ prop.tags|join(', ') }}</span>{% endif %}
+                    </label>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert" style="background: #fff; border: 1px solid #ddd; padding: 1rem;">
+                    No authorized properties found. <a href="{{ url_for('authorized_properties.list_authorized_properties', tenant_id=tenant_id) }}">Add authorized properties first</a>.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
         <div style="margin-top: 2rem;">
             <button type="submit" class="btn">Create Product</button>
             <a href="{{ url_for('products.list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
@@ -171,12 +263,101 @@ function updatePricingFields() {
     }
 }
 
+function togglePropertyMode() {
+    const mode = document.querySelector('input[name="property_mode"]:checked').value;
+    const tagsSection = document.getElementById('property-tags-section');
+    const fullSection = document.getElementById('property-full-section');
+
+    if (mode === 'tags') {
+        tagsSection.style.display = 'block';
+        fullSection.style.display = 'none';
+    } else {
+        tagsSection.style.display = 'none';
+        fullSection.style.display = 'block';
+    }
+}
+
+function addTagToInput(tag) {
+    const tagsInput = document.getElementById('property_tags');
+    const currentValue = tagsInput.value.trim();
+
+    // Parse existing tags
+    const existingTags = currentValue ? currentValue.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    // Add new tag if not already present
+    if (!existingTags.includes(tag)) {
+        existingTags.push(tag);
+        tagsInput.value = existingTags.join(', ');
+    }
+
+    // Focus the input
+    tagsInput.focus();
+}
+
+function validatePropertySelection() {
+    const mode = document.querySelector('input[name="property_mode"]:checked').value;
+
+    if (mode === 'tags') {
+        const tagsInput = document.getElementById('property_tags');
+        const tagsValue = tagsInput.value.trim();
+
+        if (!tagsValue) {
+            alert('Please enter at least one property tag');
+            tagsInput.focus();
+            return false;
+        }
+
+        // Validate tag format (AdCP spec: ^[a-z0-9_]+$)
+        const tags = tagsValue.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+        const invalidTags = tags.filter(t => !/^[a-z0-9_]+$/.test(t));
+
+        if (invalidTags.length > 0) {
+            alert('Invalid tags: ' + invalidTags.join(', ') + '\n\nUse only lowercase letters, numbers, and underscores.');
+            tagsInput.focus();
+            return false;
+        }
+
+        // Check for length constraints (2-50 characters per AdCP spec)
+        const shortTags = tags.filter(t => t.length < 2);
+        if (shortTags.length > 0) {
+            alert('Tags too short: ' + shortTags.join(', ') + '\n\nTags must be 2-50 characters.');
+            tagsInput.focus();
+            return false;
+        }
+
+        const longTags = tags.filter(t => t.length > 50);
+        if (longTags.length > 0) {
+            alert('Tags too long: ' + longTags.join(', ') + '\n\nTags must be 2-50 characters.');
+            tagsInput.focus();
+            return false;
+        }
+
+    } else {
+        const checkboxes = document.querySelectorAll('input[name="property_ids"]:checked');
+        if (checkboxes.length === 0) {
+            alert('Please select at least one property');
+            return false;
+        }
+    }
+
+    return true;
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     updatePricingFields();
 
     // Add event listener to delivery type dropdown
     document.getElementById('delivery_type').addEventListener('change', updatePricingFields);
+
+    // Add form validation on submit
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        if (!validatePropertySelection()) {
+            e.preventDefault();
+            return false;
+        }
+    });
 
     // Handle country selection
     const countriesSelect = document.getElementById('countries');

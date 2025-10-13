@@ -3,6 +3,7 @@
 import uuid
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import select
 
 from src.core.database.models import Creative, CreativeReview, Tenant
@@ -12,6 +13,7 @@ from src.core.database.queries import (
 )
 
 
+@pytest.mark.requires_db
 def test_creative_review_model_creation(db_session):
     """Test creating a CreativeReview record."""
     # Create tenant
@@ -67,6 +69,7 @@ def test_creative_review_model_creation(db_session):
     assert retrieved_review.final_decision == "approved"
 
 
+@pytest.mark.requires_db
 def test_creative_review_relationship(db_session):
     """Test Creative.reviews relationship."""
     # Create tenant
@@ -122,6 +125,7 @@ def test_creative_review_relationship(db_session):
     assert sum(1 for r in retrieved_creative.reviews if r.review_type == "human") == 1
 
 
+@pytest.mark.requires_db
 def test_get_creative_reviews_query(db_session):
     """Test get_creative_reviews helper function."""
     # Create tenant
@@ -173,6 +177,7 @@ def test_get_creative_reviews_query(db_session):
     assert all(r.creative_id == creative_id for r in reviews)
 
 
+@pytest.mark.requires_db
 def test_get_ai_review_stats_empty(db_session):
     """Test get_ai_review_stats with no data."""
     stats = get_ai_review_stats(db_session, "nonexistent_tenant", days=30)
@@ -188,6 +193,7 @@ def test_get_ai_review_stats_empty(db_session):
     assert stats["policy_breakdown"] == {}
 
 
+@pytest.mark.requires_db
 def test_human_override_detection(db_session):
     """Test detection of human overrides."""
     # Create tenant

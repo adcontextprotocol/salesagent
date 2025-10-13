@@ -1,11 +1,13 @@
 """Unit tests for tenant serialization utilities."""
 
+import pytest
 from sqlalchemy import inspect
 
 from src.core.database.models import Tenant
 from src.core.utils.tenant_utils import serialize_tenant_to_dict
 
 
+@pytest.mark.requires_db
 def test_serialize_tenant_includes_all_expected_fields(db_session):
     """Ensure serialization includes all expected Tenant fields."""
     # Create test tenant
@@ -65,6 +67,7 @@ def test_serialize_tenant_includes_all_expected_fields(db_session):
         assert field in result, f"Missing field: {field}"
 
 
+@pytest.mark.requires_db
 def test_serialize_tenant_field_values(db_session):
     """Verify serialized field values match Tenant model."""
     tenant = Tenant(
@@ -92,6 +95,7 @@ def test_serialize_tenant_field_values(db_session):
     assert result["creative_review_criteria"] == "Must be brand safe"
 
 
+@pytest.mark.requires_db
 def test_serialize_tenant_json_fields(db_session):
     """Verify JSON fields are properly deserialized."""
     tenant = Tenant(
@@ -125,6 +129,7 @@ def test_serialize_tenant_json_fields(db_session):
     assert result["signals_agent_config"]["endpoint"] == "https://api.example.com"
 
 
+@pytest.mark.requires_db
 def test_serialize_tenant_nullable_fields(db_session):
     """Verify nullable fields are handled correctly."""
     tenant = Tenant(
@@ -146,6 +151,7 @@ def test_serialize_tenant_nullable_fields(db_session):
     assert result["authorized_domains"] == []  # Default empty list
 
 
+@pytest.mark.requires_db
 def test_serialize_tenant_model_column_coverage(db_session):
     """Ensure serialization covers key Tenant model columns."""
     # Get all Tenant model columns

@@ -14,6 +14,7 @@ def test_get_products_response_str_with_message():
         is_fixed_price=True,
         is_custom=False,
         currency="USD",
+        property_tags=["all_inventory"],  # Required per AdCP spec
     )
 
     response = GetProductsResponse(
@@ -40,6 +41,7 @@ def test_get_products_response_str_without_message():
             is_fixed_price=True,
             is_custom=False,
             currency="USD",
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
         for i in range(3)
     ]
@@ -70,6 +72,7 @@ def test_get_products_response_model_dump_still_has_full_data():
         is_fixed_price=True,
         is_custom=False,
         currency="USD",
+        property_tags=["all_inventory"],  # Required per AdCP spec
     )
 
     response = GetProductsResponse(products=[product], message="Found 1 product")

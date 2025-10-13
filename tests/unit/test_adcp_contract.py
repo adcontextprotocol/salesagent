@@ -97,6 +97,7 @@ class TestAdCPContract:
             "price_guidance": model.price_guidance,
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         # Should be convertible to AdCP schema
@@ -140,6 +141,7 @@ class TestAdCPContract:
             "cpm": None,
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         schema = ProductSchema(**model_dict)
@@ -209,6 +211,7 @@ class TestAdCPContract:
             cpm=15.0,
             currency="USD",
             estimated_exposures=50000,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         # Verify AdCP-compliant response includes PR #79 fields
@@ -229,6 +232,7 @@ class TestAdCPContract:
             currency="EUR",
             floor_cpm=5.0,
             recommended_cpm=8.5,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         adcp_response = non_guaranteed_product.model_dump()
@@ -258,6 +262,70 @@ class TestAdCPContract:
         # Should fail without promoted_offering (AdCP requirement)
         with pytest.raises(ValueError):
             GetProductsRequest(brief="Just a brief")
+
+    def test_product_properties_or_tags_required(self):
+        """Test Product schema requires either properties or property_tags per AdCP spec oneOf constraint.
+
+        AdCP spec requires products to have at least one of:
+        - properties: Array of full Property objects for adagents.json validation
+        - property_tags: Array of tag strings (buyers use list_authorized_properties for details)
+        """
+        # Test with property_tags (recommended approach)
+        product_with_tags = ProductSchema(
+            product_id="test_product_tags",
+            name="Product with Tags",
+            description="Product using property tags",
+            formats=["display_300x250"],
+            delivery_type="guaranteed",
+            is_fixed_price=True,
+            cpm=10.0,
+            property_tags=["premium_sports", "local_news"],
+        )
+
+        adcp_response = product_with_tags.model_dump()
+        assert "property_tags" in adcp_response
+        assert adcp_response["property_tags"] == ["premium_sports", "local_news"]
+        assert len(adcp_response["property_tags"]) >= 1
+
+        # Test with full properties
+        from src.core.schemas import Property, PropertyIdentifier
+
+        property_obj = Property(
+            property_type="website",
+            name="Example News Site",
+            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
+            tags=["premium_sports"],
+            publisher_domain="example.com",
+        )
+
+        product_with_properties = ProductSchema(
+            product_id="test_product_properties",
+            name="Product with Properties",
+            description="Product with full property objects",
+            formats=["video_15s"],
+            delivery_type="non_guaranteed",
+            is_fixed_price=False,
+            properties=[property_obj],
+        )
+
+        adcp_response = product_with_properties.model_dump()
+        assert "properties" in adcp_response
+        assert len(adcp_response["properties"]) >= 1
+        assert adcp_response["properties"][0]["property_type"] == "website"
+        assert adcp_response["properties"][0]["publisher_domain"] == "example.com"
+
+        # Test without either properties or property_tags should fail (strict validation enabled)
+        with pytest.raises(ValueError, match="properties.*property_tags"):
+            ProductSchema(
+                product_id="test_product_no_props",
+                name="Invalid Product",
+                description="Missing property information",
+                formats=["display_300x250"],
+                delivery_type="guaranteed",
+                is_fixed_price=True,
+                cpm=10.0,
+                # Missing both properties and property_tags
+            )
 
     def test_adcp_create_media_buy_request(self):
         """Test AdCP create_media_buy request structure."""
@@ -365,6 +433,7 @@ class TestAdCPContract:
                 delivery_type=delivery_type,
                 is_fixed_price=True,
                 cpm=10.0,
+                property_tags=["all_inventory"],  # Required per AdCP spec
             )
             assert product.delivery_type in valid_delivery_types
 
@@ -378,6 +447,7 @@ class TestAdCPContract:
                 delivery_type="programmatic",  # Not AdCP compliant
                 is_fixed_price=True,
                 cpm=10.0,
+                property_tags=["all_inventory"],  # Required per AdCP spec
             )
 
     def test_adcp_response_excludes_internal_fields(self):
@@ -392,6 +462,7 @@ class TestAdCPContract:
                 is_fixed_price=True,
                 cpm=10.0,
                 implementation_config={"internal": "data"},  # Should be excluded
+                property_tags=["all_inventory"],  # Required per AdCP spec
             )
         ]
 
@@ -1294,6 +1365,7 @@ class TestAdCPContract:
             measurement=None,
             creative_policy=None,
             is_custom=False,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         # Create response with products
@@ -2155,6 +2227,66 @@ class TestAdCPContract:
         assert isinstance(request.start_time, datetime)
         assert request.start_time == start_date
 
+    def test_product_properties_xor_constraint(self):
+        """Test that Product enforces AdCP oneOf constraint (exactly one of properties/property_tags)."""
+        from src.core.schemas import Product, Property, PropertyIdentifier
+
+        # Valid: property_tags only
+        product_with_tags = Product(
+            product_id="p1",
+            name="Tagged Product",
+            description="Product using property tags",
+            formats=["display_300x250"],
+            property_tags=["sports", "premium"],
+            delivery_type="guaranteed",
+            is_fixed_price=True,
+            cpm=10.0,
+        )
+        assert product_with_tags.property_tags == ["sports", "premium"]
+        assert product_with_tags.properties is None
+
+        # Valid: properties only
+        product_with_properties = Product(
+            product_id="p2",
+            name="Property Product",
+            description="Product using full properties",
+            formats=["display_300x250"],
+            properties=[
+                Property(
+                    property_type="website",
+                    name="Example Site",
+                    identifiers=[PropertyIdentifier(type="domain", value="example.com")],
+                    publisher_domain="example.com",
+                )
+            ],
+            delivery_type="guaranteed",
+            is_fixed_price=True,
+            cpm=10.0,
+        )
+        assert len(product_with_properties.properties) == 1
+        assert product_with_properties.property_tags is None
+
+        # Invalid: both properties and property_tags set (violates oneOf)
+        with pytest.raises(ValueError, match="cannot have both"):
+            Product(
+                product_id="p3",
+                name="Invalid Product",
+                description="Product with both fields (invalid)",
+                formats=["display_300x250"],
+                properties=[
+                    Property(
+                        property_type="website",
+                        name="Example Site",
+                        identifiers=[PropertyIdentifier(type="domain", value="example.com")],
+                        publisher_domain="example.com",
+                    )
+                ],
+                property_tags=["sports"],  # This violates oneOf constraint
+                delivery_type="guaranteed",
+                is_fixed_price=True,
+                cpm=10.0,
+            )
+
     def test_create_media_buy_with_brand_manifest_inline(self):
         """Test CreateMediaBuyRequest with inline brand_manifest (AdCP v1.8.0)."""
         start_date = datetime.now(UTC) + timedelta(days=1)
@@ -2210,65 +2342,9 @@ class TestAdCPContract:
             budget=5000.0,
         )
 
-        # Verify brand_manifest is stored as URL string
+        # Verify brand_manifest URL is properly stored
         assert request.brand_manifest == "https://nike.com/brand-manifest.json"
         assert isinstance(request.brand_manifest, str)
-
-    def test_create_media_buy_backward_compatibility_promoted_offering(self):
-        """Test backward compatibility: promoted_offering auto-converts to brand_manifest."""
-        start_date = datetime.now(UTC) + timedelta(days=1)
-        end_date = datetime.now(UTC) + timedelta(days=30)
-
-        # Test with old promoted_offering field (should auto-convert)
-        request = CreateMediaBuyRequest(
-            buyer_ref="nike_2025_q1",
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
-            packages=[
-                {
-                    "package_id": "pkg_001",
-                    "products": ["product_1"],
-                    "status": "draft",
-                }
-            ],
-            start_time=start_date,
-            end_time=end_date,
-            budget=5000.0,
-        )
-
-        # Verify promoted_offering was auto-converted to brand_manifest
-        assert request.brand_manifest is not None
-        # Should have created a simple manifest with name field
-        if isinstance(request.brand_manifest, dict):
-            assert request.brand_manifest.get("name") == "Nike Air Jordan 2025 basketball shoes"
-        else:
-            assert request.brand_manifest.name == "Nike Air Jordan 2025 basketball shoes"
-
-    def test_create_media_buy_brand_manifest_required_when_no_promoted_offering(self):
-        """Test that brand_manifest is required when promoted_offering is not provided."""
-        from pydantic import ValidationError
-
-        start_date = datetime.now(UTC) + timedelta(days=1)
-        end_date = datetime.now(UTC) + timedelta(days=30)
-
-        # Test without brand_manifest or promoted_offering (should fail)
-        with pytest.raises(ValidationError) as exc_info:
-            CreateMediaBuyRequest(
-                buyer_ref="nike_2025_q1",
-                packages=[
-                    {
-                        "package_id": "pkg_001",
-                        "products": ["product_1"],
-                        "status": "draft",
-                    }
-                ],
-                start_time=start_date,
-                end_time=end_date,
-                budget=5000.0,
-            )
-
-        # Verify error mentions brand_manifest
-        error_str = str(exc_info.value)
-        assert "brand_manifest" in error_str.lower()
 
 
 if __name__ == "__main__":

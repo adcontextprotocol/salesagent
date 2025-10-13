@@ -306,6 +306,7 @@ def init_db(exit_on_error=False):
                         cpm=p.get("cpm"),
                         price_guidance=p.get("price_guidance"),
                         implementation_config=p.get("implementation_config"),
+                        property_tags=["all_inventory"],  # Required per AdCP spec
                     )
                     session.add(product)
 

@@ -1110,6 +1110,17 @@ class Product(BaseModel):
         default=None,
         description="Ad server-specific configuration for implementing this product (placements, line item settings, etc.)",
     )
+    # AdCP property authorization fields (at least one required per spec)
+    properties: list["Property"] | None = Field(
+        None,
+        description="Full property objects covered by this product for adagents.json validation",
+        min_length=1,
+    )
+    property_tags: list[str] | None = Field(
+        None,
+        description="Tags identifying groups of properties (use list_authorized_properties for details)",
+        min_length=1,
+    )
     # AdCP PR #79 fields - populated dynamically from historical reporting data
     # These are NOT stored in database, calculated on-demand from product_performance_metrics
     estimated_exposures: int | None = Field(None, description="Estimated impressions (calculated dynamically)", gt=0)
@@ -1129,6 +1140,31 @@ class Product(BaseModel):
             raise ValueError(
                 "Product must have either pricing_options (recommended) or legacy pricing fields (is_fixed_price). "
                 "See AdCP PR #88 for new pricing options format."
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_properties_or_tags(self) -> "Product":
+        """Validate that at least one of properties or property_tags is provided per AdCP spec.
+
+        Per AdCP spec, products must have either:
+        - properties: Full Property objects for adagents.json validation
+        - property_tags: Tag strings (buyers use list_authorized_properties for details)
+        """
+        has_properties = self.properties and len(self.properties) > 0
+        has_tags = self.property_tags and len(self.property_tags) > 0
+
+        if not has_properties and not has_tags:
+            raise ValueError(
+                "Product must have either 'properties' or 'property_tags' per AdCP spec. "
+                "Use property_tags=['all_inventory'] as a default if unsure."
+            )
+
+        if has_properties and has_tags:
+            raise ValueError(
+                "Product cannot have both 'properties' and 'property_tags' (AdCP oneOf constraint). "
+                "Use properties for full validation OR property_tags for tag-based authorization, not both."
             )
 
         return self
@@ -1365,6 +1401,10 @@ class GetProductsRequest(BaseModel):
         None,
         description="Minimum number of impressions needed for measurement validity (AdCP PR #79)",
         gt=0,
+    )
+    brand_manifest: dict[str, Any] | None = Field(
+        None,
+        description="Brand information manifest providing brand context, assets, and product catalog",
     )
     webhook_url: str | None = Field(
         None,

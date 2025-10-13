@@ -112,6 +112,8 @@ class TestAdcpServerV2_3(unittest.TestCase):
                     min_spend REAL,
                     measurement TEXT,
                     creative_policy TEXT,
+                    properties TEXT,
+                    property_tags TEXT DEFAULT '["all_inventory"]',
                     PRIMARY KEY (product_id, tenant_id)
                 )
             """
