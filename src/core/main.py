@@ -1265,7 +1265,6 @@ async def get_products(
     brief: str = "",
     adcp_version: str = "1.0.0",
     min_exposures: int | None = None,
-    brand_manifest: dict[str, Any] | None = None,
     filters: dict | None = None,
     strategy_id: str | None = None,
     webhook_url: str | None = None,
