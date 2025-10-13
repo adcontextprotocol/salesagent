@@ -108,7 +108,19 @@ def docker_services_e2e(request):
         env["ADCP_TESTING"] = "true"  # Default to testing mode in E2E tests
 
     print("Building and starting Docker services with dynamic ports...")
-    subprocess.run(["docker-compose", "up", "-d", "--build"], check=True, env=env)
+    print("This may take 2-3 minutes for initial build...")
+
+    # Build first with output visible, then start detached
+    print("Step 1/2: Building Docker images...")
+    build_result = subprocess.run(
+        ["docker-compose", "build", "--progress=plain"], env=env, capture_output=False  # Show build output
+    )
+    if build_result.returncode != 0:
+        print(f"❌ Docker build failed with exit code {build_result.returncode}")
+        raise subprocess.CalledProcessError(build_result.returncode, "docker-compose build")
+
+    print("Step 2/2: Starting services...")
+    subprocess.run(["docker-compose", "up", "-d"], check=True, env=env)
 
     # Wait for services to be healthy
     max_wait = 120  # Increased from 60 to 120 seconds for CI
@@ -123,6 +135,19 @@ def docker_services_e2e(request):
 
     while time.time() - start_time < max_wait:
         elapsed = int(time.time() - start_time)
+
+        # Show progress every 5 seconds
+        if elapsed > 0 and elapsed % 5 == 0 and not (mcp_ready and a2a_ready):
+            print(f"  ⏱️  Still waiting... ({elapsed}s / {max_wait}s)")
+            # Show container status for debugging
+            try:
+                ps_result = subprocess.run(
+                    ["docker-compose", "ps", "--format", "table"], capture_output=True, text=True, timeout=2
+                )
+                if ps_result.returncode == 0 and ps_result.stdout:
+                    print(f"  Container status:\n{ps_result.stdout}")
+            except:
+                pass
 
         # Check MCP server health
         if not mcp_ready:
@@ -154,15 +179,28 @@ def docker_services_e2e(request):
     else:
         # Timeout - try to get container logs for debugging
         print("\n❌ Health check timeout. Attempting to get container logs...")
+
+        # Get logs from all services
+        for service in ["adcp-server", "postgres", "admin-ui"]:
+            try:
+                print(f"\n📋 {service} logs (last 100 lines):")
+                result = subprocess.run(
+                    ["docker-compose", "logs", "--tail=100", service], capture_output=True, text=True, timeout=5
+                )
+                if result.stdout:
+                    print(result.stdout)
+                if result.stderr:
+                    print(f"STDERR: {result.stderr}")
+            except Exception as e:
+                print(f"Could not get {service} logs: {e}")
+
+        # Show container status
         try:
-            result = subprocess.run(
-                ["docker-compose", "logs", "--tail=50", "adcp-server"], capture_output=True, text=True, timeout=5
-            )
-            if result.stdout:
-                print("MCP server logs:")
-                print(result.stdout)
+            print("\n📊 Container status:")
+            ps_result = subprocess.run(["docker-compose", "ps"], capture_output=True, text=True, timeout=2)
+            print(ps_result.stdout)
         except Exception as e:
-            print(f"Could not get logs: {e}")
+            print(f"Could not get container status: {e}")
 
         if not mcp_ready:
             pytest.fail(f"MCP server did not become healthy in time (waited {max_wait}s, port {mcp_port})")

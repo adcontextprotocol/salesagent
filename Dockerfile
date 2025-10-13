@@ -1,14 +1,17 @@
+# syntax=docker/dockerfile:1.4
 # Multi-stage build for smaller image
 FROM python:3.12-slim AS builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
+# Install build dependencies in one layer
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+    libpq-dev
 
-# Install uv
-RUN pip install uv
+# Install uv (cacheable)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir uv
 
 # Set up caching for uv
 ENV UV_CACHE_DIR=/cache/uv
@@ -30,13 +33,15 @@ RUN --mount=type=cache,target=/cache/uv \
 FROM python:3.12-slim
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+    curl
 
-# Install uv
-RUN pip install uv
+# Install uv (cacheable)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir uv
 
 # Create non-root user
 RUN useradd -m -u 1000 adcp
