@@ -129,6 +129,14 @@ def init_db_ci():
                 try:
                     session.commit()  # Commit tenant FIRST
                     print(f"Created tenant (ID: {tenant_id})")
+
+                    # Verify tenant was created with is_active=True
+                    stmt_verify = select(Tenant).filter_by(tenant_id=tenant_id)
+                    created_tenant = session.scalars(stmt_verify).first()
+                    if created_tenant:
+                        print(f"   ✓ Tenant verified: is_active={created_tenant.is_active}")
+                    else:
+                        print("   ⚠️  Warning: Could not verify tenant creation")
                 except Exception as e:
                     # Handle race: another container created tenant already
                     session.rollback()
