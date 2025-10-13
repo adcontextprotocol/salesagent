@@ -913,6 +913,20 @@ class ListCreativeFormatsRequest(BaseModel):
     standard_only: bool | None = Field(None, description="Only return IAB standard formats")
     category: str | None = Field(None, description="Filter by format category (standard, custom)")
     format_ids: list[str] | None = Field(None, description="Filter by specific format IDs")
+    asset_types: list[str] | None = Field(
+        None,
+        description="Filter to formats that include these asset types (e.g., ['image', 'text'], ['javascript'])",
+    )
+    max_width: int | None = Field(
+        None, description="Maximum width in pixels (inclusive). Returns formats with width <= this value"
+    )
+    max_height: int | None = Field(
+        None, description="Maximum height in pixels (inclusive). Returns formats with height <= this value"
+    )
+    min_width: int | None = Field(None, description="Minimum width in pixels (inclusive)")
+    min_height: int | None = Field(None, description="Minimum height in pixels (inclusive)")
+    is_responsive: bool | None = Field(None, description="Filter for responsive formats that adapt to container size")
+    name_search: str | None = Field(None, description="Search for formats by name (case-insensitive partial match)")
 
 
 class ListCreativeFormatsResponse(BaseModel):
