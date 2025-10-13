@@ -1,14 +1,25 @@
+# syntax=docker/dockerfile:1.4
 # Multi-stage build for smaller image
 FROM python:3.12-slim AS builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Disable man pages and docs to speed up apt operations
+RUN echo 'path-exclude /usr/share/doc/*' > /etc/dpkg/dpkg.cfg.d/01_nodoc && \
+    echo 'path-exclude /usr/share/man/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
+    echo 'path-exclude /usr/share/groff/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
+    echo 'path-exclude /usr/share/info/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
+    echo 'path-exclude /usr/share/lintian/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
+    echo 'path-exclude /usr/share/linda/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc
 
-# Install uv
-RUN pip install uv
+# Install build dependencies in one layer
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev
+
+# Install uv (cacheable)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir uv
 
 # Set up caching for uv
 ENV UV_CACHE_DIR=/cache/uv
@@ -29,14 +40,24 @@ RUN --mount=type=cache,target=/cache/uv \
 # Runtime stage
 FROM python:3.12-slim
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libpq5 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Disable man pages and docs to speed up apt operations
+RUN echo 'path-exclude /usr/share/doc/*' > /etc/dpkg/dpkg.cfg.d/01_nodoc && \
+    echo 'path-exclude /usr/share/man/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
+    echo 'path-exclude /usr/share/groff/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
+    echo 'path-exclude /usr/share/info/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
+    echo 'path-exclude /usr/share/lintian/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
+    echo 'path-exclude /usr/share/linda/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc
 
-# Install uv
-RUN pip install uv
+# Install runtime dependencies
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl
+
+# Install uv (cacheable)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir uv
 
 # Create non-root user
 RUN useradd -m -u 1000 adcp
