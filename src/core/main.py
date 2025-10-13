@@ -992,38 +992,26 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         with get_db_session() as session:
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
-            task_details = {
-                "brief": req.brief,
-                "promoted_offering": req.promoted_offering,
-                "principal_id": principal_id,
-                "policy_status": policy_result.status,
-                "restrictions": policy_result.restrictions,
-                "reason": policy_result.reason,
-            }
+            # Log policy violation for audit trail and compliance
+            audit_logger.log_operation(
+                operation="get_products_policy_violation",
+                principal_name=principal_id,
+                principal_id=principal_id,
+                adapter_id="policy_engine",
+                success=False,
+                details={
+                    "brief": req.brief,
+                    "promoted_offering": req.promoted_offering,
+                    "policy_status": policy_result.status,
+                    "restrictions": policy_result.restrictions,
+                    "reason": policy_result.reason,
+                },
+            )
 
-            # TODO: This code uses deprecated Task model - should use WorkflowStep instead
-            # Commenting out broken code that references non-existent Task class
-            # new_task = Task(
-            #     tenant_id=tenant["tenant_id"],
-            #     task_id=task_id,
-            #     media_buy_id=None,  # No media buy associated
-            #     task_type="policy_review",
-            #     status="pending",
-            #     details=task_details,
-            #     created_at=datetime.now(UTC),
-            # )
-            # session.add(new_task)
-            # session.commit()
-
-        logger.info(
-            "Policy review required for restricted brief (task creation disabled - needs migration to WorkflowStep)"
-        )
-
-        # Return empty list with message about pending review
-        return GetProductsResponse(
-            products=[],
-            message="Request pending manual review due to policy restrictions",
-            context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
+        # Raise error for policy violations - explicit failure, not silent return
+        raise ToolError(
+            "POLICY_VIOLATION",
+            f"Request violates content policy: {policy_result.reason}. Restrictions: {', '.join(policy_result.restrictions)}",
         )
 
     # Determine product catalog configuration based on tenant's signals discovery settings

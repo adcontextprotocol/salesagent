@@ -197,7 +197,14 @@ class Product(Base, JSONValidatorMixin):
     tenant = relationship("Tenant", back_populates="products")
     pricing_options = relationship("PricingOption", back_populates="product", cascade="all, delete-orphan")
 
-    __table_args__ = (Index("idx_products_tenant", "tenant_id"),)
+    __table_args__ = (
+        Index("idx_products_tenant", "tenant_id"),
+        # Enforce AdCP spec: products must have EITHER properties OR property_tags (not both, not neither)
+        CheckConstraint(
+            "(properties IS NOT NULL AND property_tags IS NULL) OR (properties IS NULL AND property_tags IS NOT NULL)",
+            name="ck_product_properties_xor",
+        ),
+    )
 
 
 class PricingOption(Base):

@@ -35,17 +35,21 @@ def upgrade() -> None:
 
     # Step 3: Backfill existing products with default property_tags
     # This ensures all products have at least one of properties/property_tags
-    # PostgreSQL-only (per codebase architecture decision)
+    # Uses SQLAlchemy Core for type-safe updates
+    from sqlalchemy import and_, table, column, update
+
+    # Define minimal table for update (no need for full model import)
+    products_table = table(
+        "products",
+        column("property_tags", JSONType),
+        column("properties", JSONType),
+    )
+
     connection = op.get_bind()
     connection.execute(
-        sa.text(
-            """
-            UPDATE products
-            SET property_tags = '["all_inventory"]'::jsonb
-            WHERE property_tags IS NULL
-              AND properties IS NULL
-        """
-        )
+        update(products_table)
+        .where(and_(products_table.c.property_tags.is_(None), products_table.c.properties.is_(None)))
+        .values(property_tags=["all_inventory"])
     )
 
     # Log the migration
