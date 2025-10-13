@@ -184,10 +184,27 @@ class CreativeAgentRegistry:
             result = await client.call_tool("list_creative_formats", params)
 
             # Parse result into Format objects
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.info(
+                f"_fetch_formats_from_agent: Got result type={type(result)}, content type={type(result.content) if hasattr(result, 'content') else 'no content'}"
+            )
+            if hasattr(result, "content") and result.content:
+                logger.info(
+                    f"_fetch_formats_from_agent: Content length={len(result.content) if isinstance(result.content, list) else 'not a list'}"
+                )
+                if isinstance(result.content, list) and result.content:
+                    logger.info(
+                        f"_fetch_formats_from_agent: First content item type={type(result.content[0])}, has text={hasattr(result.content[0], 'text')}"
+                    )
+
             formats = []
             if isinstance(result.content, list) and result.content:
                 # Extract formats from MCP response
                 formats_data = result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
+
+                logger.info(f"_fetch_formats_from_agent: formats_data (first 500 chars): {str(formats_data)[:500]}")
 
                 # Parse JSON if needed
                 import json
@@ -195,12 +212,21 @@ class CreativeAgentRegistry:
                 if isinstance(formats_data, str):
                     formats_data = json.loads(formats_data)
 
+                logger.info(
+                    f"_fetch_formats_from_agent: After JSON parse, type={type(formats_data)}, keys={list(formats_data.keys()) if isinstance(formats_data, dict) else 'not a dict'}"
+                )
+
                 # Convert to Format objects
                 if isinstance(formats_data, dict) and "formats" in formats_data:
+                    logger.info(
+                        f"_fetch_formats_from_agent: Found 'formats' key with {len(formats_data['formats'])} items"
+                    )
                     for fmt_data in formats_data["formats"]:
                         # Ensure agent_url is set
                         fmt_data["agent_url"] = agent.agent_url
                         formats.append(Format(**fmt_data))
+                else:
+                    logger.warning(f"_fetch_formats_from_agent: No 'formats' key in response. Data: {formats_data}")
 
             return formats
 
@@ -322,7 +348,13 @@ class CreativeAgentRegistry:
         agents = self._get_tenant_agents(tenant_id)
         all_formats = []
 
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"list_all_formats: Found {len(agents)} agents for tenant {tenant_id}")
+
         for agent in agents:
+            logger.info(f"list_all_formats: Fetching from {agent.agent_url}")
             try:
                 formats = await self.get_formats_for_agent(
                     agent,
@@ -336,15 +368,14 @@ class CreativeAgentRegistry:
                     name_search=name_search,
                     type_filter=type_filter,
                 )
+                logger.info(f"list_all_formats: Got {len(formats)} formats from {agent.agent_url}")
                 all_formats.extend(formats)
             except Exception as e:
                 # Log error but continue with other agents
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to fetch formats from {agent.agent_url}: {e}")
+                logger.error(f"Failed to fetch formats from {agent.agent_url}: {e}", exc_info=True)
                 continue
 
+        logger.info(f"list_all_formats: Returning {len(all_formats)} total formats")
         return all_formats
 
     async def search_formats(

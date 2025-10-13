@@ -64,6 +64,8 @@ def get_creative_formats(
         type_filter=type_filter,
     )
 
+    logger.info(f"get_creative_formats: Fetched {len(formats)} formats from registry for tenant {tenant_id}")
+
     formats_list = []
     for fmt in formats:
         format_dict = {
@@ -99,6 +101,8 @@ def get_creative_formats(
 
     # Sort by type, then name
     formats_list.sort(key=lambda x: (x["type"], x["name"]))
+
+    logger.info(f"get_creative_formats: Returning {len(formats_list)} formatted formats")
 
     return formats_list
 
