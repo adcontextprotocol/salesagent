@@ -8,9 +8,10 @@ from decimal import Decimal
 import pytest
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import PricingOption, Product, Tenant
+from src.core.database.models import CurrencyLimit, PricingOption, Product, Tenant
 from src.core.main import _create_media_buy_impl, _get_products_impl
 from src.core.schemas import CreateMediaBuyRequest, GetProductsRequest, Package, PricingModel
+from tests.utils.database_helpers import create_tenant_with_timestamps
 
 pytestmark = pytest.mark.requires_db
 
@@ -20,17 +21,22 @@ def setup_tenant_with_pricing_products():
     """Create a tenant with products using various pricing models."""
     with get_db_session() as session:
         # Create tenant
-        tenant = Tenant(
+        tenant = create_tenant_with_timestamps(
             tenant_id="test_pricing_tenant",
             name="Pricing Test Publisher",
+            subdomain="pricing-test",
             ad_server="mock",
-            config={
-                "adapters": {"mock": {"enabled": True}},
-                "currency_limits": [{"currency": "USD", "max_daily_budget": 50000}],
-            },
         )
         session.add(tenant)
         session.flush()
+
+        # Add currency limit
+        currency_limit = CurrencyLimit(
+            tenant_id="test_pricing_tenant",
+            currency_code="USD",
+            max_daily_package_spend=Decimal("50000.00"),
+        )
+        session.add(currency_limit)
 
         # Product 1: CPM fixed rate
         product_cpm_fixed = Product(
@@ -53,9 +59,6 @@ def setup_tenant_with_pricing_products():
             rate=Decimal("12.50"),
             currency="USD",
             is_fixed=True,
-            price_guidance=None,
-            parameters=None,
-            min_spend_per_package=None,
         )
         session.add(pricing_cpm_fixed)
 
@@ -81,8 +84,6 @@ def setup_tenant_with_pricing_products():
             currency="USD",
             is_fixed=False,
             price_guidance={"floor": 8.0, "p25": 10.0, "p50": 12.0, "p75": 15.0, "p90": 18.0},
-            parameters=None,
-            min_spend_per_package=None,
         )
         session.add(pricing_cpm_auction)
 
@@ -107,8 +108,6 @@ def setup_tenant_with_pricing_products():
             rate=Decimal("0.35"),
             currency="USD",
             is_fixed=True,
-            price_guidance=None,
-            parameters=None,
             min_spend_per_package=Decimal("5000.00"),
         )
         session.add(pricing_cpcv)
@@ -135,9 +134,6 @@ def setup_tenant_with_pricing_products():
             rate=Decimal("15.00"),
             currency="USD",
             is_fixed=True,
-            price_guidance=None,
-            parameters=None,
-            min_spend_per_package=None,
         )
         session.add(pricing_multi_cpm)
 
@@ -149,9 +145,6 @@ def setup_tenant_with_pricing_products():
             rate=Decimal("0.40"),
             currency="USD",
             is_fixed=True,
-            price_guidance=None,
-            parameters=None,
-            min_spend_per_package=None,
         )
         session.add(pricing_multi_cpcv)
 
@@ -163,7 +156,6 @@ def setup_tenant_with_pricing_products():
             rate=Decimal("250.00"),
             currency="USD",
             is_fixed=True,
-            price_guidance=None,
             parameters={"demographic": "A18-49", "min_points": 5.0},
             min_spend_per_package=Decimal("10000.00"),
         )

@@ -8,9 +8,10 @@ from decimal import Decimal
 import pytest
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import PricingOption, Principal, Product, Tenant
+from src.core.database.models import CurrencyLimit, PricingOption, Principal, Product, Tenant
 from src.core.main import _create_media_buy_impl
 from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
+from tests.utils.database_helpers import create_tenant_with_timestamps
 
 pytestmark = pytest.mark.requires_db
 
@@ -20,23 +21,22 @@ def setup_gam_tenant_with_non_cpm_product():
     """Create a GAM tenant with a product offering non-CPM pricing."""
     with get_db_session() as session:
         # Create GAM tenant
-        tenant = Tenant(
+        tenant = create_tenant_with_timestamps(
             tenant_id="test_gam_tenant",
             name="GAM Test Publisher",
+            subdomain="gam-test",
             ad_server="google_ad_manager",
-            config={
-                "adapters": {
-                    "google_ad_manager": {
-                        "enabled": True,
-                        "network_code": "123456",
-                        "manual_approval_required": False,
-                    }
-                },
-                "currency_limits": [{"currency": "USD", "max_daily_budget": 50000}],
-            },
         )
         session.add(tenant)
         session.flush()
+
+        # Add currency limit
+        currency_limit = CurrencyLimit(
+            tenant_id="test_gam_tenant",
+            currency_code="USD",
+            max_daily_package_spend=Decimal("50000.00"),
+        )
+        session.add(currency_limit)
 
         # Create principal
         principal = Principal(
