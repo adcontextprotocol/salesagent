@@ -4342,8 +4342,9 @@ def _update_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return UpdateMediaBuyResponse(
-            status="failed",
-            message=f"Update failed: {error_msg}",
+            status="completed",
+            media_buy_id=req.media_buy_id or "",
+            buyer_ref=req.buyer_ref or "",
             errors=[{"code": "principal_not_found", "message": error_msg}],
         )
 
@@ -4367,8 +4368,10 @@ def _update_media_buy_impl(
         )
 
         return UpdateMediaBuyResponse(
-            status="pending_manual",
-            detail=f"Manual approval required. Workflow Step ID: {step.step_id}",
+            status="submitted",
+            media_buy_id=req.media_buy_id or "",
+            buyer_ref=req.buyer_ref or "",
+            task_id=step.step_id,
         )
 
     # Validate currency limits if flight dates or budget changes
@@ -4401,7 +4404,12 @@ def _update_media_buy_impl(
                 if not currency_limit:
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
                     ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                    return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+                    return UpdateMediaBuyResponse(
+                        status="completed",
+                        media_buy_id=req.media_buy_id or "",
+                        buyer_ref=req.buyer_ref or "",
+                        errors=[{"code": "currency_not_supported", "message": error_msg}],
+                    )
 
                 # Calculate new flight duration
                 start = req.start_time if req.start_time else media_buy.start_time
@@ -4436,7 +4444,12 @@ def _update_media_buy_impl(
                                     f"Flight date changes that reduce daily budget are not allowed to bypass limits."
                                 )
                                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                                return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+                                return UpdateMediaBuyResponse(
+                                    status="completed",
+                                    media_buy_id=req.media_buy_id or "",
+                                    buyer_ref=req.buyer_ref or "",
+                                    errors=[{"code": "budget_limit_exceeded", "message": error_msg}],
+                                )
 
     # Handle campaign-level updates
     if req.active is not None:
@@ -4522,7 +4535,12 @@ def _update_media_buy_impl(
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+            return UpdateMediaBuyResponse(
+                status="completed",
+                media_buy_id=req.media_buy_id or "",
+                buyer_ref=req.buyer_ref or "",
+                errors=[{"code": "invalid_budget", "message": error_msg}],
+            )
 
         # Store budget update in media buy (update CreateMediaBuyRequest in place)
         if req.media_buy_id in media_buys:
@@ -4576,9 +4594,10 @@ def _update_media_buy_impl(
     )
 
     return UpdateMediaBuyResponse(
-        status="accepted",
+        status="completed",
+        media_buy_id=req.media_buy_id or "",
+        buyer_ref=req.buyer_ref or "",
         implementation_date=datetime.combine(today, datetime.min.time()),
-        detail="Media buy updated successfully",
     )
 
 
