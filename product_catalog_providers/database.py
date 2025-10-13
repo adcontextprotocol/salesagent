@@ -4,6 +4,8 @@ import json
 import logging
 from typing import Any
 
+from sqlalchemy.orm import joinedload
+
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ProductModel
 from src.core.database.product_pricing import get_product_pricing_options
@@ -38,8 +40,13 @@ class DatabaseProductCatalog(ProductCatalogProvider):
         Future enhancement could add brief-based filtering.
         """
         with get_db_session() as db_session:
+            # Eager load pricing_options relationship to avoid N+1 queries
             products = (
-                db_session.query(ProductModel).filter_by(tenant_id=tenant_id).order_by(ProductModel.product_id).all()
+                db_session.query(ProductModel)
+                .options(joinedload(ProductModel.pricing_options))
+                .filter_by(tenant_id=tenant_id)
+                .order_by(ProductModel.product_id)
+                .all()
             )
 
             loaded_products = []
