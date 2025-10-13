@@ -1970,9 +1970,9 @@ def _sync_creatives_impl(
                     "status": status,
                     "approval_mode": approval_mode,
                 }
-                # Store webhook_url if provided for async notification
-                if webhook_url:
-                    request_data_for_workflow["webhook_url"] = webhook_url
+                # Store push_notification_config if provided for async notification
+                if push_notification_config:
+                    request_data_for_workflow["push_notification_config"] = push_notification_config
 
                 step = ctx_manager.create_workflow_step(
                     context_id=persistent_ctx.context_id,
