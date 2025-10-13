@@ -1746,6 +1746,92 @@ def _sync_creatives_impl(
                                 data["snippet_type"] = creative.get("snippet_type")
                             if creative.get("template_variables"):
                                 data["template_variables"] = creative.get("template_variables")
+
+                            # If no preview data provided in update, try to get it from creative agent
+                            if not data.get("url") and not data.get("snippet") and creative_format:
+                                try:
+                                    # Get format to find creative agent URL
+                                    import asyncio
+
+                                    from src.core.creative_agent_registry import get_creative_agent_registry
+
+                                    registry = get_creative_agent_registry()
+
+                                    # List all formats to find the matching one
+                                    all_formats = asyncio.run(registry.list_all_formats(tenant_id=tenant["tenant_id"]))
+
+                                    # Find matching format
+                                    format_obj = None
+                                    for fmt in all_formats:
+                                        if fmt.format_id == creative_format:
+                                            format_obj = fmt
+                                            break
+
+                                    if format_obj and format_obj.agent_url:
+                                        # Build creative manifest from available data
+                                        creative_manifest = {
+                                            "creative_id": existing_creative.creative_id,
+                                            "name": creative.get("name") or existing_creative.name,
+                                            "format_id": creative_format,
+                                        }
+
+                                        # Add any provided asset data
+                                        if creative.get("assets"):
+                                            creative_manifest["assets"] = creative.get("assets")
+
+                                        # Call creative agent's preview_creative
+                                        logger.info(
+                                            f"[sync_creatives] Calling preview_creative for existing creative "
+                                            f"{existing_creative.creative_id} format {creative_format} "
+                                            f"from agent {format_obj.agent_url}"
+                                        )
+
+                                        preview_result = asyncio.run(
+                                            registry.preview_creative(
+                                                agent_url=format_obj.agent_url,
+                                                format_id=creative_format,
+                                                creative_manifest=creative_manifest,
+                                            )
+                                        )
+
+                                        # Extract preview data and store in data field
+                                        if preview_result and preview_result.get("previews"):
+                                            # Get first preview variant
+                                            first_preview = preview_result["previews"][0]
+
+                                            # Store preview URL as the creative URL
+                                            if first_preview.get("preview_url"):
+                                                data["url"] = first_preview["preview_url"]
+                                                changes.append("url")
+                                                logger.info(
+                                                    f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
+                                                )
+
+                                            # Extract dimensions if available
+                                            if first_preview.get("width"):
+                                                data["width"] = first_preview["width"]
+                                                changes.append("width")
+                                            if first_preview.get("height"):
+                                                data["height"] = first_preview["height"]
+                                                changes.append("height")
+                                            if first_preview.get("duration"):
+                                                data["duration"] = first_preview["duration"]
+                                                changes.append("duration")
+
+                                        logger.info(
+                                            f"[sync_creatives] Preview data populated for update: "
+                                            f"url={bool(data.get('url'))}, "
+                                            f"width={data.get('width')}, "
+                                            f"height={data.get('height')}"
+                                        )
+
+                                except Exception as preview_error:
+                                    # Log error but continue - preview is optional
+                                    logger.warning(
+                                        f"[sync_creatives] Failed to get preview from creative agent for update: {preview_error}",
+                                        exc_info=True,
+                                    )
+
                             # In full upsert, consider all fields as changed
                             changes.extend(["url", "click_url", "width", "height", "duration"])
 
@@ -1810,8 +1896,88 @@ def _sync_creatives_impl(
                         if creative.get("template_variables"):
                             data["template_variables"] = creative.get("template_variables")
 
-                        # Determine creative status based on approval mode
+                        # If no preview data provided, try to get it from creative agent
                         creative_format = creative.get("format_id") or creative.get("format")
+                        if not data.get("url") and not data.get("snippet") and creative_format:
+                            try:
+                                # Get format to find creative agent URL
+                                import asyncio
+
+                                from src.core.creative_agent_registry import get_creative_agent_registry
+
+                                registry = get_creative_agent_registry()
+
+                                # List all formats to find the matching one
+                                all_formats = asyncio.run(registry.list_all_formats(tenant_id=tenant["tenant_id"]))
+
+                                # Find matching format
+                                format_obj = None
+                                for fmt in all_formats:
+                                    if fmt.format_id == creative_format:
+                                        format_obj = fmt
+                                        break
+
+                                if format_obj and format_obj.agent_url:
+                                    # Build creative manifest from available data
+                                    creative_manifest = {
+                                        "creative_id": creative.get("creative_id") or str(uuid.uuid4()),
+                                        "name": creative.get("name"),
+                                        "format_id": creative_format,
+                                    }
+
+                                    # Add any provided asset data
+                                    if creative.get("assets"):
+                                        creative_manifest["assets"] = creative.get("assets")
+
+                                    # Call creative agent's preview_creative
+                                    logger.info(
+                                        f"[sync_creatives] Calling preview_creative for {creative_format} "
+                                        f"from agent {format_obj.agent_url}"
+                                    )
+
+                                    preview_result = asyncio.run(
+                                        registry.preview_creative(
+                                            agent_url=format_obj.agent_url,
+                                            format_id=creative_format,
+                                            creative_manifest=creative_manifest,
+                                        )
+                                    )
+
+                                    # Extract preview data and store in data field
+                                    if preview_result and preview_result.get("previews"):
+                                        # Get first preview variant
+                                        first_preview = preview_result["previews"][0]
+
+                                        # Store preview URL as the creative URL
+                                        if first_preview.get("preview_url"):
+                                            data["url"] = first_preview["preview_url"]
+                                            logger.info(
+                                                f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
+                                            )
+
+                                        # Extract dimensions if available
+                                        if first_preview.get("width"):
+                                            data["width"] = first_preview["width"]
+                                        if first_preview.get("height"):
+                                            data["height"] = first_preview["height"]
+                                        if first_preview.get("duration"):
+                                            data["duration"] = first_preview["duration"]
+
+                                    logger.info(
+                                        f"[sync_creatives] Preview data populated: "
+                                        f"url={bool(data.get('url'))}, "
+                                        f"width={data.get('width')}, "
+                                        f"height={data.get('height')}"
+                                    )
+
+                            except Exception as preview_error:
+                                # Log error but continue - preview is optional
+                                logger.warning(
+                                    f"[sync_creatives] Failed to get preview from creative agent: {preview_error}",
+                                    exc_info=True,
+                                )
+
+                        # Determine creative status based on approval mode
 
                         # Create initial creative with pending status for AI review
                         creative_status = "pending"
