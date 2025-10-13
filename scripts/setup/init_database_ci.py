@@ -37,8 +37,8 @@ def init_db_ci():
                 print(f"CI test tenant already exists (ID: {existing_tenant.tenant_id})")
                 tenant_id = existing_tenant.tenant_id
 
-                # Check if principal exists for this tenant
-                stmt_principal = select(Principal).filter_by(tenant_id=tenant_id, access_token="ci-test-token")
+                # Check if principal exists GLOBALLY by access_token (it's unique across all tenants)
+                stmt_principal = select(Principal).filter_by(access_token="ci-test-token")
                 existing_principal = session.scalars(stmt_principal).first()
                 if not existing_principal:
                     # Create principal if it doesn't exist
@@ -52,6 +52,15 @@ def init_db_ci():
                     )
                     session.add(principal)
                     print(f"Created principal (ID: {principal_id}) for existing tenant")
+                elif existing_principal.tenant_id != tenant_id:
+                    # Principal exists but for different tenant - this is a problem
+                    print(
+                        f"⚠️  Warning: Principal with token 'ci-test-token' exists for different tenant ({existing_principal.tenant_id})"
+                    )
+                    print(f"   Using existing principal's tenant instead of {tenant_id}")
+                    tenant_id = existing_principal.tenant_id
+                else:
+                    print(f"Principal already exists (ID: {existing_principal.principal_id})")
 
                 # Check if currency limit exists for this tenant
                 stmt_currency = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
