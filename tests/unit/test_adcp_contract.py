@@ -2227,6 +2227,66 @@ class TestAdCPContract:
         assert isinstance(request.start_time, datetime)
         assert request.start_time == start_date
 
+    def test_product_properties_xor_constraint(self):
+        """Test that Product enforces AdCP oneOf constraint (exactly one of properties/property_tags)."""
+        from src.core.schemas import Product, Property, PropertyIdentifier
+
+        # Valid: property_tags only
+        product_with_tags = Product(
+            product_id="p1",
+            name="Tagged Product",
+            description="Product using property tags",
+            formats=["display_300x250"],
+            property_tags=["sports", "premium"],
+            delivery_type="guaranteed",
+            is_fixed_price=True,
+            cpm=10.0,
+        )
+        assert product_with_tags.property_tags == ["sports", "premium"]
+        assert product_with_tags.properties is None
+
+        # Valid: properties only
+        product_with_properties = Product(
+            product_id="p2",
+            name="Property Product",
+            description="Product using full properties",
+            formats=["display_300x250"],
+            properties=[
+                Property(
+                    property_type="website",
+                    name="Example Site",
+                    identifiers=[PropertyIdentifier(type="domain", value="example.com")],
+                    publisher_domain="example.com",
+                )
+            ],
+            delivery_type="guaranteed",
+            is_fixed_price=True,
+            cpm=10.0,
+        )
+        assert len(product_with_properties.properties) == 1
+        assert product_with_properties.property_tags is None
+
+        # Invalid: both properties and property_tags set (violates oneOf)
+        with pytest.raises(ValueError, match="cannot have both"):
+            Product(
+                product_id="p3",
+                name="Invalid Product",
+                description="Product with both fields (invalid)",
+                formats=["display_300x250"],
+                properties=[
+                    Property(
+                        property_type="website",
+                        name="Example Site",
+                        identifiers=[PropertyIdentifier(type="domain", value="example.com")],
+                        publisher_domain="example.com",
+                    )
+                ],
+                property_tags=["sports"],  # This violates oneOf constraint
+                delivery_type="guaranteed",
+                is_fixed_price=True,
+                cpm=10.0,
+            )
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

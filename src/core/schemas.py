@@ -1015,11 +1015,21 @@ class Product(BaseModel):
         - properties: Full Property objects for adagents.json validation
         - property_tags: Tag strings (buyers use list_authorized_properties for details)
         """
-        if not self.properties and not self.property_tags:
+        has_properties = self.properties and len(self.properties) > 0
+        has_tags = self.property_tags and len(self.property_tags) > 0
+
+        if not has_properties and not has_tags:
             raise ValueError(
                 "Product must have either 'properties' or 'property_tags' per AdCP spec. "
                 "Use property_tags=['all_inventory'] as a default if unsure."
             )
+
+        if has_properties and has_tags:
+            raise ValueError(
+                "Product cannot have both 'properties' and 'property_tags' (AdCP oneOf constraint). "
+                "Use properties for full validation OR property_tags for tag-based authorization, not both."
+            )
+
         return self
 
     @property
