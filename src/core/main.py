@@ -4339,12 +4339,16 @@ def _update_media_buy_impl(
         if req.media_buy_id in media_buys:
             buy_data = media_buys[req.media_buy_id]
             if isinstance(buy_data, tuple) and len(buy_data) >= 2:
+                # buy_data[0] is CreateMediaBuyRequest object, not dict
+                existing_req = buy_data[0]
+                existing_buyer_ref = existing_req.buyer_ref if hasattr(existing_req, "buyer_ref") else None
+
                 # Update with new budget info
                 media_buys[req.media_buy_id] = (
                     {
                         "budget": total_budget,
                         "currency": currency,
-                        "buyer_ref": req.buyer_ref or buy_data[0].get("buyer_ref"),
+                        "buyer_ref": req.buyer_ref or existing_buyer_ref,
                     },
                     buy_data[1],  # Keep principal_id
                 )
