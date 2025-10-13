@@ -246,6 +246,23 @@ def docker_services_e2e(request):
         print(f"⚠️  Warning: Failed to reset DB pool (non-fatal): {e}")
         print("  This may cause E2E tests to fail if database was empty at server startup")
 
+    # Check MCP server's view of database via debug endpoint
+    print("🔍 Checking MCP server's database view...")
+    try:
+        db_state_response = requests.get(f"http://localhost:{mcp_port}/debug/db-state", timeout=5)
+        if db_state_response.status_code == 200:
+            db_state = db_state_response.json()
+            print(f"   MCP server sees: {db_state['total_products']} total products")
+            if db_state.get('principal'):
+                print(f"   Principal: {db_state['principal']}")
+            if db_state.get('tenant'):
+                print(f"   Tenant: {db_state['tenant']}")
+            print(f"   Tenant products: {db_state['tenant_products_count']} ({db_state.get('tenant_product_ids', [])})")
+        else:
+            print(f"   ⚠️  DB state endpoint returned {db_state_response.status_code}")
+    except Exception as e:
+        print(f"   ⚠️  Failed to check MCP server DB state: {e}")
+
     # VERIFICATION: Query database directly to confirm data is visible post-reset
     print("🔍 Verifying data visibility after connection pool reset...")
     try:

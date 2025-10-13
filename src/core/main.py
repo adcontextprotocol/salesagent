@@ -5706,6 +5706,62 @@ async def reset_db_pool(request: Request):
         return JSONResponse({"error": f"Failed to reset: {str(e)}"}, status_code=500)
 
 
+@mcp.custom_route("/debug/db-state", methods=["GET"])
+async def debug_db_state(request: Request):
+    """Debug endpoint to show database state (testing only)."""
+    if os.getenv("ADCP_TESTING") != "true":
+        return JSONResponse({"error": "Only available in testing mode"}, status_code=403)
+
+    try:
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Product as ProductModel, Principal, Tenant
+        from sqlalchemy import select
+
+        with get_db_session() as session:
+            # Count all products
+            stmt = select(ProductModel)
+            all_products = session.scalars(stmt).all()
+
+            # Get ci-test-token principal
+            stmt = select(Principal).filter_by(access_token="ci-test-token")
+            principal = session.scalars(stmt).first()
+
+            principal_info = None
+            tenant_info = None
+            tenant_products = []
+
+            if principal:
+                principal_info = {
+                    "principal_id": principal.principal_id,
+                    "tenant_id": principal.tenant_id,
+                }
+
+                # Get tenant
+                stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id)
+                tenant = session.scalars(stmt).first()
+                if tenant:
+                    tenant_info = {
+                        "tenant_id": tenant.tenant_id,
+                        "name": tenant.name,
+                        "is_active": tenant.is_active,
+                    }
+
+                # Get products for that tenant
+                stmt = select(ProductModel).filter_by(tenant_id=principal.tenant_id)
+                tenant_products = session.scalars(stmt).all()
+
+            return JSONResponse({
+                "total_products": len(all_products),
+                "principal": principal_info,
+                "tenant": tenant_info,
+                "tenant_products_count": len(tenant_products),
+                "tenant_product_ids": [p.product_id for p in tenant_products],
+            })
+    except Exception as e:
+        logger.error(f"Debug endpoint error: {e}", exc_info=True)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @mcp.custom_route("/debug/tenant", methods=["GET"])
 async def debug_tenant(request: Request):
     """Debug endpoint to check tenant detection from headers."""
