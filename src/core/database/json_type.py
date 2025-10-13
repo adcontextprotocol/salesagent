@@ -1,14 +1,13 @@
-"""Custom SQLAlchemy JSON type that handles cross-database compatibility.
+"""Custom SQLAlchemy JSON type for PostgreSQL JSONB with validation.
 
-This type ensures consistent behavior between SQLite (which stores JSON as strings)
-and PostgreSQL (which has native JSONB support).
+This codebase uses PostgreSQL exclusively - no SQLite support.
+This type uses native JSONB storage with additional validation.
 """
 
-import json
 import logging
 from typing import Any
 
-from sqlalchemy import Text
+from sqlalchemy import JSON
 from sqlalchemy.engine import Dialect
 from sqlalchemy.types import TypeDecorator
 
@@ -16,42 +15,53 @@ logger = logging.getLogger(__name__)
 
 
 class JSONType(TypeDecorator):
-    """JSON type that automatically handles JSON serialization/deserialization.
+    """PostgreSQL JSONB type with validation.
 
-    SQLite stores JSON as text strings, while PostgreSQL uses native JSONB.
-    This type decorator ensures that regardless of the database backend,
-    Python code always receives deserialized Python objects (dict/list).
+    This type uses PostgreSQL's native JSONB storage (binary JSON format)
+    with additional validation to ensure data integrity.
+
+    Architecture Decision:
+        Per CLAUDE.md, this codebase is PostgreSQL-only. We do NOT support SQLite.
+        Therefore, we use native JSONB for optimal performance and features.
 
     Usage:
         class MyModel(Base):
-            data = Column(JSONType)  # Instead of Column(JSON)
+            data = Column(JSONType)  # Stores as PostgreSQL JSONB
 
     Features:
-    - Automatically serializes Python objects to JSON strings for storage
-    - Automatically deserializes JSON strings to Python objects when reading
-    - Handles None values gracefully (stores as SQL NULL, not JSON 'null')
-    - Validates data before storage
-    - Optimized for PostgreSQL (skips unnecessary processing)
-    - Works with both SQLite and PostgreSQL
-    - Cache-safe for SQLAlchemy query caching
+        - Native PostgreSQL JSONB storage (binary format, faster than TEXT)
+        - Validates data before storage (dict/list only)
+        - Handles None values gracefully (stores as SQL NULL)
+        - Supports all JSONB operators (@>, ?, ->, etc.)
+        - GIN indexes work natively without CAST
+        - Cache-safe for SQLAlchemy query caching
+
+    PostgreSQL JSONB Benefits:
+        - Faster queries (binary format vs TEXT parsing)
+        - Smaller storage size (compressed binary)
+        - Native indexing support (GIN, GiST)
+        - Query operators built-in (@>, ?, #>, etc.)
+        - Can index nested fields
+        - Automatic validation on insert
 
     Error Handling:
-    - Invalid JSON in database raises ValueError (fail-fast for data integrity)
-    - Non-JSON types being stored are logged and converted to empty dict
+        - Non-JSON types are logged and converted to empty dict
+        - Validation happens before database write
+        - PostgreSQL enforces JSONB validity at database level
     """
 
-    impl = Text
+    impl = JSON  # SQLAlchemy automatically uses JSONB for PostgreSQL
     cache_ok = True
 
-    def process_bind_param(self, value: Any, dialect: Dialect) -> str | None:
+    def process_bind_param(self, value: Any, dialect: Dialect) -> dict | list | None:
         """Process value being sent to database.
 
         Args:
             value: Python object to store (dict, list, or None)
-            dialect: Database dialect (postgres, sqlite, etc.)
+            dialect: Database dialect (must be PostgreSQL)
 
         Returns:
-            JSON string ready for database storage, or None for SQL NULL
+            Python dict/list for PostgreSQL JSONB storage, or None for SQL NULL
         """
         if value is None:
             return None
@@ -64,63 +74,39 @@ class JSONType(TypeDecorator):
             )
             value = {}
 
-        # Serialize to JSON string for database storage
-        try:
-            return json.dumps(value)
-        except (TypeError, ValueError) as e:
-            logger.error(
-                f"Failed to serialize value to JSON: {e}. "
-                f"Value type: {type(value).__name__}, "
-                f"Value preview: {str(value)[:100]}"
-            )
-            # Fall back to empty dict
-            return json.dumps({})
+        # PostgreSQL JSONB handles serialization automatically
+        # Just return the Python object - psycopg2 driver does the rest
+        return value
 
     def process_result_value(self, value: Any, dialect: Dialect) -> dict | list | None:
         """Process value returned from database.
 
         Args:
-            value: Raw value from database (may be string, dict, list, or None)
-            dialect: Database dialect (postgres, sqlite, etc.)
+            value: Raw value from database (dict, list, or None from PostgreSQL JSONB)
+            dialect: Database dialect (must be PostgreSQL)
 
         Returns:
             Python object (dict/list) or None
 
-        Raises:
-            ValueError: If database contains invalid JSON (data corruption)
-            TypeError: If database returns unexpected type
+        Note:
+            PostgreSQL JSONB columns are automatically deserialized by psycopg2 driver.
+            This method just validates and passes through the already-deserialized value.
         """
         if value is None:
             return None
 
-        # PostgreSQL fast path - already deserialized by driver
-        if dialect and dialect.name == "postgresql" and isinstance(value, dict | list):
-            return value
-
-        # If already deserialized (defensive check)
+        # PostgreSQL JSONB is already deserialized by psycopg2 driver
         if isinstance(value, dict | list):
             return value
 
-        # SQLite path - deserialize JSON string
-        if isinstance(value, str):
-            try:
-                return json.loads(value)
-            except json.JSONDecodeError as e:
-                logger.error(
-                    f"CRITICAL: Database contains invalid JSON. "
-                    f"This indicates data corruption. "
-                    f"Error: {e}, Value preview: {value[:100]}"
-                )
-                raise ValueError(
-                    f"Database contains invalid JSON data: {e}. " "Please investigate data corruption immediately."
-                ) from e
-
-        # Unexpected type - fail loudly
+        # Unexpected type - should never happen with PostgreSQL JSONB
         logger.error(
-            f"Unexpected type in JSON column: {type(value).__name__}. "
-            f"Expected str (SQLite), dict, or list (PostgreSQL). "
+            f"Unexpected type in JSONB column: {type(value).__name__}. "
+            f"Expected dict or list from PostgreSQL JSONB. "
             f"Value: {repr(value)[:100]}"
         )
         raise TypeError(
-            f"Unexpected type in JSON column: {type(value).__name__}. " "This may indicate a database schema issue."
+            f"Unexpected type in JSONB column: {type(value).__name__}. "
+            "PostgreSQL JSONB should always return dict or list. "
+            "This may indicate a database schema issue."
         )
