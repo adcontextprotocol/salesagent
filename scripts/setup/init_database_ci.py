@@ -26,10 +26,11 @@ def init_db_ci():
         run_migrations()
         print("Database migrations applied successfully")
 
-        # Create a default tenant for CI tests
+        # Create a default tenant for CI tests (handle race condition between multiple containers)
         print("Creating default tenant for CI...")
         with get_db_session() as session:
             # First, check if CI test tenant already exists
+            # Note: In Docker Compose, both adcp-server and admin-ui may run this simultaneously
             stmt = select(Tenant).filter_by(subdomain="ci-test")
             existing_tenant = session.scalars(stmt).first()
 
@@ -98,6 +99,7 @@ def init_db_ci():
                 session.commit()  # Commit before creating products to avoid autoflush
             else:
                 tenant_id = str(uuid.uuid4())
+                principal_id = str(uuid.uuid4())
 
                 # Create default tenant
                 now = datetime.now(UTC)
@@ -116,7 +118,6 @@ def init_db_ci():
                 session.add(tenant)
 
                 # Create a default principal for the tenant
-                principal_id = str(uuid.uuid4())
                 principal = Principal(
                     principal_id=principal_id,
                     tenant_id=tenant_id,
@@ -146,10 +147,35 @@ def init_db_ci():
                 )
                 session.add(property_tag)
 
-                session.commit()  # Commit before creating products to avoid autoflush
-                print(
-                    f"Created tenant (ID: {tenant_id}), principal (ID: {principal_id}), currency limit, and property tag"
-                )
+                try:
+                    session.commit()  # Commit before creating products to avoid autoflush
+                    print(
+                        f"Created tenant (ID: {tenant_id}), principal (ID: {principal_id}), currency limit, and property tag"
+                    )
+                except Exception as e:
+                    # Handle race condition: another container may have created the tenant/principal
+                    session.rollback()
+                    print(f"⚠️  Race condition detected during tenant creation: {e}")
+                    print("   Re-querying for existing tenant and principal...")
+
+                    # Re-query for the tenant that was created by the other container
+                    stmt_tenant = select(Tenant).filter_by(subdomain="ci-test")
+                    existing_tenant = session.scalars(stmt_tenant).first()
+                    if not existing_tenant:
+                        # This shouldn't happen, but if it does, fail loudly
+                        raise ValueError("Failed to create or find CI test tenant after race condition")
+                    tenant_id = existing_tenant.tenant_id
+                    print(f"   Using existing tenant (ID: {tenant_id})")
+
+                    # Re-query for the principal
+                    stmt_principal = select(Principal).filter_by(access_token="ci-test-token")
+                    existing_principal = session.scalars(stmt_principal).first()
+                    if existing_principal:
+                        principal_id = existing_principal.principal_id
+                        print(f"   Using existing principal (ID: {principal_id})")
+                    else:
+                        # Principal doesn't exist, but we're now in the existing tenant flow
+                        print("   Principal not found - will be created in validation step")
 
             # Validate prerequisites before creating products
             print("Validating prerequisites for product creation...")
