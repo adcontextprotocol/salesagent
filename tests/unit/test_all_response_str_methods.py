@@ -1,29 +1,19 @@
 """Test that all MCP response classes have human-readable __str__() methods."""
-from datetime import UTC, datetime
 
-import pytest
+from datetime import UTC, datetime
 
 from src.core.schemas import (
     ActivateSignalResponse,
-    AggregatedTotals,
-    Creative,
-    CreateCreativeResponse,
     CreateHumanTaskResponse,
     CreateMediaBuyResponse,
-    CreativeStatus,
-    DeliveryTotals,
+    Creative,
     Format,
-    GetMediaBuyDeliveryResponse,
     GetProductsResponse,
-    GetSignalsResponse,
     ListCreativeFormatsResponse,
     ListCreativesResponse,
-    MediaBuyDeliveryData,
     Pagination,
     Product,
     QuerySummary,
-    ReportingPeriod,
-    Signal,
     SimulationControlResponse,
     SyncCreativesResponse,
     UpdateMediaBuyResponse,
@@ -45,6 +35,7 @@ class TestResponseStrMethods:
             is_fixed_price=True,
             is_custom=False,
             currency="USD",
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
         resp = GetProductsResponse(products=[product], message="Found 1 product for your campaign")
         assert str(resp) == "Found 1 product for your campaign"
@@ -57,6 +48,7 @@ class TestResponseStrMethods:
                 name=f"Product {i}",
                 description="Test",
                 formats=["banner"],
+                property_tags=["all_inventory"],  # Required per AdCP spec
                 delivery_type="guaranteed",
                 is_fixed_price=True,
                 is_custom=False,
@@ -125,9 +117,7 @@ class TestResponseStrMethods:
 
     def test_create_media_buy_response_completed(self):
         """CreateMediaBuyResponse shows status-specific message."""
-        resp = CreateMediaBuyResponse(
-            status="completed", buyer_ref="ref_123", media_buy_id="mb_456", packages=[]
-        )
+        resp = CreateMediaBuyResponse(status="completed", buyer_ref="ref_123", media_buy_id="mb_456", packages=[])
         assert str(resp) == "Media buy mb_456 created successfully."
 
     def test_create_media_buy_response_working(self):

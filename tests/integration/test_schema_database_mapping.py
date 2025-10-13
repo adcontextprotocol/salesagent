@@ -233,6 +233,7 @@ class TestSchemaFieldMapping:
             "formats": ["display_300x250"],
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         product = Product(**product_data)
@@ -355,6 +356,7 @@ class TestSchemaFieldMapping:
                 "cpm": float(product.cpm) if product.cpm else None,
                 "min_spend": float(product.min_spend) if product.min_spend else None,
                 "is_custom": product.is_custom if product.is_custom is not None else False,
+                "property_tags": getattr(product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
             }
 
             # This should succeed without validation errors
@@ -384,6 +386,7 @@ class TestFieldAccessPatterns:
             "formats": ["display_300x250"],
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         product = Product(**product_data)
@@ -421,6 +424,7 @@ class TestFieldAccessPatterns:
             "formats": ["display_300x250"],
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         product = Product(**product_data)

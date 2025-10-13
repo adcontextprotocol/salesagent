@@ -106,6 +106,7 @@ class TestSignalsDiscoveryProvider:
                     delivery_type="non_guaranteed",
                     is_fixed_price=False,
                     cpm=5.0,
+                    property_tags=["all_inventory"],  # Required per AdCP spec
                 )
             ]
             mock_db.return_value = mock_products
@@ -133,6 +134,7 @@ class TestSignalsDiscoveryProvider:
                     delivery_type="non_guaranteed",
                     is_fixed_price=False,
                     cpm=5.0,
+                    property_tags=["all_inventory"],  # Required per AdCP spec
                 )
             ]
             mock_db.return_value = mock_products
@@ -374,6 +376,7 @@ class TestSignalsDiscoveryProvider:
                         delivery_type="non_guaranteed",
                         is_fixed_price=False,
                         cpm=5.0,
+                        property_tags=["all_inventory"],  # Required per AdCP spec
                     )
                 ]
                 mock_db.return_value = mock_db_products

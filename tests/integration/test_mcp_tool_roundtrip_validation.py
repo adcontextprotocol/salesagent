@@ -168,6 +168,7 @@ class TestMCPToolRoundtripValidation:
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
                 "is_custom": db_product.is_custom or False,
+                "property_tags": getattr(db_product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
             }
             schema_product = ProductSchema(**product_data)
             schema_products.append(schema_product)
@@ -240,6 +241,7 @@ class TestMCPToolRoundtripValidation:
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
                 "is_custom": db_product.is_custom or False,
+                "property_tags": getattr(db_product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
             }
             schema_product = ProductSchema(**product_data)
             schema_products.append(schema_product)
@@ -296,6 +298,7 @@ class TestMCPToolRoundtripValidation:
             cpm=15.75,
             min_spend=3000.0,
             is_custom=False,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         # Step 1: Convert to dict (what the tool does before testing hooks)
@@ -348,6 +351,7 @@ class TestMCPToolRoundtripValidation:
             cpm=8.25,
             min_spend=1500.0,
             is_custom=True,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         # Roundtrip through internal format
@@ -413,6 +417,7 @@ class TestMCPToolRoundtripValidation:
             "is_fixed_price": True,
             "cpm": 10.0,
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
         # This should succeed
@@ -444,6 +449,7 @@ class TestMCPToolRoundtripPatterns:
                     "cpm": 12.0,
                     "min_spend": 2000.0,
                     "is_custom": False,
+                    "property_tags": ["all_inventory"],  # Required per AdCP spec
                 },
             },
             {
@@ -458,6 +464,7 @@ class TestMCPToolRoundtripPatterns:
                     "cpm": None,  # Test null handling
                     "min_spend": 5000.0,
                     "is_custom": True,
+                    "property_tags": ["all_inventory"],  # Required per AdCP spec
                 },
             },
             {
@@ -470,6 +477,7 @@ class TestMCPToolRoundtripPatterns:
                     "delivery_type": "non_guaranteed",
                     "is_fixed_price": False,
                     "is_custom": False,
+                    "property_tags": ["all_inventory"],  # Required per AdCP spec
                 },
             },
         ]
@@ -521,6 +529,7 @@ class TestMCPToolRoundtripPatterns:
             "cpm": 15.0,
             "min_spend": 2500.0,
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
             # Optional fields that might cause mapping issues
             "measurement": {
                 "type": "incremental_sales_lift",

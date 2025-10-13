@@ -45,7 +45,7 @@ pytest tests/unit/test_adcp_contract.py -v
 ---
 
 ### PostgreSQL-Only Architecture
-**🚨 DECISION**: This codebase uses PostgreSQL exclusively. No SQLite support.
+**🚨 DECISION**: This codebase uses **PostgreSQL exclusively**. We do NOT support SQLite.
 
 **Why:**
 - Production uses PostgreSQL exclusively
@@ -54,12 +54,16 @@ pytest tests/unit/test_adcp_contract.py -v
 - One database. One source of truth. No hidden bugs.
 
 **What this means:**
-- All tests require PostgreSQL container (run via `./run_all_tests.sh ci`)
-- `db_config.py` only supports PostgreSQL connections
-- Unit tests should mock database access, not use real connections
-- Integration tests require `ADCP_TEST_DB_URL` or will skip
+- ✅ All database code assumes PostgreSQL (JSONB, connection pooling, etc.)
+- ✅ All tests require PostgreSQL container (run via `./run_all_tests.sh ci`)
+- ✅ Alembic migrations use PostgreSQL-specific syntax
+- ❌ NO SQLite support - don't add it, don't test for it
+- ❌ NO cross-database compatibility code - keep it simple
 
-**Migration note:** We removed SQLite support to eliminate cross-database bugs. If you see SQLite references in old docs/code, they're outdated.
+**If you see SQLite references:**
+- Test files (`tests/smoke/`, `tests/unit/test_json_type.py`) - Legacy tests, ignore or delete
+- Simulation tools (`tools/simulations/`) - Uses temp PostgreSQL, not SQLite
+- Documentation - Outdated, needs removal
 
 ---
 
@@ -549,6 +553,55 @@ uv run alembic revision -m "description"
 ```
 
 **⚠️ NEVER modify existing migrations after commit!**
+
+### Database Initialization Dependencies
+**🚨 CRITICAL**: Products have implicit dependencies that MUST be satisfied before creation.
+
+**Dependency Chain:**
+```
+Tenant → CurrencyLimit (required for budget validation)
+      → PropertyTag (required for property_tags array references)
+      → Products (require BOTH CurrencyLimit AND PropertyTag)
+```
+
+**Why These Dependencies Exist:**
+1. **CurrencyLimit** (`currency_code="USD"`): Required for media buy budget validation
+   - Products are used in media buys which validate budgets against currency limits
+   - Missing currency limits cause "Must have at least one product" errors in E2E tests
+   - **Fix**: Always create at least one CurrencyLimit when creating a tenant
+
+2. **PropertyTag** (`tag_id="all_inventory"`): Required for property_tags array references
+   - Per AdCP v2.4 spec, products MUST have either `properties` OR `property_tags` (oneOf constraint)
+   - Most products use `property_tags=["all_inventory"]` as default
+   - Missing property tags cause referential integrity errors
+   - **Fix**: Always create at least one PropertyTag when creating a tenant
+
+**Validation in Init Scripts:**
+The `scripts/setup/init_database_ci.py` script now validates these prerequisites:
+```python
+# 1. Check CurrencyLimit exists
+stmt_currency = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
+currency_limit = session.scalars(stmt_currency).first()
+if not currency_limit:
+    raise ValueError("Cannot create products: CurrencyLimit (USD) not found...")
+
+# 2. Check PropertyTag exists
+stmt_tag = select(PropertyTag).filter_by(tenant_id=tenant_id, tag_id="all_inventory")
+property_tag = session.scalars(stmt_tag).first()
+if not property_tag:
+    raise ValueError("Cannot create products: PropertyTag 'all_inventory' not found...")
+```
+
+**When Creating New Tenants:**
+1. Create Tenant
+2. Create CurrencyLimit (at least USD)
+3. Create PropertyTag (at least "all_inventory")
+4. Create Products (can now safely reference currency and tags)
+
+**Failure Symptoms:**
+- ❌ "Must have at least one product" in E2E tests
+- ❌ Products created but budget validation fails
+- ❌ Referential integrity errors on property_tags array
 
 ## Development Best Practices
 

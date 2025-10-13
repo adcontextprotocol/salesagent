@@ -268,6 +268,14 @@ def tenant_settings(tenant_id, section=None):
             # Check for Gemini API key (tenant-specific only - no environment fallback in production)
             has_gemini_key = bool(tenant.gemini_api_key)
 
+            # Get setup checklist status
+            setup_status = None
+            try:
+                checklist_service = SetupChecklistService(tenant_id)
+                setup_status = checklist_service.get_setup_status()
+            except Exception as e:
+                logger.warning(f"Failed to load setup checklist: {e}")
+
             return render_template(
                 "tenant_settings.html",
                 tenant=tenant,
@@ -295,6 +303,7 @@ def tenant_settings(tenant_id, section=None):
                 ad_units_count=ad_units_count,
                 currency_limits=currency_limits,
                 placements_count=placements_count,
+                setup_status=setup_status,
             )
 
     except Exception as e:
@@ -914,7 +923,7 @@ def media_buys_list(tenant_id):
                         "is_ready": readiness["is_ready_to_activate"],
                         "principal_name": principal.name if principal else "Unknown",
                         "product_names": product_names,
-                        "packages_ready": readiness["packages_ready"],
+                        "packages_ready": readiness["packages_with_creatives"],
                         "packages_total": readiness["packages_total"],
                         "blocking_issues": readiness.get("blocking_issues", []),
                     }

@@ -95,6 +95,7 @@ def test_correct_product_construction():
         "is_fixed_price": True,
         "cpm": 10.0,
         "is_custom": False,
+        "property_tags": ["all_inventory"],  # Required per AdCP spec
         # NOTE: Internal fields like targeting_template, price_guidance, etc. are NOT included
     }
 
