@@ -5673,14 +5673,31 @@ async def reset_db_pool(request: Request):
     try:
         from src.core.database.database_session import reset_engine
 
-        logger.info("Resetting database connection pool (testing mode)")
-        reset_engine()
-        logger.info("Database connection pool reset successfully")
+        logger.info("Resetting database connection pool and provider cache (testing mode)")
 
-        return JSONResponse({"status": "success", "message": "Database connection pool reset successfully"})
+        # Reset SQLAlchemy connection pool
+        reset_engine()
+        logger.info("  ✓ Database connection pool reset")
+
+        # CRITICAL: Also clear the product catalog provider cache
+        # The provider cache holds DatabaseProductCatalog instances that may have
+        # stale data from before init_database_ci.py ran
+        from product_catalog_providers.factory import _provider_cache
+
+        provider_count = len(_provider_cache)
+        _provider_cache.clear()
+        logger.info(f"  ✓ Cleared {provider_count} cached product catalog provider(s)")
+
+        return JSONResponse(
+            {
+                "status": "success",
+                "message": "Database connection pool and provider cache reset successfully",
+                "providers_cleared": provider_count,
+            }
+        )
     except Exception as e:
-        logger.error(f"Failed to reset database connection pool: {e}")
-        return JSONResponse({"error": f"Failed to reset connection pool: {str(e)}"}, status_code=500)
+        logger.error(f"Failed to reset database state: {e}")
+        return JSONResponse({"error": f"Failed to reset: {str(e)}"}, status_code=500)
 
 
 @mcp.custom_route("/debug/tenant", methods=["GET"])
