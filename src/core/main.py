@@ -1237,6 +1237,7 @@ async def get_products(
     brief: str = "",
     adcp_version: str = "1.0.0",
     min_exposures: int | None = None,
+    brand_manifest: dict[str, Any] | None = None,
     filters: dict | None = None,
     strategy_id: str | None = None,
     webhook_url: str | None = None,
@@ -1251,6 +1252,7 @@ async def get_products(
         brief: Brief description of the advertising campaign or requirements (optional)
         adcp_version: AdCP schema version for this request (default: 1.0.0)
         min_exposures: Minimum impressions needed for measurement validity (AdCP PR #79, optional)
+        brand_manifest: Brand information manifest providing brand context (optional)
         filters: Structured filters for product discovery (optional)
         strategy_id: Optional strategy ID for linking operations (optional)
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
@@ -1265,6 +1267,7 @@ async def get_products(
         brief=brief,
         adcp_version=adcp_version,
         min_exposures=min_exposures,
+        brand_manifest=brand_manifest,
         filters=filters,
         strategy_id=strategy_id,
         webhook_url=webhook_url,

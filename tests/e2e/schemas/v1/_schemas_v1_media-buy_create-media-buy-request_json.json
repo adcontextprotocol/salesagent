@@ -95,10 +95,21 @@
   "required": [
     "buyer_ref",
     "packages",
-    "brand_manifest",
     "start_time",
     "end_time",
     "budget"
+  ],
+  "oneOf": [
+    {
+      "required": [
+        "promoted_offering"
+      ]
+    },
+    {
+      "required": [
+        "brand_manifest"
+      ]
+    }
   ],
   "additionalProperties": false
 }

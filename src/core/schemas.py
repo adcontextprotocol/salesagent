@@ -1398,6 +1398,10 @@ class GetProductsRequest(BaseModel):
         description="Minimum number of impressions needed for measurement validity (AdCP PR #79)",
         gt=0,
     )
+    brand_manifest: dict[str, Any] | None = Field(
+        None,
+        description="Brand information manifest providing brand context, assets, and product catalog",
+    )
     webhook_url: str | None = Field(
         None,
         description="URL for async task completion notifications (AdCP spec, optional)",
