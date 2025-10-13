@@ -868,12 +868,16 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         testing_ctx = get_testing_context(context)
         # For discovery endpoints, authentication is optional
         logger.info("[GET_PRODUCTS] About to call get_principal_from_context")
+        print("🔍 [GET_PRODUCTS DEBUG] About to call get_principal_from_context", flush=True)
         principal_id = get_principal_from_context(context)  # Returns None if no auth
         logger.info(f"[GET_PRODUCTS] principal_id returned: {principal_id}")
+        print(f"🔍 [GET_PRODUCTS DEBUG] principal_id returned: {principal_id}", flush=True)
         tenant = get_current_tenant()
         logger.info(f"[GET_PRODUCTS] tenant returned: {tenant}")
+        print(f"🔍 [GET_PRODUCTS DEBUG] tenant returned: {tenant}", flush=True)
         if not tenant:
             logger.error("[GET_PRODUCTS] No tenant context available - raising ToolError")
+            print("❌ [GET_PRODUCTS DEBUG] No tenant context - raising ToolError", flush=True)
             raise ToolError("No tenant context available")
 
     # Get the Principal object with ad server mappings
@@ -1063,6 +1067,7 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
     }
 
     logger.info(f"[GET_PRODUCTS] Calling provider.get_products for tenant_id={tenant['tenant_id']}")
+    print(f"🔍 [GET_PRODUCTS DEBUG] Calling provider.get_products for tenant_id={tenant['tenant_id']}", flush=True)
     products = await provider.get_products(
         brief=req.brief,
         tenant_id=tenant["tenant_id"],
@@ -1071,6 +1076,7 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         context=context_data,
     )
     logger.info(f"[GET_PRODUCTS] Got {len(products)} products from provider")
+    print(f"🔍 [GET_PRODUCTS DEBUG] Got {len(products)} products from provider", flush=True)
 
     # Enrich products with dynamic pricing (AdCP PR #79)
     # Calculate floor_cpm, recommended_cpm, estimated_exposures from cached metrics
