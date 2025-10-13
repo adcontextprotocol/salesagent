@@ -17,7 +17,7 @@ pytestmark = pytest.mark.requires_db
 
 
 @pytest.fixture
-def setup_gam_tenant_with_non_cpm_product():
+def setup_gam_tenant_with_non_cpm_product(integration_db):
     """Create a GAM tenant with a product offering non-CPM pricing."""
     with get_db_session() as session:
         # Create GAM tenant

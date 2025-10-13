@@ -17,7 +17,7 @@ pytestmark = pytest.mark.requires_db
 
 
 @pytest.fixture
-def setup_tenant_with_pricing_products():
+def setup_tenant_with_pricing_products(integration_db):
     """Create a tenant with products using various pricing models."""
     with get_db_session() as session:
         # Create tenant
