@@ -3418,7 +3418,14 @@ def _create_media_buy_impl(
                             if applicable_min_spends:
                                 # Use the highest minimum spend among all products in package
                                 required_min_spend = max(applicable_min_spends)
-                                package_budget = Decimal(str(package.budget.total))
+                                # Extract budget amount (handle Budget object, float, or dict)
+                                if isinstance(package.budget, dict):
+                                    package_budget = Decimal(str(package.budget.get("total", 0)))
+                                elif isinstance(package.budget, int | float):
+                                    package_budget = Decimal(str(package.budget))
+                                else:
+                                    # Budget object with .total attribute
+                                    package_budget = Decimal(str(package.budget.total))
 
                                 if package_budget < required_min_spend:
                                     error_msg = (
@@ -3455,7 +3462,14 @@ def _create_media_buy_impl(
                     for package in req.packages:
                         if not package.budget:
                             continue
-                        package_budget = Decimal(str(package.budget.total))
+                        # Extract budget amount (handle Budget object, float, or dict)
+                        if isinstance(package.budget, dict):
+                            package_budget = Decimal(str(package.budget.get("total", 0)))
+                        elif isinstance(package.budget, int | float):
+                            package_budget = Decimal(str(package.budget))
+                        else:
+                            # Budget object with .total attribute
+                            package_budget = Decimal(str(package.budget.total))
                         package_daily_budget = package_budget / Decimal(str(flight_days))
 
                         if package_daily_budget > currency_limit.max_daily_package_spend:
