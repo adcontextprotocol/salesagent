@@ -12,6 +12,8 @@ from src.core.database.models import PricingOption, Product, Tenant
 from src.core.main import _create_media_buy_impl, _get_products_impl
 from src.core.schemas import CreateMediaBuyRequest, GetProductsRequest, Package, PricingModel
 
+pytestmark = pytest.mark.requires_db
+
 
 @pytest.fixture
 def setup_tenant_with_pricing_products():

@@ -12,6 +12,8 @@ from src.core.database.models import PricingOption, Principal, Product, Tenant
 from src.core.main import _create_media_buy_impl
 from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
 
+pytestmark = pytest.mark.requires_db
+
 
 @pytest.fixture
 def setup_gam_tenant_with_non_cpm_product():
