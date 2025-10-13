@@ -73,6 +73,7 @@ from src.core.schema_adapters import (
     SyncCreativesResponse,
     UpdateMediaBuyResponse,
 )
+from src.core.schema_helpers import create_get_products_request
 from src.core.schemas import (
     AggregatedTotals,
     CreateHumanTaskResponse,
