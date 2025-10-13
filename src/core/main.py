@@ -4335,23 +4335,22 @@ def _update_media_buy_impl(
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return UpdateMediaBuyResponse(status="failed", detail=error_msg)
 
-        # Store budget update in media buy
+        # Store budget update in media buy (update CreateMediaBuyRequest in place)
         if req.media_buy_id in media_buys:
             buy_data = media_buys[req.media_buy_id]
             if isinstance(buy_data, tuple) and len(buy_data) >= 2:
-                # buy_data[0] is CreateMediaBuyRequest object, not dict
+                # buy_data[0] is CreateMediaBuyRequest object - update it in place
                 existing_req = buy_data[0]
-                existing_buyer_ref = existing_req.buyer_ref if hasattr(existing_req, "buyer_ref") else None
 
-                # Update with new budget info
-                media_buys[req.media_buy_id] = (
-                    {
-                        "budget": total_budget,
-                        "currency": currency,
-                        "buyer_ref": req.buyer_ref or existing_buyer_ref,
-                    },
-                    buy_data[1],  # Keep principal_id
-                )
+                # Update total_budget field (legacy field on CreateMediaBuyRequest)
+                if hasattr(existing_req, "total_budget"):
+                    existing_req.total_budget = total_budget
+
+                # Update buyer_ref if provided
+                if req.buyer_ref and hasattr(existing_req, "buyer_ref"):
+                    existing_req.buyer_ref = req.buyer_ref
+
+                # Note: media_buys tuple stays as (CreateMediaBuyRequest, principal_id)
 
     # Note: Budget validation already done above (lines 4318-4336)
     # Package-level updates already handled above (lines 4266-4316)
