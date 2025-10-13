@@ -20,7 +20,7 @@ def init_db_ci():
 
         from scripts.ops.migrate import run_migrations
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import CurrencyLimit, Principal, Product, PropertyTag, Tenant
+        from src.core.database.models import CurrencyLimit, PricingOption, Principal, Product, PropertyTag, Tenant
 
         print("Applying database migrations for CI...")
         run_migrations()
@@ -286,6 +286,19 @@ def init_db_ci():
                     )
                     session.add(product)
                     print(f"  ✓ Created product: {p['name']} (property_tags=['all_inventory'])")
+
+                    # Create corresponding pricing_option (required for pricing display)
+                    pricing_option = PricingOption(
+                        tenant_id=tenant_id,
+                        product_id=p["product_id"],
+                        pricing_model="cpm",
+                        rate=p.get("cpm"),
+                        currency="USD",
+                        is_fixed=p["is_fixed_price"],
+                        price_guidance=None,  # Not used for fixed price products
+                    )
+                    session.add(pricing_option)
+                    print(f"  ✓ Created pricing_option for: {p['name']}")
                 else:
                     print(f"  ℹ️  Product already exists: {p['name']}")
 
