@@ -100,7 +100,7 @@
         <!-- Formats container (hidden until ad units selected) -->
         <div id="formats-container" style="display: none; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
             {% for format in formats %}
-            <label class="format-card" data-format-id="{{ format.format_id }}" data-dimensions="{{ format.dimensions }}" data-type="{{ format.type }}" style="border: 2px solid #ddd; border-radius: 4px; padding: 1rem; cursor: pointer; transition: all 0.2s;">
+            <label class="format-card" data-format-id="{{ format.format_id }}" data-dimensions="{{ format.dimensions or '' }}" data-type="{{ format.type }}" style="border: 2px solid #ddd; border-radius: 4px; padding: 1rem; cursor: pointer; transition: all 0.2s;">
                 <input type="checkbox" name="formats" value="{{ format.format_id }}" style="margin-right: 0.5rem;">
                 <strong>{{ format.name }}</strong><br>
                 <small style="color: #666;">
@@ -451,16 +451,28 @@ async function autoSuggestFormats(selectedCheckboxes) {
     let matchingCount = 0;
     let autoCheckedCount = 0;
 
-    formatCards.forEach(card => {
+    console.log(`[DEBUG] Filtering ${formatCards.length} format cards`);
+    console.log(`[DEBUG] Ad unit constraints:`, constraintsByType);
+
+    formatCards.forEach((card, index) => {
         const dimensions = card.getAttribute('data-dimensions');
         const type = card.getAttribute('data-type');
         const checkbox = card.querySelector('input[type="checkbox"]');
+        const name = card.querySelector('strong').textContent;
+
+        if (index < 5) {
+            console.log(`[DEBUG] Format ${index}: "${name}" type="${type}" dimensions="${dimensions}"`);
+        }
 
         if (dimensions) {
             // Parse format dimensions (e.g., "300x250")
             const [widthStr, heightStr] = dimensions.split('x');
             const formatWidth = parseInt(widthStr, 10);
             const formatHeight = parseInt(heightStr, 10);
+
+            if (index < 5) {
+                console.log(`[DEBUG] Format ${index}: parsed w=${formatWidth} h=${formatHeight}`);
+            }
 
             if (formatFitsConstraint(formatWidth, formatHeight, type)) {
                 // This format fits - show it
