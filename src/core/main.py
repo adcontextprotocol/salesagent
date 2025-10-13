@@ -57,8 +57,8 @@ from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 
 # Schema models (explicit imports to avoid collisions)
-# Using adapters for models that need to stay in sync with AdCP spec
-from src.core.schema_adapters import GetProductsRequest, GetProductsResponse
+# Using generated schemas + helpers for type-safe AdCP compliance
+from src.core.schema_helpers import GetProductsRequest, GetProductsResponse, create_get_products_request
 from src.core.schemas import (
     ActivateSignalResponse,
     AggregatedTotals,
@@ -1252,10 +1252,7 @@ async def get_products(
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
     adcp_version: str = "1.0.0",
-    min_exposures: int | None = None,
     filters: dict | None = None,
-    strategy_id: str | None = None,
-    webhook_url: str | None = None,
     context: Context = None,
 ) -> GetProductsResponse:
     """Get available products matching the brief.
@@ -1267,26 +1264,19 @@ async def get_products(
         brand_manifest: Brand information manifest (inline object or URL string)
         brief: Brief description of the advertising campaign or requirements (optional)
         adcp_version: AdCP schema version for this request (default: 1.0.0)
-        min_exposures: Minimum impressions needed for measurement validity (AdCP PR #79, optional)
-        brand_manifest: Brand information manifest providing brand context (optional)
         filters: Structured filters for product discovery (optional)
-        strategy_id: Optional strategy ID for linking operations (optional)
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
         GetProductsResponse containing matching products
     """
-    # Build request object for shared implementation
-    req = GetProductsRequest(
+    # Build request object for shared implementation using helper
+    req = create_get_products_request(
         promoted_offering=promoted_offering,
         brief=brief,
         adcp_version=adcp_version,
-        min_exposures=min_exposures,
         brand_manifest=brand_manifest,
         filters=filters,
-        strategy_id=strategy_id,
-        webhook_url=webhook_url,
     )
     # Call shared implementation
     return await _get_products_impl(req, context)
