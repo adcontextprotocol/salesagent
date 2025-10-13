@@ -4353,27 +4353,9 @@ def _update_media_buy_impl(
                     buy_data[1],  # Keep principal_id
                 )
 
-    # Validate update parameters (backwards compatibility)
-    if req.total_budget is not None and req.total_budget <= 0:
-        error_msg = f"Invalid budget: {req.total_budget}. Budget must be positive."
-        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-        return UpdateMediaBuyResponse(status="failed", detail=error_msg)
-
-    buy_request, _ = media_buys[req.media_buy_id]
-    if req.total_budget is not None:
-        buy_request.total_budget = req.total_budget
-    if req.targeting_overlay is not None:
-        # Validate targeting doesn't use managed-only dimensions
-        from src.services.targeting_capabilities import validate_overlay_targeting
-
-        violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
-        if violations:
-            error_msg = f"Targeting validation failed: {'; '.join(violations)}"
-            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return UpdateMediaBuyResponse(status="failed", detail=error_msg)
-        buy_request.targeting_overlay = req.targeting_overlay
-    if req.creative_assignments:
-        creative_assignments[req.media_buy_id] = req.creative_assignments
+    # Note: Budget validation already done above (lines 4318-4336)
+    # Package-level updates already handled above (lines 4266-4316)
+    # Targeting updates are handled via packages (AdCP spec v2.4)
 
     # Create ObjectWorkflowMapping to link media buy update to workflow step
     # This enables webhook delivery when the update completes
@@ -4399,8 +4381,8 @@ def _update_media_buy_impl(
             "updates_applied": {
                 "campaign_level": req.active is not None,
                 "package_count": len(req.packages) if req.packages else 0,
-                "total_budget": req.total_budget is not None,
-                "targeting": req.targeting_overlay is not None,
+                "budget": req.budget is not None,
+                "flight_dates": req.start_time is not None or req.end_time is not None,
             },
         },
     )
