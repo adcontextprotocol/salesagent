@@ -26,7 +26,6 @@ from tests.e2e.adcp_request_builder import (
     build_adcp_media_buy_request,
     build_creative,
     build_sync_creatives_request,
-    build_update_media_buy_request,
     get_test_date_range,
 )
 
@@ -226,16 +225,20 @@ class TestAdCPReferenceImplementation:
             # ================================================================
             print("\n📊 PHASE 4: Get Delivery Metrics")
 
-            delivery_result = await client.call_tool("get_media_buy_delivery", {"media_buy_id": media_buy_id})
+            delivery_result = await client.call_tool("get_media_buy_delivery", {"media_buy_ids": [media_buy_id]})
             delivery_data = json.loads(delivery_result.content[0].text)
 
-            # Verify delivery response structure
-            assert "media_buy_id" in delivery_data or "buyer_ref" in delivery_data
+            # Verify delivery response structure (AdCP spec: deliveries is an array)
+            assert "deliveries" in delivery_data or "media_buy_deliveries" in delivery_data
             print(f"   ✓ Delivery data retrieved for: {media_buy_id}")
 
-            if "metrics" in delivery_data:
-                metrics = delivery_data["metrics"]
-                print(f"   ✓ Metrics: {list(metrics.keys())}")
+            # Check if we have deliveries
+            deliveries = delivery_data.get("deliveries") or delivery_data.get("media_buy_deliveries", [])
+            if deliveries:
+                print(f"   ✓ Found {len(deliveries)} delivery record(s)")
+                if "metrics" in deliveries[0]:
+                    metrics = deliveries[0]["metrics"]
+                    print(f"   ✓ Metrics: {list(metrics.keys())}")
 
             # ================================================================
             # PHASE 5: Update Campaign Budget (Async via Webhook)
@@ -245,14 +248,18 @@ class TestAdCPReferenceImplementation:
             # Clear any previous webhooks
             webhook_server["received"].clear()
 
-            # Build update request
-            update_request = build_update_media_buy_request(
-                media_buy_id=media_buy_id,
-                budget={"total": 7500.0, "currency": "USD", "pacing": "even"},
-                webhook_url=webhook_server["url"],  # Expect async notification
+            # Update budget (AdCP spec: budget is a number, not an object)
+            update_result = await client.call_tool(
+                "update_media_buy",
+                {
+                    "media_buy_id": media_buy_id,
+                    "budget": 7500.0,  # AdCP spec: budget is a number
+                    "push_notification_config": {
+                        "url": webhook_server["url"],
+                        "authentication": {"type": "none"},
+                    },
+                },
             )
-
-            update_result = await client.call_tool("update_media_buy", update_request)
             update_data = json.loads(update_result.content[0].text)
 
             assert "media_buy_id" in update_data or "buyer_ref" in update_data

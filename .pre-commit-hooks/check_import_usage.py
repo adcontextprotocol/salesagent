@@ -18,12 +18,10 @@ from pathlib import Path
 
 
 class ImportCollector(ast.NodeVisitor):
-    """Collect all imported names, module-level assignments, and class definitions."""
+    """Collect all imported names from a module."""
 
     def __init__(self):
         self.imports: set[str] = set()
-        self.module_variables: set[str] = set()
-        self.defined_classes: set[str] = set()
 
     def visit_Import(self, node):
         for alias in node.names:
@@ -38,15 +36,14 @@ class ImportCollector(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Assign(self, node):
-        """Collect module-level variable names."""
-        for target in node.targets:
-            if isinstance(target, ast.Name):
-                self.module_variables.add(target.id)
-        self.generic_visit(node)
-
-    def visit_ClassDef(self, node):
-        """Collect class definitions in this file."""
-        self.defined_classes.add(node.name)
+        """Collect variable assignments that create aliases or module-level constants."""
+        # Track simple Name = ... assignments at module level
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            # Track the variable name
+            var_name = node.targets[0].id
+            # Add to imports so it's recognized as defined
+            # This handles aliases (Task = WorkflowStep) and constants (SELECTED_ADAPTER = ...)
+            self.imports.add(var_name)
         self.generic_visit(node)
 
 
@@ -163,14 +160,6 @@ def check_file(filepath: Path) -> list[str]:
 
         # Skip if imported
         if name in import_collector.imports:
-            continue
-
-        # Skip if defined as module-level variable
-        if name in import_collector.module_variables:
-            continue
-
-        # Skip if defined as a class in this file
-        if name in import_collector.defined_classes:
             continue
 
         # Skip common false positives

@@ -105,10 +105,15 @@ from src.core.schemas import (
     VerifyTaskResponse,
 )
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
+from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
 from src.services.slack_notifier import get_slack_notifier
 
 # Initialize Rich console
 console = Console()
+
+# Backward compatibility alias for deprecated Task model
+# The workflow system now uses WorkflowStep exclusively
+Task = WorkflowStep
 
 # Temporary placeholder classes for missing schemas
 # TODO: These should be properly defined in schemas.py
@@ -2005,9 +2010,9 @@ def _sync_creatives_impl(
                     "status": status,
                     "approval_mode": approval_mode,
                 }
-                # Store webhook_url if provided for async notification
-                if webhook_url:
-                    request_data_for_workflow["webhook_url"] = webhook_url
+                # Store push_notification_config if provided for async notification
+                if push_notification_config:
+                    request_data_for_workflow["push_notification_config"] = push_notification_config
 
                 step = ctx_manager.create_workflow_step(
                     context_id=persistent_ctx.context_id,
@@ -2142,7 +2147,7 @@ def sync_creatives(
     delete_missing: bool = False,
     dry_run: bool = False,
     validation_mode: str = "strict",
-    webhook_url: str | None = None,
+    push_notification_config: dict | None = None,
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
@@ -2156,7 +2161,7 @@ def sync_creatives(
         delete_missing: Delete creatives not in sync payload (use with caution)
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        push_notification_config: Push notification config for async notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -2169,7 +2174,7 @@ def sync_creatives(
         delete_missing=delete_missing,
         dry_run=dry_run,
         validation_mode=validation_mode,
-        webhook_url=webhook_url,
+        push_notification_config=push_notification_config,
         context=context,
     )
 
@@ -3137,6 +3142,19 @@ def _create_media_buy_impl(
     # Authentication and tenant setup
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
+
+    # Validate setup completion (only in production, skip for testing)
+    if not testing_ctx.dry_run and not testing_ctx.test_session_id:
+        try:
+            validate_setup_complete(tenant["tenant_id"])
+        except SetupIncompleteError as e:
+            # Return helpful error with missing tasks
+            task_list = "\n".join(f"  - {task['name']}: {task['description']}" for task in e.missing_tasks)
+            error_msg = (
+                f"Setup incomplete. Please complete the following required tasks:\n\n{task_list}\n\n"
+                f"Visit the setup checklist at /tenant/{tenant['tenant_id']}/setup-checklist for details."
+            )
+            raise ToolError(error_msg)
 
     # Context management and workflow step creation - create workflow step FIRST
     ctx_manager = get_context_manager()
@@ -4173,7 +4191,6 @@ def create_media_buy(
     enable_creative_macro: bool = False,
     strategy_id: str = None,
     push_notification_config: dict = None,
-    webhook_url: str | None = None,
     context: Context = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
@@ -4200,8 +4217,7 @@ def create_media_buy(
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
-        push_notification_config: Push notification config dict with url, authentication
-        webhook_url: Legacy URL for async task completion notifications (use push_notification_config instead)
+        push_notification_config: Push notification config dict with url, authentication (AdCP spec)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -4277,19 +4293,28 @@ def _update_media_buy_impl(
         UpdateMediaBuyResponse with updated media buy details
     """
     # Create request object from individual parameters (MCP-compliant)
+    # Convert flat budget/currency/pacing to Budget object if budget provided
+    budget_obj = None
+    if budget is not None:
+        from src.core.schemas import Budget
+
+        budget_obj = Budget(
+            total=budget,
+            currency=currency or "USD",  # Default to USD if not specified
+            pacing=pacing or "even",  # Default pacing
+            daily_cap=daily_budget,  # Map daily_budget to daily_cap
+        )
+
     req = UpdateMediaBuyRequest(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
         active=active,
         flight_start_date=flight_start_date,
         flight_end_date=flight_end_date,
-        budget=budget,
-        currency=currency,
+        budget=budget_obj,
         targeting_overlay=targeting_overlay,
         start_time=start_time,
         end_time=end_time,
-        pacing=pacing,
-        daily_budget=daily_budget,
         packages=packages,
         creatives=creatives,
     )
@@ -4323,8 +4348,9 @@ def _update_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return UpdateMediaBuyResponse(
-            status="failed",
-            message=f"Update failed: {error_msg}",
+            status="completed",
+            media_buy_id=req.media_buy_id or "",
+            buyer_ref=req.buyer_ref or "",
             errors=[{"code": "principal_not_found", "message": error_msg}],
         )
 
@@ -4348,8 +4374,10 @@ def _update_media_buy_impl(
         )
 
         return UpdateMediaBuyResponse(
-            status="pending_manual",
-            detail=f"Manual approval required. Workflow Step ID: {step.step_id}",
+            status="submitted",
+            media_buy_id=req.media_buy_id or "",
+            buyer_ref=req.buyer_ref or "",
+            task_id=step.step_id,
         )
 
     # Validate currency limits if flight dates or budget changes
@@ -4370,7 +4398,8 @@ def _update_media_buy_impl(
 
             if media_buy:
                 # Determine currency (use updated or existing)
-                request_currency = req.currency or media_buy.currency or "USD"
+                # Extract currency from Budget object if present, otherwise from media buy
+                request_currency = (req.budget.currency if req.budget else None) or media_buy.currency or "USD"
 
                 # Get currency limit
                 stmt = select(CurrencyLimit).where(
@@ -4381,7 +4410,12 @@ def _update_media_buy_impl(
                 if not currency_limit:
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
                     ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                    return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+                    return UpdateMediaBuyResponse(
+                        status="completed",
+                        media_buy_id=req.media_buy_id or "",
+                        buyer_ref=req.buyer_ref or "",
+                        errors=[{"code": "currency_not_supported", "message": error_msg}],
+                    )
 
                 # Calculate new flight duration
                 start = req.start_time if req.start_time else media_buy.start_time
@@ -4416,7 +4450,12 @@ def _update_media_buy_impl(
                                     f"Flight date changes that reduce daily budget are not allowed to bypass limits."
                                 )
                                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                                return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+                                return UpdateMediaBuyResponse(
+                                    status="completed",
+                                    media_buy_id=req.media_buy_id or "",
+                                    buyer_ref=req.buyer_ref or "",
+                                    errors=[{"code": "budget_limit_exceeded", "message": error_msg}],
+                                )
 
     # Handle campaign-level updates
     if req.active is not None:
@@ -4484,61 +4523,51 @@ def _update_media_buy_impl(
                     )
                     return result
 
-    # Handle budget updates (support both Budget object and float)
+    # Handle budget updates (Budget object from AdCP spec)
     if req.budget is not None:
         if isinstance(req.budget, dict):
-            # Handle Budget object
+            # Handle Budget dict
             total_budget = req.budget.get("total", 0)
             currency = req.budget.get("currency", "USD")
         elif hasattr(req.budget, "total"):
-            # Handle Budget model instance
+            # Handle Budget model instance (standard case)
             total_budget = req.budget.total
             currency = req.budget.currency
         else:
-            # Handle float
-            total_budget = req.budget
-            currency = req.currency or "USD"
+            # Fallback: treat as float (shouldn't happen with Budget object)
+            total_budget = float(req.budget)
+            currency = "USD"  # Default when budget is just a number
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+            return UpdateMediaBuyResponse(
+                status="completed",
+                media_buy_id=req.media_buy_id or "",
+                buyer_ref=req.buyer_ref or "",
+                errors=[{"code": "invalid_budget", "message": error_msg}],
+            )
 
-        # Store budget update in media buy
+        # Store budget update in media buy (update CreateMediaBuyRequest in place)
         if req.media_buy_id in media_buys:
             buy_data = media_buys[req.media_buy_id]
             if isinstance(buy_data, tuple) and len(buy_data) >= 2:
-                # Update with new budget info
-                media_buys[req.media_buy_id] = (
-                    {
-                        "budget": total_budget,
-                        "currency": currency,
-                        "buyer_ref": req.buyer_ref or buy_data[0].get("buyer_ref"),
-                    },
-                    buy_data[1],  # Keep principal_id
-                )
+                # buy_data[0] is CreateMediaBuyRequest object - update it in place
+                existing_req = buy_data[0]
 
-    # Validate update parameters (backwards compatibility)
-    if req.total_budget is not None and req.total_budget <= 0:
-        error_msg = f"Invalid budget: {req.total_budget}. Budget must be positive."
-        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-        return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+                # Update total_budget field (legacy field on CreateMediaBuyRequest)
+                if hasattr(existing_req, "total_budget"):
+                    existing_req.total_budget = total_budget
 
-    buy_request, _ = media_buys[req.media_buy_id]
-    if req.total_budget is not None:
-        buy_request.total_budget = req.total_budget
-    if req.targeting_overlay is not None:
-        # Validate targeting doesn't use managed-only dimensions
-        from src.services.targeting_capabilities import validate_overlay_targeting
+                # Update buyer_ref if provided
+                if req.buyer_ref and hasattr(existing_req, "buyer_ref"):
+                    existing_req.buyer_ref = req.buyer_ref
 
-        violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
-        if violations:
-            error_msg = f"Targeting validation failed: {'; '.join(violations)}"
-            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return UpdateMediaBuyResponse(status="failed", detail=error_msg)
-        buy_request.targeting_overlay = req.targeting_overlay
-    if req.creative_assignments:
-        creative_assignments[req.media_buy_id] = req.creative_assignments
+                # Note: media_buys tuple stays as (CreateMediaBuyRequest, principal_id)
+
+    # Note: Budget validation already done above (lines 4318-4336)
+    # Package-level updates already handled above (lines 4266-4316)
+    # Targeting updates are handled via packages (AdCP spec v2.4)
 
     # Create ObjectWorkflowMapping to link media buy update to workflow step
     # This enables webhook delivery when the update completes
@@ -4564,16 +4593,17 @@ def _update_media_buy_impl(
             "updates_applied": {
                 "campaign_level": req.active is not None,
                 "package_count": len(req.packages) if req.packages else 0,
-                "total_budget": req.total_budget is not None,
-                "targeting": req.targeting_overlay is not None,
+                "budget": req.budget is not None,
+                "flight_dates": req.start_time is not None or req.end_time is not None,
             },
         },
     )
 
     return UpdateMediaBuyResponse(
-        status="accepted",
+        status="completed",
+        media_buy_id=req.media_buy_id or "",
+        buyer_ref=req.buyer_ref or "",
         implementation_date=datetime.combine(today, datetime.min.time()),
-        detail="Media buy updated successfully",
     )
 
 
@@ -4593,7 +4623,7 @@ def update_media_buy(
     daily_budget: float = None,
     packages: list = None,
     creatives: list = None,
-    webhook_url: str | None = None,
+    push_notification_config: dict | None = None,
     context: Context = None,
 ) -> UpdateMediaBuyResponse:
     """Update a media buy with campaign-level and/or package-level changes.
@@ -4615,7 +4645,7 @@ def update_media_buy(
         daily_budget: Daily spend cap across all packages
         packages: Package-specific updates
         creatives: Add new creatives
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        push_notification_config: Push notification config for async notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -4636,7 +4666,7 @@ def update_media_buy(
         daily_budget=daily_budget,
         packages=packages,
         creatives=creatives,
-        webhook_url=webhook_url,
+        push_notification_config=push_notification_config,
         context=context,
     )
 
