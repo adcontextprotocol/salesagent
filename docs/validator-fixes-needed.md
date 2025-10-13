@@ -4,11 +4,11 @@
 
 After analyzing all 16 custom validators, here's what can be moved to JSON Schema:
 
-**✅ Can Move to Schema (6 validators):**
-1. BrandManifest.validate_required_fields - `oneOf` constraint
+**✅ Can Move to Schema (3 validators - after correction):**
+1. ~~BrandManifest.validate_required_fields~~ - ✅ **ALREADY CORRECT** (uses `anyOf`, not `oneOf`)
 2. GetProductsRequest.validate_brand_or_offering - `oneOf` constraint (✅ DONE)
-3. AdCPPackageUpdate.validate_oneOf_constraint - `oneOf` constraint
-4. UpdateMediaBuyRequest.validate_oneOf_constraint - `oneOf` constraint
+3. ~~AdCPPackageUpdate.validate_oneOf_constraint~~ - ✅ **ALREADY IN SCHEMA**
+4. ~~UpdateMediaBuyRequest.validate_oneOf_constraint~~ - ✅ **ALREADY IN SCHEMA**
 5. PricingOption.validate_pricing_option - Conditional `required` fields
 6. Creative.validate_creative_fields - Mutual exclusivity (`oneOf`)
 
@@ -28,36 +28,32 @@ After analyzing all 16 custom validators, here's what can be moved to JSON Schem
 
 #### 1. BrandManifest.validate_required_fields [Line 2263]
 
+**Status:** ✅ **ALREADY CORRECT IN SCHEMA**
+
 **Current Python:**
 ```python
 @model_validator(mode="after")
 def validate_required_fields(self) -> "BrandManifest":
+    """Ensure at least one of url or name is present."""
     if not self.url and not self.name:
         raise ValueError("BrandManifest requires at least one of: url, name")
     return self
 ```
 
-**JSON Schema Fix:**
+**Schema Already Has:**
 ```json
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/brand-manifest.json",
-  "title": "Brand Manifest",
-  "type": "object",
-  "properties": {
-    "url": {...},
-    "name": {...}
-  },
-  "oneOf": [
+  "anyOf": [
     {"required": ["url"]},
     {"required": ["name"]}
   ]
 }
 ```
 
-**Why this works:** Standard JSON Schema `oneOf` constraint
+**Why anyOf (not oneOf):** The Python validator uses "at least one" logic (`if not self.url and not self.name`), which correctly maps to `anyOf`. Using `oneOf` would incorrectly reject brand manifests that have BOTH url and name. The schema already correctly uses `anyOf`.
 
-**Action:** Add `oneOf` to brand-manifest.json schema
+**Action:** ✅ None needed - Python validator matches schema constraint. Can remove Python validator.
 
 ---
 
@@ -69,47 +65,67 @@ def validate_required_fields(self) -> "BrandManifest":
 
 #### 3. AdCPPackageUpdate.validate_oneOf_constraint [Line 2917]
 
+**Status:** ✅ **ALREADY IN SCHEMA**
+
 **Current Python:**
 ```python
 @model_validator(mode="after")
 def validate_oneOf_constraint(self):
+    """Validate that either package_id OR buyer_ref is provided (AdCP oneOf constraint)."""
     if not self.package_id and not self.buyer_ref:
         raise ValueError("Either package_id or buyer_ref must be provided")
     return self
 ```
 
-**JSON Schema Fix:**
+**Schema Already Has:**
 ```json
 {
-  "oneOf": [
-    {"required": ["package_id"]},
-    {"required": ["buyer_ref"]}
-  ]
+  "items": {
+    "properties": {
+      "package_id": {"type": "string", "description": "Publisher's ID of package to update"},
+      "buyer_ref": {"type": "string", "description": "Buyer's reference for the package to update"}
+    },
+    "oneOf": [
+      {"required": ["package_id"]},
+      {"required": ["buyer_ref"]}
+    ]
+  }
 }
 ```
 
-**Why this works:** Standard JSON Schema `oneOf`
+**Note:** Both `package_id` and `buyer_ref` are **seller-provided identifiers** that the buyer uses to reference packages:
+- `package_id`: Publisher's ID (from create_media_buy response)
+- `buyer_ref`: Buyer's own reference (from packages[].buyer_ref in create request)
 
-**Action:** Check if this schema exists in AdCP spec, add `oneOf`
+The buyer chooses which identifier to use when updating. The validator logic should be `anyOf` (at least one), not strict `oneOf`, since providing both is redundant but not incorrect. However, the AdCP spec uses `oneOf`.
+
+**Action:** ✅ Schema is correct. Python validator can be removed (relies on schema).
 
 ---
 
 #### 4. UpdateMediaBuyRequest.validate_oneOf_constraint [Line 2952]
 
+**Status:** ✅ **ALREADY IN SCHEMA**
+
 **Current Python:**
 ```python
 @model_validator(mode="after")
 def validate_oneOf_constraint(self):
+    """Validate AdCP oneOf constraint: either media_buy_id OR buyer_ref."""
     if not self.media_buy_id and not self.buyer_ref:
         raise ValueError("Either media_buy_id or buyer_ref must be provided")
     if self.media_buy_id and self.buyer_ref:
-        raise ValueError("Cannot provide both")
+        raise ValueError("Cannot provide both media_buy_id and buyer_ref (AdCP oneOf constraint)")
     return self
 ```
 
-**JSON Schema Fix:**
+**Schema Already Has:**
 ```json
 {
+  "properties": {
+    "media_buy_id": {"type": "string", "description": "Publisher's ID of the media buy to update"},
+    "buyer_ref": {"type": "string", "description": "Buyer's reference for the media buy to update"}
+  },
   "oneOf": [
     {"required": ["media_buy_id"]},
     {"required": ["buyer_ref"]}
@@ -117,9 +133,13 @@ def validate_oneOf_constraint(self):
 }
 ```
 
-**Why this works:** Standard JSON Schema `oneOf` - even enforces mutual exclusivity!
+**Note:** Both `media_buy_id` and `buyer_ref` are **seller-provided identifiers** that the buyer uses to reference media buys:
+- `media_buy_id`: Publisher's ID (from create_media_buy response)
+- `buyer_ref`: Buyer's own reference (from create_media_buy request)
 
-**Action:** Add to update-media-buy-request.json schema
+The buyer chooses which identifier to use when updating. Similar to package updates, the validator logic might work as `anyOf` (at least one), but the AdCP spec uses strict `oneOf` to enforce exactly one identifier.
+
+**Action:** ✅ Schema is correct. Python validator can be removed (relies on schema).
 
 ---
 
@@ -304,38 +324,38 @@ def validate_pricing_fields(self) -> "Product":
 
 ## Action Plan
 
-### Immediate (Easy Wins)
+### ✅ Already Done (No Action Needed)
 
-1. **Add oneOf to brand-manifest.json**
-   ```json
-   "oneOf": [{"required": ["url"]}, {"required": ["name"]}]
-   ```
+1. ~~**BrandManifest**~~ - Already uses `anyOf` in schema (correct)
+2. ~~**UpdateMediaBuyRequest**~~ - Already has `oneOf` in schema
+3. ~~**AdCPPackageUpdate**~~ - Already has `oneOf` in schema
+4. **GetProductsRequest** - ✅ Fixed in PR #364
 
-2. **Add oneOf to update-media-buy-request.json**
-   ```json
-   "oneOf": [{"required": ["media_buy_id"]}, {"required": ["buyer_ref"]}]
-   ```
+### Remaining Actions
 
-3. **Check if these schemas exist in AdCP:**
-   - pricing-option.json (for PricingOption)
-   - package-update.json (for AdCPPackageUpdate)
+1. **Check if pricing-option.json exists in AdCP spec**
+   - If yes: Add conditional required constraint
+   - If no: Keep Python validator
 
-### Next Steps
+2. **Review Creative.validate_creative_fields**
+   - Determine if complex logic can be expressed in JSON Schema
+   - Probably too complex - keep in code
 
-1. **File PR with AdCP to add missing oneOf constraints**
-2. **Regenerate Pydantic models**
-3. **Remove Python validators that are now in schema**
-4. **Test thoroughly**
+3. **Remove redundant Python validators** (once schema validation is trusted):
+   - BrandManifest.validate_required_fields (relies on anyOf)
+   - AdCPPackageUpdate.validate_oneOf_constraint (relies on oneOf)
+   - UpdateMediaBuyRequest.validate_oneOf_constraint (relies on oneOf)
 
 ---
 
-## Benefits
+## Benefits (Updated After Review)
 
-✅ **6 validators → JSON Schema** (5 easy + 1 complex)
+✅ **3-4 validators already in schema** (can remove Python code)
+✅ **1-2 validators could move** (pending spec check)
 ✅ **9 validators stay in code** (legitimately need Python)
-✅ **Net result:** ~40% reduction in custom validators
-✅ **Spec compliance:** Validation rules documented in schema
-✅ **Cross-platform:** Works for TypeScript too!
+✅ **Net result:** ~25-30% reduction in custom validators
+✅ **Spec compliance:** Most validation already in schema!
+✅ **Cross-platform:** Schema validation works everywhere!
 
 ---
 
@@ -354,20 +374,21 @@ def validate_pricing_fields(self) -> "Product":
 
 ---
 
-## Summary Table
+## Summary Table (Corrected)
 
-| Validator | Move to Schema? | Complexity | Action |
-|-----------|----------------|------------|--------|
-| BrandManifest.validate_required_fields | ✅ YES | Easy | Add oneOf |
-| GetProductsRequest.validate_brand_or_offering | ✅ DONE | Easy | ✅ Complete |
-| AdCPPackageUpdate.validate_oneOf_constraint | ✅ YES | Easy | Add oneOf |
-| UpdateMediaBuyRequest.validate_oneOf_constraint | ✅ YES | Easy | Add oneOf |
-| PricingOption.validate_pricing_option | ✅ YES | Medium | Add conditional |
-| Creative.validate_creative_fields | ⚠️ MAYBE | Hard | Review |
+| Validator | Move to Schema? | Status | Action |
+|-----------|----------------|--------|--------|
+| BrandManifest.validate_required_fields | ✅ ALREADY DONE | Uses anyOf | Remove Python validator |
+| GetProductsRequest.validate_brand_or_offering | ✅ DONE | Uses oneOf | ✅ Complete (PR #364) |
+| AdCPPackageUpdate.validate_oneOf_constraint | ✅ ALREADY DONE | Uses oneOf | Remove Python validator |
+| UpdateMediaBuyRequest.validate_oneOf_constraint | ✅ ALREADY DONE | Uses oneOf | Remove Python validator |
+| PricingOption.validate_pricing_option | ⚠️ PENDING | Medium | Check if schema exists |
+| Creative.validate_creative_fields | ⚠️ MAYBE | Hard | Review (complex logic) |
 | Product.validate_pricing_fields | ⚠️ MAYBE | Medium | Optional |
-| validate_timezone_aware (5x) | ❌ NO | N/A | Keep |
-| Transforms/Compat (4x) | ❌ NO | N/A | Keep |
+| validate_timezone_aware (5x) | ❌ NO | N/A | Keep (Python runtime) |
+| Transforms/Compat (4x) | ❌ NO | N/A | Keep (data transforms) |
 
-**Total Moveable: 4-6 validators (depending on complexity tolerance)**
-**Must Keep: 9 validators**
-**Reduction: ~40-50%**
+**Total Already in Schema: 3-4 validators (can remove Python code)**
+**Total Moveable: 1-2 validators (pending review)**
+**Must Keep: 9 validators (legitimately need Python)**
+**Reduction: ~25-35%**
