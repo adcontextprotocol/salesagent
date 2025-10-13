@@ -405,6 +405,7 @@ def add_product(tenant_id):
                     product_kwargs["countries"] = countries
 
                 # Handle property authorization (AdCP requirement)
+                # Default to empty property_tags if not specified (satisfies DB constraint)
                 property_mode = form_data.get("property_mode", "tags")
                 if property_mode == "tags":
                     # Parse property tags from comma-separated string
@@ -458,6 +459,9 @@ def add_product(tenant_id):
                                 return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
                             product_kwargs["property_tags"] = property_tags
+                    else:
+                        # No tags provided, default to empty list to satisfy DB constraint
+                        product_kwargs["property_tags"] = []
                 elif property_mode == "full":
                     # Get selected property IDs and load full property objects
                     property_ids_str = request.form.getlist("property_ids")
@@ -496,6 +500,17 @@ def add_product(tenant_id):
                                 }
                                 properties_data.append(prop_dict)
                             product_kwargs["properties"] = properties_data
+                        else:
+                            # No properties found, default to empty property_tags to satisfy DB constraint
+                            product_kwargs["property_tags"] = []
+                    else:
+                        # No properties selected, default to empty property_tags to satisfy DB constraint
+                        product_kwargs["property_tags"] = []
+
+                # Ensure either properties or property_tags is set (DB constraint requirement)
+                if "properties" not in product_kwargs and "property_tags" not in product_kwargs:
+                    # Default to empty property_tags list if neither was set
+                    product_kwargs["property_tags"] = []
 
                 # Create product with correct fields matching the Product model
                 product = Product(**product_kwargs)
