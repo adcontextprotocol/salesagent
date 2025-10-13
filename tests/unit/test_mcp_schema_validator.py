@@ -29,7 +29,7 @@ class TestValidatorDetectsOptionalFieldMismatches:
         main_py = tmp_path / "main.py"
         main_py.write_text(
             '''
-from src.core.schemas import GetProductsRequest
+from src.core.schema_adapters import GetProductsRequest
 
 @mcp.tool
 async def get_products(
@@ -62,7 +62,7 @@ async def get_products(
         main_py = tmp_path / "main.py"
         main_py.write_text(
             '''
-from src.core.schemas import GetProductsRequest
+from src.core.schema_adapters import GetProductsRequest
 
 @mcp.tool
 async def get_products(
@@ -103,7 +103,7 @@ async def get_products(
         assert "adcp_version" in tool_params
 
         # Validate - should PASS
-        from src.core.schemas import GetProductsRequest
+        from src.core.schema_adapters import GetProductsRequest
 
         validator.validate_tool("get_products", tool_params, GetProductsRequest)
 
@@ -117,7 +117,7 @@ async def get_products(
         main_py = tmp_path / "main.py"
         main_py.write_text(
             '''
-from src.core.schemas import GetProductsRequest
+from src.core.schema_adapters import GetProductsRequest
 
 async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetProductsResponse:
     """Shared implementation with full business logic."""
@@ -160,7 +160,7 @@ class TestValidatorExistingFunctionality:
         main_py = tmp_path / "main.py"
         main_py.write_text(
             '''
-from src.core.schemas import GetProductsRequest
+from src.core.schema_adapters import GetProductsRequest
 
 @mcp.tool
 async def get_products(
@@ -186,7 +186,7 @@ async def get_products(
         main_py = tmp_path / "main.py"
         main_py.write_text(
             '''
-from src.core.schemas import GetProductsRequest
+from src.core.schema_adapters import GetProductsRequest
 
 @mcp.tool
 async def get_products(

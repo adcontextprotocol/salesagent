@@ -1,5 +1,6 @@
 """Test that GetProductsResponse __str__ provides human-readable content for MCP."""
 
+from src.core.schema_adapters import GetProductsRequest  # noqa: F401 - May use in future
 from src.core.schemas import GetProductsResponse, Product
 
 

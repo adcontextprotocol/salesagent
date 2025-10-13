@@ -23,12 +23,12 @@ from src.core.config_loader import (
 )
 
 # Schema models (explicit imports to avoid collisions)
+# Using adapters for models that need to stay in sync with AdCP spec
+from src.core.schema_adapters import GetProductsRequest, GetProductsResponse
 from src.core.schemas import (
     CreateMediaBuyResponse,
     GetMediaBuyDeliveryRequest,
     GetMediaBuyDeliveryResponse,
-    GetProductsRequest,
-    GetProductsResponse,
     GetSignalsRequest,
     GetSignalsResponse,
     ListAuthorizedPropertiesRequest,

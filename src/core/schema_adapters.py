@@ -58,15 +58,18 @@ class GetProductsRequest(BaseModel):
     """
 
     # Fields match both generated variants (union of all fields)
+    brief: str = Field("", description="Natural language description of campaign requirements")
     promoted_offering: str | None = Field(
         None, description="DEPRECATED: Use brand_manifest instead. What is being promoted."
     )
     brand_manifest: dict[str, Any] | str | None = Field(
         None, description="Brand information manifest (inline object or URL string)"
     )
-    brief: str = Field("", description="Natural language description of campaign requirements")
     adcp_version: str = Field("1.6.0", description="AdCP schema version")
     filters: dict[str, Any] | None = Field(None, description="Structured filters for product discovery")
+    min_exposures: int | None = Field(None, description="Minimum exposures needed for measurement validity")
+    strategy_id: str | None = Field(None, description="Optional strategy ID for linking operations")
+    webhook_url: str | None = Field(None, description="URL for async task completion notifications")
 
     @model_validator(mode="before")
     @classmethod
@@ -96,29 +99,30 @@ class GetProductsRequest(BaseModel):
             Generated schema instance that can be validated against AdCP JSON Schema
         """
         # Determine which variant to use
+        variant: _GeneratedGetProductsRequest1 | _GeneratedGetProductsRequest2
         if self.promoted_offering and not self.brand_manifest:
             # Use variant 1 (requires promoted_offering)
             variant = _GeneratedGetProductsRequest1(
                 promoted_offering=self.promoted_offering,
                 brief=self.brief or None,
                 adcp_version=self.adcp_version,
-                filters=self.filters,
+                filters=self.filters,  # type: ignore[arg-type]
             )
         elif self.brand_manifest:
             # Use variant 2 (requires brand_manifest)
             variant = _GeneratedGetProductsRequest2(
                 promoted_offering=self.promoted_offering,
-                brand_manifest=self.brand_manifest,
+                brand_manifest=self.brand_manifest,  # type: ignore[arg-type]
                 brief=self.brief or None,
                 adcp_version=self.adcp_version,
-                filters=self.filters,
+                filters=self.filters,  # type: ignore[arg-type]
             )
         else:
             # Fallback - shouldn't happen due to validator
             raise ValueError("Either promoted_offering or brand_manifest must be provided")
 
         # Wrap in RootModel
-        return _GeneratedGetProductsRequest(root=variant)
+        return _GeneratedGetProductsRequest(root=variant)  # type: ignore[arg-type]
 
     @classmethod
     def from_generated(cls, generated: _GeneratedGetProductsRequest) -> "GetProductsRequest":
@@ -142,6 +146,33 @@ class GetProductsRequest(BaseModel):
         """
         generated = self.to_generated()
         return generated.model_dump(**kwargs)
+
+
+# ============================================================================
+# GetProductsResponse Adapter
+# ============================================================================
+
+
+class GetProductsResponse(BaseModel):
+    """Adapter for GetProductsResponse - simple API on top of generated schema.
+
+    For now, this is a simple pass-through since GetProductsResponse doesn't have
+    complex generated schema issues. We use the adapter pattern for consistency
+    and future-proofing.
+
+    Example:
+        resp = GetProductsResponse(products=[...], message="Found 5 products")
+    """
+
+    products: list[dict[str, Any]] = Field(..., description="List of matching products")
+    message: str | None = Field(None, description="Human-readable message")
+    status: str | None = Field(None, description="Response status")
+
+    def __str__(self) -> str:
+        """Return message for MCP display if present."""
+        if self.message:
+            return self.message
+        return f"Found {len(self.products)} product(s)"
 
 
 # Example: How to add this pattern to other schemas

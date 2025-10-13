@@ -57,6 +57,8 @@ from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 
 # Schema models (explicit imports to avoid collisions)
+# Using adapters for models that need to stay in sync with AdCP spec
+from src.core.schema_adapters import GetProductsRequest, GetProductsResponse
 from src.core.schemas import (
     ActivateSignalResponse,
     AggregatedTotals,
@@ -71,8 +73,6 @@ from src.core.schemas import (
     Error,
     GetMediaBuyDeliveryRequest,
     GetMediaBuyDeliveryResponse,
-    GetProductsRequest,
-    GetProductsResponse,
     GetSignalsRequest,
     GetSignalsResponse,
     HumanTask,

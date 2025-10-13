@@ -19,6 +19,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -48,7 +49,7 @@ def load_schema_with_resolver(schema_path: Path, schema_dir: Path) -> dict:
         with open(ref_path) as f:
             return json.load(f)
 
-    return load_ref
+    return load_ref  # type: ignore[return-value]
 
 
 def download_missing_schema(ref: str, schema_dir: Path) -> bool:
@@ -125,7 +126,7 @@ def resolve_refs_in_schema(schema: dict, schema_dir: Path, visited: set | None =
         return resolved
 
     # Recursively process nested schemas
-    result = {}
+    result: dict[str, Any] = {}
     for key, value in schema.items():
         if isinstance(value, dict):
             result[key] = resolve_refs_in_schema(value, schema_dir, visited)

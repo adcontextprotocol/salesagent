@@ -9,7 +9,6 @@ For each validator, determine:
 """
 
 import ast
-import sys
 from pathlib import Path
 
 # Read schemas.py
@@ -39,12 +38,9 @@ for node in ast.walk(tree):
                                 # Get docstring
                                 docstring = ast.get_docstring(item) or "No docstring"
 
-                                validators.append({
-                                    "class": class_name,
-                                    "function": func_name,
-                                    "line": lineno,
-                                    "docstring": docstring
-                                })
+                                validators.append(
+                                    {"class": class_name, "function": func_name, "line": lineno, "docstring": docstring}
+                                )
 
 print("=" * 80)
 print("CUSTOM VALIDATORS ANALYSIS")
@@ -53,7 +49,9 @@ print()
 
 for i, v in enumerate(validators, 1):
     print(f"{i}. {v['class']}.{v['function']}() [Line {v['line']}]")
-    print(f"   {v['docstring'][:100]}...")
+    docstring = str(v.get("docstring", ""))
+    if docstring:
+        print(f"   {docstring[:100]}...")
     print()
 
 print(f"\nTotal validators found: {len(validators)}")
