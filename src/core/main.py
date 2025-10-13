@@ -4002,6 +4002,14 @@ def create_media_buy(
     Returns:
         CreateMediaBuyResponse with media buy details
     """
+    # Convert legacy webhook_url to push_notification_config format if needed
+    final_push_config = push_notification_config
+    if webhook_url and not push_notification_config:
+        final_push_config = {
+            "url": webhook_url,
+            "authentication": {"type": "none"},
+        }
+
     return _create_media_buy_impl(
         promoted_offering=promoted_offering,
         po_number=po_number,
@@ -4022,7 +4030,7 @@ def create_media_buy(
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
-        push_notification_config=push_notification_config,
+        push_notification_config=final_push_config,
         context=context,
     )
 
@@ -4416,6 +4424,14 @@ def update_media_buy(
     Returns:
         UpdateMediaBuyResponse with updated media buy details
     """
+    # Convert legacy webhook_url to push_notification_config format
+    push_notification_config = None
+    if webhook_url:
+        push_notification_config = {
+            "url": webhook_url,
+            "authentication": {"type": "none"},
+        }
+
     return _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
@@ -4431,7 +4447,7 @@ def update_media_buy(
         daily_budget=daily_budget,
         packages=packages,
         creatives=creatives,
-        webhook_url=webhook_url,
+        push_notification_config=push_notification_config,
         context=context,
     )
 
