@@ -143,7 +143,9 @@ def init_db(exit_on_error=False):
                     )
                     db_session.add(new_principal)
 
-            # Create sample products
+            # Create sample products with pricing_options (not legacy pricing fields)
+            from src.core.database.models import PricingOption as PricingOptionModel
+
             products_data = [
                 {
                     "product_id": "prod_1",
@@ -163,10 +165,6 @@ def init_db(exit_on_error=False):
                         "content_cat_any_of": ["news", "politics"],
                         "geo_country_any_of": ["US"],
                     },
-                    "delivery_type": "guaranteed",
-                    "is_fixed_price": False,
-                    "cpm": None,
-                    "price_guidance": {"floor": 5.0, "p50": 8.0, "p75": 10.0},
                     "implementation_config": {
                         "placement_ids": ["news_300x250_atf", "news_300x250_btf"],
                         "ad_unit_path": "/1234/news/display",
@@ -177,6 +175,12 @@ def init_db(exit_on_error=False):
                         },
                     },
                     "property_tags": ["all_inventory"],  # Required per AdCP spec
+                    "pricing_option": {
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "is_fixed": False,
+                        "price_guidance": {"floor": 5.0, "p50": 8.0, "p75": 10.0},
+                    },
                 },
                 {
                     "product_id": "prod_2",
@@ -193,10 +197,6 @@ def init_db(exit_on_error=False):
                         }
                     ],
                     "targeting_template": {"geo_country_any_of": ["US", "CA"]},
-                    "delivery_type": "non_guaranteed",
-                    "is_fixed_price": True,
-                    "cpm": 2.5,
-                    "price_guidance": None,
                     "implementation_config": {
                         "placement_ids": ["ros_728x90_all"],
                         "ad_unit_path": "/1234/run_of_site/leaderboard",
@@ -204,10 +204,20 @@ def init_db(exit_on_error=False):
                         "targeting": {"geo_country_any_of": ["US", "CA"]},
                     },
                     "property_tags": ["all_inventory"],  # Required per AdCP spec
+                    "pricing_option": {
+                        "pricing_model": "cpm",
+                        "rate": 2.5,
+                        "currency": "USD",
+                        "is_fixed": True,
+                    },
                 },
             ]
 
             for p in products_data:
+                # Extract pricing info to populate legacy fields (still required by schema)
+                pricing_opt_data = p["pricing_option"]
+                is_fixed = pricing_opt_data["is_fixed"]
+
                 new_product = Product(
                     tenant_id="default",
                     product_id=p["product_id"],
@@ -215,14 +225,31 @@ def init_db(exit_on_error=False):
                     description=p["description"],
                     formats=p["formats"],  # No json.dumps needed for JSONB columns
                     targeting_template=p["targeting_template"],
-                    delivery_type=p["delivery_type"],
-                    is_fixed_price=p["is_fixed_price"],
-                    cpm=p.get("cpm"),
-                    price_guidance=p.get("price_guidance"),  # Direct dict assignment
                     implementation_config=p.get("implementation_config"),
                     property_tags=p.get("property_tags"),  # Required per AdCP spec
+                    # Legacy pricing fields (still in schema, will be removed later)
+                    is_fixed_price=is_fixed,
+                    delivery_type="guaranteed" if is_fixed else "non_guaranteed",
+                    currency=pricing_opt_data["currency"],
+                    cpm=pricing_opt_data.get("rate"),
+                    price_guidance=pricing_opt_data.get("price_guidance"),
                 )
                 db_session.add(new_product)
+                db_session.flush()  # Flush to get product in database before adding pricing_option
+
+                # Create pricing_option for this product
+                pricing_opt_data = p["pricing_option"]
+                new_pricing_option = PricingOptionModel(
+                    pricing_option_id=f"po_{p['product_id']}",
+                    tenant_id="default",
+                    product_id=p["product_id"],
+                    pricing_model=pricing_opt_data["pricing_model"],
+                    rate=pricing_opt_data.get("rate"),
+                    currency=pricing_opt_data["currency"],
+                    is_fixed=pricing_opt_data["is_fixed"],
+                    price_guidance=pricing_opt_data.get("price_guidance"),
+                )
+                db_session.add(new_pricing_option)
 
             # Commit all changes
             db_session.commit()
