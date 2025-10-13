@@ -229,13 +229,17 @@ class TestAdCPReferenceImplementation:
             delivery_result = await client.call_tool("get_media_buy_delivery", {"media_buy_ids": [media_buy_id]})
             delivery_data = json.loads(delivery_result.content[0].text)
 
-            # Verify delivery response structure
-            assert "media_buy_id" in delivery_data or "buyer_ref" in delivery_data
+            # Verify delivery response structure (AdCP spec: deliveries is an array)
+            assert "deliveries" in delivery_data or "media_buy_deliveries" in delivery_data
             print(f"   ✓ Delivery data retrieved for: {media_buy_id}")
 
-            if "metrics" in delivery_data:
-                metrics = delivery_data["metrics"]
-                print(f"   ✓ Metrics: {list(metrics.keys())}")
+            # Check if we have deliveries
+            deliveries = delivery_data.get("deliveries") or delivery_data.get("media_buy_deliveries", [])
+            if deliveries:
+                print(f"   ✓ Found {len(deliveries)} delivery record(s)")
+                if "metrics" in deliveries[0]:
+                    metrics = deliveries[0]["metrics"]
+                    print(f"   ✓ Metrics: {list(metrics.keys())}")
 
             # ================================================================
             # PHASE 5: Update Campaign Budget (Async via Webhook)
