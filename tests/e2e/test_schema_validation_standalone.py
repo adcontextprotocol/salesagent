@@ -40,8 +40,19 @@ async def test_valid_get_products_response():
                     "description": "Test description",
                     "format_ids": ["display_300x250"],  # AdCP spec uses format_ids, not formats
                     "delivery_type": "guaranteed",
-                    "is_fixed_price": True,
-                    "cpm": 5.0,
+                    "delivery_measurement": {
+                        "provider": "Google Ad Manager with IAS viewability",
+                        "notes": "MRC-accredited viewability. 50% in-view for 1s display / 2s video",
+                    },
+                    "pricing_options": [
+                        {
+                            "pricing_option_id": "cpm_usd_guaranteed",
+                            "pricing_model": "cpm",
+                            "rate": 5.0,
+                            "currency": "USD",
+                            "min_spend_per_package": 1000.0,
+                        }
+                    ],
                     "property_tags": [
                         "premium_content"
                     ],  # Required by AdCP - must have either properties or property_tags
