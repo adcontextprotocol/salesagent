@@ -5648,6 +5648,35 @@ async def health(request: Request):
     return JSONResponse({"status": "healthy", "service": "mcp"})
 
 
+@mcp.custom_route("/admin/reset-db-pool", methods=["POST"])
+async def reset_db_pool(request: Request):
+    """Reset database connection pool after external data changes.
+
+    This is a testing-only endpoint that flushes the SQLAlchemy connection pool,
+    ensuring fresh connections see recently committed data. Only works when
+    ADCP_TESTING environment variable is set to 'true'.
+
+    Use case: E2E tests that initialize data via external script need to ensure
+    the running MCP server's connection pool picks up that fresh data.
+    """
+    # Security: Only allow in testing mode
+    if os.getenv("ADCP_TESTING") != "true":
+        logger.warning("Attempted to reset DB pool outside testing mode")
+        return JSONResponse({"error": "This endpoint is only available in testing mode"}, status_code=403)
+
+    try:
+        from src.core.database.database_session import reset_engine
+
+        logger.info("Resetting database connection pool (testing mode)")
+        reset_engine()
+        logger.info("Database connection pool reset successfully")
+
+        return JSONResponse({"status": "success", "message": "Database connection pool reset successfully"})
+    except Exception as e:
+        logger.error(f"Failed to reset database connection pool: {e}")
+        return JSONResponse({"error": f"Failed to reset connection pool: {str(e)}"}, status_code=500)
+
+
 @mcp.custom_route("/debug/tenant", methods=["GET"])
 async def debug_tenant(request: Request):
     """Debug endpoint to check tenant detection from headers."""

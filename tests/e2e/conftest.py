@@ -216,7 +216,7 @@ def docker_services_e2e(request):
         text=True,
     )
     if init_result.returncode != 0:
-        print(f"❌ CI data initialization failed:")
+        print("❌ CI data initialization failed:")
         print(f"STDOUT: {init_result.stdout}")
         print(f"STDERR: {init_result.stderr}")
         pytest.fail("Failed to initialize CI test data")
@@ -229,6 +229,22 @@ def docker_services_e2e(request):
         print("CI initialization stderr:")
         print(init_result.stderr)
     print("✓ CI test data initialized successfully")
+
+    # CRITICAL: Reset database connection pool to ensure MCP server sees fresh data
+    # The MCP server started with an empty database, created connection pool with stale transactions.
+    # After init_database_ci.py populates data, we need to flush those connections.
+    print("🔄 Resetting MCP server database connection pool...")
+    try:
+        reset_response = requests.post(f"http://localhost:{mcp_port}/admin/reset-db-pool", timeout=5)
+        if reset_response.status_code == 200:
+            print("✓ Database connection pool reset successfully")
+            print(f"  Response: {reset_response.json()}")
+        else:
+            print(f"⚠️  Warning: DB pool reset returned {reset_response.status_code}")
+            print(f"  Response: {reset_response.text}")
+    except Exception as e:
+        print(f"⚠️  Warning: Failed to reset DB pool (non-fatal): {e}")
+        print("  This may cause E2E tests to fail if database was empty at server startup")
 
     # Yield port information for use by other fixtures
     yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
