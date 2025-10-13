@@ -480,6 +480,7 @@ class TestRoundtripErrorScenarios:
                 templates_available=False,
             ),
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
             "brief_relevance": "Test relevance explanation",
         }
 
