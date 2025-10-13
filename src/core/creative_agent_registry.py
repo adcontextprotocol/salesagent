@@ -123,11 +123,30 @@ class CreativeAgentRegistry:
         agents.sort(key=lambda a: a.priority)
         return [a for a in agents if a.enabled]
 
-    async def _fetch_formats_from_agent(self, agent: CreativeAgent) -> list[Format]:
+    async def _fetch_formats_from_agent(
+        self,
+        agent: CreativeAgent,
+        max_width: int | None = None,
+        max_height: int | None = None,
+        min_width: int | None = None,
+        min_height: int | None = None,
+        is_responsive: bool | None = None,
+        asset_types: list[str] | None = None,
+        name_search: str | None = None,
+        type_filter: str | None = None,
+    ) -> list[Format]:
         """Fetch format list from a creative agent via MCP.
 
         Args:
             agent: CreativeAgent to query
+            max_width: Maximum width in pixels (inclusive)
+            max_height: Maximum height in pixels (inclusive)
+            min_width: Minimum width in pixels (inclusive)
+            min_height: Minimum height in pixels (inclusive)
+            is_responsive: Filter for responsive formats
+            asset_types: Filter by asset types
+            name_search: Search by name
+            type_filter: Filter by format type (display, video, audio)
 
         Returns:
             List of Format objects from the agent
@@ -142,8 +161,27 @@ class CreativeAgentRegistry:
         client = Client(transport=transport)
 
         async with client:
+            # Build parameters for list_creative_formats
+            params = {}
+            if max_width is not None:
+                params["max_width"] = max_width
+            if max_height is not None:
+                params["max_height"] = max_height
+            if min_width is not None:
+                params["min_width"] = min_width
+            if min_height is not None:
+                params["min_height"] = min_height
+            if is_responsive is not None:
+                params["is_responsive"] = is_responsive
+            if asset_types is not None:
+                params["asset_types"] = asset_types
+            if name_search is not None:
+                params["name_search"] = name_search
+            if type_filter is not None:
+                params["type"] = type_filter
+
             # Call list_creative_formats tool
-            result = await client.call_tool("list_creative_formats", {})
+            result = await client.call_tool("list_creative_formats", params)
 
             # Parse result into Format objects
             formats = []
@@ -182,37 +220,101 @@ class CreativeAgentRegistry:
 
         return os.environ.get(token_env)
 
-    async def get_formats_for_agent(self, agent: CreativeAgent, force_refresh: bool = False) -> list[Format]:
+    async def get_formats_for_agent(
+        self,
+        agent: CreativeAgent,
+        force_refresh: bool = False,
+        max_width: int | None = None,
+        max_height: int | None = None,
+        min_width: int | None = None,
+        min_height: int | None = None,
+        is_responsive: bool | None = None,
+        asset_types: list[str] | None = None,
+        name_search: str | None = None,
+        type_filter: str | None = None,
+    ) -> list[Format]:
         """Get formats from agent with caching.
 
         Args:
             agent: CreativeAgent to query
             force_refresh: Skip cache and fetch fresh data
+            max_width: Maximum width in pixels (inclusive)
+            max_height: Maximum height in pixels (inclusive)
+            min_width: Minimum width in pixels (inclusive)
+            min_height: Minimum height in pixels (inclusive)
+            is_responsive: Filter for responsive formats
+            asset_types: Filter by asset types
+            name_search: Search by name
+            type_filter: Filter by format type (display, video, audio)
 
         Returns:
             List of Format objects
         """
-        # Check cache
+        # Check cache - only use cache if no filtering parameters provided
+        has_filters = any(
+            [
+                max_width is not None,
+                max_height is not None,
+                min_width is not None,
+                min_height is not None,
+                is_responsive is not None,
+                asset_types is not None,
+                name_search is not None,
+                type_filter is not None,
+            ]
+        )
+
         cached = self._format_cache.get(agent.agent_url)
-        if cached and not cached.is_expired() and not force_refresh:
+        if cached and not cached.is_expired() and not force_refresh and not has_filters:
             return cached.formats
 
         # Fetch from agent
-        formats = await self._fetch_formats_from_agent(agent)
-
-        # Update cache
-        self._format_cache[agent.agent_url] = CachedFormats(
-            formats=formats, fetched_at=datetime.now(UTC), ttl_seconds=3600
+        formats = await self._fetch_formats_from_agent(
+            agent,
+            max_width=max_width,
+            max_height=max_height,
+            min_width=min_width,
+            min_height=min_height,
+            is_responsive=is_responsive,
+            asset_types=asset_types,
+            name_search=name_search,
+            type_filter=type_filter,
         )
+
+        # Update cache only if no filtering parameters (cache full result set)
+        if not has_filters:
+            self._format_cache[agent.agent_url] = CachedFormats(
+                formats=formats, fetched_at=datetime.now(UTC), ttl_seconds=3600
+            )
 
         return formats
 
-    async def list_all_formats(self, tenant_id: str | None = None, force_refresh: bool = False) -> list[Format]:
+    async def list_all_formats(
+        self,
+        tenant_id: str | None = None,
+        force_refresh: bool = False,
+        max_width: int | None = None,
+        max_height: int | None = None,
+        min_width: int | None = None,
+        min_height: int | None = None,
+        is_responsive: bool | None = None,
+        asset_types: list[str] | None = None,
+        name_search: str | None = None,
+        type_filter: str | None = None,
+    ) -> list[Format]:
         """List all formats from all registered agents.
 
         Args:
             tenant_id: Optional tenant ID for tenant-specific agents
             force_refresh: Skip cache and fetch fresh data
+            max_width: Maximum width in pixels (inclusive)
+            max_height: Maximum height in pixels (inclusive)
+            min_width: Minimum width in pixels (inclusive)
+            min_height: Minimum height in pixels (inclusive)
+            is_responsive: Filter for responsive formats
+            asset_types: Filter by asset types
+            name_search: Search by name
+            type_filter: Filter by format type (display, video, audio)
 
         Returns:
             List of all Format objects across all agents
@@ -222,7 +324,18 @@ class CreativeAgentRegistry:
 
         for agent in agents:
             try:
-                formats = await self.get_formats_for_agent(agent, force_refresh=force_refresh)
+                formats = await self.get_formats_for_agent(
+                    agent,
+                    force_refresh=force_refresh,
+                    max_width=max_width,
+                    max_height=max_height,
+                    min_width=min_width,
+                    min_height=min_height,
+                    is_responsive=is_responsive,
+                    asset_types=asset_types,
+                    name_search=name_search,
+                    type_filter=type_filter,
+                )
                 all_formats.extend(formats)
             except Exception as e:
                 # Log error but continue with other agents

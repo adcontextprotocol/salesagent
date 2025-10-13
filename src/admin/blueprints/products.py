@@ -19,7 +19,17 @@ logger = logging.getLogger(__name__)
 products_bp = Blueprint("products", __name__)
 
 
-def get_creative_formats(tenant_id: str | None = None):
+def get_creative_formats(
+    tenant_id: str | None = None,
+    max_width: int | None = None,
+    max_height: int | None = None,
+    min_width: int | None = None,
+    min_height: int | None = None,
+    is_responsive: bool | None = None,
+    asset_types: list[str] | None = None,
+    name_search: str | None = None,
+    type_filter: str | None = None,
+):
     """Get all available creative formats for the product form.
 
     Returns formats from all registered creative agents (default + tenant-specific).
@@ -27,14 +37,32 @@ def get_creative_formats(tenant_id: str | None = None):
 
     Args:
         tenant_id: Optional tenant ID for tenant-specific agents
+        max_width: Maximum width in pixels (inclusive)
+        max_height: Maximum height in pixels (inclusive)
+        min_width: Minimum width in pixels (inclusive)
+        min_height: Minimum height in pixels (inclusive)
+        is_responsive: Filter for responsive formats
+        asset_types: Filter by asset types
+        name_search: Search by name
+        type_filter: Filter by format type (display, video, audio)
 
     Returns:
         List of format dictionaries for frontend
     """
     from src.core.format_resolver import list_available_formats
 
-    # Get formats from creative agent registry
-    formats = list_available_formats(tenant_id=tenant_id)
+    # Get formats from creative agent registry with optional filtering
+    formats = list_available_formats(
+        tenant_id=tenant_id,
+        max_width=max_width,
+        max_height=max_height,
+        min_width=min_width,
+        min_height=min_height,
+        is_responsive=is_responsive,
+        asset_types=asset_types,
+        name_search=name_search,
+        type_filter=type_filter,
+    )
 
     formats_list = []
     for fmt in formats:

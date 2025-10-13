@@ -235,11 +235,29 @@ def _get_tenant_custom_format(tenant_id: str, format_id: str) -> Format | None:
         return _parse_format_from_db_row(row)
 
 
-def list_available_formats(tenant_id: str | None = None) -> list[Format]:
+def list_available_formats(
+    tenant_id: str | None = None,
+    max_width: int | None = None,
+    max_height: int | None = None,
+    min_width: int | None = None,
+    min_height: int | None = None,
+    is_responsive: bool | None = None,
+    asset_types: list[str] | None = None,
+    name_search: str | None = None,
+    type_filter: str | None = None,
+) -> list[Format]:
     """List all formats available to a tenant from all registered creative agents.
 
     Args:
         tenant_id: Optional tenant ID to include tenant-specific agents
+        max_width: Maximum width in pixels (inclusive)
+        max_height: Maximum height in pixels (inclusive)
+        min_width: Minimum width in pixels (inclusive)
+        min_height: Minimum height in pixels (inclusive)
+        is_responsive: Filter for responsive formats
+        asset_types: Filter by asset types
+        name_search: Search by name
+        type_filter: Filter by format type (display, video, audio)
 
     Returns:
         List of all available Format objects from all registered agents
@@ -252,7 +270,19 @@ def list_available_formats(tenant_id: str | None = None) -> list[Format]:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant_id))
+        formats = loop.run_until_complete(
+            registry.list_all_formats(
+                tenant_id=tenant_id,
+                max_width=max_width,
+                max_height=max_height,
+                min_width=min_width,
+                min_height=min_height,
+                is_responsive=is_responsive,
+                asset_types=asset_types,
+                name_search=name_search,
+                type_filter=type_filter,
+            )
+        )
     finally:
         loop.close()
 
