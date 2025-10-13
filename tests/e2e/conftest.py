@@ -220,6 +220,14 @@ def docker_services_e2e(request):
         print(f"STDOUT: {init_result.stdout}")
         print(f"STDERR: {init_result.stderr}")
         pytest.fail("Failed to initialize CI test data")
+
+    # Always print output to help with debugging
+    if init_result.stdout:
+        print("CI initialization output:")
+        print(init_result.stdout)
+    if init_result.stderr:
+        print("CI initialization stderr:")
+        print(init_result.stderr)
     print("✓ CI test data initialized successfully")
 
     # Yield port information for use by other fixtures
