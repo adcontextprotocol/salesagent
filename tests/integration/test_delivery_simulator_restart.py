@@ -3,12 +3,13 @@
 Tests the critical join logic between MediaBuy and PushNotificationConfig tables.
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
-from datetime import datetime, timedelta, UTC
 from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, PushNotificationConfig, Principal, Tenant
+from src.core.database.models import MediaBuy, Principal, PushNotificationConfig, Tenant
 from src.services.delivery_simulator import delivery_simulator
 
 
@@ -17,14 +18,11 @@ class TestDeliverySimulatorRestart:
     """Test delivery simulator restart with proper database joins."""
 
     @pytest.fixture
-    def test_tenant(self):
+    def test_tenant(self, integration_db):
         """Create test tenant."""
         with get_db_session() as session:
             tenant = Tenant(
-                tenant_id="test_tenant_restart",
-                name="Test Tenant for Restart",
-                subdomain="test-restart",
-                config={}
+                tenant_id="test_tenant_restart", name="Test Tenant for Restart", subdomain="test-restart", config={}
             )
             session.add(tenant)
             session.commit()
@@ -46,7 +44,7 @@ class TestDeliverySimulatorRestart:
                 principal_id="test_principal_restart",
                 name="Test Principal",
                 access_token="test_token_restart",
-                platform_mappings={}
+                platform_mappings={},
             )
             session.add(principal)
             session.commit()
@@ -117,10 +115,7 @@ class TestDeliverySimulatorRestart:
             # Cleanup: Delete media buys
             with get_db_session() as session:
                 for media_buy_id in media_buy_ids:
-                    stmt = select(MediaBuy).filter_by(
-                        tenant_id=test_tenant,
-                        media_buy_id=media_buy_id
-                    )
+                    stmt = select(MediaBuy).filter_by(tenant_id=test_tenant, media_buy_id=media_buy_id)
                     media_buy = session.scalars(stmt).first()
                     if media_buy:
                         session.delete(media_buy)
@@ -139,7 +134,7 @@ class TestDeliverySimulatorRestart:
                 principal_id="principal_no_webhook",
                 name="Principal Without Webhook",
                 access_token="token_no_webhook",
-                platform_mappings={}
+                platform_mappings={},
             )
             session.add(principal_no_webhook)
 
@@ -215,7 +210,7 @@ class TestDeliverySimulatorRestart:
                         & (MediaBuy.principal_id == PushNotificationConfig.principal_id),
                     )
                     .where(MediaBuy.status.in_(["pending", "active", "working"]))
-                    .where(PushNotificationConfig.is_active == True)
+                    .where(PushNotificationConfig.is_active)
                 )
                 results = session.execute(stmt).all()
 

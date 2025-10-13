@@ -7,7 +7,7 @@ This type uses native JSONB storage with additional validation.
 import logging
 from typing import Any
 
-from sqlalchemy import JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Dialect
 from sqlalchemy.types import TypeDecorator
 
@@ -50,7 +50,9 @@ class JSONType(TypeDecorator):
         - PostgreSQL enforces JSONB validity at database level
     """
 
-    impl = JSON  # SQLAlchemy automatically uses JSONB for PostgreSQL
+    # PostgreSQL-specific JSONB type with none_as_null=True
+    # This ensures Python None becomes SQL NULL, not JSON null
+    impl = JSONB(none_as_null=True)
     cache_ok = True
 
     def process_bind_param(self, value: Any, dialect: Dialect) -> dict | list | None:

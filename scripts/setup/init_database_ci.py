@@ -111,6 +111,11 @@ def init_db_ci():
                     billing_plan="test",
                     ad_server="mock",
                     enable_axe_signals=True,
+                    authorized_emails=None,  # SQL NULL (satisfies constraint)
+                    authorized_domains=None,  # SQL NULL (satisfies constraint)
+                    policy_settings=None,  # SQL NULL
+                    signals_agent_config=None,  # SQL NULL
+                    ai_policy=None,  # SQL NULL
                     auto_approve_formats=["display_300x250", "display_728x90"],
                     human_review_required=False,
                     created_at=now,
@@ -271,6 +276,13 @@ def init_db_ci():
                         is_fixed_price=p["is_fixed_price"],
                         cpm=p.get("cpm"),
                         property_tags=["all_inventory"],  # Required per AdCP spec
+                        # Explicitly set all JSONB fields to None (SQL NULL) to satisfy constraints
+                        measurement=None,
+                        creative_policy=None,
+                        price_guidance=None,
+                        countries=None,
+                        implementation_config=None,
+                        properties=None,  # Using property_tags instead
                     )
                     session.add(product)
                     print(f"  ✓ Created product: {p['name']} (property_tags=['all_inventory'])")

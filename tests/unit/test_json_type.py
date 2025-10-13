@@ -113,11 +113,14 @@ class TestJSONType:
         json_type = JSONType()
         assert json_type.cache_ok is True
 
-    def test_impl_is_json(self):
-        """Test that the implementation type is JSON (uses JSONB in PostgreSQL)."""
-        from sqlalchemy import JSON
+    def test_impl_is_jsonb(self):
+        """Test that the implementation type is PostgreSQL JSONB with none_as_null."""
+        from sqlalchemy.dialects.postgresql import JSONB
 
-        assert JSONType.impl == JSON
+        # Check that impl is a JSONB instance (not just the class)
+        assert isinstance(JSONType.impl, JSONB)
+        # Verify none_as_null is enabled to ensure Python None → SQL NULL
+        assert JSONType.impl.none_as_null is True
 
 
 class TestJSONTypeBindParam:
