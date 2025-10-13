@@ -1,9 +1,28 @@
-# Postmortem: sync_creatives Parameter Mismatch CI Failures
+# Postmortem: webhook_url Parameter Removal & AdCP Spec Compliance
 
 **Date**: 2025-01-12
 **Impact**: E2E tests failing in CI for multiple commits
-**Root Cause**: Parameter signature mismatch between MCP wrappers and shared implementation functions
-**Status**: RESOLVED (commit 5ed0df5) but **SYSTEMIC ISSUES REMAIN**
+**Root Cause**: Parameter signature mismatch + non-spec-compliant legacy parameters
+**Status**: ✅ FULLY RESOLVED (commit 20ab4a6)
+
+**Final Resolution**: Removed all `webhook_url` legacy parameters from MCP wrappers. Now fully AdCP spec-compliant using only `push_notification_config`.
+
+---
+
+## Update (2025-01-12): Full AdCP Compliance
+
+After discovering that `webhook_url` is NOT in the AdCP specification, we removed it entirely from all MCP wrappers:
+
+**Removed from:**
+- `sync_creatives` MCP wrapper
+- `create_media_buy` MCP wrapper
+- `update_media_buy` MCP wrapper
+
+**AdCP Spec Uses:**
+- `push_notification_config` (object with `url`, `authentication`, etc.)
+- Inside the config, the field is `url` (NOT `webhook_url`)
+
+**Pre-commit hook updated:** No longer allows legacy parameters - all signatures must match exactly.
 
 ---
 

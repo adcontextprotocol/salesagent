@@ -87,14 +87,6 @@ tools = [
 main_py = Path("src/core/main.py")
 tools_py = Path("src/core/tools.py")
 
-# Legacy parameters that are allowed in MCP wrappers for backwards compatibility
-# These parameters should be converted to the canonical form before calling _impl
-LEGACY_PARAMS = {"webhook_url"}
-
-# Canonical parameters that can be replaced by legacy equivalents
-# Format: {canonical_param: legacy_param}
-LEGACY_CONVERSIONS = {"push_notification_config": "webhook_url"}
-
 issues_found = []
 
 for tool in tools:
@@ -112,29 +104,13 @@ for tool in tools:
         print(f"❌ Could not find {tool['a2a_raw']} in {tools_py}")
         continue
 
-    # Check MCP wrapper alignment (allow legacy params)
-    # Allow legacy parameters if they convert to canonical form
-    mcp_params_canonical = mcp_params.copy()
-
-    # Handle legacy parameter conversions:
-    # 1. If wrapper has BOTH canonical and legacy, remove legacy for comparison
-    # 2. If wrapper has ONLY legacy (not canonical), replace with canonical
-    for canonical, legacy in LEGACY_CONVERSIONS.items():
-        if legacy in mcp_params_canonical:
-            if canonical in mcp_params_canonical:
-                # Both present - remove legacy (it's extra for backwards compat)
-                mcp_params_canonical.remove(legacy)
-            else:
-                # Only legacy present - replace with canonical
-                mcp_params_canonical.remove(legacy)
-                mcp_params_canonical.add(canonical)
-
-    if impl_params != mcp_params_canonical:
+    # Check MCP wrapper alignment (must match exactly - no legacy params allowed)
+    if impl_params != mcp_params:
         mismatch = {
             "tool": tool["name"],
             "type": "MCP wrapper",
-            "missing_in_wrapper": impl_params - mcp_params_canonical,
-            "extra_in_wrapper": mcp_params_canonical - impl_params,
+            "missing_in_wrapper": impl_params - mcp_params,
+            "extra_in_wrapper": mcp_params - impl_params,
         }
         issues_found.append(mismatch)
 
@@ -162,7 +138,7 @@ else:
             print(f"    Extra: {sorted(extra)}")
         print()
 
-    print("💡 Tip: MCP wrappers and A2A raw functions must match their _impl signature.")
-    print("   Legacy parameters like 'webhook_url' are allowed in MCP wrappers but must be converted.")
+    print("💡 Tip: MCP wrappers and A2A raw functions must match their _impl signature exactly.")
+    print("   All parameters must be AdCP spec-compliant (no legacy parameters).")
     print("   See docs/postmortems/2025-01-12-sync-creatives-parameter-mismatch.md for details.")
     sys.exit(1)

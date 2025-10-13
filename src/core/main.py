@@ -2107,7 +2107,7 @@ def sync_creatives(
     delete_missing: bool = False,
     dry_run: bool = False,
     validation_mode: str = "strict",
-    webhook_url: str | None = None,
+    push_notification_config: dict | None = None,
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
@@ -2121,20 +2121,12 @@ def sync_creatives(
         delete_missing: Delete creatives not in sync payload (use with caution)
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        push_notification_config: Push notification config for async notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
         SyncCreativesResponse with sync results
     """
-    # Convert legacy webhook_url to push_notification_config format
-    push_notification_config = None
-    if webhook_url:
-        push_notification_config = {
-            "url": webhook_url,
-            "authentication": {"type": "none"},
-        }
-
     return _sync_creatives_impl(
         creatives=creatives,
         patch=patch,
@@ -3968,7 +3960,6 @@ def create_media_buy(
     enable_creative_macro: bool = False,
     strategy_id: str = None,
     push_notification_config: dict = None,
-    webhook_url: str | None = None,
     context: Context = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
@@ -3995,21 +3986,12 @@ def create_media_buy(
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
-        push_notification_config: Push notification config dict with url, authentication
-        webhook_url: Legacy URL for async task completion notifications (use push_notification_config instead)
+        push_notification_config: Push notification config dict with url, authentication (AdCP spec)
         context: FastMCP context (automatically provided)
 
     Returns:
         CreateMediaBuyResponse with media buy details
     """
-    # Convert legacy webhook_url to push_notification_config format if needed
-    final_push_config = push_notification_config
-    if webhook_url and not push_notification_config:
-        final_push_config = {
-            "url": webhook_url,
-            "authentication": {"type": "none"},
-        }
-
     return _create_media_buy_impl(
         promoted_offering=promoted_offering,
         po_number=po_number,
@@ -4030,7 +4012,7 @@ def create_media_buy(
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
-        push_notification_config=final_push_config,
+        push_notification_config=push_notification_config,
         context=context,
     )
 
@@ -4396,7 +4378,7 @@ def update_media_buy(
     daily_budget: float = None,
     packages: list = None,
     creatives: list = None,
-    webhook_url: str | None = None,
+    push_notification_config: dict | None = None,
     context: Context = None,
 ) -> UpdateMediaBuyResponse:
     """Update a media buy with campaign-level and/or package-level changes.
@@ -4418,20 +4400,12 @@ def update_media_buy(
         daily_budget: Daily spend cap across all packages
         packages: Package-specific updates
         creatives: Add new creatives
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        push_notification_config: Push notification config for async notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
         UpdateMediaBuyResponse with updated media buy details
     """
-    # Convert legacy webhook_url to push_notification_config format
-    push_notification_config = None
-    if webhook_url:
-        push_notification_config = {
-            "url": webhook_url,
-            "authentication": {"type": "none"},
-        }
-
     return _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
