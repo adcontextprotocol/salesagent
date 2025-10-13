@@ -8,7 +8,7 @@ This module provides:
 
 Architecture:
 - Default agent: https://creative.adcontextprotocol.org (always available)
-- Tenant agents: Configured in tenant.config.creative_agents[]
+- Tenant agents: Configured in creative_agents database table
 - Format resolution: Query agents via MCP, cache results
 - Preview generation: Delegate to creative agent
 - Generative creative: Use agent's create_generative_creative tool
@@ -94,25 +94,28 @@ class CreativeAgentRegistry:
         from sqlalchemy import select
 
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import Tenant as TenantModel
+        from src.core.database.models import CreativeAgent as CreativeAgentModel
 
         with get_db_session() as session:
-            stmt = select(TenantModel).filter_by(tenant_id=tenant_id)
-            tenant = session.scalars(stmt).first()
+            stmt = select(CreativeAgentModel).filter_by(tenant_id=tenant_id, enabled=True)
+            db_agents = session.scalars(stmt).all()
 
-            if not tenant or not tenant.config:
-                return agents
+            for db_agent in db_agents:
+                # Parse auth credentials if present
+                auth = None
+                if db_agent.auth_type and db_agent.auth_credentials:
+                    auth = {
+                        "type": db_agent.auth_type,
+                        "credentials": db_agent.auth_credentials,
+                    }
 
-            # Parse creative_agents from tenant config
-            tenant_agents_config = tenant.config.get("creative_agents", [])
-            for agent_config in tenant_agents_config:
                 agents.append(
                     CreativeAgent(
-                        agent_url=agent_config["agent_url"],
-                        name=agent_config["name"],
-                        enabled=agent_config.get("enabled", True),
-                        priority=agent_config.get("priority", 10),
-                        auth=agent_config.get("auth"),
+                        agent_url=db_agent.agent_url,
+                        name=db_agent.name,
+                        enabled=db_agent.enabled,
+                        priority=db_agent.priority,
+                        auth=auth,
                     )
                 )
 

@@ -5,20 +5,21 @@ all registered creative agents (default + tenant-specific).
 """
 
 import asyncio
-from flask import Blueprint, jsonify, request
 
-from src.core.creative_agent_registry import get_creative_agent_registry
-from src.core.database.database_session import get_db_session
-from src.core.database.models import Tenant as TenantModel
-from src.core.security import require_super_admin_or_tenant_admin
+from flask import Blueprint, jsonify, request
 from sqlalchemy import select
 
+from src.admin.utils import require_auth
+from src.core.creative_agent_registry import get_creative_agent_registry
+from src.core.database.database_session import get_db_session
+from src.core.database.models import CreativeAgent as CreativeAgentModel
+from src.core.database.models import Tenant as TenantModel
 
 bp = Blueprint("format_search", __name__, url_prefix="/api/formats")
 
 
 @bp.route("/search", methods=["GET"])
-@require_super_admin_or_tenant_admin
+@require_auth()
 def search_formats():
     """Search formats across all registered creative agents.
 
@@ -80,7 +81,7 @@ def search_formats():
 
 
 @bp.route("/list", methods=["GET"])
-@require_super_admin_or_tenant_admin
+@require_auth()
 def list_all_formats():
     """List all formats from all registered creative agents.
 
@@ -103,7 +104,9 @@ def list_all_formats():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant_id, force_refresh=force_refresh))
+            formats = loop.run_until_complete(
+                registry.list_all_formats(tenant_id=tenant_id, force_refresh=force_refresh)
+            )
         finally:
             loop.close()
 
@@ -136,7 +139,7 @@ def list_all_formats():
 
 
 @bp.route("/agents", methods=["GET"])
-@require_super_admin_or_tenant_admin
+@require_auth()
 def list_creative_agents():
     """List all registered creative agents for a tenant.
 
@@ -174,18 +177,20 @@ def list_creative_agents():
                 }
             )
 
-            # Tenant-specific agents
-            if tenant.config and "creative_agents" in tenant.config:
-                for agent_config in tenant.config["creative_agents"]:
-                    agents.append(
-                        {
-                            "agent_url": agent_config["agent_url"],
-                            "name": agent_config["name"],
-                            "enabled": agent_config.get("enabled", True),
-                            "priority": agent_config.get("priority", 10),
-                            "is_default": False,
-                        }
-                    )
+            # Tenant-specific agents from database
+            stmt = select(CreativeAgentModel).filter_by(tenant_id=tenant_id, enabled=True)
+            db_agents = session.scalars(stmt).all()
+
+            for db_agent in db_agents:
+                agents.append(
+                    {
+                        "agent_url": db_agent.agent_url,
+                        "name": db_agent.name,
+                        "enabled": db_agent.enabled,
+                        "priority": db_agent.priority,
+                        "is_default": False,
+                    }
+                )
 
             # Sort by priority
             agents.sort(key=lambda a: a["priority"])

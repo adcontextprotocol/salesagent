@@ -105,11 +105,23 @@
 
         <!-- Section 3: Creative Formats -->
         <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Creative Formats</h3>
-        <p style="color: #666; margin-bottom: 1.5rem;">Formats will be auto-suggested based on selected ad units. You can also add formats manually.</p>
+        <p style="color: #666; margin-bottom: 1.5rem;">Select ad units first, then choose matching creative formats</p>
 
-        <div id="formats-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+        <!-- Message shown before ad units are selected -->
+        <div id="formats-placeholder" style="padding: 2rem; background: #f8f9fa; border: 2px dashed #ddd; border-radius: 4px; text-align: center; color: #666;">
+            <p style="margin: 0; font-size: 1.1rem;">↑ Select ad units above to see compatible creative formats</p>
+        </div>
+
+        <!-- Size-type combos being searched (shown after ad units selected) -->
+        <div id="format-search-targets" style="display: none; padding: 1rem; background: #e7f3ff; border: 1px solid #90caf9; border-radius: 4px; margin-bottom: 1rem;">
+            <strong style="color: #1565c0;">Looking for formats:</strong>
+            <div id="search-target-list" style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
+        </div>
+
+        <!-- Formats container (hidden until ad units selected) -->
+        <div id="formats-container" style="display: none; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
             {% for format in formats %}
-            <label class="format-card" data-format-id="{{ format.format_id }}" data-dimensions="{{ format.dimensions }}" style="border: 2px solid #ddd; border-radius: 4px; padding: 1rem; cursor: pointer; transition: all 0.2s;">
+            <label class="format-card" data-format-id="{{ format.format_id }}" data-dimensions="{{ format.dimensions }}" data-type="{{ format.type }}" style="border: 2px solid #ddd; border-radius: 4px; padding: 1rem; cursor: pointer; transition: all 0.2s;">
                 <input type="checkbox" name="formats" value="{{ format.format_id }}" style="margin-right: 0.5rem;">
                 <strong>{{ format.name }}</strong><br>
                 <small style="color: #666;">
@@ -119,6 +131,12 @@
                 </small>
             </label>
             {% endfor %}
+        </div>
+
+        <!-- Format selection summary -->
+        <div id="format-summary" style="display: none; padding: 1rem; background: #d4edda; border: 1px solid #28a745; border-radius: 4px; margin-top: 1rem;">
+            <strong style="color: #155724;">✓ Selected:</strong>
+            <span id="format-count" style="font-weight: 600;">0</span> format(s)
         </div>
 
         <!-- Section 4: Priority (for Standard/Sponsorship only) -->
@@ -322,24 +340,23 @@ function updateSelectedDisplay(containerId, names, ids) {
 }
 
 async function autoSuggestFormats(selectedCheckboxes) {
-    // Collect all sizes from selected ad units
-    const allSizes = new Set();
+    // Collect all ad unit constraints (type + max dimensions)
+    const adUnitConstraints = []; // [{type: 'display', maxWidth: 970, maxHeight: 250}, ...]
     const includeChildren = document.querySelector('input[name="include_descendants"]')?.checked;
 
-    // First, collect sizes from directly selected ad units
+    // First, collect constraints from directly selected ad units
     const selectedPaths = [];
     selectedCheckboxes.forEach(cb => {
         const sizesData = cb.getAttribute('data-sizes');
         const pathData = cb.getAttribute('data-path');
 
-        // Extract path from data attribute
+        // Extract path for child lookup
         let path = [];
         if (pathData) {
             try {
                 path = JSON.parse(pathData);
             } catch (e) {
                 console.warn('Failed to parse path data:', e);
-                // Fallback: use the name from the label
                 const label = cb.closest('label');
                 const name = label.querySelector('strong').textContent.trim();
                 path = [name];
@@ -349,12 +366,18 @@ async function autoSuggestFormats(selectedCheckboxes) {
             selectedPaths.push(path);
         }
 
-        // Collect sizes from this ad unit
+        // Collect size constraints from this ad unit
         if (sizesData) {
             try {
                 const sizes = JSON.parse(sizesData);
                 sizes.forEach(size => {
-                    allSizes.add(`${size.width}x${size.height}`);
+                    // For now, assume all ad units are 'display' type
+                    // In future, could get type from ad unit metadata
+                    adUnitConstraints.push({
+                        type: 'display',
+                        maxWidth: size.width,
+                        maxHeight: size.height
+                    });
                 });
             } catch (e) {
                 console.warn('Failed to parse size data:', e);
@@ -371,20 +394,19 @@ async function autoSuggestFormats(selectedCheckboxes) {
 
             if (data.items) {
                 data.items.forEach(item => {
-                    // Check if this item is a child of any selected path
                     if (item.path && item.path.length > 0) {
                         for (const selectedPath of selectedPaths) {
-                            // Check if item.path starts with selectedPath
                             const isChild = selectedPath.every((segment, idx) => item.path[idx] === segment)
                                          && item.path.length > selectedPath.length;
 
-                            if (isChild) {
-                                // This is a child - collect its sizes
-                                if (item.metadata && item.metadata.sizes) {
-                                    item.metadata.sizes.forEach(size => {
-                                        allSizes.add(`${size.width}x${size.height}`);
+                            if (isChild && item.metadata && item.metadata.sizes) {
+                                item.metadata.sizes.forEach(size => {
+                                    adUnitConstraints.push({
+                                        type: 'display',
+                                        maxWidth: size.width,
+                                        maxHeight: size.height
                                     });
-                                }
+                                });
                                 break;
                             }
                         }
@@ -396,35 +418,132 @@ async function autoSuggestFormats(selectedCheckboxes) {
         }
     }
 
-    // If we have sizes, auto-check matching formats
-    if (allSizes.size > 0) {
-        const formatCards = document.querySelectorAll('.format-card');
-        let suggestedCount = 0;
+    // Hide placeholder and show formats container
+    const placeholder = document.getElementById('formats-placeholder');
+    const container = document.getElementById('formats-container');
+    const searchTargets = document.getElementById('format-search-targets');
+    const searchTargetList = document.getElementById('search-target-list');
 
-        formatCards.forEach(card => {
-            const dimensions = card.getAttribute('data-dimensions');
-            const checkbox = card.querySelector('input[type="checkbox"]');
+    if (adUnitConstraints.length === 0) {
+        placeholder.style.display = 'block';
+        container.style.display = 'none';
+        searchTargets.style.display = 'none';
+        return;
+    }
 
-            if (dimensions && allSizes.has(dimensions) && !checkbox.checked) {
-                checkbox.checked = true;
-                // Add visual feedback
-                card.style.borderColor = '#28a745';
-                card.style.backgroundColor = '#f0fff4';
-                setTimeout(() => {
-                    card.style.borderColor = '#007bff';
-                    card.style.backgroundColor = '';
-                }, 2000);
-                suggestedCount++;
-            }
+    placeholder.style.display = 'none';
+
+    // Helper: Check if format fits within any ad unit constraint
+    function formatFitsConstraint(formatWidth, formatHeight, formatType) {
+        return adUnitConstraints.some(constraint => {
+            // Type must match
+            if (formatType !== constraint.type) return false;
+            // Format must fit within ad unit dimensions
+            return formatWidth <= constraint.maxWidth && formatHeight <= constraint.maxHeight;
         });
+    }
 
-        if (suggestedCount > 0) {
-            console.log(`Auto-suggested ${suggestedCount} format(s) based on ${allSizes.size} unique ad unit sizes (including children: ${includeChildren})`);
+    // Group constraints by type for display
+    const constraintsByType = {};
+    adUnitConstraints.forEach(c => {
+        if (!constraintsByType[c.type]) {
+            constraintsByType[c.type] = [];
         }
+        constraintsByType[c.type].push(`${c.maxWidth}×${c.maxHeight}`);
+    });
+
+    // Display search targets grouped by type
+    const searchTargetHTML = Object.entries(constraintsByType)
+        .map(([type, sizes]) => {
+            // Get unique sizes
+            const uniqueSizes = [...new Set(sizes)];
+            return `
+                <span style="background: #1565c0; color: white; padding: 0.4rem 0.75rem; border-radius: 4px; font-size: 0.9rem;">
+                    ${type} formats ≤ ${uniqueSizes.join(', ')}
+                </span>
+            `;
+        }).join('');
+
+    searchTargetList.innerHTML = searchTargetHTML;
+    searchTargets.style.display = 'block';
+
+    // Filter and display matching formats
+    const formatCards = document.querySelectorAll('.format-card');
+    container.style.display = 'grid';
+    let matchingCount = 0;
+    let autoCheckedCount = 0;
+
+    formatCards.forEach(card => {
+        const dimensions = card.getAttribute('data-dimensions');
+        const type = card.getAttribute('data-type');
+        const checkbox = card.querySelector('input[type="checkbox"]');
+
+        if (dimensions) {
+            // Parse format dimensions (e.g., "300x250")
+            const [widthStr, heightStr] = dimensions.split('x');
+            const formatWidth = parseInt(widthStr, 10);
+            const formatHeight = parseInt(heightStr, 10);
+
+            if (formatFitsConstraint(formatWidth, formatHeight, type)) {
+                // This format fits - show it
+                matchingCount++;
+                card.style.display = 'block';
+                checkbox.disabled = false;
+
+                // Auto-check if not already checked
+                if (!checkbox.checked) {
+                    checkbox.checked = true;
+                    autoCheckedCount++;
+                    // Add visual feedback
+                    card.style.borderColor = '#28a745';
+                    card.style.backgroundColor = '#f0fff4';
+                    setTimeout(() => {
+                        card.style.borderColor = '#007bff';
+                        card.style.backgroundColor = '#e7f3ff';
+                    }, 2000);
+                }
+            } else {
+                // This format doesn't fit - hide it completely
+                card.style.display = 'none';
+                checkbox.disabled = true;
+                checkbox.checked = false;
+            }
+        } else {
+            // No dimensions - hide it
+            card.style.display = 'none';
+            checkbox.disabled = true;
+            checkbox.checked = false;
+        }
+    });
+
+    // Update summary
+    updateFormatSummary(matchingCount);
+
+    if (autoCheckedCount > 0) {
+        console.log(`Auto-checked ${autoCheckedCount} matching format(s) from ${matchingCount} compatible formats`);
+        console.log(`Constraints: ${JSON.stringify(constraintsByType)}`);
     }
 }
 
-function removeSelectedItem(containerId, idToRemove) {
+function updateFormatSummary(matchingCount) {
+    const summary = document.getElementById('format-summary');
+    const countSpan = document.getElementById('format-count');
+
+    // Only count visible checked formats
+    const checkedCount = Array.from(document.querySelectorAll('.format-card input[type="checkbox"]:checked'))
+        .filter(cb => cb.closest('.format-card').style.display !== 'none')
+        .length;
+
+    countSpan.textContent = checkedCount;
+
+    if (checkedCount > 0) {
+        summary.style.display = 'block';
+    } else {
+        summary.style.display = 'none';
+    }
+}
+
+async function removeSelectedItem(containerId, idToRemove) {
     const isAdUnit = containerId === 'selected-ad-units';
     const hiddenInput = document.getElementById(isAdUnit ? 'targeted_ad_unit_ids' : 'targeted_placement_ids');
     const currentIds = hiddenInput.value.split(',').filter(Boolean);
@@ -437,6 +556,45 @@ function removeSelectedItem(containerId, idToRemove) {
         .filter((_, idx) => currentIds[idx] !== idToRemove);
 
     updateSelectedDisplay(containerId, selectedNames, newIds);
+
+    // If removing ad units, refresh format suggestions
+    if (isAdUnit) {
+        // Get remaining selected ad units from the inventory list
+        const remainingCheckboxes = [];
+        // We need to re-fetch to get the checkboxes with size data
+        if (newIds.length > 0) {
+            try {
+                const url = `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`;
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.items) {
+                    // Create virtual checkboxes for remaining items
+                    data.items.forEach(item => {
+                        if (newIds.includes(item.id)) {
+                            const virtualCheckbox = {
+                                getAttribute: (attr) => {
+                                    if (attr === 'data-sizes') {
+                                        return item.metadata && item.metadata.sizes ? JSON.stringify(item.metadata.sizes) : '[]';
+                                    }
+                                    if (attr === 'data-path') {
+                                        return item.path ? JSON.stringify(item.path) : '[]';
+                                    }
+                                    return null;
+                                },
+                                closest: () => ({ querySelector: () => ({ textContent: { trim: () => item.name }}) })
+                            };
+                            remainingCheckboxes.push(virtualCheckbox);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn('Failed to refresh format suggestions:', e);
+            }
+        }
+
+        await autoSuggestFormats(remainingCheckboxes);
+    }
 }
 
 // Search handler
@@ -451,6 +609,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     loadInventory(currentPickerType, this.value);
                 }
             }, 300);
+        });
+    }
+
+    // Add event listeners to format checkboxes to update summary
+    const formatsContainer = document.getElementById('formats-container');
+    if (formatsContainer) {
+        formatsContainer.addEventListener('change', function(e) {
+            if (e.target.type === 'checkbox') {
+                // Update summary when formats are manually checked/unchecked
+                const visibleFormats = Array.from(document.querySelectorAll('.format-card'))
+                    .filter(card => card.style.display !== 'none').length;
+                updateFormatSummary(visibleFormats);
+            }
         });
     }
 });

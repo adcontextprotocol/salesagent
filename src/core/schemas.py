@@ -134,7 +134,7 @@ class Format(BaseModel):
 # The static FORMAT_REGISTRY has been replaced with dynamic format discovery per AdCP v2.4.
 # Format lookups now go through CreativeAgentRegistry which queries creative agents via MCP:
 #   - Default agent: https://creative.adcontextprotocol.org
-#   - Tenant-specific agents: Configured in tenant.config.creative_agents[]
+#   - Tenant-specific agents: Configured in creative_agents database table
 #
 # Migration guide:
 #   - Old: FORMAT_REGISTRY["display_300x250"]
