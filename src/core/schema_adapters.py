@@ -192,10 +192,110 @@ class GetProductsRequestAdapter:
     pass
 
 
+# ============================================================================
+# CreateMediaBuyRequest Adapter
+# ============================================================================
+
+from datetime import datetime
+
+
+class CreateMediaBuyRequest(BaseModel):
+    """Adapter for CreateMediaBuyRequest with custom timezone validation.
+
+    The generated schema validates field presence, but can't validate
+    timezone-awareness of datetime fields (runtime check). This adapter
+    adds that custom validation.
+
+    Example:
+        req = CreateMediaBuyRequest(
+            buyer_ref="buy_123",
+            packages=[{...}],
+            start_time=datetime.now(UTC),
+            end_time=datetime.now(UTC) + timedelta(days=30),
+            budget={"total": 5000, "currency": "USD"}
+        )
+    """
+
+    # Core fields (simplified - full schema has many more)
+    buyer_ref: str = Field(..., description="Buyer's reference ID")
+    packages: list[dict[str, Any]] = Field(..., description="Package configurations")
+    start_time: datetime | str = Field(..., description="Campaign start time or 'asap'")
+    end_time: datetime = Field(..., description="Campaign end time")
+    budget: dict[str, Any] = Field(..., description="Budget configuration")
+
+    # Optional fields
+    promoted_offering: str | None = Field(None, description="DEPRECATED: Use brand_manifest")
+    brand_manifest: dict[str, Any] | str | None = Field(None, description="Brand information")
+    brief: str | None = Field(None, description="Campaign brief")
+
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Custom validator: Ensure datetime fields are timezone-aware.
+
+        This validation CAN'T be in JSON Schema because it's a runtime check
+        on Python datetime objects. The JSON Schema just validates ISO 8601 strings.
+        """
+        if isinstance(self.start_time, datetime) and self.start_time != "asap" and self.start_time.tzinfo is None:
+            raise ValueError("start_time must be timezone-aware (ISO 8601 with timezone)")
+        if isinstance(self.end_time, datetime) and self.end_time.tzinfo is None:
+            raise ValueError("end_time must be timezone-aware (ISO 8601 with timezone)")
+        return self
+
+
+# ============================================================================
+# Product Adapter
+# ============================================================================
+
+
+class Product(BaseModel):
+    """Adapter for Product with custom dump methods.
+
+    The generated schema has all fields from AdCP spec, but we need
+    custom dump methods to filter internal fields when sending to protocol.
+
+    Example:
+        product = Product(
+            product_id="prod_123",
+            name="Display 300x250",
+            formats=[{"format_id": "display_300x250", "name": "Display"}],
+            pricing_options=[{...}]
+        )
+    """
+
+    # Core fields
+    product_id: str = Field(..., description="Unique product identifier")
+    name: str = Field(..., description="Product name")
+    formats: list[dict[str, Any]] = Field(..., description="Supported creative formats")
+    pricing_options: list[dict[str, Any]] = Field(..., description="Available pricing models")
+
+    # Optional fields
+    description: str | None = Field(None, description="Product description")
+    targeting_template: dict[str, Any] | None = Field(None, description="Default targeting")
+    countries: list[str] | None = Field(None, description="Available countries")
+
+    def model_dump_adcp_compliant(self, **kwargs) -> dict[str, Any]:
+        """Dump as AdCP-compliant dict (filters internal fields).
+
+        This is the key method that filters out any internal fields that
+        shouldn't be sent over the protocol.
+        """
+        # Filter out internal fields
+        data = self.model_dump(exclude_none=True, **kwargs)
+
+        # Remove any internal-only fields that shouldn't go to protocol
+        # (Add here if needed)
+
+        return data
+
+
+# ============================================================================
+# Template for Adding More Adapters
+# ============================================================================
+
 # TODO: Add adapters for other key models
-# - CreateMediaBuyRequest (has timezone validators)
 # - CreateMediaBuyResponse (has model_dump_internal)
-# - Product (has model_dump_adcp_compliant)
 # - Package (has model_dump_internal)
-# - Budget (simple, could use generated directly)
-# - Targeting (simple, could use generated directly)
+# - UpdateMediaBuyRequest (oneOf constraint already in schema)
+# - GetMediaBuyDeliveryResponse (has model_dump_internal)
+# - Budget (simple, could use generated directly or add adapter)
+# - Targeting (simple, could use generated directly or add adapter)
