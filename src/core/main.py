@@ -1405,7 +1405,7 @@ def _sync_creatives_impl(
     delete_missing: bool = False,
     dry_run: bool = False,
     validation_mode: str = "strict",
-    webhook_url: str | None = None,
+    push_notification_config: dict | None = None,
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
@@ -1423,6 +1423,7 @@ def _sync_creatives_impl(
         delete_missing: Delete creatives not in sync payload (use with caution)
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
+        push_notification_config: Push notification config for status updates (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -4007,7 +4008,7 @@ def _update_media_buy_impl(
     daily_budget: float = None,
     packages: list = None,
     creatives: list = None,
-    webhook_url: str | None = None,
+    push_notification_config: dict | None = None,
     context: Context = None,
 ) -> UpdateMediaBuyResponse:
     """Shared implementation for update_media_buy (used by both MCP and A2A).
@@ -4029,7 +4030,7 @@ def _update_media_buy_impl(
         daily_budget: Daily spend cap across all packages
         packages: Package-specific updates
         creatives: Add new creatives
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        push_notification_config: Push notification config for status updates (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
