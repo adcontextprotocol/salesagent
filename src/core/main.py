@@ -1227,8 +1227,8 @@ def _list_creative_formats_impl(
 ) -> ListCreativeFormatsResponse:
     """List all available creative formats (AdCP spec endpoint).
 
-    Returns comprehensive standard formats from AdCP registry plus any custom tenant formats.
-    Prioritizes database formats over registry formats when format_id conflicts exist.
+    Returns formats from all registered creative agents (default + tenant-specific).
+    Uses CreativeAgentRegistry for dynamic format discovery with caching.
     Supports optional filtering by type, standard_only, category, and format_ids.
     """
     start_time = time.time()
@@ -1245,52 +1245,19 @@ def _list_creative_formats_impl(
     if not tenant:
         raise ToolError("No tenant context available")
 
-    formats = []
-    format_ids_seen = set()
+    # Get formats from all registered creative agents via registry
+    from src.core.creative_agent_registry import get_creative_agent_registry
+    import asyncio
 
-    # First, query database for tenant-specific and custom formats
-    with get_db_session() as session:
-        from src.core.database.models import CreativeFormat
-        from src.core.schemas import AssetRequirement, Format
+    registry = get_creative_agent_registry()
 
-        # Get formats for this tenant (or global formats)
-        stmt = select(CreativeFormat).where(
-            (CreativeFormat.tenant_id == tenant["tenant_id"]) | (CreativeFormat.tenant_id.is_(None))  # Global formats
-        )
-        db_formats = session.scalars(stmt).all()
-
-        for db_format in db_formats:
-            # Convert database model to schema format
-            assets_required = []
-            if db_format.specs and isinstance(db_format.specs, dict):
-                # Convert old specs format to new assets_required format
-                if "assets" in db_format.specs:
-                    for asset in db_format.specs["assets"]:
-                        assets_required.append(
-                            AssetRequirement(
-                                asset_type=asset.get("asset_type", "unknown"), quantity=1, requirements=asset
-                            )
-                        )
-
-            format_obj = Format(
-                format_id=db_format.format_id,
-                name=db_format.name,
-                type=db_format.type,
-                is_standard=db_format.is_standard or False,
-                iab_specification=getattr(db_format, "iab_specification", None),
-                requirements=db_format.specs or {},
-                assets_required=assets_required if assets_required else None,
-            )
-            formats.append(format_obj)
-            format_ids_seen.add(db_format.format_id)
-
-    # Add standard formats from FORMAT_REGISTRY that aren't already in database
-    from src.core.schemas import FORMAT_REGISTRY
-
-    for format_id, standard_format in FORMAT_REGISTRY.items():
-        if format_id not in format_ids_seen:
-            formats.append(standard_format)
-            format_ids_seen.add(format_id)
+    # Run async operation in sync context
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant["tenant_id"]))
+    finally:
+        loop.close()
 
     # Apply filters from request
     if req.type:
