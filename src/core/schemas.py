@@ -2347,9 +2347,9 @@ class Package(BaseModel):
 class CreateMediaBuyRequest(BaseModel):
     # Required AdCP v1.8.0 fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
     buyer_ref: str = Field(..., description="Buyer reference for tracking (REQUIRED per AdCP spec)")
-    brand_manifest: BrandManifest | str = Field(
-        ...,
-        description="Brand information manifest (inline object or URL string) - REQUIRED per AdCP v1.8.0",
+    brand_manifest: BrandManifest | str | None = Field(
+        None,
+        description="Brand information manifest (inline object or URL string). Auto-generated from promoted_offering if not provided for backward compatibility.",
     )
 
     # AdCP v2.4 required fields
@@ -2430,6 +2430,13 @@ class CreateMediaBuyRequest(BaseModel):
             promoted = values["promoted_offering"]
             if promoted:
                 values["brand_manifest"] = {"name": promoted}
+
+        # Validate that at least one of brand_manifest or promoted_offering is provided
+        if not values.get("brand_manifest") and not values.get("promoted_offering"):
+            raise ValueError(
+                "Either 'brand_manifest' or 'promoted_offering' must be provided. "
+                "'promoted_offering' is deprecated but still supported for backward compatibility."
+            )
 
         # If using legacy format, convert to new format
         if "product_ids" in values and not values.get("packages"):

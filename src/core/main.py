@@ -3051,7 +3051,7 @@ def _validate_pricing_model_selection(
 
 def _create_media_buy_impl(
     buyer_ref: str,
-    brand_manifest: Any,  # BrandManifest | str - validated by Pydantic
+    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     po_number: str | None = None,
     packages: list[Any] | None = None,
     start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
@@ -3077,9 +3077,9 @@ def _create_media_buy_impl(
 
     Args:
         buyer_ref: Buyer reference for tracking (required per AdCP spec)
-        brand_manifest: Brand information manifest - inline object or URL string (required per AdCP v1.8.0)
+        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
         po_number: Purchase order number (optional)
-        promoted_offering: DEPRECATED - use brand_manifest instead
+        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
         end_time: Campaign end time (ISO 8601)
@@ -4175,7 +4175,7 @@ def _create_media_buy_impl(
 @mcp.tool()
 def create_media_buy(
     buyer_ref: str,
-    brand_manifest: Any,  # BrandManifest | str - validated by Pydantic
+    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     po_number: str | None = None,
     packages: list[Any] | None = None,
     start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
@@ -4204,9 +4204,9 @@ def create_media_buy(
 
     Args:
         buyer_ref: Buyer reference for tracking (required per AdCP spec)
-        brand_manifest: Brand information manifest - inline object or URL string (required per AdCP v1.8.0)
+        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
         po_number: Purchase order number (optional)
-        promoted_offering: DEPRECATED - use brand_manifest instead
+        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
         end_time: Campaign end time (ISO 8601)
