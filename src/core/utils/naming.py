@@ -91,10 +91,28 @@ def generate_auto_name(
             f"Buyer Reference: {request.buyer_ref}",
             f"Campaign: {request.campaign_name or 'N/A'}",
             f"Promoted Offering: {request.promoted_offering or 'N/A'}",
-            f"Budget: ${request.budget.total:,.2f} {request.budget.currency}",
-            f"Duration: {format_date_range(start_time, end_time)}",
-            f"Products: {', '.join([pkg.product_id for pkg in packages])}",
         ]
+
+        # Add budget info (handle Budget object, float, or dict)
+        if request.budget:
+            if isinstance(request.budget, dict):
+                budget_amount = request.budget.get("total", 0)
+                currency = request.budget.get("currency", request.currency or "USD")
+            elif isinstance(request.budget, int | float):
+                budget_amount = request.budget
+                currency = request.currency or "USD"
+            else:
+                # Budget object with .total and .currency attributes
+                budget_amount = request.budget.total
+                currency = request.budget.currency
+            context_parts.append(f"Budget: ${budget_amount:,.2f} {currency}")
+
+        context_parts.extend(
+            [
+                f"Duration: {format_date_range(start_time, end_time)}",
+                f"Products: {', '.join([pkg.product_id for pkg in packages])}",
+            ]
+        )
 
         # Add brand manifest if available
         if hasattr(request, "brand_manifest") and request.brand_manifest:
