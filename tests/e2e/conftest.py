@@ -246,6 +246,55 @@ def docker_services_e2e(request):
         print(f"⚠️  Warning: Failed to reset DB pool (non-fatal): {e}")
         print("  This may cause E2E tests to fail if database was empty at server startup")
 
+    # VERIFICATION: Query database directly to confirm data is visible post-reset
+    print("🔍 Verifying data visibility after connection pool reset...")
+    try:
+        import psycopg2
+
+        conn = psycopg2.connect(
+            host="localhost",
+            port=postgres_port,
+            database="adcp",
+            user="adcp_user",
+            password="secure_password_change_me",
+        )
+        cursor = conn.cursor()
+
+        # Count products
+        cursor.execute("SELECT COUNT(*) FROM products")
+        product_count = cursor.fetchone()[0]
+        print(f"   Products in database: {product_count}")
+
+        # Count principals
+        cursor.execute("SELECT COUNT(*) FROM principals WHERE access_token = 'ci-test-token'")
+        principal_count = cursor.fetchone()[0]
+        print(f"   Principals with ci-test-token: {principal_count}")
+
+        # Get principal's tenant_id
+        cursor.execute("SELECT tenant_id FROM principals WHERE access_token = 'ci-test-token'")
+        result = cursor.fetchone()
+        if result:
+            principal_tenant = result[0]
+            print(f"   Principal's tenant_id: {principal_tenant}")
+
+            # Count products for that tenant
+            cursor.execute("SELECT COUNT(*) FROM products WHERE tenant_id = %s", (principal_tenant,))
+            tenant_product_count = cursor.fetchone()[0]
+            print(f"   Products for principal's tenant: {tenant_product_count}")
+
+        cursor.close()
+        conn.close()
+
+        if product_count == 0:
+            print("   ⚠️  WARNING: No products found in database after init!")
+        elif tenant_product_count == 0:
+            print("   ⚠️  WARNING: Products exist but not for principal's tenant!")
+        else:
+            print("   ✅ Database verification passed")
+
+    except Exception as e:
+        print(f"   ⚠️  Warning: Database verification failed: {e}")
+
     # Yield port information for use by other fixtures
     yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
 
