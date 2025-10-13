@@ -127,6 +127,9 @@ class PricingParameters(BaseModel):
 class PricingOption(BaseModel):
     """A pricing model option offered by a publisher for a product per AdCP spec."""
 
+    pricing_option_id: str = Field(
+        ..., description="Unique identifier for this pricing option within the product (e.g., 'cpm_usd_guaranteed')"
+    )
     pricing_model: PricingModel = Field(..., description="The pricing model for this option")
     rate: float | None = Field(None, ge=0, description="The rate for this pricing model (required if is_fixed=true)")
     currency: str = Field(..., pattern="^[A-Z]{3}$", description="ISO 4217 currency code (e.g., USD, EUR, GBP)")

@@ -60,8 +60,18 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     try:
                         pricing_options = []
                         for po_dict in pricing_options_data:
+                            # Generate pricing_option_id if not present
+                            pricing_option_id = po_dict.get("pricing_option_id")
+                            if not pricing_option_id:
+                                # Generate from pricing model and currency
+                                fixed_str = "fixed" if po_dict["is_fixed"] else "auction"
+                                pricing_option_id = (
+                                    f"{po_dict['pricing_model']}_{po_dict['currency'].lower()}_{fixed_str}"
+                                )
+
                             pricing_options.append(
                                 PricingOption(
+                                    pricing_option_id=pricing_option_id,
                                     pricing_model=PricingModel(po_dict["pricing_model"]),
                                     rate=po_dict.get("rate"),
                                     currency=po_dict["currency"],
