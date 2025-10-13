@@ -117,7 +117,8 @@ if [ "$MODE" == "quick" ]; then
     echo ""
 
     echo "🧪 Step 2/3: Running unit tests..."
-    if ! uv run pytest tests/unit/ -x --tb=short -q; then
+    # Exclude tests that require a real database connection
+    if ! uv run pytest tests/unit/ -m "not requires_db" -x --tb=short -q; then
         echo -e "${RED}❌ Unit tests failed!${NC}"
         exit 1
     fi
