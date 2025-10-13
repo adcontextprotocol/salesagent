@@ -117,7 +117,8 @@ if [ "$MODE" == "quick" ]; then
     echo ""
 
     echo "🧪 Step 2/3: Running unit tests..."
-    if ! uv run pytest tests/unit/ -x --tb=short -q; then
+    # Exclude tests that require a real database connection
+    if ! uv run pytest tests/unit/ -m "not requires_db" -x --tb=short -q; then
         echo -e "${RED}❌ Unit tests failed!${NC}"
         exit 1
     fi
@@ -160,8 +161,8 @@ if [ "$MODE" == "ci" ]; then
     echo ""
 
     echo "🧪 Step 2/4: Running unit tests..."
-    # Set TEST_DATABASE_URL to use PostgreSQL container, unset DATABASE_URL to avoid conflicts
-    if ! env -u DATABASE_URL TEST_DATABASE_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/unit/ -x --tb=short -q; then
+    # Unit tests should run without DATABASE_URL to ensure they don't accidentally use real DB
+    if ! env -u DATABASE_URL ADCP_TESTING=true uv run pytest tests/unit/ -x --tb=short -q; then
         echo -e "${RED}❌ Unit tests failed!${NC}"
         exit 1
     fi
@@ -170,8 +171,8 @@ if [ "$MODE" == "ci" ]; then
 
     echo "🔗 Step 3/4: Running integration tests (WITH database)..."
     # Run ALL integration tests (including requires_db) - exactly like CI
-    # Set TEST_DATABASE_URL to use PostgreSQL container, unset DATABASE_URL to avoid conflicts
-    if ! env -u DATABASE_URL TEST_DATABASE_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/integration/ -x --tb=short -q -m "not requires_server and not skip_ci"; then
+    # Keep DATABASE_URL set so integration tests can access the PostgreSQL container
+    if ! DATABASE_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/integration/ -x --tb=short -q -m "not requires_server and not skip_ci"; then
         echo -e "${RED}❌ Integration tests failed!${NC}"
         exit 1
     fi

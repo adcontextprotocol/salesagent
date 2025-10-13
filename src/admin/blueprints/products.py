@@ -400,6 +400,99 @@ def add_product(tenant_id):
                 if countries is not None:
                     product_kwargs["countries"] = countries
 
+                # Handle property authorization (AdCP requirement)
+                property_mode = form_data.get("property_mode", "tags")
+                if property_mode == "tags":
+                    # Parse property tags from comma-separated string
+                    property_tags_str = form_data.get("property_tags", "").strip()
+                    if property_tags_str:
+                        property_tags = [
+                            tag.strip().lower().replace("-", "_") for tag in property_tags_str.split(",") if tag.strip()
+                        ]
+
+                        # Server-side validation (defense in depth - client-side validation exists)
+                        import re
+
+                        for tag in property_tags:
+                            # Length validation
+                            if len(tag) < 2 or len(tag) > 50:
+                                flash("Property tags must be 2-50 characters", "error")
+                                return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
+                            # Character whitelist validation (AdCP spec: ^[a-z0-9_]+$)
+                            if not re.match(r"^[a-z0-9_]+$", tag):
+                                flash(
+                                    f"Invalid tag '{tag}': use only lowercase letters, numbers, and underscores",
+                                    "error",
+                                )
+                                return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
+                        # Check for duplicates
+                        if len(property_tags) != len(set(property_tags)):
+                            flash("Duplicate property tags detected", "error")
+                            return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
+                        # Validate that all property tags exist in the database
+                        if property_tags:
+                            from src.core.database.models import PropertyTag
+
+                            existing_tags = db_session.scalars(
+                                select(PropertyTag).filter(
+                                    PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(property_tags)
+                                )
+                            ).all()
+
+                            existing_tag_ids = {tag.tag_id for tag in existing_tags}
+                            missing_tags = set(property_tags) - existing_tag_ids
+
+                            if missing_tags:
+                                flash(
+                                    f"Property tags do not exist: {', '.join(missing_tags)}. "
+                                    f"Please create them in Settings → Authorized Properties first.",
+                                    "error",
+                                )
+                                return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
+                            product_kwargs["property_tags"] = property_tags
+                elif property_mode == "full":
+                    # Get selected property IDs and load full property objects
+                    property_ids_str = request.form.getlist("property_ids")
+
+                    # Validate property IDs are integers (security)
+                    try:
+                        property_ids = [int(pid) for pid in property_ids_str]
+                    except (ValueError, TypeError):
+                        flash("Invalid property IDs provided", "error")
+                        return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
+                    if property_ids:
+                        from src.core.database.models import AuthorizedProperty
+
+                        properties = db_session.scalars(
+                            select(AuthorizedProperty).filter(
+                                AuthorizedProperty.id.in_(property_ids), AuthorizedProperty.tenant_id == tenant_id
+                            )
+                        ).all()
+
+                        # Verify all requested IDs were found (prevent TOCTOU)
+                        if len(properties) != len(property_ids):
+                            flash("One or more selected properties not found or not authorized", "error")
+                            return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
+                        if properties:
+                            # Convert to dict format for JSONB storage
+                            properties_data = []
+                            for prop in properties:
+                                prop_dict = {
+                                    "property_type": prop.property_type,
+                                    "name": prop.name,
+                                    "identifiers": prop.identifiers or [],
+                                    "tags": prop.tags or [],
+                                    "publisher_domain": prop.publisher_domain,
+                                }
+                                properties_data.append(prop_dict)
+                            product_kwargs["properties"] = properties_data
+
                 # Create product with correct fields matching the Product model
                 product = Product(**product_kwargs)
                 db_session.add(product)
@@ -442,6 +535,31 @@ def add_product(tenant_id):
             return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
     # GET request - show adapter-specific form
+    # Load authorized properties and property tags for property selection
+    with get_db_session() as db_session:
+        from src.core.database.models import AuthorizedProperty, PropertyTag
+
+        authorized_properties = db_session.scalars(
+            select(AuthorizedProperty).filter_by(tenant_id=tenant_id, verification_status="verified")
+        ).all()
+
+        # Convert to dict for template
+        properties_list = []
+        for prop in authorized_properties:
+            properties_list.append(
+                {
+                    "id": prop.id,
+                    "name": prop.name,
+                    "property_type": prop.property_type,
+                    "tags": prop.tags or [],
+                }
+            )
+
+        # Load all property tags for dropdown
+        property_tags = db_session.scalars(
+            select(PropertyTag).filter_by(tenant_id=tenant_id).order_by(PropertyTag.name)
+        ).all()
+
     if adapter_type == "google_ad_manager":
         # For GAM: unified form with inventory selection
         # Check if inventory has been synced
@@ -458,12 +576,21 @@ def add_product(tenant_id):
             tenant_id=tenant_id,
             inventory_synced=inventory_synced,
             formats=get_creative_formats(tenant_id=tenant_id),
+            authorized_properties=properties_list,
+            property_tags=property_tags,
             currencies=currencies,
         )
     else:
         # For Mock and other adapters: simple form
         formats = get_creative_formats(tenant_id=tenant_id)
-        return render_template("add_product.html", tenant_id=tenant_id, formats=formats, currencies=currencies)
+        return render_template(
+            "add_product.html",
+            tenant_id=tenant_id,
+            formats=formats,
+            authorized_properties=properties_list,
+            property_tags=property_tags,
+            currencies=currencies,
+        )
 
 
 @products_bp.route("/<product_id>/edit", methods=["GET", "POST"])

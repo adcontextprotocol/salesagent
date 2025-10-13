@@ -254,6 +254,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             min_spend=100.0,
             is_custom=True,  # These are custom products created from signals
             brief_relevance=f"Generated from {len(signals)} signals in {category} category for: {brief[:100]}...",
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
     async def _get_database_products(self, brief: str, tenant_id: str, principal_id: str | None) -> list[Product]:
@@ -286,6 +287,9 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
                         "cpm": db_product.cpm,
                         "min_spend": float(db_product.min_spend) if db_product.min_spend else None,
                         "is_custom": getattr(db_product, "is_custom", False),
+                        "property_tags": getattr(
+                            db_product, "property_tags", ["all_inventory"]
+                        ),  # Required per AdCP spec
                     }
 
                     # Handle JSON fields (might be strings in SQLite)

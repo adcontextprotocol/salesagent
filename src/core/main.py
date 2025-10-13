@@ -105,10 +105,15 @@ from src.core.schemas import (
     VerifyTaskResponse,
 )
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
+from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
 from src.services.slack_notifier import get_slack_notifier
 
 # Initialize Rich console
 console = Console()
+
+# Backward compatibility alias for deprecated Task model
+# The workflow system now uses WorkflowStep exclusively
+Task = WorkflowStep
 
 # Temporary placeholder classes for missing schemas
 # TODO: These should be properly defined in schemas.py
@@ -614,7 +619,9 @@ context_mgr = ContextManager()
 
 # --- Adapter Configuration ---
 # Get adapter from config, fallback to mock
-SELECTED_ADAPTER = ((config.get("ad_server", {}).get("adapter") or "mock") if config else "mock").lower()
+SELECTED_ADAPTER = (
+    (config.get("ad_server", {}).get("adapter") or "mock") if config else "mock"
+).lower()  # noqa: F841 - used below for adapter selection
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
 # --- In-Memory State (already initialized above, just adding context_map) ---
@@ -869,18 +876,34 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
     principal = get_principal_object(principal_id) if principal_id else None
     principal_data = principal.model_dump() if principal else None
 
-    # Validate promoted_offering per AdCP spec
-    if not req.promoted_offering or not req.promoted_offering.strip():
-        raise ToolError("promoted_offering is required per AdCP spec and cannot be empty")
+    # Extract offering text from brand_manifest or promoted_offering
+    # The validator ensures at least one is present
+    offering = None
+    if req.brand_manifest:
+        if isinstance(req.brand_manifest, str):
+            # brand_manifest is a URL - use it as-is for now
+            # TODO: In future, fetch and parse the URL
+            offering = f"Brand at {req.brand_manifest}"
+        else:
+            # brand_manifest is a BrandManifest object or dict
+            # Try to access as object first, then as dict
+            if hasattr(req.brand_manifest, "name"):
+                offering = req.brand_manifest.name
+            elif isinstance(req.brand_manifest, dict):
+                offering = req.brand_manifest.get("name", "")
+    elif req.promoted_offering:
+        offering = req.promoted_offering.strip()
 
-    offering = req.promoted_offering.strip()
+    if not offering:
+        raise ToolError("Either brand_manifest or promoted_offering must provide brand information")
 
     # Skip strict validation in test environments (allow simple test values)
     import os
 
     is_test_mode = (testing_ctx and testing_ctx.test_session_id is not None) or os.getenv("ADCP_TESTING") == "true"
 
-    if not is_test_mode:
+    # Only validate promoted_offering format (brand_manifest has its own structure)
+    if req.promoted_offering and not is_test_mode:
         generic_terms = {
             "footwear",
             "shoes",
@@ -892,19 +915,19 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
             "automotive",
             "athletic",
         }
-        words = offering.split()
+        words = req.promoted_offering.split()
 
         # Must have at least 2 words (brand + product)
         if len(words) < 2:
             raise ToolError(
-                f"Invalid promoted_offering: '{offering}'. Must include both brand and specific product "
+                f"Invalid promoted_offering: '{req.promoted_offering}'. Must include both brand and specific product "
                 f"(e.g., 'Nike Air Jordan 2025 basketball shoes', not just 'shoes')"
             )
 
         # Check if it's just generic category terms without a brand
         if all(word.lower() in generic_terms or word.lower() in ["and", "or", "the", "a", "an"] for word in words):
             raise ToolError(
-                f"Invalid promoted_offering: '{offering}'. Must include brand name and specific product, "
+                f"Invalid promoted_offering: '{req.promoted_offering}'. Must include brand name and specific product, "
                 f"not just generic category (e.g., 'Nike Air Jordan 2025' not 'athletic footwear')"
             )
 
@@ -913,9 +936,20 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
     # Safely parse policy_settings that might be JSON string (SQLite) or dict (PostgreSQL JSONB)
     tenant_policies = safe_parse_json_field(tenant.get("policy_settings"), field_name="policy_settings", default={})
 
+    # Convert brand_manifest to dict if it's a BrandManifest object
+    brand_manifest_dict = None
+    if req.brand_manifest:
+        if hasattr(req.brand_manifest, "model_dump"):
+            brand_manifest_dict = req.brand_manifest.model_dump()
+        elif isinstance(req.brand_manifest, dict):
+            brand_manifest_dict = req.brand_manifest
+        else:
+            brand_manifest_dict = req.brand_manifest  # URL string
+
     policy_result = await policy_service.check_brief_compliance(
         brief=req.brief,
         promoted_offering=req.promoted_offering,
+        brand_manifest=brand_manifest_dict,
         tenant_policies=tenant_policies if tenant_policies else None,
     )
 
@@ -947,8 +981,8 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
     if policy_result.status == PolicyStatus.BLOCKED:
         # Always block if policy says blocked
         logger.warning(f"Brief blocked by policy: {policy_result.reason}")
-        # Return empty products list per AdCP spec (errors handled at transport layer)
-        return GetProductsResponse(products=[])
+        # Raise ToolError to properly signal failure to client
+        raise ToolError("POLICY_VIOLATION", policy_result.reason)
 
     # If restricted and manual review is required, create a task
     if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get("require_manual_review", False):
@@ -958,34 +992,26 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         with get_db_session() as session:
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
-            task_details = {
-                "brief": req.brief,
-                "promoted_offering": req.promoted_offering,
-                "principal_id": principal_id,
-                "policy_status": policy_result.status,
-                "restrictions": policy_result.restrictions,
-                "reason": policy_result.reason,
-            }
-
-            new_task = Task(
-                tenant_id=tenant["tenant_id"],
-                task_id=task_id,
-                media_buy_id=None,  # No media buy associated
-                task_type="policy_review",
-                status="pending",
-                details=task_details,
-                created_at=datetime.now(UTC),
+            # Log policy violation for audit trail and compliance
+            audit_logger.log_operation(
+                operation="get_products_policy_violation",
+                principal_name=principal_id,
+                principal_id=principal_id,
+                adapter_id="policy_engine",
+                success=False,
+                details={
+                    "brief": req.brief,
+                    "promoted_offering": req.promoted_offering,
+                    "policy_status": policy_result.status,
+                    "restrictions": policy_result.restrictions,
+                    "reason": policy_result.reason,
+                },
             )
-            session.add(new_task)
-            session.commit()
 
-        logger.info(f"Created policy review task {task_id} for restricted brief")
-
-        # Return empty list with message about pending review
-        return GetProductsResponse(
-            products=[],
-            message="Request pending manual review due to policy restrictions",
-            context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
+        # Raise error for policy violations - explicit failure, not silent return
+        raise ToolError(
+            "POLICY_VIOLATION",
+            f"Request violates content policy: {policy_result.reason}. Restrictions: {', '.join(policy_result.restrictions)}",
         )
 
     # Determine product catalog configuration based on tenant's signals discovery settings
@@ -1222,7 +1248,8 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
 
 @mcp.tool
 async def get_products(
-    promoted_offering: str,
+    promoted_offering: str | None = None,
+    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
     adcp_version: str = "1.0.0",
     min_exposures: int | None = None,
@@ -1236,10 +1263,12 @@ async def get_products(
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        promoted_offering: DEPRECATED: Use brand_manifest instead (still supported for backward compatibility)
+        brand_manifest: Brand information manifest (inline object or URL string)
         brief: Brief description of the advertising campaign or requirements (optional)
         adcp_version: AdCP schema version for this request (default: 1.0.0)
         min_exposures: Minimum impressions needed for measurement validity (AdCP PR #79, optional)
+        brand_manifest: Brand information manifest providing brand context (optional)
         filters: Structured filters for product discovery (optional)
         strategy_id: Optional strategy ID for linking operations (optional)
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
@@ -1254,6 +1283,7 @@ async def get_products(
         brief=brief,
         adcp_version=adcp_version,
         min_exposures=min_exposures,
+        brand_manifest=brand_manifest,
         filters=filters,
         strategy_id=strategy_id,
         webhook_url=webhook_url,
@@ -1967,9 +1997,9 @@ def _sync_creatives_impl(
                     "status": status,
                     "approval_mode": approval_mode,
                 }
-                # Store webhook_url if provided for async notification
-                if webhook_url:
-                    request_data_for_workflow["webhook_url"] = webhook_url
+                # Store push_notification_config if provided for async notification
+                if push_notification_config:
+                    request_data_for_workflow["push_notification_config"] = push_notification_config
 
                 step = ctx_manager.create_workflow_step(
                     context_id=persistent_ctx.context_id,
@@ -2104,7 +2134,7 @@ def sync_creatives(
     delete_missing: bool = False,
     dry_run: bool = False,
     validation_mode: str = "strict",
-    webhook_url: str | None = None,
+    push_notification_config: dict | None = None,
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
@@ -2118,7 +2148,7 @@ def sync_creatives(
         delete_missing: Delete creatives not in sync payload (use with caution)
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        push_notification_config: Push notification config for async notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -2131,7 +2161,7 @@ def sync_creatives(
         delete_missing=delete_missing,
         dry_run=dry_run,
         validation_mode=validation_mode,
-        webhook_url=webhook_url,
+        push_notification_config=push_notification_config,
         context=context,
     )
 
@@ -3013,34 +3043,36 @@ def _validate_pricing_model_selection(
 
 
 def _create_media_buy_impl(
-    promoted_offering: str,
-    po_number: str = None,
-    buyer_ref: str = None,
-    packages: list = None,
-    start_time: str = None,
-    end_time: str = None,
-    budget: dict = None,
-    product_ids: list = None,
-    start_date: str = None,
-    end_date: str = None,
-    total_budget: float = None,
-    targeting_overlay: dict = None,
+    buyer_ref: str,
+    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
+    po_number: str | None = None,
+    packages: list[Any] | None = None,
+    start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
+    end_time: Any | None = None,  # datetime | str - validated by Pydantic
+    budget: Any | None = None,  # Budget | float | dict - validated by Pydantic
+    promoted_offering: str | None = None,
+    product_ids: list[str] | None = None,
+    start_date: Any | None = None,  # date | str - validated by Pydantic
+    end_date: Any | None = None,  # date | str - validated by Pydantic
+    total_budget: float | None = None,
+    targeting_overlay: dict[str, Any] | None = None,
     pacing: str = "even",
-    daily_budget: float = None,
-    creatives: list = None,
-    reporting_webhook: dict = None,
-    required_axe_signals: list = None,
+    daily_budget: float | None = None,
+    creatives: list[Any] | None = None,
+    reporting_webhook: dict[str, Any] | None = None,
+    required_axe_signals: list[str] | None = None,
     enable_creative_macro: bool = False,
-    strategy_id: str = None,
-    push_notification_config: dict = None,
-    context: Context = None,
+    strategy_id: str | None = None,
+    push_notification_config: dict[str, Any] | None = None,
+    context: Context | None = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
 
     Args:
-        promoted_offering: Description of advertiser and what is being promoted (required per AdCP spec)
+        buyer_ref: Buyer reference for tracking (required per AdCP spec)
+        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
         po_number: Purchase order number (optional)
-        buyer_ref: Buyer reference for tracking
+        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
         end_time: Campaign end time (ISO 8601)
@@ -3073,13 +3105,16 @@ def _create_media_buy_impl(
 
     # Create request object from individual parameters (MCP-compliant)
     req = CreateMediaBuyRequest(
-        promoted_offering=promoted_offering,
-        po_number=po_number,
         buyer_ref=buyer_ref,
+        brand_manifest=brand_manifest,
+        campaign_name=None,  # Optional display name
+        po_number=po_number,
+        promoted_offering=promoted_offering,
         packages=packages,
         start_time=start_time,
         end_time=end_time,
         budget=budget,
+        currency=None,  # Derived from product pricing_options
         product_ids=product_ids,
         start_date=start_date,
         end_date=end_date,
@@ -3088,9 +3123,13 @@ def _create_media_buy_impl(
         pacing=pacing,
         daily_budget=daily_budget,
         creatives=creatives,
+        reporting_webhook=reporting_webhook,
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
+        webhook_url=None,  # Internal field, not in AdCP spec
+        webhook_auth_token=None,  # Internal field, not in AdCP spec
+        push_notification_config=push_notification_config,
     )
 
     # Extract testing context first
@@ -3099,6 +3138,19 @@ def _create_media_buy_impl(
     # Authentication and tenant setup
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
+
+    # Validate setup completion (only in production, skip for testing)
+    if not testing_ctx.dry_run and not testing_ctx.test_session_id:
+        try:
+            validate_setup_complete(tenant["tenant_id"])
+        except SetupIncompleteError as e:
+            # Return helpful error with missing tasks
+            task_list = "\n".join(f"  - {task['name']}: {task['description']}" for task in e.missing_tasks)
+            error_msg = (
+                f"Setup incomplete. Please complete the following required tasks:\n\n{task_list}\n\n"
+                f"Visit the setup checklist at /tenant/{tenant['tenant_id']}/setup-checklist for details."
+            )
+            raise ToolError(error_msg)
 
     # Context management and workflow step creation - create workflow step FIRST
     ctx_manager = get_context_manager()
@@ -4115,37 +4167,39 @@ def _create_media_buy_impl(
 
 @mcp.tool()
 def create_media_buy(
-    promoted_offering: str,
-    po_number: str = None,
-    buyer_ref: str = None,
-    packages: list = None,
-    start_time: str = None,
-    end_time: str = None,
-    budget: dict = None,
-    product_ids: list = None,
-    start_date: str = None,
-    end_date: str = None,
-    total_budget: float = None,
-    targeting_overlay: dict = None,
+    buyer_ref: str,
+    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
+    po_number: str | None = None,
+    packages: list[Any] | None = None,
+    start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
+    end_time: Any | None = None,  # datetime | str - validated by Pydantic
+    budget: Any | None = None,  # Budget | float | dict - validated by Pydantic
+    promoted_offering: str | None = None,
+    product_ids: list[str] | None = None,
+    start_date: Any | None = None,  # date | str - validated by Pydantic
+    end_date: Any | None = None,  # date | str - validated by Pydantic
+    total_budget: float | None = None,
+    targeting_overlay: dict[str, Any] | None = None,
     pacing: str = "even",
-    daily_budget: float = None,
-    creatives: list = None,
-    reporting_webhook: dict = None,
-    required_axe_signals: list = None,
+    daily_budget: float | None = None,
+    creatives: list[Any] | None = None,
+    reporting_webhook: dict[str, Any] | None = None,
+    required_axe_signals: list[str] | None = None,
     enable_creative_macro: bool = False,
-    strategy_id: str = None,
-    push_notification_config: dict = None,
+    strategy_id: str | None = None,
+    push_notification_config: dict[str, Any] | None = None,
     webhook_url: str | None = None,
-    context: Context = None,
+    context: Context | None = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
 
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        promoted_offering: Description of advertiser and what is being promoted (required per AdCP spec)
+        buyer_ref: Buyer reference for tracking (required per AdCP spec)
+        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
         po_number: Purchase order number (optional)
-        buyer_ref: Buyer reference for tracking
+        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
         end_time: Campaign end time (ISO 8601)
@@ -4162,17 +4216,17 @@ def create_media_buy(
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
-        push_notification_config: Push notification config dict with url, authentication
-        webhook_url: Legacy URL for async task completion notifications (use push_notification_config instead)
+        push_notification_config: Push notification config dict with url, authentication (AdCP spec)
         context: FastMCP context (automatically provided)
 
     Returns:
         CreateMediaBuyResponse with media buy details
     """
     return _create_media_buy_impl(
-        promoted_offering=promoted_offering,
-        po_number=po_number,
         buyer_ref=buyer_ref,
+        brand_manifest=brand_manifest,
+        po_number=po_number,
+        promoted_offering=promoted_offering,
         packages=packages,
         start_time=start_time,
         end_time=end_time,
@@ -4239,19 +4293,28 @@ def _update_media_buy_impl(
         UpdateMediaBuyResponse with updated media buy details
     """
     # Create request object from individual parameters (MCP-compliant)
+    # Convert flat budget/currency/pacing to Budget object if budget provided
+    budget_obj = None
+    if budget is not None:
+        from src.core.schemas import Budget
+
+        budget_obj = Budget(
+            total=budget,
+            currency=currency or "USD",  # Default to USD if not specified
+            pacing=pacing or "even",  # Default pacing
+            daily_cap=daily_budget,  # Map daily_budget to daily_cap
+        )
+
     req = UpdateMediaBuyRequest(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
         active=active,
         flight_start_date=flight_start_date,
         flight_end_date=flight_end_date,
-        budget=budget,
-        currency=currency,
+        budget=budget_obj,
         targeting_overlay=targeting_overlay,
         start_time=start_time,
         end_time=end_time,
-        pacing=pacing,
-        daily_budget=daily_budget,
         packages=packages,
         creatives=creatives,
     )
@@ -4285,8 +4348,9 @@ def _update_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return UpdateMediaBuyResponse(
-            status="failed",
-            message=f"Update failed: {error_msg}",
+            status="completed",
+            media_buy_id=req.media_buy_id or "",
+            buyer_ref=req.buyer_ref or "",
             errors=[{"code": "principal_not_found", "message": error_msg}],
         )
 
@@ -4310,8 +4374,10 @@ def _update_media_buy_impl(
         )
 
         return UpdateMediaBuyResponse(
-            status="pending_manual",
-            detail=f"Manual approval required. Workflow Step ID: {step.step_id}",
+            status="submitted",
+            media_buy_id=req.media_buy_id or "",
+            buyer_ref=req.buyer_ref or "",
+            task_id=step.step_id,
         )
 
     # Validate currency limits if flight dates or budget changes
@@ -4332,7 +4398,8 @@ def _update_media_buy_impl(
 
             if media_buy:
                 # Determine currency (use updated or existing)
-                request_currency = req.currency or media_buy.currency or "USD"
+                # Extract currency from Budget object if present, otherwise from media buy
+                request_currency = (req.budget.currency if req.budget else None) or media_buy.currency or "USD"
 
                 # Get currency limit
                 stmt = select(CurrencyLimit).where(
@@ -4343,7 +4410,12 @@ def _update_media_buy_impl(
                 if not currency_limit:
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
                     ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                    return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+                    return UpdateMediaBuyResponse(
+                        status="completed",
+                        media_buy_id=req.media_buy_id or "",
+                        buyer_ref=req.buyer_ref or "",
+                        errors=[{"code": "currency_not_supported", "message": error_msg}],
+                    )
 
                 # Calculate new flight duration
                 start = req.start_time if req.start_time else media_buy.start_time
@@ -4378,7 +4450,12 @@ def _update_media_buy_impl(
                                     f"Flight date changes that reduce daily budget are not allowed to bypass limits."
                                 )
                                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                                return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+                                return UpdateMediaBuyResponse(
+                                    status="completed",
+                                    media_buy_id=req.media_buy_id or "",
+                                    buyer_ref=req.buyer_ref or "",
+                                    errors=[{"code": "budget_limit_exceeded", "message": error_msg}],
+                                )
 
     # Handle campaign-level updates
     if req.active is not None:
@@ -4446,61 +4523,51 @@ def _update_media_buy_impl(
                     )
                     return result
 
-    # Handle budget updates (support both Budget object and float)
+    # Handle budget updates (Budget object from AdCP spec)
     if req.budget is not None:
         if isinstance(req.budget, dict):
-            # Handle Budget object
+            # Handle Budget dict
             total_budget = req.budget.get("total", 0)
             currency = req.budget.get("currency", "USD")
         elif hasattr(req.budget, "total"):
-            # Handle Budget model instance
+            # Handle Budget model instance (standard case)
             total_budget = req.budget.total
             currency = req.budget.currency
         else:
-            # Handle float
-            total_budget = req.budget
-            currency = req.currency or "USD"
+            # Fallback: treat as float (shouldn't happen with Budget object)
+            total_budget = float(req.budget)
+            currency = "USD"  # Default when budget is just a number
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+            return UpdateMediaBuyResponse(
+                status="completed",
+                media_buy_id=req.media_buy_id or "",
+                buyer_ref=req.buyer_ref or "",
+                errors=[{"code": "invalid_budget", "message": error_msg}],
+            )
 
-        # Store budget update in media buy
+        # Store budget update in media buy (update CreateMediaBuyRequest in place)
         if req.media_buy_id in media_buys:
             buy_data = media_buys[req.media_buy_id]
             if isinstance(buy_data, tuple) and len(buy_data) >= 2:
-                # Update with new budget info
-                media_buys[req.media_buy_id] = (
-                    {
-                        "budget": total_budget,
-                        "currency": currency,
-                        "buyer_ref": req.buyer_ref or buy_data[0].get("buyer_ref"),
-                    },
-                    buy_data[1],  # Keep principal_id
-                )
+                # buy_data[0] is CreateMediaBuyRequest object - update it in place
+                existing_req = buy_data[0]
 
-    # Validate update parameters (backwards compatibility)
-    if req.total_budget is not None and req.total_budget <= 0:
-        error_msg = f"Invalid budget: {req.total_budget}. Budget must be positive."
-        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-        return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+                # Update total_budget field (legacy field on CreateMediaBuyRequest)
+                if hasattr(existing_req, "total_budget"):
+                    existing_req.total_budget = total_budget
 
-    buy_request, _ = media_buys[req.media_buy_id]
-    if req.total_budget is not None:
-        buy_request.total_budget = req.total_budget
-    if req.targeting_overlay is not None:
-        # Validate targeting doesn't use managed-only dimensions
-        from src.services.targeting_capabilities import validate_overlay_targeting
+                # Update buyer_ref if provided
+                if req.buyer_ref and hasattr(existing_req, "buyer_ref"):
+                    existing_req.buyer_ref = req.buyer_ref
 
-        violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
-        if violations:
-            error_msg = f"Targeting validation failed: {'; '.join(violations)}"
-            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return UpdateMediaBuyResponse(status="failed", detail=error_msg)
-        buy_request.targeting_overlay = req.targeting_overlay
-    if req.creative_assignments:
-        creative_assignments[req.media_buy_id] = req.creative_assignments
+                # Note: media_buys tuple stays as (CreateMediaBuyRequest, principal_id)
+
+    # Note: Budget validation already done above (lines 4318-4336)
+    # Package-level updates already handled above (lines 4266-4316)
+    # Targeting updates are handled via packages (AdCP spec v2.4)
 
     # Create ObjectWorkflowMapping to link media buy update to workflow step
     # This enables webhook delivery when the update completes
@@ -4526,16 +4593,17 @@ def _update_media_buy_impl(
             "updates_applied": {
                 "campaign_level": req.active is not None,
                 "package_count": len(req.packages) if req.packages else 0,
-                "total_budget": req.total_budget is not None,
-                "targeting": req.targeting_overlay is not None,
+                "budget": req.budget is not None,
+                "flight_dates": req.start_time is not None or req.end_time is not None,
             },
         },
     )
 
     return UpdateMediaBuyResponse(
-        status="accepted",
+        status="completed",
+        media_buy_id=req.media_buy_id or "",
+        buyer_ref=req.buyer_ref or "",
         implementation_date=datetime.combine(today, datetime.min.time()),
-        detail="Media buy updated successfully",
     )
 
 
@@ -4555,7 +4623,7 @@ def update_media_buy(
     daily_budget: float = None,
     packages: list = None,
     creatives: list = None,
-    webhook_url: str | None = None,
+    push_notification_config: dict | None = None,
     context: Context = None,
 ) -> UpdateMediaBuyResponse:
     """Update a media buy with campaign-level and/or package-level changes.
@@ -4577,7 +4645,7 @@ def update_media_buy(
         daily_budget: Daily spend cap across all packages
         packages: Package-specific updates
         creatives: Add new creatives
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        push_notification_config: Push notification config for async notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -4598,7 +4666,7 @@ def update_media_buy(
         daily_budget=daily_budget,
         packages=packages,
         creatives=creatives,
-        webhook_url=webhook_url,
+        push_notification_config=push_notification_config,
         context=context,
     )
 
@@ -5519,6 +5587,17 @@ def get_product_catalog() -> list[Product]:
                 "expires_at": product.expires_at,
                 # Note: brief_relevance is populated dynamically when brief is provided
                 "implementation_config": safe_json_parse(product.implementation_config),
+                # Required per AdCP spec: either properties OR property_tags
+                "properties": (
+                    safe_json_parse(product.properties)
+                    if hasattr(product, "properties") and product.properties
+                    else None
+                ),
+                "property_tags": (
+                    safe_json_parse(product.property_tags)
+                    if hasattr(product, "property_tags") and product.property_tags
+                    else ["all_inventory"]  # Default required per AdCP spec
+                ),
             }
             loaded_products.append(Product(**product_data))
 

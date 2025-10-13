@@ -192,6 +192,9 @@ class Product(Base, JSONValidatorMixin):
     expires_at = Column(DateTime)
     countries = Column(JSONType)  # JSONB in PostgreSQL
     implementation_config = Column(JSONType)  # JSONB in PostgreSQL
+    # AdCP property authorization fields (at least one required per spec)
+    properties = Column(JSONType, nullable=True)  # JSONB - Full Property objects for validation
+    property_tags = Column(JSONType, nullable=True)  # JSONB - Tag strings array
     # Note: PR #79 fields (estimated_exposures, floor_cpm, recommended_cpm) are NOT stored in database
     # They are calculated dynamically from product_performance_metrics table
 
@@ -199,7 +202,14 @@ class Product(Base, JSONValidatorMixin):
     tenant = relationship("Tenant", back_populates="products")
     pricing_options = relationship("PricingOption", back_populates="product", cascade="all, delete-orphan")
 
-    __table_args__ = (Index("idx_products_tenant", "tenant_id"),)
+    __table_args__ = (
+        Index("idx_products_tenant", "tenant_id"),
+        # Enforce AdCP spec: products must have EITHER properties OR property_tags (not both, not neither)
+        CheckConstraint(
+            "(properties IS NOT NULL AND property_tags IS NULL) OR (properties IS NULL AND property_tags IS NOT NULL)",
+            name="ck_product_properties_xor",
+        ),
+    )
 
 
 class PricingOption(Base):

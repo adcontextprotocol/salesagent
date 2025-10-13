@@ -541,6 +541,17 @@ class Product(BaseModel):
         default=None,
         description="Ad server-specific configuration for implementing this product (placements, line item settings, etc.)",
     )
+    # AdCP property authorization fields (at least one required per spec)
+    properties: list["Property"] | None = Field(
+        None,
+        description="Full property objects covered by this product for adagents.json validation",
+        min_length=1,
+    )
+    property_tags: list[str] | None = Field(
+        None,
+        description="Tags identifying groups of properties (use list_authorized_properties for details)",
+        min_length=1,
+    )
     # AdCP PR #79 fields - populated dynamically from historical reporting data
     # These are NOT stored in database, calculated on-demand from product_performance_metrics
     estimated_exposures: int | None = Field(None, description="Estimated impressions (calculated dynamically)", gt=0)
@@ -560,6 +571,31 @@ class Product(BaseModel):
             raise ValueError(
                 "Product must have either pricing_options (recommended) or legacy pricing fields (is_fixed_price). "
                 "See AdCP PR #88 for new pricing options format."
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_properties_or_tags(self) -> "Product":
+        """Validate that at least one of properties or property_tags is provided per AdCP spec.
+
+        Per AdCP spec, products must have either:
+        - properties: Full Property objects for adagents.json validation
+        - property_tags: Tag strings (buyers use list_authorized_properties for details)
+        """
+        has_properties = self.properties and len(self.properties) > 0
+        has_tags = self.property_tags and len(self.property_tags) > 0
+
+        if not has_properties and not has_tags:
+            raise ValueError(
+                "Product must have either 'properties' or 'property_tags' per AdCP spec. "
+                "Use property_tags=['all_inventory'] as a default if unsure."
+            )
+
+        if has_properties and has_tags:
+            raise ValueError(
+                "Product cannot have both 'properties' and 'property_tags' (AdCP oneOf constraint). "
+                "Use properties for full validation OR property_tags for tag-based authorization, not both."
             )
 
         return self
@@ -783,9 +819,13 @@ class GetProductsRequest(BaseModel):
         "",
         description="Brief description of the advertising campaign or requirements (optional)",
     )
-    promoted_offering: str = Field(
-        ...,
-        description="Description of the advertiser and the product or service being promoted (REQUIRED per AdCP spec)",
+    promoted_offering: str | None = Field(
+        None,
+        description="DEPRECATED: Use brand_manifest instead. Description of the advertiser and product (still supported for backward compatibility)",
+    )
+    brand_manifest: "BrandManifest | str | None" = Field(
+        None,
+        description="Brand information manifest (inline object or URL string). Auto-generated from promoted_offering if not provided for backward compatibility.",
     )
     adcp_version: str = Field(
         "1.0.0",
@@ -805,10 +845,36 @@ class GetProductsRequest(BaseModel):
         description="Minimum number of impressions needed for measurement validity (AdCP PR #79)",
         gt=0,
     )
+    brand_manifest: dict[str, Any] | None = Field(
+        None,
+        description="Brand information manifest providing brand context, assets, and product catalog",
+    )
     webhook_url: str | None = Field(
         None,
         description="URL for async task completion notifications (AdCP spec, optional)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def handle_legacy_promoted_offering(cls, values):
+        """Convert legacy promoted_offering to brand_manifest for backward compatibility."""
+        if not isinstance(values, dict):
+            return values
+
+        # Backward compatibility: if promoted_offering provided but no brand_manifest, create simple manifest
+        if values.get("promoted_offering") and not values.get("brand_manifest"):
+            promoted = values["promoted_offering"]
+            if promoted:
+                values["brand_manifest"] = {"name": promoted}
+
+        # Validate that at least one of brand_manifest or promoted_offering is provided
+        if not values.get("brand_manifest") and not values.get("promoted_offering"):
+            raise ValueError(
+                "Either 'brand_manifest' or 'promoted_offering' must be provided. "
+                "'promoted_offering' is deprecated but still supported for backward compatibility."
+            )
+
+        return values
 
 
 class Error(BaseModel):
@@ -1621,6 +1687,114 @@ class AdaptCreativeRequest(BaseModel):
     instructions: str | None = None
 
 
+# --- Brand Manifest Models (AdCP v1.8.0) ---
+
+
+class LogoAsset(BaseModel):
+    """Logo asset with metadata."""
+
+    url: str = Field(..., description="URL to logo asset")
+    width: int | None = Field(None, ge=1, description="Logo width in pixels")
+    height: int | None = Field(None, ge=1, description="Logo height in pixels")
+    tags: list[str] | None = Field(None, description="Tags for logo usage (e.g., 'primary', 'square', 'white')")
+
+
+class BrandColors(BaseModel):
+    """Brand color palette."""
+
+    primary: str | None = Field(None, pattern="^#[0-9A-Fa-f]{6}$", description="Primary brand color (hex)")
+    secondary: str | None = Field(None, pattern="^#[0-9A-Fa-f]{6}$", description="Secondary brand color (hex)")
+    accent: str | None = Field(None, pattern="^#[0-9A-Fa-f]{6}$", description="Accent color (hex)")
+    background: str | None = Field(None, pattern="^#[0-9A-Fa-f]{6}$", description="Background color (hex)")
+    text: str | None = Field(None, pattern="^#[0-9A-Fa-f]{6}$", description="Text color (hex)")
+
+
+class FontGuidance(BaseModel):
+    """Typography guidelines."""
+
+    primary: str | None = Field(None, description="Primary font family")
+    secondary: str | None = Field(None, description="Secondary font family")
+    weights: list[str] | None = Field(None, description="Recommended font weights")
+
+
+class BrandAsset(BaseModel):
+    """Multimedia brand asset."""
+
+    url: str = Field(..., description="URL to brand asset")
+    type: str = Field(..., description="Asset type (image, video, audio, etc.)")
+    tags: list[str] | None = Field(None, description="Asset tags for categorization")
+    width: int | None = Field(None, ge=1, description="Asset width in pixels")
+    height: int | None = Field(None, ge=1, description="Asset height in pixels")
+    duration: float | None = Field(None, ge=0, description="Duration in seconds (for video/audio)")
+
+
+class ProductCatalog(BaseModel):
+    """E-commerce product feed information."""
+
+    url: str = Field(..., description="URL to product catalog feed")
+    format: str | None = Field(None, description="Feed format (e.g., 'google_merchant', 'json', 'xml')")
+
+
+class BrandManifest(BaseModel):
+    """Standardized brand information manifest for creative generation and media buying.
+
+    Per AdCP spec, either url OR name is required (at least one must be present).
+    """
+
+    # At least one required (enforced by model_validator)
+    url: str | None = Field(None, description="Brand website URL")
+    name: str | None = Field(None, description="Brand/business name")
+
+    # Optional fields
+    logos: list[LogoAsset] | None = Field(None, description="Brand logo assets")
+    colors: BrandColors | None = Field(None, description="Brand color palette")
+    fonts: FontGuidance | None = Field(None, description="Typography guidelines")
+    tone: str | None = Field(None, description="Brand voice and tone description")
+    tagline: str | None = Field(None, description="Brand tagline or slogan")
+    assets: list[BrandAsset] | None = Field(None, description="Additional brand assets")
+    product_catalog: ProductCatalog | None = Field(None, description="Product catalog information")
+    disclaimers: list[str] | None = Field(None, description="Required legal disclaimers")
+    industry: str | None = Field(None, description="Industry/category")
+    target_audience: str | None = Field(None, description="Target audience description")
+    contact_info: dict[str, Any] | None = Field(None, description="Contact information")
+    metadata: dict[str, Any] | None = Field(None, description="Creation/update metadata")
+
+    @model_validator(mode="after")
+    def validate_required_fields(self) -> "BrandManifest":
+        """Ensure at least one of url or name is present."""
+        if not self.url and not self.name:
+            raise ValueError("BrandManifest requires at least one of: url, name")
+        return self
+
+
+class BrandManifestRef(BaseModel):
+    """Brand manifest reference - can be inline object or URL string.
+
+    Per AdCP spec, this supports two formats:
+    1. Inline BrandManifest object
+    2. URL string pointing to hosted manifest JSON
+    """
+
+    # We'll handle this as a union type during validation
+    manifest: BrandManifest | str = Field(
+        ...,
+        description="Brand manifest: either inline BrandManifest object or URL string to hosted manifest",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_manifest_ref(cls, values):
+        """Handle both inline manifest and URL string formats."""
+        if isinstance(values, str):
+            # Direct string = URL reference
+            return {"manifest": values}
+        elif isinstance(values, dict):
+            if "manifest" not in values:
+                # If no manifest field, treat entire dict as inline manifest
+                return {"manifest": values}
+        return values
+
+
 class Package(BaseModel):
     """Package object - AdCP spec compliant.
 
@@ -1694,14 +1868,14 @@ class Package(BaseModel):
 
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(BaseModel):
-    # Required AdCP fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
-    promoted_offering: str = Field(
-        default="Test Campaign Product",
-        description="Description of advertiser and what is being promoted (REQUIRED per AdCP spec)",
-    )
+    # Required AdCP v1.8.0 fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
     buyer_ref: str = Field(..., description="Buyer reference for tracking (REQUIRED per AdCP spec)")
+    brand_manifest: "BrandManifest | str | None" = Field(
+        None,
+        description="Brand information manifest (inline object or URL string). Auto-generated from promoted_offering if not provided for backward compatibility.",
+    )
 
-    # New AdCP v2.4 fields
+    # AdCP v2.4 required fields
     packages: list[Package] | None = Field(None, description="Array of packages with products and budgets")
     start_time: datetime | Literal["asap"] | None = Field(
         None, description="Campaign start time: ISO 8601 datetime or 'asap' for immediate start"
@@ -1714,6 +1888,12 @@ class CreateMediaBuyRequest(BaseModel):
         None,
         pattern="^[A-Z]{3}$",
         description="ISO 4217 currency code for campaign (applies to budget and all packages) - AdCP PR #88",
+    )
+
+    # Deprecated fields (for backward compatibility)
+    promoted_offering: str | None = Field(
+        None,
+        description="DEPRECATED: Use brand_manifest instead. Legacy field for describing what is being promoted.",
     )
 
     # Legacy fields (for backward compatibility)
@@ -1760,6 +1940,26 @@ class CreateMediaBuyRequest(BaseModel):
         """Convert legacy format to new format."""
         if not isinstance(values, dict):
             return values
+
+        # Handle brand_manifest field (can be inline object or URL string)
+        if "brand_manifest" in values:
+            manifest = values["brand_manifest"]
+            # If it's a string (URL), leave as-is - Pydantic will handle it
+            # If it's a dict (inline manifest), Pydantic will parse it as BrandManifest
+            pass  # No conversion needed, Pydantic union type handles both
+
+        # Backward compatibility: if promoted_offering provided but no brand_manifest, create simple manifest
+        if "promoted_offering" in values and not values.get("brand_manifest"):
+            promoted = values["promoted_offering"]
+            if promoted:
+                values["brand_manifest"] = {"name": promoted}
+
+        # Validate that at least one of brand_manifest or promoted_offering is provided
+        if not values.get("brand_manifest") and not values.get("promoted_offering"):
+            raise ValueError(
+                "Either 'brand_manifest' or 'promoted_offering' must be provided. "
+                "'promoted_offering' is deprecated but still supported for backward compatibility."
+            )
 
         # If using legacy format, convert to new format
         if "product_ids" in values and not values.get("packages"):

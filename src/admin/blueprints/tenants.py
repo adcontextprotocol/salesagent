@@ -21,6 +21,7 @@ from src.admin.utils import get_tenant_config_from_db, require_auth, require_ten
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Tenant, User
 from src.core.validation import sanitize_form_data, validate_form_data
+from src.services.setup_checklist_service import SetupChecklistService
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,15 @@ def dashboard(tenant_id):
         config = get_tenant_config_from_db(tenant_id)
         features = config.get("features", {})
 
+        # Get setup checklist status
+        # Show widget always (users can access recommended tasks even after critical complete)
+        setup_status = None
+        try:
+            checklist_service = SetupChecklistService(tenant_id)
+            setup_status = checklist_service.get_setup_status()
+        except Exception as e:
+            logger.warning(f"Failed to load setup checklist: {e}")
+
         return render_template(
             "tenant_dashboard.html",
             tenant=tenant,
@@ -72,6 +82,8 @@ def dashboard(tenant_id):
             chart_data=chart_data_dict["data"],
             # Metrics object (single source of truth)
             metrics=metrics,
+            # Setup checklist
+            setup_status=setup_status,
         )
 
     except Exception as e:
@@ -110,6 +122,33 @@ def dashboard(tenant_id):
         # Always log full details for debugging (only visible to administrators)
         logger.error(f"Dashboard traceback: {error_detail}")
         return redirect(url_for("core.index"))
+
+
+@tenants_bp.route("/<tenant_id>/setup-checklist")
+@require_tenant_access()
+def setup_checklist(tenant_id):
+    """Show full setup checklist page."""
+    try:
+        with get_db_session() as session:
+            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = session.scalars(stmt).first()
+
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
+
+            # Get setup status
+            checklist_service = SetupChecklistService(tenant_id)
+            setup_status = checklist_service.get_setup_status()
+
+            return render_template(
+                "setup_checklist.html", tenant=tenant, tenant_id=tenant_id, setup_status=setup_status
+            )
+
+    except Exception as e:
+        logger.error(f"Error loading setup checklist: {e}")
+        flash(f"Error loading setup checklist: {str(e)}", "error")
+        return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
 
 @tenants_bp.route("/<tenant_id>/settings")
@@ -229,6 +268,14 @@ def tenant_settings(tenant_id, section=None):
             # Check for Gemini API key (tenant-specific only - no environment fallback in production)
             has_gemini_key = bool(tenant.gemini_api_key)
 
+            # Get setup checklist status
+            setup_status = None
+            try:
+                checklist_service = SetupChecklistService(tenant_id)
+                setup_status = checklist_service.get_setup_status()
+            except Exception as e:
+                logger.warning(f"Failed to load setup checklist: {e}")
+
             return render_template(
                 "tenant_settings.html",
                 tenant=tenant,
@@ -256,6 +303,7 @@ def tenant_settings(tenant_id, section=None):
                 ad_units_count=ad_units_count,
                 currency_limits=currency_limits,
                 placements_count=placements_count,
+                setup_status=setup_status,
             )
 
     except Exception as e:
@@ -875,7 +923,7 @@ def media_buys_list(tenant_id):
                         "is_ready": readiness["is_ready_to_activate"],
                         "principal_name": principal.name if principal else "Unknown",
                         "product_names": product_names,
-                        "packages_ready": readiness["packages_ready"],
+                        "packages_ready": readiness["packages_with_creatives"],
                         "packages_total": readiness["packages_total"],
                         "blocking_issues": readiness.get("blocking_issues", []),
                     }

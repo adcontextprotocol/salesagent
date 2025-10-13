@@ -73,6 +73,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Check MCP/A2A parameter alignment
+      - id: check-parameter-alignment
+        name: Check MCP/A2A parameter alignment with _impl functions
+        entry: sh -c 'uv run python .pre-commit-hooks/check_parameter_alignment.py || echo "⚠️  Parameter mismatches found (non-blocking for now)" >&2'
+        language: system
+        pass_filenames: false
+        always_run: true
+
       # Ensure smoke tests pass
       - id: smoke-tests
         name: Run smoke tests (critical paths)
@@ -212,6 +220,15 @@ repos:
         language: system
         files: '\.html$'
         pass_filenames: false
+
+      # Check mypy errors on changed lines only (incremental type safety)
+      - id: mypy-diff
+        name: Check mypy errors on changed lines
+        entry: uv run python scripts/check_mypy_diff.py
+        language: system
+        files: '\.py$'
+        pass_filenames: false
+        always_run: false  # Only run when Python files changed
 
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

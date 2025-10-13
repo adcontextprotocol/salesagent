@@ -431,6 +431,24 @@ def list_property_tags(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.admin_dashboard"))
 
+            # Ensure 'all_inventory' tag exists (default tag for all properties)
+            stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id == "all_inventory")
+            all_inventory_tag = db_session.scalars(stmt).first()
+
+            if not all_inventory_tag:
+                # Auto-create the default tag
+                all_inventory_tag = PropertyTag(
+                    tag_id="all_inventory",
+                    tenant_id=tenant_id,
+                    name="All Inventory",
+                    description="Default tag that applies to all properties. Used when no specific targeting is needed.",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                db_session.add(all_inventory_tag)
+                db_session.commit()
+                logger.info(f"Auto-created 'all_inventory' tag for tenant {tenant_id}")
+
             # Get all tags for this tenant
             stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id).order_by(PropertyTag.name)
             tags = db_session.scalars(stmt).all()

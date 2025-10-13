@@ -207,6 +207,21 @@ def docker_services_e2e(request):
         if not a2a_ready:
             pytest.fail(f"A2A server did not become healthy in time (waited {max_wait}s, port {a2a_port})")
 
+    # Initialize CI test data now that services are healthy
+    print("📦 Initializing CI test data (products, principals, etc.)...")
+    init_result = subprocess.run(
+        ["docker-compose", "exec", "-T", "adcp-server", "python", "scripts/setup/init_database_ci.py"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if init_result.returncode != 0:
+        print(f"❌ CI data initialization failed:")
+        print(f"STDOUT: {init_result.stdout}")
+        print(f"STDERR: {init_result.stderr}")
+        pytest.fail("Failed to initialize CI test data")
+    print("✓ CI test data initialized successfully")
+
     # Yield port information for use by other fixtures
     yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
 
@@ -234,9 +249,9 @@ def live_server(docker_services_e2e):
 def test_auth_token(live_server):
     """Create or get a test principal with auth token.
 
-    This token must match the one created by init_database_ci.py.
+    This token must match the one created by src/core/database/database.py::init_db().
     """
-    # Return the CI test token that is created by scripts/setup/init_database_ci.py
+    # Return the CI test token that is created by init_db() in database.py
     # This ensures consistency between database initialization and E2E tests
     return "ci-test-token"
 

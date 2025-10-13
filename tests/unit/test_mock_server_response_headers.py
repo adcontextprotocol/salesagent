@@ -135,6 +135,7 @@ class TestMockServerResponseHeaders:
             delivery_type="non_guaranteed",
             is_fixed_price=False,
             is_custom=False,
+            property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         response_data = {"products": [test_product.model_dump_internal()]}

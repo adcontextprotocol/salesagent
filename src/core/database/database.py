@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 
 from scripts.ops.migrate import run_migrations
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AdapterConfig, Principal, Product, Tenant
+from src.core.database.models import AdapterConfig, AuthorizedProperty, CurrencyLimit, Principal, Product, Tenant
 
 
 def init_db(exit_on_error=False):
@@ -82,6 +82,30 @@ def init_db(exit_on_error=False):
             )
             db_session.add(ci_test_principal)
 
+            # Add required setup checklist items (currency limits and authorized property)
+            # These are required for the setup checklist validation
+            for currency in ["USD", "EUR", "GBP"]:
+                currency_limit = CurrencyLimit(
+                    tenant_id="default",
+                    currency_code=currency,
+                    min_package_budget=0.0,
+                    max_daily_package_spend=100000.0,
+                )
+                db_session.add(currency_limit)
+
+            # Add authorized property for setup checklist
+            authorized_property = AuthorizedProperty(
+                tenant_id="default",
+                property_id="default-property",
+                property_type="website",
+                name="Default Property",
+                identifiers=[{"type": "domain", "value": "example.com"}],
+                tags=["default"],
+                publisher_domain="example.com",
+                verification_status="verified",
+            )
+            db_session.add(authorized_property)
+
             # Only create additional sample advertisers if this is a development environment
             if os.environ.get("CREATE_SAMPLE_DATA", "false").lower() == "true":
                 principals_data = [
@@ -152,6 +176,7 @@ def init_db(exit_on_error=False):
                             "geo_country_any_of": ["US"],
                         },
                     },
+                    "property_tags": ["all_inventory"],  # Required per AdCP spec
                 },
                 {
                     "product_id": "prod_2",
@@ -178,6 +203,7 @@ def init_db(exit_on_error=False):
                         "key_values": {"tier": "standard"},
                         "targeting": {"geo_country_any_of": ["US", "CA"]},
                     },
+                    "property_tags": ["all_inventory"],  # Required per AdCP spec
                 },
             ]
 
@@ -194,6 +220,7 @@ def init_db(exit_on_error=False):
                     cpm=p.get("cpm"),
                     price_guidance=p.get("price_guidance"),  # Direct dict assignment
                     implementation_config=p.get("implementation_config"),
+                    property_tags=p.get("property_tags"),  # Required per AdCP spec
                 )
                 db_session.add(new_product)
 

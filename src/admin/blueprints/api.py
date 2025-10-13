@@ -360,6 +360,31 @@ def quick_create_products(tenant_id):
                         template.get("delivery_type", "guaranteed") == "guaranteed" and template.get("cpm") is not None
                     )
 
+                    # Per AdCP v2.4 spec: products MUST have either properties or property_tags (oneOf constraint)
+                    # Default to "all_inventory" property tag if not specified in template
+                    property_tags = template.get("property_tags", ["all_inventory"])
+                    properties = template.get("properties")
+
+                    # Validate property_tags exist in database if provided
+                    if property_tags:
+                        from src.core.database.models import PropertyTag
+
+                        existing_tags = db_session.scalars(
+                            select(PropertyTag).filter(
+                                PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(property_tags)
+                            )
+                        ).all()
+
+                        existing_tag_ids = {tag.tag_id for tag in existing_tags}
+                        missing_tags = set(property_tags) - existing_tag_ids
+
+                        if missing_tags:
+                            errors.append(
+                                f"{product_id}: Property tags do not exist: {', '.join(missing_tags)}. "
+                                f"Please create them in Settings → Authorized Properties first."
+                            )
+                            continue  # Skip this product and move to next
+
                     new_product = Product(
                         product_id=template["product_id"],
                         tenant_id=tenant_id,
@@ -373,6 +398,8 @@ def quick_create_products(tenant_id):
                         countries=template.get("countries"),  # Pass as Python object, not JSON string
                         targeting_template=template.get("targeting_template", {}),  # Pass as Python object
                         implementation_config=template.get("implementation_config", {}),  # Pass as Python object
+                        property_tags=property_tags if property_tags else None,  # Required per AdCP spec
+                        properties=properties if properties else None,  # Alternative to property_tags
                     )
                     db_session.add(new_product)
                     created.append(product_id)
