@@ -5,11 +5,6 @@
   "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "message": {
       "type": "string",
       "description": "Human-readable result message"
@@ -325,7 +320,6 @@
     }
   },
   "required": [
-    "adcp_version",
     "message",
     "query_summary",
     "pagination",
@@ -336,7 +330,6 @@
     {
       "description": "Successful library query with results",
       "data": {
-        "adcp_version": "1.5.0",
         "message": "Found 3 creatives matching your query",
         "context_id": "ctx_list_456789",
         "query_summary": {
@@ -394,7 +387,6 @@
     {
       "description": "Query with assignments and performance data",
       "data": {
-        "adcp_version": "1.5.0",
         "message": "Found 1 creative with performance data",
         "query_summary": {
           "total_matching": 1,

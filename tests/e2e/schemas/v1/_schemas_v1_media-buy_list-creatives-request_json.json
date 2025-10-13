@@ -5,12 +5,6 @@
   "description": "Request parameters for querying creative assets from the centralized library with filtering, sorting, and pagination",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "filters": {
       "type": "object",
       "description": "Filter criteria for querying creatives",
