@@ -159,6 +159,7 @@ def test_get_product_format_override_no_impl_config(mock_db_session):
     assert format_obj is None
 
 
+@pytest.mark.skip(reason="FORMAT_REGISTRY removed - dynamic discovery via CreativeAgentRegistry")
 def test_get_format_priority_product_override(mock_db_session):
     """Test format resolution priority: product override takes precedence."""
     # Mock product override
