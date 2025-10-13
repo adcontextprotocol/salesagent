@@ -207,27 +207,28 @@ async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> Ge
 
 
 def create_media_buy_raw(
-    po_number: str,
-    promoted_offering: str = None,
-    buyer_ref: str = None,
-    packages: list = None,
-    start_time: str = None,
-    end_time: str = None,
-    product_ids: list[str] = None,
-    total_budget: float = None,
-    start_date: str = None,
-    end_date: str = None,
-    targeting_overlay: dict = None,
+    buyer_ref: str,
+    brand_manifest: Any,  # BrandManifest | str - validated by Pydantic
+    po_number: str | None = None,
+    packages: list[Any] | None = None,
+    start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
+    end_time: Any | None = None,  # datetime | str - validated by Pydantic
+    budget: Any | None = None,  # Budget | float | dict - validated by Pydantic
+    promoted_offering: str | None = None,
+    product_ids: list[str] | None = None,
+    total_budget: float | None = None,
+    start_date: Any | None = None,  # date | str - validated by Pydantic
+    end_date: Any | None = None,  # date | str - validated by Pydantic
+    targeting_overlay: dict[str, Any] | None = None,
     pacing: str = "even",
-    daily_budget: float = None,
-    creatives: list = None,
-    reporting_webhook: dict = None,
-    required_axe_signals: list = None,
+    daily_budget: float | None = None,
+    creatives: list[Any] | None = None,
+    reporting_webhook: dict[str, Any] | None = None,
+    required_axe_signals: list[str] | None = None,
     enable_creative_macro: bool = False,
-    strategy_id: str = None,
-    push_notification_config: dict = None,
-    budget: dict = None,
-    context: Context = None,
+    strategy_id: str | None = None,
+    push_notification_config: dict[str, Any] | None = None,
+    context: Context | None = None,
 ) -> CreateMediaBuyResponse:
     """Create a new media buy with specified parameters.
 
@@ -235,9 +236,10 @@ def create_media_buy_raw(
     Delegates to the shared implementation in main.py.
 
     Args:
-        po_number: Purchase order number
-        promoted_offering: Description of advertiser and what is being promoted (optional in raw API)
-        buyer_ref: Buyer reference identifier
+        buyer_ref: Buyer reference identifier (required per AdCP spec)
+        brand_manifest: Brand information manifest - inline object or URL string (required per AdCP v1.8.0)
+        po_number: Purchase order number (optional)
+        promoted_offering: DEPRECATED - use brand_manifest instead
         packages: List of media packages (optional)
         start_time: Start time (legacy parameter)
         end_time: End time (legacy parameter)
@@ -265,9 +267,10 @@ def create_media_buy_raw(
 
     # Call the shared implementation
     return _create_media_buy_impl(
-        promoted_offering=promoted_offering,
-        po_number=po_number,
         buyer_ref=buyer_ref,
+        brand_manifest=brand_manifest,
+        po_number=po_number,
+        promoted_offering=promoted_offering,
         packages=packages,
         start_time=start_time,
         end_time=end_time,
