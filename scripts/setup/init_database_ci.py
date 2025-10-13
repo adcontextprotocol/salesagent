@@ -164,7 +164,7 @@ def init_db_ci():
                     principal_id = existing_principal.principal_id
                     print(f"Principal already exists (ID: {principal_id})")
 
-                # Create currency limit (safe to do together)
+                # Create currency limit and property tag with race condition handling
                 stmt_currency = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
                 existing_currency = session.scalars(stmt_currency).first()
                 if not existing_currency:
@@ -176,7 +176,6 @@ def init_db_ci():
                     )
                     session.add(currency_limit)
 
-                # Create property tag (safe to do together)
                 stmt_tag = select(PropertyTag).filter_by(tenant_id=tenant_id, tag_id="all_inventory")
                 existing_tag = session.scalars(stmt_tag).first()
                 if not existing_tag:
@@ -190,8 +189,18 @@ def init_db_ci():
                     )
                     session.add(property_tag)
 
-                session.commit()  # Commit currency limit and property tag
-                print("Created currency limit and property tag")
+                try:
+                    session.commit()
+                    print("Created currency limit and property tag")
+                except Exception as e:
+                    session.rollback()
+                    print(f"⚠️  Currency limit or property tag already exists (race condition): {e}")
+                    # Re-query to ensure we have references
+                    stmt_currency = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
+                    existing_currency = session.scalars(stmt_currency).first()
+                    stmt_tag = select(PropertyTag).filter_by(tenant_id=tenant_id, tag_id="all_inventory")
+                    existing_tag = session.scalars(stmt_tag).first()
+                    print("   Using existing currency limit and property tag")
 
             # Validate prerequisites before creating products
             print("Validating prerequisites for product creation...")
