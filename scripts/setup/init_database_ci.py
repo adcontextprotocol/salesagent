@@ -135,6 +135,14 @@ def init_db_ci():
                     created_tenant = session.scalars(stmt_verify).first()
                     if created_tenant:
                         print(f"   ✓ Tenant verified: is_active={created_tenant.is_active}")
+
+                        # CRITICAL: Verify tenant is findable with EXACT auth query
+                        stmt_auth_test = select(Tenant).filter_by(tenant_id=tenant_id, is_active=True)
+                        auth_findable_tenant = session.scalars(stmt_auth_test).first()
+                        if auth_findable_tenant:
+                            print("   ✓ Tenant findable with auth query (is_active=True filter)")
+                        else:
+                            print("   ❌ ERROR: Tenant NOT findable with auth query! This will cause auth to fail!")
                     else:
                         print("   ⚠️  Warning: Could not verify tenant creation")
                 except Exception as e:
