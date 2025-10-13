@@ -31,40 +31,59 @@ def init_db_ci():
         with get_db_session() as session:
             # First, check if CI test tenant already exists
             stmt = select(Tenant).filter_by(subdomain="ci-test")
-            existing = session.scalars(stmt).first()
+            existing_tenant = session.scalars(stmt).first()
 
-            if existing:
-                print(f"CI test tenant already exists (ID: {existing.tenant_id}), skipping creation")
-                return
+            if existing_tenant:
+                print(f"CI test tenant already exists (ID: {existing_tenant.tenant_id})")
+                tenant_id = existing_tenant.tenant_id
 
-            tenant_id = str(uuid.uuid4())
+                # Check if principal exists for this tenant
+                stmt_principal = select(Principal).filter_by(tenant_id=tenant_id, access_token="ci-test-token")
+                existing_principal = session.scalars(stmt_principal).first()
+                if not existing_principal:
+                    # Create principal if it doesn't exist
+                    principal_id = str(uuid.uuid4())
+                    principal = Principal(
+                        principal_id=principal_id,
+                        tenant_id=tenant_id,
+                        name="CI Test Principal",
+                        access_token="ci-test-token",
+                        platform_mappings={"mock": {"advertiser_id": "test-advertiser"}},
+                    )
+                    session.add(principal)
+                    session.commit()  # Commit before creating products to avoid autoflush
+                    print(f"Created principal (ID: {principal_id}) for existing tenant")
+            else:
+                tenant_id = str(uuid.uuid4())
 
-            # Create default tenant
-            now = datetime.now(UTC)
-            tenant = Tenant(
-                tenant_id=tenant_id,
-                name="CI Test Tenant",
-                subdomain="ci-test",
-                billing_plan="test",
-                ad_server="mock",
-                enable_axe_signals=True,
-                auto_approve_formats=["display_300x250", "display_728x90"],
-                human_review_required=False,
-                created_at=now,
-                updated_at=now,
-            )
-            session.add(tenant)
+                # Create default tenant
+                now = datetime.now(UTC)
+                tenant = Tenant(
+                    tenant_id=tenant_id,
+                    name="CI Test Tenant",
+                    subdomain="ci-test",
+                    billing_plan="test",
+                    ad_server="mock",
+                    enable_axe_signals=True,
+                    auto_approve_formats=["display_300x250", "display_728x90"],
+                    human_review_required=False,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(tenant)
 
-            # Create a default principal for the tenant
-            principal_id = str(uuid.uuid4())
-            principal = Principal(
-                principal_id=principal_id,
-                tenant_id=tenant_id,
-                name="CI Test Principal",
-                access_token="ci-test-token",
-                platform_mappings={"mock": {"advertiser_id": "test-advertiser"}},
-            )
-            session.add(principal)
+                # Create a default principal for the tenant
+                principal_id = str(uuid.uuid4())
+                principal = Principal(
+                    principal_id=principal_id,
+                    tenant_id=tenant_id,
+                    name="CI Test Principal",
+                    access_token="ci-test-token",
+                    platform_mappings={"mock": {"advertiser_id": "test-advertiser"}},
+                )
+                session.add(principal)
+                session.commit()  # Commit before creating products to avoid autoflush
+                print(f"Created tenant (ID: {tenant_id}) and principal (ID: {principal_id})")
 
             # Create default products for testing
             print("Creating default products for CI...")
