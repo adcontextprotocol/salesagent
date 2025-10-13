@@ -264,8 +264,12 @@ jobs:
 
     - name: Install Docker Compose
       run: |
+        # Install docker-compose without man pages to speed up installation
+        sudo mkdir -p /etc/dpkg/dpkg.cfg.d
+        echo 'path-exclude /usr/share/doc/*' | sudo tee /etc/dpkg/dpkg.cfg.d/01_nodoc
+        echo 'path-exclude /usr/share/man/*' | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc
         sudo apt-get update
-        sudo apt-get install -y docker-compose
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends docker-compose
 
     - name: Run E2E tests
       env:
