@@ -874,18 +874,34 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
     principal = get_principal_object(principal_id) if principal_id else None
     principal_data = principal.model_dump() if principal else None
 
-    # Validate promoted_offering per AdCP spec
-    if not req.promoted_offering or not req.promoted_offering.strip():
-        raise ToolError("promoted_offering is required per AdCP spec and cannot be empty")
+    # Extract offering text from brand_manifest or promoted_offering
+    # The validator ensures at least one is present
+    offering = None
+    if req.brand_manifest:
+        if isinstance(req.brand_manifest, str):
+            # brand_manifest is a URL - use it as-is for now
+            # TODO: In future, fetch and parse the URL
+            offering = f"Brand at {req.brand_manifest}"
+        else:
+            # brand_manifest is a BrandManifest object or dict
+            # Try to access as object first, then as dict
+            if hasattr(req.brand_manifest, "name"):
+                offering = req.brand_manifest.name
+            elif isinstance(req.brand_manifest, dict):
+                offering = req.brand_manifest.get("name", "")
+    elif req.promoted_offering:
+        offering = req.promoted_offering.strip()
 
-    offering = req.promoted_offering.strip()
+    if not offering:
+        raise ToolError("Either brand_manifest or promoted_offering must provide brand information")
 
     # Skip strict validation in test environments (allow simple test values)
     import os
 
     is_test_mode = (testing_ctx and testing_ctx.test_session_id is not None) or os.getenv("ADCP_TESTING") == "true"
 
-    if not is_test_mode:
+    # Only validate promoted_offering format (brand_manifest has its own structure)
+    if req.promoted_offering and not is_test_mode:
         generic_terms = {
             "footwear",
             "shoes",
@@ -897,19 +913,19 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
             "automotive",
             "athletic",
         }
-        words = offering.split()
+        words = req.promoted_offering.split()
 
         # Must have at least 2 words (brand + product)
         if len(words) < 2:
             raise ToolError(
-                f"Invalid promoted_offering: '{offering}'. Must include both brand and specific product "
+                f"Invalid promoted_offering: '{req.promoted_offering}'. Must include both brand and specific product "
                 f"(e.g., 'Nike Air Jordan 2025 basketball shoes', not just 'shoes')"
             )
 
         # Check if it's just generic category terms without a brand
         if all(word.lower() in generic_terms or word.lower() in ["and", "or", "the", "a", "an"] for word in words):
             raise ToolError(
-                f"Invalid promoted_offering: '{offering}'. Must include brand name and specific product, "
+                f"Invalid promoted_offering: '{req.promoted_offering}'. Must include brand name and specific product, "
                 f"not just generic category (e.g., 'Nike Air Jordan 2025' not 'athletic footwear')"
             )
 
@@ -918,9 +934,20 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
     # Safely parse policy_settings that might be JSON string (SQLite) or dict (PostgreSQL JSONB)
     tenant_policies = safe_parse_json_field(tenant.get("policy_settings"), field_name="policy_settings", default={})
 
+    # Convert brand_manifest to dict if it's a BrandManifest object
+    brand_manifest_dict = None
+    if req.brand_manifest:
+        if hasattr(req.brand_manifest, "model_dump"):
+            brand_manifest_dict = req.brand_manifest.model_dump()
+        elif isinstance(req.brand_manifest, dict):
+            brand_manifest_dict = req.brand_manifest
+        else:
+            brand_manifest_dict = req.brand_manifest  # URL string
+
     policy_result = await policy_service.check_brief_compliance(
         brief=req.brief,
         promoted_offering=req.promoted_offering,
+        brand_manifest=brand_manifest_dict,
         tenant_policies=tenant_policies if tenant_policies else None,
     )
 
@@ -1228,8 +1255,8 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
 @mcp.tool
 async def get_products(
     promoted_offering: str | None = None,
+    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
-    brand_manifest: dict | str | None = None,
     adcp_version: str = "1.0.0",
     min_exposures: int | None = None,
     filters: dict | None = None,
@@ -1242,9 +1269,9 @@ async def get_products(
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        promoted_offering: DEPRECATED - Use brand_manifest instead. What is being promoted/advertised
+        promoted_offering: DEPRECATED: Use brand_manifest instead (still supported for backward compatibility)
+        brand_manifest: Brand information manifest (inline object or URL string)
         brief: Brief description of the advertising campaign or requirements (optional)
-        brand_manifest: Brand information manifest (inline object or URL string) - Alternative to promoted_offering
         adcp_version: AdCP schema version for this request (default: 1.0.0)
         min_exposures: Minimum impressions needed for measurement validity (AdCP PR #79, optional)
         filters: Structured filters for product discovery (optional)
@@ -1258,8 +1285,8 @@ async def get_products(
     # Build request object for shared implementation
     req = GetProductsRequest(
         promoted_offering=promoted_offering,
-        brief=brief,
         brand_manifest=brand_manifest,
+        brief=brief,
         adcp_version=adcp_version,
         min_exposures=min_exposures,
         filters=filters,
@@ -3054,7 +3081,7 @@ def _validate_pricing_model_selection(
 
 def _create_media_buy_impl(
     buyer_ref: str,
-    brand_manifest: Any,  # BrandManifest | str - validated by Pydantic
+    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     po_number: str | None = None,
     packages: list[Any] | None = None,
     start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
@@ -3080,9 +3107,9 @@ def _create_media_buy_impl(
 
     Args:
         buyer_ref: Buyer reference for tracking (required per AdCP spec)
-        brand_manifest: Brand information manifest - inline object or URL string (required per AdCP v1.8.0)
+        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
         po_number: Purchase order number (optional)
-        promoted_offering: DEPRECATED - use brand_manifest instead
+        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
         end_time: Campaign end time (ISO 8601)
@@ -4178,7 +4205,7 @@ def _create_media_buy_impl(
 @mcp.tool()
 def create_media_buy(
     buyer_ref: str,
-    brand_manifest: Any,  # BrandManifest | str - validated by Pydantic
+    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     po_number: str | None = None,
     packages: list[Any] | None = None,
     start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
@@ -4199,7 +4226,7 @@ def create_media_buy(
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
     webhook_url: str | None = None,
-    context: Context | None = None
+    context: Context | None = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
 
@@ -4207,9 +4234,9 @@ def create_media_buy(
 
     Args:
         buyer_ref: Buyer reference for tracking (required per AdCP spec)
-        brand_manifest: Brand information manifest - inline object or URL string (required per AdCP v1.8.0)
+        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
         po_number: Purchase order number (optional)
-        promoted_offering: DEPRECATED - use brand_manifest instead
+        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
         end_time: Campaign end time (ISO 8601)

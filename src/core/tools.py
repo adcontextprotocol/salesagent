@@ -83,7 +83,8 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
 async def get_products_raw(
     brief: str,
-    promoted_offering: str,
+    promoted_offering: str | None = None,
+    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     adcp_version: str = "1.0.0",
     min_exposures: int | None = None,
     filters: dict | None = None,
@@ -96,7 +97,8 @@ async def get_products_raw(
 
     Args:
         brief: Brief description of the advertising campaign or requirements
-        promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        promoted_offering: DEPRECATED: Use brand_manifest instead (still supported for backward compatibility)
+        brand_manifest: Brand information manifest (inline object or URL string)
         adcp_version: AdCP schema version for this request (default: 1.0.0)
         min_exposures: Minimum impressions needed for measurement validity (optional)
         filters: Structured filters for product discovery (optional)
@@ -117,6 +119,7 @@ async def get_products_raw(
     req = GetProductsRequest(
         brief=brief or "",
         promoted_offering=promoted_offering,
+        brand_manifest=brand_manifest,
         adcp_version=adcp_version,
         min_exposures=min_exposures,
         filters=filters_obj,
@@ -208,7 +211,7 @@ async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> Ge
 
 def create_media_buy_raw(
     buyer_ref: str,
-    brand_manifest: Any,  # BrandManifest | str - validated by Pydantic
+    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     po_number: str | None = None,
     packages: list[Any] | None = None,
     start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
@@ -237,9 +240,9 @@ def create_media_buy_raw(
 
     Args:
         buyer_ref: Buyer reference identifier (required per AdCP spec)
-        brand_manifest: Brand information manifest - inline object or URL string (required per AdCP v1.8.0)
+        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
         po_number: Purchase order number (optional)
-        promoted_offering: DEPRECATED - use brand_manifest instead
+        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
         packages: List of media packages (optional)
         start_time: Start time (legacy parameter)
         end_time: End time (legacy parameter)

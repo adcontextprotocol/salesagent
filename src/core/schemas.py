@@ -8,7 +8,7 @@ UTC = UTC
 # --- V2.3 Pydantic Models (Bearer Auth, Restored & Complete) ---
 # --- MCP Status System (AdCP PR #77) ---
 from enum import Enum
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -1342,11 +1342,11 @@ class GetProductsRequest(BaseModel):
     )
     promoted_offering: str | None = Field(
         None,
-        description="DEPRECATED: Use brand_manifest instead. Description of the advertiser and the product or service being promoted",
+        description="DEPRECATED: Use brand_manifest instead. Description of the advertiser and product (still supported for backward compatibility)",
     )
-    brand_manifest: Union["BrandManifest", str, None] = Field(
+    brand_manifest: "BrandManifest | str | None" = Field(
         None,
-        description="Brand information manifest (inline object or URL string) - Alternative to promoted_offering",
+        description="Brand information manifest (inline object or URL string). Auto-generated from promoted_offering if not provided for backward compatibility.",
     )
     adcp_version: str = Field(
         "1.0.0",
@@ -1373,20 +1373,23 @@ class GetProductsRequest(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_brand_or_offering(cls, values):
-        """Ensure at least one of promoted_offering or brand_manifest is provided (AdCP spec oneOf constraint)."""
+    def handle_legacy_promoted_offering(cls, values):
+        """Convert legacy promoted_offering to brand_manifest for backward compatibility."""
         if not isinstance(values, dict):
             return values
 
-        has_offering = values.get("promoted_offering")
-        has_manifest = values.get("brand_manifest")
+        # Backward compatibility: if promoted_offering provided but no brand_manifest, create simple manifest
+        if values.get("promoted_offering") and not values.get("brand_manifest"):
+            promoted = values["promoted_offering"]
+            if promoted:
+                values["brand_manifest"] = {"name": promoted}
 
-        if not has_offering and not has_manifest:
-            raise ValueError("Either promoted_offering or brand_manifest must be provided (AdCP spec requirement)")
-
-        # Backward compatibility: if only promoted_offering, convert to brand_manifest
-        if has_offering and not has_manifest:
-            values["brand_manifest"] = {"name": values["promoted_offering"]}
+        # Validate that at least one of brand_manifest or promoted_offering is provided
+        if not values.get("brand_manifest") and not values.get("promoted_offering"):
+            raise ValueError(
+                "Either 'brand_manifest' or 'promoted_offering' must be provided. "
+                "'promoted_offering' is deprecated but still supported for backward compatibility."
+            )
 
         return values
 
@@ -2370,9 +2373,9 @@ class Package(BaseModel):
 class CreateMediaBuyRequest(BaseModel):
     # Required AdCP v1.8.0 fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
     buyer_ref: str = Field(..., description="Buyer reference for tracking (REQUIRED per AdCP spec)")
-    brand_manifest: BrandManifest | str = Field(
-        ...,
-        description="Brand information manifest (inline object or URL string) - REQUIRED per AdCP v1.8.0",
+    brand_manifest: "BrandManifest | str | None" = Field(
+        None,
+        description="Brand information manifest (inline object or URL string). Auto-generated from promoted_offering if not provided for backward compatibility.",
     )
 
     # AdCP v2.4 required fields
@@ -2453,6 +2456,13 @@ class CreateMediaBuyRequest(BaseModel):
             promoted = values["promoted_offering"]
             if promoted:
                 values["brand_manifest"] = {"name": promoted}
+
+        # Validate that at least one of brand_manifest or promoted_offering is provided
+        if not values.get("brand_manifest") and not values.get("promoted_offering"):
+            raise ValueError(
+                "Either 'brand_manifest' or 'promoted_offering' must be provided. "
+                "'promoted_offering' is deprecated but still supported for backward compatibility."
+            )
 
         # If using legacy format, convert to new format
         if "product_ids" in values and not values.get("packages"):

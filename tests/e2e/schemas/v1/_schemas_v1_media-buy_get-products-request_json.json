@@ -39,11 +39,7 @@
           "description": "Filter by format types",
           "items": {
             "type": "string",
-            "enum": [
-              "video",
-              "display",
-              "audio"
-            ]
+            "enum": ["video", "display", "audio"]
           }
         },
         "format_ids": {
@@ -68,14 +64,10 @@
   },
   "oneOf": [
     {
-      "required": [
-        "promoted_offering"
-      ]
+      "required": ["promoted_offering"]
     },
     {
-      "required": [
-        "brand_manifest"
-      ]
+      "required": ["brand_manifest"]
     }
   ],
   "additionalProperties": false

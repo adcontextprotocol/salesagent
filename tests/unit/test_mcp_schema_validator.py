@@ -58,7 +58,7 @@ async def get_products(
     def test_validator_passes_with_all_fields(self, tmp_path):
         """Validator should pass when tool has all schema fields."""
 
-        # Create a fixed main.py (includes adcp_version)
+        # Create a fixed main.py (includes adcp_version and brand_manifest)
         main_py = tmp_path / "main.py"
         main_py.write_text(
             '''
@@ -67,8 +67,8 @@ from src.core.schemas import GetProductsRequest
 @mcp.tool
 async def get_products(
     promoted_offering: str | None = None,
+    brand_manifest: Any | None = None,
     brief: str = "",
-    brand_manifest: dict | str | None = None,
     adcp_version: str = "1.0.0",
     min_exposures: int | None = None,
     filters: dict | None = None,
