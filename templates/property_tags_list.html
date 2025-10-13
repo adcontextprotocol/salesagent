@@ -212,17 +212,13 @@
         }
     }
 
-    // Auto-format tag ID input
-    document.getElementById('tag_id').addEventListener('input', function(e) {
-        // Convert to lowercase and allow only lowercase, numbers, underscores, hyphens
-        // Replace spaces and other invalid chars with underscores
-        let value = e.target.value.toLowerCase()
-            .replace(/\s+/g, '_')           // Replace spaces with underscores
-            .replace(/[^a-z0-9_-]/g, '')    // Remove invalid characters (keep underscores and hyphens)
-            .replace(/_{2,}/g, '_')         // Collapse multiple underscores
-            .replace(/^[-_]+|[-_]+$/g, ''); // Trim leading/trailing underscores and hyphens
-
-        e.target.value = value;
-    });
+    // Auto-format tag ID input - convert to lowercase only
+    const tagInput = document.getElementById('tag_id');
+    if (tagInput) {
+        tagInput.addEventListener('input', function(e) {
+            // Only convert to lowercase, no other validation
+            e.target.value = e.target.value.toLowerCase();
+        });
+    }
 </script>
 {% endblock %}

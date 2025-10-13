@@ -453,6 +453,11 @@
             <span>Inventory</span>
         </a>
 
+        <a class="settings-nav-item" href="{{ url_for('authorized_properties.list_authorized_properties', tenant_id=tenant.tenant_id) }}">
+            <span class="settings-nav-icon">🔑</span>
+            <span>Authorized Properties</span>
+        </a>
+
         <a class="settings-nav-item" data-section="products">
             <span class="settings-nav-icon">📦</span>
             <span>Products</span>
