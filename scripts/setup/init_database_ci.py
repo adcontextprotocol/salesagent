@@ -113,6 +113,7 @@ def init_db_ci():
                     billing_plan="test",
                     ad_server="mock",
                     enable_axe_signals=True,
+                    is_active=True,  # Explicitly set for auth lookup
                     authorized_emails=None,  # SQL NULL (satisfies constraint)
                     authorized_domains=None,  # SQL NULL (satisfies constraint)
                     policy_settings=None,  # SQL NULL
