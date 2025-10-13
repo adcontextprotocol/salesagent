@@ -213,16 +213,31 @@ def create_media_buy_raw(promoted_offering: str, ...) -> CreateMediaBuyResponse:
 ### Deployment Architecture (Reference Implementation)
 **NOTE**: This codebase can be hosted anywhere (Docker, Kubernetes, cloud providers, bare metal). The reference implementation uses:
 
-**TWO SEPARATE ENVIRONMENTS:**
+**THREE SEPARATE ENVIRONMENTS:**
 - **Local Dev**: `docker-compose up/down` → localhost:8001/8080/8091
-- **Reference Production**: `fly deploy` → https://adcp-sales-agent.fly.dev
-- ⚠️ **Docker and Fly.io are INDEPENDENT** - starting Docker does NOT affect production!
+- **Reference Sales Agent**: `fly deploy` → https://adcp-sales-agent.fly.dev
+  - This is OUR sales agent (publisher side)
+  - Hosted on Fly.io, auto-deploys from main branch
+- **Test Buyer Agent**: https://test-agent.adcontextprotocol.org
+  - This is OUR test advertiser agent (buyer side)
+  - Also hosted on Fly.io by us
+  - Used for E2E testing of the complete AdCP flow
+  - When this is down, it affects our integration tests
+  - Check logs: `fly logs --app test-agent` (exact app name may vary)
+
+⚠️ **All three are INDEPENDENT** - starting Docker does NOT affect production!
 
 **Your Deployment**: You can host this anywhere that supports:
 - Docker containers (recommended)
 - Python 3.11+
 - PostgreSQL (production and testing)
 - We'll support your deployment approach as best we can
+
+**When Test Agent is Down:**
+- Check Fly.io logs first: `fly logs --app <test-agent-app-name>`
+- Check Fly.io status: `fly status --app <test-agent-app-name>`
+- Don't assume external infrastructure issue - we control both sides
+- See postmortem: `docs/testing/postmortems/2025-10-12-test-agent-downtime.md`
 
 ### Git Workflow - MANDATORY (Reference Implementation)
 **❌ NEVER PUSH DIRECTLY TO MAIN**
