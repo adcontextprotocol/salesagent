@@ -237,7 +237,7 @@ def create_media_buy_raw(promoted_offering: str, ...) -> CreateMediaBuyResponse:
 - Check Fly.io logs first: `fly logs --app <test-agent-app-name>`
 - Check Fly.io status: `fly status --app <test-agent-app-name>`
 - Don't assume external infrastructure issue - we control both sides
-- See postmortem: `docs/testing/postmortems/2025-10-12-test-agent-downtime.md`
+- Check application logs before assuming network/external issues
 
 ### Git Workflow - MANDATORY (Reference Implementation)
 **❌ NEVER PUSH DIRECTLY TO MAIN**
@@ -653,13 +653,54 @@ tests/
 - No skipped tests (except `skip_ci`)
 - No `.fn()` call patterns
 
+### What Makes a Good Unit Test
+
+**✅ Good unit tests:**
+- Test YOUR code's logic and behavior
+- Use minimal mocking (only for external dependencies)
+- Have clear, specific assertions about actual behavior
+- Would catch real bugs if the implementation changed
+- Test edge cases and error conditions
+- Are fast (<100ms per test)
+
+**❌ Bad unit tests (DELETE THESE):**
+- Test Python's built-in behavior (`assert True`, `assert 1+1==2`)
+- Test data structures without testing any code (`assert dict["key"] == "value"`)
+- Define functions inside tests that aren't used (`def validate_x(): ...`)
+- Have generic names like `test_basic_functionality()`
+- Just check that imports work without testing behavior
+
+**Examples:**
+
+```python
+# ❌ BAD - Testing Python itself
+def test_basic_functionality():
+    assert True
+
+def test_list_operations():
+    test_list = [1, 2, 3]
+    assert len(test_list) == 3  # This tests Python, not our code!
+
+# ✅ GOOD - Testing our code's behavior
+def test_1x1_placeholder_accepts_any_creative_size():
+    """1x1 placeholder should accept any creative size (wildcard behavior)."""
+    manager = GAMCreativesManager(mock_client, "advertiser_123", dry_run=True)
+
+    asset = {"creative_id": "c1", "width": 728, "height": 90}
+    placeholders = {"pkg1": [{"size": {"width": 1, "height": 1}}]}
+
+    errors = manager._validate_creative_size_against_placeholders(asset, placeholders)
+    assert errors == []  # This tests OUR business logic!
+```
+
 ### Critical Testing Patterns
 1. **MCP Tool Roundtrip**: Test with real Pydantic objects, not mock dicts
 2. **AdCP Compliance**: Every client model needs contract test
 3. **Integration over Mocking**: Use real DB, mock only external services
 4. **Test What You Import**: If imported, test it's callable
-5. **Never Skip or Weaken Tests**: Fix the underlying issue, never bypass with `skip_ci` or `--no-verify`
-6. **Roundtrip Tests for Testing Hooks**: Every operation using `apply_testing_hooks` MUST have a roundtrip test
+5. **Test YOUR Code**: Don't test Python, test your implementation
+6. **Never Skip or Weaken Tests**: Fix the underlying issue, never bypass with `skip_ci` or `--no-verify`
+7. **Roundtrip Tests for Testing Hooks**: Every operation using `apply_testing_hooks` MUST have a roundtrip test
 
 **🚨 MANDATORY**: When CI tests fail, FIX THE TESTS PROPERLY. Skipping or weakening tests to make CI pass is NEVER acceptable. The tests exist to catch real issues - if they fail, there's a problem that needs fixing, not hiding.
 
