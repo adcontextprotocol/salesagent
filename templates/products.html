@@ -92,13 +92,16 @@
                         {% else %}
                             <span class="badge">{{ line_item_type }}</span>
                         {% endif %}
-                    {% else %}
-                        {# Fallback to generic delivery type for non-GAM products #}
-                        {% if product.is_fixed_price %}
+                    {% elif product.pricing_options and product.pricing_options|length > 0 %}
+                        {# Fallback to generic delivery type from pricing_options #}
+                        {% if product.pricing_options[0].is_fixed %}
                         <span class="badge">Guaranteed</span>
                         {% else %}
                         <span class="badge badge-secondary">Non-guaranteed</span>
                         {% endif %}
+                    {% else %}
+                        {# No pricing information available #}
+                        <span class="badge badge-secondary">Unknown</span>
                     {% endif %}
                 </td>
                 <td>
@@ -127,30 +130,7 @@
                             <span class="badge badge-secondary">+{{ product.pricing_options|length - 1 }} more</span>
                         {% endif %}
                     {% else %}
-                        {# Fall back to legacy fields if no pricing_options #}
-                        {% if product.is_fixed_price and product.cpm %}
-                        ${{ "%.2f"|format(product.cpm) }}
-                        {% elif product.is_fixed_price %}
-                        <span style="color: #999;">No price set</span>
-                        {% else %}
-                            {% if product.price_guidance %}
-                                {% if product.price_guidance.floor %}
-                                    {# New format with floor/p50/p75 #}
-                                    ${{ "%.2f"|format(product.price_guidance.floor) }} - ${{ "%.2f"|format(product.price_guidance.p75) }}
-                                {% elif product.price_guidance.min %}
-                                    {# Old format with min/max - check if they're equal (floor price) #}
-                                    {% if product.price_guidance.min == product.price_guidance.max %}
-                                        Floor: ${{ "%.2f"|format(product.price_guidance.min) }}
-                                    {% else %}
-                                        ${{ "%.2f"|format(product.price_guidance.min) }} - ${{ "%.2f"|format(product.price_guidance.max) }}
-                                    {% endif %}
-                                {% else %}
-                                    Guidance available
-                                {% endif %}
-                            {% else %}
-                            -
-                            {% endif %}
-                        {% endif %}
+                        <span style="color: #999;">No pricing configured</span>
                     {% endif %}
                 </td>
                 <td>

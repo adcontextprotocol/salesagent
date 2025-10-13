@@ -1,0 +1,104 @@
+"""Helper functions for reading product pricing from database.
+
+Handles transition from legacy pricing fields to pricing_options table.
+"""
+
+import logging
+from decimal import Decimal
+from typing import Any
+
+from src.core.database.models import Product as ProductModel
+from src.core.database.models import PricingOption as PricingOptionModel
+
+logger = logging.getLogger(__name__)
+
+
+def get_product_pricing_options(product: ProductModel) -> list[dict[str, Any]]:
+    """Get pricing options for a product, with fallback to legacy fields.
+
+    This function handles the transition period where some products may still
+    use legacy pricing fields (cpm, price_guidance) while others use the new
+    pricing_options table.
+
+    Args:
+        product: Product ORM model with pricing_options relationship loaded
+
+    Returns:
+        List of pricing option dicts with keys:
+        - pricing_model: str (e.g., "cpm")
+        - rate: float | None
+        - currency: str
+        - is_fixed: bool
+        - price_guidance: dict | None
+        - parameters: dict | None
+        - min_spend_per_package: float | None
+    """
+    pricing_options_list = []
+
+    # Try to load from pricing_options relationship first
+    if product.pricing_options:
+        for po in product.pricing_options:
+            pricing_options_list.append({
+                "pricing_model": po.pricing_model,
+                "rate": float(po.rate) if po.rate else None,
+                "currency": po.currency,
+                "is_fixed": po.is_fixed,
+                "price_guidance": po.price_guidance,
+                "parameters": po.parameters,
+                "min_spend_per_package": float(po.min_spend_per_package) if po.min_spend_per_package else None,
+            })
+        return pricing_options_list
+
+    # Fallback to legacy fields if no pricing_options exist
+    logger.debug(f"Product {product.product_id} has no pricing_options, using legacy fields")
+
+    # Check if legacy fields exist (they may be removed by migration)
+    if not hasattr(product, 'is_fixed_price') or not hasattr(product, 'cpm'):
+        logger.warning(f"Product {product.product_id} has neither pricing_options nor legacy fields")
+        return []
+
+    currency = getattr(product, 'currency', 'USD') or 'USD'
+
+    # Convert legacy fixed CPM
+    if product.is_fixed_price and product.cpm:
+        pricing_options_list.append({
+            "pricing_model": "cpm",
+            "rate": float(product.cpm),
+            "currency": currency,
+            "is_fixed": True,
+            "price_guidance": None,
+            "parameters": None,
+            "min_spend_per_package": float(product.min_spend) if product.min_spend else None,
+        })
+
+    # Convert legacy auction CPM with price guidance
+    elif not product.is_fixed_price and hasattr(product, 'price_guidance') and product.price_guidance:
+        pg = product.price_guidance
+        # Convert old format (min/max) to new format (floor/p90)
+        if 'min' in pg and 'floor' not in pg:
+            guidance = {'floor': pg['min']}
+            if 'max' in pg and pg['max'] != pg['min']:
+                guidance['p90'] = pg['max']
+        else:
+            guidance = pg
+
+        pricing_options_list.append({
+            "pricing_model": "cpm",
+            "rate": None,
+            "currency": currency,
+            "is_fixed": False,
+            "price_guidance": guidance,
+            "parameters": None,
+            "min_spend_per_package": float(product.min_spend) if product.min_spend else None,
+        })
+
+    return pricing_options_list
+
+
+def get_primary_pricing_option(product: ProductModel) -> dict[str, Any] | None:
+    """Get the primary (first) pricing option for a product.
+
+    Returns None if product has no pricing.
+    """
+    options = get_product_pricing_options(product)
+    return options[0] if options else None

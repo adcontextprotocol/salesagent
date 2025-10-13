@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
 from src.core.database.models import PricingOption, Product, Tenant
+from src.core.database.product_pricing import get_product_pricing_options
 from src.core.validation import sanitize_form_data
 from src.services.gam_product_config_service import GAMProductConfigService
 
@@ -190,36 +191,14 @@ def list_products(tenant_id):
             # Convert products to dict format for template
             products_list = []
             for product in products:
-                # Load pricing options for this product
-                pricing_options = db_session.scalars(
-                    select(PricingOption).filter_by(tenant_id=tenant_id, product_id=product.product_id)
-                ).all()
-
-                pricing_options_list = []
-                for po in pricing_options:
-                    pricing_options_list.append(
-                        {
-                            "pricing_model": po.pricing_model,
-                            "rate": float(po.rate) if po.rate else None,
-                            "currency": po.currency,
-                            "is_fixed": po.is_fixed,
-                            "price_guidance": po.price_guidance,
-                            "parameters": po.parameters,
-                            "min_spend_per_package": (
-                                float(po.min_spend_per_package) if po.min_spend_per_package else None
-                            ),
-                        }
-                    )
+                # Use helper function to get pricing options (handles legacy fallback)
+                pricing_options_list = get_product_pricing_options(product)
 
                 product_dict = {
                     "product_id": product.product_id,
                     "name": product.name,
                     "description": product.description,
-                    "delivery_type": product.delivery_type,
-                    "is_fixed_price": product.is_fixed_price,
-                    "cpm": product.cpm,
-                    "price_guidance": product.price_guidance,
-                    "pricing_options": pricing_options_list,  # NEW: Include pricing options
+                    "pricing_options": pricing_options_list,
                     "formats": (
                         product.formats
                         if isinstance(product.formats, list)
