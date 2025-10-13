@@ -348,13 +348,22 @@ class GoogleAdManager(AdServerAdapter):
         from src.core.utils.naming import apply_naming_template, build_order_name_context
 
         order_name_template = "{campaign_name|promoted_offering} - {date_range}"  # Default
+        tenant_gemini_key = None
         with get_db_session() as db_session:
+            from src.core.database.models import Tenant
+
             stmt = select(AdapterConfig).filter_by(tenant_id=self.tenant_id)
             adapter_config = db_session.scalars(stmt).first()
             if adapter_config and adapter_config.gam_order_name_template:
                 order_name_template = adapter_config.gam_order_name_template
 
-        context = build_order_name_context(request, packages, start_time, end_time)
+            # Get tenant's Gemini key for auto_name generation
+            tenant_stmt = select(Tenant).filter_by(tenant_id=self.tenant_id)
+            tenant = db_session.scalars(tenant_stmt).first()
+            if tenant:
+                tenant_gemini_key = tenant.gemini_api_key
+
+        context = build_order_name_context(request, packages, start_time, end_time, tenant_gemini_key)
         base_order_name = apply_naming_template(order_name_template, context)
 
         # Add unique identifier to prevent duplicate order names

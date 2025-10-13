@@ -73,7 +73,7 @@ class Tenant(Base, JSONValidatorMixin):
 
     # Naming templates (business rules - shared across all adapters)
     order_name_template = Column(
-        String(500), nullable=True, server_default="{campaign_name|promoted_offering} - {date_range}"
+        String(500), nullable=True, server_default="{campaign_name|promoted_offering} - {buyer_ref} - {date_range}"
     )
     line_item_name_template = Column(String(500), nullable=True, server_default="{order_name} - {product_name}")
 
@@ -434,6 +434,12 @@ class MediaBuy(Base):
             ["strategy_id"],
             ["strategies.strategy_id"],
             ondelete="SET NULL",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "principal_id",
+            "buyer_ref",
+            name="uq_media_buys_buyer_ref",
         ),
         Index("idx_media_buys_tenant", "tenant_id"),
         Index("idx_media_buys_status", "status"),

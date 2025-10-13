@@ -786,12 +786,14 @@
                                     <li><code>{campaign_name}</code> - Campaign name (optional - may be empty)</li>
                                     <li><code>{promoted_offering}</code> - What's being advertised (always present)</li>
                                     <li><code>{buyer_ref}</code> - Buyer's internal reference (optional)</li>
+                                    <li><code>{auto_name}</code> - 🤖 AI-generated name from full context (requires Gemini API key)</li>
                                     <li><code>{date_range}</code> - Flight dates (e.g., "Oct 7-14, 2025")</li>
                                     <li><code>{month_year}</code> - Month and year (e.g., "Oct 2025")</li>
                                     <li><code>{package_count}</code> - Number of packages in order</li>
                                 </ul>
                                 <strong>Fallback syntax:</strong> <code>{var1|var2}</code> uses var1 if present, otherwise var2
                                 <br><strong>Example:</strong> <code>{campaign_name|promoted_offering}</code> tries campaign_name first, falls back to promoted_offering
+                                <br><strong>AI Naming:</strong> <code>{auto_name}</code> generates smart, concise names (~500ms). Falls back to promoted_offering if Gemini unavailable.
                             </div>
                         </details>
                     </div>
