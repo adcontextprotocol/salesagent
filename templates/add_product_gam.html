@@ -624,6 +624,100 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Pricing Options Management (AdCP PR #88)
+// Moved here so it's available for both create and edit modes
+let pricingOptionIndex = 0;
+
+function addPricingOption(existingData = null) {
+    const container = document.getElementById('pricing-options-container');
+    const index = pricingOptionIndex++;
+
+    const optionHtml = `
+        <div class="pricing-option" id="pricing-option-${index}" style="border: 1px solid #dee2e6; border-radius: 4px; padding: 1rem; margin-bottom: 1rem; background: white;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h5 style="margin: 0;">Pricing Option #${index + 1}</h5>
+                <button type="button" class="btn btn-secondary" onclick="removePricingOption(${index})" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">Remove</button>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div class="form-group">
+                    <label>Pricing Model *</label>
+                    <select name="pricing_model_${index}" class="pricing-model-select" onchange="updatePricingFields${index}()" required>
+                        <option value="">Select...</option>
+                        <option value="cpm_fixed" ${existingData && existingData.pricing_model === 'cpm' && existingData.is_fixed ? 'selected' : ''}>CPM - Fixed Rate</option>
+                        <option value="cpm_auction" ${existingData && existingData.pricing_model === 'cpm' && !existingData.is_fixed ? 'selected' : ''}>CPM - Auction</option>
+                    </select>
+                    <small style="color: #666;">GAM only supports CPM pricing</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Currency *</label>
+                    <select name="currency_${index}" required>
+                        {% for currency in currencies %}
+                        <option value="{{ currency }}" ${existingData && existingData.currency === '{{ currency }}' ? 'selected' : ''}>{{ currency }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group" id="rate-group-${index}">
+                    <label>Rate *</label>
+                    <input type="number" name="rate_${index}" step="0.01" min="0" placeholder="e.g., 12.50" value="${existingData && existingData.rate ? existingData.rate : ''}">
+                    <small style="color: #666;">Price per unit (CPM, CPCV, etc.)</small>
+                </div>
+
+                <div class="form-group" id="floor-group-${index}" style="display: none;">
+                    <label>Floor Price *</label>
+                    <input type="number" name="floor_${index}" step="0.01" min="0" placeholder="Minimum bid" value="${existingData && existingData.price_guidance ? existingData.price_guidance.floor : ''}">
+                    <small style="color: #666;">Minimum acceptable price</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Min Spend Per Package</label>
+                    <input type="number" name="min_spend_${index}" step="0.01" min="0" placeholder="Optional" value="${existingData && existingData.min_spend_per_package ? existingData.min_spend_per_package : ''}">
+                    <small style="color: #666;">Minimum spend required for this pricing option</small>
+                </div>
+            </div>
+        </div>
+    `;
+
+    container.insertAdjacentHTML('beforeend', optionHtml);
+
+    // Create dynamic update function
+    window[`updatePricingFields${index}`] = function() {
+        const modelSelect = document.querySelector(`select[name="pricing_model_${index}"]`);
+        const rateGroup = document.getElementById(`rate-group-${index}`);
+        const floorGroup = document.getElementById(`floor-group-${index}`);
+
+        const isAuction = modelSelect.value.includes('auction');
+
+        if (isAuction) {
+            rateGroup.style.display = 'none';
+            floorGroup.style.display = 'block';
+            document.querySelector(`input[name="rate_${index}"]`).removeAttribute('required');
+            document.querySelector(`input[name="floor_${index}"]`).setAttribute('required', '');
+        } else {
+            rateGroup.style.display = 'block';
+            floorGroup.style.display = 'none';
+            document.querySelector(`input[name="rate_${index}"]`).setAttribute('required', '');
+            document.querySelector(`input[name="floor_${index}"]`).removeAttribute('required');
+        }
+    };
+
+    // Initialize fields if existing data
+    if (existingData) {
+        window[`updatePricingFields${index}`]();
+    }
+}
+
+function removePricingOption(index) {
+    const element = document.getElementById(`pricing-option-${index}`);
+    if (element) {
+        element.remove();
+    }
+}
 </script>
 
 <!-- Inventory Picker Modal -->
@@ -764,163 +858,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 })();
-
-// Pricing Options Management (AdCP PR #88)
-let pricingOptionIndex = 0;
-
-function addPricingOption(existingData = null) {
-    const container = document.getElementById('pricing-options-container');
-    const index = pricingOptionIndex++;
-
-    const optionHtml = `
-        <div class="pricing-option" id="pricing-option-${index}" style="border: 1px solid #dee2e6; border-radius: 4px; padding: 1rem; margin-bottom: 1rem; background: white;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h5 style="margin: 0;">Pricing Option #${index + 1}</h5>
-                <button type="button" class="btn btn-secondary" onclick="removePricingOption(${index})" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">Remove</button>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                <div class="form-group">
-                    <label>Pricing Model *</label>
-                    <select name="pricing_model_${index}" class="pricing-model-select" onchange="updatePricingFields${index}()" required>
-                        <option value="">Select...</option>
-                        <option value="cpm_fixed" ${existingData && existingData.pricing_model === 'cpm' && existingData.is_fixed ? 'selected' : ''}>CPM - Fixed Rate</option>
-                        <option value="cpm_auction" ${existingData && existingData.pricing_model === 'cpm' && !existingData.is_fixed ? 'selected' : ''}>CPM - Auction</option>
-                    </select>
-                    <small style="color: #666;">GAM only supports CPM pricing</small>
-                </div>
-
-                <div class="form-group">
-                    <label>Currency *</label>
-                    <select name="currency_${index}" required>
-                        {% for currency in currencies %}
-                        <option value="{{ currency }}" ${existingData && existingData.currency === '{{ currency }}' ? 'selected' : ''}>{{ currency }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="form-group" id="rate-group-${index}">
-                    <label>Rate *</label>
-                    <input type="number" name="rate_${index}" step="0.01" min="0" placeholder="e.g., 12.50" value="${existingData && existingData.rate ? existingData.rate : ''}">
-                    <small style="color: #666;">Price per unit (CPM, CPCV, etc.)</small>
-                </div>
-
-                <div class="form-group" id="floor-group-${index}" style="display: none;">
-                    <label>Floor Price *</label>
-                    <input type="number" name="floor_${index}" step="0.01" min="0" placeholder="Minimum bid" value="${existingData && existingData.price_guidance ? existingData.price_guidance.floor : ''}">
-                    <small style="color: #666;">Minimum acceptable price</small>
-                </div>
-
-                <div class="form-group">
-                    <label>Min Spend Per Package</label>
-                    <input type="number" name="min_spend_${index}" step="0.01" min="0" placeholder="Optional" value="${existingData && existingData.min_spend_per_package ? existingData.min_spend_per_package : ''}">
-                    <small style="color: #666;">Minimum budget requirement</small>
-                </div>
-            </div>
-
-            <div id="price-guidance-${index}" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
-                <strong>Price Guidance (Optional)</strong>
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-top: 0.5rem;">
-                    <input type="number" name="p25_${index}" step="0.01" placeholder="P25" value="${existingData && existingData.price_guidance && existingData.price_guidance.p25 ? existingData.price_guidance.p25 : ''}">
-                    <input type="number" name="p50_${index}" step="0.01" placeholder="P50 (Median)" value="${existingData && existingData.price_guidance && existingData.price_guidance.p50 ? existingData.price_guidance.p50 : ''}">
-                    <input type="number" name="p75_${index}" step="0.01" placeholder="P75" value="${existingData && existingData.price_guidance && existingData.price_guidance.p75 ? existingData.price_guidance.p75 : ''}">
-                    <input type="number" name="p90_${index}" step="0.01" placeholder="P90" value="${existingData && existingData.price_guidance && existingData.price_guidance.p90 ? existingData.price_guidance.p90 : ''}">
-                </div>
-                <small style="color: #666;">Historical price percentiles for auction guidance</small>
-            </div>
-
-            <div id="parameters-${index}" style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px; display: none;">
-                <strong>Model-Specific Parameters</strong>
-                <div id="params-content-${index}" style="margin-top: 0.5rem;"></div>
-            </div>
-        </div>
-    `;
-
-    container.insertAdjacentHTML('beforeend', optionHtml);
-
-    // Create the update function for this specific option
-    window[`updatePricingFields${index}`] = function() {
-        const pricingModel = document.querySelector(`select[name="pricing_model_${index}"]`).value;
-        const rateGroup = document.getElementById(`rate-group-${index}`);
-        const floorGroup = document.getElementById(`floor-group-${index}`);
-        const priceGuidance = document.getElementById(`price-guidance-${index}`);
-
-        // Determine if fixed or auction from pricing model selection
-        const isFixed = pricingModel !== 'cpm_auction';
-
-        if (isFixed) {
-            rateGroup.style.display = 'block';
-            floorGroup.style.display = 'none';
-            priceGuidance.style.display = 'none';
-            document.querySelector(`input[name="rate_${index}"]`).required = true;
-            const floorInput = document.querySelector(`input[name="floor_${index}"]`);
-            if (floorInput) floorInput.required = false;
-        } else {
-            // Auction mode (only cpm_auction)
-            rateGroup.style.display = 'none';
-            floorGroup.style.display = 'block';
-            priceGuidance.style.display = 'block';
-            document.querySelector(`input[name="rate_${index}"]`).required = false;
-            document.querySelector(`input[name="floor_${index}"]`).required = true;
-        }
-
-        // No model-specific parameters for CPM (GAM only supports CPM)
-        const parametersDiv = document.getElementById(`parameters-${index}`);
-        parametersDiv.style.display = 'none';
-
-        // Legacy code - GAM used to show parameters for non-CPM models, but now GAM is CPM-only
-        const paramsContent = document.getElementById(`params-content-${index}`);
-        const baseModel = pricingModel.startsWith('cpm_') ? 'cpm' : pricingModel;
-
-        if (baseModel === 'cpp') {
-            parametersDiv.style.display = 'block';
-            const demographicValue = existingData && existingData.parameters ? existingData.parameters.demographic || '' : '';
-            const minPointsValue = existingData && existingData.parameters ? existingData.parameters.min_points || '' : '';
-            paramsContent.innerHTML = `
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-                    <div>
-                        <label>Demographic</label>
-                        <input type="text" name="demographic_${index}" placeholder="e.g., A18-49" value="${demographicValue}">
-                    </div>
-                    <div>
-                        <label>Min Points (GRPs)</label>
-                        <input type="number" name="min_points_${index}" step="0.1" value="${minPointsValue}">
-                    </div>
-                </div>
-            `;
-        } else if (pricingModel === 'cpv') {
-            parametersDiv.style.display = 'block';
-            const viewThresholdValue = existingData && existingData.parameters ? existingData.parameters.view_threshold || '' : '';
-            paramsContent.innerHTML = `
-                <div>
-                    <label>View Threshold</label>
-                    <input type="number" name="view_threshold_${index}" step="0.01" min="0" max="1" placeholder="0.5 = 50% viewed" value="${viewThresholdValue}">
-                    <small style="color: #666;">Percentage of video that must be viewed (0.0 to 1.0)</small>
-                </div>
-            `;
-        } else {
-            parametersDiv.style.display = 'none';
-        }
-    };
-
-    // Initialize fields
-    window[`updatePricingFields${index}`]();
-}
-
-function removePricingOption(index) {
-    const option = document.getElementById(`pricing-option-${index}`);
-    if (option) {
-        option.remove();
-    }
-
-    // If no pricing options left, add one back
-    const container = document.getElementById('pricing-options-container');
-    if (container.children.length === 0) {
-        addPricingOption();
-    }
-}
 
 // Initialize pricing options on page load
 {% if product %}
