@@ -20,7 +20,7 @@ def init_db_ci():
 
         from scripts.ops.migrate import run_migrations
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import Principal, Product, Tenant
+        from src.core.database.models import CurrencyLimit, Principal, Product, Tenant
 
         print("Applying database migrations for CI...")
         run_migrations()
@@ -51,8 +51,23 @@ def init_db_ci():
                         platform_mappings={"mock": {"advertiser_id": "test-advertiser"}},
                     )
                     session.add(principal)
-                    session.commit()  # Commit before creating products to avoid autoflush
                     print(f"Created principal (ID: {principal_id}) for existing tenant")
+
+                # Check if currency limit exists for this tenant
+                stmt_currency = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
+                existing_currency = session.scalars(stmt_currency).first()
+                if not existing_currency:
+                    # Create currency limit if it doesn't exist
+                    currency_limit = CurrencyLimit(
+                        tenant_id=tenant_id,
+                        currency_code="USD",
+                        min_package_budget=1000.0,
+                        max_daily_package_spend=10000.0,
+                    )
+                    session.add(currency_limit)
+                    print("Created currency limit for existing tenant")
+
+                session.commit()  # Commit before creating products to avoid autoflush
             else:
                 tenant_id = str(uuid.uuid4())
 
@@ -82,8 +97,18 @@ def init_db_ci():
                     platform_mappings={"mock": {"advertiser_id": "test-advertiser"}},
                 )
                 session.add(principal)
+
+                # Create default currency limit
+                currency_limit = CurrencyLimit(
+                    tenant_id=tenant_id,
+                    currency_code="USD",
+                    min_package_budget=1000.0,
+                    max_daily_package_spend=10000.0,
+                )
+                session.add(currency_limit)
+
                 session.commit()  # Commit before creating products to avoid autoflush
-                print(f"Created tenant (ID: {tenant_id}) and principal (ID: {principal_id})")
+                print(f"Created tenant (ID: {tenant_id}), principal (ID: {principal_id}), and currency limit")
 
             # Create default products for testing
             print("Creating default products for CI...")
