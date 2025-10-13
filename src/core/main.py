@@ -5714,20 +5714,19 @@ async def debug_db_state(request: Request):
 
     try:
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import Principal, Product as ProductModel, Tenant
 
         with get_db_session() as session:
             # Count all products
-            stmt = select(ProductModel)
-            all_products = session.scalars(stmt).all()
+            product_stmt = select(ModelProduct)
+            all_products = session.scalars(product_stmt).all()
 
             # Get ci-test-token principal
-            stmt = select(Principal).filter_by(access_token="ci-test-token")
-            principal = session.scalars(stmt).first()
+            principal_stmt = select(ModelPrincipal).filter_by(access_token="ci-test-token")
+            principal = session.scalars(principal_stmt).first()
 
             principal_info = None
             tenant_info = None
-            tenant_products = []
+            tenant_products: list[ModelProduct] = []
 
             if principal:
                 principal_info = {
@@ -5736,8 +5735,8 @@ async def debug_db_state(request: Request):
                 }
 
                 # Get tenant
-                stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id)
-                tenant = session.scalars(stmt).first()
+                tenant_stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id)
+                tenant = session.scalars(tenant_stmt).first()
                 if tenant:
                     tenant_info = {
                         "tenant_id": tenant.tenant_id,
@@ -5746,16 +5745,18 @@ async def debug_db_state(request: Request):
                     }
 
                 # Get products for that tenant
-                stmt = select(ProductModel).filter_by(tenant_id=principal.tenant_id)
-                tenant_products = session.scalars(stmt).all()
+                tenant_product_stmt = select(ModelProduct).filter_by(tenant_id=principal.tenant_id)
+                tenant_products = list(session.scalars(tenant_product_stmt).all())
 
-            return JSONResponse({
-                "total_products": len(all_products),
-                "principal": principal_info,
-                "tenant": tenant_info,
-                "tenant_products_count": len(tenant_products),
-                "tenant_product_ids": [p.product_id for p in tenant_products],
-            })
+            return JSONResponse(
+                {
+                    "total_products": len(all_products),
+                    "principal": principal_info,
+                    "tenant": tenant_info,
+                    "tenant_products_count": len(tenant_products),
+                    "tenant_product_ids": [p.product_id for p in tenant_products],
+                }
+            )
     except Exception as e:
         logger.error(f"Debug endpoint error: {e}", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500)
