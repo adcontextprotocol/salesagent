@@ -101,7 +101,8 @@ def init_db_ci():
                 tenant_id = str(uuid.uuid4())
                 principal_id = str(uuid.uuid4())
 
-                # Create default tenant
+                # CRITICAL: Create tenant FIRST in separate transaction to avoid rollback cascade
+                # If we create tenant + principal together, UniqueViolation on principal rolls back BOTH
                 now = datetime.now(UTC)
                 tenant = Tenant(
                     tenant_id=tenant_id,
@@ -117,80 +118,80 @@ def init_db_ci():
                 )
                 session.add(tenant)
 
-                # Create a default principal for the tenant
-                principal = Principal(
-                    principal_id=principal_id,
-                    tenant_id=tenant_id,
-                    name="CI Test Principal",
-                    access_token="ci-test-token",
-                    platform_mappings={"mock": {"advertiser_id": "test-advertiser"}},
-                )
-                session.add(principal)
-
-                # Create default currency limit
-                currency_limit = CurrencyLimit(
-                    tenant_id=tenant_id,
-                    currency_code="USD",
-                    min_package_budget=1000.0,
-                    max_daily_package_spend=10000.0,
-                )
-                session.add(currency_limit)
-
-                # Create default property tag
-                property_tag = PropertyTag(
-                    tag_id="all_inventory",
-                    tenant_id=tenant_id,
-                    name="All Inventory",
-                    description="Default tag for all inventory",
-                    created_at=now,
-                    updated_at=now,
-                )
-                session.add(property_tag)
-
                 try:
-                    session.commit()  # Commit before creating products to avoid autoflush
-                    print(
-                        f"Created tenant (ID: {tenant_id}), principal (ID: {principal_id}), currency limit, and property tag"
-                    )
+                    session.commit()  # Commit tenant FIRST
+                    print(f"Created tenant (ID: {tenant_id})")
                 except Exception as e:
-                    # Handle race condition: another container may have created the tenant/principal
+                    # Handle race: another container created tenant already
                     session.rollback()
-                    print(f"⚠️  Race condition detected during tenant creation: {e}")
-                    print("   Waiting for other container to commit, then re-querying...")
+                    print(f"⚠️  Tenant already exists (race condition): {e}")
+                    stmt_tenant = select(Tenant).filter_by(subdomain="ci-test")
+                    existing_tenant = session.scalars(stmt_tenant).first()
+                    if existing_tenant:
+                        tenant_id = existing_tenant.tenant_id
+                        print(f"   Using existing tenant (ID: {tenant_id})")
+                    else:
+                        raise ValueError("Failed to create or find CI test tenant")
 
-                    # Wait and retry: the other container needs time to commit its transaction
-                    import time
+                # Now create principal + dependencies in separate transaction
+                # Query again for principal (may have been created by other container)
+                stmt_principal = select(Principal).filter_by(access_token="ci-test-token")
+                existing_principal = session.scalars(stmt_principal).first()
 
-                    max_retries = 10
-                    retry_delay = 0.5  # 500ms
+                if not existing_principal:
+                    principal = Principal(
+                        principal_id=principal_id,
+                        tenant_id=tenant_id,
+                        name="CI Test Principal",
+                        access_token="ci-test-token",
+                        platform_mappings={"mock": {"advertiser_id": "test-advertiser"}},
+                    )
+                    session.add(principal)
 
-                    for attempt in range(max_retries):
-                        time.sleep(retry_delay)
+                    try:
+                        session.commit()
+                        print(f"Created principal (ID: {principal_id})")
+                    except Exception as e:
+                        session.rollback()
+                        print(f"⚠️  Principal already exists (race condition): {e}")
+                        # Re-query for principal created by other container
+                        stmt_principal = select(Principal).filter_by(access_token="ci-test-token")
+                        existing_principal = session.scalars(stmt_principal).first()
+                        if existing_principal:
+                            principal_id = existing_principal.principal_id
+                            print(f"   Using existing principal (ID: {principal_id})")
+                else:
+                    principal_id = existing_principal.principal_id
+                    print(f"Principal already exists (ID: {principal_id})")
 
-                        # Re-query for the tenant that was created by the other container
-                        stmt_tenant = select(Tenant).filter_by(subdomain="ci-test")
-                        existing_tenant = session.scalars(stmt_tenant).first()
+                # Create currency limit (safe to do together)
+                stmt_currency = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
+                existing_currency = session.scalars(stmt_currency).first()
+                if not existing_currency:
+                    currency_limit = CurrencyLimit(
+                        tenant_id=tenant_id,
+                        currency_code="USD",
+                        min_package_budget=1000.0,
+                        max_daily_package_spend=10000.0,
+                    )
+                    session.add(currency_limit)
 
-                        if existing_tenant:
-                            tenant_id = existing_tenant.tenant_id
-                            print(f"   ✓ Found existing tenant on attempt {attempt + 1} (ID: {tenant_id})")
+                # Create property tag (safe to do together)
+                stmt_tag = select(PropertyTag).filter_by(tenant_id=tenant_id, tag_id="all_inventory")
+                existing_tag = session.scalars(stmt_tag).first()
+                if not existing_tag:
+                    property_tag = PropertyTag(
+                        tag_id="all_inventory",
+                        tenant_id=tenant_id,
+                        name="All Inventory",
+                        description="Default tag for all inventory",
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    session.add(property_tag)
 
-                            # Re-query for the principal
-                            stmt_principal = select(Principal).filter_by(access_token="ci-test-token")
-                            existing_principal = session.scalars(stmt_principal).first()
-                            if existing_principal:
-                                principal_id = existing_principal.principal_id
-                                print(f"   ✓ Found existing principal (ID: {principal_id})")
-                            break
-                        else:
-                            print(f"   Attempt {attempt + 1}/{max_retries}: Tenant not found yet, retrying...")
-
-                    # Final check after all retries
-                    if not existing_tenant:
-                        raise ValueError(
-                            f"Failed to find CI test tenant after {max_retries} retries. "
-                            "Both containers may have failed to create it, or database transaction commit is very slow."
-                        )
+                session.commit()  # Commit currency limit and property tag
+                print("Created currency limit and property tag")
 
             # Validate prerequisites before creating products
             print("Validating prerequisites for product creation...")
