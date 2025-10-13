@@ -541,18 +541,21 @@ class MockAdServer(AdServerAdapter):
         from src.core.utils.naming import apply_naming_template, build_order_name_context
 
         order_name_template = "{campaign_name|promoted_offering} - {date_range}"  # Default
+        tenant_gemini_key = None
         try:
             with get_db_session() as db_session:
                 if tenant_id and tenant_id != "unknown":
                     tenant_obj = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-                    if tenant_obj and tenant_obj.order_name_template:
-                        order_name_template = tenant_obj.order_name_template
+                    if tenant_obj:
+                        if tenant_obj.order_name_template:
+                            order_name_template = tenant_obj.order_name_template
+                        tenant_gemini_key = tenant_obj.gemini_api_key
         except Exception:
             # Database not available (e.g., in unit tests) - use default template
             pass
 
         # Build context and apply template
-        context = build_order_name_context(request, packages, start_time, end_time)
+        context = build_order_name_context(request, packages, start_time, end_time, tenant_gemini_key)
         order_name = apply_naming_template(order_name_template, context)
 
         # Strategy-aware behavior modifications
