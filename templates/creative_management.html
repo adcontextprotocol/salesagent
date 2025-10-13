@@ -307,8 +307,16 @@ function approveCreative(creativeId) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
+        body: JSON.stringify({
+            approved_by: 'admin'
+        })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             alert('✅ Creative approved successfully!');
@@ -318,22 +326,36 @@ function approveCreative(creativeId) {
         }
     })
     .catch(error => {
-        alert('Failed to approve creative: ' + error);
+        console.error('Approve error:', error);
+        alert('Failed to approve creative: ' + error.message);
     });
 }
 
 // Reject creative
 function rejectCreative(creativeId) {
-    const reason = prompt('Please provide a reason for rejection (optional):');
+    const reason = prompt('Please provide a reason for rejection:');
     if (reason === null) return; // User cancelled
+
+    if (!reason.trim()) {
+        alert('Rejection reason is required.');
+        return;
+    }
 
     fetch(`${scriptName}/tenant/${tenantId}/creative-formats/review/${creativeId}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ reason: reason })
+        body: JSON.stringify({
+            rejected_by: 'admin',
+            rejection_reason: reason.trim()
+        })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             alert('❌ Creative rejected.');
@@ -343,7 +365,8 @@ function rejectCreative(creativeId) {
         }
     })
     .catch(error => {
-        alert('Failed to reject creative: ' + error);
+        console.error('Reject error:', error);
+        alert('Failed to reject creative: ' + error.message);
     });
 }
 
