@@ -113,10 +113,7 @@ def init_db(exit_on_error=False):
                         "principal_id": "acme_corp",
                         "name": "Acme Corporation",
                         "platform_mappings": {
-                            "gam_advertiser_id": 67890,
-                            "kevel_advertiser_id": "acme-corporation",
-                            "triton_advertiser_id": "ADV-ACM-002",
-                            "mock_advertiser_id": "mock-acme",
+                            "mock": {"advertiser_id": "mock-acme"},
                         },
                         "access_token": "acme_corp_token",
                     },
@@ -124,10 +121,7 @@ def init_db(exit_on_error=False):
                         "principal_id": "purina",
                         "name": "Purina Pet Foods",
                         "platform_mappings": {
-                            "gam_advertiser_id": 12345,
-                            "kevel_advertiser_id": "purina-pet-foods",
-                            "triton_advertiser_id": "ADV-PUR-001",
-                            "mock_advertiser_id": "mock-purina",
+                            "mock": {"advertiser_id": "mock-purina"},
                         },
                         "access_token": "purina_token",
                     },
