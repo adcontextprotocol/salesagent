@@ -929,6 +929,6 @@ def media_buys_list(tenant_id):
             )
 
     except Exception as e:
-        logger.error(f"Error listing media buys: {e}", exc_info=True)
-        flash("Error loading media buys", "error")
+        logger.error(f"Error listing media buys for tenant {tenant_id}: {e}", exc_info=True)
+        flash(f"Error loading media buys: {str(e)}", "error")
         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))

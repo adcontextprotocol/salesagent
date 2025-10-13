@@ -22,7 +22,7 @@ workflows_bp = Blueprint("workflows", __name__)
 @require_tenant_access()
 def list_workflows(tenant_id, **kwargs):
     """List all workflows and pending approvals."""
-    from src.core.database.models import MediaBuy, Tenant
+    from src.core.database.models import AuditLog, MediaBuy, Tenant
 
     with get_db_session() as db:
         # Get tenant
@@ -73,6 +73,11 @@ def list_workflows(tenant_id, **kwargs):
                 }
             )
 
+        # Get recent audit logs with enriched context
+        # Get raw audit logs for the template (it expects AuditLog objects)
+        stmt = select(AuditLog).filter(AuditLog.tenant_id == tenant_id).order_by(AuditLog.timestamp.desc()).limit(100)
+        audit_logs = db.scalars(stmt).all()
+
         return render_template(
             "workflows.html",
             tenant=tenant,
@@ -81,7 +86,7 @@ def list_workflows(tenant_id, **kwargs):
             workflows=workflows_list,
             media_buys=media_buys,
             tasks=[],  # Deprecated - using workflow_steps now
-            audit_logs=[],  # Will be populated if needed
+            audit_logs=audit_logs,
         )
 
 

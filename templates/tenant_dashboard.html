@@ -620,6 +620,24 @@
                                     {% endif %}
                                 </dl>
 
+                                <!-- Quick Links to Related Objects -->
+                                {% if activity.links %}
+                                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
+                                        <h5 style="margin: 0 0 0.5rem 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #6b7280;">Quick Links</h5>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                                            {% for link in activity.links %}
+                                                <a href="{{ script_name }}{{ link.url }}"
+                                                   class="btn btn-sm btn-link"
+                                                   style="text-decoration: none; font-size: 0.875rem; padding: 0.25rem 0.75rem; border: 1px solid #e5e7eb; border-radius: 4px; background: #f9fafb; color: #374151; display: inline-flex; align-items: center; gap: 0.25rem;"
+                                                   onclick="event.stopPropagation();">
+                                                    <span>{{ link.icon }}</span>
+                                                    <span>{{ link.text }}</span>
+                                                </a>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                {% endif %}
+
                                 {% if activity.action_required %}
                                     <div class="action-buttons">
                                         {% if activity.type == 'action_needed' %}
