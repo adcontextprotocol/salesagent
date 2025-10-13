@@ -414,8 +414,17 @@ async function autoSuggestFormats(selectedCheckboxes) {
     // Helper: Check if format fits within any ad unit constraint
     function formatFitsConstraint(formatWidth, formatHeight, formatType) {
         return adUnitConstraints.some(constraint => {
-            // Type must match
-            if (formatType !== constraint.type) return false;
+            // Type compatibility check
+            // - Exact match (display ↔ display, video ↔ video, etc.)
+            // - Generative formats can serve in display ad units
+            // - Universal formats can serve anywhere
+            const typeMatches =
+                formatType === constraint.type ||
+                (formatType === 'generative' && constraint.type === 'display') ||
+                formatType === 'universal';
+
+            if (!typeMatches) return false;
+
             // Format must fit within ad unit dimensions
             return formatWidth <= constraint.maxWidth && formatHeight <= constraint.maxHeight;
         });

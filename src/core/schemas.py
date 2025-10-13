@@ -224,6 +224,11 @@ class Format(BaseModel):
     platform_config: dict[str, Any] | None = Field(
         None, description="Platform-specific configuration (e.g., gam, kevel) for creative mapping"
     )
+    output_format_ids: list[str] | None = Field(
+        None,
+        description="For generative formats: list of format IDs this format can generate. "
+        "Example: ['display_300x250_image', 'display_300x250_html5']",
+    )
 
 
 # FORMAT_REGISTRY removed - now using dynamic format discovery via CreativeAgentRegistry
