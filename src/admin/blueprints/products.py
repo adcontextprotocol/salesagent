@@ -19,23 +19,32 @@ logger = logging.getLogger(__name__)
 products_bp = Blueprint("products", __name__)
 
 
-def get_creative_formats():
+def get_creative_formats(tenant_id: str | None = None):
     """Get all available creative formats for the product form.
 
-    Returns standard AdCP formats from FORMAT_REGISTRY (authoritative source).
-    Custom tenant-specific formats are stored in database but not used for product creation.
+    Returns formats from all registered creative agents (default + tenant-specific).
+    Uses CreativeAgentRegistry for dynamic format discovery.
+
+    Args:
+        tenant_id: Optional tenant ID for tenant-specific agents
+
+    Returns:
+        List of format dictionaries for frontend
     """
-    from src.core.schemas import FORMAT_REGISTRY
+    from src.core.format_resolver import list_available_formats
+
+    # Get formats from creative agent registry
+    formats = list_available_formats(tenant_id=tenant_id)
 
     formats_list = []
-
-    # Use FORMAT_REGISTRY as authoritative source for standard formats
-    for _format_id, fmt in FORMAT_REGISTRY.items():
+    for fmt in formats:
         format_dict = {
             "format_id": fmt.format_id,
+            "agent_url": fmt.agent_url,
             "name": fmt.name,
             "type": fmt.type,
-            "description": f"{fmt.name} - {fmt.iab_specification or 'Standard format'}",
+            "category": fmt.category,
+            "description": fmt.description or f"{fmt.name} - {fmt.iab_specification or 'Standard format'}",
             "dimensions": None,
             "duration": None,
         }
