@@ -1,159 +1,11 @@
-"""Database schema definitions for SQLite and PostgreSQL."""
+"""Database schema definitions for PostgreSQL.
 
-# SQL schema with vendor-specific variations
-SCHEMA_SQLITE = """
-CREATE TABLE IF NOT EXISTS tenants (
-    tenant_id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    subdomain TEXT UNIQUE NOT NULL,
-    config TEXT NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
-    is_active BOOLEAN DEFAULT 1,
-    billing_plan TEXT DEFAULT 'standard',
-    billing_contact TEXT
-);
+NOTE: This file contains legacy schema definitions from before Alembic migrations.
+The schema is now managed via Alembic migrations in alembic/versions/.
 
-CREATE TABLE IF NOT EXISTS creative_formats (
-    format_id TEXT PRIMARY KEY,
-    tenant_id TEXT,  -- NULL for standard formats, populated for custom formats
-    name TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('display', 'video', 'audio', 'native')),
-    description TEXT,
-    width INTEGER,
-    height INTEGER,
-    duration_seconds INTEGER,
-    max_file_size_kb INTEGER,
-    specs TEXT NOT NULL,
-    is_standard BOOLEAN DEFAULT 1,
-    is_foundational BOOLEAN DEFAULT 0,  -- True for base formats that can be extended
-    extends TEXT,  -- Reference to foundational format_id
-    modifications TEXT,  -- JSON with modifications to base format
-    source_url TEXT,  -- URL where format was discovered
-    platform_config TEXT,  -- JSON with platform-specific config (e.g., GAM creative template IDs)
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE,
-    FOREIGN KEY (extends) REFERENCES creative_formats(format_id) ON DELETE RESTRICT
-);
-
-CREATE TABLE IF NOT EXISTS products (
-    tenant_id TEXT NOT NULL,
-    product_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    formats TEXT NOT NULL,
-    targeting_template TEXT NOT NULL,
-    delivery_type TEXT NOT NULL,
-    is_fixed_price BOOLEAN NOT NULL,
-    cpm REAL,
-    price_guidance TEXT,
-    is_custom BOOLEAN DEFAULT 0,
-    expires_at TIMESTAMP,
-    countries TEXT,
-    implementation_config TEXT,
-    PRIMARY KEY (tenant_id, product_id),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
-);
-
-CREATE TABLE IF NOT EXISTS principals (
-    tenant_id TEXT NOT NULL,
-    principal_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    platform_mappings TEXT NOT NULL,
-    access_token TEXT UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (tenant_id, principal_id),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
-);
-
-CREATE TABLE IF NOT EXISTS users (
-    user_id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'viewer')),
-    google_id TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP,
-    is_active BOOLEAN DEFAULT 1,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
-);
-
-CREATE TABLE IF NOT EXISTS media_buys (
-    media_buy_id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    principal_id TEXT NOT NULL,
-    order_name TEXT NOT NULL,
-    advertiser_name TEXT NOT NULL,
-    campaign_objective TEXT,
-    kpi_goal TEXT,
-    budget REAL,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
-    status TEXT NOT NULL DEFAULT 'draft',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    approved_at TIMESTAMP,
-    approved_by TEXT,
-    raw_request TEXT NOT NULL,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
-    FOREIGN KEY (tenant_id, principal_id) REFERENCES principals(tenant_id, principal_id)
-);
-
-CREATE TABLE IF NOT EXISTS tasks (
-    task_id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    media_buy_id TEXT NOT NULL,
-    task_type TEXT NOT NULL,
-    title TEXT NOT NULL,
-    description TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',
-    assigned_to TEXT,
-    due_date TIMESTAMP,
-    completed_at TIMESTAMP,
-    completed_by TEXT,
-    metadata TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
-    FOREIGN KEY (media_buy_id) REFERENCES media_buys(media_buy_id)
-);
-
-CREATE TABLE IF NOT EXISTS audit_logs (
-    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id TEXT NOT NULL,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    operation TEXT NOT NULL,
-    principal_name TEXT,
-    principal_id TEXT,
-    adapter_id TEXT,
-    success BOOLEAN NOT NULL,
-    error_message TEXT,
-    details TEXT,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_subdomain ON tenants(subdomain);
-CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_principals_tenant ON principals(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_principals_token ON principals(access_token);
-CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
-CREATE INDEX IF NOT EXISTS idx_media_buys_tenant ON media_buys(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_media_buys_status ON media_buys(status);
-CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_media_buy ON tasks(media_buy_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON audit_logs(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
-
-CREATE TABLE IF NOT EXISTS superadmin_config (
-    config_key TEXT PRIMARY KEY,
-    config_value TEXT,
-    description TEXT,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_by TEXT
-);
+This file is kept for reference only and should not be used for database initialization.
+Use Alembic migrations instead:
+    uv run python scripts/ops/migrate.py
 """
 
 SCHEMA_POSTGRESQL = """
@@ -313,12 +165,27 @@ CREATE TABLE IF NOT EXISTS superadmin_config (
 """
 
 
-def get_schema(db_type: str) -> str:
-    """Get the appropriate schema for the database type."""
-    schemas = {"sqlite": SCHEMA_SQLITE, "postgresql": SCHEMA_POSTGRESQL}
+def get_schema(db_type: str = "postgresql") -> str:
+    """Get the PostgreSQL schema.
 
-    schema = schemas.get(db_type)
-    if not schema:
-        raise ValueError(f"Unsupported database type: {db_type}. Use 'sqlite' or 'postgresql'")
+    Args:
+        db_type: Database type (only 'postgresql' is supported)
 
-    return schema
+    Returns:
+        PostgreSQL schema SQL
+
+    Raises:
+        ValueError: If db_type is not 'postgresql'
+
+    Note:
+        This function is deprecated. Use Alembic migrations instead:
+            uv run python scripts/ops/migrate.py
+    """
+    if db_type != "postgresql":
+        raise ValueError(
+            f"Unsupported database type: {db_type}. "
+            "This codebase uses PostgreSQL exclusively. "
+            "See CLAUDE.md for architecture details."
+        )
+
+    return SCHEMA_POSTGRESQL

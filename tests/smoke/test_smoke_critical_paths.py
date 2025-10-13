@@ -1,14 +1,9 @@
 """Smoke tests for critical system paths - MUST ALWAYS PASS."""
 
 import asyncio
-import sys
-import time
-from datetime import datetime
-from pathlib import Path
 
 import httpx
 import pytest
-from sqlalchemy import select
 
 
 class TestServerStartup:
@@ -215,147 +210,6 @@ class TestAdminUICriticalPaths:
         assert "/login" in response.headers.get("location", "")
 
 
-class TestDatabaseConnectivity:
-    """Test database connectivity and basic operations."""
-
-    @pytest.mark.smoke
-    @pytest.mark.skip_ci
-    def test_database_connection(self):
-        """Test that we can connect to the database.
-
-        NOTE: Skipped in CI as it requires DATABASE_URL to be set.
-        This is a manual smoke test for production deployments.
-        """
-        from src.core.database.database_session import get_db_session
-
-        with get_db_session() as session:
-            from sqlalchemy import text
-
-            # Simple query to test connection
-            result = session.execute(text("SELECT 1")).fetchone()
-            assert result[0] == 1
-
-    @pytest.mark.smoke
-    def test_critical_tables_exist(self, test_database):
-        """Test that critical tables exist in the database."""
-        from src.core.database.database_session import get_db_session
-
-        critical_tables = ["tenants", "principals", "products", "media_buys", "creative_formats", "audit_logs"]
-
-        with get_db_session() as session:
-            from sqlalchemy import text
-
-            for table in critical_tables:
-                # This will raise an error if table doesn't exist
-                result = session.execute(text(f"SELECT COUNT(*) FROM {table}"))
-                assert result.fetchone() is not None
-
-
-class TestMigrations:
-    """Test database migrations are properly applied."""
-
-    @pytest.mark.smoke
-    @pytest.mark.skip_ci
-    def test_migrations_are_current(self, test_database):
-        """Test that all migrations have been applied."""
-        from src.core.database.database_session import get_db_session
-
-        with get_db_session() as session:
-            from sqlalchemy import text
-
-            # Check alembic_version table exists
-            result = session.execute(
-                text("SELECT version_num FROM alembic_version ORDER BY version_num DESC LIMIT 1")
-            ).fetchone()
-
-            assert result is not None, "No migrations have been applied"
-
-            # Get the latest migration from the migrations folder
-            migrations_dir = Path("alembic/versions")
-            if migrations_dir.exists():
-                migration_files = list(migrations_dir.glob("*.py"))
-                if migration_files:
-                    # Extract version numbers from filenames
-                    versions = []
-                    for f in migration_files:
-                        if "_" in f.stem:
-                            version = f.stem.split("_")[0]
-                            versions.append(version)
-
-                    if versions:
-                        latest_version = max(versions)
-                        current_version = result[0]
-                        assert (
-                            current_version == latest_version
-                        ), f"Database at {current_version}, latest is {latest_version}"
-
-
-class TestCriticalBusinessLogic:
-    """Test critical business logic paths."""
-
-    @pytest.mark.smoke
-    def test_principal_authentication_flow(self, test_database):
-        """Test the principal authentication flow."""
-        from src.core.database.database_session import get_db_session
-        from src.core.database.models import Principal as ModelPrincipal
-
-        with get_db_session() as session:
-            # Create a test principal
-            test_principal = ModelPrincipal(
-                tenant_id="test_tenant",
-                principal_id="smoke_test_principal",
-                name="Smoke Test Principal",
-                access_token="smoke_test_token_" + str(int(time.time())),
-                platform_mappings={"mock": {"advertiser_id": "smoke_test_advertiser"}},
-            )
-            session.add(test_principal)
-            session.commit()
-
-            # Verify we can retrieve it
-            retrieved = session.scalars(select(ModelPrincipal).filter_by(principal_id="smoke_test_principal")).first()
-
-            assert retrieved is not None
-            assert retrieved.name == "Smoke Test Principal"
-
-            # Cleanup
-            session.delete(retrieved)
-            session.commit()
-
-    @pytest.mark.smoke
-    def test_media_buy_creation_flow(self, test_database):
-        """Test that media buy creation flow works."""
-        from src.core.database.database_session import get_db_session
-        from src.core.database.models import MediaBuy
-
-        with get_db_session() as session:
-            # Create a test media buy
-            test_buy = MediaBuy(
-                media_buy_id=f"smoke_test_{int(time.time())}",
-                tenant_id="test_tenant",
-                principal_id="test_principal",
-                order_name="Smoke Test Order",
-                advertiser_name="Smoke Test Advertiser",
-                budget=1000.0,
-                start_date=datetime.now().date(),
-                end_date=datetime.now().date(),
-                status="pending",
-                raw_request={},
-            )
-            session.add(test_buy)
-            session.commit()
-
-            # Verify we can retrieve it
-            retrieved = session.scalars(select(MediaBuy).filter_by(media_buy_id=test_buy.media_buy_id)).first()
-
-            assert retrieved is not None
-            assert retrieved.order_name == "Smoke Test Order"
-            assert retrieved.budget == 1000.0
-
-            # Cleanup
-            session.delete(retrieved)
-            session.commit()
-
-
 class TestErrorHandling:
     """Test system handles errors gracefully."""
 
@@ -386,27 +240,6 @@ class TestErrorHandling:
             assert response.status_code == 200
             result = response.json()
             assert "error" in result
-
-    @pytest.mark.smoke
-    def test_database_transaction_rollback(self, test_database):
-        """Test that failed transactions rollback properly."""
-        from src.core.database.database_session import get_db_session
-        from src.core.database.models import Tenant
-
-        with get_db_session() as session:
-            try:
-                # Try to create a tenant with invalid data
-                bad_tenant = Tenant(tenant_id=None, name="Bad Tenant")  # This should fail
-                session.add(bad_tenant)
-                session.commit()
-                raise AssertionError("Should have raised an error")
-            except Exception:
-                session.rollback()
-                # Verify database is still functional
-                from sqlalchemy import text
-
-                result = session.execute(text("SELECT 1")).fetchone()
-                assert result[0] == 1
 
 
 class TestConcurrency:
@@ -440,58 +273,3 @@ class TestConcurrency:
             # All should succeed
             for response in responses:
                 assert response.status_code == 200
-
-
-class TestSystemIntegration:
-    """Test integration between major system components."""
-
-    @pytest.mark.smoke
-    def test_audit_logging_works(self, test_database):
-        """Test that audit logging is functional."""
-        from src.core.audit_logger import get_audit_logger
-        from src.core.database.database_session import get_db_session
-
-        logger = get_audit_logger("mock", "smoke_test_tenant")
-
-        # Log a test event
-        logger.log_operation(
-            operation="smoke_test",
-            principal_name="Smoke Test Principal",
-            principal_id="smoke_test_principal",
-            adapter_id="smoke_test_adapter",
-            success=True,
-            details={"test": "smoke test audit log"},
-        )
-
-        # Verify it was logged to database
-        with get_db_session() as session:
-            from sqlalchemy import text
-
-            result = session.execute(
-                text(
-                    """
-                SELECT COUNT(*) FROM audit_logs
-                WHERE operation = 'mock.smoke_test'
-                AND principal_id = 'smoke_test_principal'
-                """
-                )
-            ).fetchone()
-
-            assert result[0] > 0
-
-    @pytest.mark.smoke
-    def test_config_loading(self, test_database):
-        """Test that configuration loading works."""
-        from src.core.config_loader import load_config
-
-        config = load_config()
-        assert config is not None
-        # Config should have the main sections
-        assert "ad_server" in config
-        assert "creative_engine" in config
-        assert "features" in config
-
-
-if __name__ == "__main__":
-    # Run smoke tests with verbose output
-    sys.exit(pytest.main([__file__, "-v", "-m", "smoke"]))

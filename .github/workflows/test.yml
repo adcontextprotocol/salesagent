@@ -59,6 +59,21 @@ jobs:
     runs-on: ubuntu-latest
     needs: [schema-sync]
 
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: adcp_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: adcp_smoke_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
     - uses: actions/checkout@v4
 
@@ -86,16 +101,15 @@ jobs:
       run: |
         uv sync --extra dev
 
-    - name: Initialize test database
+    - name: Run database migrations
       env:
-        DATABASE_URL: sqlite:///test.db
-        PYTEST_CURRENT_TEST: true
+        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_smoke_test
       run: |
-        uv run python scripts/ops/migrate.py || echo "Migration failed, using in-memory DB"
+        uv run python scripts/ops/migrate.py
 
     - name: Run smoke tests
       env:
-        DATABASE_URL: "sqlite:///:memory:"
+        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_smoke_test
         GEMINI_API_KEY: test_key
         PYTEST_CURRENT_TEST: true
         ADCP_TESTING: true
@@ -142,20 +156,12 @@ jobs:
       run: |
         uv sync --extra dev
 
-    - name: Initialize test database
-      env:
-        DATABASE_URL: sqlite:///test.db
-        ADCP_TESTING: true
-      run: |
-        uv run python scripts/ops/migrate.py || echo "Migration failed, continuing with schema creation"
-
     - name: Run unit tests
       env:
         GEMINI_API_KEY: test_key_for_mocking
         GOOGLE_CLIENT_ID: test_client_id
         GOOGLE_CLIENT_SECRET: test_client_secret
         SUPER_ADMIN_EMAILS: test@example.com
-        DATABASE_URL: sqlite:///test.db
         ADCP_TESTING: true
       run: |
         uv run pytest tests/unit/ -v --tb=short --cov=. --cov-report=term-missing
