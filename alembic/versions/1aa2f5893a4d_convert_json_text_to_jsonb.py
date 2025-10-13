@@ -31,7 +31,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '1aa2f5893a4d'
-down_revision: Union[str, Sequence[str], None] = 'ab57bdcf4bd8'
+down_revision: Union[str, Sequence[str], None] = 'eef85c5fe627'  # After XOR constraint, before GIN index
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
