@@ -341,6 +341,8 @@ class GoogleAdManager(AdServerAdapter):
         # Use naming template from adapter config, or fallback to default
         from sqlalchemy import select
 
+        from src.adapters.gam.utils.constants import GAM_NAME_LIMITS
+        from src.adapters.gam.utils.naming import truncate_name_with_suffix
         from src.core.database.database_session import get_db_session
         from src.core.database.models import AdapterConfig
         from src.core.utils.naming import apply_naming_template, build_order_name_context
@@ -358,7 +360,10 @@ class GoogleAdManager(AdServerAdapter):
         # Add unique identifier to prevent duplicate order names
         # Use media_buy_id if available (from buyer_ref), otherwise timestamp
         unique_suffix = request.buyer_ref or f"mb_{int(datetime.now().timestamp())}"
-        order_name = f"{base_order_name} [{unique_suffix}]"
+        full_order_name = f"{base_order_name} [{unique_suffix}]"
+
+        # Truncate to GAM's 255-character limit while preserving the unique suffix
+        order_name = truncate_name_with_suffix(full_order_name, GAM_NAME_LIMITS["max_order_name_length"])
 
         order_id = self.orders_manager.create_order(
             order_name=order_name,

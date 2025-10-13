@@ -203,6 +203,12 @@ GAM_TARGETING_LIMITS = {
     "max_placements": 200,
 }
 
+# Name length limits
+GAM_NAME_LIMITS = {
+    "max_order_name_length": 255,
+    "max_line_item_name_length": 255,
+}
+
 # Rate limiting
 GAM_RATE_LIMITS = {
     "requests_per_second": 10,

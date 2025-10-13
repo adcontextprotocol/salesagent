@@ -159,12 +159,13 @@ class SlackNotifier:
 
         # Add action buttons with tenant-specific URL
         admin_url = os.getenv("ADMIN_UI_URL", "http://localhost:8001")
+        script_name = "/admin" if os.environ.get("PRODUCTION") == "true" else ""
         if tenant_id:
             # Tenant-specific workflows page
-            operations_url = f"{admin_url}/tenant/{tenant_id}/workflows"
+            operations_url = f"{admin_url}{script_name}/tenant/{tenant_id}/workflows"
         else:
             # Global workflows page (fallback)
-            operations_url = f"{admin_url}/workflows"
+            operations_url = f"{admin_url}{script_name}/workflows"
 
         blocks.append(
             {
@@ -295,13 +296,14 @@ class SlackNotifier:
 
         # Build correct URL to specific creative
         admin_url = os.getenv("ADMIN_UI_URL", "http://localhost:8001")
+        script_name = "/admin" if os.environ.get("PRODUCTION") == "true" else ""
         if tenant_id:
             # Link directly to the specific creative using anchor
             # Correct URL pattern: /tenant/{tenant_id}/creative-formats/review#{creative_id}
-            review_url = f"{admin_url}/tenant/{tenant_id}/creative-formats/review#{creative_id}"
+            review_url = f"{admin_url}{script_name}/tenant/{tenant_id}/creative-formats/review#{creative_id}"
         else:
             # Fallback to workflows page if tenant_id not provided
-            review_url = f"{admin_url}/workflows"
+            review_url = f"{admin_url}{script_name}/workflows"
 
         blocks.extend(
             [
@@ -641,15 +643,16 @@ class SlackNotifier:
 
         # Add action button with tenant-specific URL
         admin_url = os.getenv("ADMIN_UI_URL", "http://localhost:8001")
+        script_name = "/admin" if os.environ.get("PRODUCTION") == "true" else ""
         if tenant_id and media_buy_id:
             # Link to specific media buy in tenant context
-            operations_url = f"{admin_url}/tenant/{tenant_id}/workflows#{media_buy_id}"
+            operations_url = f"{admin_url}{script_name}/tenant/{tenant_id}/workflows#{media_buy_id}"
         elif tenant_id:
             # Tenant-specific workflows page
-            operations_url = f"{admin_url}/tenant/{tenant_id}/workflows"
+            operations_url = f"{admin_url}{script_name}/tenant/{tenant_id}/workflows"
         else:
             # Global workflows page (fallback)
-            operations_url = f"{admin_url}/workflows"
+            operations_url = f"{admin_url}{script_name}/workflows"
 
         blocks.append(
             {
