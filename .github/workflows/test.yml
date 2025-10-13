@@ -158,16 +158,7 @@ jobs:
         DATABASE_URL: sqlite:///test.db
         ADCP_TESTING: true
       run: |
-        uv run pytest tests/unit/ -v --tb=short --cov=. --cov-report=xml --cov-report=term-missing
-
-    - name: Upload coverage to Codecov
-      if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.xml
-        flags: unit
-        name: unit-tests
-        fail_ci_if_error: false
+        uv run pytest tests/unit/ -v --tb=short --cov=. --cov-report=term-missing
 
   integration-tests:
     name: Integration Tests
@@ -234,16 +225,7 @@ jobs:
         SUPER_ADMIN_EMAILS: test@example.com
         ADCP_TESTING: true
       run: |
-        uv run pytest tests/integration/ -v --tb=short --cov=. --cov-report=xml --cov-report=term-missing -m "not requires_server and not skip_ci"
-
-    - name: Upload coverage to Codecov
-      if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.xml
-        flags: integration
-        name: integration-tests
-        fail_ci_if_error: false
+        uv run pytest tests/integration/ -v --tb=short --cov=. --cov-report=term-missing -m "not requires_server and not skip_ci"
 
   e2e-tests:
     name: E2E Tests
