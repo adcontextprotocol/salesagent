@@ -66,8 +66,9 @@ from src.core.schemas import GetProductsRequest
 
 @mcp.tool
 async def get_products(
-    promoted_offering: str,
+    promoted_offering: str | None = None,
     brief: str = "",
+    brand_manifest: dict | str | None = None,
     adcp_version: str = "1.0.0",
     min_exposures: int | None = None,
     filters: dict | None = None,
@@ -75,10 +76,11 @@ async def get_products(
     webhook_url: str | None = None,
     context: Context = None,
 ) -> GetProductsResponse:
-    """Get products - includes adcp_version and webhook_url!"""
+    """Get products - includes adcp_version, brand_manifest, and webhook_url!"""
     req = GetProductsRequest(
         brief=brief,
         promoted_offering=promoted_offering,
+        brand_manifest=brand_manifest,
         adcp_version=adcp_version,
         min_exposures=min_exposures,
         filters=filters,

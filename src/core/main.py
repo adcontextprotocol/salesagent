@@ -1227,8 +1227,9 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
 
 @mcp.tool
 async def get_products(
-    promoted_offering: str,
+    promoted_offering: str | None = None,
     brief: str = "",
+    brand_manifest: dict | str | None = None,
     adcp_version: str = "1.0.0",
     min_exposures: int | None = None,
     filters: dict | None = None,
@@ -1241,8 +1242,9 @@ async def get_products(
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        promoted_offering: DEPRECATED - Use brand_manifest instead. What is being promoted/advertised
         brief: Brief description of the advertising campaign or requirements (optional)
+        brand_manifest: Brand information manifest (inline object or URL string) - Alternative to promoted_offering
         adcp_version: AdCP schema version for this request (default: 1.0.0)
         min_exposures: Minimum impressions needed for measurement validity (AdCP PR #79, optional)
         filters: Structured filters for product discovery (optional)
@@ -1257,6 +1259,7 @@ async def get_products(
     req = GetProductsRequest(
         promoted_offering=promoted_offering,
         brief=brief,
+        brand_manifest=brand_manifest,
         adcp_version=adcp_version,
         min_exposures=min_exposures,
         filters=filters,

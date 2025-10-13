@@ -8,7 +8,7 @@ UTC = UTC
 # --- V2.3 Pydantic Models (Bearer Auth, Restored & Complete) ---
 # --- MCP Status System (AdCP PR #77) ---
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -1344,7 +1344,7 @@ class GetProductsRequest(BaseModel):
         None,
         description="DEPRECATED: Use brand_manifest instead. Description of the advertiser and the product or service being promoted",
     )
-    brand_manifest: BrandManifest | str | None = Field(
+    brand_manifest: Union["BrandManifest", str, None] = Field(
         None,
         description="Brand information manifest (inline object or URL string) - Alternative to promoted_offering",
     )
