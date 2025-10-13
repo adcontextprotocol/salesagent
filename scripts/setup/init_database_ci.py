@@ -235,7 +235,7 @@ def init_db_ci():
             print("All prerequisites validated successfully")
 
             # Create default products for testing
-            print("Creating default products for CI...")
+            print(f"Creating default products for CI on tenant: {tenant_id}...")
             products_data = [
                 {
                     "product_id": "prod_display_premium",
@@ -309,7 +309,13 @@ def init_db_ci():
             saved_products = session.scalars(stmt_verify).all()
             print(f"\n✅ Verification: {len(saved_products)} products found in database for tenant {tenant_id}")
             for prod in saved_products:
-                print(f"   - {prod.product_id}: property_tags={prod.property_tags}, properties={prod.properties}")
+                print(f"   - {prod.product_id}: {prod.name}, property_tags={prod.property_tags}")
+
+            # Also verify pricing_options exist
+            from src.core.database.models import PricingOption as PricingOptionModel
+            stmt_pricing = select(PricingOptionModel).filter_by(tenant_id=tenant_id)
+            saved_pricing = session.scalars(stmt_pricing).all()
+            print(f"✅ Verification: {len(saved_pricing)} pricing_options found for tenant {tenant_id}")
 
             # CRITICAL: Fail if no products were created
             if len(saved_products) == 0:
