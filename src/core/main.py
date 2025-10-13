@@ -867,9 +867,13 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         # Legacy path - extract from FastMCP Context
         testing_ctx = get_testing_context(context)
         # For discovery endpoints, authentication is optional
+        logger.info("[GET_PRODUCTS] About to call get_principal_from_context")
         principal_id = get_principal_from_context(context)  # Returns None if no auth
+        logger.info(f"[GET_PRODUCTS] principal_id returned: {principal_id}")
         tenant = get_current_tenant()
+        logger.info(f"[GET_PRODUCTS] tenant returned: {tenant}")
         if not tenant:
+            logger.error("[GET_PRODUCTS] No tenant context available - raising ToolError")
             raise ToolError("No tenant context available")
 
     # Get the Principal object with ad server mappings
@@ -1058,6 +1062,7 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         "principal_id": principal_id,
     }
 
+    logger.info(f"[GET_PRODUCTS] Calling provider.get_products for tenant_id={tenant['tenant_id']}")
     products = await provider.get_products(
         brief=req.brief,
         tenant_id=tenant["tenant_id"],
@@ -1065,6 +1070,7 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         principal_data=principal_data,
         context=context_data,
     )
+    logger.info(f"[GET_PRODUCTS] Got {len(products)} products from provider")
 
     # Enrich products with dynamic pricing (AdCP PR #79)
     # Calculate floor_cpm, recommended_cpm, estimated_exposures from cached metrics
