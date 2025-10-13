@@ -156,26 +156,41 @@ def init_db_ci():
                     # Handle race condition: another container may have created the tenant/principal
                     session.rollback()
                     print(f"⚠️  Race condition detected during tenant creation: {e}")
-                    print("   Re-querying for existing tenant and principal...")
+                    print("   Waiting for other container to commit, then re-querying...")
 
-                    # Re-query for the tenant that was created by the other container
-                    stmt_tenant = select(Tenant).filter_by(subdomain="ci-test")
-                    existing_tenant = session.scalars(stmt_tenant).first()
+                    # Wait and retry: the other container needs time to commit its transaction
+                    import time
+
+                    max_retries = 10
+                    retry_delay = 0.5  # 500ms
+
+                    for attempt in range(max_retries):
+                        time.sleep(retry_delay)
+
+                        # Re-query for the tenant that was created by the other container
+                        stmt_tenant = select(Tenant).filter_by(subdomain="ci-test")
+                        existing_tenant = session.scalars(stmt_tenant).first()
+
+                        if existing_tenant:
+                            tenant_id = existing_tenant.tenant_id
+                            print(f"   ✓ Found existing tenant on attempt {attempt + 1} (ID: {tenant_id})")
+
+                            # Re-query for the principal
+                            stmt_principal = select(Principal).filter_by(access_token="ci-test-token")
+                            existing_principal = session.scalars(stmt_principal).first()
+                            if existing_principal:
+                                principal_id = existing_principal.principal_id
+                                print(f"   ✓ Found existing principal (ID: {principal_id})")
+                            break
+                        else:
+                            print(f"   Attempt {attempt + 1}/{max_retries}: Tenant not found yet, retrying...")
+
+                    # Final check after all retries
                     if not existing_tenant:
-                        # This shouldn't happen, but if it does, fail loudly
-                        raise ValueError("Failed to create or find CI test tenant after race condition")
-                    tenant_id = existing_tenant.tenant_id
-                    print(f"   Using existing tenant (ID: {tenant_id})")
-
-                    # Re-query for the principal
-                    stmt_principal = select(Principal).filter_by(access_token="ci-test-token")
-                    existing_principal = session.scalars(stmt_principal).first()
-                    if existing_principal:
-                        principal_id = existing_principal.principal_id
-                        print(f"   Using existing principal (ID: {principal_id})")
-                    else:
-                        # Principal doesn't exist, but we're now in the existing tenant flow
-                        print("   Principal not found - will be created in validation step")
+                        raise ValueError(
+                            f"Failed to find CI test tenant after {max_retries} retries. "
+                            "Both containers may have failed to create it, or database transaction commit is very slow."
+                        )
 
             # Validate prerequisites before creating products
             print("Validating prerequisites for product creation...")
