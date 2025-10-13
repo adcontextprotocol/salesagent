@@ -1340,9 +1340,13 @@ class GetProductsRequest(BaseModel):
         "",
         description="Brief description of the advertising campaign or requirements (optional)",
     )
-    promoted_offering: str = Field(
-        ...,
-        description="Description of the advertiser and the product or service being promoted (REQUIRED per AdCP spec)",
+    promoted_offering: str | None = Field(
+        None,
+        description="DEPRECATED: Use brand_manifest instead. Description of the advertiser and product (still supported for backward compatibility)",
+    )
+    brand_manifest: "BrandManifest | str | None" = Field(
+        None,
+        description="Brand information manifest (inline object or URL string). Auto-generated from promoted_offering if not provided for backward compatibility.",
     )
     adcp_version: str = Field(
         "1.0.0",
@@ -1366,6 +1370,28 @@ class GetProductsRequest(BaseModel):
         None,
         description="URL for async task completion notifications (AdCP spec, optional)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def handle_legacy_promoted_offering(cls, values):
+        """Convert legacy promoted_offering to brand_manifest for backward compatibility."""
+        if not isinstance(values, dict):
+            return values
+
+        # Backward compatibility: if promoted_offering provided but no brand_manifest, create simple manifest
+        if values.get("promoted_offering") and not values.get("brand_manifest"):
+            promoted = values["promoted_offering"]
+            if promoted:
+                values["brand_manifest"] = {"name": promoted}
+
+        # Validate that at least one of brand_manifest or promoted_offering is provided
+        if not values.get("brand_manifest") and not values.get("promoted_offering"):
+            raise ValueError(
+                "Either 'brand_manifest' or 'promoted_offering' must be provided. "
+                "'promoted_offering' is deprecated but still supported for backward compatibility."
+            )
+
+        return values
 
 
 class Error(BaseModel):
@@ -2347,7 +2373,7 @@ class Package(BaseModel):
 class CreateMediaBuyRequest(BaseModel):
     # Required AdCP v1.8.0 fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
     buyer_ref: str = Field(..., description="Buyer reference for tracking (REQUIRED per AdCP spec)")
-    brand_manifest: BrandManifest | str | None = Field(
+    brand_manifest: "BrandManifest | str | None" = Field(
         None,
         description="Brand information manifest (inline object or URL string). Auto-generated from promoted_offering if not provided for backward compatibility.",
     )

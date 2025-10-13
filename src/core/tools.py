@@ -83,7 +83,8 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
 async def get_products_raw(
     brief: str,
-    promoted_offering: str,
+    promoted_offering: str | None = None,
+    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     adcp_version: str = "1.0.0",
     min_exposures: int | None = None,
     filters: dict | None = None,
@@ -96,7 +97,8 @@ async def get_products_raw(
 
     Args:
         brief: Brief description of the advertising campaign or requirements
-        promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        promoted_offering: DEPRECATED: Use brand_manifest instead (still supported for backward compatibility)
+        brand_manifest: Brand information manifest (inline object or URL string)
         adcp_version: AdCP schema version for this request (default: 1.0.0)
         min_exposures: Minimum impressions needed for measurement validity (optional)
         filters: Structured filters for product discovery (optional)
@@ -117,6 +119,7 @@ async def get_products_raw(
     req = GetProductsRequest(
         brief=brief or "",
         promoted_offering=promoted_offering,
+        brand_manifest=brand_manifest,
         adcp_version=adcp_version,
         min_exposures=min_exposures,
         filters=filters_obj,
