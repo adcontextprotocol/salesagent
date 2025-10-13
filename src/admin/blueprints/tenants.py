@@ -914,7 +914,7 @@ def media_buys_list(tenant_id):
                         "is_ready": readiness["is_ready_to_activate"],
                         "principal_name": principal.name if principal else "Unknown",
                         "product_names": product_names,
-                        "packages_ready": readiness["packages_ready"],
+                        "packages_ready": readiness["packages_with_creatives"],
                         "packages_total": readiness["packages_total"],
                         "blocking_issues": readiness.get("blocking_issues", []),
                     }
