@@ -611,6 +611,7 @@ def delete_format(tenant_id, format_id, **kwargs):
 @require_tenant_access()
 def approve_creative(tenant_id, creative_id, **kwargs):
     """Approve a creative."""
+    from src.core.audit_logger import AuditLogger
     from src.core.database.models import Creative, CreativeReview
 
     try:
@@ -711,6 +712,24 @@ def approve_creative(tenant_id, creative_id, **kwargs):
                     f"✅ Creative approved: {creative.name} ({creative.format}) from {principal_name}"
                 )
 
+            # Log audit trail
+            audit_logger = AuditLogger(adapter_name="AdminUI", tenant_id=tenant_id)
+            audit_logger.log_operation(
+                operation="approve_creative",
+                principal_name=approved_by,
+                principal_id=approved_by,
+                adapter_id="admin_ui",
+                success=True,
+                details={
+                    "creative_id": creative_id,
+                    "creative_name": creative.name,
+                    "format": creative.format,
+                    "principal_id": creative.principal_id,
+                    "human_override": is_override,
+                },
+                tenant_id=tenant_id,
+            )
+
             return jsonify({"success": True, "status": "approved"})
 
     except Exception as e:
@@ -722,6 +741,7 @@ def approve_creative(tenant_id, creative_id, **kwargs):
 @require_tenant_access()
 def reject_creative(tenant_id, creative_id, **kwargs):
     """Reject a creative with comments."""
+    from src.core.audit_logger import AuditLogger
     from src.core.database.models import Creative, CreativeReview
 
     try:
@@ -837,6 +857,25 @@ def reject_creative(tenant_id, creative_id, **kwargs):
                 notifier.send_message(
                     f"❌ Creative rejected: {creative.name} ({creative.format}) from {principal_name}\nReason: {rejection_reason}"
                 )
+
+            # Log audit trail
+            audit_logger = AuditLogger(adapter_name="AdminUI", tenant_id=tenant_id)
+            audit_logger.log_operation(
+                operation="reject_creative",
+                principal_name=rejected_by,
+                principal_id=rejected_by,
+                adapter_id="admin_ui",
+                success=True,
+                details={
+                    "creative_id": creative_id,
+                    "creative_name": creative.name,
+                    "format": creative.format,
+                    "principal_id": creative.principal_id,
+                    "rejection_reason": rejection_reason,
+                    "human_override": is_override,
+                },
+                tenant_id=tenant_id,
+            )
 
             return jsonify({"success": True, "status": "rejected"})
 
