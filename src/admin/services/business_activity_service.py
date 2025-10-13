@@ -90,18 +90,65 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
                 principal_name = log.principal_name or "System"
 
                 # Create descriptive title based on operation
-                # Skip explicit_skill_invocation events - they're not meaningful business activities
-                if "explicit_skill_invocation" in operation:
+                # Skip successful policy checks - only show failures
+                if "policy_check" in operation and log.success:
                     continue
 
-                if "get_products" in operation or "list_products" in operation:
+                # Handle explicit skill invocation with rich context
+                if "explicit_skill_invocation" in operation:
+                    skills = details.get("skills", [])
+                    if not skills:
+                        continue  # Skip if no skill info
+
+                    # Extract the primary skill (first one)
+                    primary_skill = skills[0] if skills else "unknown"
+
+                    # Make it human-readable based on skill name
+                    if "create_media_buy" in primary_skill:
+                        # Try to extract meaningful info from details
+                        budget = details.get("total_budget", details.get("budget"))
+                        packages = details.get("packages", details.get("package_count"))
+
+                        if budget and packages:
+                            title = f"{principal_name} created media buy with {packages} packages for ${budget:,.0f}"
+                        elif budget:
+                            title = f"{principal_name} created media buy for ${budget:,.0f}"
+                        elif packages:
+                            title = f"{principal_name} created media buy with {packages} packages"
+                        else:
+                            title = f"{principal_name} created media buy"
+                    elif "get_products" in primary_skill or "list_products" in primary_skill:
+                        count = details.get("product_count", details.get("count"))
+                        if count:
+                            title = f"{principal_name} searched for products (found {count})"
+                        else:
+                            title = f"{principal_name} searched for products"
+                    elif "sync_creatives" in primary_skill or "upload_creative" in primary_skill:
+                        count = details.get("creative_count", details.get("count"))
+                        if count:
+                            title = f"{principal_name} uploaded {count} creative(s)"
+                        else:
+                            title = f"{principal_name} uploaded creative"
+                    elif "get_media_buy_delivery" in primary_skill:
+                        buy_id = details.get("media_buy_id", "")
+                        if buy_id:
+                            title = f"{principal_name} checked delivery for {buy_id}"
+                        else:
+                            title = f"{principal_name} checked media buy delivery"
+                    else:
+                        # Generic skill invocation
+                        skill_clean = primary_skill.replace("_", " ").title()
+                        title = f"{principal_name} called {skill_clean}"
+
+                elif "get_products" in operation or "list_products" in operation:
                     title = f"{principal_name} searched for products"
                 elif "create_media_buy" in operation:
                     title = f"{principal_name} created media buy"
                 elif "upload_creative" in operation or "sync_creative" in operation:
                     title = f"{principal_name} uploaded creative"
-                elif "policy_check" in operation:
-                    title = f"{principal_name} ran policy check"
+                elif "policy_check" in operation and not log.success:
+                    # Only show failed policy checks
+                    title = f"{principal_name} policy check failed"
                 elif "list_creatives" in operation:
                     title = f"{principal_name} listed creatives"
                 else:
@@ -123,6 +170,8 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
                     description_parts.append(f"Buy: {details['media_buy_id']}")
                 if details.get("creative_id"):
                     description_parts.append(f"Creative: {details['creative_id']}")
+                if details.get("total_budget"):
+                    description_parts.append(f"Budget: ${details['total_budget']:,.0f}")
 
                 description = " • ".join(description_parts)
 

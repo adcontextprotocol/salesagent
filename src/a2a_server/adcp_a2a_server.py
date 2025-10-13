@@ -393,15 +393,44 @@ class AdCPRequestHandler(RequestHandler):
 
                     return task
                 elif successful_skills:
-                    # Log successful skill invocations
+                    # Log successful skill invocations with rich context
                     try:
                         tool_context = self._create_tool_context_from_a2a(auth_token, successful_skills[0])
+
+                        # Extract meaningful details from results
+                        log_details = {"skills": successful_skills, "count": len(successful_skills)}
+
+                        # Add context from the first successful skill
+                        first_result = next((r for r in results if r["success"]), None)
+                        if first_result and "result" in first_result:
+                            result_data = first_result["result"]
+
+                            # Extract budget and package info for create_media_buy
+                            if "create_media_buy" in first_result["skill"]:
+                                if isinstance(result_data, dict):
+                                    if "total_budget" in result_data:
+                                        log_details["total_budget"] = result_data["total_budget"]
+                                    if "packages" in result_data:
+                                        log_details["package_count"] = len(result_data["packages"])
+                                    if "media_buy_id" in result_data:
+                                        log_details["media_buy_id"] = result_data["media_buy_id"]
+
+                            # Extract product count for get_products
+                            elif "get_products" in first_result["skill"]:
+                                if isinstance(result_data, dict) and "products" in result_data:
+                                    log_details["product_count"] = len(result_data["products"])
+
+                            # Extract creative count for sync_creatives
+                            elif "sync_creatives" in first_result["skill"]:
+                                if isinstance(result_data, dict) and "creatives" in result_data:
+                                    log_details["creative_count"] = len(result_data["creatives"])
+
                         self._log_a2a_operation(
                             "explicit_skill_invocation",
                             tool_context.tenant_id,
                             tool_context.principal_id,
                             True,
-                            {"skills": successful_skills, "count": len(successful_skills)},
+                            log_details,
                         )
                     except Exception as e:
                         logger.warning(f"Could not log skill invocations: {e}")
