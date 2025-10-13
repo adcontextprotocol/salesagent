@@ -2930,6 +2930,12 @@ def _create_media_buy_impl(
     """
     request_start_time = time.time()
 
+    # DEBUG: Log incoming push_notification_config
+    logger.info(f"🐛 create_media_buy called with push_notification_config={push_notification_config}")
+    logger.info(f"🐛 push_notification_config type: {type(push_notification_config)}")
+    if push_notification_config:
+        logger.info(f"🐛 push_notification_config contents: {push_notification_config}")
+
     # Create request object from individual parameters (MCP-compliant)
     req = CreateMediaBuyRequest(
         promoted_offering=promoted_offering,

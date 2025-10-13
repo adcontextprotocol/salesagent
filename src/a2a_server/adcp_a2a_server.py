@@ -1144,6 +1144,7 @@ class AdCPRequestHandler(RequestHandler):
                 end_time=parameters["end_time"],
                 budget=parameters["budget"],
                 targeting_overlay=parameters.get("custom_targeting", {}),
+                push_notification_config=parameters.get("push_notification_config"),
                 context=tool_context,
             )
 
