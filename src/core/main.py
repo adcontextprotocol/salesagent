@@ -45,7 +45,7 @@ from src.core.config_loader import (
 from src.core.context_manager import get_context_manager
 from src.core.database.database import init_db
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AdapterConfig, AuthorizedProperty, MediaBuy, PropertyTag, Tenant
+from src.core.database.models import AdapterConfig, AuthorizedProperty, MediaBuy, PropertyTag, Tenant, WorkflowStep
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 
@@ -53,12 +53,14 @@ from src.core.database.models import Product as ModelProduct
 from src.core.schemas import (
     ActivateSignalResponse,
     AggregatedTotals,
+    CreateHumanTaskResponse,
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
     Creative,
     CreativeAssignment,
     CreativeGroup,
     CreativeStatus,
+    DeliveryTotals,
     Error,
     GetMediaBuyDeliveryRequest,
     GetMediaBuyDeliveryResponse,
@@ -66,6 +68,7 @@ from src.core.schemas import (
     GetProductsResponse,
     GetSignalsRequest,
     GetSignalsResponse,
+    HumanTask,
     ListAuthorizedPropertiesRequest,
     ListAuthorizedPropertiesResponse,
     ListCreativeFormatsRequest,
@@ -73,6 +76,7 @@ from src.core.schemas import (
     ListCreativesResponse,
     MediaBuyDeliveryData,
     MediaPackage,
+    PackageDelivery,
     PackagePerformance,
     Principal,
     Product,
@@ -89,6 +93,8 @@ from src.core.schemas import (
     UpdateMediaBuyResponse,
     UpdatePerformanceIndexRequest,
     UpdatePerformanceIndexResponse,
+    VerifyTaskRequest,
+    VerifyTaskResponse,
 )
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
@@ -96,6 +102,10 @@ from src.services.slack_notifier import get_slack_notifier
 
 # Initialize Rich console
 console = Console()
+
+# Backward compatibility alias for deprecated Task model
+# The workflow system now uses WorkflowStep exclusively
+Task = WorkflowStep
 
 # Temporary placeholder classes for missing schemas
 # TODO: These should be properly defined in schemas.py
@@ -2117,6 +2127,14 @@ def sync_creatives(
     Returns:
         SyncCreativesResponse with sync results
     """
+    # Convert legacy webhook_url to push_notification_config format
+    push_notification_config = None
+    if webhook_url:
+        push_notification_config = {
+            "url": webhook_url,
+            "authentication": {"type": "none"},
+        }
+
     return _sync_creatives_impl(
         creatives=creatives,
         patch=patch,
@@ -2124,7 +2142,7 @@ def sync_creatives(
         delete_missing=delete_missing,
         dry_run=dry_run,
         validation_mode=validation_mode,
-        webhook_url=webhook_url,
+        push_notification_config=push_notification_config,
         context=context,
     )
 

@@ -35,6 +35,17 @@ class ImportCollector(ast.NodeVisitor):
             self.imports.add(name)
         self.generic_visit(node)
 
+    def visit_Assign(self, node):
+        """Collect variable assignments that create aliases or module-level constants."""
+        # Track simple Name = ... assignments at module level
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            # Track the variable name
+            var_name = node.targets[0].id
+            # Add to imports so it's recognized as defined
+            # This handles aliases (Task = WorkflowStep) and constants (SELECTED_ADAPTER = ...)
+            self.imports.add(var_name)
+        self.generic_visit(node)
+
 
 class UsageCollector(ast.NodeVisitor):
     """Collect usage of names that might need imports."""
