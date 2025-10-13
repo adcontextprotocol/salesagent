@@ -1322,13 +1322,24 @@ def _list_creative_formats_impl(
 
     registry = get_creative_agent_registry()
 
-    # Run async operation in sync context
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    # Run async operation - check if we're already in an async context
     try:
-        formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant["tenant_id"]))
-    finally:
-        loop.close()
+        # Check if there's already a running event loop
+        loop = asyncio.get_running_loop()
+        # We're in an async context, run in thread pool to avoid nested loop error
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(lambda: asyncio.run(registry.list_all_formats(tenant_id=tenant["tenant_id"])))
+            formats = future.result()
+    except RuntimeError:
+        # No running loop, safe to create one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant["tenant_id"]))
+        finally:
+            loop.close()
 
     # Apply filters from request
     if req.type:
