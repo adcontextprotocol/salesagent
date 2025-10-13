@@ -1752,6 +1752,12 @@ result = await client.tools.get_products(brief="video ads")</pre>
 // Navigation
 document.querySelectorAll('.settings-nav-item').forEach(item => {
     item.addEventListener('click', function(e) {
+        // If this is a real link (has href attribute and no data-section), let it navigate
+        const sectionId = this.dataset.section;
+        if (!sectionId) {
+            return; // Let the browser handle the navigation
+        }
+
         e.preventDefault();
 
         // Update active nav
@@ -1759,9 +1765,11 @@ document.querySelectorAll('.settings-nav-item').forEach(item => {
         this.classList.add('active');
 
         // Show corresponding section
-        const sectionId = this.dataset.section;
         document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
-        document.getElementById(sectionId).classList.add('active');
+        const section = document.getElementById(sectionId);
+        if (section) {
+            section.classList.add('active');
+        }
 
         // Update URL without reload
         history.pushState(null, '', `#${sectionId}`);
