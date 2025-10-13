@@ -5714,8 +5714,7 @@ async def debug_db_state(request: Request):
 
     try:
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import Product as ProductModel, Principal, Tenant
-        from sqlalchemy import select
+        from src.core.database.models import Principal, Product as ProductModel, Tenant
 
         with get_db_session() as session:
             # Count all products
