@@ -237,7 +237,7 @@ def create_media_buy_raw(promoted_offering: str, ...) -> CreateMediaBuyResponse:
 - Check Fly.io logs first: `fly logs --app <test-agent-app-name>`
 - Check Fly.io status: `fly status --app <test-agent-app-name>`
 - Don't assume external infrastructure issue - we control both sides
-- See postmortem: `docs/testing/postmortems/2025-10-12-test-agent-downtime.md`
+- Check application logs before assuming network/external issues
 
 ### Git Workflow - MANDATORY (Reference Implementation)
 **❌ NEVER PUSH DIRECTLY TO MAIN**
