@@ -231,8 +231,7 @@ def init_db(exit_on_error=False):
                 db_session.add(new_product)
                 db_session.flush()  # Flush to get product in database before adding pricing_option
 
-                # Create pricing_option for this product
-                pricing_opt_data = p["pricing_option"]
+                # Create pricing_option for this product (new system)
                 new_pricing_option = PricingOptionModel(
                     pricing_option_id=f"po_{p['product_id']}",
                     tenant_id="default",
