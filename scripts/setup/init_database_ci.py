@@ -235,13 +235,29 @@ def init_db_ci():
             for prod in saved_products:
                 print(f"   - {prod.product_id}: property_tags={prod.property_tags}, properties={prod.properties}")
 
+            # CRITICAL: Fail if no products were created
+            if len(saved_products) == 0:
+                print("\n❌ CRITICAL ERROR: No products found in database after initialization!")
+                print(f"   Expected {len(products_data)} products but found 0")
+                print(f"   Tenant ID: {tenant_id}")
+                sys.exit(1)
+
+            # CRITICAL: Fail if products missing property authorization
+            for prod in saved_products:
+                if not prod.property_tags and not prod.properties:
+                    print(f"\n❌ CRITICAL ERROR: Product {prod.product_id} missing property authorization!")
+                    print(f"   property_tags: {prod.property_tags}")
+                    print(f"   properties: {prod.properties}")
+                    print("   Products must have either property_tags or properties per AdCP spec")
+                    sys.exit(1)
+
             print("\n✅ Database initialization complete:")
             print(f"   - Tenant ID: {tenant_id}")
             print(f"   - Principal ID: {principal_id}")
             print(f"   - Products created: {len(products_data)}")
             print(f"   - Products verified: {len(saved_products)}")
 
-        print("Database initialized successfully")
+        print("✅ Database initialized successfully with all validations passed")
     except ImportError as e:
         print(f"Import error: {e}")
         print(f"Python path: {sys.path}")
