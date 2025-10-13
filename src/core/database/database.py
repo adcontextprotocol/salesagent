@@ -97,9 +97,12 @@ def init_db(exit_on_error=False):
             authorized_property = AuthorizedProperty(
                 tenant_id="default",
                 property_id="default-property",
-                property_name="Default Property",
-                property_url="https://example.com",
-                is_approved=True,
+                property_type="website",
+                name="Default Property",
+                identifiers=[{"type": "domain", "value": "example.com"}],
+                tags=["default"],
+                publisher_domain="example.com",
+                verification_status="verified",
             )
             db_session.add(authorized_property)
 
