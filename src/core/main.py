@@ -5631,6 +5631,17 @@ def get_product_catalog() -> list[Product]:
                 "expires_at": product.expires_at,
                 # Note: brief_relevance is populated dynamically when brief is provided
                 "implementation_config": safe_json_parse(product.implementation_config),
+                # Required per AdCP spec: either properties OR property_tags
+                "properties": (
+                    safe_json_parse(product.properties)
+                    if hasattr(product, "properties") and product.properties
+                    else None
+                ),
+                "property_tags": (
+                    safe_json_parse(product.property_tags)
+                    if hasattr(product, "property_tags") and product.property_tags
+                    else ["all_inventory"]  # Default required per AdCP spec
+                ),
             }
             loaded_products.append(Product(**product_data))
 
