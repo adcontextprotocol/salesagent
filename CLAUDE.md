@@ -554,6 +554,55 @@ uv run alembic revision -m "description"
 
 **⚠️ NEVER modify existing migrations after commit!**
 
+### Database Initialization Dependencies
+**🚨 CRITICAL**: Products have implicit dependencies that MUST be satisfied before creation.
+
+**Dependency Chain:**
+```
+Tenant → CurrencyLimit (required for budget validation)
+      → PropertyTag (required for property_tags array references)
+      → Products (require BOTH CurrencyLimit AND PropertyTag)
+```
+
+**Why These Dependencies Exist:**
+1. **CurrencyLimit** (`currency_code="USD"`): Required for media buy budget validation
+   - Products are used in media buys which validate budgets against currency limits
+   - Missing currency limits cause "Must have at least one product" errors in E2E tests
+   - **Fix**: Always create at least one CurrencyLimit when creating a tenant
+
+2. **PropertyTag** (`tag_id="all_inventory"`): Required for property_tags array references
+   - Per AdCP v2.4 spec, products MUST have either `properties` OR `property_tags` (oneOf constraint)
+   - Most products use `property_tags=["all_inventory"]` as default
+   - Missing property tags cause referential integrity errors
+   - **Fix**: Always create at least one PropertyTag when creating a tenant
+
+**Validation in Init Scripts:**
+The `scripts/setup/init_database_ci.py` script now validates these prerequisites:
+```python
+# 1. Check CurrencyLimit exists
+stmt_currency = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
+currency_limit = session.scalars(stmt_currency).first()
+if not currency_limit:
+    raise ValueError("Cannot create products: CurrencyLimit (USD) not found...")
+
+# 2. Check PropertyTag exists
+stmt_tag = select(PropertyTag).filter_by(tenant_id=tenant_id, tag_id="all_inventory")
+property_tag = session.scalars(stmt_tag).first()
+if not property_tag:
+    raise ValueError("Cannot create products: PropertyTag 'all_inventory' not found...")
+```
+
+**When Creating New Tenants:**
+1. Create Tenant
+2. Create CurrencyLimit (at least USD)
+3. Create PropertyTag (at least "all_inventory")
+4. Create Products (can now safely reference currency and tags)
+
+**Failure Symptoms:**
+- ❌ "Must have at least one product" in E2E tests
+- ❌ Products created but budget validation fails
+- ❌ Referential integrity errors on property_tags array
+
 ## Development Best Practices
 
 ### Code Style

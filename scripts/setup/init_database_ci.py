@@ -142,6 +142,33 @@ def init_db_ci():
                     f"Created tenant (ID: {tenant_id}), principal (ID: {principal_id}), currency limit, and property tag"
                 )
 
+            # Validate prerequisites before creating products
+            print("Validating prerequisites for product creation...")
+
+            # 1. Check CurrencyLimit exists (required for media buy budget validation)
+            stmt_currency = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
+            currency_limit = session.scalars(stmt_currency).first()
+            if not currency_limit:
+                raise ValueError(
+                    f"Cannot create products: CurrencyLimit (USD) not found for tenant {tenant_id}. "
+                    "Products require currency limits for budget validation."
+                )
+            print(
+                f"  ✓ CurrencyLimit exists: USD (min={currency_limit.min_package_budget}, max={currency_limit.max_daily_package_spend})"
+            )
+
+            # 2. Check PropertyTag exists (required for property_tags array references)
+            stmt_tag = select(PropertyTag).filter_by(tenant_id=tenant_id, tag_id="all_inventory")
+            property_tag = session.scalars(stmt_tag).first()
+            if not property_tag:
+                raise ValueError(
+                    f"Cannot create products: PropertyTag 'all_inventory' not found for tenant {tenant_id}. "
+                    "Products require at least one property tag per AdCP spec."
+                )
+            print(f"  ✓ PropertyTag exists: {property_tag.name} (tag_id={property_tag.tag_id})")
+
+            print("All prerequisites validated successfully")
+
             # Create default products for testing
             print("Creating default products for CI...")
             products_data = [
