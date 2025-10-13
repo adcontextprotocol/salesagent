@@ -59,6 +59,8 @@ dev = [
     "pytest-cov>=6.2.1",
     "pytest-mock>=3.14.1",
     "ruff>=0.8.0",
+    "datamodel-code-generator>=0.26.0",
+    "jsonref>=1.1.0",
 ]
 
 [tool.black]
