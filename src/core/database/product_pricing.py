@@ -7,6 +7,8 @@ import logging
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import inspect
+
 from src.core.database.models import Product as ProductModel
 from src.core.database.models import PricingOption as PricingOptionModel
 
@@ -21,7 +23,7 @@ def get_product_pricing_options(product: ProductModel) -> list[dict[str, Any]]:
     pricing_options table.
 
     Args:
-        product: Product ORM model with pricing_options relationship loaded
+        product: Product ORM model (pricing_options relationship will be loaded if needed)
 
     Returns:
         List of pricing option dicts with keys:
@@ -35,8 +37,13 @@ def get_product_pricing_options(product: ProductModel) -> list[dict[str, Any]]:
     """
     pricing_options_list = []
 
+    # Check if pricing_options relationship is loaded and has data
+    # Use inspect to safely check without triggering lazy load if not needed
+    state = inspect(product)
+    pricing_options_loaded = 'pricing_options' not in state.unloaded
+
     # Try to load from pricing_options relationship first
-    if product.pricing_options:
+    if pricing_options_loaded and product.pricing_options:
         for po in product.pricing_options:
             pricing_options_list.append({
                 "pricing_model": po.pricing_model,
