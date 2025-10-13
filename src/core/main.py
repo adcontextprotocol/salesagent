@@ -5699,7 +5699,7 @@ async def reset_db_pool(request: Request):
     try:
         from src.core.database.database_session import reset_engine
 
-        logger.info("Resetting database connection pool and provider cache (testing mode)")
+        logger.info("Resetting database connection pool, provider cache, and tenant context (testing mode)")
 
         # Reset SQLAlchemy connection pool
         reset_engine()
@@ -5714,10 +5714,21 @@ async def reset_db_pool(request: Request):
         _provider_cache.clear()
         logger.info(f"  ✓ Cleared {provider_count} cached product catalog provider(s)")
 
+        # CRITICAL: Clear tenant context ContextVar
+        # After data initialization, the tenant context may contain stale tenant data
+        # that was loaded before products were created. Force fresh tenant lookup.
+        from src.core.config_loader import current_tenant
+
+        try:
+            current_tenant.set(None)
+            logger.info("  ✓ Cleared tenant context (will force fresh lookup on next request)")
+        except Exception as ctx_error:
+            logger.warning(f"  ⚠️ Could not clear tenant context: {ctx_error}")
+
         return JSONResponse(
             {
                 "status": "success",
-                "message": "Database connection pool and provider cache reset successfully",
+                "message": "Database connection pool, provider cache, and tenant context reset successfully",
                 "providers_cleared": provider_count,
             }
         )
