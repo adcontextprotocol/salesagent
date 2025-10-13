@@ -50,7 +50,8 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                 .filter_by(tenant_id=tenant_id)
                 .order_by(ProductModel.product_id)
             )
-            products = list(db_session.scalars(stmt).all())
+            # unique() is required when using joinedload() in SQLAlchemy 2.0
+            products = list(db_session.scalars(stmt).unique().all())
 
             loaded_products = []
             for product_obj in products:
