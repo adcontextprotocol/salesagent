@@ -68,18 +68,62 @@ class AssetRequirement(BaseModel):
     requirements: dict[str, Any] | None = Field(None, description="Specific requirements for this asset type")
 
 
+class FormatReference(BaseModel):
+    """Reference to a format from a specific creative agent.
+
+    Used in Product.formats to store full format references with agent URL.
+    This enables dynamic format resolution from the correct creative agent.
+
+    Example:
+        {
+            "agent_url": "https://creative.adcontextprotocol.org",
+            "format_id": "display_300x250_image"
+        }
+    """
+
+    agent_url: str = Field(
+        ..., description="URL of the creative agent that provides this format (must be registered in tenant config)"
+    )
+    format_id: str = Field(..., description="Format ID within that agent's format catalog")
+
+
 class Format(BaseModel):
-    format_id: str
-    name: str
-    type: Literal["video", "audio", "display", "native", "dooh"]  # Extended beyond spec
-    is_standard: bool | None = Field(None, description="Whether this follows IAB standards")
+    """Creative format definition per AdCP v2.4 spec.
+
+    Represents a creative format with its requirements. The agent_url field identifies
+    the authoritative creative agent that provides this format (e.g., the reference
+    creative agent at https://creative.adcontextprotocol.org).
+    """
+
+    format_id: str = Field(..., description="Unique identifier for the format")
+    agent_url: str | None = Field(
+        None,
+        description="Base URL of the agent that provides this format (authoritative source). "
+        "E.g., 'https://creative.adcontextprotocol.org', 'https://dco.example.com'",
+    )
+    name: str = Field(..., description="Human-readable format name")
+    type: Literal["audio", "video", "display", "native", "dooh", "rich_media", "universal", "generative"] = Field(
+        ..., description="Media type of this format"
+    )
+    category: Literal["standard", "custom", "generative"] | None = Field(None, description="Format category")
+    is_standard: bool | None = Field(
+        None, description="Whether this follows IAB specifications or AdCP standard format definitions"
+    )
     iab_specification: str | None = Field(None, description="Name of the IAB specification (if applicable)")
+    description: str | None = Field(None, description="Human-readable description of the format")
     requirements: dict[str, Any] | None = Field(
-        None, description="Format-specific requirements (varies by format type)"
+        None, description="Technical specifications for this format (e.g., dimensions, duration, file size limits)"
     )
     assets_required: list[AssetRequirement] | None = Field(
-        None, description="Array of required assets for composite formats"
+        None, description="Array of required assets or asset groups for this format"
     )
+    delivery: dict[str, Any] | None = Field(
+        None, description="Delivery method specifications (e.g., hosted, VAST, third-party tags)"
+    )
+    accepts_3p_tags: bool | None = Field(
+        None, description="Whether this format can accept third-party served creative tags"
+    )
+    supported_macros: list[str] | None = Field(None, description="List of universal macros supported by this format")
     platform_config: dict[str, Any] | None = Field(
         None, description="Platform-specific configuration (e.g., gam, kevel) for creative mapping"
     )
