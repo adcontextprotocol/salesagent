@@ -5,37 +5,14 @@ import logging
 from typing import Any
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import PricingOption as PricingOptionModel
 from src.core.database.models import Product as ProductModel
+from src.core.database.product_pricing import get_product_pricing_options
 from src.core.schemas import PriceGuidance, PricingModel, PricingOption, PricingParameters, Product
 
 from .base import ProductCatalogProvider
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-
-def _convert_pricing_option(po: PricingOptionModel) -> PricingOption:
-    """Convert database PricingOption to Pydantic PricingOption."""
-    return PricingOption(
-        pricing_model=PricingModel(po.pricing_model),
-        rate=float(po.rate) if po.rate is not None else None,
-        currency=po.currency,
-        is_fixed=po.is_fixed,
-        price_guidance=(
-            PriceGuidance(
-                floor=po.price_guidance.get("floor", 0.0),
-                p25=po.price_guidance.get("p25"),
-                p50=po.price_guidance.get("p50"),
-                p75=po.price_guidance.get("p75"),
-                p90=po.price_guidance.get("p90"),
-            )
-            if po.price_guidance
-            else None
-        ),
-        parameters=PricingParameters(**po.parameters) if po.parameters else None,
-        min_spend_per_package=float(po.min_spend_per_package) if po.min_spend_per_package is not None else None,
-    )
 
 
 class DatabaseProductCatalog(ProductCatalogProvider):
@@ -67,14 +44,38 @@ class DatabaseProductCatalog(ProductCatalogProvider):
 
             loaded_products = []
             for product_obj in products:
-                # Load pricing options if available (AdCP PR #88)
+                # Get pricing options using helper (handles legacy fallback)
+                pricing_options_data = get_product_pricing_options(product_obj)
+
+                # Convert to Pydantic PricingOption objects
                 pricing_options = None
-                if product_obj.pricing_options:
+                if pricing_options_data:
                     try:
-                        pricing_options = [_convert_pricing_option(po) for po in product_obj.pricing_options]
+                        pricing_options = []
+                        for po_dict in pricing_options_data:
+                            pricing_options.append(
+                                PricingOption(
+                                    pricing_model=PricingModel(po_dict["pricing_model"]),
+                                    rate=po_dict.get("rate"),
+                                    currency=po_dict["currency"],
+                                    is_fixed=po_dict["is_fixed"],
+                                    price_guidance=(
+                                        PriceGuidance(
+                                            floor=po_dict["price_guidance"].get("floor", 0.0),
+                                            p25=po_dict["price_guidance"].get("p25"),
+                                            p50=po_dict["price_guidance"].get("p50"),
+                                            p75=po_dict["price_guidance"].get("p75"),
+                                            p90=po_dict["price_guidance"].get("p90"),
+                                        )
+                                        if po_dict.get("price_guidance")
+                                        else None
+                                    ),
+                                    parameters=PricingParameters(**po_dict["parameters"]) if po_dict.get("parameters") else None,
+                                    min_spend_per_package=po_dict.get("min_spend_per_package"),
+                                )
+                            )
                     except Exception as e:
-                        logger.warning(f"Failed to load pricing options for product {product_obj.product_id}: {e}")
-                        # Fall back to legacy pricing fields
+                        logger.warning(f"Failed to convert pricing options for product {product_obj.product_id}: {e}")
                         pricing_options = None
 
                 # Convert ORM object to dictionary
@@ -83,15 +84,7 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     "name": product_obj.name,
                     "description": product_obj.description,
                     "formats": product_obj.formats,
-                    "delivery_type": product_obj.delivery_type,
-                    # NEW: Pricing options (AdCP PR #88)
                     "pricing_options": pricing_options,
-                    # DEPRECATED: Legacy pricing fields (still supported for backward compatibility)
-                    "is_fixed_price": product_obj.is_fixed_price,
-                    "cpm": product_obj.cpm,
-                    "min_spend": product_obj.min_spend,
-                    "currency": product_obj.currency,
-                    "price_guidance": product_obj.price_guidance,
                     "is_custom": product_obj.is_custom,
                     "countries": product_obj.countries,
                     "properties": product_obj.properties if hasattr(product_obj, "properties") else None,
@@ -107,11 +100,8 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     if isinstance(product_data["formats"], str):
                         product_data["formats"] = json.loads(product_data["formats"])
 
-                # Remove internal fields that shouldn't be exposed to buyers
-                product_data.pop("targeting_template", None)  # Internal targeting config
-                product_data.pop("price_guidance", None)  # Not part of Product schema
-                product_data.pop("implementation_config", None)  # Proprietary ad server config
-                product_data.pop("countries", None)  # Not part of Product schema
+                # Note: Internal fields (targeting_template, implementation_config, countries)
+                # are not included in product_data dict - they're not part of Product schema
 
                 # Fix missing required fields for Pydantic validation
 
