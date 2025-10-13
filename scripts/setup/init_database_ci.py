@@ -169,7 +169,17 @@ def init_db_ci():
                             print(f"   Using existing principal (ID: {principal_id})")
                 else:
                     principal_id = existing_principal.principal_id
-                    print(f"Principal already exists (ID: {principal_id})")
+                    if existing_principal.tenant_id != tenant_id:
+                        # Principal exists but for different tenant - update it
+                        print(
+                            f"⚠️  Warning: Principal with token 'ci-test-token' exists for different tenant ({existing_principal.tenant_id})"
+                        )
+                        print(f"   Updating principal to point to new tenant: {tenant_id}")
+                        existing_principal.tenant_id = tenant_id
+                        session.commit()
+                        print("   ✓ Principal updated to new tenant")
+                    else:
+                        print(f"Principal already exists (ID: {principal_id})")
 
                 # Create currency limit and property tag with race condition handling
                 stmt_currency = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
