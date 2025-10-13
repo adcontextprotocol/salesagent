@@ -59,22 +59,43 @@ class PolicyCheckService:
             self.ai_enabled = True
 
     async def check_brief_compliance(
-        self, brief: str, promoted_offering: str | None = None, tenant_policies: dict | None = None
+        self,
+        brief: str,
+        promoted_offering: str | None = None,
+        brand_manifest: dict | str | None = None,
+        tenant_policies: dict | None = None,
     ) -> PolicyCheckResult:
         """Check if an advertising brief complies with policies.
 
         Args:
             brief: The advertising brief description
-            promoted_offering: Optional description of the advertiser and product/service
+            promoted_offering: DEPRECATED: Use brand_manifest instead (still supported)
+            brand_manifest: Brand manifest dict or URL string (preferred over promoted_offering)
             tenant_policies: Optional tenant-specific policy overrides
 
         Returns:
             PolicyCheckResult with compliance status and details
         """
-        # Combine brief and promoted offering for analysis
+        # Extract brand info from brand_manifest if provided
+        brand_info = None
+        if brand_manifest:
+            if isinstance(brand_manifest, dict):
+                # Extract name and description from manifest
+                brand_name = brand_manifest.get("name", "")
+                brand_description = brand_manifest.get("description", "")
+                brand_info = f"{brand_name} - {brand_description}" if brand_description else brand_name
+            elif isinstance(brand_manifest, str):
+                # URL string - use as-is
+                brand_info = f"Brand manifest URL: {brand_manifest}"
+
+        # Fall back to promoted_offering if brand_manifest not provided
+        if not brand_info and promoted_offering:
+            brand_info = promoted_offering
+
+        # Combine brief and brand info for analysis
         full_context = brief
-        if promoted_offering:
-            full_context = f"Brief: {brief}\n\nAdvertiser/Product: {promoted_offering}"
+        if brand_info:
+            full_context = f"Brief: {brief}\n\nAdvertiser/Product: {brand_info}"
 
         # Always use AI analysis when available
         if self.ai_enabled:

@@ -2287,6 +2287,65 @@ class TestAdCPContract:
                 cpm=10.0,
             )
 
+    def test_create_media_buy_with_brand_manifest_inline(self):
+        """Test CreateMediaBuyRequest with inline brand_manifest (AdCP v1.8.0)."""
+        start_date = datetime.now(UTC) + timedelta(days=1)
+        end_date = datetime.now(UTC) + timedelta(days=30)
+
+        # Test with inline brand manifest
+        request = CreateMediaBuyRequest(
+            buyer_ref="nike_2025_q1",
+            brand_manifest={
+                "name": "Nike",
+                "url": "https://nike.com",
+                "colors": {"primary": "#FF0000", "secondary": "#000000"},
+                "tagline": "Just Do It",
+            },
+            packages=[
+                {
+                    "package_id": "pkg_001",
+                    "products": ["product_1"],
+                    "status": "draft",
+                }
+            ],
+            start_time=start_date,
+            end_time=end_date,
+            budget=5000.0,
+        )
+
+        # Verify brand_manifest is properly stored
+        assert request.brand_manifest is not None
+        assert isinstance(request.brand_manifest, dict) or hasattr(request.brand_manifest, "name")
+
+        # Verify required fields still work
+        assert request.buyer_ref == "nike_2025_q1"
+        assert len(request.packages) == 1
+
+    def test_create_media_buy_with_brand_manifest_url(self):
+        """Test CreateMediaBuyRequest with brand_manifest as URL string (AdCP v1.8.0)."""
+        start_date = datetime.now(UTC) + timedelta(days=1)
+        end_date = datetime.now(UTC) + timedelta(days=30)
+
+        # Test with brand manifest URL
+        request = CreateMediaBuyRequest(
+            buyer_ref="nike_2025_q1",
+            brand_manifest="https://nike.com/brand-manifest.json",
+            packages=[
+                {
+                    "package_id": "pkg_001",
+                    "products": ["product_1"],
+                    "status": "draft",
+                }
+            ],
+            start_time=start_date,
+            end_time=end_date,
+            budget=5000.0,
+        )
+
+        # Verify brand_manifest URL is properly stored
+        assert request.brand_manifest == "https://nike.com/brand-manifest.json"
+        assert isinstance(request.brand_manifest, str)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
