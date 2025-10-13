@@ -2262,12 +2262,8 @@ class BrandManifest(BaseModel):
     contact_info: dict[str, Any] | None = Field(None, description="Contact information")
     metadata: dict[str, Any] | None = Field(None, description="Creation/update metadata")
 
-    @model_validator(mode="after")
-    def validate_required_fields(self) -> "BrandManifest":
-        """Ensure at least one of url or name is present."""
-        if not self.url and not self.name:
-            raise ValueError("BrandManifest requires at least one of: url, name")
-        return self
+    # NOTE: No Python validator needed - AdCP schema has anyOf constraint for url/name
+    # Schema validation at /schemas/v1/core/brand-manifest.json enforces this
 
 
 class BrandManifestRef(BaseModel):
@@ -2924,12 +2920,8 @@ class AdCPPackageUpdate(BaseModel):
     targeting_overlay: Targeting | None = None
     creative_ids: list[str] | None = None
 
-    @model_validator(mode="after")
-    def validate_oneOf_constraint(self):
-        """Validate that either package_id OR buyer_ref is provided (AdCP oneOf constraint)."""
-        if not self.package_id and not self.buyer_ref:
-            raise ValueError("Either package_id or buyer_ref must be provided")
-        return self
+    # NOTE: No Python validator needed - AdCP schema has oneOf constraint for package_id/buyer_ref
+    # Schema validation at /schemas/v1/media-buy/update-media-buy-request.json enforces this
 
 
 class UpdateMediaBuyRequest(BaseModel):
@@ -2959,14 +2951,8 @@ class UpdateMediaBuyRequest(BaseModel):
     )
     today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
-    @model_validator(mode="after")
-    def validate_oneOf_constraint(self):
-        """Validate AdCP oneOf constraint: either media_buy_id OR buyer_ref."""
-        if not self.media_buy_id and not self.buyer_ref:
-            raise ValueError("Either media_buy_id or buyer_ref must be provided")
-        if self.media_buy_id and self.buyer_ref:
-            raise ValueError("Cannot provide both media_buy_id and buyer_ref (AdCP oneOf constraint)")
-        return self
+    # NOTE: No Python validator needed for oneOf constraint - AdCP schema enforces media_buy_id/buyer_ref oneOf
+    # Schema validation at /schemas/v1/media-buy/update-media-buy-request.json enforces this
 
     @model_validator(mode="after")
     def validate_timezone_aware(self):

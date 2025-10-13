@@ -135,12 +135,15 @@ class TestMCPContractValidation:
         assert request.deliver_to.countries == ["US", "CA", "UK"]
 
     def test_update_media_buy_minimal(self):
-        """Test update_media_buy requires at least one identifier."""
-        # UpdateMediaBuyRequest correctly requires either media_buy_id or buyer_ref
-        with pytest.raises(ValueError, match="Either media_buy_id or buyer_ref must be provided"):
-            UpdateMediaBuyRequest()
+        """Test update_media_buy identifiers (oneOf enforced at protocol boundary)."""
+        # NOTE: oneOf constraint validation happens at protocol boundary (MCP/A2A)
+        # not in Pydantic model construction. Internal construction is flexible.
 
-        # But works with minimal identifier
+        # Internal construction works without identifier (protocol boundary would reject)
+        request_no_id = UpdateMediaBuyRequest(active=True)
+        assert request_no_id.active is True
+
+        # Works with minimal identifier
         request = UpdateMediaBuyRequest(media_buy_id="test_buy_123")
         assert request.media_buy_id == "test_buy_123"
         assert request.buyer_ref is None
