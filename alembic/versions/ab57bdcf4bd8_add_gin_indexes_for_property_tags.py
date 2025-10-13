@@ -25,12 +25,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Add GIN indexes for JSONB property_tags queries."""
-    # GIN index for property_tags array containment queries
-    op.create_index(
-        "idx_products_property_tags_gin",
-        "products",
-        ["property_tags"],
-        postgresql_using="gin",
+    # Note: property_tags is stored as TEXT via JSONType, not native JSONB
+    # We need to cast to JSONB and use jsonb_path_ops operator class
+    # This index optimizes containment queries like: property_tags @> '["tag"]'
+    op.execute(
+        """
+        CREATE INDEX idx_products_property_tags_gin
+        ON products USING gin ((property_tags::jsonb) jsonb_path_ops)
+        """
     )
     print("✅ Added GIN index for products.property_tags (optimizes tag-based filtering)")
 
