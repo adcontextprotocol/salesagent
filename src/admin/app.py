@@ -16,6 +16,7 @@ from src.admin.blueprints.auth import auth_bp, init_oauth
 from src.admin.blueprints.authorized_properties import authorized_properties_bp
 from src.admin.blueprints.core import core_bp
 from src.admin.blueprints.creatives import creatives_bp
+from src.admin.blueprints.format_search import bp as format_search_bp
 from src.admin.blueprints.gam import gam_bp
 from src.admin.blueprints.inventory import inventory_bp
 from src.admin.blueprints.mcp_test import mcp_test_bp
@@ -264,6 +265,7 @@ def create_app(config=None):
     app.register_blueprint(authorized_properties_bp, url_prefix="/tenant")  # Tenant-specific routes
     app.register_blueprint(inventory_bp)  # Has its own internal routing
     app.register_blueprint(api_bp, url_prefix="/api")
+    app.register_blueprint(format_search_bp)  # Format search API (/api/formats)
     app.register_blueprint(activity_stream_bp)  # SSE endpoints - Flask handles /admin via script_name from nginx proxy
     app.register_blueprint(mcp_test_bp)
     app.register_blueprint(schemas_bp)  # JSON Schema validation service
