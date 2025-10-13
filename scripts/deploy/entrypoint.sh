@@ -84,8 +84,10 @@ fi
 # Initialize CI/test database data (creates default products if needed)
 echo "📦 Initializing default products for testing..."
 if ! python scripts/setup/init_database_ci.py; then
-    echo "⚠️  Product initialization failed - continuing with startup..."
-    echo "ℹ️  Default products may not be available"
+    echo "❌ CRITICAL: Product initialization failed!"
+    echo "   This will cause E2E tests to fail."
+    echo "   Check init_database_ci.py output above for details."
+    exit 1
 fi
 
 # Start all services (MCP, Admin UI, ADK, nginx)
