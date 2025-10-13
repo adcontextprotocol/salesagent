@@ -1015,7 +1015,7 @@ class Product(BaseModel):
     product_id: str
     name: str
     description: str
-    formats: list[str]  # Internal field name for backward compatibility
+    formats: list[FormatReference] | list[str]  # FormatReference objects or legacy string IDs (migration support)
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     is_fixed_price: bool
     cpm: float | None = None
@@ -1042,8 +1042,20 @@ class Product(BaseModel):
 
     @property
     def format_ids(self) -> list[str]:
-        """AdCP spec compliant property name for formats."""
-        return self.formats
+        """AdCP spec compliant property name for formats.
+
+        Returns format IDs only (for backward compatibility).
+        If formats are FormatReference objects, extracts format_id from each.
+        """
+        if not self.formats:
+            return []
+
+        # Handle legacy string format IDs
+        if isinstance(self.formats[0], str):
+            return self.formats  # type: ignore
+
+        # Handle new FormatReference objects
+        return [fmt.format_id for fmt in self.formats]  # type: ignore
 
     def model_dump(self, **kwargs):
         """Return AdCP-compliant model dump with proper field names, excluding internal fields and null values."""
