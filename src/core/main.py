@@ -4098,19 +4098,28 @@ def _update_media_buy_impl(
         UpdateMediaBuyResponse with updated media buy details
     """
     # Create request object from individual parameters (MCP-compliant)
+    # Convert flat budget/currency/pacing to Budget object if budget provided
+    budget_obj = None
+    if budget is not None:
+        from src.core.schemas import Budget
+
+        budget_obj = Budget(
+            total=budget,
+            currency=currency or "USD",  # Default to USD if not specified
+            pacing=pacing or "even",  # Default pacing
+            daily_cap=daily_budget,  # Map daily_budget to daily_cap
+        )
+
     req = UpdateMediaBuyRequest(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
         active=active,
         flight_start_date=flight_start_date,
         flight_end_date=flight_end_date,
-        budget=budget,
-        currency=currency,
+        budget=budget_obj,
         targeting_overlay=targeting_overlay,
         start_time=start_time,
         end_time=end_time,
-        pacing=pacing,
-        daily_budget=daily_budget,
         packages=packages,
         creatives=creatives,
     )
