@@ -147,10 +147,18 @@ def add_product(tenant_id):
                 return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
             with get_db_session() as db_session:
-                # Parse formats - expecting multiple checkbox values
-                formats = request.form.getlist("formats")
-                if not formats:
-                    formats = []
+                # Parse formats - expecting JSON string with FormatReference objects
+                formats_json = form_data.get("formats", "[]")
+                try:
+                    formats = json.loads(formats_json) if formats_json else []
+                    # Validate format structure
+                    if not isinstance(formats, list):
+                        formats = []
+                except json.JSONDecodeError:
+                    # Fallback to legacy format (list of strings)
+                    formats = request.form.getlist("formats")
+                    if not formats:
+                        formats = []
 
                 # Parse countries - from multi-select
                 countries_list = request.form.getlist("countries")
