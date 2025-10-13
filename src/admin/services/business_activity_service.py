@@ -175,6 +175,34 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
 
                 description = " • ".join(description_parts)
 
+                # Build links to related objects
+                links = []
+                if details.get("media_buy_id"):
+                    links.append(
+                        {
+                            "text": f"View Media Buy {details['media_buy_id']}",
+                            "url": f"/tenant/{tenant_id}/media-buy/{details['media_buy_id']}",
+                            "icon": "💰",
+                        }
+                    )
+                if details.get("creative_id"):
+                    links.append(
+                        {
+                            "text": f"View Creative {details['creative_id']}",
+                            "url": f"/tenant/{tenant_id}/creative/{details['creative_id']}",
+                            "icon": "🎨",
+                        }
+                    )
+
+                # Always add link to full audit log in workflows
+                links.append(
+                    {
+                        "text": "View in Audit Log",
+                        "url": f"/tenant/{tenant_id}/workflows#audit-logs",
+                        "icon": "📋",
+                    }
+                )
+
                 activities.append(
                     {
                         "type": activity_type,
@@ -188,6 +216,7 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
                             "success": log.success,
                             "details": details,
                         },
+                        "links": links,
                     }
                 )
 
