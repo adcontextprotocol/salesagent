@@ -213,14 +213,24 @@ def init_db_ci():
                         property_tags=["all_inventory"],  # Required per AdCP spec
                     )
                     session.add(product)
-                    print(f"  Created product: {p['name']}")
+                    print(f"  ✓ Created product: {p['name']} (property_tags=['all_inventory'])")
                 else:
-                    print(f"  Product already exists: {p['name']}")
+                    print(f"  ℹ️  Product already exists: {p['name']}")
 
             session.commit()
-            print(
-                f"Created default tenant (ID: {tenant_id}), principal (ID: {principal_id}), and {len(products_data)} products"
-            )
+
+            # Verify products were actually saved
+            stmt_verify = select(Product).filter_by(tenant_id=tenant_id)
+            saved_products = session.scalars(stmt_verify).all()
+            print(f"\n✅ Verification: {len(saved_products)} products found in database for tenant {tenant_id}")
+            for prod in saved_products:
+                print(f"   - {prod.product_id}: property_tags={prod.property_tags}, properties={prod.properties}")
+
+            print("\n✅ Database initialization complete:")
+            print(f"   - Tenant ID: {tenant_id}")
+            print(f"   - Principal ID: {principal_id}")
+            print(f"   - Products created: {len(products_data)}")
+            print(f"   - Products verified: {len(saved_products)}")
 
         print("Database initialized successfully")
     except ImportError as e:
