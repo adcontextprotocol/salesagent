@@ -878,13 +878,17 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
     # The validator ensures at least one is present
     offering = None
     if req.brand_manifest:
-        if isinstance(req.brand_manifest, dict):
-            # Extract name from brand manifest dict
-            offering = req.brand_manifest.get("name", "")
-        elif isinstance(req.brand_manifest, str):
+        if isinstance(req.brand_manifest, str):
             # brand_manifest is a URL - use it as-is for now
             # TODO: In future, fetch and parse the URL
             offering = f"Brand at {req.brand_manifest}"
+        else:
+            # brand_manifest is a BrandManifest object or dict
+            # Try to access as object first, then as dict
+            if hasattr(req.brand_manifest, "name"):
+                offering = req.brand_manifest.name
+            elif isinstance(req.brand_manifest, dict):
+                offering = req.brand_manifest.get("name", "")
     elif req.promoted_offering:
         offering = req.promoted_offering.strip()
 
