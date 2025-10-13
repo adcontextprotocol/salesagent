@@ -286,23 +286,27 @@ class CreativeAgentRegistry:
 
         return None
 
-    async def generate_preview(self, agent_url: str, format_id: str, creative_assets: dict[str, Any]) -> dict[str, Any]:
-        """Generate a preview for a creative using the creative agent.
+    async def preview_creative(
+        self, agent_url: str, format_id: str, creative_manifest: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Generate preview renderings for a creative using the creative agent.
 
         Args:
             agent_url: URL of the creative agent
             format_id: Format ID for the creative
-            creative_assets: Creative assets (URLs, content, etc.)
+            creative_manifest: Complete creative manifest with all required assets
 
         Returns:
-            Preview generation result with preview_url
+            Preview response containing array of preview variants with preview_url
         """
         # Build MCP client
         transport = StreamableHttpTransport(url=f"{agent_url}/mcp")
         client = Client(transport=transport)
 
         async with client:
-            result = await client.call_tool("generate_preview", {"format_id": format_id, "assets": creative_assets})
+            result = await client.call_tool(
+                "preview_creative", {"format_id": format_id, "creative_manifest": creative_manifest}
+            )
 
             # Parse result
             import json
@@ -315,29 +319,56 @@ class CreativeAgentRegistry:
 
             return {}
 
-    async def create_generative_creative(
-        self, agent_url: str, format_id: str, brand_manifest: dict[str, Any], prompt: str
+    async def build_creative(
+        self,
+        agent_url: str,
+        format_id: str,
+        message: str,
+        gemini_api_key: str,
+        promoted_offerings: dict[str, Any] | None = None,
+        context_id: str | None = None,
+        finalize: bool = False,
     ) -> dict[str, Any]:
-        """Create a generative creative using the creative agent.
+        """Build a creative using AI generation via the creative agent.
+
+        This calls the creative agent's build_creative tool which requires the user's
+        Gemini API key (the creative agent doesn't pay for API calls).
 
         Args:
             agent_url: URL of the creative agent
-            format_id: Format ID (must be generative type)
-            brand_manifest: Brand context and guidelines
-            prompt: Creative generation prompt
+            format_id: Format ID (must be generative type like display_300x250_generative)
+            message: Creative brief or refinement instructions
+            gemini_api_key: User's Gemini API key (REQUIRED)
+            promoted_offerings: Brand and product information for AI generation
+            context_id: Session ID for iterative refinement (optional)
+            finalize: Set to true to finalize the creative (default: False)
 
         Returns:
-            Generated creative with assets and preview_url
+            Build response containing:
+            - message: Status message
+            - context_id: Session ID for refinement
+            - status: "draft" or "finalized"
+            - creative_output: Generated creative manifest with output_format
         """
         # Build MCP client
         transport = StreamableHttpTransport(url=f"{agent_url}/mcp")
         client = Client(transport=transport)
 
         async with client:
-            result = await client.call_tool(
-                "create_generative_creative",
-                {"format_id": format_id, "brand_manifest": brand_manifest, "prompt": prompt},
-            )
+            params = {
+                "message": message,
+                "format_id": format_id,
+                "gemini_api_key": gemini_api_key,
+                "finalize": finalize,
+            }
+
+            if promoted_offerings:
+                params["promoted_offerings"] = promoted_offerings
+
+            if context_id:
+                params["context_id"] = context_id
+
+            result = await client.call_tool("build_creative", params)
 
             # Parse result
             import json
