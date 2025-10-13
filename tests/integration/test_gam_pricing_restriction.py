@@ -1,4 +1,4 @@
-"""E2E test for GAM pricing model restrictions (AdCP PR #88).
+"""Integration test for GAM pricing model restrictions (AdCP PR #88).
 
 Tests that GAM adapter properly enforces CPM-only restriction.
 """
