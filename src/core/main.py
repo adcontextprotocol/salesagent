@@ -1528,6 +1528,12 @@ def _sync_creatives_impl(
     # Track creatives requiring approval for workflow creation
     creatives_needing_approval = []
 
+    # Extract webhook URL from push_notification_config for AI review callbacks
+    webhook_url = None
+    if push_notification_config:
+        webhook_url = push_notification_config.get("url")
+        logger.info(f"[sync_creatives] Push notification webhook URL: {webhook_url}")
+
     # Get tenant creative approval settings
     # approval_mode: "auto-approve", "require-human", "ai-powered"
     logger.info(f"[sync_creatives] Tenant dict keys: {list(tenant.keys())}")
