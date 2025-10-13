@@ -172,7 +172,7 @@
                     ❌ Revoke Approval
                 </button>
                 {% endif %}
-                <button onclick="viewCreativeDetails('{{ creative.creative_id }}', {{ creative.data|tojson|safe }})" class="btn btn-sm btn-secondary">
+                <button onclick="viewCreativeDetails('{{ creative.creative_id }}')" class="btn btn-sm btn-secondary" data-creative-data="{{ creative.data|tojson|forceescape }}">
                     👁️ View Preview
                 </button>
             </div>
@@ -379,10 +379,21 @@ function aiReviewCreative(creativeId) {
 }
 
 // View creative details and preview
-async function viewCreativeDetails(creativeId, creativeData) {
+function viewCreativeDetails(creativeId) {
     const modal = document.getElementById('previewModal');
     const content = document.getElementById('previewContent');
     const title = document.getElementById('previewTitle');
+
+    // Get creative data from the button's data attribute
+    const button = event.target.closest('button[data-creative-data]');
+    let creativeData = null;
+    if (button && button.dataset.creativeData) {
+        try {
+            creativeData = JSON.parse(button.dataset.creativeData);
+        } catch (error) {
+            console.error('Error parsing creative data:', error);
+        }
+    }
 
     title.textContent = `Creative Preview - ${creativeId.substring(0, 8)}...`;
 
