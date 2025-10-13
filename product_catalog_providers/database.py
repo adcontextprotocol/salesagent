@@ -50,8 +50,9 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                 .filter_by(tenant_id=tenant_id)
                 .order_by(ProductModel.product_id)
             )
-            # unique() is required when using joinedload() in SQLAlchemy 2.0
-            products = list(db_session.scalars(stmt).unique().all())
+            # unique() must be called on execute result BEFORE scalars() with joinedload
+            result = db_session.execute(stmt).unique()
+            products = list(result.scalars().all())
 
             loaded_products = []
             for product_obj in products:
