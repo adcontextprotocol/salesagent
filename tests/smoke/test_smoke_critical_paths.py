@@ -236,6 +236,7 @@ class TestDatabaseConnectivity:
             assert result[0] == 1
 
     @pytest.mark.smoke
+    @pytest.mark.requires_db
     def test_critical_tables_exist(self, test_database):
         """Test that critical tables exist in the database."""
         from src.core.database.database_session import get_db_session
@@ -294,6 +295,7 @@ class TestCriticalBusinessLogic:
     """Test critical business logic paths."""
 
     @pytest.mark.smoke
+    @pytest.mark.requires_db
     def test_principal_authentication_flow(self, test_database):
         """Test the principal authentication flow."""
         from src.core.database.database_session import get_db_session
@@ -322,6 +324,7 @@ class TestCriticalBusinessLogic:
             session.commit()
 
     @pytest.mark.smoke
+    @pytest.mark.requires_db
     def test_media_buy_creation_flow(self, test_database):
         """Test that media buy creation flow works."""
         from src.core.database.database_session import get_db_session
@@ -388,6 +391,7 @@ class TestErrorHandling:
             assert "error" in result
 
     @pytest.mark.smoke
+    @pytest.mark.requires_db
     def test_database_transaction_rollback(self, test_database):
         """Test that failed transactions rollback properly."""
         from src.core.database.database_session import get_db_session
@@ -446,6 +450,7 @@ class TestSystemIntegration:
     """Test integration between major system components."""
 
     @pytest.mark.smoke
+    @pytest.mark.requires_db
     def test_audit_logging_works(self, test_database):
         """Test that audit logging is functional."""
         from src.core.audit_logger import get_audit_logger
@@ -480,6 +485,7 @@ class TestSystemIntegration:
             assert result[0] > 0
 
     @pytest.mark.smoke
+    @pytest.mark.requires_db
     def test_config_loading(self, test_database):
         """Test that configuration loading works."""
         from src.core.config_loader import load_config
