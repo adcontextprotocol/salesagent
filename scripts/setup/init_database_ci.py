@@ -54,12 +54,14 @@ def init_db_ci():
                     session.add(principal)
                     print(f"Created principal (ID: {principal_id}) for existing tenant")
                 elif existing_principal.tenant_id != tenant_id:
-                    # Principal exists but for different tenant - this is a problem
+                    # Principal exists but for different tenant - update it to point to new tenant
                     print(
                         f"⚠️  Warning: Principal with token 'ci-test-token' exists for different tenant ({existing_principal.tenant_id})"
                     )
-                    print(f"   Using existing principal's tenant instead of {tenant_id}")
-                    tenant_id = existing_principal.tenant_id
+                    print(f"   Updating principal to point to new tenant: {tenant_id}")
+                    existing_principal.tenant_id = tenant_id
+                    session.flush()
+                    print("   ✓ Principal updated to new tenant")
                 else:
                     print(f"Principal already exists (ID: {existing_principal.principal_id})")
 
@@ -313,6 +315,7 @@ def init_db_ci():
 
             # Also verify pricing_options exist
             from src.core.database.models import PricingOption as PricingOptionModel
+
             stmt_pricing = select(PricingOptionModel).filter_by(tenant_id=tenant_id)
             saved_pricing = session.scalars(stmt_pricing).all()
             print(f"✅ Verification: {len(saved_pricing)} pricing_options found for tenant {tenant_id}")
