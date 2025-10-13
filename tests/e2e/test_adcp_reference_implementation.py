@@ -226,7 +226,7 @@ class TestAdCPReferenceImplementation:
             # ================================================================
             print("\n📊 PHASE 4: Get Delivery Metrics")
 
-            delivery_result = await client.call_tool("get_media_buy_delivery", {"media_buy_id": media_buy_id})
+            delivery_result = await client.call_tool("get_media_buy_delivery", {"media_buy_ids": [media_buy_id]})
             delivery_data = json.loads(delivery_result.content[0].text)
 
             # Verify delivery response structure
