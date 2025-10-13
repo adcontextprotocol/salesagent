@@ -296,11 +296,11 @@ def add_product(tenant_id):
             "add_product_gam.html",
             tenant_id=tenant_id,
             inventory_synced=inventory_synced,
-            formats=get_creative_formats(),
+            formats=get_creative_formats(tenant_id=tenant_id),
         )
     else:
         # For Mock and other adapters: simple form
-        formats = get_creative_formats()
+        formats = get_creative_formats(tenant_id=tenant_id)
         return render_template("add_product.html", tenant_id=tenant_id, formats=formats)
 
 
