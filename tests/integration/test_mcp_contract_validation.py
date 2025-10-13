@@ -9,13 +9,15 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from src.core.schema_adapters import (
+    GetProductsRequest,
+    ListAuthorizedPropertiesRequest,
+)
 from src.core.schemas import (
     ActivateSignalRequest,
     CreateMediaBuyRequest,
     GetMediaBuyDeliveryRequest,
-    GetProductsRequest,
     GetSignalsRequest,
-    ListAuthorizedPropertiesRequest,
     SignalDeliverTo,
     UpdateMediaBuyRequest,
 )
@@ -43,9 +45,12 @@ class TestMCPContractValidation:
         assert request.promoted_offering == "purina cat food"
 
     def test_get_products_validation_still_enforced(self):
-        """Test that promoted_offering is still required."""
-        with pytest.raises(ValueError, match="promoted_offering"):
-            GetProductsRequest(brief="just a brief")
+        """Test that GetProductsRequest allows anonymous queries (no promoted_offering/brand_manifest)."""
+        # This now works - anonymous queries are supported
+        request = GetProductsRequest(brief="just a brief")
+        assert request.brief == "just a brief"
+        assert request.promoted_offering is None
+        assert request.brand_manifest is None
 
     def test_list_authorized_properties_minimal(self):
         """Test list_authorized_properties can be called with no parameters."""

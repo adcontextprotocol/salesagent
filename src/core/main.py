@@ -57,14 +57,26 @@ from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 
 # Schema models (explicit imports to avoid collisions)
-# Using generated schemas + helpers for type-safe AdCP compliance
-from src.core.schema_helpers import GetProductsRequest, GetProductsResponse, create_get_products_request
-from src.core.schemas import (
+# Schema adapters (wrapping generated schemas)
+from src.core.schema_adapters import (
     ActivateSignalResponse,
+    CreateMediaBuyResponse,
+    GetMediaBuyDeliveryResponse,
+    GetProductsRequest,
+    GetProductsResponse,
+    GetSignalsResponse,
+    ListAuthorizedPropertiesRequest,
+    ListAuthorizedPropertiesResponse,
+    ListCreativeFormatsRequest,
+    ListCreativeFormatsResponse,
+    ListCreativesResponse,
+    SyncCreativesResponse,
+    UpdateMediaBuyResponse,
+)
+from src.core.schemas import (
     AggregatedTotals,
     CreateHumanTaskResponse,
     CreateMediaBuyRequest,
-    CreateMediaBuyResponse,
     Creative,
     CreativeAssignment,
     CreativeGroup,
@@ -72,15 +84,8 @@ from src.core.schemas import (
     DeliveryTotals,
     Error,
     GetMediaBuyDeliveryRequest,
-    GetMediaBuyDeliveryResponse,
     GetSignalsRequest,
-    GetSignalsResponse,
     HumanTask,
-    ListAuthorizedPropertiesRequest,
-    ListAuthorizedPropertiesResponse,
-    ListCreativeFormatsRequest,
-    ListCreativeFormatsResponse,
-    ListCreativesResponse,
     MediaBuyDeliveryData,
     MediaPackage,
     Package,
@@ -95,10 +100,8 @@ from src.core.schemas import (
     Signal,
     SignalDeployment,
     SignalPricing,
-    SyncCreativesResponse,
     TaskStatus,
     UpdateMediaBuyRequest,
-    UpdateMediaBuyResponse,
     UpdatePerformanceIndexRequest,
     UpdatePerformanceIndexResponse,
     VerifyTaskRequest,
@@ -1223,27 +1226,22 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
 
     # Filter pricing data for anonymous users
-    pricing_message = None
     if principal_id is None:  # Anonymous user
         # Remove pricing data from products for anonymous users
         for product in modified_products:
             product.cpm = None
             product.min_spend = None
-        pricing_message = "Please connect through an authorized buying agent for pricing data"
 
     # Log activity
     log_tool_activity(context, "get_products", start_time)
-
-    # Create response with pricing message if anonymous
-    base_message = f"Found {len(modified_products)} matching products"
-    final_message = f"{base_message}. {pricing_message}" if pricing_message else base_message
 
     # Set status based on operation result
     status = TaskStatus.from_operation_state(
         operation_type="discovery", has_errors=False, requires_approval=False, requires_auth=principal_id is None
     )
 
-    return GetProductsResponse(products=modified_products, message=final_message, status=status)
+    # Response __str__() will generate appropriate message based on content
+    return GetProductsResponse(products=modified_products, status=status)
 
 
 @mcp.tool

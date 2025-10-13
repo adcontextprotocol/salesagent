@@ -70,24 +70,16 @@ async def get_products(
     brand_manifest: Any | None = None,
     brief: str = "",
     adcp_version: str = "1.0.0",
-    min_exposures: int | None = None,
-    brand_manifest: dict | None = None,
     filters: dict | None = None,
-    strategy_id: str | None = None,
-    webhook_url: str | None = None,
     context: Context = None,
 ) -> GetProductsResponse:
-    """Get products - includes adcp_version, brand_manifest, and webhook_url!"""
+    """Get products - includes adcp_version, brand_manifest, and filters!"""
     req = GetProductsRequest(
         brief=brief,
         promoted_offering=promoted_offering,
         brand_manifest=brand_manifest,
         adcp_version=adcp_version,
-        min_exposures=min_exposures,
-        brand_manifest=brand_manifest,
         filters=filters,
-        strategy_id=strategy_id,
-        webhook_url=webhook_url,
     )
     return req
 '''
@@ -129,13 +121,15 @@ async def get_products(
     promoted_offering: str,
     brief: str = "",
     adcp_version: str = "1.0.0",
+    filters: dict | None = None,
     context: Context = None,
 ) -> GetProductsResponse:
-    """MCP wrapper - missing min_exposures, filters, strategy_id!"""
+    """MCP wrapper - includes all AdCP spec fields!"""
     req = GetProductsRequest(
         brief=brief,
         promoted_offering=promoted_offering,
         adcp_version=adcp_version,
+        filters=filters,
     )
     return await _get_products_impl(req, context)
 '''

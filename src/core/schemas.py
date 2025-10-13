@@ -1432,7 +1432,8 @@ class Error(BaseModel):
 class GetProductsResponse(BaseModel):
     """Response for get_products tool (AdCP spec compliant).
 
-    Context management is handled automatically by the MCP wrapper at the protocol layer.
+    Human-readable messages are provided via __str__() for protocol layer use
+    (MCP display, A2A task messages), not as schema fields.
     """
 
     # Required AdCP fields
@@ -1440,7 +1441,6 @@ class GetProductsResponse(BaseModel):
     products: list[Product] = Field(...)
 
     # Optional AdCP fields
-    message: str | None = None
     status: Literal["completed", "working", "submitted"] | None = Field(None, description="Task status")
     errors: list[Error] | None = None
 
@@ -1459,8 +1459,6 @@ class GetProductsResponse(BaseModel):
             data["products"] = []
 
         # Add other fields, excluding None values for AdCP compliance
-        if self.message is not None:
-            data["message"] = self.message
         if self.errors is not None:
             data["errors"] = self.errors
         if self.status is not None:
@@ -1482,30 +1480,34 @@ class GetProductsResponse(BaseModel):
             data["products"] = []
 
         # Add other fields
-        if self.message is not None:
-            data["message"] = self.message
         if self.errors is not None:
             data["errors"] = self.errors
+        if self.status is not None:
+            data["status"] = self.status
 
         return data
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field.
+        """Return human-readable message for protocol layer.
 
-        FastMCP uses str() to generate the 'content' field for tool responses.
-        This should be a natural language summary, not JSON.
+        Used by both MCP (for display) and A2A (for task messages).
+        Provides conversational text without adding non-spec fields to the schema.
         """
-        if self.message:
-            return self.message
-
-        # Fallback: generate message from product count
         count = len(self.products)
+
+        # Base message
         if count == 0:
-            return "No products matched your requirements."
+            base_msg = "No products matched your requirements."
         elif count == 1:
-            return "Found 1 product that matches your requirements."
+            base_msg = "Found 1 product that matches your requirements."
         else:
-            return f"Found {count} products that match your requirements."
+            base_msg = f"Found {count} products that match your requirements."
+
+        # Check if this looks like an anonymous response (all pricing is None)
+        if count > 0 and all(p.cpm is None and p.min_spend is None for p in self.products):
+            return f"{base_msg} Please connect through an authorized buying agent for pricing data."
+
+        return base_msg
 
 
 class ListCreativeFormatsRequest(BaseModel):
@@ -1526,24 +1528,33 @@ class ListCreativeFormatsRequest(BaseModel):
 
 
 class ListCreativeFormatsResponse(BaseModel):
-    """Response for list_creative_formats tool.
+    """Response for list_creative_formats tool (AdCP spec compliant).
 
-    Returns comprehensive Format objects per AdCP specification.
-    Context management is handled automatically by the MCP wrapper at the protocol layer.
+    Human-readable messages are provided via __str__() for protocol layer use
+    (MCP display, A2A task messages), not as schema fields.
     """
 
-    formats: list[Format]  # Full Format objects per AdCP spec
-    message: str | None = None  # Optional human-readable message
-    errors: list[Error] | None = None  # Optional error reporting
-    specification_version: str | None = Field(None, description="AdCP format specification version")
+    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
+    formats: list[Format] = Field(..., description="Full format definitions per AdCP spec")
     status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
+    creative_agents: list[dict[str, Any]] | None = Field(
+        None, description="Creative agents providing additional formats"
+    )
+    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        if self.message:
-            return self.message
+        """Return human-readable message for protocol layer.
+
+        Used by both MCP (for display) and A2A (for task messages).
+        Provides conversational text without adding non-spec fields to the schema.
+        """
         count = len(self.formats)
-        return f"Found {count} creative format{'s' if count != 1 else ''}."
+        if count == 0:
+            return "No creative formats are currently supported."
+        elif count == 1:
+            return "Found 1 creative format."
+        else:
+            return f"Found {count} creative formats."
 
 
 # --- Creative Lifecycle ---
@@ -3535,16 +3546,39 @@ class ListAuthorizedPropertiesRequest(BaseModel):
 
 
 class ListAuthorizedPropertiesResponse(BaseModel):
-    """Response payload for list_authorized_properties task (AdCP spec)."""
+    """Response payload for list_authorized_properties task (AdCP spec compliant)."""
 
     adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response")
     properties: list[Property] = Field(..., description="Array of all properties this agent is authorized to represent")
     tags: dict[str, PropertyTagMetadata] = Field(
         default_factory=dict, description="Metadata for each tag referenced by properties"
     )
+    primary_channels: list[str] | None = Field(
+        None, description="Primary advertising channels in this portfolio (helps buyers filter relevance)"
+    )
+    primary_countries: list[str] | None = Field(
+        None, description="Primary countries (ISO 3166-1 alpha-2 codes) where properties are concentrated"
+    )
+    portfolio_description: str | None = Field(
+        None, description="Markdown-formatted description of the property portfolio", max_length=5000
+    )
     errors: list[dict[str, Any]] | None = Field(
         None, description="Task-specific errors and warnings (e.g., property availability issues)"
     )
+
+    def __str__(self) -> str:
+        """Return human-readable message for protocol layer.
+
+        Used by both MCP (for display) and A2A (for task messages).
+        Provides conversational text without adding non-spec fields to the schema.
+        """
+        count = len(self.properties)
+        if count == 0:
+            return "No authorized properties found."
+        elif count == 1:
+            return "Found 1 authorized property."
+        else:
+            return f"Found {count} authorized properties."
 
     def model_dump(self, **kwargs) -> dict[str, Any]:
         """Return AdCP-compliant response."""

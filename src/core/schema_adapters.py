@@ -154,25 +154,61 @@ class GetProductsRequest(BaseModel):
 
 
 class GetProductsResponse(BaseModel):
-    """Adapter for GetProductsResponse - simple API on top of generated schema.
+    """Adapter for GetProductsResponse - adds __str__() for protocol abstraction.
 
-    For now, this is a simple pass-through since GetProductsResponse doesn't have
-    complex generated schema issues. We use the adapter pattern for consistency
-    and future-proofing.
+    The generated schema is spec-compliant but lacks human-readable message generation.
+    This adapter wraps it and adds __str__() for MCP/A2A protocol layer use.
 
     Example:
-        resp = GetProductsResponse(products=[...], message="Found 5 products")
+        resp = GetProductsResponse(products=[...])
+        # AdCP payload: spec-compliant (no message field)
+        payload = resp.model_dump()
+        # Protocol message: human-readable via __str__()
+        message = str(resp)  # "Found 5 products that match your requirements."
     """
 
-    products: list[dict[str, Any]] = Field(..., description="List of matching products")
-    message: str | None = Field(None, description="Human-readable message")
+    model_config = {"arbitrary_types_allowed": True}
+
+    # Fields from generated schema (flexible - accepts dicts or objects)
+    products: list[Any] = Field(..., description="List of matching products")
     status: str | None = Field(None, description="Response status")
+    errors: list[Any] | None = Field(None, description="Task-specific errors")
 
     def __str__(self) -> str:
-        """Return message for MCP display if present."""
-        if self.message:
-            return self.message
-        return f"Found {len(self.products)} product(s)"
+        """Return human-readable message for protocol layer.
+
+        Used by both MCP (for display) and A2A (for task messages).
+        Provides conversational text without adding non-spec fields to the schema.
+        """
+        count = len(self.products)
+
+        # Base message
+        if count == 0:
+            base_msg = "No products matched your requirements."
+        elif count == 1:
+            base_msg = "Found 1 product that matches your requirements."
+        else:
+            base_msg = f"Found {count} products that match your requirements."
+
+        # Check if this looks like an anonymous response (all pricing is None)
+        # Products can be dicts or objects, so we need to handle both
+        if count > 0:
+            all_missing_pricing = True
+            for p in self.products:
+                if isinstance(p, dict):
+                    if p.get("cpm") is not None or p.get("min_spend") is not None:
+                        all_missing_pricing = False
+                        break
+                else:
+                    if hasattr(p, "cpm") and hasattr(p, "min_spend"):
+                        if p.cpm is not None or p.min_spend is not None:
+                            all_missing_pricing = False
+                            break
+
+            if all_missing_pricing:
+                return f"{base_msg} Please connect through an authorized buying agent for pricing data."
+
+        return base_msg
 
 
 # Example: How to add this pattern to other schemas
@@ -320,13 +356,380 @@ class Product(BaseModel):
 
 
 # ============================================================================
+# ListCreativeFormatsResponse Adapter
+# ============================================================================
+
+from src.core.schemas_generated._schemas_v1_media_buy_list_creative_formats_response_json import (
+    ListCreativeFormatsResponse as _GeneratedListCreativeFormatsResponse,
+)
+
+
+class ListCreativeFormatsResponse(BaseModel):
+    """Adapter for ListCreativeFormatsResponse - adds __str__() for protocol abstraction.
+
+    The generated schema is spec-compliant but lacks human-readable message generation.
+    This adapter wraps it and adds __str__() for MCP/A2A protocol layer use.
+
+    Example:
+        resp = ListCreativeFormatsResponse(formats=[...])
+        # AdCP payload: spec-compliant (no message field)
+        payload = resp.model_dump()
+        # Protocol message: human-readable via __str__()
+        message = str(resp)  # "Found 5 creative formats."
+    """
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    # Fields from generated schema (flexible - accepts dicts or objects)
+    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
+    formats: list[Any] = Field(..., description="Full format definitions per AdCP spec")
+    status: str | None = Field("completed", description="Task status")
+    creative_agents: list[Any] | None = Field(None, description="Creative agents providing additional formats")
+    errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
+
+    def __str__(self) -> str:
+        """Return human-readable message for protocol layer.
+
+        Used by both MCP (for display) and A2A (for task messages).
+        Provides conversational text without adding non-spec fields to the schema.
+        """
+        count = len(self.formats)
+        if count == 0:
+            return "No creative formats are currently supported."
+        elif count == 1:
+            return "Found 1 creative format."
+        else:
+            return f"Found {count} creative formats."
+
+    def to_generated(self) -> _GeneratedListCreativeFormatsResponse:
+        """Convert to generated schema for protocol validation."""
+        return _GeneratedListCreativeFormatsResponse(**self.model_dump())
+
+    @classmethod
+    def from_generated(cls, generated: _GeneratedListCreativeFormatsResponse) -> "ListCreativeFormatsResponse":
+        """Create adapter from generated schema."""
+        return cls(**generated.model_dump())
+
+
+# ============================================================================
+# ListAuthorizedPropertiesResponse Adapter
+# ============================================================================
+
+from src.core.schemas_generated._schemas_v1_media_buy_list_authorized_properties_response_json import (
+    ListAuthorizedPropertiesResponse as _GeneratedListAuthorizedPropertiesResponse,
+)
+
+
+class ListAuthorizedPropertiesResponse(BaseModel):
+    """Adapter for ListAuthorizedPropertiesResponse - adds __str__() for protocol abstraction.
+
+    The generated schema is spec-compliant but lacks human-readable message generation.
+    This adapter wraps it and adds __str__() for MCP/A2A protocol layer use.
+
+    Example:
+        resp = ListAuthorizedPropertiesResponse(properties=[...])
+        # AdCP payload: spec-compliant (no message field)
+        payload = resp.model_dump()
+        # Protocol message: human-readable via __str__()
+        message = str(resp)  # "Found 3 authorized properties."
+    """
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    # Fields from generated schema (flexible - accepts dicts or objects)
+    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$")
+    properties: list[Any] = Field(..., description="Array of authorized properties")
+    tags: dict[str, Any] = Field(default_factory=dict, description="Metadata for tags")
+    primary_channels: list[str] | None = Field(None, description="Primary advertising channels")
+    primary_countries: list[str] | None = Field(None, description="Primary countries (ISO 3166-1 alpha-2)")
+    portfolio_description: str | None = Field(None, description="Markdown portfolio description", max_length=5000)
+    errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
+
+    def __str__(self) -> str:
+        """Return human-readable message for protocol layer.
+
+        Used by both MCP (for display) and A2A (for task messages).
+        Provides conversational text without adding non-spec fields to the schema.
+        """
+        count = len(self.properties)
+        if count == 0:
+            return "No authorized properties found."
+        elif count == 1:
+            return "Found 1 authorized property."
+        else:
+            return f"Found {count} authorized properties."
+
+    def to_generated(self) -> _GeneratedListAuthorizedPropertiesResponse:
+        """Convert to generated schema for protocol validation."""
+        return _GeneratedListAuthorizedPropertiesResponse(**self.model_dump())
+
+    @classmethod
+    def from_generated(
+        cls, generated: _GeneratedListAuthorizedPropertiesResponse
+    ) -> "ListAuthorizedPropertiesResponse":
+        """Create adapter from generated schema."""
+        return cls(**generated.model_dump())
+
+
+# ============================================================================
+# Request Adapters (simple pass-through for now)
+# ============================================================================
+
+from src.core.schemas_generated._schemas_v1_media_buy_list_authorized_properties_request_json import (
+    ListAuthorizedPropertiesRequest as _GeneratedListAuthorizedPropertiesRequest,
+)
+from src.core.schemas_generated._schemas_v1_media_buy_list_creative_formats_request_json import (
+    ListCreativeFormatsRequest as _GeneratedListCreativeFormatsRequest,
+)
+
+
+class ListCreativeFormatsRequest(BaseModel):
+    """Adapter for ListCreativeFormatsRequest - simple pass-through to generated schema."""
+
+    adcp_version: str = Field("1.0.0", pattern=r"^\d+\.\d+\.\d+$")
+    type: str | None = Field(None, description="Filter by format type")
+    standard_only: bool | None = Field(None, description="Only return IAB standard formats")
+    category: str | None = Field(None, description="Filter by category")
+    format_ids: list[str] | None = Field(None, description="Filter by specific format IDs")
+
+    def to_generated(self) -> _GeneratedListCreativeFormatsRequest:
+        """Convert to generated schema for protocol validation."""
+        return _GeneratedListCreativeFormatsRequest(**self.model_dump())
+
+
+class ListAuthorizedPropertiesRequest(BaseModel):
+    """Adapter for ListAuthorizedPropertiesRequest - simple pass-through to generated schema."""
+
+    adcp_version: str = Field("1.0.0", pattern=r"^\d+\.\d+\.\d+$")
+    tags: list[str] | None = Field(None, description="Filter properties by specific tags")
+
+    def to_generated(self) -> _GeneratedListAuthorizedPropertiesRequest:
+        """Convert to generated schema for protocol validation."""
+        return _GeneratedListAuthorizedPropertiesRequest(**self.model_dump())
+
+
+# ============================================================================
+# CreateMediaBuyResponse Adapter
+# ============================================================================
+
+
+class CreateMediaBuyResponse(BaseModel):
+    """Adapter for CreateMediaBuyResponse - adds __str__() and internal field handling.
+
+    Example:
+        resp = CreateMediaBuyResponse(
+            status="completed",
+            buyer_ref="buy_123",
+            media_buy_id="mb_456",
+            workflow_step_id="ws_789"  # Internal field
+        )
+        payload = resp.model_dump()  # AdCP-compliant (excludes workflow_step_id)
+        db_data = resp.model_dump_internal()  # Includes workflow_step_id
+        message = str(resp)  # "Media buy mb_456 created successfully."
+    """
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    # Required AdCP fields
+    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
+    status: str = Field(..., description="Task status")
+    buyer_ref: str = Field(..., description="Buyer's reference identifier")
+
+    # Optional AdCP fields
+    task_id: str | None = None
+    media_buy_id: str | None = None
+    creative_deadline: Any | None = None
+    packages: list[Any] | None = Field(default_factory=list)
+    errors: list[Any] | None = None
+
+    # Internal fields (excluded from AdCP responses)
+    workflow_step_id: str | None = None
+
+    def model_dump(self, **kwargs):
+        """AdCP-compliant dump (excludes internal fields)."""
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            exclude.add("workflow_step_id")
+            kwargs["exclude"] = exclude
+        return super().model_dump(**kwargs)
+
+    def model_dump_internal(self, **kwargs):
+        """Dump including internal fields for database storage."""
+        kwargs.pop("exclude", None)
+        return super().model_dump(**kwargs)
+
+    def __str__(self) -> str:
+        """Return human-readable message for protocol layer."""
+        if self.status == "completed":
+            return f"Media buy {self.media_buy_id or self.buyer_ref} created successfully."
+        elif self.status == "working":
+            return f"Media buy {self.buyer_ref} is being created..."
+        elif self.status == "submitted":
+            return f"Media buy {self.buyer_ref} submitted for approval."
+        elif self.status == "input-required":
+            return f"Media buy {self.buyer_ref} requires additional input."
+        return f"Media buy {self.buyer_ref}: {self.status}"
+
+
+# ============================================================================
+# UpdateMediaBuyResponse Adapter
+# ============================================================================
+
+
+class UpdateMediaBuyResponse(BaseModel):
+    """Adapter for UpdateMediaBuyResponse - adds __str__() for protocol abstraction."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
+    status: str = Field(..., description="Task status")
+    buyer_ref: str = Field(..., description="Buyer's reference identifier")
+    task_id: str | None = None
+    media_buy_id: str | None = None
+    packages: list[Any] | None = None
+    errors: list[Any] | None = None
+
+    def __str__(self) -> str:
+        """Return human-readable message for protocol layer."""
+        if self.status == "completed":
+            return f"Media buy {self.media_buy_id or self.buyer_ref} updated successfully."
+        elif self.status == "working":
+            return f"Media buy {self.buyer_ref} is being updated..."
+        return f"Media buy {self.buyer_ref}: {self.status}"
+
+
+# ============================================================================
+# SyncCreativesResponse Adapter
+# ============================================================================
+
+
+class SyncCreativesResponse(BaseModel):
+    """Adapter for SyncCreativesResponse - keeps message field (it's in spec!)."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    message: str = Field(..., description="Human-readable result message")
+    status: str = Field("completed", description="Task status")
+    context_id: str | None = None
+    task_id: str | None = None
+    dry_run: bool = Field(False, description="Whether this was a dry run")
+    summary: Any | None = None
+    results: list[Any] | None = None
+    assignments_summary: Any | None = None
+    assignment_results: list[Any] | None = None
+
+    def __str__(self) -> str:
+        """Return message field (spec-compliant in this case)."""
+        return self.message
+
+
+# ============================================================================
+# GetMediaBuyDeliveryResponse Adapter
+# ============================================================================
+
+
+class GetMediaBuyDeliveryResponse(BaseModel):
+    """Adapter for GetMediaBuyDeliveryResponse - adds __str__()."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
+    status: str = Field("completed", description="Task status")
+    buyer_ref: str = Field(..., description="Buyer's reference identifier")
+    media_buy_id: str | None = None
+    packages: list[Any] | None = None
+    totals: Any | None = None
+    campaign_dates: Any | None = None
+    errors: list[Any] | None = None
+
+    def __str__(self) -> str:
+        """Return human-readable message for protocol layer."""
+        return f"Delivery data for media buy {self.media_buy_id or self.buyer_ref}."
+
+
+# ============================================================================
+# GetSignalsResponse Adapter
+# ============================================================================
+
+
+class GetSignalsResponse(BaseModel):
+    """Adapter for GetSignalsResponse - adds __str__()."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$")
+    message: str = Field(..., description="Human-readable summary")
+    context_id: str = Field(..., description="Session continuity identifier")
+    signals: list[Any] = Field(..., description="Array of matching signals")
+    errors: list[Any] | None = None
+
+    def __str__(self) -> str:
+        """Return message field (it's in the spec for this one)."""
+        return self.message
+
+
+# ============================================================================
+# ActivateSignalResponse Adapter
+# ============================================================================
+
+
+class ActivateSignalResponse(BaseModel):
+    """Adapter for ActivateSignalResponse - adds __str__()."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$")
+    task_id: str = Field(..., description="Unique identifier for tracking")
+    status: str = Field(..., description="Current status (pending/processing/deployed/failed)")
+    decisioning_platform_segment_id: str | None = None
+    estimated_activation_duration_minutes: float | None = None
+    deployed_at: str | None = None
+    errors: list[Any] | None = None
+
+    def __str__(self) -> str:
+        """Return human-readable message for protocol layer."""
+        if self.status == "deployed":
+            return f"Signal activated successfully (platform ID: {self.decisioning_platform_segment_id})."
+        elif self.status == "processing":
+            eta = (
+                f" (ETA: {self.estimated_activation_duration_minutes} min)"
+                if self.estimated_activation_duration_minutes
+                else ""
+            )
+            return f"Signal activation in progress{eta}."
+        elif self.status == "pending":
+            return f"Signal activation pending (task ID: {self.task_id})."
+        elif self.status == "failed":
+            return f"Signal activation failed (task ID: {self.task_id})."
+        return f"Signal activation status: {self.status}."
+
+
+# ============================================================================
+# ListCreativesResponse Adapter
+# ============================================================================
+
+
+class ListCreativesResponse(BaseModel):
+    """Adapter for ListCreativesResponse - adds __str__()."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
+    message: str = Field(..., description="Human-readable result message")
+    query_summary: Any = Field(..., description="Summary of the query")
+    pagination: Any = Field(..., description="Pagination information")
+    creatives: list[Any] = Field(..., description="Array of creative assets")
+    context_id: str | None = None
+    format_summary: dict[str, int] | None = None
+    status_summary: dict[str, int] | None = None
+
+    def __str__(self) -> str:
+        """Return message field (it's in the spec for this one)."""
+        return self.message
+
+
+# ============================================================================
 # Template for Adding More Adapters
 # ============================================================================
 
-# TODO: Add adapters for other key models
-# - CreateMediaBuyResponse (has model_dump_internal)
-# - Package (has model_dump_internal)
-# - UpdateMediaBuyRequest (oneOf constraint already in schema)
-# - GetMediaBuyDeliveryResponse (has model_dump_internal)
-# - Budget (simple, could use generated directly or add adapter)
-# - Targeting (simple, could use generated directly or add adapter)
+# TODO: Add adapters for remaining models as needed

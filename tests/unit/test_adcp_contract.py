@@ -242,24 +242,15 @@ class TestAdCPContract:
         assert "recommended_cpm" in adcp_response
         assert adcp_response["recommended_cpm"] == 8.5
 
-        # Test min_exposures in GetProductsRequest
+        # Verify GetProductsRequest validates oneOf constraint (brand_manifest OR promoted_offering)
+        # Should succeed with promoted_offering
         request = GetProductsRequest(
             brief="Looking for high-volume campaigns",
             promoted_offering="Nike Air Max 2024",
-            min_exposures=10000,
         )
+        assert request.promoted_offering == "Nike Air Max 2024"
 
-        assert request.min_exposures == 10000
-
-        # Test validation: min_exposures must be positive
-        with pytest.raises((ValueError, Exception)):  # Pydantic validation error
-            GetProductsRequest(
-                brief="test",
-                promoted_offering="test",
-                min_exposures=-1000,  # Invalid: must be > 0
-            )
-
-        # Should fail without promoted_offering (AdCP requirement)
+        # Should fail without promoted_offering or brand_manifest (AdCP requirement)
         with pytest.raises(ValueError):
             GetProductsRequest(brief="Just a brief")
 
@@ -1371,7 +1362,6 @@ class TestAdCPContract:
         # Create response with products
         response = GetProductsResponse(
             products=[product],
-            message="Found 1 matching product",
             errors=[],
         )
 
@@ -1385,9 +1375,14 @@ class TestAdCPContract:
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
         # Verify optional AdCP fields present (can be null)
-        optional_fields = ["message", "errors"]
+        # Note: message field removed - handled via __str__() for protocol layer
+        optional_fields = ["errors"]
         for field in optional_fields:
             assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
+
+        # Verify message is provided via __str__() not as schema field
+        assert "message" not in adcp_response, "message should not be in schema (use __str__() instead)"
+        assert str(response) == "Found 1 product that matches your requirements."
 
         # Verify optional status field (AdCP PR #77 - MCP Status System)
         # Status field is optional and only present when explicitly set
@@ -1405,14 +1400,16 @@ class TestAdCPContract:
         assert "formats" not in product_data, "product should not have formats field (use format_ids)"
 
         # Test empty response case
-        empty_response = GetProductsResponse(products=[], message="No products match your criteria", errors=[])
+        empty_response = GetProductsResponse(products=[], errors=[])
 
         empty_adcp_response = empty_response.model_dump()
         assert empty_adcp_response["products"] == [], "Empty products list should be empty array"
-        # Allow 3 or 4 fields (status is optional and may not be present)
+        # Verify __str__() provides appropriate empty message
+        assert str(empty_response) == "No products matched your requirements."
+        # Allow 2 or 3 fields (status is optional and may not be present, message removed)
         assert (
-            len(empty_adcp_response) >= 3 and len(empty_adcp_response) <= 4
-        ), f"GetProductsResponse should have 3-4 fields (status optional), got {len(empty_adcp_response)}"
+            len(empty_adcp_response) >= 2 and len(empty_adcp_response) <= 3
+        ), f"GetProductsResponse should have 2-3 fields (status optional), got {len(empty_adcp_response)}"
 
     def test_list_creative_formats_response_adcp_compliance(self):
         """Test that ListCreativeFormatsResponse complies with AdCP list-creative-formats-response schema."""
@@ -1430,7 +1427,6 @@ class TestAdCPContract:
                     assets_required=None,
                 )
             ],
-            message="Found 1 creative format",
             errors=[],
         )
 
@@ -1438,15 +1434,20 @@ class TestAdCPContract:
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["formats"]
+        required_fields = ["adcp_version", "formats"]
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
         # Verify optional AdCP fields present (can be null)
-        optional_fields = ["message", "errors"]
+        # Note: message field removed - handled via __str__() for protocol layer
+        optional_fields = ["errors", "status", "creative_agents"]
         for field in optional_fields:
             assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
+
+        # Verify message is provided via __str__() not as schema field
+        assert "message" not in adcp_response, "message should not be in schema (use __str__() instead)"
+        assert str(response) == "Found 1 creative format."
 
         # Verify specific field types and constraints
         assert isinstance(adcp_response["formats"], list), "formats must be array"
@@ -1459,7 +1460,7 @@ class TestAdCPContract:
             assert "type" in format_obj, "format must have type"
             # Note: width/height are in requirements dict, not direct fields
 
-        # Verify field count (at least 3 fields - some optional fields might be excluded)
+        # Verify field count
         assert (
             len(adcp_response) >= 3
         ), f"ListCreativeFormatsResponse should have at least 3 fields, got {len(adcp_response)}"
@@ -1862,7 +1863,7 @@ class TestAdCPContract:
             assert adcp_response[field] is not None
 
         # Verify optional AdCP fields present (can be null)
-        optional_fields = ["tags", "errors"]
+        optional_fields = ["tags", "errors", "primary_channels", "primary_countries", "portfolio_description"]
         for field in optional_fields:
             assert field in adcp_response
 
@@ -1883,8 +1884,19 @@ class TestAdCPContract:
         if adcp_response["errors"] is not None:
             assert isinstance(adcp_response["errors"], list)
 
-        # Verify field count expectations
-        assert len(adcp_response) == 4
+        # Verify new optional fields types
+        if adcp_response["primary_channels"] is not None:
+            assert isinstance(adcp_response["primary_channels"], list)
+        if adcp_response["primary_countries"] is not None:
+            assert isinstance(adcp_response["primary_countries"], list)
+        if adcp_response["portfolio_description"] is not None:
+            assert isinstance(adcp_response["portfolio_description"], str)
+
+        # Verify message is provided via __str__() not as schema field (response already created above)
+        assert str(response) == "Found 1 authorized property."
+
+        # Verify field count expectations (now 7 fields with new additions)
+        assert len(adcp_response) == 7
 
     def test_get_signals_request_adcp_compliance(self):
         """Test that GetSignalsRequest model complies with AdCP get-signals-request schema."""
@@ -2351,6 +2363,82 @@ class TestAdCPContract:
         # Verify brand_manifest URL is properly stored
         assert request.brand_manifest == "https://nike.com/brand-manifest.json"
         assert isinstance(request.brand_manifest, str)
+
+    def test_get_signals_response_adcp_compliance(self):
+        """Test that GetSignalsResponse model complies with AdCP get-signals response schema."""
+        from src.core.schema_adapters import GetSignalsResponse
+
+        # Minimal required fields
+        response = GetSignalsResponse(adcp_version="2.3.0", message="Found 2 signals", context_id="ctx_123", signals=[])
+
+        # Convert to AdCP format (excludes internal fields)
+        adcp_response = response.model_dump(exclude_none=True)
+
+        # Verify required fields are present
+        assert "adcp_version" in adcp_response
+        assert "message" in adcp_response
+        assert "context_id" in adcp_response
+        assert "signals" in adcp_response
+
+        # Verify field count (at least 4 core fields)
+        assert (
+            len(adcp_response) >= 4
+        ), f"GetSignalsResponse should have at least 4 core fields, got {len(adcp_response)}"
+
+        # Test with all fields
+        signal_data = {
+            "signal_agent_segment_id": "seg_123",
+            "name": "Premium Audiences",
+            "description": "High-value customer segment",
+            "signal_type": "marketplace",
+            "data_provider": "Acme Data",
+            "coverage_percentage": 85.5,
+            "deployments": [{"platform": "GAM", "is_live": True, "scope": "platform-wide"}],
+            "pricing": {"cpm": 2.50, "currency": "USD"},
+        }
+        full_response = GetSignalsResponse(
+            adcp_version="2.3.0",
+            message="Found 1 signal",
+            context_id="ctx_456",
+            signals=[signal_data],
+            errors=None,
+        )
+        full_dump = full_response.model_dump(exclude_none=True)
+        assert len(full_dump["signals"]) == 1
+
+    def test_activate_signal_response_adcp_compliance(self):
+        """Test that ActivateSignalResponse model complies with AdCP activate-signal response schema."""
+        from src.core.schema_adapters import ActivateSignalResponse
+
+        # Minimal required fields
+        response = ActivateSignalResponse(adcp_version="2.3.0", task_id="task_123", status="pending")
+
+        # Convert to AdCP format (excludes internal fields)
+        adcp_response = response.model_dump(exclude_none=True)
+
+        # Verify required fields are present
+        assert "adcp_version" in adcp_response
+        assert "task_id" in adcp_response
+        assert "status" in adcp_response
+
+        # Verify field count (at least 3 core fields)
+        assert (
+            len(adcp_response) >= 3
+        ), f"ActivateSignalResponse should have at least 3 core fields, got {len(adcp_response)}"
+
+        # Test with all fields
+        full_response = ActivateSignalResponse(
+            adcp_version="2.3.0",
+            task_id="task_456",
+            status="deployed",
+            decisioning_platform_segment_id="seg_789",
+            estimated_activation_duration_minutes=5.0,
+            deployed_at="2025-01-15T10:30:00Z",
+            errors=None,
+        )
+        full_dump = full_response.model_dump(exclude_none=True)
+        assert full_dump["status"] == "deployed"
+        assert full_dump["decisioning_platform_segment_id"] == "seg_789"
 
 
 if __name__ == "__main__":
