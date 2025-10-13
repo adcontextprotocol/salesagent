@@ -233,7 +233,6 @@ def init_db(exit_on_error=False):
 
                 # Create pricing_option for this product (new system)
                 new_pricing_option = PricingOptionModel(
-                    pricing_option_id=f"po_{p['product_id']}",
                     tenant_id="default",
                     product_id=p["product_id"],
                     pricing_model=pricing_opt_data["pricing_model"],
