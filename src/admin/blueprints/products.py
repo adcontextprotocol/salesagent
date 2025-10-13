@@ -337,9 +337,9 @@ def add_product(tenant_id):
             return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
     # GET request - show adapter-specific form
-    # Load authorized properties for property selection
+    # Load authorized properties and property tags for property selection
     with get_db_session() as db_session:
-        from src.core.database.models import AuthorizedProperty
+        from src.core.database.models import AuthorizedProperty, PropertyTag
 
         authorized_properties = db_session.scalars(
             select(AuthorizedProperty).filter_by(tenant_id=tenant_id, verification_status="verified")
@@ -356,6 +356,11 @@ def add_product(tenant_id):
                     "tags": prop.tags or [],
                 }
             )
+
+        # Load all property tags for dropdown
+        property_tags = db_session.scalars(
+            select(PropertyTag).filter_by(tenant_id=tenant_id).order_by(PropertyTag.name)
+        ).all()
 
     if adapter_type == "google_ad_manager":
         # For GAM: unified form with inventory selection
@@ -374,6 +379,7 @@ def add_product(tenant_id):
             inventory_synced=inventory_synced,
             formats=get_creative_formats(),
             authorized_properties=properties_list,
+            property_tags=property_tags,
         )
     else:
         # For Mock and other adapters: simple form
@@ -383,6 +389,7 @@ def add_product(tenant_id):
             tenant_id=tenant_id,
             formats=formats,
             authorized_properties=properties_list,
+            property_tags=property_tags,
         )
 
 

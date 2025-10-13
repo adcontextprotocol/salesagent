@@ -149,21 +149,33 @@
                 <input type="text" id="property_tags" name="property_tags" placeholder="e.g., all_inventory, premium_sports, local_radio" value="all_inventory">
                 <small style="color: #666;">Comma-separated tags. Use lowercase with underscores. Example: premium_sports, local_news</small>
 
-                {% if authorized_properties and authorized_properties|length > 0 %}
                 {% set all_tags = [] %}
-                {% for prop in authorized_properties %}
-                    {% if prop.tags %}
-                        {% for tag in prop.tags %}
-                            {% if tag not in all_tags %}
-                                {% set _ = all_tags.append(tag) %}
-                            {% endif %}
-                        {% endfor %}
-                    {% endif %}
-                {% endfor %}
+
+                {# Get tags from property tag definitions #}
+                {% if property_tags %}
+                    {% for tag in property_tags %}
+                        {% if tag.tag_id not in all_tags %}
+                            {% set _ = all_tags.append(tag.tag_id) %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+
+                {# Also get tags from authorized properties #}
+                {% if authorized_properties and authorized_properties|length > 0 %}
+                    {% for prop in authorized_properties %}
+                        {% if prop.tags %}
+                            {% for tag in prop.tags %}
+                                {% if tag not in all_tags %}
+                                    {% set _ = all_tags.append(tag) %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
 
                 {% if all_tags|length > 0 %}
                 <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f5f5f5; border-radius: 4px;">
-                    <strong style="font-size: 0.9em; color: #555;">Available tags from your authorized properties:</strong>
+                    <strong style="font-size: 0.9em; color: #555;">Available property tags:</strong>
                     <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">
                         {% for tag in all_tags|sort %}
                         <button type="button" class="tag-suggestion" onclick="addTagToInput('{{ tag }}')"
@@ -174,7 +186,6 @@
                     </div>
                     <small style="color: #666; display: block; margin-top: 0.5rem;">Click a tag to add it, or type your own.</small>
                 </div>
-                {% endif %}
                 {% endif %}
             </div>
         </div>
