@@ -267,23 +267,58 @@ def list_available_formats(
     registry = get_creative_agent_registry()
 
     # Get formats from all agents (default + tenant-specific)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    # Check if we're already in an async context
     try:
-        formats = loop.run_until_complete(
-            registry.list_all_formats(
-                tenant_id=tenant_id,
-                max_width=max_width,
-                max_height=max_height,
-                min_width=min_width,
-                min_height=min_height,
-                is_responsive=is_responsive,
-                asset_types=asset_types,
-                name_search=name_search,
-                type_filter=type_filter,
-            )
+        loop = asyncio.get_running_loop()
+        # We're in an async context, cannot use run_until_complete
+        # Return a coroutine that needs to be awaited
+        import warnings
+
+        warnings.warn(
+            "list_available_formats() called from async context. "
+            "Use await registry.list_all_formats() directly instead.",
+            DeprecationWarning,
+            stacklevel=2,
         )
-    finally:
-        loop.close()
+        # For backward compatibility, run in thread pool
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(
+                lambda: asyncio.run(
+                    registry.list_all_formats(
+                        tenant_id=tenant_id,
+                        max_width=max_width,
+                        max_height=max_height,
+                        min_width=min_width,
+                        min_height=min_height,
+                        is_responsive=is_responsive,
+                        asset_types=asset_types,
+                        name_search=name_search,
+                        type_filter=type_filter,
+                    )
+                )
+            )
+            formats = future.result()
+    except RuntimeError:
+        # No running loop, we can safely create one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            formats = loop.run_until_complete(
+                registry.list_all_formats(
+                    tenant_id=tenant_id,
+                    max_width=max_width,
+                    max_height=max_height,
+                    min_width=min_width,
+                    min_height=min_height,
+                    is_responsive=is_responsive,
+                    asset_types=asset_types,
+                    name_search=name_search,
+                    type_filter=type_filter,
+                )
+            )
+        finally:
+            loop.close()
 
     return formats

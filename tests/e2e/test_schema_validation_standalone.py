@@ -32,7 +32,6 @@ async def test_valid_get_products_response():
     async with AdCPSchemaValidator() as validator:
         # Create a valid response according to the AdCP spec
         valid_response = {
-            "adcp_version": "1.0.0",  # Required by AdCP spec
             "products": [
                 {
                     "product_id": "test-product-1",
@@ -104,12 +103,12 @@ async def test_offline_mode():
     """Test that offline mode works with cached schemas."""
     # First, ensure schemas are cached by using online mode
     async with AdCPSchemaValidator() as validator:
-        await validator.validate_response("get-products", {"adcp_version": "1.0.0", "products": []})
+        await validator.validate_response("get-products", {"products": []})
 
     # Now test offline mode
     async with AdCPSchemaValidator(offline_mode=True) as offline_validator:
         # Should work with cached schemas
-        await offline_validator.validate_response("get-products", {"adcp_version": "1.0.0", "products": []})
+        await offline_validator.validate_response("get-products", {"products": []})
 
 
 @pytest.mark.asyncio
