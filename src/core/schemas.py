@@ -1340,9 +1340,13 @@ class GetProductsRequest(BaseModel):
         "",
         description="Brief description of the advertising campaign or requirements (optional)",
     )
-    promoted_offering: str = Field(
-        ...,
-        description="Description of the advertiser and the product or service being promoted (REQUIRED per AdCP spec)",
+    promoted_offering: str | None = Field(
+        None,
+        description="DEPRECATED: Use brand_manifest instead. Description of the advertiser and the product or service being promoted",
+    )
+    brand_manifest: BrandManifest | str | None = Field(
+        None,
+        description="Brand information manifest (inline object or URL string) - Alternative to promoted_offering",
     )
     adcp_version: str = Field(
         "1.0.0",
@@ -1366,6 +1370,25 @@ class GetProductsRequest(BaseModel):
         None,
         description="URL for async task completion notifications (AdCP spec, optional)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_brand_or_offering(cls, values):
+        """Ensure at least one of promoted_offering or brand_manifest is provided (AdCP spec oneOf constraint)."""
+        if not isinstance(values, dict):
+            return values
+
+        has_offering = values.get("promoted_offering")
+        has_manifest = values.get("brand_manifest")
+
+        if not has_offering and not has_manifest:
+            raise ValueError("Either promoted_offering or brand_manifest must be provided (AdCP spec requirement)")
+
+        # Backward compatibility: if only promoted_offering, convert to brand_manifest
+        if has_offering and not has_manifest:
+            values["brand_manifest"] = {"name": values["promoted_offering"]}
+
+        return values
 
 
 class Error(BaseModel):
