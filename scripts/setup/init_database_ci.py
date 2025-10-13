@@ -16,8 +16,9 @@ def init_db_ci():
 
         from database_session import get_db_session
         from migrate import run_migrations
+        from sqlalchemy import select
 
-        from src.core.database.models import Principal, Tenant
+        from src.core.database.models import Principal, Product, Tenant
 
         print("Applying database migrations for CI...")
         run_migrations()
@@ -27,7 +28,8 @@ def init_db_ci():
         print("Creating default tenant for CI...")
         with get_db_session() as session:
             # First, check if CI test tenant already exists
-            existing = session.query(Tenant).filter_by(subdomain="ci-test").first()
+            stmt = select(Tenant).filter_by(subdomain="ci-test")
+            existing = session.scalars(stmt).first()
 
             if existing:
                 print(f"CI test tenant already exists (ID: {existing.tenant_id}), skipping creation")
@@ -59,8 +61,58 @@ def init_db_ci():
             )
             session.add(principal)
 
+            # Create default products for testing
+            print("Creating default products for CI...")
+            products_data = [
+                {
+                    "product_id": "prod_display_premium",
+                    "name": "Premium Display Advertising",
+                    "description": "High-impact display ads across premium content",
+                    "formats": ["display_300x250", "display_728x90", "display_160x600"],
+                    "targeting_template": {"geo": ["US"], "device_type": "any"},
+                    "delivery_type": "guaranteed",
+                    "is_fixed_price": True,
+                    "cpm": 15.0,
+                },
+                {
+                    "product_id": "prod_video_premium",
+                    "name": "Premium Video Advertising",
+                    "description": "Pre-roll video ads with guaranteed completion rates",
+                    "formats": ["video_15s", "video_30s"],
+                    "targeting_template": {"geo": ["US"], "device_type": "any"},
+                    "delivery_type": "guaranteed",
+                    "is_fixed_price": True,
+                    "cpm": 25.0,
+                },
+            ]
+
+            for p in products_data:
+                # Check if product already exists
+                stmt = select(Product).filter_by(tenant_id=tenant_id, product_id=p["product_id"])
+                existing_product = session.scalars(stmt).first()
+
+                if not existing_product:
+                    product = Product(
+                        tenant_id=tenant_id,
+                        product_id=p["product_id"],
+                        name=p["name"],
+                        description=p["description"],
+                        formats=p["formats"],
+                        targeting_template=p["targeting_template"],
+                        delivery_type=p["delivery_type"],
+                        is_fixed_price=p["is_fixed_price"],
+                        cpm=p.get("cpm"),
+                        property_tags=["all_inventory"],  # Required per AdCP spec
+                    )
+                    session.add(product)
+                    print(f"  Created product: {p['name']}")
+                else:
+                    print(f"  Product already exists: {p['name']}")
+
             session.commit()
-            print(f"Created default tenant (ID: {tenant_id}) and principal (ID: {principal_id})")
+            print(
+                f"Created default tenant (ID: {tenant_id}), principal (ID: {principal_id}), and {len(products_data)} products"
+            )
 
         print("Database initialized successfully")
     except ImportError as e:

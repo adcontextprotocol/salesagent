@@ -18,11 +18,12 @@ from pathlib import Path
 
 
 class ImportCollector(ast.NodeVisitor):
-    """Collect all imported names and module-level assignments."""
+    """Collect all imported names, module-level assignments, and class definitions."""
 
     def __init__(self):
         self.imports: set[str] = set()
         self.module_variables: set[str] = set()
+        self.defined_classes: set[str] = set()
 
     def visit_Import(self, node):
         for alias in node.names:
@@ -41,6 +42,11 @@ class ImportCollector(ast.NodeVisitor):
         for target in node.targets:
             if isinstance(target, ast.Name):
                 self.module_variables.add(target.id)
+        self.generic_visit(node)
+
+    def visit_ClassDef(self, node):
+        """Collect class definitions in this file."""
+        self.defined_classes.add(node.name)
         self.generic_visit(node)
 
 
@@ -161,6 +167,10 @@ def check_file(filepath: Path) -> list[str]:
 
         # Skip if defined as module-level variable
         if name in import_collector.module_variables:
+            continue
+
+        # Skip if defined as a class in this file
+        if name in import_collector.defined_classes:
             continue
 
         # Skip common false positives
