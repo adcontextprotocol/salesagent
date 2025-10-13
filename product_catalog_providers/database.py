@@ -41,13 +41,16 @@ class DatabaseProductCatalog(ProductCatalogProvider):
         """
         with get_db_session() as db_session:
             # Eager load pricing_options relationship to avoid N+1 queries
-            products = (
-                db_session.query(ProductModel)
+            # Use SQLAlchemy 2.0 select() pattern for consistency
+            from sqlalchemy import select
+
+            stmt = (
+                select(ProductModel)
                 .options(joinedload(ProductModel.pricing_options))
                 .filter_by(tenant_id=tenant_id)
                 .order_by(ProductModel.product_id)
-                .all()
             )
+            products = list(db_session.scalars(stmt).all())
 
             loaded_products = []
             for product_obj in products:
