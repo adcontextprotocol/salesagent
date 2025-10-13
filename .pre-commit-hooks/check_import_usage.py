@@ -18,10 +18,11 @@ from pathlib import Path
 
 
 class ImportCollector(ast.NodeVisitor):
-    """Collect all imported names from a module."""
+    """Collect all imported names and module-level assignments."""
 
     def __init__(self):
         self.imports: set[str] = set()
+        self.module_variables: set[str] = set()
 
     def visit_Import(self, node):
         for alias in node.names:
@@ -33,6 +34,13 @@ class ImportCollector(ast.NodeVisitor):
         for alias in node.names:
             name = alias.asname if alias.asname else alias.name
             self.imports.add(name)
+        self.generic_visit(node)
+
+    def visit_Assign(self, node):
+        """Collect module-level variable names."""
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                self.module_variables.add(target.id)
         self.generic_visit(node)
 
 
@@ -149,6 +157,10 @@ def check_file(filepath: Path) -> list[str]:
 
         # Skip if imported
         if name in import_collector.imports:
+            continue
+
+        # Skip if defined as module-level variable
+        if name in import_collector.module_variables:
             continue
 
         # Skip common false positives
