@@ -692,32 +692,6 @@ def edit_product(tenant_id, product_id):
                 return redirect(url_for("products.list_products", tenant_id=tenant_id))
 
             # GET request - show form
-            product_dict = {
-                "product_id": product.product_id,
-                "name": product.name,
-                "description": product.description,
-                "delivery_type": product.delivery_type,
-                "is_fixed_price": product.is_fixed_price,
-                "cpm": product.cpm,
-                "min_spend": product.min_spend,
-                "price_guidance": product.price_guidance,
-                "formats": (
-                    product.formats
-                    if isinstance(product.formats, list)
-                    else json.loads(product.formats) if product.formats else []
-                ),
-                "countries": (
-                    product.countries
-                    if isinstance(product.countries, list)
-                    else json.loads(product.countries) if product.countries else []
-                ),
-                "implementation_config": (
-                    product.implementation_config
-                    if isinstance(product.implementation_config, dict)
-                    else json.loads(product.implementation_config) if product.implementation_config else {}
-                ),
-            }
-
             # Load existing pricing options (AdCP PR #88)
             pricing_options = db_session.scalars(
                 select(PricingOption).filter_by(tenant_id=tenant_id, product_id=product_id)
@@ -736,6 +710,47 @@ def edit_product(tenant_id, product_id):
                         "min_spend_per_package": float(po.min_spend_per_package) if po.min_spend_per_package else None,
                     }
                 )
+
+            # Derive legacy fields from pricing_options (preferred) or product model (fallback)
+            # This ensures form displays pricing_options data, not potentially stale legacy fields
+            if pricing_options_list:
+                first_pricing = pricing_options_list[0]
+                delivery_type = "guaranteed" if first_pricing["is_fixed"] else "non_guaranteed"
+                is_fixed_price = first_pricing["is_fixed"]
+                cpm = first_pricing["rate"]
+                price_guidance = first_pricing["price_guidance"]
+            else:
+                # Fallback to legacy fields if no pricing_options exist
+                delivery_type = product.delivery_type
+                is_fixed_price = product.is_fixed_price
+                cpm = product.cpm
+                price_guidance = product.price_guidance
+
+            product_dict = {
+                "product_id": product.product_id,
+                "name": product.name,
+                "description": product.description,
+                "delivery_type": delivery_type,
+                "is_fixed_price": is_fixed_price,
+                "cpm": cpm,
+                "min_spend": product.min_spend,
+                "price_guidance": price_guidance,
+                "formats": (
+                    product.formats
+                    if isinstance(product.formats, list)
+                    else json.loads(product.formats) if product.formats else []
+                ),
+                "countries": (
+                    product.countries
+                    if isinstance(product.countries, list)
+                    else json.loads(product.countries) if product.countries else []
+                ),
+                "implementation_config": (
+                    product.implementation_config
+                    if isinstance(product.implementation_config, dict)
+                    else json.loads(product.implementation_config) if product.implementation_config else {}
+                ),
+            }
 
             product_dict["pricing_options"] = pricing_options_list
 
