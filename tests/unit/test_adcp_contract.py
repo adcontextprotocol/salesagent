@@ -1632,7 +1632,7 @@ class TestAdCPContract:
             reporting_period=reporting_period,
             currency="USD",
             aggregated_totals=aggregated_totals,
-            deliveries=[delivery_data],
+            media_buy_deliveries=[delivery_data],
             errors=None,
         )
 
@@ -1640,7 +1640,7 @@ class TestAdCPContract:
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["adcp_version", "reporting_period", "currency", "aggregated_totals", "deliveries"]
+        required_fields = ["adcp_version", "reporting_period", "currency", "aggregated_totals", "media_buy_deliveries"]
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
@@ -1674,11 +1674,11 @@ class TestAdCPContract:
         assert aggregated_obj["spend"] >= 0, "spend must be non-negative"
         assert aggregated_obj["media_buy_count"] >= 0, "media_buy_count must be non-negative"
 
-        # Verify deliveries array structure
-        assert isinstance(adcp_response["deliveries"], list), "deliveries must be array"
+        # Verify media_buy_deliveries array structure
+        assert isinstance(adcp_response["media_buy_deliveries"], list), "media_buy_deliveries must be array"
 
-        if len(adcp_response["deliveries"]) > 0:
-            delivery = adcp_response["deliveries"][0]
+        if len(adcp_response["media_buy_deliveries"]) > 0:
+            delivery = adcp_response["media_buy_deliveries"][0]
 
             # Verify required delivery fields
             delivery_required_fields = ["media_buy_id", "status", "totals", "by_package"]
@@ -1718,11 +1718,11 @@ class TestAdCPContract:
             reporting_period=reporting_period,
             currency="USD",
             aggregated_totals=empty_aggregated,
-            deliveries=[],
+            media_buy_deliveries=[],
         )
 
         empty_adcp_response = empty_response.model_dump()
-        assert empty_adcp_response["deliveries"] == [], "Empty deliveries list should be empty array"
+        assert empty_adcp_response["media_buy_deliveries"] == [], "Empty media_buy_deliveries list should be empty array"
 
         # Verify field count (6 fields total)
         assert (

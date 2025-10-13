@@ -2816,12 +2816,12 @@ class GetMediaBuyDeliveryResponse(BaseModel):
     reporting_period: ReportingPeriod = Field(description="Date range for the report")
     currency: str = Field(description="ISO 4217 currency code", pattern=r"^[A-Z]{3}$")
     aggregated_totals: AggregatedTotals = Field(description="Combined metrics across all returned media buys")
-    deliveries: list[MediaBuyDeliveryData] = Field(description="Array of delivery data for each media buy")
+    media_buy_deliveries: list[MediaBuyDeliveryData] = Field(description="Array of delivery data for each media buy")
     errors: list[dict] | None = Field(None, description="Task-specific errors and warnings")
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
-        count = len(self.deliveries)
+        count = len(self.media_buy_deliveries)
         if count == 0:
             return "No delivery data found for the specified period."
         elif count == 1:
