@@ -3789,7 +3789,7 @@ def _create_media_buy_impl(
         # Determine initial status based on flight dates
         now = datetime.now(UTC)
         if now < start_time:
-            media_buy_status = "pending"
+            media_buy_status = "ready"  # Scheduled to go live at flight start date
         elif now > end_time:
             media_buy_status = "completed"
         else:
@@ -4771,7 +4771,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                 target_media_buys.append((media_buy_id, buy_request))
     else:
         # Use status_filter to determine which buys to fetch
-        valid_statuses = ["active", "pending", "paused", "completed", "failed"]
+        valid_statuses = ["active", "ready", "paused", "completed", "failed"]
         filter_statuses = []
 
         if req.status_filter:
@@ -4790,7 +4790,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
             if buy_principal_id == principal_id:
                 # Determine current status
                 if reference_date < buy_request.flight_start_date:
-                    current_status = "pending"
+                    current_status = "ready"
                 elif reference_date > buy_request.flight_end_date:
                     current_status = "completed"
                 else:
@@ -4821,7 +4821,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
 
             # Determine status
             if simulation_datetime.date() < buy_request.flight_start_date:
-                status = "pending"
+                status = "ready"
             elif simulation_datetime.date() > buy_request.flight_end_date:
                 status = "completed"
             else:
@@ -4848,7 +4848,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                 days_elapsed = max(0, (simulation_datetime.date() - buy_request.flight_start_date).days)
 
                 if campaign_days > 0:
-                    progress = min(1.0, days_elapsed / campaign_days) if status != "pending" else 0.0
+                    progress = min(1.0, days_elapsed / campaign_days) if status != "ready" else 0.0
                 else:
                     progress = 1.0 if status == "completed" else 0.0
 

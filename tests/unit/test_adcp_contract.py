@@ -1579,7 +1579,7 @@ class TestAdCPContract:
         assert isinstance(minimal_adcp_request, dict), "Minimal request should be valid"
 
         # Test array status_filter
-        array_request = GetMediaBuyDeliveryRequest(status_filter=["active", "pending"])
+        array_request = GetMediaBuyDeliveryRequest(status_filter=["active", "ready"])
         array_adcp_request = array_request.model_dump()
         assert isinstance(array_adcp_request["status_filter"], list), "status_filter should support array format"
 
