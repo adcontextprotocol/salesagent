@@ -101,11 +101,7 @@
         </div>
 
         <!-- Section 4: Pricing Options (AdCP PR #88) -->
-        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Pricing Options (Recommended)</h3>
-
-        <div class="alert alert-warning" style="margin-bottom: 1rem; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
-            <strong>⚠️ GAM Limitation:</strong> Google Ad Manager currently only supports <strong>CPM pricing</strong>. While you can configure other pricing models below, they will be ignored during campaign creation and CPM will be used instead.
-        </div>
+        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Pricing Options</h3>
 
         <div style="margin-top: 1.5rem; padding: 1rem; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
             <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">Add one or more pricing models for this product. Buyers can choose which model to use.</p>
@@ -117,6 +113,30 @@
             <button type="button" class="btn btn-secondary" onclick="addPricingOption()" style="margin-top: 0.5rem;">
                 + Add Pricing Option
             </button>
+        </div>
+
+        <!-- Section 5: GAM Line Item Configuration -->
+        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">GAM Line Item Configuration</h3>
+
+        <div class="form-group">
+            <label for="line_item_type">Line Item Type *</label>
+            <select id="line_item_type" name="line_item_type" required>
+                <option value="STANDARD">Standard (Fixed CPM + Priority)</option>
+                <option value="SPONSORSHIP">Sponsorship (Fixed CPM + Roadblock)</option>
+                <option value="PRICE_PRIORITY">Price Priority (Floor CPM)</option>
+                <option value="HOUSE">House (No Price)</option>
+            </select>
+            <small style="color: #666; display: block; margin-top: 0.25rem;">
+                Standard/Sponsorship: Fixed price + priority<br>
+                Price Priority: Floor price, priority 12<br>
+                House: Free, priority 16
+            </small>
+        </div>
+
+        <div id="priority-section" style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+            <div class="form-group" id="priority-container" style="margin: 0;">
+                <!-- Priority field shown/hidden based on line item type -->
+            </div>
         </div>
 
         <!-- Submit Buttons -->
@@ -144,7 +164,29 @@
 </style>
 
 <script>
-// Legacy line_item_type code removed - now using Pricing Options section
+// Dynamic priority field based on line item type
+document.getElementById('line_item_type').addEventListener('change', function() {
+    const priorityContainer = document.getElementById('priority-container');
+    const lineItemType = this.value;
+    const prioritySection = document.getElementById('priority-section');
+
+    if (lineItemType === 'STANDARD' || lineItemType === 'SPONSORSHIP') {
+        // Standard/Sponsorship: Show custom priority input
+        prioritySection.style.display = 'block';
+        priorityContainer.innerHTML = `
+            <label for="priority">Priority (1-10) *</label>
+            <input type="number" id="priority" name="priority" min="1" max="10" placeholder="e.g., 5" required>
+            <small style="color: #666; display: block; margin-top: 0.25rem;">Lower number = higher priority. Standard line items typically use priorities 6-10.</small>
+        `;
+    } else {
+        // Price Priority & House: Hide priority section (handled automatically)
+        prioritySection.style.display = 'none';
+        priorityContainer.innerHTML = '';
+    }
+});
+
+// Trigger on page load
+document.getElementById('line_item_type').dispatchEvent(new Event('change'));
 
 // Inventory picker functionality
 let currentPickerType = null;

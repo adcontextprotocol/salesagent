@@ -316,8 +316,11 @@ def add_product(tenant_id):
 
                     base_config["include_descendants"] = form_data.get("include_descendants") == "on"
 
-                    # Note: line_item_type and priority are now derived from pricing options
-                    # GAM adapter will determine these based on is_fixed (guaranteed/non-guaranteed)
+                    # Add GAM-specific settings
+                    if form_data.get("line_item_type"):
+                        base_config["line_item_type"] = form_data["line_item_type"]
+                    if form_data.get("priority"):
+                        base_config["priority"] = int(form_data["priority"])
 
                     implementation_config = base_config
                 else:
