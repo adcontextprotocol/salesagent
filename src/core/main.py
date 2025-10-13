@@ -3045,34 +3045,36 @@ def _validate_pricing_model_selection(
 
 
 def _create_media_buy_impl(
-    promoted_offering: str,
-    po_number: str = None,
-    buyer_ref: str = None,
-    packages: list = None,
-    start_time: str = None,
-    end_time: str = None,
-    budget: dict = None,
-    product_ids: list = None,
-    start_date: str = None,
-    end_date: str = None,
-    total_budget: float = None,
-    targeting_overlay: dict = None,
+    buyer_ref: str,
+    brand_manifest: Any,  # BrandManifest | str - validated by Pydantic
+    po_number: str | None = None,
+    packages: list[Any] | None = None,
+    start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
+    end_time: Any | None = None,  # datetime | str - validated by Pydantic
+    budget: Any | None = None,  # Budget | float | dict - validated by Pydantic
+    promoted_offering: str | None = None,
+    product_ids: list[str] | None = None,
+    start_date: Any | None = None,  # date | str - validated by Pydantic
+    end_date: Any | None = None,  # date | str - validated by Pydantic
+    total_budget: float | None = None,
+    targeting_overlay: dict[str, Any] | None = None,
     pacing: str = "even",
-    daily_budget: float = None,
-    creatives: list = None,
-    reporting_webhook: dict = None,
-    required_axe_signals: list = None,
+    daily_budget: float | None = None,
+    creatives: list[Any] | None = None,
+    reporting_webhook: dict[str, Any] | None = None,
+    required_axe_signals: list[str] | None = None,
     enable_creative_macro: bool = False,
-    strategy_id: str = None,
-    push_notification_config: dict = None,
-    context: Context = None,
+    strategy_id: str | None = None,
+    push_notification_config: dict[str, Any] | None = None,
+    context: Context | None = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
 
     Args:
-        promoted_offering: Description of advertiser and what is being promoted (required per AdCP spec)
+        buyer_ref: Buyer reference for tracking (required per AdCP spec)
+        brand_manifest: Brand information manifest - inline object or URL string (required per AdCP v1.8.0)
         po_number: Purchase order number (optional)
-        buyer_ref: Buyer reference for tracking
+        promoted_offering: DEPRECATED - use brand_manifest instead
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
         end_time: Campaign end time (ISO 8601)
@@ -3105,13 +3107,16 @@ def _create_media_buy_impl(
 
     # Create request object from individual parameters (MCP-compliant)
     req = CreateMediaBuyRequest(
-        promoted_offering=promoted_offering,
-        po_number=po_number,
         buyer_ref=buyer_ref,
+        brand_manifest=brand_manifest,
+        campaign_name=None,  # Optional display name
+        po_number=po_number,
+        promoted_offering=promoted_offering,
         packages=packages,
         start_time=start_time,
         end_time=end_time,
         budget=budget,
+        currency=None,  # Derived from product pricing_options
         product_ids=product_ids,
         start_date=start_date,
         end_date=end_date,
@@ -3120,9 +3125,13 @@ def _create_media_buy_impl(
         pacing=pacing,
         daily_budget=daily_budget,
         creatives=creatives,
+        reporting_webhook=reporting_webhook,
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
+        webhook_url=None,  # Internal field, not in AdCP spec
+        webhook_auth_token=None,  # Internal field, not in AdCP spec
+        push_notification_config=push_notification_config,
     )
 
     # Extract testing context first
@@ -4147,37 +4156,39 @@ def _create_media_buy_impl(
 
 @mcp.tool()
 def create_media_buy(
-    promoted_offering: str,
-    po_number: str = None,
-    buyer_ref: str = None,
-    packages: list = None,
-    start_time: str = None,
-    end_time: str = None,
-    budget: dict = None,
-    product_ids: list = None,
-    start_date: str = None,
-    end_date: str = None,
-    total_budget: float = None,
-    targeting_overlay: dict = None,
+    buyer_ref: str,
+    brand_manifest: Any,  # BrandManifest | str - validated by Pydantic
+    po_number: str | None = None,
+    packages: list[Any] | None = None,
+    start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
+    end_time: Any | None = None,  # datetime | str - validated by Pydantic
+    budget: Any | None = None,  # Budget | float | dict - validated by Pydantic
+    promoted_offering: str | None = None,
+    product_ids: list[str] | None = None,
+    start_date: Any | None = None,  # date | str - validated by Pydantic
+    end_date: Any | None = None,  # date | str - validated by Pydantic
+    total_budget: float | None = None,
+    targeting_overlay: dict[str, Any] | None = None,
     pacing: str = "even",
-    daily_budget: float = None,
-    creatives: list = None,
-    reporting_webhook: dict = None,
-    required_axe_signals: list = None,
+    daily_budget: float | None = None,
+    creatives: list[Any] | None = None,
+    reporting_webhook: dict[str, Any] | None = None,
+    required_axe_signals: list[str] | None = None,
     enable_creative_macro: bool = False,
-    strategy_id: str = None,
-    push_notification_config: dict = None,
+    strategy_id: str | None = None,
+    push_notification_config: dict[str, Any] | None = None,
     webhook_url: str | None = None,
-    context: Context = None,
+    context: Context | None = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
 
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        promoted_offering: Description of advertiser and what is being promoted (required per AdCP spec)
+        buyer_ref: Buyer reference for tracking (required per AdCP spec)
+        brand_manifest: Brand information manifest - inline object or URL string (required per AdCP v1.8.0)
         po_number: Purchase order number (optional)
-        buyer_ref: Buyer reference for tracking
+        promoted_offering: DEPRECATED - use brand_manifest instead
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
         end_time: Campaign end time (ISO 8601)
@@ -4202,9 +4213,10 @@ def create_media_buy(
         CreateMediaBuyResponse with media buy details
     """
     return _create_media_buy_impl(
-        promoted_offering=promoted_offering,
-        po_number=po_number,
         buyer_ref=buyer_ref,
+        brand_manifest=brand_manifest,
+        po_number=po_number,
+        promoted_offering=promoted_offering,
         packages=packages,
         start_time=start_time,
         end_time=end_time,

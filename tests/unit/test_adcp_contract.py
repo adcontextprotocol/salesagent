@@ -2155,6 +2155,121 @@ class TestAdCPContract:
         assert isinstance(request.start_time, datetime)
         assert request.start_time == start_date
 
+    def test_create_media_buy_with_brand_manifest_inline(self):
+        """Test CreateMediaBuyRequest with inline brand_manifest (AdCP v1.8.0)."""
+        start_date = datetime.now(UTC) + timedelta(days=1)
+        end_date = datetime.now(UTC) + timedelta(days=30)
+
+        # Test with inline brand manifest
+        request = CreateMediaBuyRequest(
+            buyer_ref="nike_2025_q1",
+            brand_manifest={
+                "name": "Nike",
+                "url": "https://nike.com",
+                "colors": {"primary": "#FF0000", "secondary": "#000000"},
+                "tagline": "Just Do It",
+            },
+            packages=[
+                {
+                    "package_id": "pkg_001",
+                    "products": ["product_1"],
+                    "status": "draft",
+                }
+            ],
+            start_time=start_date,
+            end_time=end_date,
+            budget=5000.0,
+        )
+
+        # Verify brand_manifest is properly stored
+        assert request.brand_manifest is not None
+        assert isinstance(request.brand_manifest, dict) or hasattr(request.brand_manifest, "name")
+
+        # Verify required fields still work
+        assert request.buyer_ref == "nike_2025_q1"
+        assert len(request.packages) == 1
+
+    def test_create_media_buy_with_brand_manifest_url(self):
+        """Test CreateMediaBuyRequest with brand_manifest as URL string (AdCP v1.8.0)."""
+        start_date = datetime.now(UTC) + timedelta(days=1)
+        end_date = datetime.now(UTC) + timedelta(days=30)
+
+        # Test with brand manifest URL
+        request = CreateMediaBuyRequest(
+            buyer_ref="nike_2025_q1",
+            brand_manifest="https://nike.com/brand-manifest.json",
+            packages=[
+                {
+                    "package_id": "pkg_001",
+                    "products": ["product_1"],
+                    "status": "draft",
+                }
+            ],
+            start_time=start_date,
+            end_time=end_date,
+            budget=5000.0,
+        )
+
+        # Verify brand_manifest is stored as URL string
+        assert request.brand_manifest == "https://nike.com/brand-manifest.json"
+        assert isinstance(request.brand_manifest, str)
+
+    def test_create_media_buy_backward_compatibility_promoted_offering(self):
+        """Test backward compatibility: promoted_offering auto-converts to brand_manifest."""
+        start_date = datetime.now(UTC) + timedelta(days=1)
+        end_date = datetime.now(UTC) + timedelta(days=30)
+
+        # Test with old promoted_offering field (should auto-convert)
+        request = CreateMediaBuyRequest(
+            buyer_ref="nike_2025_q1",
+            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            packages=[
+                {
+                    "package_id": "pkg_001",
+                    "products": ["product_1"],
+                    "status": "draft",
+                }
+            ],
+            start_time=start_date,
+            end_time=end_date,
+            budget=5000.0,
+        )
+
+        # Verify promoted_offering was auto-converted to brand_manifest
+        assert request.brand_manifest is not None
+        # Should have created a simple manifest with name field
+        if isinstance(request.brand_manifest, dict):
+            assert request.brand_manifest.get("name") == "Nike Air Jordan 2025 basketball shoes"
+        else:
+            assert request.brand_manifest.name == "Nike Air Jordan 2025 basketball shoes"
+
+    def test_create_media_buy_brand_manifest_required_when_no_promoted_offering(self):
+        """Test that brand_manifest is required when promoted_offering is not provided."""
+        from pydantic import ValidationError
+
+        start_date = datetime.now(UTC) + timedelta(days=1)
+        end_date = datetime.now(UTC) + timedelta(days=30)
+
+        # Test without brand_manifest or promoted_offering (should fail)
+        with pytest.raises(ValidationError) as exc_info:
+            CreateMediaBuyRequest(
+                buyer_ref="nike_2025_q1",
+                packages=[
+                    {
+                        "package_id": "pkg_001",
+                        "products": ["product_1"],
+                        "status": "draft",
+                    }
+                ],
+                start_time=start_date,
+                end_time=end_date,
+                budget=5000.0,
+            )
+
+        # Verify error mentions brand_manifest
+        error_str = str(exc_info.value)
+        assert "brand_manifest" in error_str.lower()
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
