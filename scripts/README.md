@@ -7,7 +7,7 @@ This directory contains utility scripts for testing, development, deployment, an
 ### `/setup/` - Setup and Initialization Scripts
 - `setup_tenant.py` - Create new publisher/tenant
 - `init_database.py` - Initialize database with schema
-- `init_database_ci.py` - Initialize database for CI testing
+- Database initialization is handled by `src/core/database/database.py::init_db()` for both dev and CI
 - `populate_creative_formats.py` - Populate creative format data
 - `populate_foundational_formats.py` - Populate foundational creative formats
 - `setup_hooks.sh` - Setup git hooks for development

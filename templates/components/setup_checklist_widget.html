@@ -1,0 +1,131 @@
+<!-- Setup Checklist Widget Component
+     Display onboarding progress and next steps for new tenants.
+     Shows critical, recommended, and optional setup tasks.
+-->
+
+{% if setup_status %}
+<div class="setup-checklist-widget" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 1.5rem; color: white; margin-bottom: 1.5rem; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
+
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <div>
+            <h3 style="margin: 0; font-size: 1.25rem; font-weight: 700;">Setup Progress</h3>
+            <p style="margin: 0.25rem 0 0 0; font-size: 0.875rem; opacity: 0.9;">
+                {% if setup_status.ready_for_orders %}
+                    ✅ Ready to take orders!
+                {% else %}
+                    Complete setup to start taking orders
+                {% endif %}
+            </p>
+        </div>
+        <div style="text-align: right;">
+            <div style="font-size: 2rem; font-weight: 700;">{{ setup_status.progress_percent }}%</div>
+            <div style="font-size: 0.75rem; opacity: 0.9;">{{ setup_status.completed_count }}/{{ setup_status.total_count }} tasks</div>
+        </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div style="background: rgba(255,255,255,0.2); border-radius: 999px; height: 8px; overflow: hidden; margin-bottom: 1.5rem;">
+        <div style="background: white; height: 100%; width: {{ setup_status.progress_percent }}%; transition: width 0.3s ease;"></div>
+    </div>
+
+    <!-- Critical Tasks (if incomplete) -->
+    {% set incomplete_critical = setup_status.critical | selectattr('is_complete', 'equalto', false) | list %}
+    {% if incomplete_critical %}
+    <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; backdrop-filter: blur(10px);">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <span style="font-size: 1.25rem;">🚨</span>
+            <h4 style="margin: 0; font-size: 0.875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Critical Tasks</h4>
+        </div>
+        <div style="display: grid; gap: 0.5rem;">
+            {% for task in incomplete_critical[:3] %}
+            <div style="display: flex; align-items: start; gap: 0.75rem;">
+                <span style="font-size: 1.25rem; line-height: 1;">❌</span>
+                <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 0.875rem;">{{ task.name }}</div>
+                    <div style="font-size: 0.75rem; opacity: 0.9; margin-top: 0.125rem;">{{ task.description }}</div>
+                    {% if task.action_url %}
+                    <a href="{{ task.action_url }}" style="display: inline-block; margin-top: 0.5rem; padding: 0.25rem 0.75rem; background: white; color: #667eea; border-radius: 6px; text-decoration: none; font-size: 0.75rem; font-weight: 600;">
+                        Configure →
+                    </a>
+                    {% elif task.details %}
+                    <div style="font-size: 0.75rem; opacity: 0.8; margin-top: 0.25rem; font-style: italic;">{{ task.details }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% if incomplete_critical | length > 3 %}
+        <div style="margin-top: 0.75rem; font-size: 0.75rem; opacity: 0.9;">
+            + {{ incomplete_critical | length - 3 }} more critical tasks
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Success State (all critical complete) -->
+    {% if setup_status.ready_for_orders %}
+    <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 1rem; backdrop-filter: blur(10px); margin-bottom: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: {% if setup_status.progress_percent < 100 %}0.75rem{% else %}0{% endif %};">
+            <span style="font-size: 2rem;">🎉</span>
+            <div>
+                <div style="font-weight: 600; font-size: 0.875rem;">All Critical Tasks Complete!</div>
+                <div style="font-size: 0.75rem; opacity: 0.9; margin-top: 0.125rem;">
+                    Your sales agent is ready to take orders from advertisers.
+                </div>
+            </div>
+        </div>
+
+        <!-- Show recommended tasks preview if not 100% complete -->
+        {% if setup_status.progress_percent < 100 %}
+        {% set incomplete_recommended = setup_status.recommended | selectattr('is_complete', 'equalto', false) | list %}
+        {% set incomplete_optional = setup_status.optional | selectattr('is_complete', 'equalto', false) | list %}
+        {% if incomplete_recommended or incomplete_optional %}
+        <div style="padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.2);">
+            <div style="font-size: 0.75rem; opacity: 0.9; margin-bottom: 0.5rem;">✨ Consider completing these recommended tasks:</div>
+            <div style="display: grid; gap: 0.25rem;">
+                {% for task in incomplete_recommended[:2] %}
+                <div style="font-size: 0.75rem; opacity: 0.9;">
+                    ⚠️ {{ task.name }}
+                </div>
+                {% endfor %}
+                {% if incomplete_recommended | length > 2 %}
+                <div style="font-size: 0.75rem; opacity: 0.8; font-style: italic;">
+                    + {{ incomplete_recommended | length - 2 }} more recommended
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Quick Stats -->
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.2);">
+        <div>
+            <div style="font-size: 0.75rem; opacity: 0.9;">Critical</div>
+            <div style="font-weight: 700; font-size: 1.125rem;">
+                {{ setup_status.critical | selectattr('is_complete', 'equalto', true) | list | length }}/{{ setup_status.critical | length }}
+            </div>
+        </div>
+        <div>
+            <div style="font-size: 0.75rem; opacity: 0.9;">Recommended</div>
+            <div style="font-weight: 700; font-size: 1.125rem;">
+                {{ setup_status.recommended | selectattr('is_complete', 'equalto', true) | list | length }}/{{ setup_status.recommended | length }}
+            </div>
+        </div>
+        <div>
+            <div style="font-size: 0.75rem; opacity: 0.9;">Optional</div>
+            <div style="font-weight: 700; font-size: 1.125rem;">
+                {{ setup_status.optional | selectattr('is_complete', 'equalto', true) | list | length }}/{{ setup_status.optional | length }}
+            </div>
+        </div>
+    </div>
+
+    <!-- View Full Checklist -->
+    <a href="/tenant/{{ tenant_id }}/setup-checklist" style="display: block; margin-top: 1rem; padding: 0.75rem; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); border-radius: 8px; text-align: center; color: white; text-decoration: none; font-weight: 600; font-size: 0.875rem; transition: all 0.2s; backdrop-filter: blur(10px);" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+        View Full Setup Checklist →
+    </a>
+</div>
+{% endif %}

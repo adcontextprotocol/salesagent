@@ -277,6 +277,16 @@ jobs:
         sudo apt-get update
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends docker-compose
 
+    - name: Clean up any lingering containers
+      run: |
+        # Kill any containers using our ports to prevent conflicts
+        docker ps -q --filter "publish=40000" | xargs -r docker kill || true
+        docker ps -q --filter "publish=8080" | xargs -r docker kill || true
+        docker ps -q --filter "publish=8091" | xargs -r docker kill || true
+        # Clean up any stopped containers and networks
+        docker-compose down -v 2>/dev/null || true
+        docker system prune -f 2>/dev/null || true
+
     - name: Run E2E tests
       env:
         # Docker Compose manages its own PostgreSQL - don't set DATABASE_URL

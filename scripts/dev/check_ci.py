@@ -6,7 +6,6 @@ import subprocess
 import sys
 import tempfile
 import time
-from pathlib import Path
 
 
 def test_with_postgresql():
@@ -44,9 +43,14 @@ def test_with_postgresql():
     env.update({"DATABASE_URL": "postgresql://test_user:test_pass@localhost:5433/test_db", "DB_TYPE": "postgresql"})
 
     try:
-        # Run the CI initialization script
-        print("\nRunning init_database_ci.py with PostgreSQL...")
-        result = subprocess.run([sys.executable, "init_database_ci.py"], env=env, capture_output=True, text=True)
+        # Run the database initialization
+        print("\nRunning database init_db() with PostgreSQL...")
+        result = subprocess.run(
+            [sys.executable, "-c", "from src.core.database.database import init_db; init_db()"],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
 
         print("STDOUT:")
         print(result.stdout)
@@ -77,9 +81,14 @@ def test_with_sqlite():
         env = os.environ.copy()
         env.update({"DATABASE_URL": f"sqlite:///{db_path}", "DB_TYPE": "sqlite"})
 
-        # Run the CI initialization script
-        print(f"\nRunning init_database_ci.py with SQLite at {db_path}...")
-        result = subprocess.run([sys.executable, "init_database_ci.py"], env=env, capture_output=True, text=True)
+        # Run the database initialization
+        print(f"\nRunning database init_db() with SQLite at {db_path}...")
+        result = subprocess.run(
+            [sys.executable, "-c", "from src.core.database.database import init_db; init_db()"],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
 
         print("STDOUT:")
         print(result.stdout)
@@ -95,11 +104,7 @@ def test_with_sqlite():
 
 def main():
     """Main test runner."""
-    if not Path("init_database_ci.py").exists():
-        print("❌ Error: init_database_ci.py not found in current directory")
-        sys.exit(1)
-
-    print("🧪 Testing CI database initialization locally...\n")
+    print("🧪 Testing database initialization locally...\n")
 
     # Test with SQLite first (simpler, no Docker required)
     test_with_sqlite()
