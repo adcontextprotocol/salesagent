@@ -1,17 +1,20 @@
-"""Format resolution with tenant custom formats and product overrides.
+"""Format resolution with product overrides and dynamic creative agent discovery.
 
 Provides layered format lookup:
 1. Product-level overrides (from product.implementation_config.format_overrides)
-2. Tenant-level custom formats (from creative_formats database table)
-3. Standard formats (from FORMAT_REGISTRY)
+2. Dynamic format discovery from creative agents (via CreativeAgentRegistry)
+
+Note: Tenant custom formats (creative_formats table) are deprecated in favor of
+creative agent-based format discovery per AdCP v2.4.
 """
 
+import asyncio
 import json
 from collections.abc import Sequence
 from typing import Any
 
 from src.core.database.database_session import get_db_session
-from src.core.schemas import FORMAT_REGISTRY, Format
+from src.core.schemas import Format
 
 
 def _parse_format_from_db_row(row: Sequence[Any]) -> Format:
@@ -58,12 +61,15 @@ def _parse_format_from_db_row(row: Sequence[Any]) -> Format:
     )
 
 
-def get_format(format_id: str, tenant_id: str | None = None, product_id: str | None = None) -> Format:
-    """Resolve format with priority: product override → tenant custom → standard registry.
+def get_format(
+    format_id: str, agent_url: str | None = None, tenant_id: str | None = None, product_id: str | None = None
+) -> Format:
+    """Resolve format with priority: product override → creative agent discovery.
 
     Args:
-        format_id: Format identifier (e.g., "display_300x250")
-        tenant_id: Optional tenant ID for custom format lookup
+        format_id: Format identifier (e.g., "display_300x250_image")
+        agent_url: Optional creative agent URL (defaults to AdCP standard agent)
+        tenant_id: Optional tenant ID for agent lookup
         product_id: Optional product ID for product-level overrides
 
     Returns:
@@ -78,18 +84,37 @@ def get_format(format_id: str, tenant_id: str | None = None, product_id: str | N
         if override:
             return override
 
-    # Check tenant custom formats
-    if tenant_id:
-        custom = _get_tenant_custom_format(tenant_id, format_id)
-        if custom:
-            return custom
+    # Get from creative agent registry
+    from src.core.creative_agent_registry import get_creative_agent_registry
 
-    # Fall back to standard registry
-    if format_id in FORMAT_REGISTRY:
-        return FORMAT_REGISTRY[format_id]
+    registry = get_creative_agent_registry()
+
+    # If agent_url provided, get format directly from that agent
+    if agent_url:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            fmt = loop.run_until_complete(registry.get_format(agent_url, format_id))
+            if fmt:
+                return fmt
+        finally:
+            loop.close()
+    else:
+        # Search all agents for this format
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            all_formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant_id))
+            for fmt in all_formats:
+                if fmt.format_id == format_id:
+                    return fmt
+        finally:
+            loop.close()
 
     # Not found anywhere
     error_msg = f"Unknown format_id '{format_id}'"
+    if agent_url:
+        error_msg += f" from agent {agent_url}"
     if tenant_id:
         error_msg += f" for tenant {tenant_id}"
     raise ValueError(error_msg)
@@ -143,9 +168,10 @@ def _get_product_format_override(tenant_id: str, product_id: str, format_id: str
         if format_id not in format_overrides:
             return None
 
-        # Get base format (from tenant custom or standard registry)
-        base_format = _get_tenant_custom_format(tenant_id, format_id) or FORMAT_REGISTRY.get(format_id)
-        if not base_format:
+        # Get base format from creative agent registry
+        try:
+            base_format = get_format(format_id, tenant_id=tenant_id)
+        except ValueError:
             return None
 
         # Apply override to base format
@@ -209,40 +235,90 @@ def _get_tenant_custom_format(tenant_id: str, format_id: str) -> Format | None:
         return _parse_format_from_db_row(row)
 
 
-def list_available_formats(tenant_id: str | None = None) -> list[Format]:
-    """List all formats available to a tenant (standard + custom).
+def list_available_formats(
+    tenant_id: str | None = None,
+    max_width: int | None = None,
+    max_height: int | None = None,
+    min_width: int | None = None,
+    min_height: int | None = None,
+    is_responsive: bool | None = None,
+    asset_types: list[str] | None = None,
+    name_search: str | None = None,
+    type_filter: str | None = None,
+) -> list[Format]:
+    """List all formats available to a tenant from all registered creative agents.
 
     Args:
-        tenant_id: Optional tenant ID to include custom formats
+        tenant_id: Optional tenant ID to include tenant-specific agents
+        max_width: Maximum width in pixels (inclusive)
+        max_height: Maximum height in pixels (inclusive)
+        min_width: Minimum width in pixels (inclusive)
+        min_height: Minimum height in pixels (inclusive)
+        is_responsive: Filter for responsive formats
+        asset_types: Filter by asset types
+        name_search: Search by name
+        type_filter: Filter by format type (display, video, audio)
 
     Returns:
-        List of all available Format objects
+        List of all available Format objects from all registered agents
     """
-    formats: list[Format] = []
+    from src.core.creative_agent_registry import get_creative_agent_registry
 
-    # Add standard formats
-    formats.extend(FORMAT_REGISTRY.values())
+    registry = get_creative_agent_registry()
 
-    # Add tenant custom formats
-    if tenant_id:
-        from sqlalchemy import text
+    # Get formats from all agents (default + tenant-specific)
+    # Check if we're already in an async context
+    try:
+        loop = asyncio.get_running_loop()
+        # We're in an async context, cannot use run_until_complete
+        # Return a coroutine that needs to be awaited
+        import warnings
 
-        with get_db_session() as session:
-            result = session.execute(
-                text(
-                    """
-                    SELECT format_id, name, type, description, width, height,
-                           duration_seconds, max_file_size_kb, specs, is_standard,
-                           platform_config
-                    FROM creative_formats
-                    WHERE tenant_id = :tenant_id
-                    ORDER BY name
-                """
-                ),
-                {"tenant_id": tenant_id},
+        warnings.warn(
+            "list_available_formats() called from async context. "
+            "Use await registry.list_all_formats() directly instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # For backward compatibility, run in thread pool
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(
+                lambda: asyncio.run(
+                    registry.list_all_formats(
+                        tenant_id=tenant_id,
+                        max_width=max_width,
+                        max_height=max_height,
+                        min_width=min_width,
+                        min_height=min_height,
+                        is_responsive=is_responsive,
+                        asset_types=asset_types,
+                        name_search=name_search,
+                        type_filter=type_filter,
+                    )
+                )
             )
-
-            for row in result.fetchall():
-                formats.append(_parse_format_from_db_row(row))
+            formats = future.result()
+    except RuntimeError:
+        # No running loop, we can safely create one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            formats = loop.run_until_complete(
+                registry.list_all_formats(
+                    tenant_id=tenant_id,
+                    max_width=max_width,
+                    max_height=max_height,
+                    min_width=min_width,
+                    min_height=min_height,
+                    is_responsive=is_responsive,
+                    asset_types=asset_types,
+                    name_search=name_search,
+                    type_filter=type_filter,
+                )
+            )
+        finally:
+            loop.close()
 
     return formats

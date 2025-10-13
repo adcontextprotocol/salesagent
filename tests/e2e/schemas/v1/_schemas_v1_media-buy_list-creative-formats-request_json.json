@@ -5,12 +5,6 @@
   "description": "Request parameters for discovering supported creative formats",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "format_ids": {
       "type": "array",
       "description": "Return only these specific format IDs (e.g., from get_products response)",
@@ -44,9 +38,25 @@
         ]
       }
     },
-    "dimensions": {
-      "type": "string",
-      "description": "Filter to formats with specific dimensions (e.g., '300x250', '728x90'). Useful with asset_types to find specific sizes like '300x250 JavaScript'"
+    "max_width": {
+      "type": "integer",
+      "description": "Maximum width in pixels (inclusive). Returns formats with width <= this value. Omit for responsive/fluid formats."
+    },
+    "max_height": {
+      "type": "integer",
+      "description": "Maximum height in pixels (inclusive). Returns formats with height <= this value. Omit for responsive/fluid formats."
+    },
+    "min_width": {
+      "type": "integer",
+      "description": "Minimum width in pixels (inclusive). Returns formats with width >= this value."
+    },
+    "min_height": {
+      "type": "integer",
+      "description": "Minimum height in pixels (inclusive). Returns formats with height >= this value."
+    },
+    "is_responsive": {
+      "type": "boolean",
+      "description": "Filter for responsive formats that adapt to container size. When true, returns formats without fixed dimensions."
     },
     "name_search": {
       "type": "string",

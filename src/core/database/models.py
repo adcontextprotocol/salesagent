@@ -92,6 +92,11 @@ class Tenant(Base, JSONValidatorMixin):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    creative_agents = relationship(
+        "CreativeAgent",
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         Index("idx_subdomain", "subdomain"),
@@ -584,6 +589,39 @@ class AdapterConfig(Base):
     tenant = relationship("Tenant", back_populates="adapter_config")
 
     __table_args__ = (Index("idx_adapter_config_type", "adapter_type"),)
+
+
+class CreativeAgent(Base):
+    """Tenant-specific creative agent configuration.
+
+    Each tenant can register custom creative agents in addition to the default
+    AdCP creative agent at https://creative.adcontextprotocol.org
+    """
+
+    __tablename__ = "creative_agents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        String(50),
+        ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    agent_url = Column(String(500), nullable=False)
+    name = Column(String(200), nullable=False)
+    enabled = Column(Boolean, nullable=False, default=True)
+    priority = Column(Integer, nullable=False, default=10)  # Lower = higher priority
+    auth_type = Column(String(50), nullable=True)  # e.g., "bearer", "api_key", None
+    auth_credentials = Column(Text, nullable=True)  # Encrypted credentials
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    tenant = relationship("Tenant", back_populates="creative_agents")
+
+    __table_args__ = (
+        Index("idx_creative_agents_tenant", "tenant_id"),
+        Index("idx_creative_agents_enabled", "enabled"),
+    )
 
 
 class GAMInventory(Base):
