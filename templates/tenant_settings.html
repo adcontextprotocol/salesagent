@@ -1183,36 +1183,8 @@ REJECT - Creative cannot be approved:
 
         </div>
 
-        <!-- Creative Formats Settings -->
-        <div id="creatives" class="settings-section">
-            <div class="settings-header">
-                <h2>Creative Formats</h2>
-                <p>Manage accepted creative formats and auto-approval rules</p>
-            </div>
-
-            <div class="form-section">
-                <h3>Auto-Approval Settings</h3>
-                <p style="margin-bottom: 1rem; color: #6b7280; font-size: 0.875rem;">
-                    Select formats that can be automatically approved without human review
-                </p>
-
-                <div class="form-grid">
-                    {% for format in creative_formats %}
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="format_{{ format.id }}" name="auto_approve_{{ format.id }}"
-                               {% if format.auto_approve %}checked{% endif %}>
-                        <label for="format_{{ format.id }}">{{ format.name }} ({{ format.dimensions }})</label>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-
-            <div class="button-group">
-                <a href="/tenant/{{ tenant.tenant_id }}/creative-formats" class="btn btn-primary">
-                    Manage Creative Formats
-                </a>
-            </div>
-        </div>
+        <!-- Creative Formats section removed - table dropped in migration f2addf453200 -->
+        <!-- Formats are now fetched from creative agents via AdCP, not stored in local DB -->
 
         <!-- Advertisers Settings -->
         <div id="advertisers" class="settings-section">

@@ -232,8 +232,7 @@ def tenant_settings(tenant_id, section=None):
 
             # Creative formats removed - table dropped in migration f2addf453200
             # Formats are now fetched from creative agents via AdCP (not stored in DB)
-            # Passing empty list to template until Creative Formats section is removed from UI
-            creative_formats = []
+            # Template section also removed - no longer passed to template
 
             # Get inventory counts
             from src.core.database.models import GAMInventory
@@ -311,7 +310,6 @@ def tenant_settings(tenant_id, section=None):
                 product_count=product_count,
                 active_products=active_products,
                 draft_products=draft_products,
-                creative_formats=creative_formats,
                 inventory_count=inventory_count,
                 ad_units_count=ad_units_count,
                 currency_limits=currency_limits,
