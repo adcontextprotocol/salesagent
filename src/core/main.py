@@ -3557,20 +3557,58 @@ def _create_media_buy_impl(
         from src.core.database.models import CurrencyLimit
         from src.core.database.models import Product as ProductModel
 
-        # Get currency from campaign level (AdCP PR #88), budget, or default to USD
-        request_currency = None
-        if req.currency:
-            # NEW: Campaign-level currency (AdCP PR #88)
-            request_currency = req.currency
-        elif req.budget:
-            request_currency = req.budget.currency
-        elif req.packages and req.packages[0].budget:
-            request_currency = req.packages[0].budget.currency
-        else:
-            request_currency = "USD"  # Default
-
-        # Get currency limits for this tenant and currency
+        # Get products first to determine currency from pricing options
         with get_db_session() as session:
+            # Get products from database
+            stmt = select(ProductModel).where(
+                ProductModel.tenant_id == tenant["tenant_id"], ProductModel.product_id.in_(product_ids)
+            )
+            products = session.scalars(stmt).all()
+
+            # Build product lookup map
+            product_map = {p.product_id: p for p in products}
+
+            # Get currency from product pricing options (per AdCP spec)
+            request_currency = None
+
+            # First, try to get currency from first package's pricing option
+            if req.packages and len(req.packages) > 0:
+                first_package = req.packages[0]
+                package_product_ids = first_package.products or ([first_package.product_id] if first_package.product_id else [])
+
+                if package_product_ids and package_product_ids[0] in product_map:
+                    product = product_map[package_product_ids[0]]
+                    pricing_options = product.pricing_options or []
+
+                    # Find the pricing option matching the package's pricing_model
+                    if first_package.pricing_model and pricing_options:
+                        matching_option = next(
+                            (po for po in pricing_options if po.pricing_model == first_package.pricing_model),
+                            None
+                        )
+                        if matching_option:
+                            request_currency = matching_option.currency
+
+                    # If no pricing_model specified, use first pricing option's currency
+                    if not request_currency and pricing_options:
+                        request_currency = pricing_options[0].currency
+
+            # Fallback to deprecated/legacy sources
+            if not request_currency and req.currency:
+                # Deprecated field, but still supported for backward compatibility
+                request_currency = req.currency
+            elif not request_currency and req.budget and hasattr(req.budget, "currency"):
+                # Legacy: Extract currency from Budget object
+                request_currency = req.budget.currency
+            elif not request_currency and req.packages and req.packages[0].budget and hasattr(req.packages[0].budget, "currency"):
+                # Legacy: Extract currency from package budget object
+                request_currency = req.packages[0].budget.currency
+
+            # Final fallback
+            if not request_currency:
+                request_currency = "USD"
+
+            # Get currency limits for this tenant and currency
             stmt = select(CurrencyLimit).where(
                 CurrencyLimit.tenant_id == tenant["tenant_id"], CurrencyLimit.currency_code == request_currency
             )
@@ -3583,15 +3621,6 @@ def _create_media_buy_impl(
                     f"Contact the publisher to add support for this currency."
                 )
                 raise ValueError(error_msg)
-
-            # Get products from database to check pricing and minimums
-            stmt = select(ProductModel).where(
-                ProductModel.tenant_id == tenant["tenant_id"], ProductModel.product_id.in_(product_ids)
-            )
-            products = session.scalars(stmt).all()
-
-            # Build product lookup map for pricing validation
-            product_map = {p.product_id: p for p in products}
 
             # NEW: Validate pricing_model selections (AdCP PR #88)
             # Store validated pricing info for later use in adapter
@@ -3662,14 +3691,11 @@ def _create_media_buy_impl(
                             if applicable_min_spends:
                                 # Use the highest minimum spend among all products in package
                                 required_min_spend = max(applicable_min_spends)
-                                # Extract budget amount (handle Budget object, float, or dict)
-                                if isinstance(package.budget, dict):
-                                    package_budget = Decimal(str(package.budget.get("total", 0)))
-                                elif isinstance(package.budget, int | float):
-                                    package_budget = Decimal(str(package.budget))
-                                else:
-                                    # Budget object with .total attribute
-                                    package_budget = Decimal(str(package.budget.total))
+                                # Extract budget amount (v1.8.0 compatible)
+                                from src.core.schemas import extract_budget_amount
+
+                                package_budget_amount, _ = extract_budget_amount(package.budget, request_currency)
+                                package_budget = Decimal(str(package_budget_amount))
 
                                 if package_budget < required_min_spend:
                                     error_msg = (
@@ -3706,14 +3732,11 @@ def _create_media_buy_impl(
                     for package in req.packages:
                         if not package.budget:
                             continue
-                        # Extract budget amount (handle Budget object, float, or dict)
-                        if isinstance(package.budget, dict):
-                            package_budget = Decimal(str(package.budget.get("total", 0)))
-                        elif isinstance(package.budget, int | float):
-                            package_budget = Decimal(str(package.budget))
-                        else:
-                            # Budget object with .total attribute
-                            package_budget = Decimal(str(package.budget.total))
+                        # Extract budget amount (v1.8.0 compatible)
+                        from src.core.schemas import extract_budget_amount
+
+                        package_budget_amount, _ = extract_budget_amount(package.budget, request_currency)
+                        package_budget = Decimal(str(package_budget_amount))
                         package_daily_budget = package_budget / Decimal(str(flight_days))
 
                         if package_daily_budget > currency_limit.max_daily_package_spend:
@@ -4801,20 +4824,13 @@ def _update_media_buy_impl(
                     )
                     return result
 
-    # Handle budget updates (Budget object from AdCP spec)
+    # Handle budget updates (Budget object from AdCP spec - v1.8.0 compatible)
     if req.budget is not None:
-        if isinstance(req.budget, dict):
-            # Handle Budget dict
-            total_budget = req.budget.get("total", 0)
-            currency = req.budget.get("currency", "USD")
-        elif hasattr(req.budget, "total"):
-            # Handle Budget model instance (standard case)
-            total_budget = req.budget.total
-            currency = req.budget.currency
-        else:
-            # Fallback: treat as float (shouldn't happen with Budget object)
-            total_budget = float(req.budget)
-            currency = "USD"  # Default when budget is just a number
+        from src.core.schemas import extract_budget_amount
+
+        # For UpdateMediaBuyRequest, budget is always a Budget object (not a float)
+        # The currency comes from the Budget object itself or defaults to USD
+        total_budget, currency = extract_budget_amount(req.budget, "USD")
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."

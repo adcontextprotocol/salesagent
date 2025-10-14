@@ -460,6 +460,50 @@ class Budget(BaseModel):
         return super().model_dump(**kwargs)
 
 
+# Budget utility functions for v1.8.0 compatibility
+def extract_budget_amount(budget: "Budget | float | dict | None", default_currency: str = "USD") -> tuple[float, str]:
+    """Extract budget amount and currency from various budget formats (v1.8.0 compatible).
+
+    Handles:
+    - v1.8.0 format: simple float (currency should be from pricing option)
+    - Legacy format: Budget object with total and currency
+    - Dict format: {'total': float, 'currency': str}
+    - None: returns (0.0, default_currency)
+
+    Args:
+        budget: Budget in any supported format
+        default_currency: Currency to use for v1.8.0 float budgets.
+                         **IMPORTANT**: This should be the currency from the selected
+                         pricing option, not an arbitrary default.
+
+    Returns:
+        Tuple of (amount, currency)
+
+    Note:
+        Per AdCP v1.8.0, currency is determined by the pricing option selected for
+        the package, not by the budget field. The default_currency parameter allows
+        callers to pass the pricing option's currency for v1.8.0 float budgets.
+        For legacy Budget objects, the currency from the object is used instead.
+
+    Example:
+        # v1.8.0: currency from package pricing option
+        package_currency = request.packages[0].currency  # From pricing option
+        amount, currency = extract_budget_amount(request.budget, package_currency)
+
+        # Legacy: currency from Budget object
+        amount, currency = extract_budget_amount(Budget(total=5000, currency="EUR"))
+    """
+    if budget is None:
+        return (0.0, default_currency)
+    elif isinstance(budget, dict):
+        return (budget.get("total", 0.0), budget.get("currency", default_currency))
+    elif isinstance(budget, int | float):
+        return (float(budget), default_currency)
+    else:
+        # Budget object with .total and .currency attributes
+        return (budget.total, budget.currency)
+
+
 # AdCP Compliance Models
 class Measurement(BaseModel):
     """Measurement capabilities included with a product per AdCP spec."""
@@ -1904,15 +1948,15 @@ class CreateMediaBuyRequest(BaseModel):
     )
     end_time: datetime | None = Field(None, description="Campaign end time (ISO 8601)")
     budget: Budget | float | None = Field(
-        None, description="Overall campaign budget (Budget object or number - if number, currency must be provided)"
-    )
-    currency: str | None = Field(
-        None,
-        pattern="^[A-Z]{3}$",
-        description="ISO 4217 currency code for campaign (applies to budget and all packages) - AdCP PR #88",
+        None, description="Overall campaign budget (Budget object or number). Currency determined by package pricing options."
     )
 
     # Deprecated fields (for backward compatibility)
+    currency: str | None = Field(
+        None,
+        pattern="^[A-Z]{3}$",
+        description="DEPRECATED: Use Package.currency instead. Currency code that will be copied to all packages for backward compatibility.",
+    )
     promoted_offering: str | None = Field(
         None,
         description="DEPRECATED: Use brand_manifest instead. Legacy field for describing what is being promoted.",
@@ -2051,6 +2095,10 @@ class CreateMediaBuyRequest(BaseModel):
         if self.end_time and self.end_time.tzinfo is None:
             raise ValueError("end_time must be timezone-aware (ISO 8601 with timezone)")
         return self
+
+    # Note: Currency validation removed - currency comes from product pricing options
+    # and is looked up dynamically when needed. We keep req.currency as deprecated
+    # for backward compatibility but don't enforce currency consistency at request time.
 
     # Backward compatibility properties for old field names
     @property
