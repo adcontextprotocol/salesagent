@@ -957,61 +957,75 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
                 f"not just generic category (e.g., 'Nike Air Jordan 2025' not 'athletic footwear')"
             )
 
-    # Check policy compliance first
-    policy_service = PolicyCheckService()
-    # Safely parse policy_settings that might be JSON string (SQLite) or dict (PostgreSQL JSONB)
-    tenant_policies = safe_parse_json_field(tenant.get("policy_settings"), field_name="policy_settings", default={})
-
-    # Convert brand_manifest to dict if it's a BrandManifest object
-    brand_manifest_dict = None
-    if req.brand_manifest:
-        if hasattr(req.brand_manifest, "model_dump"):
-            brand_manifest_dict = req.brand_manifest.model_dump()
-        elif isinstance(req.brand_manifest, dict):
-            brand_manifest_dict = req.brand_manifest
-        else:
-            brand_manifest_dict = req.brand_manifest  # URL string
-
-    policy_result = await policy_service.check_brief_compliance(
-        brief=req.brief,
-        promoted_offering=req.promoted_offering,
-        brand_manifest=brand_manifest_dict,
-        tenant_policies=tenant_policies if tenant_policies else None,
+    # Check policy compliance first (if enabled)
+    advertising_policy = safe_parse_json_field(
+        tenant.get("advertising_policy"), field_name="advertising_policy", default={}
     )
 
-    # Log the policy check
-    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
-    audit_logger.log_operation(
-        operation="policy_check",
-        principal_name=principal_id or "anonymous",
-        principal_id=principal_id or "anonymous",
-        adapter_id="policy_service",
-        success=policy_result.status != PolicyStatus.BLOCKED,
-        details={
-            "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
-            "promoted_offering": (
-                req.promoted_offering[:100] + "..."
-                if req.promoted_offering and len(req.promoted_offering) > 100
-                else req.promoted_offering
-            ),
-            "policy_status": policy_result.status,
-            "reason": policy_result.reason,
-            "restrictions": policy_result.restrictions,
-        },
-    )
+    # Only run policy checks if enabled in tenant settings
+    policy_check_enabled = advertising_policy.get("enabled", True)  # Default to enabled for backwards compatibility
+    if not policy_check_enabled:
+        # Skip policy checks if disabled
+        policy_result = None
+    else:
+        # Get tenant's Gemini API key for policy checks
+        tenant_gemini_key = tenant.get("gemini_api_key")
+        policy_service = PolicyCheckService(gemini_api_key=tenant_gemini_key)
+
+        # Use advertising_policy settings for tenant-specific rules
+        tenant_policies = advertising_policy if advertising_policy else {}
+
+        # Convert brand_manifest to dict if it's a BrandManifest object
+        brand_manifest_dict = None
+        if req.brand_manifest:
+            if hasattr(req.brand_manifest, "model_dump"):
+                brand_manifest_dict = req.brand_manifest.model_dump()
+            elif isinstance(req.brand_manifest, dict):
+                brand_manifest_dict = req.brand_manifest
+            else:
+                brand_manifest_dict = req.brand_manifest  # URL string
+
+        policy_result = await policy_service.check_brief_compliance(
+            brief=req.brief,
+            promoted_offering=req.promoted_offering,
+            brand_manifest=brand_manifest_dict,
+            tenant_policies=tenant_policies if tenant_policies else None,
+        )
+
+        # Log the policy check
+        audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+        audit_logger.log_operation(
+            operation="policy_check",
+            principal_name=principal_id or "anonymous",
+            principal_id=principal_id or "anonymous",
+            adapter_id="policy_service",
+            success=policy_result.status != PolicyStatus.BLOCKED,
+            details={
+                "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
+                "promoted_offering": (
+                    req.promoted_offering[:100] + "..."
+                    if req.promoted_offering and len(req.promoted_offering) > 100
+                    else req.promoted_offering
+                ),
+                "policy_status": policy_result.status,
+                "reason": policy_result.reason,
+                "restrictions": policy_result.restrictions,
+            },
+        )
 
     # Handle policy result based on settings
-    # Use the already parsed policy_settings from above
-    policy_settings = tenant_policies
-
-    if policy_result.status == PolicyStatus.BLOCKED:
+    if policy_result and policy_result.status == PolicyStatus.BLOCKED:
         # Always block if policy says blocked
         logger.warning(f"Brief blocked by policy: {policy_result.reason}")
         # Raise ToolError to properly signal failure to client
         raise ToolError("POLICY_VIOLATION", policy_result.reason)
 
     # If restricted and manual review is required, create a task
-    if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get("require_manual_review", False):
+    if (
+        policy_result
+        and policy_result.status == PolicyStatus.RESTRICTED
+        and advertising_policy.get("require_manual_review", False)
+    ):
         # Create a manual review task
         from src.core.database.database_session import get_db_session
 
@@ -1019,6 +1033,7 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
             # Log policy violation for audit trail and compliance
+            audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
             audit_logger.log_operation(
                 operation="get_products_policy_violation",
                 principal_name=principal_id,
@@ -1180,17 +1195,22 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         products = filtered_products
         logger.info(f"Applied filters: {req.filters.model_dump(exclude_none=True)}. {len(products)} products remain.")
 
-    # Filter products based on policy compliance
+    # Filter products based on policy compliance (if policy checks are enabled)
     eligible_products = []
-    for product in products:
-        is_eligible, reason = policy_service.check_product_eligibility(policy_result, product.model_dump())
+    if policy_result and policy_check_enabled:
+        # Policy checks are enabled - filter products based on policy compliance
+        for product in products:
+            is_eligible, reason = policy_service.check_product_eligibility(policy_result, product.model_dump())
 
-        if is_eligible:
-            # Product passed policy checks - add to eligible products
-            # Note: policy_compliance field removed in AdCP v2.4
-            eligible_products.append(product)
-        else:
-            logger.info(f"Product {product.product_id} excluded: {reason}")
+            if is_eligible:
+                # Product passed policy checks - add to eligible products
+                # Note: policy_compliance field removed in AdCP v2.4
+                eligible_products.append(product)
+            else:
+                logger.info(f"Product {product.product_id} excluded: {reason}")
+    else:
+        # Policy checks disabled - all products are eligible
+        eligible_products = products
 
     # Apply min_exposures filtering (AdCP PR #79)
     if req.min_exposures is not None:

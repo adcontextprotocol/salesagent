@@ -863,6 +863,85 @@ def update_business_rules(tenant_id):
 
                 attributes.flag_modified(tenant, "ai_policy")
 
+            # Update advertising policy configuration
+            if any(
+                key in data
+                for key in [
+                    "policy_check_enabled",
+                    "default_prohibited_categories",
+                    "default_prohibited_tactics",
+                    "prohibited_categories",
+                    "prohibited_tactics",
+                    "prohibited_advertisers",
+                ]
+            ):
+                # Get existing advertising policy or create new dict
+                advertising_policy = tenant.advertising_policy if tenant.advertising_policy else {}
+
+                # Update enabled status
+                if "policy_check_enabled" in data:
+                    advertising_policy["enabled"] = data.get("policy_check_enabled") in [True, "true", "on", 1, "1"]
+                elif not request.is_json:
+                    # Checkbox not present means unchecked
+                    advertising_policy["enabled"] = False
+
+                # Update baseline/default prohibited categories
+                if "default_prohibited_categories" in data:
+                    categories_str = data.get("default_prohibited_categories", "").strip()
+                    if categories_str:
+                        # Parse newline-separated list
+                        categories = [cat.strip() for cat in categories_str.split("\n") if cat.strip()]
+                        advertising_policy["default_prohibited_categories"] = categories
+                    else:
+                        advertising_policy["default_prohibited_categories"] = []
+
+                # Update baseline/default prohibited tactics
+                if "default_prohibited_tactics" in data:
+                    tactics_str = data.get("default_prohibited_tactics", "").strip()
+                    if tactics_str:
+                        # Parse newline-separated list
+                        tactics = [tactic.strip() for tactic in tactics_str.split("\n") if tactic.strip()]
+                        advertising_policy["default_prohibited_tactics"] = tactics
+                    else:
+                        advertising_policy["default_prohibited_tactics"] = []
+
+                # Update additional prohibited categories
+                if "prohibited_categories" in data:
+                    categories_str = data.get("prohibited_categories", "").strip()
+                    if categories_str:
+                        # Parse newline-separated list
+                        categories = [cat.strip() for cat in categories_str.split("\n") if cat.strip()]
+                        advertising_policy["prohibited_categories"] = categories
+                    else:
+                        advertising_policy["prohibited_categories"] = []
+
+                # Update additional prohibited tactics
+                if "prohibited_tactics" in data:
+                    tactics_str = data.get("prohibited_tactics", "").strip()
+                    if tactics_str:
+                        # Parse newline-separated list
+                        tactics = [tactic.strip() for tactic in tactics_str.split("\n") if tactic.strip()]
+                        advertising_policy["prohibited_tactics"] = tactics
+                    else:
+                        advertising_policy["prohibited_tactics"] = []
+
+                # Update prohibited advertisers
+                if "prohibited_advertisers" in data:
+                    advertisers_str = data.get("prohibited_advertisers", "").strip()
+                    if advertisers_str:
+                        # Parse newline-separated list
+                        advertisers = [adv.strip() for adv in advertisers_str.split("\n") if adv.strip()]
+                        advertising_policy["prohibited_advertisers"] = advertisers
+                    else:
+                        advertising_policy["prohibited_advertisers"] = []
+
+                # Save updated policy
+                tenant.advertising_policy = advertising_policy
+                # Mark as modified for JSONB update
+                from sqlalchemy.orm import attributes
+
+                attributes.flag_modified(tenant, "advertising_policy")
+
             # Update features
             if "enable_axe_signals" in data:
                 tenant.enable_axe_signals = data.get("enable_axe_signals") in [True, "true", "on", 1, "1"]
