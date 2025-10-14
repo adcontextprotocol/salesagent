@@ -1844,8 +1844,8 @@ def _sync_creatives_impl(
                             if creative.get("template_variables"):
                                 data["template_variables"] = creative.get("template_variables")
 
-                            # If no preview data provided in update, try to get it from creative agent
-                            if not data.get("url") and not data.get("snippet") and creative_format:
+                            # ALWAYS validate updates with creative agent
+                            if creative_format:
                                 try:
                                     # Get format to find creative agent URL
                                     import asyncio
@@ -1865,22 +1865,29 @@ def _sync_creatives_impl(
                                             break
 
                                     if format_obj and format_obj.agent_url:
-                                        # Build creative manifest from available data
+                                        # Build creative manifest from available data (including provided snippet/url)
                                         creative_manifest = {
                                             "creative_id": existing_creative.creative_id,
                                             "name": creative.get("name") or existing_creative.name,
                                             "format_id": creative_format,
                                         }
 
-                                        # Add any provided asset data
+                                        # Add any provided asset data (url, snippet, etc.) for validation
                                         if creative.get("assets"):
                                             creative_manifest["assets"] = creative.get("assets")
+                                        if data.get("url"):
+                                            creative_manifest["url"] = data.get("url")
+                                        if data.get("snippet"):
+                                            creative_manifest["snippet"] = data.get("snippet")
+                                        if data.get("snippet_type"):
+                                            creative_manifest["snippet_type"] = data.get("snippet_type")
 
-                                        # Call creative agent's preview_creative
+                                        # Call creative agent's preview_creative for validation + preview
                                         logger.info(
-                                            f"[sync_creatives] Calling preview_creative for existing creative "
+                                            f"[sync_creatives] Calling preview_creative for validation (update): "
                                             f"{existing_creative.creative_id} format {creative_format} "
-                                            f"from agent {format_obj.agent_url}"
+                                            f"from agent {format_obj.agent_url}, has_snippet={bool(data.get('snippet'))}, "
+                                            f"has_url={bool(data.get('url'))}"
                                         )
 
                                         preview_result = asyncio.run(
@@ -1922,12 +1929,26 @@ def _sync_creatives_impl(
                                             f"height={data.get('height')}"
                                         )
 
-                                except Exception as preview_error:
-                                    # Log error but continue - preview is optional
-                                    logger.warning(
-                                        f"[sync_creatives] Failed to get preview from creative agent for update: {preview_error}",
+                                except Exception as validation_error:
+                                    # Creative agent validation failed for update - mark as failed
+                                    error_msg = f"Creative agent validation failed: {str(validation_error)}"
+                                    logger.error(
+                                        f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id}",
                                         exc_info=True,
                                     )
+                                    # Add to failed creatives and skip
+                                    failed_creatives.append(
+                                        {"creative_id": str(existing_creative.creative_id), "error": error_msg}
+                                    )
+                                    failed_count += 1
+                                    results.append(
+                                        SyncCreativeResult(
+                                            creative_id=str(existing_creative.creative_id),
+                                            action="failed",
+                                            errors=[error_msg],
+                                        )
+                                    )
+                                    continue  # Skip to next creative
 
                             # In full upsert, consider all fields as changed
                             changes.extend(["url", "click_url", "width", "height", "duration"])
@@ -1993,9 +2014,9 @@ def _sync_creatives_impl(
                         if creative.get("template_variables"):
                             data["template_variables"] = creative.get("template_variables")
 
-                        # If no preview data provided, try to get it from creative agent
+                        # ALWAYS validate creatives with the creative agent (validation + preview generation)
                         creative_format = creative.get("format_id") or creative.get("format")
-                        if not data.get("url") and not data.get("snippet") and creative_format:
+                        if creative_format:
                             try:
                                 # Get format to find creative agent URL
                                 import asyncio
@@ -2015,21 +2036,28 @@ def _sync_creatives_impl(
                                         break
 
                                 if format_obj and format_obj.agent_url:
-                                    # Build creative manifest from available data
+                                    # Build creative manifest from available data (including provided snippet/url)
                                     creative_manifest = {
                                         "creative_id": creative.get("creative_id") or str(uuid.uuid4()),
                                         "name": creative.get("name"),
                                         "format_id": creative_format,
                                     }
 
-                                    # Add any provided asset data
+                                    # Add any provided asset data (url, snippet, etc.) for validation
                                     if creative.get("assets"):
                                         creative_manifest["assets"] = creative.get("assets")
+                                    if data.get("url"):
+                                        creative_manifest["url"] = data.get("url")
+                                    if data.get("snippet"):
+                                        creative_manifest["snippet"] = data.get("snippet")
+                                    if data.get("snippet_type"):
+                                        creative_manifest["snippet_type"] = data.get("snippet_type")
 
-                                    # Call creative agent's preview_creative
+                                    # Call creative agent's preview_creative for validation + preview
                                     logger.info(
-                                        f"[sync_creatives] Calling preview_creative for {creative_format} "
-                                        f"from agent {format_obj.agent_url}"
+                                        f"[sync_creatives] Calling preview_creative for validation: {creative_format} "
+                                        f"from agent {format_obj.agent_url}, has_snippet={bool(data.get('snippet'))}, "
+                                        f"has_url={bool(data.get('url'))}"
                                     )
 
                                     preview_result = asyncio.run(
@@ -2067,12 +2095,25 @@ def _sync_creatives_impl(
                                         f"height={data.get('height')}"
                                     )
 
-                            except Exception as preview_error:
-                                # Log error but continue - preview is optional
-                                logger.warning(
-                                    f"[sync_creatives] Failed to get preview from creative agent: {preview_error}",
+                            except Exception as validation_error:
+                                # Creative agent validation failed - mark creative as failed
+                                error_msg = f"Creative agent validation failed: {str(validation_error)}"
+                                logger.error(
+                                    f"[sync_creatives] {error_msg}",
                                     exc_info=True,
                                 )
+                                # Add to failed creatives and skip
+                                creative_id = creative.get("creative_id", "unknown")
+                                failed_creatives.append({"creative_id": creative_id, "error": error_msg})
+                                failed_count += 1
+                                results.append(
+                                    SyncCreativeResult(
+                                        creative_id=creative_id,
+                                        action="failed",
+                                        errors=[error_msg],
+                                    )
+                                )
+                                continue  # Skip to next creative
 
                         # Determine creative status based on approval mode
 
