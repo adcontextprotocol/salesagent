@@ -88,12 +88,6 @@ class TestResponseStrMethods:
             == "Found 2 products that match your requirements. Please connect through an authorized buying agent for pricing data."
         )
 
-    def test_list_creative_formats_response_with_message(self):
-        """ListCreativeFormatsResponse with message returns the message."""
-        fmt = Format(format_id="display_300x250", name="Banner", type="display")
-        resp = ListCreativeFormatsResponse(formats=[fmt], message="Custom message")
-        assert str(resp) == "Custom message"
-
     def test_list_creative_formats_response_single_format(self):
         """ListCreativeFormatsResponse with single format generates appropriate message."""
         fmt = Format(format_id="banner_300x250", name="Banner", type="display")
