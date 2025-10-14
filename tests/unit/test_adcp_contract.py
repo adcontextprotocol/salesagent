@@ -1722,7 +1722,9 @@ class TestAdCPContract:
         )
 
         empty_adcp_response = empty_response.model_dump()
-        assert empty_adcp_response["media_buy_deliveries"] == [], "Empty media_buy_deliveries list should be empty array"
+        assert (
+            empty_adcp_response["media_buy_deliveries"] == []
+        ), "Empty media_buy_deliveries list should be empty array"
 
         # Verify field count (6 fields total)
         assert (
