@@ -2375,35 +2375,31 @@ class TestAdCPContract:
 
     def test_activate_signal_response_adcp_compliance(self):
         """Test that ActivateSignalResponse model complies with AdCP activate-signal response schema."""
-        from src.core.schema_adapters import ActivateSignalResponse
+        from src.core.schemas import ActivateSignalResponse
 
-        # Minimal required fields (adcp_version removed from AdCP spec)
-        response = ActivateSignalResponse(task_id="task_123", status="pending")
+        # Minimal required fields (per AdCP PR #113 - only domain fields)
+        response = ActivateSignalResponse(signal_id="sig_123")
 
         # Convert to AdCP format (excludes internal fields)
         adcp_response = response.model_dump(exclude_none=True)
 
-        # Verify required fields are present
-        assert "task_id" in adcp_response
-        assert "status" in adcp_response
+        # Verify required fields are present (protocol fields like task_id, status removed)
+        assert "signal_id" in adcp_response
 
-        # Verify field count (at least 2 core fields)
+        # Verify field count (domain fields only: signal_id, activation_details, errors)
         assert (
-            len(adcp_response) >= 2
-        ), f"ActivateSignalResponse should have at least 2 core fields, got {len(adcp_response)}"
+            len(adcp_response) >= 1
+        ), f"ActivateSignalResponse should have at least 1 core field, got {len(adcp_response)}"
 
-        # Test with all fields
+        # Test with activation details (domain data)
         full_response = ActivateSignalResponse(
-            task_id="task_456",
-            status="deployed",
-            decisioning_platform_segment_id="seg_789",
-            estimated_activation_duration_minutes=5.0,
-            deployed_at="2025-01-15T10:30:00Z",
+            signal_id="sig_456",
+            activation_details={"platform_id": "seg_789", "estimated_duration_minutes": 5.0},
             errors=None,
         )
         full_dump = full_response.model_dump(exclude_none=True)
-        assert full_dump["status"] == "deployed"
-        assert full_dump["decisioning_platform_segment_id"] == "seg_789"
+        assert full_dump["signal_id"] == "sig_456"
+        assert full_dump["activation_details"]["platform_id"] == "seg_789"
 
 
 if __name__ == "__main__":
