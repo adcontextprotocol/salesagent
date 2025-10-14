@@ -94,8 +94,8 @@ def get_tenant_config_from_db(tenant_id):
                 config["adapters"] = adapter_config
 
             # Build features config from individual columns
+            # Note: max_daily_budget moved to currency_limits table (per-currency limits)
             config["features"] = {
-                "max_daily_budget": tenant.max_daily_budget,
                 "enable_axe_signals": tenant.enable_axe_signals,
             }
 
