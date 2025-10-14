@@ -74,7 +74,6 @@ from src.core.schema_adapters import (
 )
 from src.core.schema_helpers import create_get_products_request
 from src.core.schemas import (
-    AggregatedTotals,
     CreateHumanTaskResponse,
     CreateMediaBuyRequest,
     Creative,
@@ -2878,9 +2877,7 @@ def _list_authorized_properties_impl(
                     tag_metadata[tag.tag_id] = PropertyTagMetadata(name=tag.name, description=tag.description)
 
             # Create response
-            response = ListAuthorizedPropertiesResponse(
-                properties=properties, tags=tag_metadata, errors=[]
-            )
+            response = ListAuthorizedPropertiesResponse(properties=properties, tags=tag_metadata, errors=[])
 
             # Log audit
             audit_logger = get_audit_logger("AdCP", tenant_id)
@@ -4704,8 +4701,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
         return GetMediaBuyDeliveryResponse(
             reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
             currency="USD",
-            aggregated_totals=AggregatedTotals(impressions=0, spend=0, media_buy_count=0),
-            deliveries=[],
+            media_buy_deliveries=[],
             errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
         )
 
@@ -4875,10 +4871,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
     response = GetMediaBuyDeliveryResponse(
         reporting_period=reporting_period,
         currency="USD",
-        aggregated_totals=AggregatedTotals(
-            impressions=total_impressions, spend=total_spend, media_buy_count=media_buy_count
-        ),
-        deliveries=deliveries,
+        media_buy_deliveries=deliveries,
     )
 
     # Apply testing hooks if needed
