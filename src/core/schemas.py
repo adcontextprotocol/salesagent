@@ -443,20 +443,33 @@ def extract_budget_amount(budget: "Budget | float | dict | None", default_curren
     """Extract budget amount and currency from various budget formats (v1.8.0 compatible).
 
     Handles:
-    - v1.8.0 format: simple float (currency from separate field)
+    - v1.8.0 format: simple float (currency should be from pricing option)
     - Legacy format: Budget object with total and currency
     - Dict format: {'total': float, 'currency': str}
     - None: returns (0.0, default_currency)
 
     Args:
         budget: Budget in any supported format
-        default_currency: Currency to use if not specified (default: USD)
+        default_currency: Currency to use for v1.8.0 float budgets.
+                         **IMPORTANT**: This should be the currency from the selected
+                         pricing option, not an arbitrary default.
 
     Returns:
         Tuple of (amount, currency)
 
+    Note:
+        Per AdCP v1.8.0, currency is determined by the pricing option selected for
+        the package, not by the budget field. The default_currency parameter allows
+        callers to pass the pricing option's currency for v1.8.0 float budgets.
+        For legacy Budget objects, the currency from the object is used instead.
+
     Example:
-        amount, currency = extract_budget_amount(request.budget, request.currency or "USD")
+        # v1.8.0: currency from pricing option
+        pricing_currency = product.pricing_options[0].currency
+        amount, currency = extract_budget_amount(request.budget, pricing_currency)
+
+        # Legacy: currency from Budget object
+        amount, currency = extract_budget_amount(Budget(total=5000, currency="EUR"))
     """
     if budget is None:
         return (0.0, default_currency)

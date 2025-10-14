@@ -3528,14 +3528,17 @@ def _create_media_buy_impl(
         # Get currency from campaign level (AdCP PR #88), budget, or default to USD
         request_currency = None
         if req.currency:
-            # NEW: Campaign-level currency (AdCP PR #88)
+            # NEW: Campaign-level currency (AdCP PR #88 / v1.8.0)
+            # This should be the currency from the pricing option selected for the campaign
             request_currency = req.currency
         elif req.budget:
+            # Legacy: Extract currency from Budget object
             request_currency = req.budget.currency
         elif req.packages and req.packages[0].budget:
+            # Legacy: Extract currency from package budget
             request_currency = req.packages[0].budget.currency
         else:
-            request_currency = "USD"  # Default
+            request_currency = "USD"  # Default fallback
 
         # Get currency limits for this tenant and currency
         with get_db_session() as session:
