@@ -963,55 +963,88 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
     )
 
     # Only run policy checks if enabled in tenant settings
-    policy_check_enabled = advertising_policy.get("enabled", True)  # Default to enabled for backwards compatibility
+    policy_check_enabled = advertising_policy.get("enabled", False)  # Default to False for new tenants
+    policy_disabled_reason = None
+
     if not policy_check_enabled:
         # Skip policy checks if disabled
         policy_result = None
+        policy_disabled_reason = "disabled_by_tenant"
+        logger.info(f"Policy checks disabled for tenant {tenant['tenant_id']}")
     else:
         # Get tenant's Gemini API key for policy checks
         tenant_gemini_key = tenant.get("gemini_api_key")
-        policy_service = PolicyCheckService(gemini_api_key=tenant_gemini_key)
+        if not tenant_gemini_key:
+            # No API key - cannot run policy checks
+            policy_result = None
+            policy_disabled_reason = "no_gemini_api_key"
+            logger.warning(f"Policy checks enabled but no Gemini API key configured for tenant {tenant['tenant_id']}")
+        else:
+            policy_service = PolicyCheckService(gemini_api_key=tenant_gemini_key)
 
-        # Use advertising_policy settings for tenant-specific rules
-        tenant_policies = advertising_policy if advertising_policy else {}
+            # Use advertising_policy settings for tenant-specific rules
+            tenant_policies = advertising_policy if advertising_policy else {}
 
-        # Convert brand_manifest to dict if it's a BrandManifest object
-        brand_manifest_dict = None
-        if req.brand_manifest:
-            if hasattr(req.brand_manifest, "model_dump"):
-                brand_manifest_dict = req.brand_manifest.model_dump()
-            elif isinstance(req.brand_manifest, dict):
-                brand_manifest_dict = req.brand_manifest
-            else:
-                brand_manifest_dict = req.brand_manifest  # URL string
+            # Convert brand_manifest to dict if it's a BrandManifest object
+            brand_manifest_dict = None
+            if req.brand_manifest:
+                if hasattr(req.brand_manifest, "model_dump"):
+                    brand_manifest_dict = req.brand_manifest.model_dump()
+                elif isinstance(req.brand_manifest, dict):
+                    brand_manifest_dict = req.brand_manifest
+                else:
+                    brand_manifest_dict = req.brand_manifest  # URL string
 
-        policy_result = await policy_service.check_brief_compliance(
-            brief=req.brief,
-            promoted_offering=req.promoted_offering,
-            brand_manifest=brand_manifest_dict,
-            tenant_policies=tenant_policies if tenant_policies else None,
-        )
+            try:
+                policy_result = await policy_service.check_brief_compliance(
+                    brief=req.brief,
+                    promoted_offering=req.promoted_offering,
+                    brand_manifest=brand_manifest_dict,
+                    tenant_policies=tenant_policies if tenant_policies else None,
+                )
 
-        # Log the policy check
-        audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
-        audit_logger.log_operation(
-            operation="policy_check",
-            principal_name=principal_id or "anonymous",
-            principal_id=principal_id or "anonymous",
-            adapter_id="policy_service",
-            success=policy_result.status != PolicyStatus.BLOCKED,
-            details={
-                "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
-                "promoted_offering": (
-                    req.promoted_offering[:100] + "..."
-                    if req.promoted_offering and len(req.promoted_offering) > 100
-                    else req.promoted_offering
-                ),
-                "policy_status": policy_result.status,
-                "reason": policy_result.reason,
-                "restrictions": policy_result.restrictions,
-            },
-        )
+                # Log successful policy check
+                audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+                audit_logger.log_operation(
+                    operation="policy_check",
+                    principal_name=principal_id or "anonymous",
+                    principal_id=principal_id or "anonymous",
+                    adapter_id="policy_service",
+                    success=policy_result.status != PolicyStatus.BLOCKED,
+                    details={
+                        "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
+                        "promoted_offering": (
+                            req.promoted_offering[:100] + "..."
+                            if req.promoted_offering and len(req.promoted_offering) > 100
+                            else req.promoted_offering
+                        ),
+                        "policy_status": policy_result.status,
+                        "reason": policy_result.reason,
+                        "restrictions": policy_result.restrictions,
+                    },
+                )
+
+            except Exception as e:
+                # Policy check failed - log error
+                logger.error(f"Policy check failed for tenant {tenant['tenant_id']}: {e}")
+                audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+                audit_logger.log_operation(
+                    operation="policy_check_failure",
+                    principal_name=principal_id or "anonymous",
+                    principal_id=principal_id or "anonymous",
+                    adapter_id="policy_service",
+                    success=False,
+                    details={
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
+                    },
+                )
+
+                # Fail open by default (allow campaigns) with warning in response
+                policy_result = None
+                policy_disabled_reason = f"service_error: {type(e).__name__}"
+                logger.warning(f"Policy check failed, allowing campaign by default: {e}")
 
     # Handle policy result based on settings
     if policy_result and policy_result.status == PolicyStatus.BLOCKED:

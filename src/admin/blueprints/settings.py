@@ -47,6 +47,42 @@ def validate_naming_template(template: str, field_name: str) -> str | None:
     return None
 
 
+def validate_policy_list(
+    items: list[str], field_name: str, max_items: int = 100, max_length: int = 500
+) -> tuple[list[str], str | None]:
+    """Validate and sanitize policy rule lists.
+
+    Args:
+        items: List of policy rules to validate
+        field_name: Name of the field for error messages
+        max_items: Maximum number of items allowed (default: 100)
+        max_length: Maximum length per item (default: 500)
+
+    Returns:
+        Tuple of (validated_items, error_message)
+        If validation passes, error_message is None
+    """
+    if len(items) > max_items:
+        return [], f"{field_name}: Maximum {max_items} items allowed (received {len(items)})"
+
+    validated = []
+    for idx, item in enumerate(items):
+        # Normalize whitespace (remove control characters, multiple spaces)
+        sanitized = " ".join(item.split())
+
+        if len(sanitized) > max_length:
+            return [], f"{field_name}: Item {idx + 1} exceeds {max_length} characters: '{sanitized[:50]}...'"
+
+        # Check for potentially dangerous characters (HTML, scripts)
+        if any(char in sanitized for char in ["<", ">", "{", "}"]):
+            return [], f"{field_name}: Item {idx + 1} contains invalid characters: '{sanitized[:50]}...'"
+
+        if sanitized:  # Only add non-empty after sanitization
+            validated.append(sanitized)
+
+    return validated, None
+
+
 # Tenant management settings routes
 @tenant_management_settings_bp.route("/settings")
 @require_auth(admin_only=True)
@@ -885,55 +921,45 @@ def update_business_rules(tenant_id):
                     # Checkbox not present means unchecked
                     advertising_policy["enabled"] = False
 
-                # Update baseline/default prohibited categories
-                if "default_prohibited_categories" in data:
-                    categories_str = data.get("default_prohibited_categories", "").strip()
-                    if categories_str:
-                        # Parse newline-separated list
-                        categories = [cat.strip() for cat in categories_str.split("\n") if cat.strip()]
-                        advertising_policy["default_prohibited_categories"] = categories
-                    else:
-                        advertising_policy["default_prohibited_categories"] = []
+                # Helper function for parsing and validating policy lists
+                def parse_and_validate_policy_field(field_name: str, display_name: str) -> list[str]:
+                    """Parse and validate a policy field from form data."""
+                    field_str = data.get(field_name, "").strip()
+                    if not field_str:
+                        return []
 
-                # Update baseline/default prohibited tactics
-                if "default_prohibited_tactics" in data:
-                    tactics_str = data.get("default_prohibited_tactics", "").strip()
-                    if tactics_str:
-                        # Parse newline-separated list
-                        tactics = [tactic.strip() for tactic in tactics_str.split("\n") if tactic.strip()]
-                        advertising_policy["default_prohibited_tactics"] = tactics
-                    else:
-                        advertising_policy["default_prohibited_tactics"] = []
+                    # Parse newline-separated list
+                    items = [line.strip() for line in field_str.split("\n") if line.strip()]
 
-                # Update additional prohibited categories
-                if "prohibited_categories" in data:
-                    categories_str = data.get("prohibited_categories", "").strip()
-                    if categories_str:
-                        # Parse newline-separated list
-                        categories = [cat.strip() for cat in categories_str.split("\n") if cat.strip()]
-                        advertising_policy["prohibited_categories"] = categories
-                    else:
-                        advertising_policy["prohibited_categories"] = []
+                    # Validate
+                    validated, error = validate_policy_list(items, display_name)
+                    if error:
+                        if request.is_json:
+                            raise ValueError(error)
+                        flash(error, "error")
+                        raise ValueError(error)
 
-                # Update additional prohibited tactics
-                if "prohibited_tactics" in data:
-                    tactics_str = data.get("prohibited_tactics", "").strip()
-                    if tactics_str:
-                        # Parse newline-separated list
-                        tactics = [tactic.strip() for tactic in tactics_str.split("\n") if tactic.strip()]
-                        advertising_policy["prohibited_tactics"] = tactics
-                    else:
-                        advertising_policy["prohibited_tactics"] = []
+                    return validated
 
-                # Update prohibited advertisers
-                if "prohibited_advertisers" in data:
-                    advertisers_str = data.get("prohibited_advertisers", "").strip()
-                    if advertisers_str:
-                        # Parse newline-separated list
-                        advertisers = [adv.strip() for adv in advertisers_str.split("\n") if adv.strip()]
-                        advertising_policy["prohibited_advertisers"] = advertisers
-                    else:
-                        advertising_policy["prohibited_advertisers"] = []
+                # Update all policy fields with validation
+                policy_fields = {
+                    "default_prohibited_categories": "Baseline Protected Categories",
+                    "default_prohibited_tactics": "Baseline Prohibited Tactics",
+                    "prohibited_categories": "Additional Prohibited Categories",
+                    "prohibited_tactics": "Additional Prohibited Tactics",
+                    "prohibited_advertisers": "Blocked Advertisers/Domains",
+                }
+
+                for field_name, display_name in policy_fields.items():
+                    if field_name in data:
+                        try:
+                            advertising_policy[field_name] = parse_and_validate_policy_field(field_name, display_name)
+                        except ValueError as e:
+                            if request.is_json:
+                                return jsonify({"success": False, "error": str(e)}), 400
+                            return redirect(
+                                url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules")
+                            )
 
                 # Save updated policy
                 tenant.advertising_policy = advertising_policy
