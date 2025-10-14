@@ -24,58 +24,44 @@ See [deployment.md](deployment.md) for platform-specific guides. We support your
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues and solutions
 - **[deployment.md](deployment.md)** - Production deployment guide
 
-### Security & Authentication
+### Security & Features
 - **[security.md](security.md)** - Authentication architecture and security best practices
-- **[a2a-authentication-guide.md](a2a-authentication-guide.md)** - A2A authentication specifics
+- **[webhooks.md](webhooks.md)** - Webhook integration guide
+- **[encryption.md](encryption.md)** - Data encryption and security
+- **[delivery-simulation.md](delivery-simulation.md)** - Delivery reporting simulation
+- **[ai-creative-summary.md](ai-creative-summary.md)** - AI creative summarization
 
-## Testing Documentation
+## Specialized Documentation
 
-### Overview
-- **[testing.md](testing.md)** - Testing strategy overview
-- **[testing/README.md](testing/README.md)** - Testing directory index
+### Adapters
+- **[adapters/](adapters/)** - Ad server adapter documentation
+  - Mock adapter guide
+  - GAM configuration and testing
+  - Real-world examples
 
-### Detailed Guides
-- **[testing/adcp-compliance.md](testing/adcp-compliance.md)** - AdCP protocol compliance testing (MANDATORY)
-- **[testing/mcp-roundtrip-validation.md](testing/mcp-roundtrip-validation.md)** - MCP tool roundtrip patterns
-- **[testing/a2a-regression-prevention.md](testing/a2a-regression-prevention.md)** - A2A regression prevention
+### Development
+- **[development/](development/)** - Development guides
+  - Database patterns and migrations
+  - Model import conventions
+  - Schema auto-generation
 
-### Specialized Testing
-- **[testing-database-field-access.md](testing-database-field-access.md)** - Database field access patterns
-- **[gam-testing-setup.md](gam-testing-setup.md)** - GAM testing configuration
+### Testing
+- **[testing/](testing/)** - Testing documentation
+  - AdCP compliance testing (MANDATORY)
+  - Pre-push workflow
+  - Mocking policies
 
-## Protocol Implementation
+### Deployment
+- **[deployment/](deployment/)** - Deployment guides
+  - Docker Hub authentication
 
-### A2A (Agent-to-Agent)
-- **[a2a-implementation-guide.md](a2a-implementation-guide.md)** - Complete A2A implementation guide
-- **[a2a-overview.md](a2a-overview.md)** - A2A protocol overview
+### Partners
+- **[partners/](partners/)** - Partner-specific documentation
+  - Bug analyses and postmortems
+  - Integration notes
 
-### MCP (Model Context Protocol)
-- **[api.md](api.md)** - MCP API reference
-- **[mcp-usage.md](mcp-usage.md)** - Using the MCP client
-
-### AdCP (Advertising Context Protocol)
+### Reference
 - **[adcp-field-mapping.md](adcp-field-mapping.md)** - AdCP protocol field mappings
-
-## Database & Schema
-
-- **[database-patterns.md](database-patterns.md)** - Database design patterns
-- **[schema-sync-enforcement.md](schema-sync-enforcement.md)** - Schema validation and alignment
-- **[model-import-conventions.md](model-import-conventions.md)** - Import patterns and conventions
-
-## System Overview
-
-```
-┌─────────────────┐     ┌──────────────────┐
-│   AI Agent      │────▶│  AdCP Sales Agent│
-└─────────────────┘     └──────────────────┘
-                              │
-                ┌─────────────┼─────────────┐
-                ▼             ▼             ▼
-        ┌──────────────┐ ┌────────┐ ┌──────────────┐
-        │ Google Ad    │ │ Kevel  │ │ Mock         │
-        │ Manager      │ │        │ │ Adapter      │
-        └──────────────┘ └────────┘ └──────────────┘
-```
 
 ## Documentation Structure
 
@@ -88,12 +74,12 @@ docs/
 ├── DEVELOPMENT.md                 # Dev workflows
 ├── TROUBLESHOOTING.md             # Issue resolution
 ├── security.md                    # Security & auth
-├── a2a-implementation-guide.md    # A2A complete guide
+├── deployment.md                  # Deployment guide
+├── adapters/                      # Adapter documentation
+├── development/                   # Development guides
+├── deployment/                    # Deployment guides
+├── partners/                      # Partner-specific docs
 └── testing/                       # Testing documentation
-    ├── README.md                  # Testing index
-    ├── adcp-compliance.md         # Protocol compliance
-    ├── mcp-roundtrip-validation.md # MCP patterns
-    └── a2a-regression-prevention.md # A2A regression tests
 ```
 
 ## Finding Information
@@ -106,18 +92,16 @@ docs/
 
 **Writing Code**
 - [DEVELOPMENT.md](DEVELOPMENT.md) - Development practices
-- [database-patterns.md](database-patterns.md) - Database patterns
-- [model-import-conventions.md](model-import-conventions.md) - Import conventions
+- [development/database-patterns.md](development/database-patterns.md) - Database patterns
+- [development/model-import-conventions.md](development/model-import-conventions.md) - Import conventions
 
 **Testing**
 - [testing/adcp-compliance.md](testing/adcp-compliance.md) - Protocol compliance (MANDATORY)
-- [testing/mcp-roundtrip-validation.md](testing/mcp-roundtrip-validation.md) - MCP tool testing
-- [testing/a2a-regression-prevention.md](testing/a2a-regression-prevention.md) - A2A regression prevention
+- [testing/pre-push-workflow.md](testing/pre-push-workflow.md) - Pre-push validation
 
-**Protocols**
-- [a2a-implementation-guide.md](a2a-implementation-guide.md) - Complete A2A guide
-- [mcp-usage.md](mcp-usage.md) - MCP client usage
-- [adcp-field-mapping.md](adcp-field-mapping.md) - AdCP field mappings
+**Adapters**
+- [adapters/mock-adapter-guide.md](adapters/mock-adapter-guide.md) - Mock adapter usage
+- [adapters/gam-product-configuration-guide.md](adapters/gam-product-configuration-guide.md) - GAM configuration
 
 **Deployment & Operations**
 - [deployment.md](deployment.md) - Production deployment
@@ -135,17 +119,32 @@ docs/
 **Feature Development**
 1. [DEVELOPMENT.md](DEVELOPMENT.md) - Workflows
 2. [testing/adcp-compliance.md](testing/adcp-compliance.md) - Compliance testing
-3. [database-patterns.md](database-patterns.md) - Database patterns
+3. [development/database-patterns.md](development/database-patterns.md) - Database patterns
 
-**Protocol Implementation**
-1. [a2a-implementation-guide.md](a2a-implementation-guide.md) - A2A complete guide
-2. [mcp-usage.md](mcp-usage.md) - MCP patterns
-3. [adcp-field-mapping.md](adcp-field-mapping.md) - AdCP mappings
+**Adapter Development**
+1. [adapters/README.md](adapters/README.md) - Adapter overview
+2. [adapters/adapter-real-world-example.md](adapters/adapter-real-world-example.md) - Example implementation
+3. [ARCHITECTURE.md](ARCHITECTURE.md#adapter-pattern) - Adapter architecture
 
 **DevOps/Operations**
 1. [deployment.md](deployment.md) - Deployment guide
 2. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Issue resolution
 3. [security.md](security.md) - Security configuration
+
+## System Overview
+
+```
+┌─────────────────┐     ┌──────────────────┐
+│   AI Agent      │────▶│  AdCP Sales Agent│
+└─────────────────┘     └──────────────────┘
+                              │
+                ┌─────────────┼─────────────┐
+                ▼             ▼             ▼
+        ┌──────────────┐ ┌────────┐ ┌──────────────┐
+        │ Google Ad    │ │ Kevel  │ │ Mock         │
+        │ Manager      │ │        │ │ Adapter      │
+        └──────────────┘ └────────┘ └──────────────┘
+```
 
 ## Key Concepts
 
@@ -153,7 +152,7 @@ docs/
 - **MCP Server** (port 8080) - FastMCP-based tools for AI agents
 - **Admin UI** (port 8001) - Google OAuth secured web interface
 - **A2A Server** (port 8091) - Standard python-a2a agent-to-agent communication
-- **Database** - PostgreSQL (production) or SQLite (development)
+- **Database** - PostgreSQL (production and testing)
 
 ### Core Features
 - **Multi-Tenancy** - Database-backed isolation with subdomain routing
@@ -179,6 +178,8 @@ When adding new documentation:
 1. **Location**: Place in appropriate directory
    - Core guides in `docs/`
    - Testing guides in `docs/testing/`
+   - Adapter guides in `docs/adapters/`
+   - Development guides in `docs/development/`
 2. **Style**: Use clear, descriptive headings
 3. **Examples**: Include code examples where helpful
 4. **Links**: Link to related documents
