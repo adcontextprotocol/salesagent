@@ -16,6 +16,9 @@
       "description": "Format identifier within the agent's namespace (e.g., 'display_300x250', 'video_standard_30s')"
     }
   },
-  "required": ["agent_url", "id"],
+  "required": [
+    "agent_url",
+    "id"
+  ],
   "additionalProperties": false
 }

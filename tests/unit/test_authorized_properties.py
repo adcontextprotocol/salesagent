@@ -168,9 +168,8 @@ class TestListAuthorizedPropertiesResponse:
 
     def test_response_with_minimal_fields(self):
         """Test response with only required fields."""
-        response = ListAuthorizedPropertiesResponse(adcp_version="1.0.0", properties=[])
+        response = ListAuthorizedPropertiesResponse(properties=[])
 
-        assert response.adcp_version == "1.0.0"
         assert response.properties == []
         assert response.tags == {}
         assert response.errors is None
@@ -188,20 +187,18 @@ class TestListAuthorizedPropertiesResponse:
         tag_metadata = PropertyTagMetadata(name="Premium Content", description="High-quality content properties")
 
         response = ListAuthorizedPropertiesResponse(
-            adcp_version="1.0.0",
             properties=[property_obj],
             tags={"premium_content": tag_metadata},
             errors=[{"code": "WARNING", "message": "Test warning"}],
         )
 
-        assert response.adcp_version == "1.0.0"
         assert len(response.properties) == 1
         assert "premium_content" in response.tags
         assert len(response.errors) == 1
 
     def test_response_model_dump_includes_empty_errors(self):
         """Test that model_dump ensures errors is always present."""
-        response = ListAuthorizedPropertiesResponse(adcp_version="1.0.0", properties=[])
+        response = ListAuthorizedPropertiesResponse(properties=[])
 
         data = response.model_dump()
         assert "errors" in data
@@ -218,7 +215,6 @@ class TestListAuthorizedPropertiesResponse:
         )
 
         response = ListAuthorizedPropertiesResponse(
-            adcp_version="1.0.0",
             properties=[property_obj],
             tags={"test": PropertyTagMetadata(name="Test", description="Test tag")},
             errors=[],
@@ -227,8 +223,9 @@ class TestListAuthorizedPropertiesResponse:
         # Test AdCP-compliant response
         adcp_response = response.model_dump()
 
-        # Verify required AdCP fields present and non-null
-        required_fields = ["adcp_version", "properties"]
+        # Verify required AdCP fields present and non-null (per official spec)
+        # NOTE: adcp_version is NOT in official spec
+        required_fields = ["properties"]
         for field in required_fields:
             assert field in adcp_response
             assert adcp_response[field] is not None
@@ -238,8 +235,8 @@ class TestListAuthorizedPropertiesResponse:
         for field in optional_fields:
             assert field in adcp_response
 
-        # Verify field count expectations
-        assert len(adcp_response) == 7  # 2 required + 5 optional
+        # Verify field count expectations (6 fields per official spec, excluding adcp_version)
+        assert len(adcp_response) == 6  # 1 required + 5 optional
 
 
 class TestPropertyTagMetadata:
