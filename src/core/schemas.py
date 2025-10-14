@@ -168,20 +168,23 @@ class AssetRequirement(BaseModel):
 class FormatReference(BaseModel):
     """Reference to a format from a specific creative agent.
 
+    DEPRECATED: Use FormatId instead. This class is maintained for backward compatibility.
+    FormatReference serializes as FormatId (with 'id' field) but accepts 'format_id' for legacy code.
+
     Used in Product.formats to store full format references with agent URL.
     This enables dynamic format resolution from the correct creative agent.
 
     Example:
         {
             "agent_url": "https://creative.adcontextprotocol.org",
-            "format_id": "display_300x250_image"
+            "format_id": "display_300x250_image"  # Serializes as "id" per AdCP spec
         }
     """
 
     agent_url: str = Field(
         ..., description="URL of the creative agent that provides this format (must be registered in tenant config)"
     )
-    format_id: str = Field(..., description="Format ID within that agent's format catalog")
+    format_id: str = Field(..., serialization_alias="id", description="Format ID within that agent's format catalog")
 
 
 class Format(BaseModel):
@@ -499,7 +502,10 @@ class Product(BaseModel):
     product_id: str
     name: str
     description: str
-    formats: list[FormatReference] | list[str]  # FormatReference objects or legacy string IDs (migration support)
+    formats: list["FormatId | FormatReference"] | list[str] = Field(
+        serialization_alias="format_ids",
+        description="Array of supported creative format IDs - structured format_id objects with agent_url and id",
+    )
     delivery_type: Literal["guaranteed", "non_guaranteed"]
 
     # NEW: Pricing options (AdCP PR #88)
@@ -1046,8 +1052,7 @@ class Creative(BaseModel):
 
     # AdCP spec compliant fields
     format: FormatId = Field(
-        alias="format_id",
-        description="Creative format identifier with agent_url namespace (AdCP v2.4+)"
+        alias="format_id", description="Creative format identifier with agent_url namespace (AdCP v2.4+)"
     )
     url: str = Field(alias="content_uri", description="URL of the creative content per AdCP spec")
 
@@ -1072,6 +1077,7 @@ class Creative(BaseModel):
             except ValueError as e:
                 raise ValueError(f"Invalid format_id: {e}")
         return values
+
     media_url: str | None = Field(None, description="Alternative media URL (typically same as url)")
     click_url: str | None = Field(None, alias="click_through_url", description="Landing page URL per AdCP spec")
 
