@@ -3572,7 +3572,9 @@ def _create_media_buy_impl(
             start_time = now
         else:
             # Ensure start_time is timezone-aware for comparison
-            start_time = req.start_time
+            # At this point, req.start_time is guaranteed to be datetime (not str)
+            assert isinstance(req.start_time, datetime), "start_time must be datetime when not 'asap'"
+            start_time = req.start_time  # type: datetime
             if start_time.tzinfo is None:
                 start_time = start_time.replace(tzinfo=UTC)
 
@@ -4773,16 +4775,17 @@ def _update_media_buy_impl(
             if media_buy:
                 # Determine currency (use updated or existing)
                 # Extract currency from Budget object if present (and if it's an object, not plain number)
-                request_currency = None
+                request_currency: str
                 if req.budget and hasattr(req.budget, "currency"):
-                    request_currency = req.budget.currency
-                request_currency = request_currency or media_buy.currency or "USD"
+                    request_currency = str(req.budget.currency)
+                else:
+                    request_currency = str(media_buy.currency) if media_buy.currency else "USD"
 
                 # Get currency limit
-                stmt = select(CurrencyLimit).where(
+                currency_stmt = select(CurrencyLimit).where(
                     CurrencyLimit.tenant_id == tenant["tenant_id"], CurrencyLimit.currency_code == request_currency
                 )
-                currency_limit = session.scalars(stmt).first()
+                currency_limit = session.scalars(currency_stmt).first()
 
                 if not currency_limit:
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
