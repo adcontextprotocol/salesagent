@@ -6,10 +6,12 @@ import uuid
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import func, select
+from sqlalchemy.orm import joinedload
 
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
 from src.core.database.models import PricingOption, Product, Tenant
+from src.core.database.product_pricing import get_product_pricing_options
 from src.core.validation import sanitize_form_data
 from src.services.gam_product_config_service import GAMProductConfigService
 
@@ -19,23 +21,62 @@ logger = logging.getLogger(__name__)
 products_bp = Blueprint("products", __name__)
 
 
-def get_creative_formats():
+def get_creative_formats(
+    tenant_id: str | None = None,
+    max_width: int | None = None,
+    max_height: int | None = None,
+    min_width: int | None = None,
+    min_height: int | None = None,
+    is_responsive: bool | None = None,
+    asset_types: list[str] | None = None,
+    name_search: str | None = None,
+    type_filter: str | None = None,
+):
     """Get all available creative formats for the product form.
 
-    Returns standard AdCP formats from FORMAT_REGISTRY (authoritative source).
-    Custom tenant-specific formats are stored in database but not used for product creation.
+    Returns formats from all registered creative agents (default + tenant-specific).
+    Uses CreativeAgentRegistry for dynamic format discovery.
+
+    Args:
+        tenant_id: Optional tenant ID for tenant-specific agents
+        max_width: Maximum width in pixels (inclusive)
+        max_height: Maximum height in pixels (inclusive)
+        min_width: Minimum width in pixels (inclusive)
+        min_height: Minimum height in pixels (inclusive)
+        is_responsive: Filter for responsive formats
+        asset_types: Filter by asset types
+        name_search: Search by name
+        type_filter: Filter by format type (display, video, audio)
+
+    Returns:
+        List of format dictionaries for frontend
     """
-    from src.core.schemas import FORMAT_REGISTRY
+    from src.core.format_resolver import list_available_formats
+
+    # Get formats from creative agent registry with optional filtering
+    formats = list_available_formats(
+        tenant_id=tenant_id,
+        max_width=max_width,
+        max_height=max_height,
+        min_width=min_width,
+        min_height=min_height,
+        is_responsive=is_responsive,
+        asset_types=asset_types,
+        name_search=name_search,
+        type_filter=type_filter,
+    )
+
+    logger.info(f"get_creative_formats: Fetched {len(formats)} formats from registry for tenant {tenant_id}")
 
     formats_list = []
-
-    # Use FORMAT_REGISTRY as authoritative source for standard formats
-    for _format_id, fmt in FORMAT_REGISTRY.items():
+    for fmt in formats:
         format_dict = {
             "format_id": fmt.format_id,
+            "agent_url": fmt.agent_url,
             "name": fmt.name,
             "type": fmt.type,
-            "description": f"{fmt.name} - {fmt.iab_specification or 'Standard format'}",
+            "category": fmt.category,
+            "description": fmt.description or f"{fmt.name} - {fmt.iab_specification or 'Standard format'}",
             "dimensions": None,
             "duration": None,
         }
@@ -43,6 +84,14 @@ def get_creative_formats():
         # Add dimensions for display/video formats
         if fmt.requirements and "width" in fmt.requirements and "height" in fmt.requirements:
             format_dict["dimensions"] = f"{fmt.requirements['width']}x{fmt.requirements['height']}"
+        elif "_" in fmt.format_id:
+            # Fallback: Parse dimensions from format_id (e.g., "display_300x250_image" → "300x250")
+            # This handles creative agents that don't populate requirements field
+            import re
+
+            match = re.search(r"_(\d+)x(\d+)_", fmt.format_id)
+            if match:
+                format_dict["dimensions"] = f"{match.group(1)}x{match.group(2)}"
 
         # Add duration for video/audio formats
         if fmt.requirements and "duration" in fmt.requirements:
@@ -54,6 +103,8 @@ def get_creative_formats():
 
     # Sort by type, then name
     formats_list.sort(key=lambda x: (x["type"], x["name"]))
+
+    logger.info(f"get_creative_formats: Returning {len(formats_list)} formatted formats")
 
     return formats_list
 
@@ -185,19 +236,24 @@ def list_products(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            products = db_session.scalars(select(Product).filter_by(tenant_id=tenant_id).order_by(Product.name)).all()
+            products = db_session.scalars(
+                select(Product)
+                .options(joinedload(Product.pricing_options))
+                .filter_by(tenant_id=tenant_id)
+                .order_by(Product.name)
+            ).all()
 
             # Convert products to dict format for template
             products_list = []
             for product in products:
+                # Use helper function to get pricing options (handles legacy fallback)
+                pricing_options_list = get_product_pricing_options(product)
+
                 product_dict = {
                     "product_id": product.product_id,
                     "name": product.name,
                     "description": product.description,
-                    "delivery_type": product.delivery_type,
-                    "is_fixed_price": product.is_fixed_price,
-                    "cpm": product.cpm,
-                    "price_guidance": product.price_guidance,
+                    "pricing_options": pricing_options_list,
                     "formats": (
                         product.formats
                         if isinstance(product.formats, list)
@@ -263,10 +319,18 @@ def add_product(tenant_id):
                 return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
             with get_db_session() as db_session:
-                # Parse formats - expecting multiple checkbox values
-                formats = request.form.getlist("formats")
-                if not formats:
-                    formats = []
+                # Parse formats - expecting JSON string with FormatReference objects
+                formats_json = form_data.get("formats", "[]")
+                try:
+                    formats = json.loads(formats_json) if formats_json else []
+                    # Validate format structure
+                    if not isinstance(formats, list):
+                        formats = []
+                except json.JSONDecodeError:
+                    # Fallback to legacy format (list of strings)
+                    formats = request.form.getlist("formats")
+                    if not formats:
+                        formats = []
 
                 # Parse countries - from multi-select
                 countries_list = request.form.getlist("countries")
@@ -348,6 +412,7 @@ def add_product(tenant_id):
                     product_kwargs["countries"] = countries
 
                 # Handle property authorization (AdCP requirement)
+                # Default to empty property_tags if not specified (satisfies DB constraint)
                 property_mode = form_data.get("property_mode", "tags")
                 if property_mode == "tags":
                     # Parse property tags from comma-separated string
@@ -401,6 +466,9 @@ def add_product(tenant_id):
                                 return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
                             product_kwargs["property_tags"] = property_tags
+                    else:
+                        # No tags provided, default to empty list to satisfy DB constraint
+                        product_kwargs["property_tags"] = []
                 elif property_mode == "full":
                     # Get selected property IDs and load full property objects
                     property_ids_str = request.form.getlist("property_ids")
@@ -439,6 +507,17 @@ def add_product(tenant_id):
                                 }
                                 properties_data.append(prop_dict)
                             product_kwargs["properties"] = properties_data
+                        else:
+                            # No properties found, default to empty property_tags to satisfy DB constraint
+                            product_kwargs["property_tags"] = []
+                    else:
+                        # No properties selected, default to empty property_tags to satisfy DB constraint
+                        product_kwargs["property_tags"] = []
+
+                # Ensure either properties or property_tags is set (DB constraint requirement)
+                if "properties" not in product_kwargs and "property_tags" not in product_kwargs:
+                    # Default to empty property_tags list if neither was set
+                    product_kwargs["property_tags"] = []
 
                 # Create product with correct fields matching the Product model
                 product = Product(**product_kwargs)
@@ -522,14 +601,14 @@ def add_product(tenant_id):
             "add_product_gam.html",
             tenant_id=tenant_id,
             inventory_synced=inventory_synced,
-            formats=get_creative_formats(),
+            formats=get_creative_formats(tenant_id=tenant_id),
             authorized_properties=properties_list,
             property_tags=property_tags,
             currencies=currencies,
         )
     else:
         # For Mock and other adapters: simple form
-        formats = get_creative_formats()
+        formats = get_creative_formats(tenant_id=tenant_id)
         return render_template(
             "add_product.html",
             tenant_id=tenant_id,
@@ -691,32 +770,6 @@ def edit_product(tenant_id, product_id):
                 return redirect(url_for("products.list_products", tenant_id=tenant_id))
 
             # GET request - show form
-            product_dict = {
-                "product_id": product.product_id,
-                "name": product.name,
-                "description": product.description,
-                "delivery_type": product.delivery_type,
-                "is_fixed_price": product.is_fixed_price,
-                "cpm": product.cpm,
-                "min_spend": product.min_spend,
-                "price_guidance": product.price_guidance,
-                "formats": (
-                    product.formats
-                    if isinstance(product.formats, list)
-                    else json.loads(product.formats) if product.formats else []
-                ),
-                "countries": (
-                    product.countries
-                    if isinstance(product.countries, list)
-                    else json.loads(product.countries) if product.countries else []
-                ),
-                "implementation_config": (
-                    product.implementation_config
-                    if isinstance(product.implementation_config, dict)
-                    else json.loads(product.implementation_config) if product.implementation_config else {}
-                ),
-            }
-
             # Load existing pricing options (AdCP PR #88)
             pricing_options = db_session.scalars(
                 select(PricingOption).filter_by(tenant_id=tenant_id, product_id=product_id)
@@ -735,6 +788,47 @@ def edit_product(tenant_id, product_id):
                         "min_spend_per_package": float(po.min_spend_per_package) if po.min_spend_per_package else None,
                     }
                 )
+
+            # Derive legacy fields from pricing_options (preferred) or product model (fallback)
+            # This ensures form displays pricing_options data, not potentially stale legacy fields
+            if pricing_options_list:
+                first_pricing = pricing_options_list[0]
+                delivery_type = "guaranteed" if first_pricing["is_fixed"] else "non_guaranteed"
+                is_fixed_price = first_pricing["is_fixed"]
+                cpm = first_pricing["rate"]
+                price_guidance = first_pricing["price_guidance"]
+            else:
+                # Fallback to legacy fields if no pricing_options exist
+                delivery_type = product.delivery_type
+                is_fixed_price = product.is_fixed_price
+                cpm = product.cpm
+                price_guidance = product.price_guidance
+
+            product_dict = {
+                "product_id": product.product_id,
+                "name": product.name,
+                "description": product.description,
+                "delivery_type": delivery_type,
+                "is_fixed_price": is_fixed_price,
+                "cpm": cpm,
+                "min_spend": product.min_spend,
+                "price_guidance": price_guidance,
+                "formats": (
+                    product.formats
+                    if isinstance(product.formats, list)
+                    else json.loads(product.formats) if product.formats else []
+                ),
+                "countries": (
+                    product.countries
+                    if isinstance(product.countries, list)
+                    else json.loads(product.countries) if product.countries else []
+                ),
+                "implementation_config": (
+                    product.implementation_config
+                    if isinstance(product.implementation_config, dict)
+                    else json.loads(product.implementation_config) if product.implementation_config else {}
+                ),
+            }
 
             product_dict["pricing_options"] = pricing_options_list
 

@@ -502,8 +502,8 @@
     </div>
 </div>
 
-<!-- Setup Checklist Widget (shown if any setup tasks incomplete, or not at 100%) -->
-{% if setup_status and setup_status.progress_percent < 100 %}
+<!-- Setup Checklist Widget (shown only until critical tasks complete) -->
+{% if setup_status and not setup_status.ready_for_orders %}
 {% include 'components/setup_checklist_widget.html' %}
 {% endif %}
 

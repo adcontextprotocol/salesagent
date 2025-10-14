@@ -436,6 +436,13 @@
             <span>Account</span>
         </a>
 
+        <a class="settings-nav-item" href="{{ url_for('tenants.setup_checklist', tenant_id=tenant.tenant_id) }}">
+            <span class="settings-nav-icon">✅</span>
+            <span>Setup Checklist</span>
+        </a>
+
+        <div class="settings-nav-separator"></div>
+
         <a class="settings-nav-item" data-section="adserver">
             <span class="settings-nav-icon">🖥️</span>
             <span>Ad Server</span>

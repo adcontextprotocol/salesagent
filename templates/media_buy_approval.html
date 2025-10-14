@@ -7,8 +7,8 @@
     <h1>Media Buy Approval</h1>
     <p style="color: #666;">Review the details and approve or reject this media buy request</p>
 
-    <!-- Alert for pending status -->
-    {% if media_buy.status == 'pending_manual' %}
+    <!-- Alert for pending approval status -->
+    {% if media_buy.status == 'pending_approval' %}
     <div class="alert alert-warning">
         <strong>⚠️ Manual Approval Required</strong><br>
         {% if human_task and human_task.error_detail %}
@@ -144,7 +144,7 @@
     </div>
 
     <!-- Approval Actions -->
-    {% if media_buy.status == 'pending_manual' %}
+    {% if media_buy.status == 'pending_approval' %}
     <div class="card" style="background: #f0f8ff;">
         <h3>Approval Actions</h3>
         <div style="display: flex; gap: 1rem;">

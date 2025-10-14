@@ -149,7 +149,7 @@ async def test_workflow_with_manual_approval():
 
             console.print(f"  Media buy status: {status}")
 
-            if status in ["pending_manual", "requires_approval", "pending_approval"]:
+            if status in ["pending_approval", "requires_approval"]:
                 console.print("  [yellow]Media buy requires manual approval![/yellow]")
                 console.print("  This would be handled through the admin UI workflow system")
 

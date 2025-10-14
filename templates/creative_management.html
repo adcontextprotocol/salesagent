@@ -172,7 +172,7 @@
                     ❌ Revoke Approval
                 </button>
                 {% endif %}
-                <button onclick="viewCreativeDetails('{{ creative.creative_id }}', {{ creative.data|tojson|safe }})" class="btn btn-sm btn-secondary">
+                <button onclick="viewCreativeDetails('{{ creative.creative_id }}')" class="btn btn-sm btn-secondary" data-creative-data="{{ creative.data|tojson|forceescape }}">
                     👁️ View Preview
                 </button>
             </div>
@@ -307,8 +307,16 @@ function approveCreative(creativeId) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
+        body: JSON.stringify({
+            approved_by: 'admin'
+        })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             alert('✅ Creative approved successfully!');
@@ -318,22 +326,36 @@ function approveCreative(creativeId) {
         }
     })
     .catch(error => {
-        alert('Failed to approve creative: ' + error);
+        console.error('Approve error:', error);
+        alert('Failed to approve creative: ' + error.message);
     });
 }
 
 // Reject creative
 function rejectCreative(creativeId) {
-    const reason = prompt('Please provide a reason for rejection (optional):');
+    const reason = prompt('Please provide a reason for rejection:');
     if (reason === null) return; // User cancelled
+
+    if (!reason.trim()) {
+        alert('Rejection reason is required.');
+        return;
+    }
 
     fetch(`${scriptName}/tenant/${tenantId}/creative-formats/review/${creativeId}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ reason: reason })
+        body: JSON.stringify({
+            rejected_by: 'admin',
+            rejection_reason: reason.trim()
+        })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             alert('❌ Creative rejected.');
@@ -343,7 +365,8 @@ function rejectCreative(creativeId) {
         }
     })
     .catch(error => {
-        alert('Failed to reject creative: ' + error);
+        console.error('Reject error:', error);
+        alert('Failed to reject creative: ' + error.message);
     });
 }
 
@@ -379,17 +402,54 @@ function aiReviewCreative(creativeId) {
 }
 
 // View creative details and preview
-function viewCreativeDetails(creativeId, creativeData) {
+function viewCreativeDetails(creativeId) {
     const modal = document.getElementById('previewModal');
     const content = document.getElementById('previewContent');
     const title = document.getElementById('previewTitle');
 
+    // Get creative data from the button's data attribute
+    const button = event.target.closest('button[data-creative-data]');
+    let creativeData = null;
+    if (button && button.dataset.creativeData) {
+        try {
+            creativeData = JSON.parse(button.dataset.creativeData);
+        } catch (error) {
+            console.error('Error parsing creative data:', error);
+        }
+    }
+
     title.textContent = `Creative Preview - ${creativeId.substring(0, 8)}...`;
+
+    // Show loading state
+    content.innerHTML = '<div style="text-align: center; padding: 3rem; color: #666;"><div style="display: inline-block; width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #0066cc; border-radius: 50%; animation: spin 1s linear infinite;"></div><p style="margin-top: 1rem;">Generating preview...</p></div><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>';
+    modal.style.display = 'block';
+
+    // Try to get preview from creative agent first
+    let previewUrl = null;
+    if (creativeData && creativeData.format && creativeData.agent_url) {
+        try {
+            // Note: This would call the creative agent's generate_preview endpoint
+            // For now, we'll check if a preview_url already exists in the creative data
+            previewUrl = creativeData.preview_url;
+        } catch (error) {
+            console.error('Error fetching preview from creative agent:', error);
+        }
+    }
 
     // Build preview content based on creative data
     let html = '<div style="padding: 1rem;">';
 
-    if (creativeData && creativeData.url) {
+    // If we have a preview_url from creative agent, use it
+    if (previewUrl) {
+        html += `<div style="text-align: center; padding: 2rem; background: #f9fafb; border-radius: 8px;">
+                    <iframe src="${previewUrl}" style="width: 100%; min-height: 600px; border: 1px solid #ddd; border-radius: 4px;" sandbox="allow-scripts allow-same-origin"></iframe>
+                    <p style="margin-top: 1rem; color: #666; font-size: 0.9rem;">
+                        <strong>Preview generated by:</strong> ${creativeData.agent_url || 'Creative Agent'}
+                    </p>
+                 </div>`;
+    }
+    // Fallback to legacy preview logic
+    else if (creativeData && creativeData.url) {
         const url = creativeData.url;
         const format = creativeData.format || '';
 

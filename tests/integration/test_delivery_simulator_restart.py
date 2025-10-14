@@ -209,7 +209,7 @@ class TestDeliverySimulatorRestart:
                         (MediaBuy.tenant_id == PushNotificationConfig.tenant_id)
                         & (MediaBuy.principal_id == PushNotificationConfig.principal_id),
                     )
-                    .where(MediaBuy.status.in_(["pending", "active", "working"]))
+                    .where(MediaBuy.status.in_(["ready", "active", "working"]))
                     .where(PushNotificationConfig.is_active)
                 )
                 results = session.execute(stmt).all()
