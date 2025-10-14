@@ -343,15 +343,18 @@ def init_db_ci():
 
             # Create authorized property for setup checklist completion
             print("\nCreating authorized property for setup checklist...")
-            stmt_check_property = select(AuthorizedProperty).filter_by(tenant_id=tenant_id, property_url="example.com")
+            stmt_check_property = select(AuthorizedProperty).filter_by(tenant_id=tenant_id, property_id="example_com")
             existing_property = session.scalars(stmt_check_property).first()
 
             if not existing_property:
                 authorized_prop = AuthorizedProperty(
                     tenant_id=tenant_id,
-                    property_url="example.com",
-                    verification_method="agent_json",
-                    is_verified=True,
+                    property_id="example_com",
+                    property_type="website",
+                    name="Example Website",
+                    identifiers=[{"type": "domain", "value": "example.com"}],
+                    publisher_domain="example.com",
+                    verification_status="verified",
                 )
                 session.add(authorized_prop)
                 session.commit()
