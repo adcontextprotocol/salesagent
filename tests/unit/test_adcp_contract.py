@@ -1856,28 +1856,29 @@ class TestAdCPContract:
         tag_metadata = PropertyTagMetadata(name="Premium Content", description="High-quality content properties")
 
         response = ListAuthorizedPropertiesResponse(
-            adcp_version="1.0.0", properties=[property_obj], tags={"premium_content": tag_metadata}, errors=[]
+            properties=[property_obj], tags={"premium_content": tag_metadata}, errors=[]
         )
 
         # Test AdCP-compliant response
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["adcp_version", "properties"]
+        required_fields = ["properties"]
         for field in required_fields:
             assert field in adcp_response
             assert adcp_response[field] is not None
 
         # Verify optional AdCP fields present (can be null)
-        optional_fields = ["tags", "errors", "primary_channels", "primary_countries", "portfolio_description"]
+        optional_fields = [
+            "tags",
+            "errors",
+            "primary_channels",
+            "primary_countries",
+            "portfolio_description",
+            "advertising_policies",
+        ]
         for field in optional_fields:
             assert field in adcp_response
-
-        # Verify adcp_version format
-        import re
-
-        version_pattern = r"^\d+\.\d+\.\d+$"
-        assert re.match(version_pattern, adcp_response["adcp_version"])
 
         # Verify properties is array
         assert isinstance(adcp_response["properties"], list)

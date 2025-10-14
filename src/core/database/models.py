@@ -70,6 +70,11 @@ class Tenant(Base, JSONValidatorMixin):
     ai_policy = Column(
         JSONType, nullable=True, comment="AI review policy configuration with confidence thresholds"
     )  # Stores AIReviewPolicy as JSON
+    advertising_policy = Column(
+        JSONType,
+        nullable=True,
+        comment="Advertising policy configuration with prohibited categories, tactics, and advertisers",
+    )  # Stores advertising policy rules as JSON
 
     # Naming templates (business rules - shared across all adapters)
     order_name_template = Column(

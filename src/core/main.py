@@ -1026,61 +1026,108 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
                 f"not just generic category (e.g., 'Nike Air Jordan 2025' not 'athletic footwear')"
             )
 
-    # Check policy compliance first
-    policy_service = PolicyCheckService()
-    # Safely parse policy_settings that might be JSON string (SQLite) or dict (PostgreSQL JSONB)
-    tenant_policies = safe_parse_json_field(tenant.get("policy_settings"), field_name="policy_settings", default={})
+    # Check policy compliance first (if enabled)
+    advertising_policy = safe_parse_json_field(
+        tenant.get("advertising_policy"), field_name="advertising_policy", default={}
+    )
 
-    # Convert brand_manifest to dict if it's a BrandManifest object
-    brand_manifest_dict = None
-    if req.brand_manifest:
-        if hasattr(req.brand_manifest, "model_dump"):
-            brand_manifest_dict = req.brand_manifest.model_dump()
-        elif isinstance(req.brand_manifest, dict):
-            brand_manifest_dict = req.brand_manifest
+    # Only run policy checks if enabled in tenant settings
+    policy_check_enabled = advertising_policy.get("enabled", False)  # Default to False for new tenants
+    policy_disabled_reason = None
+
+    if not policy_check_enabled:
+        # Skip policy checks if disabled
+        policy_result = None
+        policy_disabled_reason = "disabled_by_tenant"
+        logger.info(f"Policy checks disabled for tenant {tenant['tenant_id']}")
+    else:
+        # Get tenant's Gemini API key for policy checks
+        tenant_gemini_key = tenant.get("gemini_api_key")
+        if not tenant_gemini_key:
+            # No API key - cannot run policy checks
+            policy_result = None
+            policy_disabled_reason = "no_gemini_api_key"
+            logger.warning(f"Policy checks enabled but no Gemini API key configured for tenant {tenant['tenant_id']}")
         else:
-            brand_manifest_dict = req.brand_manifest  # URL string
+            policy_service = PolicyCheckService(gemini_api_key=tenant_gemini_key)
 
-    policy_result = await policy_service.check_brief_compliance(
-        brief=req.brief,
-        promoted_offering=req.promoted_offering,
-        brand_manifest=brand_manifest_dict,
-        tenant_policies=tenant_policies if tenant_policies else None,
-    )
+            # Use advertising_policy settings for tenant-specific rules
+            tenant_policies = advertising_policy if advertising_policy else {}
 
-    # Log the policy check
-    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
-    audit_logger.log_operation(
-        operation="policy_check",
-        principal_name=principal_id or "anonymous",
-        principal_id=principal_id or "anonymous",
-        adapter_id="policy_service",
-        success=policy_result.status != PolicyStatus.BLOCKED,
-        details={
-            "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
-            "promoted_offering": (
-                req.promoted_offering[:100] + "..."
-                if req.promoted_offering and len(req.promoted_offering) > 100
-                else req.promoted_offering
-            ),
-            "policy_status": policy_result.status,
-            "reason": policy_result.reason,
-            "restrictions": policy_result.restrictions,
-        },
-    )
+            # Convert brand_manifest to dict if it's a BrandManifest object
+            brand_manifest_dict = None
+            if req.brand_manifest:
+                if hasattr(req.brand_manifest, "model_dump"):
+                    brand_manifest_dict = req.brand_manifest.model_dump()
+                elif isinstance(req.brand_manifest, dict):
+                    brand_manifest_dict = req.brand_manifest
+                else:
+                    brand_manifest_dict = req.brand_manifest  # URL string
+
+            try:
+                policy_result = await policy_service.check_brief_compliance(
+                    brief=req.brief,
+                    promoted_offering=req.promoted_offering,
+                    brand_manifest=brand_manifest_dict,
+                    tenant_policies=tenant_policies if tenant_policies else None,
+                )
+
+                # Log successful policy check
+                audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+                audit_logger.log_operation(
+                    operation="policy_check",
+                    principal_name=principal_id or "anonymous",
+                    principal_id=principal_id or "anonymous",
+                    adapter_id="policy_service",
+                    success=policy_result.status != PolicyStatus.BLOCKED,
+                    details={
+                        "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
+                        "promoted_offering": (
+                            req.promoted_offering[:100] + "..."
+                            if req.promoted_offering and len(req.promoted_offering) > 100
+                            else req.promoted_offering
+                        ),
+                        "policy_status": policy_result.status,
+                        "reason": policy_result.reason,
+                        "restrictions": policy_result.restrictions,
+                    },
+                )
+
+            except Exception as e:
+                # Policy check failed - log error
+                logger.error(f"Policy check failed for tenant {tenant['tenant_id']}: {e}")
+                audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+                audit_logger.log_operation(
+                    operation="policy_check_failure",
+                    principal_name=principal_id or "anonymous",
+                    principal_id=principal_id or "anonymous",
+                    adapter_id="policy_service",
+                    success=False,
+                    details={
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
+                    },
+                )
+
+                # Fail open by default (allow campaigns) with warning in response
+                policy_result = None
+                policy_disabled_reason = f"service_error: {type(e).__name__}"
+                logger.warning(f"Policy check failed, allowing campaign by default: {e}")
 
     # Handle policy result based on settings
-    # Use the already parsed policy_settings from above
-    policy_settings = tenant_policies
-
-    if policy_result.status == PolicyStatus.BLOCKED:
+    if policy_result and policy_result.status == PolicyStatus.BLOCKED:
         # Always block if policy says blocked
         logger.warning(f"Brief blocked by policy: {policy_result.reason}")
         # Raise ToolError to properly signal failure to client
         raise ToolError("POLICY_VIOLATION", policy_result.reason)
 
     # If restricted and manual review is required, create a task
-    if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get("require_manual_review", False):
+    if (
+        policy_result
+        and policy_result.status == PolicyStatus.RESTRICTED
+        and advertising_policy.get("require_manual_review", False)
+    ):
         # Create a manual review task
         from src.core.database.database_session import get_db_session
 
@@ -1088,6 +1135,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
             # Log policy violation for audit trail and compliance
+            audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
             audit_logger.log_operation(
                 operation="get_products_policy_violation",
                 principal_name=principal_id,
@@ -1253,17 +1301,22 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
         products = filtered_products
         logger.info(f"Applied filters: {req.filters.model_dump(exclude_none=True)}. {len(products)} products remain.")
 
-    # Filter products based on policy compliance
+    # Filter products based on policy compliance (if policy checks are enabled)
     eligible_products = []
-    for product in products:
-        is_eligible, reason = policy_service.check_product_eligibility(policy_result, product.model_dump())
+    if policy_result and policy_check_enabled:
+        # Policy checks are enabled - filter products based on policy compliance
+        for product in products:
+            is_eligible, reason = policy_service.check_product_eligibility(policy_result, product.model_dump())
 
-        if is_eligible:
-            # Product passed policy checks - add to eligible products
-            # Note: policy_compliance field removed in AdCP v2.4
-            eligible_products.append(product)
-        else:
-            logger.info(f"Product {product.product_id} excluded: {reason}")
+            if is_eligible:
+                # Product passed policy checks - add to eligible products
+                # Note: policy_compliance field removed in AdCP v2.4
+                eligible_products.append(product)
+            else:
+                logger.info(f"Product {product.product_id} excluded: {reason}")
+    else:
+        # Policy checks disabled - all products are eligible
+        eligible_products = products
 
     # Apply min_exposures filtering (AdCP PR #79)
     min_exposures = getattr(req, "min_exposures", None)
@@ -3087,7 +3140,7 @@ async def activate_signal(
 
 
 def _list_authorized_properties_impl(
-    req: ListAuthorizedPropertiesRequest = None, context: Context = None
+    req: ListAuthorizedPropertiesRequest | None = None, context: Context | None = None
 ) -> ListAuthorizedPropertiesResponse:
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
 
@@ -3181,11 +3234,61 @@ def _list_authorized_properties_impl(
                 stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(all_tags))
                 property_tags = session.scalars(stmt).all()
 
-                for tag in property_tags:
-                    tag_metadata[tag.tag_id] = PropertyTagMetadata(name=tag.name, description=tag.description)
+                for property_tag in property_tags:
+                    tag_metadata[property_tag.tag_id] = PropertyTagMetadata(
+                        name=property_tag.name, description=property_tag.description
+                    )
+
+            # Generate advertising policies text from tenant configuration
+            advertising_policies_text = None
+            advertising_policy = safe_parse_json_field(
+                tenant.get("advertising_policy"), field_name="advertising_policy", default={}
+            )
+
+            if advertising_policy and advertising_policy.get("enabled"):
+                # Build human-readable policy text
+                policy_parts = []
+
+                # Add baseline categories
+                default_categories = advertising_policy.get("default_prohibited_categories", [])
+                if default_categories:
+                    policy_parts.append(f"**Baseline Protected Categories:** {', '.join(default_categories)}")
+
+                # Add baseline tactics
+                default_tactics = advertising_policy.get("default_prohibited_tactics", [])
+                if default_tactics:
+                    policy_parts.append(f"**Baseline Prohibited Tactics:** {', '.join(default_tactics)}")
+
+                # Add additional categories
+                additional_categories = advertising_policy.get("prohibited_categories", [])
+                if additional_categories:
+                    policy_parts.append(f"**Additional Prohibited Categories:** {', '.join(additional_categories)}")
+
+                # Add additional tactics
+                additional_tactics = advertising_policy.get("prohibited_tactics", [])
+                if additional_tactics:
+                    policy_parts.append(f"**Additional Prohibited Tactics:** {', '.join(additional_tactics)}")
+
+                # Add blocked advertisers
+                blocked_advertisers = advertising_policy.get("prohibited_advertisers", [])
+                if blocked_advertisers:
+                    policy_parts.append(f"**Blocked Advertisers/Domains:** {', '.join(blocked_advertisers)}")
+
+                if policy_parts:
+                    advertising_policies_text = "\n\n".join(policy_parts)
+                    # Add footer
+                    advertising_policies_text += (
+                        "\n\n**Policy Enforcement:** Campaigns are analyzed using AI against these policies. "
+                        "Violations will result in campaign rejection or require manual review."
+                    )
 
             # Create response
-            response = ListAuthorizedPropertiesResponse(properties=properties, tags=tag_metadata, errors=[])
+            response = ListAuthorizedPropertiesResponse(
+                properties=properties,
+                tags=tag_metadata,
+                advertising_policies=advertising_policies_text,
+                errors=[],
+            )
 
             # Log audit
             audit_logger = get_audit_logger("AdCP", tenant_id)
@@ -3215,7 +3318,7 @@ def _list_authorized_properties_impl(
             principal_id=principal_id,
             adapter_id="mcp_server",
             success=False,
-            error_message=str(e),
+            error=str(e),
         )
 
         raise ToolError("PROPERTIES_ERROR", f"Failed to list authorized properties: {str(e)}")
@@ -3223,7 +3326,7 @@ def _list_authorized_properties_impl(
 
 @mcp.tool()
 def list_authorized_properties(
-    req: ListAuthorizedPropertiesRequest = None, webhook_url: str | None = None, context: Context = None
+    req: ListAuthorizedPropertiesRequest | None = None, webhook_url: str | None = None, context: Context | None = None
 ) -> ListAuthorizedPropertiesResponse:
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
 
