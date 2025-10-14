@@ -50,35 +50,42 @@ class TestBudgetMigrationInMainPy:
         assert package_budget == Decimal("3000.0")
 
     def test_update_media_buy_budget_with_float(self):
-        """Test update_media_buy budget extraction with float (v1.8.0)."""
-        # Simulate the logic from main.py lines 4766-4768
-        budget = 10000.0
-        currency_field = "EUR"
+        """Test update_media_buy budget extraction with float (v1.8.0).
 
-        total_budget, currency = extract_budget_amount(budget, currency_field or "USD")
+        Note: In practice, UpdateMediaBuyRequest.budget should be a Budget object,
+        but the extract helper handles floats for flexibility.
+        """
+        # Simulate the logic from main.py lines 4768-4770
+        budget = 10000.0
+
+        # UpdateMediaBuyRequest doesn't have a currency field, so we use default
+        total_budget, currency = extract_budget_amount(budget, "USD")
 
         assert total_budget == 10000.0
-        assert currency == "EUR"
+        assert currency == "USD"
 
     def test_update_media_buy_budget_with_budget_object(self):
-        """Test update_media_buy budget extraction with Budget object (legacy)."""
-        budget_obj = Budget(total=15000.0, currency="USD")
-        currency_field = None
+        """Test update_media_buy budget extraction with Budget object.
 
-        total_budget, currency = extract_budget_amount(budget_obj, currency_field or "USD")
+        This is the standard case for UpdateMediaBuyRequest.
+        """
+        budget_obj = Budget(total=15000.0, currency="EUR")
+
+        # UpdateMediaBuyRequest doesn't have a currency field
+        total_budget, currency = extract_budget_amount(budget_obj, "USD")
 
         assert total_budget == 15000.0
-        assert currency == "USD"  # From Budget object, not default
+        assert currency == "EUR"  # From Budget object, not default USD
 
     def test_update_media_buy_budget_with_dict(self):
         """Test update_media_buy budget extraction with dict."""
         budget_dict = {"total": 8000.0, "currency": "CAD"}
-        currency_field = "USD"
 
-        total_budget, currency = extract_budget_amount(budget_dict, currency_field or "USD")
+        # UpdateMediaBuyRequest doesn't have a currency field
+        total_budget, currency = extract_budget_amount(budget_dict, "USD")
 
         assert total_budget == 8000.0
-        assert currency == "CAD"  # From dict, not currency_field
+        assert currency == "CAD"  # From dict, not default USD
 
 
 class TestBudgetMigrationInNamingUtils:

@@ -4765,7 +4765,9 @@ def _update_media_buy_impl(
     if req.budget is not None:
         from src.core.schemas import extract_budget_amount
 
-        total_budget, currency = extract_budget_amount(req.budget, req.currency or "USD")
+        # For UpdateMediaBuyRequest, budget is always a Budget object (not a float)
+        # The currency comes from the Budget object itself or defaults to USD
+        total_budget, currency = extract_budget_amount(req.budget, "USD")
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
