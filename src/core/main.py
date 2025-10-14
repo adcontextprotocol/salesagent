@@ -4129,7 +4129,7 @@ def _create_media_buy_impl(
                 campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
                 kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
                 budget=total_budget,  # Extract total budget
-                currency=req.budget.currency if req.budget else "USD",  # AdCP v2.4 currency field
+                currency=request_currency,  # AdCP v2.4 currency field (resolved above)
                 start_date=start_time.date(),  # Legacy field for compatibility
                 end_date=end_time.date(),  # Legacy field for compatibility
                 start_time=start_time,  # AdCP v2.4 datetime scheduling (resolved from 'asap' if needed)
@@ -4772,8 +4772,11 @@ def _update_media_buy_impl(
 
             if media_buy:
                 # Determine currency (use updated or existing)
-                # Extract currency from Budget object if present, otherwise from media buy
-                request_currency = (req.budget.currency if req.budget else None) or media_buy.currency or "USD"
+                # Extract currency from Budget object if present (and if it's an object, not plain number)
+                request_currency = None
+                if req.budget and hasattr(req.budget, "currency"):
+                    request_currency = req.budget.currency
+                request_currency = request_currency or media_buy.currency or "USD"
 
                 # Get currency limit
                 stmt = select(CurrencyLimit).where(
