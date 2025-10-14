@@ -42,7 +42,7 @@ class MockContext:
 
 
 @pytest.fixture
-def test_tenant_setup():
+def test_tenant_setup(integration_db):
     """Create test tenant with principal and currency limit."""
     tenant_id = "test_update_persist"
     principal_id = "test_adv_persist"
@@ -305,10 +305,11 @@ def test_update_media_buy_with_database_persisted_buy(test_tenant_setup):
 @pytest.mark.requires_db
 def test_update_media_buy_requires_context():
     """Test update_media_buy raises error when context is None."""
+    # Note: This will first hit Pydantic validation if buyer_ref is also provided
+    # So we only provide media_buy_id to avoid the oneOf constraint
     with pytest.raises(ValueError, match="Context is required"):
         _update_media_buy_impl(
             media_buy_id="buy_test_123",
-            buyer_ref="test_ref",
             context=None,
         )
 
@@ -320,6 +321,9 @@ def test_update_media_buy_requires_media_buy_id():
     context = MagicMock()
     context.headers = {"x-adcp-auth": "test_token"}
 
+    # Note: Pydantic requires at least one of media_buy_id or buyer_ref
+    # So this test actually validates Pydantic's validation, not our code
+    # We pass buyer_ref to satisfy Pydantic's oneOf constraint
     with pytest.raises(ValueError, match="media_buy_id is required"):
         _update_media_buy_impl(
             media_buy_id=None,
