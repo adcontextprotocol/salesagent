@@ -445,18 +445,39 @@ class AdCPSchemaValidator:
 
         return adcp_payload
 
-    async def _preload_schema_references(self, schema_ref: str) -> None:
-        """Preload all schemas referenced by the given schema."""
+    async def _preload_schema_references(self, schema_ref: str, _visited: set[str] | None = None) -> None:
+        """
+        Recursively preload all schemas referenced by the given schema.
+
+        Args:
+            schema_ref: The schema reference to preload
+            _visited: Set of already-visited refs to avoid infinite recursion (internal use)
+        """
+        if _visited is None:
+            _visited = set()
+
+        # Avoid infinite recursion
+        if schema_ref in _visited:
+            return
+        _visited.add(schema_ref)
+
         try:
             schema = await self.get_schema(schema_ref)
             refs_to_load = self._find_schema_references(schema)
 
-            # Load all referenced schemas
+            # Recursively load all referenced schemas (download them so they're in cache for validation)
             for ref in refs_to_load:
                 try:
                     await self.get_schema(ref)
-                except Exception as e:
+                    # Recursively preload refs within this schema
+                    await self._preload_schema_references(ref, _visited)
+                except SchemaDownloadError as e:
+                    # Schema download failed - log but continue
+                    # (validation will use strict fallback for this ref)
                     print(f"Warning: Could not preload referenced schema {ref}: {e}")
+                except Exception as e:
+                    # Unexpected error - log but continue
+                    print(f"Warning: Unexpected error preloading schema {ref}: {e}")
 
         except Exception as e:
             print(f"Warning: Could not preload schema references for {schema_ref}: {e}")
