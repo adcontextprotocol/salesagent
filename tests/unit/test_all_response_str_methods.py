@@ -204,7 +204,7 @@ class TestResponseStrMethods:
         """Verify no response __str__ contains JSON-like content."""
         # Test a few responses to ensure they don't leak JSON
         responses = [
-            GetProductsResponse(products=[], message="Test"),
+            GetProductsResponse(products=[]),
             ListCreativeFormatsResponse(formats=[]),
             SyncCreativesResponse(message="Test", status="completed"),
             CreateMediaBuyResponse(status="completed", buyer_ref="ref", packages=[]),
