@@ -1687,7 +1687,8 @@ def _sync_creatives_impl(
 
                     # Validate by creating a Creative schema object
                     # This will fail if required fields are missing or invalid (like empty name)
-                    Creative(**schema_data)
+                    # Also auto-upgrades string format_ids to FormatId objects via validator
+                    validated_creative = Creative(**schema_data)
 
                     # Additional business logic validation
                     if not creative.get("name") or str(creative.get("name")).strip() == "":
@@ -1695,6 +1696,9 @@ def _sync_creatives_impl(
 
                     if not creative.get("format_id") and not creative.get("format"):
                         raise ValueError("Creative format is required")
+
+                    # Use validated format (auto-upgraded from string if needed)
+                    format_value = validated_creative.format
 
                 except (ValidationError, ValueError) as validation_error:
                     # Creative failed validation - add to failed list
@@ -1737,7 +1741,7 @@ def _sync_creatives_impl(
                                 existing_creative.name = creative.get("name")
                                 changes.append("name")
                             if creative.get("format_id") or creative.get("format"):
-                                format_value = creative.get("format_id") or creative.get("format")
+                                # Use validated format_value (already auto-upgraded from string)
                                 new_agent_url, new_format = _extract_format_namespace(format_value)
                                 if (
                                     new_agent_url != existing_creative.agent_url
@@ -1751,7 +1755,7 @@ def _sync_creatives_impl(
                             if creative.get("name") != existing_creative.name:
                                 existing_creative.name = creative.get("name")
                                 changes.append("name")
-                            format_value = creative.get("format_id") or creative.get("format")
+                            # Use validated format_value (already auto-upgraded from string)
                             new_agent_url, new_format = _extract_format_namespace(format_value)
                             if new_agent_url != existing_creative.agent_url or new_format != existing_creative.format:
                                 existing_creative.agent_url = new_agent_url
@@ -2094,7 +2098,7 @@ def _sync_creatives_impl(
                         needs_approval = False
 
                         # Extract agent_url and format ID from format_id field
-                        format_value = creative.get("format_id") or creative.get("format")
+                        # Use validated format_value (already auto-upgraded from string)
                         agent_url, format_id = _extract_format_namespace(format_value)
 
                         db_creative = DBCreative(
