@@ -1870,8 +1870,8 @@ class TestAdCPContract:
         # Verify message is provided via __str__() not as schema field (response already created above)
         assert str(response) == "Found 1 authorized property."
 
-        # Verify field count expectations (6 domain fields: properties, tags, errors, primary_channels, primary_countries, portfolio_description)
-        assert len(adcp_response) == 6
+        # Verify field count expectations (7 domain fields: properties, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies)
+        assert len(adcp_response) == 7
 
     def test_get_signals_request_adcp_compliance(self):
         """Test that GetSignalsRequest model complies with AdCP get-signals-request schema."""

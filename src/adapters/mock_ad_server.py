@@ -706,10 +706,10 @@ class MockAdServer(AdServerAdapter):
             self.log(f"Would return: Campaign ID '{media_buy_id}' with status 'pending_creative'")
 
         return CreateMediaBuyResponse(
-            status="completed",  # Mock adapter completes immediately
             buyer_ref=request.buyer_ref,  # Required field per AdCP spec
             media_buy_id=media_buy_id,
             creative_deadline=datetime.now(UTC) + timedelta(days=2),
+            errors=None,  # No errors for successful mock response
         )
 
     def add_creative_assets(
