@@ -61,7 +61,7 @@ class TestResponseStrMethods:
 
     def test_list_creative_formats_response_with_message(self):
         """ListCreativeFormatsResponse with message returns the message."""
-        fmt = Format(format_id="banner_300x250", name="Banner", type="display")
+        fmt = Format(format_id="display_300x250", name="Banner", type="display")
         resp = ListCreativeFormatsResponse(formats=[fmt], message="Custom message")
         assert str(resp) == "Custom message"
 
@@ -81,7 +81,7 @@ class TestResponseStrMethods:
         creative = Creative(
             creative_id="cr1",
             name="Test Creative",
-            format_id="banner_300x250",
+            format_id="display_300x250",
             content_uri="https://example.com/creative.jpg",
             principal_id="prin_123",
             created_at=datetime.now(UTC),

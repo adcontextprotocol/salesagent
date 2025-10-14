@@ -30,10 +30,7 @@ def test_upgrade_format_id_object_passthrough():
 
 def test_upgrade_dict_with_agent_url():
     """Test dict with agent_url converts to FormatId."""
-    result = upgrade_legacy_format_id({
-        "agent_url": "https://custom.example.com",
-        "id": "custom_format"
-    })
+    result = upgrade_legacy_format_id({"agent_url": "https://custom.example.com", "id": "custom_format"})
 
     assert isinstance(result, FormatId)
     assert result.agent_url == "https://custom.example.com"
@@ -64,6 +61,12 @@ def test_upgrade_invalid_type():
     """Test upgrading invalid type raises error."""
     with pytest.raises(ValueError, match="Invalid format_id type"):
         upgrade_legacy_format_id(12345)  # type: ignore
+
+
+def test_upgrade_unknown_string_format_fails():
+    """Test unknown string format_id raises error (doesn't default)."""
+    with pytest.raises(ValueError, match="Unknown format_id.*String format_ids are deprecated"):
+        upgrade_legacy_format_id("unknown_custom_format_xyz")
 
 
 def test_common_formats_in_cache():

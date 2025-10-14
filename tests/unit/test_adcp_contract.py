@@ -1225,7 +1225,7 @@ class TestAdCPContract:
         creative2 = Creative(
             creative_id="creative_456",
             name="Test Creative 2",
-            format_id="video_720p",
+            format_id="video_1280x720",
             content_uri="https://example.com/creative2.mp4",
             principal_id="principal_1",
             status="pending_review",

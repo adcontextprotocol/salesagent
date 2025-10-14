@@ -13,7 +13,6 @@ Design principles:
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from src.core.schemas import FormatId
 
@@ -39,7 +38,7 @@ def load_format_cache() -> dict[str, str]:
         with open(CACHE_FILE) as f:
             data = json.load(f)
             return data.get("formats", {})
-    except (json.JSONDecodeError, IOError):
+    except (OSError, json.JSONDecodeError):
         return {}
 
 
@@ -92,11 +91,31 @@ def upgrade_legacy_format_id(format_id_value: str | dict | FormatId) -> FormatId
         if "id" in format_id_value:
             return FormatId(agent_url=DEFAULT_AGENT_URL, id=format_id_value["id"])
 
-    # Legacy string format - upgrade to namespaced format
+    # Legacy string format - upgrade to namespaced format (DEPRECATED)
     if isinstance(format_id_value, str):
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         # Check cache for agent_url
         cache = load_format_cache()
-        agent_url = cache.get(format_id_value, DEFAULT_AGENT_URL)
+
+        if format_id_value not in cache:
+            # Unknown format - fail loudly per AdCP spec guidance
+            raise ValueError(
+                f"Unknown format_id '{format_id_value}'. String format_ids are deprecated. "
+                f"Must provide structured format with agent_url. "
+                f"Known formats: {list(cache.keys())[:10]}..."
+            )
+
+        agent_url = cache[format_id_value]
+
+        # Log deprecation warning
+        logger.warning(
+            f"⚠️  DEPRECATED: String format_id '{format_id_value}' received. "
+            f"Use structured format: {{'agent_url': '{agent_url}', 'id': '{format_id_value}'}}. "
+            f"String format_ids will be removed in a future version."
+        )
 
         return FormatId(agent_url=agent_url, id=format_id_value)
 

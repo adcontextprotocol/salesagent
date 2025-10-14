@@ -656,9 +656,7 @@ def _extract_format_namespace(format_value: Any) -> tuple[str, str]:
         agent_url = format_value.get("agent_url")
         format_id = format_value.get("id")
         if not agent_url or not format_id:
-            raise ValueError(
-                f"format_id must have both 'agent_url' and 'id' fields. Got: {format_value}"
-            )
+            raise ValueError(f"format_id must have both 'agent_url' and 'id' fields. Got: {format_value}")
         return agent_url, format_id
     if hasattr(format_value, "agent_url") and hasattr(format_value, "id"):
         return format_value.agent_url, format_value.id
@@ -1709,7 +1707,10 @@ def _sync_creatives_impl(
                             if creative.get("format_id") or creative.get("format"):
                                 format_value = creative.get("format_id") or creative.get("format")
                                 new_agent_url, new_format = _extract_format_namespace(format_value)
-                                if new_agent_url != existing_creative.agent_url or new_format != existing_creative.format:
+                                if (
+                                    new_agent_url != existing_creative.agent_url
+                                    or new_format != existing_creative.format
+                                ):
                                     existing_creative.agent_url = new_agent_url
                                     existing_creative.format = new_format
                                     changes.append("format")
@@ -2622,7 +2623,10 @@ def _list_creatives_impl(
             schema_data = {
                 "creative_id": db_creative.creative_id,
                 "name": db_creative.name,
-                "format_id": db_creative.format,  # Use correct field name
+                "format_id": {  # Structured format_id per AdCP v2.4 spec
+                    "agent_url": db_creative.agent_url,
+                    "id": db_creative.format,
+                },
                 "click_through_url": db_creative.data.get("click_url") if db_creative.data else None,  # From data field
                 "width": db_creative.data.get("width") if db_creative.data else None,
                 "height": db_creative.data.get("height") if db_creative.data else None,
