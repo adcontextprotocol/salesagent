@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/list-authorized-properties-response.json",
+  "title": "List Authorized Properties Response",
+  "description": "Response payload for list_authorized_properties task",
+  "type": "object",
+  "properties": {
+    "properties": {
+      "type": "array",
+      "description": "Array of all properties this agent is authorized to represent",
+      "items": {
+        "$ref": "/schemas/v1/core/property.json"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "description": "Metadata for each tag referenced by properties",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this tag"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of what this tag represents"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "primary_channels": {
+      "type": "array",
+      "description": "Primary advertising channels represented in this property portfolio. Helps buying agents quickly filter relevance.",
+      "items": {
+        "$ref": "/schemas/v1/enums/channels.json"
+      },
+      "minItems": 1
+    },
+    "primary_countries": {
+      "type": "array",
+      "description": "Primary countries (ISO 3166-1 alpha-2 codes) where properties are concentrated. Helps buying agents quickly filter relevance.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "portfolio_description": {
+      "type": "string",
+      "description": "Markdown-formatted description of the property portfolio, including inventory types, audience characteristics, and special features.",
+      "minLength": 1,
+      "maxLength": 5000
+    },
+    "advertising_policies": {
+      "type": "string",
+      "description": "Publisher's advertising content policies, restrictions, and guidelines in natural language. May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, or links to full policy documentation.",
+      "minLength": 1,
+      "maxLength": 10000
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., property availability issues)",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
+    }
+  },
+  "required": [
+    "properties"
+  ],
+  "additionalProperties": false
+}
