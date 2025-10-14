@@ -494,7 +494,7 @@
         <div id="account" class="settings-section active">
             <div class="settings-header">
                 <h2>Account</h2>
-                <p>Organization identity and access control</p>
+                <p>Organization identity, virtual host configuration, and access control</p>
             </div>
 
             <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/general">
@@ -540,6 +540,90 @@
                     <button type="reset" class="btn btn-secondary">Reset</button>
                 </div>
             </form>
+
+            <!-- Access Control (Domain & Email Authorization) -->
+            <div class="form-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e5e7eb;">
+                <h3>🔐 Access Control</h3>
+                <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1.5rem;">
+                    Control who can access this tenant's admin interface
+                </p>
+
+                <!-- Authorized Domains -->
+                <div style="margin-bottom: 2rem;">
+                    <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">🏢 Authorized Domains</h4>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                        Users from these domains get automatic admin access via OAuth
+                    </p>
+
+                    {% if authorized_domains %}
+                    <div class="domain-list" style="margin-bottom: 1rem;">
+                        {% for domain in authorized_domains %}
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 0.5rem;">
+                            <div style="flex: 1;">
+                                <strong>{{ domain }}</strong>
+                                <small style="color: #6b7280; margin-left: 0.5rem;">@{{ domain }} users</small>
+                            </div>
+                            <form method="POST" action="{{ url_for('settings.remove_authorized_domain', tenant_id=tenant.tenant_id) }}" style="margin: 0;">
+                                <input type="hidden" name="domain" value="{{ domain }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Remove domain {{ domain }}? Users from this domain will lose access.')">Remove</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div style="text-align: center; color: #9ca3af; font-style: italic; margin-bottom: 1rem; padding: 1rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;">
+                        No authorized domains configured
+                    </div>
+                    {% endif %}
+
+                    <form method="POST" action="{{ url_for('settings.add_authorized_domain', tenant_id=tenant.tenant_id) }}" style="display: flex; gap: 0.5rem; align-items: end;">
+                        <div style="flex: 1;">
+                            <label for="new_domain" style="font-size: 0.875rem; font-weight: 500;">Add Domain</label>
+                            <input type="text" id="new_domain" name="domain" placeholder="company.com" style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px;">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Domain</button>
+                    </form>
+                </div>
+
+                <!-- Authorized Emails -->
+                <div>
+                    <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">📧 Authorized Emails</h4>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                        External users requiring explicit access (contractors, agencies, etc.)
+                    </p>
+
+                    {% if authorized_emails %}
+                    <div class="email-list" style="margin-bottom: 1rem;">
+                        {% for email in authorized_emails %}
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem; background: #fef7ec; border: 1px solid #fed7aa; border-radius: 6px; margin-bottom: 0.5rem;">
+                            <div style="flex: 1;">
+                                <strong>{{ email }}</strong>
+                                <small style="color: #92400e; margin-left: 0.5rem;">External user</small>
+                            </div>
+                            <form method="POST" action="{{ url_for('settings.remove_authorized_email', tenant_id=tenant.tenant_id) }}" style="margin: 0;">
+                                <input type="hidden" name="email" value="{{ email }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Remove {{ email }}? This user will lose access.')">Remove</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div style="text-align: center; color: #9ca3af; font-style: italic; margin-bottom: 1rem; padding: 1rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;">
+                        No external emails configured
+                    </div>
+                    {% endif %}
+
+                    <form method="POST" action="{{ url_for('settings.add_authorized_email', tenant_id=tenant.tenant_id) }}" style="display: flex; gap: 0.5rem; align-items: end;">
+                        <div style="flex: 1;">
+                            <label for="new_email" style="font-size: 0.875rem; font-weight: 500;">Add Email</label>
+                            <input type="email" id="new_email" name="email" placeholder="contractor@agency.com" style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px;">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Email</button>
+                    </form>
+                </div>
+            </div>
         </div>
 
         <!-- Ad Server Settings -->
