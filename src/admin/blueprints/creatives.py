@@ -241,9 +241,6 @@ def review_creatives(tenant_id, **kwargs):
                             if product:
                                 promoted_offering = product.name
 
-            # Extract AI review reasoning from creative.data if available
-            ai_reasoning = creative.data.get("ai_review_reasoning") if creative.data else None
-
             creative_list.append(
                 {
                     "creative_id": creative.creative_id,
@@ -260,7 +257,6 @@ def review_creatives(tenant_id, **kwargs):
                     "media_buys": media_buys,
                     "assignment_count": len(media_buys),
                     "promoted_offering": promoted_offering,
-                    "ai_reasoning": ai_reasoning,
                 }
             )
 
@@ -934,6 +930,8 @@ def _ai_review_creative_async(
                 creative.data["ai_review"] = {
                     "decision": ai_result["status"],
                     "reason": ai_result.get("reason", ""),
+                    "ai_reason": ai_result.get("ai_reason"),  # Actual AI reasoning (if different from summary)
+                    "ai_recommendation": ai_result.get("ai_recommendation"),  # AI's original recommendation
                     "confidence": ai_result.get("confidence", "medium"),
                     "reviewed_at": datetime.now(UTC).isoformat(),
                 }
@@ -953,11 +951,25 @@ def _ai_review_creative_async(
                         tenant_config = {"features": {"slack_webhook_url": slack_webhook_url}}
                         notifier = get_slack_notifier(tenant_config)
 
-                        ai_review_reason = creative.data.get("ai_review", {}).get("reason")
+                        # Build comprehensive AI review reason
+                        ai_review_data = creative.data.get("ai_review", {})
+                        ai_review_reason = ai_review_data.get("reason", "")
+
+                        # If there's a separate AI reason (actual AI's reasoning), include it
+                        if ai_review_data.get("ai_reason"):
+                            ai_review_reason = (
+                                f"{ai_review_reason}\n\n*AI's Reasoning:* {ai_review_data.get('ai_reason')}"
+                            )
+
+                        # If AI made a different recommendation than final decision, note it
+                        if ai_review_data.get("ai_recommendation"):
+                            ai_recommendation = ai_review_data.get("ai_recommendation", "").title()
+                            ai_review_reason = f"{ai_review_reason}\n\n*AI Recommendation:* {ai_recommendation}"
+
                         notifier.notify_creative_pending(
-                            creative_id=creative.creative_id,
+                            creative_id=creative_id,  # Use function parameter (str) not ORM attribute
                             principal_name=principal_name,
-                            format_type=creative.format,
+                            format_type=str(creative.format),  # Cast Column to str for mypy
                             media_buy_id=None,
                             tenant_id=tenant_id,
                             ai_review_reason=ai_review_reason,
