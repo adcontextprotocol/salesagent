@@ -5,12 +5,6 @@
   "description": "Request parameters for syncing creative assets with upsert semantics - supports bulk operations, patch updates, and assignment management",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "creatives": {
       "type": "array",
       "description": "Array of creative assets to sync (create or update)",

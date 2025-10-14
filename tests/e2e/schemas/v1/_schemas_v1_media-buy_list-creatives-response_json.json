@@ -5,11 +5,6 @@
   "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "message": {
       "type": "string",
       "description": "Human-readable result message"
@@ -325,7 +320,6 @@
     }
   },
   "required": [
-    "adcp_version",
     "message",
     "query_summary",
     "pagination",

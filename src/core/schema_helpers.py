@@ -36,7 +36,6 @@ def create_get_products_request(
     brief: str = "",
     promoted_offering: str | None = None,
     brand_manifest: BrandManifest | BrandManifest8 | str | dict[str, Any] | None = None,
-    adcp_version: str = "1.6.0",
     filters: Filters | Filters1 | dict[str, Any] | None = None,
 ) -> GetProductsRequest:
     """Create GetProductsRequest, automatically choosing the right variant.
@@ -51,7 +50,6 @@ def create_get_products_request(
         brief: Natural language description of campaign requirements
         promoted_offering: DEPRECATED - Use brand_manifest instead
         brand_manifest: Brand information (object, URL string, or dict)
-        adcp_version: AdCP schema version
         filters: Structured filters for product discovery
 
     Returns:
@@ -89,7 +87,6 @@ def create_get_products_request(
         variant = GetProductsRequest1(
             promoted_offering=promoted_offering,
             brief=brief or None,
-            adcp_version=adcp_version,
             filters=filters_obj,
         )
     else:
@@ -118,7 +115,6 @@ def create_get_products_request(
             brand_manifest=brand_manifest_obj,
             promoted_offering=promoted_offering,
             brief=brief or None,
-            adcp_version=adcp_version,
             filters=filters_obj,
         )
 
@@ -128,7 +124,6 @@ def create_get_products_request(
 
 def create_get_products_response(
     products: list[Products | Products1 | dict[str, Any]],
-    adcp_version: str = "1.6.0",
     status: str = "completed",
     errors: list | None = None,
 ) -> GetProductsResponse:
@@ -139,7 +134,6 @@ def create_get_products_response(
 
     Args:
         products: List of matching products
-        adcp_version: AdCP schema version
         status: Response status (default: "completed")
         errors: List of errors (if any)
 
@@ -148,7 +142,6 @@ def create_get_products_response(
     """
     return GetProductsResponse(
         products=products,  # type: ignore[arg-type]
-        adcp_version=adcp_version,
         status=status,  # type: ignore[arg-type]
         errors=errors,
     )

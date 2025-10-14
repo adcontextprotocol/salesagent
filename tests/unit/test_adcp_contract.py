@@ -2370,22 +2370,21 @@ class TestAdCPContract:
         """Test that GetSignalsResponse model complies with AdCP get-signals response schema."""
         from src.core.schema_adapters import GetSignalsResponse
 
-        # Minimal required fields
-        response = GetSignalsResponse(adcp_version="2.3.0", message="Found 2 signals", context_id="ctx_123", signals=[])
+        # Minimal required fields (adcp_version removed from AdCP spec)
+        response = GetSignalsResponse(message="Found 2 signals", context_id="ctx_123", signals=[])
 
         # Convert to AdCP format (excludes internal fields)
         adcp_response = response.model_dump(exclude_none=True)
 
         # Verify required fields are present
-        assert "adcp_version" in adcp_response
         assert "message" in adcp_response
         assert "context_id" in adcp_response
         assert "signals" in adcp_response
 
-        # Verify field count (at least 4 core fields)
+        # Verify field count (at least 3 core fields)
         assert (
-            len(adcp_response) >= 4
-        ), f"GetSignalsResponse should have at least 4 core fields, got {len(adcp_response)}"
+            len(adcp_response) >= 3
+        ), f"GetSignalsResponse should have at least 3 core fields, got {len(adcp_response)}"
 
         # Test with all fields
         signal_data = {
@@ -2412,25 +2411,23 @@ class TestAdCPContract:
         """Test that ActivateSignalResponse model complies with AdCP activate-signal response schema."""
         from src.core.schema_adapters import ActivateSignalResponse
 
-        # Minimal required fields
-        response = ActivateSignalResponse(adcp_version="2.3.0", task_id="task_123", status="pending")
+        # Minimal required fields (adcp_version removed from AdCP spec)
+        response = ActivateSignalResponse(task_id="task_123", status="pending")
 
         # Convert to AdCP format (excludes internal fields)
         adcp_response = response.model_dump(exclude_none=True)
 
         # Verify required fields are present
-        assert "adcp_version" in adcp_response
         assert "task_id" in adcp_response
         assert "status" in adcp_response
 
-        # Verify field count (at least 3 core fields)
+        # Verify field count (at least 2 core fields)
         assert (
-            len(adcp_response) >= 3
-        ), f"ActivateSignalResponse should have at least 3 core fields, got {len(adcp_response)}"
+            len(adcp_response) >= 2
+        ), f"ActivateSignalResponse should have at least 2 core fields, got {len(adcp_response)}"
 
         # Test with all fields
         full_response = ActivateSignalResponse(
-            adcp_version="2.3.0",
             task_id="task_456",
             status="deployed",
             decisioning_platform_segment_id="seg_789",

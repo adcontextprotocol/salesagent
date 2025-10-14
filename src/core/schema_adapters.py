@@ -65,7 +65,6 @@ class GetProductsRequest(BaseModel):
     brand_manifest: dict[str, Any] | str | None = Field(
         None, description="Brand information manifest (inline object or URL string)"
     )
-    adcp_version: str = Field("1.6.0", description="AdCP schema version")
     filters: dict[str, Any] | None = Field(None, description="Structured filters for product discovery")
     min_exposures: int | None = Field(None, description="Minimum exposures needed for measurement validity")
     strategy_id: str | None = Field(None, description="Optional strategy ID for linking operations")
@@ -105,7 +104,6 @@ class GetProductsRequest(BaseModel):
             variant = _GeneratedGetProductsRequest1(
                 promoted_offering=self.promoted_offering,
                 brief=self.brief or None,
-                adcp_version=self.adcp_version,
                 filters=self.filters,  # type: ignore[arg-type]
             )
         elif self.brand_manifest:
@@ -114,7 +112,6 @@ class GetProductsRequest(BaseModel):
                 promoted_offering=self.promoted_offering,
                 brand_manifest=self.brand_manifest,  # type: ignore[arg-type]
                 brief=self.brief or None,
-                adcp_version=self.adcp_version,
                 filters=self.filters,  # type: ignore[arg-type]
             )
         else:
@@ -381,7 +378,6 @@ class ListCreativeFormatsResponse(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     # Fields from generated schema (flexible - accepts dicts or objects)
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
     formats: list[Any] = Field(..., description="Full format definitions per AdCP spec")
     status: str | None = Field("completed", description="Task status")
     creative_agents: list[Any] | None = Field(None, description="Creative agents providing additional formats")
@@ -437,7 +433,6 @@ class ListAuthorizedPropertiesResponse(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     # Fields from generated schema (flexible - accepts dicts or objects)
-    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$")
     properties: list[Any] = Field(..., description="Array of authorized properties")
     tags: dict[str, Any] = Field(default_factory=dict, description="Metadata for tags")
     primary_channels: list[str] | None = Field(None, description="Primary advertising channels")
@@ -486,7 +481,6 @@ from src.core.schemas_generated._schemas_v1_media_buy_list_creative_formats_requ
 class ListCreativeFormatsRequest(BaseModel):
     """Adapter for ListCreativeFormatsRequest - simple pass-through to generated schema."""
 
-    adcp_version: str = Field("1.0.0", pattern=r"^\d+\.\d+\.\d+$")
     type: str | None = Field(None, description="Filter by format type")
     standard_only: bool | None = Field(None, description="Only return IAB standard formats")
     category: str | None = Field(None, description="Filter by category")
@@ -500,7 +494,6 @@ class ListCreativeFormatsRequest(BaseModel):
 class ListAuthorizedPropertiesRequest(BaseModel):
     """Adapter for ListAuthorizedPropertiesRequest - simple pass-through to generated schema."""
 
-    adcp_version: str = Field("1.0.0", pattern=r"^\d+\.\d+\.\d+$")
     tags: list[str] | None = Field(None, description="Filter properties by specific tags")
 
     def to_generated(self) -> _GeneratedListAuthorizedPropertiesRequest:
@@ -531,7 +524,6 @@ class CreateMediaBuyResponse(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     # Required AdCP fields
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
     status: str = Field(..., description="Task status")
     buyer_ref: str = Field(..., description="Buyer's reference identifier")
 
@@ -581,7 +573,6 @@ class UpdateMediaBuyResponse(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
     status: str = Field(..., description="Task status")
     buyer_ref: str = Field(..., description="Buyer's reference identifier")
     task_id: str | None = None
@@ -634,7 +625,6 @@ class GetMediaBuyDeliveryResponse(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     # Required AdCP fields
-    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$")
     reporting_period: Any = Field(..., description="Date range for the report")
     currency: str = Field(..., pattern=r"^[A-Z]{3}$", description="ISO 4217 currency code")
     media_buy_deliveries: list[Any] = Field(..., description="Array of delivery data for each media buy")
@@ -667,7 +657,6 @@ class GetSignalsResponse(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$")
     message: str = Field(..., description="Human-readable summary")
     context_id: str = Field(..., description="Session continuity identifier")
     signals: list[Any] = Field(..., description="Array of matching signals")
@@ -688,7 +677,6 @@ class ActivateSignalResponse(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$")
     task_id: str = Field(..., description="Unique identifier for tracking")
     status: str = Field(..., description="Current status (pending/processing/deployed/failed)")
     decisioning_platform_segment_id: str | None = None
@@ -724,7 +712,6 @@ class ListCreativesResponse(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
     message: str = Field(..., description="Human-readable result message")
     query_summary: Any = Field(..., description="Summary of the query")
     pagination: Any = Field(..., description="Pagination information")

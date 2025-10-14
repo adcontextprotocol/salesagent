@@ -1254,7 +1254,6 @@ async def get_products(
     promoted_offering: str | None = None,
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
-    adcp_version: str = "1.0.0",
     filters: dict | None = None,
     context: Context = None,
 ) -> GetProductsResponse:
@@ -1266,7 +1265,6 @@ async def get_products(
         promoted_offering: DEPRECATED: Use brand_manifest instead (still supported for backward compatibility)
         brand_manifest: Brand information manifest (inline object or URL string)
         brief: Brief description of the advertising campaign or requirements (optional)
-        adcp_version: AdCP schema version for this request (default: 1.0.0)
         filters: Structured filters for product discovery (optional)
         context: FastMCP context (automatically provided)
 
@@ -1277,7 +1275,6 @@ async def get_products(
     req = create_get_products_request(
         promoted_offering=promoted_offering,
         brief=brief,
-        adcp_version=adcp_version,
         brand_manifest=brand_manifest,
         filters=filters,
     )
@@ -1428,7 +1425,6 @@ def _list_creative_formats_impl(
 
 @mcp.tool()
 def list_creative_formats(
-    adcp_version: str = "1.0.0",
     type: str | None = None,
     standard_only: bool | None = None,
     category: str | None = None,
@@ -1441,7 +1437,6 @@ def list_creative_formats(
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        adcp_version: AdCP schema version for this request (default: "1.0.0")
         type: Filter by format type (audio, video, display)
         standard_only: Only return IAB standard formats
         category: Filter by format category (standard, custom)
@@ -1453,7 +1448,6 @@ def list_creative_formats(
         ListCreativeFormatsResponse with all available formats
     """
     req = ListCreativeFormatsRequest(
-        adcp_version=adcp_version,
         type=type,
         standard_only=standard_only,
         category=category,
@@ -2137,7 +2131,6 @@ def _sync_creatives_impl(
     total_processed = created_count + updated_count + unchanged_count + failed_count
 
     return SyncCreativesResponse(
-        adcp_version="2.3.0",
         message=message,
         status="completed",
         summary=SyncSummary(
@@ -2886,7 +2879,7 @@ def _list_authorized_properties_impl(
 
             # Create response
             response = ListAuthorizedPropertiesResponse(
-                adcp_version=req.adcp_version, properties=properties, tags=tag_metadata, errors=[]
+                properties=properties, tags=tag_metadata, errors=[]
             )
 
             # Log audit
@@ -3507,7 +3500,6 @@ def _create_media_buy_impl(
 
         # Return proper error response per AdCP spec (status=failed for validation errors)
         return CreateMediaBuyResponse(
-            adcp_version="2.3.0",
             status="failed",  # AdCP spec: failed status for execution errors
             buyer_ref=buyer_ref or "unknown",
             errors=[Error(code="validation_error", message=str(e))],
@@ -3519,7 +3511,6 @@ def _create_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return CreateMediaBuyResponse(
-            adcp_version="2.3.0",
             status="rejected",  # AdCP spec: rejected status for auth failures before execution
             buyer_ref=buyer_ref or "unknown",
             errors=[Error(code="authentication_error", message=error_msg)],
@@ -3721,7 +3712,6 @@ def _create_media_buy_impl(
                 console.print(f"[yellow]⚠️ Failed to send configuration approval Slack notification: {e}[/yellow]")
 
             return CreateMediaBuyResponse(
-                adcp_version="2.3.0",
                 status="input-required",
                 buyer_ref=req.buyer_ref,
                 task_id=step.step_id,
@@ -3760,7 +3750,6 @@ def _create_media_buy_impl(
             error_msg = "start_time and end_time are required but were not properly set"
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return CreateMediaBuyResponse(
-                adcp_version="2.3.0",
                 status="failed",  # AdCP spec: failed status for validation errors
                 buyer_ref=req.buyer_ref,
                 errors=[Error(code="invalid_datetime", message=error_msg)],
@@ -3967,7 +3956,6 @@ def _create_media_buy_impl(
             buyer_ref_value = f"missing-{response.media_buy_id}"
 
         adcp_response = CreateMediaBuyResponse(
-            adcp_version="2.3.0",
             status=api_status,  # Use adapter status or time-based status (not hardcoded "working")
             buyer_ref=buyer_ref_value,
             media_buy_id=response.media_buy_id,
@@ -4027,7 +4015,6 @@ def _create_media_buy_impl(
         # Reconstruct response from modified data
         # Filter out testing hook fields that aren't part of CreateMediaBuyResponse schema
         valid_fields = {
-            "adcp_version",
             "status",
             "buyer_ref",
             "task_id",
@@ -4715,7 +4702,6 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
     if not principal:
         # Return AdCP-compliant error response
         return GetMediaBuyDeliveryResponse(
-            adcp_version="1.5.0",
             reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
             currency="USD",
             aggregated_totals=AggregatedTotals(impressions=0, spend=0, media_buy_count=0),
@@ -4887,7 +4873,6 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
 
     # Create AdCP-compliant response
     response = GetMediaBuyDeliveryResponse(
-        adcp_version="1.5.0",
         reporting_period=reporting_period,
         currency="USD",
         aggregated_totals=AggregatedTotals(

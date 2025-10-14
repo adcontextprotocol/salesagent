@@ -5,11 +5,6 @@
   "description": "Response from creative sync operation with results for each creative",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "message": {
       "type": "string",
       "description": "Human-readable result message (e.g., 'Synced 3 creatives: 2 created, 1 updated')"
@@ -115,7 +110,6 @@
     }
   },
   "required": [
-    "adcp_version",
     "message",
     "status",
     "creatives"
