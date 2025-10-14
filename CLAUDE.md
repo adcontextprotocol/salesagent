@@ -984,21 +984,66 @@ pre-commit run adcp-contract-tests --all-files
 ## Adapter Pricing Model Support
 
 ### GAM Adapter
-**Supported**: CPM only (both fixed and auction)
-- Fixed CPM → GAM guaranteed orders
-- Auction CPM → GAM non-guaranteed orders
+**Supported Pricing Models**: CPM, VCPM, CPC, FLAT_RATE
 
-**Not supported**: CPCV, CPP, CPC, CPV, flat_rate
-- GAM supports these internally but adapter doesn't implement them yet
-- Products with non-CPM pricing_options will work (validation passes) but adapter uses CPM
+#### Pricing Model Details
+
+| AdCP Model | GAM Cost Type | Line Item Types | Use Case |
+|------------|---------------|-----------------|----------|
+| **CPM** | CPM | All types (STANDARD, SPONSORSHIP, NETWORK, PRICE_PRIORITY, BULK, HOUSE) | Cost per 1,000 impressions - most common |
+| **VCPM** | VCPM | STANDARD only | Cost per 1,000 viewable impressions - viewability-based |
+| **CPC** | CPC | STANDARD, SPONSORSHIP, NETWORK, PRICE_PRIORITY | Cost per click - performance-based |
+| **FLAT_RATE** | CPD (internal) | SPONSORSHIP | Fixed campaign cost - internally translates to CPD (total / days) |
+
+**Not Supported**: CPCV, CPV, CPP (GAM API limitations - video completion and GRP metrics not available)
+
+**Note**: CPD (Cost Per Day) is a GAM cost type but NOT exposed as an AdCP pricing model. It's used internally to translate FLAT_RATE pricing.
+
+#### Line Item Type Selection
+
+GAM adapter **automatically selects** the appropriate line item type based on:
+1. **Pricing model** (FLAT_RATE → SPONSORSHIP, VCPM → STANDARD, others → based on delivery guarantee)
+2. **Delivery guarantee** (guaranteed_impressions → STANDARD, else PRICE_PRIORITY)
+3. **Product override** (implementation_config.line_item_type, validated for compatibility)
+
+**Automatic Selection Logic**:
+- FLAT_RATE pricing → SPONSORSHIP line item (priority 4) with CPD translation
+- VCPM pricing → STANDARD line item (priority 8) - VCPM only works with STANDARD
+- Guaranteed CPM/CPC → STANDARD line item (priority 8)
+- Non-guaranteed CPM/CPC → PRICE_PRIORITY line item (priority 12)
+
+**Manual Override** (via product configuration):
+```json
+{
+  "implementation_config": {
+    "line_item_type": "NETWORK",  // Override default selection
+    "cost_type": "CPC",            // Must be compatible with line_item_type
+    // ... other config
+  }
+}
+```
+
+**Validation**: Incompatible pricing + line item type combinations are rejected with clear error messages.
+
+#### Compatibility Matrix
+
+| Line Item Type | Supported Pricing | Priority | Guaranteed |
+|----------------|------------------|----------|------------|
+| STANDARD | CPM, CPC, VCPM | 8 | ✅ Yes |
+| SPONSORSHIP | CPM, CPC, CPD | 4 | ✅ Yes |
+| NETWORK | CPM, CPC, CPD | 16 | ❌ No |
+| PRICE_PRIORITY | CPM, CPC | 12 | ❌ No |
+| BULK | CPM only | 12 | ❌ No |
+| HOUSE | CPM only | 16 | ❌ No (filler) |
+
+**Source**: Google Ad Manager API v202411 CostType specification
 
 ### Mock Adapter
-**Supported**: All pricing models (CPM, CPCV, CPP, CPC, CPV, flat_rate)
+**Supported**: All AdCP pricing models (CPM, VCPM, CPCV, CPP, CPC, CPV, FLAT_RATE)
 - Both fixed and auction pricing
 - All currencies
 - Simulates appropriate metrics per pricing model
-
-**Note**: Adapter UIs should allow creating pricing_options for products. Currently only legacy pricing fields are shown.
+- Used for testing and development
 
 ---
 
