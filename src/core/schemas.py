@@ -992,27 +992,22 @@ class Error(BaseModel):
 
 
 class GetProductsResponse(AdCPBaseModel):
-    """Response for get_products tool (AdCP spec compliant).
+    """Response for get_products tool (AdCP v2.4 spec compliant).
 
-    Human-readable messages are provided via __str__() for protocol layer use
-    (MCP display, A2A task messages), not as schema fields.
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    # Required AdCP fields
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version")
-    products: list[Product] = Field(...)
+    # Required AdCP domain fields
+    products: list[Product] = Field(..., description="List of available advertising products")
 
-    # Optional AdCP fields
-    status: Literal["completed", "working", "submitted"] | None = Field(None, description="Task status")
-    errors: list[Error] | None = None
+    # Optional AdCP domain fields
+    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     def model_dump(self, **kwargs):
         """Override to ensure products use AdCP-compliant serialization."""
-        # Get basic structure
         data = {}
-
-        # Add required adcp_version field
-        data["adcp_version"] = self.adcp_version
 
         # Serialize products using their custom model_dump method
         if self.products:
@@ -1023,17 +1018,12 @@ class GetProductsResponse(AdCPBaseModel):
         # Add other fields, excluding None values for AdCP compliance
         if self.errors is not None:
             data["errors"] = self.errors
-        if self.status is not None:
-            data["status"] = self.status
 
         return data
 
     def model_dump_internal(self, **kwargs):
         """Override to ensure products use internal field names for reconstruction."""
         data = {}
-
-        # Add required adcp_version field
-        data["adcp_version"] = self.adcp_version
 
         # Serialize products using their internal model_dump method
         if self.products:
@@ -1044,8 +1034,6 @@ class GetProductsResponse(AdCPBaseModel):
         # Add other fields
         if self.errors is not None:
             data["errors"] = self.errors
-        if self.status is not None:
-            data["status"] = self.status
 
         return data
 
@@ -1104,15 +1092,14 @@ class ListCreativeFormatsRequest(AdCPBaseModel):
 
 
 class ListCreativeFormatsResponse(AdCPBaseModel):
-    """Response for list_creative_formats tool (AdCP spec compliant).
+    """Response for list_creative_formats tool (AdCP v2.4 spec compliant).
 
-    Human-readable messages are provided via __str__() for protocol layer use
-    (MCP display, A2A task messages), not as schema fields.
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
     formats: list[Format] = Field(..., description="Full format definitions per AdCP spec")
-    status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
     creative_agents: list[dict[str, Any]] | None = Field(
         None, description="Creative agents providing additional formats"
     )
@@ -1628,20 +1615,14 @@ class AssignmentResult(BaseModel):
 
 
 class SyncCreativesResponse(AdCPBaseModel):
-    """Response from syncing creative assets (AdCP spec compliant)."""
+    """Response from syncing creative assets (AdCP v2.4 spec compliant).
 
-    adcp_version: str = Field(
-        "2.3.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response"
-    )
-    message: str = Field(..., description="Human-readable result message summarizing the sync operation")
-    status: Literal["completed", "working", "submitted"] = Field(
-        "completed",
-        description="Current task state - 'completed' for immediate success, 'working' for operations under 120s, 'submitted' for long-running",
-    )
-    context_id: str | None = Field(None, description="Context ID for tracking async operations")
-    task_id: str | None = Field(
-        None, description="Unique identifier for tracking this async operation (present for submitted/working status)"
-    )
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
+
+    # Domain fields
     dry_run: bool = Field(False, description="Whether this was a dry run (no actual changes made)")
     summary: SyncSummary | None = Field(None, description="High-level summary of sync operation results")
     results: list[SyncCreativeResult] | None = Field(None, description="Detailed results for each creative processed")
@@ -1653,8 +1634,25 @@ class SyncCreativesResponse(AdCPBaseModel):
     )
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        return self.message
+        """Return human-readable summary message for protocol envelope."""
+        if self.summary:
+            parts = []
+            if self.summary.created:
+                parts.append(f"{self.summary.created} created")
+            if self.summary.updated:
+                parts.append(f"{self.summary.updated} updated")
+            if self.summary.deleted:
+                parts.append(f"{self.summary.deleted} deleted")
+            if self.summary.failed:
+                parts.append(f"{self.summary.failed} failed")
+            if parts:
+                msg = f"Creative sync completed: {', '.join(parts)}"
+            else:
+                msg = "Creative sync completed: no changes"
+            if self.dry_run:
+                msg += " (dry run)"
+            return msg
+        return "Creative sync completed" + (" (dry run)" if self.dry_run else "")
 
 
 class ListCreativesRequest(AdCPBaseModel):
@@ -2329,30 +2327,21 @@ class CreateMediaBuyRequest(AdCPBaseModel):
 
 
 class CreateMediaBuyResponse(AdCPBaseModel):
-    """Response from create_media_buy operation (AdCP spec compliant).
+    """Response from create_media_buy operation (AdCP v2.4 spec compliant).
 
-    This is an async operation that may require manual approval or additional steps.
-    The status field indicates the current state of the media buy creation.
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    # Required AdCP fields
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
-    status: Literal[
-        "submitted", "working", "input-required", "completed", "canceled", "failed", "rejected", "auth-required"
-    ] = Field(
-        ...,
-        description="Task status per AdCP spec: submitted (queued), working (processing), completed (success), "
-        "failed (error during execution), rejected (not started), input-required (needs user input), "
-        "auth-required (needs auth), canceled (user canceled)",
-    )
-    buyer_ref: str = Field(...)
+    # Required AdCP domain fields
+    buyer_ref: str = Field(..., description="Buyer's reference identifier for this media buy")
 
-    # Optional AdCP fields
-    task_id: str | None = None
-    media_buy_id: str | None = None
-    creative_deadline: datetime | None = None
+    # Optional AdCP domain fields
+    media_buy_id: str | None = Field(None, description="Publisher's unique identifier for the created media buy")
+    creative_deadline: datetime | None = Field(None, description="ISO 8601 timestamp for creative upload deadline")
     packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
-    errors: list[Error] | None = None
+    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
@@ -2374,16 +2363,13 @@ class CreateMediaBuyResponse(AdCPBaseModel):
         return super().model_dump(**kwargs)
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        if self.status == "completed":
-            return f"Media buy {self.media_buy_id or self.buyer_ref} created successfully."
-        elif self.status == "working":
-            return f"Media buy {self.buyer_ref} is being created..."
-        elif self.status == "submitted":
-            return f"Media buy {self.buyer_ref} submitted for approval."
-        elif self.status == "input-required":
-            return f"Media buy {self.buyer_ref} requires additional input."
-        return f"Media buy {self.buyer_ref}: {self.status}"
+        """Return human-readable summary message for protocol envelope."""
+        if self.media_buy_id:
+            return f"Media buy {self.media_buy_id} created successfully."
+        elif self.errors:
+            return f"Media buy creation for {self.buyer_ref} encountered {len(self.errors)} error(s)."
+        else:
+            return f"Media buy {self.buyer_ref} created."
 
 
 class CheckMediaBuyStatusRequest(AdCPBaseModel):
@@ -2580,19 +2566,21 @@ class AssetStatus(BaseModel):
 
 
 class UpdateMediaBuyResponse(AdCPBaseModel):
-    """Response from update_media_buy operation (AdCP spec compliant)."""
+    """Response from update_media_buy operation (AdCP v2.4 spec compliant).
 
-    # Required AdCP fields
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
-    status: Literal["completed", "working", "submitted", "input-required"] = Field(...)
-    media_buy_id: str = Field(...)
-    buyer_ref: str = Field(...)
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
 
-    # Optional AdCP fields
-    task_id: str | None = None
-    implementation_date: datetime | None = None
-    affected_packages: list[dict[str, Any]] = Field(default_factory=list)
-    errors: list[Error] | None = None
+    # Required AdCP domain fields
+    media_buy_id: str = Field(..., description="Publisher's unique identifier for the media buy")
+    buyer_ref: str = Field(..., description="Buyer's reference identifier for this media buy")
+
+    # Optional AdCP domain fields
+    implementation_date: datetime | None = Field(None, description="When the update will take effect")
+    affected_packages: list[dict[str, Any]] = Field(default_factory=list, description="Packages affected by update")
+    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
@@ -2614,16 +2602,13 @@ class UpdateMediaBuyResponse(AdCPBaseModel):
         return super().model_dump(**kwargs)
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        if self.status == "completed":
+        """Return human-readable summary message for protocol envelope."""
+        if self.errors:
+            return f"Media buy {self.media_buy_id} update encountered {len(self.errors)} error(s)."
+        elif self.affected_packages:
+            return f"Media buy {self.media_buy_id} updated: {len(self.affected_packages)} package(s) affected."
+        else:
             return f"Media buy {self.media_buy_id} updated successfully."
-        elif self.status == "working":
-            return f"Media buy {self.media_buy_id} is being updated..."
-        elif self.status == "submitted":
-            return f"Media buy {self.media_buy_id} update submitted for approval."
-        elif self.status == "input-required":
-            return f"Media buy {self.media_buy_id} update requires additional input."
-        return f"Media buy {self.media_buy_id}: {self.status}"
 
 
 # Unified update models
