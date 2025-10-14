@@ -23,7 +23,12 @@
       "type": "string",
       "description": "ISO 4217 currency code",
       "pattern": "^[A-Z]{3}$",
-      "examples": ["USD", "EUR", "GBP", "JPY"]
+      "examples": [
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY"
+      ]
     },
     "is_fixed": {
       "type": "boolean",
@@ -77,6 +82,12 @@
       "minimum": 0
     }
   },
-  "required": ["pricing_option_id", "pricing_model", "currency", "is_fixed", "rate"],
+  "required": [
+    "pricing_option_id",
+    "pricing_model",
+    "currency",
+    "is_fixed",
+    "rate"
+  ],
   "additionalProperties": false
 }

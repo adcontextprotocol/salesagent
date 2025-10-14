@@ -5,19 +5,21 @@
   "description": "Response payload for activate_signal task",
   "type": "object",
   "properties": {
+    "message": {
+      "type": "string",
+      "description": "Human-readable summary of the activation status"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Session continuity identifier for tracking progress"
+    },
     "task_id": {
       "type": "string",
       "description": "Unique identifier for tracking the activation"
     },
     "status": {
-      "type": "string",
-      "description": "Current status",
-      "enum": [
-        "pending",
-        "processing",
-        "deployed",
-        "failed"
-      ]
+      "$ref": "/schemas/v1/enums/task-status.json",
+      "description": "Current activation state: 'submitted' (pending), 'working' (processing), 'completed' (deployed), 'failed', 'input-required' (needs auth), etc."
     },
     "decisioning_platform_segment_id": {
       "type": "string",
@@ -42,6 +44,8 @@
     }
   },
   "required": [
+    "message",
+    "context_id",
     "task_id",
     "status"
   ],

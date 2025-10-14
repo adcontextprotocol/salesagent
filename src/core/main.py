@@ -3578,7 +3578,9 @@ def _create_media_buy_impl(
             start_time = now
         else:
             # Ensure start_time is timezone-aware for comparison
-            start_time = req.start_time
+            # At this point, req.start_time is guaranteed to be datetime (not str)
+            assert isinstance(req.start_time, datetime), "start_time must be datetime when not 'asap'"
+            start_time = req.start_time  # type: datetime
             if start_time.tzinfo is None:
                 start_time = start_time.replace(tzinfo=UTC)
 
@@ -4135,7 +4137,7 @@ def _create_media_buy_impl(
                 campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
                 kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
                 budget=total_budget,  # Extract total budget
-                currency=req.budget.currency if req.budget else "USD",  # AdCP v2.4 currency field
+                currency=request_currency,  # AdCP v2.4 currency field (resolved above)
                 start_date=start_time.date(),  # Legacy field for compatibility
                 end_date=end_time.date(),  # Legacy field for compatibility
                 start_time=start_time,  # AdCP v2.4 datetime scheduling (resolved from 'asap' if needed)
@@ -4788,14 +4790,18 @@ def _update_media_buy_impl(
 
             if media_buy:
                 # Determine currency (use updated or existing)
-                # Extract currency from Budget object if present, otherwise from media buy
-                request_currency = (req.budget.currency if req.budget else None) or media_buy.currency or "USD"
+                # Extract currency from Budget object if present (and if it's an object, not plain number)
+                request_currency: str
+                if req.budget and hasattr(req.budget, "currency"):
+                    request_currency = str(req.budget.currency)
+                else:
+                    request_currency = str(media_buy.currency) if media_buy.currency else "USD"
 
                 # Get currency limit
-                stmt = select(CurrencyLimit).where(
+                currency_stmt = select(CurrencyLimit).where(
                     CurrencyLimit.tenant_id == tenant["tenant_id"], CurrencyLimit.currency_code == request_currency
                 )
-                currency_limit = session.scalars(stmt).first()
+                currency_limit = session.scalars(currency_stmt).first()
 
                 if not currency_limit:
                     error_msg = f"Currency {request_currency} is not supported by this publisher."

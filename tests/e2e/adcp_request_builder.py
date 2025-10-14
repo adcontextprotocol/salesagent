@@ -65,6 +65,7 @@ def build_adcp_media_buy_request(
         buyer_ref = generate_buyer_ref()
 
     # Build the request following AdCP V2.3 spec exactly
+    # Note: ALL budgets are plain numbers per spec (currency from pricing_option_id)
     request: dict[str, Any] = {
         "buyer_ref": buyer_ref,
         "promoted_offering": promoted_offering,
@@ -72,12 +73,12 @@ def build_adcp_media_buy_request(
             {
                 "buyer_ref": generate_buyer_ref("pkg"),
                 "products": product_ids,
-                "budget": {"total": total_budget, "currency": currency, "pacing": pacing},
+                "budget": total_budget,  # Package budget is plain number per AdCP spec
             }
         ],
         "start_time": start_time,
         "end_time": end_time,
-        "budget": {"total": total_budget, "currency": currency, "pacing": pacing},
+        "budget": total_budget,  # Top-level budget is plain number per AdCP spec
     }
 
     # Add optional fields
