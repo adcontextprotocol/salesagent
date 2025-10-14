@@ -240,7 +240,7 @@ class TestCreativeSchemaRoundtrip:
         test_data = {
             "creative_id": "video_creative_roundtrip",
             "name": "Video Creative Roundtrip Test",
-            "format_id": "video_30s",
+            "format_id": "video_640x480",
             "status": "approved",
             "content_uri": "https://example.com/creative.mp4",
             "principal_id": "test_principal",
