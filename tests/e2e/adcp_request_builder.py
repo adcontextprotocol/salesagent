@@ -6,7 +6,7 @@ All helpers enforce the NEW AdCP V2.3 format with proper schema validation.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -65,6 +65,7 @@ def build_adcp_media_buy_request(
         buyer_ref = generate_buyer_ref()
 
     # Build the request following AdCP V2.3 spec exactly
+    # Note: ALL budgets are plain numbers per spec (currency from pricing_option_id)
     request: dict[str, Any] = {
         "buyer_ref": buyer_ref,
         "promoted_offering": promoted_offering,
@@ -72,12 +73,12 @@ def build_adcp_media_buy_request(
             {
                 "buyer_ref": generate_buyer_ref("pkg"),
                 "products": product_ids,
-                "budget": {"total": total_budget, "currency": currency, "pacing": pacing},
+                "budget": total_budget,  # Package budget is plain number per AdCP spec
             }
         ],
         "start_time": start_time,
         "end_time": end_time,
-        "budget": {"total": total_budget, "currency": currency, "pacing": pacing},
+        "budget": total_budget,  # Top-level budget is plain number per AdCP spec
     }
 
     # Add optional fields
@@ -233,7 +234,7 @@ def get_test_date_range(days_from_now: int = 1, duration_days: int = 30) -> tupl
     """
     from datetime import timedelta
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start = now + timedelta(days=days_from_now)
     end = start + timedelta(days=duration_days)
 

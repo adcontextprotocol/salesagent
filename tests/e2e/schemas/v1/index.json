@@ -4,12 +4,12 @@
   "title": "AdCP Schema Registry v1",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "1.6.1",
+  "adcp_version": "1.8.0",
   "standard_formats_version": "1.0.0",
   "versioning": {
-    "note": "All request/response schemas include adcp_version field. Compatibility follows semantic versioning rules."
+    "note": "AdCP uses path-based versioning. The schema URL path (/schemas/v1/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2025-10-04",
+  "lastUpdated": "2025-10-13",
   "baseUrl": "/schemas/v1",
   "schemas": {
     "core": {
@@ -29,15 +29,11 @@
         },
         "creative-asset": {
           "$ref": "/schemas/v1/core/creative-asset.json",
-          "description": "Creative asset for upload to library - supports both hosted assets and third-party snippets"
+          "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party ad serving (VAST, DAAST, HTML, JavaScript)"
         },
         "targeting": {
           "$ref": "/schemas/v1/core/targeting.json",
           "description": "Audience targeting criteria"
-        },
-        "budget": {
-          "$ref": "/schemas/v1/core/budget.json",
-          "description": "Budget configuration for a media buy or package"
         },
         "frequency-cap": {
           "$ref": "/schemas/v1/core/frequency-cap.json",
@@ -50,6 +46,10 @@
         "measurement": {
           "$ref": "/schemas/v1/core/measurement.json",
           "description": "Measurement capabilities included with a product"
+        },
+        "delivery-metrics": {
+          "$ref": "/schemas/v1/core/delivery-metrics.json",
+          "description": "Standard delivery metrics for reporting"
         },
         "creative-policy": {
           "$ref": "/schemas/v1/core/creative-policy.json",
@@ -71,9 +71,9 @@
           "$ref": "/schemas/v1/core/creative-assignment.json",
           "description": "Assignment of a creative asset to a package"
         },
-        "creative-library-item": {
-          "$ref": "/schemas/v1/core/creative-library-item.json",
-          "description": "Creative asset as it appears in the centralized library"
+        "creative-manifest": {
+          "$ref": "/schemas/v1/core/creative-manifest.json",
+          "description": "Complete specification of a creative with all assets needed for rendering"
         },
         "performance-feedback": {
           "$ref": "/schemas/v1/core/performance-feedback.json",
@@ -82,12 +82,36 @@
         "property": {
           "$ref": "/schemas/v1/core/property.json",
           "description": "An advertising property that can be validated via adagents.json"
+        },
+        "brand-manifest": {
+          "$ref": "/schemas/v1/core/brand-manifest.json",
+          "description": "Standardized brand information manifest for creative generation and media buying"
+        },
+        "brand-manifest-ref": {
+          "$ref": "/schemas/v1/core/brand-manifest-ref.json",
+          "description": "Brand manifest reference (inline object or URL)"
+        },
+        "promoted-products": {
+          "$ref": "/schemas/v1/core/promoted-products.json",
+          "description": "Product or offering selection for campaigns with multiple selection methods"
+        },
+        "start-timing": {
+          "$ref": "/schemas/v1/core/start-timing.json",
+          "description": "Campaign start timing: 'asap' or ISO 8601 date-time"
+        },
+        "pricing-option": {
+          "$ref": "/schemas/v1/core/pricing-option.json",
+          "description": "A pricing model option offered by a publisher for a product"
         }
       }
     },
     "enums": {
       "description": "Enumerated types and constants",
       "schemas": {
+        "pricing-model": {
+          "$ref": "/schemas/v1/enums/pricing-model.json",
+          "description": "Supported pricing models for advertising products"
+        },
         "delivery-type": {
           "$ref": "/schemas/v1/enums/delivery-type.json",
           "description": "Type of inventory delivery"
@@ -116,10 +140,6 @@
           "$ref": "/schemas/v1/enums/standard-format-ids.json",
           "description": "Enumeration of all standard creative format identifiers"
         },
-        "snippet-type": {
-          "$ref": "/schemas/v1/enums/snippet-type.json",
-          "description": "Types of third-party creative snippets (VAST, HTML, JavaScript, etc.)"
-        },
         "identifier-types": {
           "$ref": "/schemas/v1/enums/identifier-types.json",
           "description": "Valid identifier types for property identification across different media types"
@@ -127,6 +147,39 @@
         "task-status": {
           "$ref": "/schemas/v1/enums/task-status.json",
           "description": "Standardized task status values based on A2A TaskState enum"
+        }
+      }
+    },
+    "pricing-options": {
+      "description": "Individual pricing model schemas with model-specific validation. CPM supports both fixed and auction pricing; all other models are fixed-rate only.",
+      "schemas": {
+        "cpm-fixed-option": {
+          "$ref": "/schemas/v1/pricing-options/cpm-fixed-option.json",
+          "description": "Cost Per Mille (CPM) fixed-rate pricing for direct/guaranteed deals"
+        },
+        "cpm-auction-option": {
+          "$ref": "/schemas/v1/pricing-options/cpm-auction-option.json",
+          "description": "Cost Per Mille (CPM) auction-based pricing for programmatic/non-guaranteed inventory"
+        },
+        "cpc-option": {
+          "$ref": "/schemas/v1/pricing-options/cpc-option.json",
+          "description": "Cost Per Click (CPC) fixed-rate pricing for performance campaigns"
+        },
+        "cpcv-option": {
+          "$ref": "/schemas/v1/pricing-options/cpcv-option.json",
+          "description": "Cost Per Completed View (CPCV) fixed-rate pricing for video/audio"
+        },
+        "cpv-option": {
+          "$ref": "/schemas/v1/pricing-options/cpv-option.json",
+          "description": "Cost Per View (CPV) fixed-rate pricing with threshold"
+        },
+        "cpp-option": {
+          "$ref": "/schemas/v1/pricing-options/cpp-option.json",
+          "description": "Cost Per Point (CPP) fixed-rate pricing for TV/audio with demographic measurement"
+        },
+        "flat-rate-option": {
+          "$ref": "/schemas/v1/pricing-options/flat-rate-option.json",
+          "description": "Flat rate pricing for DOOH and sponsorships"
         }
       }
     },
@@ -152,11 +205,11 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/v1/media-buy/list-creative-formats-request.json",
-            "description": "Request parameters for discovering supported creative formats"
+            "description": "Request parameters for discovering format IDs and creative agents supported by this sales agent"
           },
           "response": {
             "$ref": "/schemas/v1/media-buy/list-creative-formats-response.json",
-            "description": "Response payload for list_creative_formats task"
+            "description": "Response payload with format_ids and creative_agents list. Sales agent returns which formats it supports and which creative agents provide those formats. Buyers query creative agents for full format specifications."
           }
         },
         "create-media-buy": {
@@ -228,7 +281,12 @@
             "$ref": "/schemas/v1/media-buy/provide-performance-feedback-response.json",
             "description": "Response payload for provide_performance_feedback task"
           }
-        },
+        }
+      }
+    },
+    "creative": {
+      "description": "Creative protocol task request/response schemas and asset type definitions",
+      "tasks": {
         "build-creative": {
           "request": {
             "$ref": "/schemas/v1/media-buy/build-creative-request.json",
@@ -239,16 +297,30 @@
             "description": "Response payload for build_creative task"
           }
         },
-        "manage-creative-library": {
+        "preview-creative": {
           "request": {
-            "$ref": "/schemas/v1/media-buy/manage-creative-library-request.json",
-            "description": "Request parameters for managing creative library assets"
+            "$ref": "/schemas/v1/creative/preview-creative-request.json",
+            "description": "Request parameters for generating creative previews"
           },
           "response": {
-            "$ref": "/schemas/v1/media-buy/manage-creative-library-response.json",
-            "description": "Response payload for manage_creative_library task"
+            "$ref": "/schemas/v1/creative/preview-creative-response.json",
+            "description": "Response payload for preview_creative task"
+          }
+        },
+        "list-creative-formats": {
+          "request": {
+            "$ref": "/schemas/v1/creative/list-creative-formats-request.json",
+            "description": "Request parameters for discovering creative formats from this creative agent"
+          },
+          "response": {
+            "$ref": "/schemas/v1/creative/list-creative-formats-response.json",
+            "description": "Response payload with full format definitions - this is the authoritative source for format specifications"
           }
         }
+      },
+      "asset_types": {
+        "$ref": "/schemas/v1/creative/asset-types/index.json",
+        "description": "Asset type definitions for creative manifests"
       }
     },
     "signals": {
@@ -283,12 +355,8 @@
       "purpose": "Declares which sales agents are authorized to sell a publisher's advertising inventory"
     },
     "standard-formats": {
-      "description": "Standard creative formats registry and schemas",
-      "$ref": "/schemas/v1/standard-formats/index.json",
-      "asset_types": {
-        "$ref": "/schemas/v1/standard-formats/asset-types/index.json",
-        "description": "Standardized asset type definitions"
-      }
+      "description": "Standard creative formats registry and schemas (formats will be provided by reference creative agent)",
+      "$ref": "/schemas/v1/standard-formats/index.json"
     }
   },
   "usage": {
