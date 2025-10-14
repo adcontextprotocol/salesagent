@@ -370,32 +370,34 @@ class AIProductConfigurationService:
         )
 
     def _get_available_formats(self, tenant_id: str) -> list[dict[str, Any]]:
-        """Get all available creative formats (standard + custom for tenant)."""
-        from src.core.database.models import CreativeFormat
+        """Get all available creative formats (standard + custom for tenant).
 
-        with get_db_session() as db_session:
-            from sqlalchemy import or_
+        DEPRECATED: creative_formats table removed in migration f2addf453200.
+        Returns empty list as fallback. Use AdCP list_creative_formats tool instead.
+        """
+        logger.warning(
+            "_get_available_formats() is deprecated - creative_formats table no longer exists. "
+            "Returning empty list. Use AdCP list_creative_formats tool instead."
+        )
+        return []
 
-            stmt = (
-                select(CreativeFormat)
-                .where(or_(CreativeFormat.tenant_id.is_(None), CreativeFormat.tenant_id == tenant_id))
-                .order_by(CreativeFormat.is_standard.desc(), CreativeFormat.type, CreativeFormat.name)
-            )
-
-            formats = []
-            for format_obj in db_session.scalars(stmt):
-                format_dict = {
-                    "format_id": format_obj.format_id,
-                    "name": format_obj.name,
-                    "type": format_obj.type,
-                    "description": format_obj.description,
-                }
-
-                # Add dimensions for display formats
-                if format_obj.width and format_obj.height:
-                    format_dict["dimensions"] = f"{format_obj.width}x{format_obj.height}"
-                    format_dict["width"] = format_obj.width
-                    format_dict["height"] = format_obj.height
+        # Original database query commented out - table no longer exists
+        # from src.core.database.models import CreativeFormat
+        # with get_db_session() as db_session:
+        #     stmt = select(CreativeFormat).where(...)
+        #     formats = []
+        #     for format_obj in db_session.scalars(stmt):
+        #         format_dict = {
+        #             "format_id": format_obj.format_id,
+        #             "name": format_obj.name,
+        #             "type": format_obj.type,
+        #             "description": format_obj.description,
+        #         }
+        #         # Add dimensions for display formats
+        #         if format_obj.width and format_obj.height:
+        #             format_dict["dimensions"] = f"{format_obj.width}x{format_obj.height}"
+        #             format_dict["width"] = format_obj.width
+        #             format_dict["height"] = format_obj.height
 
                 # Add duration for video/audio formats
                 if format_obj.duration_seconds:

@@ -21,7 +21,8 @@ from bs4 import BeautifulSoup
 from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import CreativeFormat
+# CreativeFormat model removed - table dropped in migration f2addf453200
+# from src.core.database.models import CreativeFormat
 from src.core.retry_utils import http_retry
 
 logger = logging.getLogger(__name__)
@@ -801,39 +802,21 @@ async def discover_creative_format(
 
 
 async def sync_standard_formats():
-    """Sync standard formats from adcontextprotocol.org to database."""
-    service = AICreativeFormatService()
-    formats = await service.fetch_standard_formats()
+    """DEPRECATED: Sync standard formats from adcontextprotocol.org to database.
 
-    with get_db_session() as session:
-        for fmt in formats:
-            try:
-                # Check if format already exists
-                stmt = select(CreativeFormat).filter_by(format_id=fmt.format_id)
-                existing = session.scalars(stmt).first()
+    NOTE: This function is no longer functional as the creative_formats table
+    was removed in migration f2addf453200 (Oct 13, 2025).
 
-                if not existing:
-                    # Insert new format
-                    new_format = CreativeFormat(
-                        format_id=fmt.format_id,
-                        tenant_id=None,  # Standard formats have no tenant
-                        name=fmt.name,
-                        type=fmt.type,
-                        description=fmt.description,
-                        width=getattr(fmt, "width", None),
-                        height=getattr(fmt, "height", None),
-                        duration_seconds=getattr(fmt, "duration_seconds", None),
-                        max_file_size_kb=getattr(fmt, "max_file_size_kb", None),
-                        specs=getattr(fmt, "specs", {}) or {},
-                        is_standard=True,
-                        extends=fmt.extends,
-                        source_url=fmt.source_url,
-                    )
-                    session.add(new_format)
+    Creative formats are now fetched directly from creative agents via AdCP protocol.
+    Use list_creative_formats MCP tool instead.
+    """
+    logger.warning(
+        "sync_standard_formats() is deprecated - creative_formats table no longer exists. "
+        "Use AdCP list_creative_formats tool instead."
+    )
+    return 0
 
-            except Exception as e:
-                logger.error(f"Error syncing format {fmt.format_id}: {e}")
-
-        session.commit()
-
-    return len(formats)
+    # Original implementation commented out - table no longer exists
+    # service = AICreativeFormatService()
+    # formats = await service.fetch_standard_formats()
+    # ... (database sync code removed)
