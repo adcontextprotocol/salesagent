@@ -1045,10 +1045,33 @@ class Creative(BaseModel):
     name: str
 
     # AdCP spec compliant fields
-    format: str | FormatId = Field(
-        alias="format_id", description="Creative format type per AdCP spec (string for legacy, object for v2.4+)"
+    format: FormatId = Field(
+        alias="format_id",
+        description="Creative format identifier with agent_url namespace (AdCP v2.4+)"
     )
     url: str = Field(alias="content_uri", description="URL of the creative content per AdCP spec")
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_format_id(cls, values):
+        """Validate and upgrade format_id to AdCP v2.4 namespaced format.
+
+        Automatically upgrades legacy string format_id to FormatId object with agent_url.
+        Uses cached format mappings or defaults to AdCP reference implementation.
+        """
+        from src.core.format_cache import upgrade_legacy_format_id
+
+        format_val = values.get("format_id") or values.get("format")
+        if format_val is not None:
+            try:
+                # Upgrade to FormatId object (handles strings, dicts, objects)
+                upgraded = upgrade_legacy_format_id(format_val)
+                # Set both format_id and format to ensure consistency
+                values["format_id"] = upgraded
+                values["format"] = upgraded
+            except ValueError as e:
+                raise ValueError(f"Invalid format_id: {e}")
+        return values
     media_url: str | None = Field(None, description="Alternative media URL (typically same as url)")
     click_url: str | None = Field(None, alias="click_through_url", description="Landing page URL per AdCP spec")
 
@@ -1165,24 +1188,20 @@ class Creative(BaseModel):
         return self.click_url
 
     def get_format_string(self) -> str:
-        """Get format as a string, handling both legacy string and v2.4 object formats.
+        """Get format ID string from FormatId object.
 
         Returns:
             String format identifier (e.g., "display_300x250")
         """
-        if isinstance(self.format, str):
-            return self.format
         return self.format.id
 
-    def get_format_agent_url(self) -> str | None:
-        """Get agent URL if format is v2.4 object format.
+    def get_format_agent_url(self) -> str:
+        """Get agent URL from FormatId object.
 
         Returns:
-            Agent URL string or None if legacy string format
+            Agent URL string (e.g., "https://creative.adcontextprotocol.org")
         """
-        if isinstance(self.format, FormatId):
-            return self.format.agent_url
-        return None
+        return self.format.agent_url
 
     def model_dump(self, **kwargs):
         """Override to provide AdCP-compliant responses while preserving internal fields."""

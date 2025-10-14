@@ -342,7 +342,8 @@ class Creative(Base):
     tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     principal_id = Column(String(100), nullable=False)
     name = Column(String(255), nullable=False)
-    format = Column(String(100), nullable=False)  # Format field matches database schema
+    agent_url = Column(String(500), nullable=False)  # Agent URL for format_id namespacing (AdCP v2.4)
+    format = Column(String(100), nullable=False)  # Format ID (combined with agent_url for full namespace)
     status = Column(String(50), nullable=False, default="pending")
 
     # Data field stores creative content and metadata as JSON
@@ -366,6 +367,7 @@ class Creative(Base):
         Index("idx_creatives_tenant", "tenant_id"),
         Index("idx_creatives_principal", "tenant_id", "principal_id"),
         Index("idx_creatives_status", "status"),
+        Index("idx_creatives_format_namespace", "agent_url", "format"),  # AdCP v2.4 format namespacing
     )
 
 

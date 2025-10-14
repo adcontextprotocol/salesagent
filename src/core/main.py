@@ -640,22 +640,51 @@ console.print(f"[bold cyan]🔌 Using adapter: {SELECTED_ADAPTER.upper()}[/bold 
 
 
 # --- Creative Conversion Helper ---
-def _normalize_format_value(format_value: Any) -> str:
-    """Normalize format value from either string or FormatId object to string.
+def _extract_format_namespace(format_value: Any) -> tuple[str, str]:
+    """Extract agent_url and format ID from format_id field (AdCP v2.4).
 
     Args:
-        format_value: Either a string (legacy) or dict/FormatId with agent_url+id (v2.4+)
+        format_value: FormatId dict/object with agent_url+id fields
+
+    Returns:
+        Tuple of (agent_url, format_id)
+
+    Raises:
+        ValueError: If format_value doesn't have required agent_url and id fields
+    """
+    if isinstance(format_value, dict):
+        agent_url = format_value.get("agent_url")
+        format_id = format_value.get("id")
+        if not agent_url or not format_id:
+            raise ValueError(
+                f"format_id must have both 'agent_url' and 'id' fields. Got: {format_value}"
+            )
+        return agent_url, format_id
+    if hasattr(format_value, "agent_url") and hasattr(format_value, "id"):
+        return format_value.agent_url, format_value.id
+    if isinstance(format_value, str):
+        raise ValueError(
+            f"format_id must be an object with 'agent_url' and 'id' fields (AdCP v2.4). "
+            f"Got string: '{format_value}'. "
+            f"String format_id is no longer supported - all formats must be namespaced."
+        )
+    raise ValueError(f"Invalid format_id format. Expected object with agent_url and id, got: {type(format_value)}")
+
+
+def _normalize_format_value(format_value: Any) -> str:
+    """Normalize format value to string ID (for legacy code compatibility).
+
+    Args:
+        format_value: FormatId dict/object with agent_url+id fields
 
     Returns:
         String format identifier
+
+    Note: This is a legacy compatibility function. New code should use _extract_format_namespace
+    to properly handle the agent_url namespace.
     """
-    if isinstance(format_value, str):
-        return format_value
-    if isinstance(format_value, dict) and "id" in format_value:
-        return format_value["id"]
-    if hasattr(format_value, "id"):
-        return format_value.id
-    return str(format_value)
+    _, format_id = _extract_format_namespace(format_value)
+    return format_id
 
 
 def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: list[str]) -> dict[str, Any]:
@@ -1678,10 +1707,10 @@ def _sync_creatives_impl(
                                 existing_creative.name = creative.get("name")
                                 changes.append("name")
                             if creative.get("format_id") or creative.get("format"):
-                                new_format = _normalize_format_value(
-                                    creative.get("format_id") or creative.get("format")
-                                )
-                                if new_format != existing_creative.format:
+                                format_value = creative.get("format_id") or creative.get("format")
+                                new_agent_url, new_format = _extract_format_namespace(format_value)
+                                if new_agent_url != existing_creative.agent_url or new_format != existing_creative.format:
+                                    existing_creative.agent_url = new_agent_url
                                     existing_creative.format = new_format
                                     changes.append("format")
                         else:
@@ -1689,8 +1718,10 @@ def _sync_creatives_impl(
                             if creative.get("name") != existing_creative.name:
                                 existing_creative.name = creative.get("name")
                                 changes.append("name")
-                            new_format = _normalize_format_value(creative.get("format_id") or creative.get("format"))
-                            if new_format != existing_creative.format:
+                            format_value = creative.get("format_id") or creative.get("format")
+                            new_agent_url, new_format = _extract_format_namespace(format_value)
+                            if new_agent_url != existing_creative.agent_url or new_format != existing_creative.format:
+                                existing_creative.agent_url = new_agent_url
                                 existing_creative.format = new_format
                                 changes.append("format")
 
@@ -2029,11 +2060,16 @@ def _sync_creatives_impl(
                         creative_status = "pending"
                         needs_approval = False
 
+                        # Extract agent_url and format ID from format_id field
+                        format_value = creative.get("format_id") or creative.get("format")
+                        agent_url, format_id = _extract_format_namespace(format_value)
+
                         db_creative = DBCreative(
                             tenant_id=tenant["tenant_id"],
                             creative_id=creative.get("creative_id") or str(uuid.uuid4()),
                             name=creative.get("name"),
-                            format=creative.get("format_id") or creative.get("format"),
+                            agent_url=agent_url,
+                            format=format_id,
                             principal_id=principal_id,
                             status=creative_status,
                             created_at=datetime.now(UTC),

@@ -570,7 +570,11 @@ class TestAdCPContract:
         assert adcp_response["media_url"] == adcp_response["url"], "media_url should default to url"
         assert adcp_response["compliance"]["status"] == "pending", "Default compliance status should be 'pending'"
         assert isinstance(adcp_response["compliance"]["issues"], list), "Compliance issues should be a list"
-        assert adcp_response["format"] == "display_300x250", "Format should use AdCP field name"
+
+        # Format is now a FormatId object per AdCP v2.4
+        assert isinstance(adcp_response["format"], dict), "Format should be FormatId object"
+        assert adcp_response["format"]["id"] == "display_300x250", "Format ID should be display_300x250"
+        assert "agent_url" in adcp_response["format"], "Format should have agent_url"
 
         # Test internal model_dump includes all fields
         internal_response = creative.model_dump_internal()
