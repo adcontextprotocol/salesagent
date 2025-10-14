@@ -1171,7 +1171,9 @@ class PushNotificationConfig(Base, JSONValidatorMixin):
 
     # Relationships
     tenant = relationship("Tenant", backref="push_notification_configs")
-    principal = relationship("Principal", backref="push_notification_configs", overlaps="push_notification_configs")
+    principal = relationship(
+        "Principal", backref="push_notification_configs", overlaps="push_notification_configs,tenant"
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
