@@ -1934,45 +1934,62 @@ class Package(BaseModel):
     creative_assignments: list[dict[str, Any]] | None = Field(
         None, description="Creative assets assigned to this package"
     )
-    formats_to_provide: list[str] | None = Field(
+    format_ids_to_provide: list[FormatId] | None = Field(
         None,
-        description="Format IDs that creative assets will be provided for this package (array of strings, not FormatId objects)",
+        description="Format IDs that creative assets will be provided for this package (array of FormatId objects per AdCP v2.4)",
     )
 
     @model_validator(mode="before")
     @classmethod
-    def migrate_format_ids_to_formats_to_provide(cls, values: dict) -> dict:
-        """Migrate legacy format_ids field to formats_to_provide for backward compatibility.
+    def migrate_format_ids_to_format_ids_to_provide(cls, values: dict) -> dict:
+        """Migrate legacy format_ids field to format_ids_to_provide for backward compatibility.
 
-        Package requests use format_ids (array of strings), but responses use formats_to_provide.
-        This validator ensures consistent handling.
+        Handles migration from old formats:
+        - format_ids (array of strings)
+        - formats_to_provide (array of strings)
+        To new AdCP v2.4 format:
+        - format_ids_to_provide (array of FormatId objects)
         """
         if not isinstance(values, dict):
             return values
 
-        # If format_ids is present but formats_to_provide is not, migrate it
-        if "format_ids" in values and "formats_to_provide" not in values:
-            format_ids = values.get("format_ids")
-            if format_ids:
-                # Handle both strings and FormatReference objects
-                if isinstance(format_ids, list):
-                    string_ids = []
-                    for fmt_id in format_ids:
-                        if isinstance(fmt_id, str):
-                            string_ids.append(fmt_id)
-                        elif isinstance(fmt_id, dict) and "id" in fmt_id:
-                            # FormatId object serialized as dict
-                            string_ids.append(fmt_id["id"])
-                        elif isinstance(fmt_id, dict) and "format_id" in fmt_id:
-                            # FormatReference object serialized as dict
-                            string_ids.append(fmt_id["format_id"])
-                        elif hasattr(fmt_id, "id"):
-                            # FormatId object
-                            string_ids.append(fmt_id.id)
-                        elif hasattr(fmt_id, "format_id"):
-                            # FormatReference object
-                            string_ids.append(fmt_id.format_id)
-                    values["formats_to_provide"] = string_ids
+        # If we already have format_ids_to_provide, nothing to migrate
+        if "format_ids_to_provide" in values:
+            return values
+
+        # Try to migrate from formats_to_provide or format_ids
+        source_field = None
+        if "formats_to_provide" in values and values["formats_to_provide"]:
+            source_field = "formats_to_provide"
+        elif "format_ids" in values and values["format_ids"]:
+            source_field = "format_ids"
+
+        if source_field:
+            format_data = values.get(source_field)
+            if isinstance(format_data, list) and len(format_data) > 0:
+                format_id_objects = []
+                for fmt_id in format_data:
+                    if isinstance(fmt_id, dict):
+                        # Already a FormatId dict
+                        if "agent_url" in fmt_id and "id" in fmt_id:
+                            format_id_objects.append(fmt_id)
+                        # FormatReference dict with format_id instead of id
+                        elif "agent_url" in fmt_id and "format_id" in fmt_id:
+                            format_id_objects.append({"agent_url": fmt_id["agent_url"], "id": fmt_id["format_id"]})
+                    elif isinstance(fmt_id, str):
+                        # String format ID - need to infer agent_url
+                        # Default to reference creative agent
+                        format_id_objects.append(
+                            {"agent_url": "https://creative.adcontextprotocol.org", "id": fmt_id}
+                        )
+                    elif hasattr(fmt_id, "agent_url") and hasattr(fmt_id, "id"):
+                        # FormatId object
+                        format_id_objects.append({"agent_url": fmt_id.agent_url, "id": fmt_id.id})
+                    elif hasattr(fmt_id, "agent_url") and hasattr(fmt_id, "format_id"):
+                        # FormatReference object
+                        format_id_objects.append({"agent_url": fmt_id.agent_url, "id": fmt_id.format_id})
+
+                values["format_ids_to_provide"] = format_id_objects
 
         return values
 
@@ -2001,7 +2018,7 @@ class Package(BaseModel):
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
             # Add internal fields to exclude by default
-            # format_ids is also excluded because it's not in AdCP Package schema
+            # Legacy format fields also excluded (migrated to format_ids_to_provide)
             exclude.update(
                 {
                     "tenant_id",
@@ -2011,6 +2028,7 @@ class Package(BaseModel):
                     "updated_at",
                     "metadata",
                     "format_ids",
+                    "formats_to_provide",
                 }
             )
             kwargs["exclude"] = exclude
