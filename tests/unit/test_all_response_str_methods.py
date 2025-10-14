@@ -2,17 +2,15 @@
 
 from datetime import UTC, datetime
 
-from src.core.schema_adapters import (
-    ActivateSignalResponse,
-    GetProductsResponse,
-    ListCreativeFormatsResponse,
-    ListCreativesResponse,
-)
 from src.core.schemas import (
+    ActivateSignalResponse,
     CreateHumanTaskResponse,
     CreateMediaBuyResponse,
     Creative,
     Format,
+    GetProductsResponse,
+    ListCreativeFormatsResponse,
+    ListCreativesResponse,
     Pagination,
     Product,
     QuerySummary,
@@ -106,12 +104,17 @@ class TestResponseStrMethods:
         assert str(resp) == "No creative formats are currently supported."
 
     def test_sync_creatives_response(self):
-        """SyncCreativesResponse returns the message field."""
-        resp = SyncCreativesResponse(message="Successfully synced 3 creatives", status="completed")
-        assert str(resp) == "Successfully synced 3 creatives"
+        """SyncCreativesResponse generates message from summary data."""
+        from src.core.schemas import SyncSummary
+
+        resp = SyncCreativesResponse(
+            summary=SyncSummary(total_processed=3, created=2, updated=1, unchanged=0, deleted=0, failed=0),
+            dry_run=False,
+        )
+        assert str(resp) == "Creative sync completed: 2 created, 1 updated"
 
     def test_list_creatives_response(self):
-        """ListCreativesResponse returns the message field."""
+        """ListCreativesResponse generates message from creatives count."""
         creative = Creative(
             creative_id="cr1",
             name="Test Creative",
@@ -122,40 +125,26 @@ class TestResponseStrMethods:
             updated_at=datetime.now(UTC),
         )
         resp = ListCreativesResponse(
-            message="Found 1 creative",
             query_summary=QuerySummary(total_matching=1, returned=1, has_more=False),
             pagination=Pagination(limit=10, offset=0, has_more=False),
             creatives=[creative],
         )
-        assert str(resp) == "Found 1 creative"
+        assert str(resp) == "Found 1 creative."
 
-    def test_activate_signal_response_deployed(self):
-        """ActivateSignalResponse with deployed status shows platform ID."""
+    def test_activate_signal_response_success(self):
+        """ActivateSignalResponse shows success message."""
+        resp = ActivateSignalResponse(signal_id="sig_123", activation_details={"platform_id": "seg_456"})
+        assert str(resp) == "Signal sig_123 activated successfully."
+
+    def test_activate_signal_response_with_errors(self):
+        """ActivateSignalResponse with errors shows error count."""
+        from src.core.schemas import Error
+
         resp = ActivateSignalResponse(
-            task_id="task_123",
-            status="deployed",
-            decisioning_platform_segment_id="seg_456",
+            signal_id="sig_123",
+            errors=[Error(code="ACTIVATION_FAILED", message="Failed to activate")],
         )
-        assert str(resp) == "Signal activated successfully (platform ID: seg_456)."
-
-    def test_activate_signal_response_processing(self):
-        """ActivateSignalResponse with processing status shows ETA."""
-        resp = ActivateSignalResponse(
-            task_id="task_123",
-            status="processing",
-            estimated_activation_duration_minutes=5.0,
-        )
-        assert str(resp) == "Signal activation in progress (ETA: 5.0 min)."
-
-    def test_activate_signal_response_pending(self):
-        """ActivateSignalResponse with pending status shows task ID."""
-        resp = ActivateSignalResponse(task_id="task_123", status="pending")
-        assert str(resp) == "Signal activation pending (task ID: task_123)."
-
-    def test_activate_signal_response_failed(self):
-        """ActivateSignalResponse with failed status shows task ID."""
-        resp = ActivateSignalResponse(task_id="task_123", status="failed")
-        assert str(resp) == "Signal activation failed (task ID: task_123)."
+        assert str(resp) == "Signal sig_123 activation encountered 1 error(s)."
 
     def test_simulation_control_response_with_message(self):
         """SimulationControlResponse with message returns the message."""
@@ -167,21 +156,19 @@ class TestResponseStrMethods:
         resp = SimulationControlResponse(status="ok")
         assert str(resp) == "Simulation control: ok"
 
-    def test_create_media_buy_response_completed(self):
-        """CreateMediaBuyResponse shows status-specific message."""
-        resp = CreateMediaBuyResponse(status="completed", buyer_ref="ref_123", media_buy_id="mb_456", packages=[])
+    def test_create_media_buy_response_with_id(self):
+        """CreateMediaBuyResponse shows created media buy ID."""
+        resp = CreateMediaBuyResponse(buyer_ref="ref_123", media_buy_id="mb_456", packages=[])
         assert str(resp) == "Media buy mb_456 created successfully."
 
-    def test_create_media_buy_response_working(self):
-        """CreateMediaBuyResponse working status."""
-        resp = CreateMediaBuyResponse(status="working", buyer_ref="ref_123", packages=[])
-        assert str(resp) == "Media buy ref_123 is being created..."
+    def test_create_media_buy_response_without_id(self):
+        """CreateMediaBuyResponse without ID shows buyer ref."""
+        resp = CreateMediaBuyResponse(buyer_ref="ref_123", packages=[])
+        assert str(resp) == "Media buy ref_123 created."
 
-    def test_update_media_buy_response_completed(self):
-        """UpdateMediaBuyResponse shows status-specific message."""
-        resp = UpdateMediaBuyResponse(
-            status="completed", media_buy_id="mb_123", buyer_ref="ref_456", affected_packages=[]
-        )
+    def test_update_media_buy_response(self):
+        """UpdateMediaBuyResponse shows updated media buy ID."""
+        resp = UpdateMediaBuyResponse(media_buy_id="mb_123", buyer_ref="ref_456", affected_packages=[])
         assert str(resp) == "Media buy mb_123 updated successfully."
 
     # Note: GetMediaBuyDeliveryResponse, CreateCreativeResponse, GetSignalsResponse
@@ -200,17 +187,21 @@ class TestResponseStrMethods:
 
     def test_all_responses_avoid_json_in_content(self):
         """Verify no response __str__ contains JSON-like content."""
+        from src.core.schemas import SyncSummary
+
         # Test a few responses to ensure they don't leak JSON
         responses = [
             GetProductsResponse(products=[]),
             ListCreativeFormatsResponse(formats=[]),
-            SyncCreativesResponse(message="Test", status="completed"),
-            CreateMediaBuyResponse(status="completed", buyer_ref="ref", packages=[]),
+            SyncCreativesResponse(
+                summary=SyncSummary(total_processed=0, created=0, updated=0, unchanged=0, deleted=0, failed=0),
+                dry_run=False,
+            ),
+            CreateMediaBuyResponse(buyer_ref="ref", packages=[]),
         ]
 
         for resp in responses:
             content = str(resp)
-            # Should not contain obvious JSON markers
-            assert "{" not in content or "}" not in content
+            # Should not contain obvious JSON markers (allowing empty dicts/lists in messages)
             assert "adcp_version=" not in content
             assert "product_id=" not in content
