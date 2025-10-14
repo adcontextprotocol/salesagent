@@ -1960,8 +1960,17 @@ class Package(BaseModel):
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
             # Add internal fields to exclude by default
+            # format_ids is also excluded because it's not in AdCP Package schema
             exclude.update(
-                {"tenant_id", "media_buy_id", "platform_line_item_id", "created_at", "updated_at", "metadata"}
+                {
+                    "tenant_id",
+                    "media_buy_id",
+                    "platform_line_item_id",
+                    "created_at",
+                    "updated_at",
+                    "metadata",
+                    "format_ids",
+                }
             )
             kwargs["exclude"] = exclude
 
