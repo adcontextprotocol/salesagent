@@ -2469,8 +2469,6 @@ def _sync_creatives_impl(
     total_processed = created_count + updated_count + unchanged_count + failed_count
 
     return SyncCreativesResponse(
-        message=message,
-        status="completed",
         summary=SyncSummary(
             total_processed=total_processed,
             created=created_count,
@@ -3038,7 +3036,7 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
     # Generate context_id (required field)
     context_id = f"signals_{uuid.uuid4().hex[:12]}"
 
-    return GetSignalsResponse(signals=signals, message=message, context_id=context_id)
+    return GetSignalsResponse(signals=signals)
 
 
 @mcp.tool()
@@ -3110,31 +3108,31 @@ async def activate_signal(
         # Log activity
         log_tool_activity(context, "activate_signal", start_time)
 
-        # Build response with only adapter schema fields - use explicit fields for validator
-        if status == "processing":
+        # Build response with domain data only (protocol fields added by transport layer)
+        activation_details = {}
+        if estimated_activation_duration_minutes:
+            activation_details["estimated_duration_minutes"] = estimated_activation_duration_minutes
+        if decisioning_platform_segment_id:
+            activation_details["platform_segment_id"] = decisioning_platform_segment_id
+        if requires_approval:
+            activation_details["requires_approval"] = True
+
+        if requires_approval or not activation_success:
             return ActivateSignalResponse(
-                task_id=task_id,
-                status=status,
-                estimated_activation_duration_minutes=estimated_activation_duration_minutes,
-                decisioning_platform_segment_id=decisioning_platform_segment_id,
-            )
-        elif requires_approval or not activation_success:
-            return ActivateSignalResponse(
-                task_id=task_id,
-                status=status,
+                signal_id=signal_id,
+                activation_details=activation_details if activation_details else None,
                 errors=errors,
             )
         else:
             return ActivateSignalResponse(
-                task_id=task_id,
-                status=status,
+                signal_id=signal_id,
+                activation_details=activation_details if activation_details else None,
             )
 
     except Exception as e:
         logger.error(f"Error activating signal {signal_id}: {e}")
         return ActivateSignalResponse(
-            task_id=f"task_{uuid.uuid4().hex[:12]}",
-            status="failed",
+            signal_id=signal_id,
             errors=[{"code": "ACTIVATION_ERROR", "message": str(e)}],
         )
 
