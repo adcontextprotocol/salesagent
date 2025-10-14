@@ -56,7 +56,7 @@ class TestMCPContractValidation:
         """Test list_authorized_properties can be called with no parameters."""
         request = ListAuthorizedPropertiesRequest()
 
-        assert request.adcp_version == "1.0.0"  # Should have default
+        # adcp_version field was removed from AdCP spec
         assert request.tags is None
 
     def test_activate_signal_minimal(self):
@@ -228,7 +228,7 @@ class TestSchemaDefaultValues:
 
         # ListAuthorizedPropertiesRequest
         req = ListAuthorizedPropertiesRequest()
-        assert req.adcp_version == "1.0.0"  # Current version default
+        # adcp_version field was removed from AdCP spec
 
     def test_required_fields_are_truly_necessary(self):
         """Test that all required fields are actually necessary."""
