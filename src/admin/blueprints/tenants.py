@@ -230,8 +230,9 @@ def tenant_settings(tenant_id, section=None):
             active_products = product_count  # All products are considered active
             draft_products = 0  # No draft status tracking
 
-            # Creative formats - no longer stored in database (fetched from creative agents via AdCP)
-            # Table was dropped in migration f2addf453200 (Oct 13, 2025)
+            # Creative formats removed - table dropped in migration f2addf453200
+            # Formats are now fetched from creative agents via AdCP (not stored in DB)
+            # Passing empty list to template until Creative Formats section is removed from UI
             creative_formats = []
 
             # Get inventory counts

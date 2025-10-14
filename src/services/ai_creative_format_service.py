@@ -801,22 +801,5 @@ async def discover_creative_format(
     }
 
 
-async def sync_standard_formats():
-    """DEPRECATED: Sync standard formats from adcontextprotocol.org to database.
-
-    NOTE: This function is no longer functional as the creative_formats table
-    was removed in migration f2addf453200 (Oct 13, 2025).
-
-    Creative formats are now fetched directly from creative agents via AdCP protocol.
-    Use list_creative_formats MCP tool instead.
-    """
-    logger.warning(
-        "sync_standard_formats() is deprecated - creative_formats table no longer exists. "
-        "Use AdCP list_creative_formats tool instead."
-    )
-    return 0
-
-    # Original implementation commented out - table no longer exists
-    # service = AICreativeFormatService()
-    # formats = await service.fetch_standard_formats()
-    # ... (database sync code removed)
+# sync_standard_formats() removed - creative_formats table dropped in migration f2addf453200
+# Creative formats are now fetched from creative agents via AdCP list_creative_formats tool

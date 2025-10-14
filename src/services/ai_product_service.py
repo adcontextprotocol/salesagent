@@ -370,43 +370,11 @@ class AIProductConfigurationService:
         )
 
     def _get_available_formats(self, tenant_id: str) -> list[dict[str, Any]]:
-        """Get all available creative formats (standard + custom for tenant).
+        """Creative formats no longer stored in DB (table dropped in migration f2addf453200).
 
-        DEPRECATED: creative_formats table removed in migration f2addf453200.
-        Returns empty list as fallback. Use AdCP list_creative_formats tool instead.
+        Returns empty list. Use AdCP list_creative_formats tool instead.
         """
-        logger.warning(
-            "_get_available_formats() is deprecated - creative_formats table no longer exists. "
-            "Returning empty list. Use AdCP list_creative_formats tool instead."
-        )
         return []
-
-        # Original database query commented out - table no longer exists
-        # from src.core.database.models import CreativeFormat
-        # with get_db_session() as db_session:
-        #     stmt = select(CreativeFormat).where(...)
-        #     formats = []
-        #     for format_obj in db_session.scalars(stmt):
-        #         format_dict = {
-        #             "format_id": format_obj.format_id,
-        #             "name": format_obj.name,
-        #             "type": format_obj.type,
-        #             "description": format_obj.description,
-        #         }
-        #         # Add dimensions for display formats
-        #         if format_obj.width and format_obj.height:
-        #             format_dict["dimensions"] = f"{format_obj.width}x{format_obj.height}"
-        #             format_dict["width"] = format_obj.width
-        #             format_dict["height"] = format_obj.height
-
-                # Add duration for video/audio formats
-                if format_obj.duration_seconds:
-                    format_dict["duration"] = f"{format_obj.duration_seconds}s"
-                    format_dict["duration_seconds"] = format_obj.duration_seconds
-
-                formats.append(format_dict)
-
-            return formats
 
     def _analyze_inventory_for_product(
         self, description: ProductDescription, inventory: AdServerInventory
