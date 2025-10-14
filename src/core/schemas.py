@@ -190,20 +190,23 @@ class AssetRequirement(BaseModel):
 class FormatReference(BaseModel):
     """Reference to a format from a specific creative agent.
 
+    DEPRECATED: Use FormatId instead. This class is maintained for backward compatibility.
+    FormatReference serializes as FormatId (with 'id' field) but accepts 'format_id' for legacy code.
+
     Used in Product.formats to store full format references with agent URL.
     This enables dynamic format resolution from the correct creative agent.
 
     Example:
         {
             "agent_url": "https://creative.adcontextprotocol.org",
-            "format_id": "display_300x250_image"
+            "format_id": "display_300x250_image"  # Serializes as "id" per AdCP spec
         }
     """
 
     agent_url: str = Field(
         ..., description="URL of the creative agent that provides this format (must be registered in tenant config)"
     )
-    format_id: str = Field(..., description="Format ID within that agent's format catalog")
+    format_id: str = Field(..., serialization_alias="id", description="Format ID within that agent's format catalog")
 
 
 class Format(BaseModel):
@@ -565,7 +568,10 @@ class Product(BaseModel):
     product_id: str
     name: str
     description: str
-    formats: list[FormatReference] | list[str]  # FormatReference objects or legacy string IDs (migration support)
+    formats: list["FormatId | FormatReference"] | list[str] = Field(
+        serialization_alias="format_ids",
+        description="Array of supported creative format IDs - structured format_id objects with agent_url and id",
+    )
     delivery_type: Literal["guaranteed", "non_guaranteed"]
 
     # NEW: Pricing options (AdCP PR #88)
@@ -1094,6 +1100,15 @@ class CreativeGroup(BaseModel):
     tags: list[str] | None = []
 
 
+class FormatId(BaseModel):
+    """AdCP v2.4 format identifier object."""
+
+    agent_url: str = Field(..., description="URL of the agent defining this format")
+    id: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$", description="Format identifier")
+
+    model_config = {"extra": "forbid"}
+
+
 class Creative(BaseModel):
     """Individual creative asset in the creative library - AdCP spec compliant."""
 
@@ -1102,8 +1117,33 @@ class Creative(BaseModel):
     name: str
 
     # AdCP spec compliant fields
-    format: str = Field(alias="format_id", description="Creative format type per AdCP spec")
+    format: FormatId = Field(
+        alias="format_id", description="Creative format identifier with agent_url namespace (AdCP v2.4+)"
+    )
     url: str = Field(alias="content_uri", description="URL of the creative content per AdCP spec")
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_format_id(cls, values):
+        """Validate and upgrade format_id to AdCP v2.4 namespaced format.
+
+        Automatically upgrades legacy string format_id to FormatId object with agent_url.
+        Uses cached format mappings or defaults to AdCP reference implementation.
+        """
+        from src.core.format_cache import upgrade_legacy_format_id
+
+        format_val = values.get("format_id") or values.get("format")
+        if format_val is not None:
+            try:
+                # Upgrade to FormatId object (handles strings, dicts, objects)
+                upgraded = upgrade_legacy_format_id(format_val)
+                # Set both format_id and format to ensure consistency
+                values["format_id"] = upgraded
+                values["format"] = upgraded
+            except ValueError as e:
+                raise ValueError(f"Invalid format_id: {e}")
+        return values
+
     media_url: str | None = Field(None, description="Alternative media URL (typically same as url)")
     click_url: str | None = Field(None, alias="click_through_url", description="Landing page URL per AdCP spec")
 
@@ -1218,6 +1258,22 @@ class Creative(BaseModel):
             stacklevel=2,
         )
         return self.click_url
+
+    def get_format_string(self) -> str:
+        """Get format ID string from FormatId object.
+
+        Returns:
+            String format identifier (e.g., "display_300x250")
+        """
+        return self.format.id
+
+    def get_format_agent_url(self) -> str:
+        """Get agent URL from FormatId object.
+
+        Returns:
+            Agent URL string (e.g., "https://creative.adcontextprotocol.org")
+        """
+        return self.format.agent_url
 
     def model_dump(self, **kwargs):
         """Override to provide AdCP-compliant responses while preserving internal fields."""

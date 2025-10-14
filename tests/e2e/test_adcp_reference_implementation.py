@@ -137,7 +137,7 @@ class TestAdCPReferenceImplementation:
             product = products_data["products"][0]
             product_id = product["product_id"]
             print(f"   ✓ Found product: {product['name']} ({product_id})")
-            print(f"   ✓ Formats: {product['formats']}")
+            print(f"   ✓ Formats: {product['format_ids']}")
 
             # Get creative formats (no req wrapper - takes optional params directly)
             formats_result = await client.call_tool("list_creative_formats", {})

@@ -37,7 +37,7 @@ async def test_valid_get_products_response():
                     "product_id": "test-product-1",
                     "name": "Test Display Product",
                     "description": "Test description",
-                    "format_ids": ["display_300x250"],  # AdCP spec uses format_ids, not formats
+                    "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],  # AdCP v2.4 structured format_id
                     "delivery_type": "guaranteed",
                     "delivery_measurement": {
                         "provider": "Google Ad Manager with IAS viewability",

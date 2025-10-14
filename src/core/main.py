@@ -640,6 +640,51 @@ console.print(f"[bold cyan]🔌 Using adapter: {SELECTED_ADAPTER.upper()}[/bold 
 
 
 # --- Creative Conversion Helper ---
+def _extract_format_namespace(format_value: Any) -> tuple[str, str]:
+    """Extract agent_url and format ID from format_id field (AdCP v2.4).
+
+    Args:
+        format_value: FormatId dict/object with agent_url+id fields
+
+    Returns:
+        Tuple of (agent_url, format_id)
+
+    Raises:
+        ValueError: If format_value doesn't have required agent_url and id fields
+    """
+    if isinstance(format_value, dict):
+        agent_url = format_value.get("agent_url")
+        format_id = format_value.get("id")
+        if not agent_url or not format_id:
+            raise ValueError(f"format_id must have both 'agent_url' and 'id' fields. Got: {format_value}")
+        return agent_url, format_id
+    if hasattr(format_value, "agent_url") and hasattr(format_value, "id"):
+        return format_value.agent_url, format_value.id
+    if isinstance(format_value, str):
+        raise ValueError(
+            f"format_id must be an object with 'agent_url' and 'id' fields (AdCP v2.4). "
+            f"Got string: '{format_value}'. "
+            f"String format_id is no longer supported - all formats must be namespaced."
+        )
+    raise ValueError(f"Invalid format_id format. Expected object with agent_url and id, got: {type(format_value)}")
+
+
+def _normalize_format_value(format_value: Any) -> str:
+    """Normalize format value to string ID (for legacy code compatibility).
+
+    Args:
+        format_value: FormatId dict/object with agent_url+id fields
+
+    Returns:
+        String format identifier
+
+    Note: This is a legacy compatibility function. New code should use _extract_format_namespace
+    to properly handle the agent_url namespace.
+    """
+    _, format_id = _extract_format_namespace(format_value)
+    return format_id
+
+
 def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: list[str]) -> dict[str, Any]:
     """Convert AdCP v1.3+ Creative object to format expected by ad server adapters."""
 
@@ -647,7 +692,7 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
     asset = {
         "creative_id": creative.creative_id,
         "name": creative.name,
-        "format": creative.format,
+        "format": creative.get_format_string(),  # Handle both string and FormatId object
         "package_assignments": package_assignments,
     }
 
@@ -1642,7 +1687,8 @@ def _sync_creatives_impl(
 
                     # Validate by creating a Creative schema object
                     # This will fail if required fields are missing or invalid (like empty name)
-                    Creative(**schema_data)
+                    # Also auto-upgrades string format_ids to FormatId objects via validator
+                    validated_creative = Creative(**schema_data)
 
                     # Additional business logic validation
                     if not creative.get("name") or str(creative.get("name")).strip() == "":
@@ -1650,6 +1696,9 @@ def _sync_creatives_impl(
 
                     if not creative.get("format_id") and not creative.get("format"):
                         raise ValueError("Creative format is required")
+
+                    # Use validated format (auto-upgraded from string if needed)
+                    format_value = validated_creative.format
 
                 except (ValidationError, ValueError) as validation_error:
                     # Creative failed validation - add to failed list
@@ -1692,8 +1741,13 @@ def _sync_creatives_impl(
                                 existing_creative.name = creative.get("name")
                                 changes.append("name")
                             if creative.get("format_id") or creative.get("format"):
-                                new_format = creative.get("format_id") or creative.get("format")
-                                if new_format != existing_creative.format:
+                                # Use validated format_value (already auto-upgraded from string)
+                                new_agent_url, new_format = _extract_format_namespace(format_value)
+                                if (
+                                    new_agent_url != existing_creative.agent_url
+                                    or new_format != existing_creative.format
+                                ):
+                                    existing_creative.agent_url = new_agent_url
                                     existing_creative.format = new_format
                                     changes.append("format")
                         else:
@@ -1701,8 +1755,10 @@ def _sync_creatives_impl(
                             if creative.get("name") != existing_creative.name:
                                 existing_creative.name = creative.get("name")
                                 changes.append("name")
-                            new_format = creative.get("format_id") or creative.get("format")
-                            if new_format != existing_creative.format:
+                            # Use validated format_value (already auto-upgraded from string)
+                            new_agent_url, new_format = _extract_format_namespace(format_value)
+                            if new_agent_url != existing_creative.agent_url or new_format != existing_creative.format:
+                                existing_creative.agent_url = new_agent_url
                                 existing_creative.format = new_format
                                 changes.append("format")
 
@@ -2041,11 +2097,16 @@ def _sync_creatives_impl(
                         creative_status = "pending"
                         needs_approval = False
 
+                        # Extract agent_url and format ID from format_id field
+                        # Use validated format_value (already auto-upgraded from string)
+                        agent_url, format_id = _extract_format_namespace(format_value)
+
                         db_creative = DBCreative(
                             tenant_id=tenant["tenant_id"],
                             creative_id=creative.get("creative_id") or str(uuid.uuid4()),
                             name=creative.get("name"),
-                            format=creative.get("format_id") or creative.get("format"),
+                            agent_url=agent_url,
+                            format=format_id,
                             principal_id=principal_id,
                             status=creative_status,
                             created_at=datetime.now(UTC),
@@ -2598,7 +2659,10 @@ def _list_creatives_impl(
             schema_data = {
                 "creative_id": db_creative.creative_id,
                 "name": db_creative.name,
-                "format_id": db_creative.format,  # Use correct field name
+                "format_id": {  # Structured format_id per AdCP v2.4 spec
+                    "agent_url": db_creative.agent_url,
+                    "id": db_creative.format,
+                },
                 "click_through_url": db_creative.data.get("click_url") if db_creative.data else None,  # From data field
                 "width": db_creative.data.get("width") if db_creative.data else None,
                 "height": db_creative.data.get("height") if db_creative.data else None,
