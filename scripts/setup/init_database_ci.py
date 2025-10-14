@@ -20,7 +20,15 @@ def init_db_ci():
 
         from scripts.ops.migrate import run_migrations
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import CurrencyLimit, PricingOption, Principal, Product, PropertyTag, Tenant
+        from src.core.database.models import (
+            AuthorizedProperty,
+            CurrencyLimit,
+            PricingOption,
+            Principal,
+            Product,
+            PropertyTag,
+            Tenant,
+        )
 
         print("Applying database migrations for CI...")
         run_migrations()
@@ -332,6 +340,24 @@ def init_db_ci():
                     print(f"  ℹ️  Product already exists: {p['name']}")
 
             session.commit()
+
+            # Create authorized property for setup checklist completion
+            print("\nCreating authorized property for setup checklist...")
+            stmt_check_property = select(AuthorizedProperty).filter_by(tenant_id=tenant_id, property_url="example.com")
+            existing_property = session.scalars(stmt_check_property).first()
+
+            if not existing_property:
+                authorized_prop = AuthorizedProperty(
+                    tenant_id=tenant_id,
+                    property_url="example.com",
+                    verification_method="agent_json",
+                    is_verified=True,
+                )
+                session.add(authorized_prop)
+                session.commit()
+                print("  ✓ Created authorized property: example.com")
+            else:
+                print("  ℹ️  Authorized property already exists: example.com")
 
             # Verify products were actually saved
             stmt_verify = select(Product).filter_by(tenant_id=tenant_id)
