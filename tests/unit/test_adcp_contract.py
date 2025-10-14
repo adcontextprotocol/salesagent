@@ -1516,7 +1516,7 @@ class TestAdCPContract:
         error_adcp_response = error_response.model_dump()
         assert error_adcp_response["status"] == "input-required"
         assert len(error_adcp_response["errors"]) == 1
-        assert error_adcp_response["errors"][0]["message"] == "Budget must be positive"
+        assert error_adcp_response["errors"][0]["message"] == "Invalid budget"
 
         # Verify field count (adcp_version, status, media_buy_id, buyer_ref, task_id, implementation_date, affected_packages, errors)
         assert (
