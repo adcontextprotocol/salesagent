@@ -29,6 +29,7 @@ from src.core.schemas import (
     Principal,
     Product,
     ReportingPeriod,
+    extract_budget_amount,
 )
 
 
@@ -279,9 +280,12 @@ class XandrAdapter(AdServerAdapter):
                             "start_date": request.flight_start_date.isoformat(),
                             "end_date": request.flight_end_date.isoformat(),
                             "daily_budget": float(
-                                request.budget.total / (request.flight_end_date - request.flight_start_date).days
+                                extract_budget_amount(request.budget, request.currency or "USD")[0]
+                                / (request.flight_end_date - request.flight_start_date).days
                             ),
-                            "lifetime_budget": float(request.budget.total),
+                            "lifetime_budget": float(
+                                extract_budget_amount(request.budget, request.currency or "USD")[0]
+                            ),
                         }
                     ],
                     "currency": "USD",

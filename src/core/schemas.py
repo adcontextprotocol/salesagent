@@ -438,6 +438,37 @@ class Budget(BaseModel):
         return super().model_dump(**kwargs)
 
 
+# Budget utility functions for v1.8.0 compatibility
+def extract_budget_amount(budget: "Budget | float | dict | None", default_currency: str = "USD") -> tuple[float, str]:
+    """Extract budget amount and currency from various budget formats (v1.8.0 compatible).
+
+    Handles:
+    - v1.8.0 format: simple float (currency from separate field)
+    - Legacy format: Budget object with total and currency
+    - Dict format: {'total': float, 'currency': str}
+    - None: returns (0.0, default_currency)
+
+    Args:
+        budget: Budget in any supported format
+        default_currency: Currency to use if not specified (default: USD)
+
+    Returns:
+        Tuple of (amount, currency)
+
+    Example:
+        amount, currency = extract_budget_amount(request.budget, request.currency or "USD")
+    """
+    if budget is None:
+        return (0.0, default_currency)
+    elif isinstance(budget, dict):
+        return (budget.get("total", 0.0), budget.get("currency", default_currency))
+    elif isinstance(budget, int | float):
+        return (float(budget), default_currency)
+    else:
+        # Budget object with .total and .currency attributes
+        return (budget.total, budget.currency)
+
+
 # AdCP Compliance Models
 class Measurement(BaseModel):
     """Measurement capabilities included with a product per AdCP spec."""

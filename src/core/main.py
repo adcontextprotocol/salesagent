@@ -3630,14 +3630,11 @@ def _create_media_buy_impl(
                             if applicable_min_spends:
                                 # Use the highest minimum spend among all products in package
                                 required_min_spend = max(applicable_min_spends)
-                                # Extract budget amount (handle Budget object, float, or dict)
-                                if isinstance(package.budget, dict):
-                                    package_budget = Decimal(str(package.budget.get("total", 0)))
-                                elif isinstance(package.budget, int | float):
-                                    package_budget = Decimal(str(package.budget))
-                                else:
-                                    # Budget object with .total attribute
-                                    package_budget = Decimal(str(package.budget.total))
+                                # Extract budget amount (v1.8.0 compatible)
+                                from src.core.schemas import extract_budget_amount
+
+                                package_budget_amount, _ = extract_budget_amount(package.budget, request_currency)
+                                package_budget = Decimal(str(package_budget_amount))
 
                                 if package_budget < required_min_spend:
                                     error_msg = (
@@ -3674,14 +3671,11 @@ def _create_media_buy_impl(
                     for package in req.packages:
                         if not package.budget:
                             continue
-                        # Extract budget amount (handle Budget object, float, or dict)
-                        if isinstance(package.budget, dict):
-                            package_budget = Decimal(str(package.budget.get("total", 0)))
-                        elif isinstance(package.budget, int | float):
-                            package_budget = Decimal(str(package.budget))
-                        else:
-                            # Budget object with .total attribute
-                            package_budget = Decimal(str(package.budget.total))
+                        # Extract budget amount (v1.8.0 compatible)
+                        from src.core.schemas import extract_budget_amount
+
+                        package_budget_amount, _ = extract_budget_amount(package.budget, request_currency)
+                        package_budget = Decimal(str(package_budget_amount))
                         package_daily_budget = package_budget / Decimal(str(flight_days))
 
                         if package_daily_budget > currency_limit.max_daily_package_spend:
@@ -4767,20 +4761,11 @@ def _update_media_buy_impl(
                     )
                     return result
 
-    # Handle budget updates (Budget object from AdCP spec)
+    # Handle budget updates (Budget object from AdCP spec - v1.8.0 compatible)
     if req.budget is not None:
-        if isinstance(req.budget, dict):
-            # Handle Budget dict
-            total_budget = req.budget.get("total", 0)
-            currency = req.budget.get("currency", "USD")
-        elif hasattr(req.budget, "total"):
-            # Handle Budget model instance (standard case)
-            total_budget = req.budget.total
-            currency = req.budget.currency
-        else:
-            # Fallback: treat as float (shouldn't happen with Budget object)
-            total_budget = float(req.budget)
-            currency = "USD"  # Default when budget is just a number
+        from src.core.schemas import extract_budget_amount
+
+        total_budget, currency = extract_budget_amount(req.budget, req.currency or "USD")
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
