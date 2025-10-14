@@ -1028,6 +1028,15 @@ class CreativeGroup(BaseModel):
     tags: list[str] | None = []
 
 
+class FormatId(BaseModel):
+    """AdCP v2.4 format identifier object."""
+
+    agent_url: str = Field(..., description="URL of the agent defining this format")
+    id: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$", description="Format identifier")
+
+    model_config = {"extra": "forbid"}
+
+
 class Creative(BaseModel):
     """Individual creative asset in the creative library - AdCP spec compliant."""
 
@@ -1036,7 +1045,9 @@ class Creative(BaseModel):
     name: str
 
     # AdCP spec compliant fields
-    format: str = Field(alias="format_id", description="Creative format type per AdCP spec")
+    format: str | FormatId = Field(
+        alias="format_id", description="Creative format type per AdCP spec (string for legacy, object for v2.4+)"
+    )
     url: str = Field(alias="content_uri", description="URL of the creative content per AdCP spec")
     media_url: str | None = Field(None, description="Alternative media URL (typically same as url)")
     click_url: str | None = Field(None, alias="click_through_url", description="Landing page URL per AdCP spec")
@@ -1152,6 +1163,26 @@ class Creative(BaseModel):
             stacklevel=2,
         )
         return self.click_url
+
+    def get_format_string(self) -> str:
+        """Get format as a string, handling both legacy string and v2.4 object formats.
+
+        Returns:
+            String format identifier (e.g., "display_300x250")
+        """
+        if isinstance(self.format, str):
+            return self.format
+        return self.format.id
+
+    def get_format_agent_url(self) -> str | None:
+        """Get agent URL if format is v2.4 object format.
+
+        Returns:
+            Agent URL string or None if legacy string format
+        """
+        if isinstance(self.format, FormatId):
+            return self.format.agent_url
+        return None
 
     def model_dump(self, **kwargs):
         """Override to provide AdCP-compliant responses while preserving internal fields."""

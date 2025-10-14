@@ -640,6 +640,24 @@ console.print(f"[bold cyan]🔌 Using adapter: {SELECTED_ADAPTER.upper()}[/bold 
 
 
 # --- Creative Conversion Helper ---
+def _normalize_format_value(format_value: Any) -> str:
+    """Normalize format value from either string or FormatId object to string.
+
+    Args:
+        format_value: Either a string (legacy) or dict/FormatId with agent_url+id (v2.4+)
+
+    Returns:
+        String format identifier
+    """
+    if isinstance(format_value, str):
+        return format_value
+    if isinstance(format_value, dict) and "id" in format_value:
+        return format_value["id"]
+    if hasattr(format_value, "id"):
+        return format_value.id
+    return str(format_value)
+
+
 def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: list[str]) -> dict[str, Any]:
     """Convert AdCP v1.3+ Creative object to format expected by ad server adapters."""
 
@@ -647,7 +665,7 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
     asset = {
         "creative_id": creative.creative_id,
         "name": creative.name,
-        "format": creative.format,
+        "format": creative.get_format_string(),  # Handle both string and FormatId object
         "package_assignments": package_assignments,
     }
 
@@ -1660,7 +1678,9 @@ def _sync_creatives_impl(
                                 existing_creative.name = creative.get("name")
                                 changes.append("name")
                             if creative.get("format_id") or creative.get("format"):
-                                new_format = creative.get("format_id") or creative.get("format")
+                                new_format = _normalize_format_value(
+                                    creative.get("format_id") or creative.get("format")
+                                )
                                 if new_format != existing_creative.format:
                                     existing_creative.format = new_format
                                     changes.append("format")
@@ -1669,7 +1689,7 @@ def _sync_creatives_impl(
                             if creative.get("name") != existing_creative.name:
                                 existing_creative.name = creative.get("name")
                                 changes.append("name")
-                            new_format = creative.get("format_id") or creative.get("format")
+                            new_format = _normalize_format_value(creative.get("format_id") or creative.get("format"))
                             if new_format != existing_creative.format:
                                 existing_creative.format = new_format
                                 changes.append("format")
