@@ -760,22 +760,48 @@ def _get_principal_id_from_context(context: Context) -> str:
 
 
 def _verify_principal(media_buy_id: str, context: Context):
-    principal_id = _get_principal_id_from_context(context)
-    if media_buy_id not in media_buys:
-        raise ValueError(f"Media buy '{media_buy_id}' not found.")
-    if media_buys[media_buy_id][1] != principal_id:
-        # Log security violation
-        from src.core.audit_logger import get_audit_logger
+    """Verify that the principal from context owns the media buy.
 
-        tenant = get_current_tenant()
-        security_logger = get_audit_logger("AdCP", tenant["tenant_id"])
-        security_logger.log_security_violation(
-            operation="access_media_buy",
-            principal_id=principal_id,
-            resource_id=media_buy_id,
-            reason=f"Principal does not own media buy (owner: {media_buys[media_buy_id][1]})",
+    Checks database for media buy ownership, not in-memory dictionary.
+
+    Args:
+        media_buy_id: Media buy ID to verify
+        context: FastMCP context with principal info
+
+    Raises:
+        ValueError: Media buy not found
+        PermissionError: Principal doesn't own media buy
+    """
+    from sqlalchemy import select
+
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import MediaBuy as MediaBuyModel
+
+    principal_id = _get_principal_id_from_context(context)
+    tenant = get_current_tenant()
+
+    # Query database for media buy
+    with get_db_session() as session:
+        stmt = select(MediaBuyModel).where(
+            MediaBuyModel.media_buy_id == media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
         )
-        raise PermissionError(f"Principal '{principal_id}' does not own media buy '{media_buy_id}'.")
+        media_buy = session.scalars(stmt).first()
+
+        if not media_buy:
+            raise ValueError(f"Media buy '{media_buy_id}' not found.")
+
+        if media_buy.principal_id != principal_id:
+            # Log security violation
+            from src.core.audit_logger import get_audit_logger
+
+            security_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+            security_logger.log_security_violation(
+                operation="access_media_buy",
+                principal_id=principal_id,
+                resource_id=media_buy_id,
+                reason=f"Principal does not own media buy (owner: {media_buy.principal_id})",
+            )
+            raise PermissionError(f"Principal '{principal_id}' does not own media buy '{media_buy_id}'.")
 
 
 # --- Activity Feed Helper ---
@@ -4530,8 +4556,15 @@ def _update_media_buy_impl(
         creatives=creatives,
     )
 
+    if context is None:
+        raise ValueError("Context is required for update_media_buy")
+
+    if not req.media_buy_id:
+        # TODO: Handle buyer_ref case - for now just raise error
+        raise ValueError("media_buy_id is required (buyer_ref lookup not yet implemented)")
+
     _verify_principal(req.media_buy_id, context)
-    _, principal_id = media_buys[req.media_buy_id]
+    principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
     tenant = get_current_tenant()
 
     # Create or get persistent context
@@ -5173,8 +5206,11 @@ def update_performance_index(
     performance_objects = [ProductPerformance(**perf) for perf in performance_data]
     req = UpdatePerformanceIndexRequest(media_buy_id=media_buy_id, performance_data=performance_objects)
 
+    if context is None:
+        raise ValueError("Context is required for update_performance_index")
+
     _verify_principal(req.media_buy_id, context)
-    buy_request, principal_id = media_buys[req.media_buy_id]
+    principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
 
     # Get the Principal object
     principal = get_principal_object(principal_id)
