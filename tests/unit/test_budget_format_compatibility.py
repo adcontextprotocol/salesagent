@@ -272,54 +272,76 @@ class TestBudgetFormatCompatibility:
 
 
 class TestBudgetExtractionHelpers:
-    """Test helper functions for budget extraction."""
+    """Test the extract_budget_amount helper function from schemas.py."""
 
-    def extract_package_budget(self, package: Package) -> tuple[Decimal | None, str | None]:
-        """Extract budget amount and currency from package (mirrors main.py logic)."""
-        if not package.budget:
-            return None, None
+    def test_extract_float_budget(self):
+        """Test extracting budget from float format (v1.8.0)."""
+        from src.core.schemas import extract_budget_amount
 
-        if isinstance(package.budget, dict):
-            amount = Decimal(str(package.budget.get("total", 0)))
-            currency = package.budget.get("currency")
-        elif isinstance(package.budget, int | float):
-            amount = Decimal(str(package.budget))
-            currency = None  # Currency would come from elsewhere
-        else:
-            # Budget object with .total attribute
-            amount = Decimal(str(package.budget.total))
-            currency = package.budget.currency
-
-        return amount, currency
-
-    def test_extract_number_budget(self):
-        """Test extracting budget from number format."""
-        package = Package(product_id="prod_1", budget=5000.0)
-        amount, currency = self.extract_package_budget(package)
-
-        assert amount == Decimal("5000.0")
-        assert currency is None
-
-    def test_extract_budget_object(self):
-        """Test extracting budget from Budget object."""
-        package = Package(product_id="prod_1", budget=Budget(total=3000.0, currency="USD"))
-        amount, currency = self.extract_package_budget(package)
-
-        assert amount == Decimal("3000.0")
+        amount, currency = extract_budget_amount(5000.0, "USD")
+        assert amount == 5000.0
         assert currency == "USD"
 
-    def test_extract_dict_budget(self):
-        """Test extracting budget from dict."""
-        package = Package(product_id="prod_1", budget={"total": 2500.0, "currency": "EUR"})
-        amount, currency = self.extract_package_budget(package)
+    def test_extract_float_budget_with_different_currency(self):
+        """Test extracting budget from float format with non-USD currency."""
+        from src.core.schemas import extract_budget_amount
 
-        assert amount == Decimal("2500.0")
+        amount, currency = extract_budget_amount(3500.0, "EUR")
+        assert amount == 3500.0
         assert currency == "EUR"
 
-    def test_extract_none_budget(self):
-        """Test extracting None budget."""
-        package = Package(product_id="prod_1", budget=None)
-        amount, currency = self.extract_package_budget(package)
+    def test_extract_integer_budget(self):
+        """Test extracting budget from integer format."""
+        from src.core.schemas import extract_budget_amount
 
-        assert amount is None
-        assert currency is None
+        amount, currency = extract_budget_amount(10000, "GBP")
+        assert amount == 10000.0
+        assert currency == "GBP"
+
+    def test_extract_budget_object(self):
+        """Test extracting budget from Budget object (legacy format)."""
+        from src.core.schemas import extract_budget_amount
+
+        budget = Budget(total=3000.0, currency="USD")
+        amount, currency = extract_budget_amount(budget, "EUR")
+
+        assert amount == 3000.0
+        assert currency == "USD"  # Budget object's currency takes precedence
+
+    def test_extract_dict_budget(self):
+        """Test extracting budget from dict format."""
+        from src.core.schemas import extract_budget_amount
+
+        budget_dict = {"total": 2500.0, "currency": "EUR"}
+        amount, currency = extract_budget_amount(budget_dict, "USD")
+
+        assert amount == 2500.0
+        assert currency == "EUR"  # Dict's currency takes precedence
+
+    def test_extract_none_budget(self):
+        """Test extracting None budget returns default currency."""
+        from src.core.schemas import extract_budget_amount
+
+        amount, currency = extract_budget_amount(None, "CAD")
+
+        assert amount == 0.0
+        assert currency == "CAD"
+
+    def test_extract_dict_without_currency(self):
+        """Test extracting dict budget without currency field uses default."""
+        from src.core.schemas import extract_budget_amount
+
+        budget_dict = {"total": 1500.0}
+        amount, currency = extract_budget_amount(budget_dict, "JPY")
+
+        assert amount == 1500.0
+        assert currency == "JPY"  # Falls back to default
+
+    def test_extract_zero_budget(self):
+        """Test extracting zero budget."""
+        from src.core.schemas import extract_budget_amount
+
+        amount, currency = extract_budget_amount(0.0, "USD")
+
+        assert amount == 0.0
+        assert currency == "USD"

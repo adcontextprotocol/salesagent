@@ -93,18 +93,11 @@ def generate_auto_name(
             f"Promoted Offering: {request.promoted_offering or 'N/A'}",
         ]
 
-        # Add budget info (handle Budget object, float, or dict)
+        # Add budget info (v1.8.0 compatible)
         if request.budget:
-            if isinstance(request.budget, dict):
-                budget_amount = request.budget.get("total", 0)
-                currency = request.budget.get("currency", request.currency or "USD")
-            elif isinstance(request.budget, int | float):
-                budget_amount = request.budget
-                currency = request.currency or "USD"
-            else:
-                # Budget object with .total and .currency attributes
-                budget_amount = request.budget.total
-                currency = request.budget.currency
+            from src.core.schemas import extract_budget_amount
+
+            budget_amount, currency = extract_budget_amount(request.budget, request.currency or "USD")
             context_parts.append(f"Budget: ${budget_amount:,.2f} {currency}")
 
         context_parts.extend(
