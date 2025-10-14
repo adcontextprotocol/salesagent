@@ -47,10 +47,11 @@ def test_create_media_buy_response_message_access():
 
     # TEST 3: Verify the A2A response dict construction works
     # This is what _handle_create_media_buy_skill does
+    # Note: status is now a protocol field, not in domain response
     a2a_response = {
         "success": True,
         "media_buy_id": response.media_buy_id,
-        "status": response.status,
+        # status would be added by protocol envelope wrapper
         "message": str(response),  # The fix
     }
     assert a2a_response["message"] == "Media buy mb-12345 created successfully."
