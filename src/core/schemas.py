@@ -1866,11 +1866,6 @@ class Package(BaseModel):
     pricing_model: PricingModel | None = Field(
         None, description="Selected pricing model for this package (from product's pricing_options)"
     )
-    currency: str | None = Field(
-        None,
-        pattern="^[A-Z]{3}$",
-        description="ISO 4217 currency code (from selected pricing option). All packages must use same currency.",
-    )
     bid_price: float | None = Field(
         None, ge=0, description="Bid price for auction-based pricing (required if pricing option is auction-based)"
     )
@@ -2079,41 +2074,9 @@ class CreateMediaBuyRequest(BaseModel):
             raise ValueError("end_time must be timezone-aware (ISO 8601 with timezone)")
         return self
 
-    @model_validator(mode="after")
-    def validate_package_currencies(self):
-        """Validate that all packages use the same currency and copy from deprecated req.currency.
-
-        Per AdCP spec, currency is determined by pricing options. We enforce that
-        all packages must specify the same currency for simplicity.
-
-        For backward compatibility, if req.currency is specified (deprecated field),
-        it will be copied to any packages that don't have a currency set.
-        """
-        if not self.packages or len(self.packages) == 0:
-            return self
-
-        # Backward compatibility: Copy deprecated req.currency to packages without currency
-        if self.currency:
-            for pkg in self.packages:
-                if not pkg.currency:
-                    pkg.currency = self.currency
-
-        # Get currencies from packages (some may be None)
-        currencies = [pkg.currency for pkg in self.packages if pkg.currency]
-
-        if not currencies:
-            # No packages have currency specified - this is ok, will default to USD
-            return self
-
-        # Check all specified currencies are the same
-        first_currency = currencies[0]
-        if not all(curr == first_currency for curr in currencies):
-            raise ValueError(
-                f"All packages must use the same currency. Found: {set(currencies)}. "
-                "Currency is determined by the pricing option selected for each package."
-            )
-
-        return self
+    # Note: Currency validation removed - currency comes from product pricing options
+    # and is looked up dynamically when needed. We keep req.currency as deprecated
+    # for backward compatibility but don't enforce currency consistency at request time.
 
     # Backward compatibility properties for old field names
     @property

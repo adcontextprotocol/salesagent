@@ -3525,11 +3525,13 @@ def _create_media_buy_impl(
         from src.core.database.models import CurrencyLimit
         from src.core.database.models import Product as ProductModel
 
-        # Get currency from packages (per AdCP spec, currency comes from pricing options)
+        # Get currency (per AdCP spec, currency comes from product pricing options)
+        # For now, we support the deprecated req.currency field for backward compatibility
+        # TODO: Look up currency from product.pricing_options based on package.pricing_model
         request_currency = None
-        if req.packages and req.packages[0].currency:
-            # Currency from first package's pricing option (validated to be same across all packages)
-            request_currency = req.packages[0].currency
+        if req.currency:
+            # Deprecated field, but still supported for backward compatibility
+            request_currency = req.currency
         elif req.budget and hasattr(req.budget, "currency"):
             # Legacy: Extract currency from Budget object
             request_currency = req.budget.currency
