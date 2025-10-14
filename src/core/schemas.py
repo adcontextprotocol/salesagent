@@ -2026,9 +2026,7 @@ class Package(BaseModel):
                     elif isinstance(fmt_id, str):
                         # String format ID - need to infer agent_url
                         # Default to reference creative agent
-                        format_id_objects.append(
-                            {"agent_url": "https://creative.adcontextprotocol.org", "id": fmt_id}
-                        )
+                        format_id_objects.append({"agent_url": "https://creative.adcontextprotocol.org", "id": fmt_id})
                     elif hasattr(fmt_id, "agent_url") and hasattr(fmt_id, "id"):
                         # FormatId object
                         format_id_objects.append({"agent_url": fmt_id.agent_url, "id": fmt_id.id})
@@ -3259,7 +3257,6 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
 class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     """Response payload for list_authorized_properties task (AdCP spec compliant)."""
 
-    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response")
     properties: list[Property] = Field(..., description="Array of all properties this agent is authorized to represent")
     tags: dict[str, PropertyTagMetadata] = Field(
         default_factory=dict, description="Metadata for each tag referenced by properties"
@@ -3272,6 +3269,16 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     )
     portfolio_description: str | None = Field(
         None, description="Markdown-formatted description of the property portfolio", max_length=5000
+    )
+    advertising_policies: str | None = Field(
+        None,
+        description=(
+            "Publisher's advertising content policies, restrictions, and guidelines in natural language. "
+            "May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, "
+            "or links to full policy documentation."
+        ),
+        min_length=1,
+        max_length=10000,
     )
     errors: list[dict[str, Any]] | None = Field(
         None, description="Task-specific errors and warnings (e.g., property availability issues)"

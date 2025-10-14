@@ -3140,7 +3140,7 @@ async def activate_signal(
 
 
 def _list_authorized_properties_impl(
-    req: ListAuthorizedPropertiesRequest = None, context: Context = None
+    req: ListAuthorizedPropertiesRequest | None = None, context: Context | None = None
 ) -> ListAuthorizedPropertiesResponse:
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
 
@@ -3234,11 +3234,61 @@ def _list_authorized_properties_impl(
                 stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(all_tags))
                 property_tags = session.scalars(stmt).all()
 
-                for tag in property_tags:
-                    tag_metadata[tag.tag_id] = PropertyTagMetadata(name=tag.name, description=tag.description)
+                for property_tag in property_tags:
+                    tag_metadata[property_tag.tag_id] = PropertyTagMetadata(
+                        name=property_tag.name, description=property_tag.description
+                    )
+
+            # Generate advertising policies text from tenant configuration
+            advertising_policies_text = None
+            advertising_policy = safe_parse_json_field(
+                tenant.get("advertising_policy"), field_name="advertising_policy", default={}
+            )
+
+            if advertising_policy and advertising_policy.get("enabled"):
+                # Build human-readable policy text
+                policy_parts = []
+
+                # Add baseline categories
+                default_categories = advertising_policy.get("default_prohibited_categories", [])
+                if default_categories:
+                    policy_parts.append(f"**Baseline Protected Categories:** {', '.join(default_categories)}")
+
+                # Add baseline tactics
+                default_tactics = advertising_policy.get("default_prohibited_tactics", [])
+                if default_tactics:
+                    policy_parts.append(f"**Baseline Prohibited Tactics:** {', '.join(default_tactics)}")
+
+                # Add additional categories
+                additional_categories = advertising_policy.get("prohibited_categories", [])
+                if additional_categories:
+                    policy_parts.append(f"**Additional Prohibited Categories:** {', '.join(additional_categories)}")
+
+                # Add additional tactics
+                additional_tactics = advertising_policy.get("prohibited_tactics", [])
+                if additional_tactics:
+                    policy_parts.append(f"**Additional Prohibited Tactics:** {', '.join(additional_tactics)}")
+
+                # Add blocked advertisers
+                blocked_advertisers = advertising_policy.get("prohibited_advertisers", [])
+                if blocked_advertisers:
+                    policy_parts.append(f"**Blocked Advertisers/Domains:** {', '.join(blocked_advertisers)}")
+
+                if policy_parts:
+                    advertising_policies_text = "\n\n".join(policy_parts)
+                    # Add footer
+                    advertising_policies_text += (
+                        "\n\n**Policy Enforcement:** Campaigns are analyzed using AI against these policies. "
+                        "Violations will result in campaign rejection or require manual review."
+                    )
 
             # Create response
-            response = ListAuthorizedPropertiesResponse(properties=properties, tags=tag_metadata, errors=[])
+            response = ListAuthorizedPropertiesResponse(
+                properties=properties,
+                tags=tag_metadata,
+                advertising_policies=advertising_policies_text,
+                errors=[],
+            )
 
             # Log audit
             audit_logger = get_audit_logger("AdCP", tenant_id)
@@ -3268,7 +3318,7 @@ def _list_authorized_properties_impl(
             principal_id=principal_id,
             adapter_id="mcp_server",
             success=False,
-            error_message=str(e),
+            error=str(e),
         )
 
         raise ToolError("PROPERTIES_ERROR", f"Failed to list authorized properties: {str(e)}")
@@ -3276,7 +3326,7 @@ def _list_authorized_properties_impl(
 
 @mcp.tool()
 def list_authorized_properties(
-    req: ListAuthorizedPropertiesRequest = None, webhook_url: str | None = None, context: Context = None
+    req: ListAuthorizedPropertiesRequest | None = None, webhook_url: str | None = None, context: Context | None = None
 ) -> ListAuthorizedPropertiesResponse:
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
 
