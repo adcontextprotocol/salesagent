@@ -114,6 +114,7 @@ class PricingModel(str, Enum):
     """Supported pricing models per AdCP spec."""
 
     CPM = "cpm"  # Cost per 1,000 impressions
+    VCPM = "vcpm"  # Cost per 1,000 viewable impressions
     CPC = "cpc"  # Cost per click
     CPCV = "cpcv"  # Cost per completed view (100% completion)
     CPV = "cpv"  # Cost per view at threshold
@@ -2026,9 +2027,7 @@ class Package(BaseModel):
                     elif isinstance(fmt_id, str):
                         # String format ID - need to infer agent_url
                         # Default to reference creative agent
-                        format_id_objects.append(
-                            {"agent_url": "https://creative.adcontextprotocol.org", "id": fmt_id}
-                        )
+                        format_id_objects.append({"agent_url": "https://creative.adcontextprotocol.org", "id": fmt_id})
                     elif hasattr(fmt_id, "agent_url") and hasattr(fmt_id, "id"):
                         # FormatId object
                         format_id_objects.append({"agent_url": fmt_id.agent_url, "id": fmt_id.id})
