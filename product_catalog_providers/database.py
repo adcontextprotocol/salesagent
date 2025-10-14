@@ -216,6 +216,16 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     loaded_products.append(validated_product)
                     logger.debug(f"Successfully validated product {product_data.get('product_id')}")
                 except Exception as e:
+                    import sys
+
+                    print(
+                        f"❌ VALIDATION ERROR for {product_data.get('product_id')}: {e}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    print(
+                        f"   Product data: {json.dumps(product_data, default=str)[:500]}", file=sys.stderr, flush=True
+                    )
                     logger.error(f"Product {product_data.get('product_id')} failed validation: {e}")
                     logger.debug(f"Product data that failed: {product_data}")
                     # Skip invalid products rather than failing entire request
