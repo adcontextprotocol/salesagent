@@ -1918,25 +1918,15 @@ def _sync_creatives_impl(
                                         )
 
                                 except Exception as validation_error:
-                                    # Creative agent validation failed for update - mark as failed
+                                    # Creative agent validation failed for update - log warning but continue
+                                    # This allows updates even if creative agent is down
                                     error_msg = f"Creative agent validation failed: {str(validation_error)}"
-                                    logger.error(
-                                        f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id}",
+                                    logger.warning(
+                                        f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id} - continuing with update",
                                         exc_info=True,
                                     )
-                                    # Add to failed creatives and skip
-                                    failed_creatives.append(
-                                        {"creative_id": str(existing_creative.creative_id), "error": error_msg}
-                                    )
-                                    failed_count += 1
-                                    results.append(
-                                        SyncCreativeResult(
-                                            creative_id=str(existing_creative.creative_id),
-                                            action="failed",
-                                            errors=[error_msg],
-                                        )
-                                    )
-                                    continue  # Skip to next creative
+                                    # Note: We continue instead of failing to allow graceful degradation
+                                    # when creative agent is unavailable
 
                             # In full upsert, consider all fields as changed
                             changes.extend(["url", "click_url", "width", "height", "duration"])
@@ -2080,24 +2070,15 @@ def _sync_creatives_impl(
                                     )
 
                             except Exception as validation_error:
-                                # Creative agent validation failed - mark creative as failed
+                                # Creative agent validation failed - log warning but continue
+                                # This allows creatives to be stored even if creative agent is down
                                 error_msg = f"Creative agent validation failed: {str(validation_error)}"
-                                logger.error(
-                                    f"[sync_creatives] {error_msg}",
+                                logger.warning(
+                                    f"[sync_creatives] {error_msg} - continuing with creative storage",
                                     exc_info=True,
                                 )
-                                # Add to failed creatives and skip
-                                creative_id = creative.get("creative_id", "unknown")
-                                failed_creatives.append({"creative_id": creative_id, "error": error_msg})
-                                failed_count += 1
-                                results.append(
-                                    SyncCreativeResult(
-                                        creative_id=creative_id,
-                                        action="failed",
-                                        errors=[error_msg],
-                                    )
-                                )
-                                continue  # Skip to next creative
+                                # Note: We continue instead of failing to allow graceful degradation
+                                # when creative agent is unavailable
 
                         # Determine creative status based on approval mode
 
