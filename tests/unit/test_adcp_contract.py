@@ -2402,7 +2402,7 @@ class TestAdCPContract:
             "pricing": {"cpm": 2.50, "currency": "USD"},
         }
         full_response = GetSignalsResponse(
-            adcp_version="2.3.0",
+            message="Found 1 signal",
             context_id="ctx_456",
             signals=[signal_data],
             errors=None,
