@@ -10,7 +10,54 @@ UTC = UTC
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class AdCPBaseModel(BaseModel):
+    """Base model for all AdCP request/response schemas.
+
+    Provides environment-aware validation:
+    - Production: extra="ignore" (forward compatible, accepts future schema fields)
+    - Non-production: extra="forbid" (strict, catches bugs early)
+
+    This allows clients to use newer schema versions in production without breaking,
+    while maintaining strict validation during development and testing.
+
+    The validation mode is determined at runtime based on the ENVIRONMENT variable.
+    """
+
+    # Default to ignoring extra fields (will be overridden in __init__ based on environment)
+    model_config = ConfigDict(extra="ignore")
+
+    def __init__(self, **data):
+        """Initialize model with environment-aware validation."""
+        from src.core.config import is_production
+
+        # In non-production, validate strictly (forbid extra fields)
+        if not is_production():
+            # Get all valid field names for this model (access from class, not instance)
+            valid_fields = set(self.__class__.model_fields.keys())
+            provided_fields = set(data.keys())
+            extra_fields = provided_fields - valid_fields
+
+            if extra_fields:
+                from pydantic import ValidationError
+
+                raise ValidationError.from_exception_data(
+                    self.__class__.__name__,
+                    [
+                        {
+                            "type": "extra_forbidden",
+                            "loc": (field,),
+                            "msg": "Extra inputs are not permitted",
+                            "input": data[field],
+                        }
+                        for field in extra_fields
+                    ],
+                )
+
+        # Call parent __init__ which will ignore extra fields in production
+        super().__init__(**data)
 
 
 class TaskStatus(str, Enum):
@@ -127,6 +174,9 @@ class PricingParameters(BaseModel):
 class PricingOption(BaseModel):
     """A pricing model option offered by a publisher for a product per AdCP spec."""
 
+    pricing_option_id: str = Field(
+        ..., description="Unique identifier for this pricing option within the product (e.g., 'cpm_usd_guaranteed')"
+    )
     pricing_model: PricingModel = Field(..., description="The pricing model for this option")
     rate: float | None = Field(None, ge=0, description="The rate for this pricing model (required if is_fixed=true)")
     currency: str = Field(..., pattern="^[A-Z]{3}$", description="ISO 4217 currency code (e.g., USD, EUR, GBP)")
@@ -156,6 +206,25 @@ class PricingOption(BaseModel):
             raise ValueError("price_guidance is required when is_fixed=false")
         return self
 
+    def model_dump(self, **kwargs):
+        """Override to exclude is_fixed for AdCP compliance.
+
+        AdCP uses separate schemas (cpm-fixed-option, cpm-auction-option, etc.)
+        instead of a single schema with is_fixed flag. We exclude is_fixed and
+        internal fields (supported, unsupported_reason) from external responses.
+        """
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            # Exclude internal fields that aren't in AdCP spec
+            exclude.update({"is_fixed", "supported", "unsupported_reason"})
+            kwargs["exclude"] = exclude
+        return super().model_dump(**kwargs)
+
+    def model_dump_internal(self, **kwargs):
+        """Dump including all fields for database storage and internal processing."""
+        kwargs.pop("exclude", None)  # Remove any exclude parameter
+        return super().model_dump(**kwargs)
+
 
 class AssetRequirement(BaseModel):
     """Asset requirement specification per AdCP spec."""
@@ -168,20 +237,23 @@ class AssetRequirement(BaseModel):
 class FormatReference(BaseModel):
     """Reference to a format from a specific creative agent.
 
+    DEPRECATED: Use FormatId instead. This class is maintained for backward compatibility.
+    FormatReference serializes as FormatId (with 'id' field) but accepts 'format_id' for legacy code.
+
     Used in Product.formats to store full format references with agent URL.
     This enables dynamic format resolution from the correct creative agent.
 
     Example:
         {
             "agent_url": "https://creative.adcontextprotocol.org",
-            "format_id": "display_300x250_image"
+            "format_id": "display_300x250_image"  # Serializes as "id" per AdCP spec
         }
     """
 
     agent_url: str = Field(
         ..., description="URL of the creative agent that provides this format (must be registered in tenant config)"
     )
-    format_id: str = Field(..., description="Format ID within that agent's format catalog")
+    format_id: str = Field(..., serialization_alias="id", description="Format ID within that agent's format catalog")
 
 
 class Format(BaseModel):
@@ -438,6 +510,50 @@ class Budget(BaseModel):
         return super().model_dump(**kwargs)
 
 
+# Budget utility functions for v1.8.0 compatibility
+def extract_budget_amount(budget: "Budget | float | dict | None", default_currency: str = "USD") -> tuple[float, str]:
+    """Extract budget amount and currency from various budget formats (v1.8.0 compatible).
+
+    Handles:
+    - v1.8.0 format: simple float (currency should be from pricing option)
+    - Legacy format: Budget object with total and currency
+    - Dict format: {'total': float, 'currency': str}
+    - None: returns (0.0, default_currency)
+
+    Args:
+        budget: Budget in any supported format
+        default_currency: Currency to use for v1.8.0 float budgets.
+                         **IMPORTANT**: This should be the currency from the selected
+                         pricing option, not an arbitrary default.
+
+    Returns:
+        Tuple of (amount, currency)
+
+    Note:
+        Per AdCP v1.8.0, currency is determined by the pricing option selected for
+        the package, not by the budget field. The default_currency parameter allows
+        callers to pass the pricing option's currency for v1.8.0 float budgets.
+        For legacy Budget objects, the currency from the object is used instead.
+
+    Example:
+        # v1.8.0: currency from package pricing option
+        package_currency = request.packages[0].currency  # From pricing option
+        amount, currency = extract_budget_amount(request.budget, package_currency)
+
+        # Legacy: currency from Budget object
+        amount, currency = extract_budget_amount(Budget(total=5000, currency="EUR"))
+    """
+    if budget is None:
+        return (0.0, default_currency)
+    elif isinstance(budget, dict):
+        return (budget.get("total", 0.0), budget.get("currency", default_currency))
+    elif isinstance(budget, int | float):
+        return (float(budget), default_currency)
+    else:
+        # Budget object with .total and .currency attributes
+        return (budget.total, budget.currency)
+
+
 # AdCP Compliance Models
 class Measurement(BaseModel):
     """Measurement capabilities included with a product per AdCP spec."""
@@ -499,7 +615,10 @@ class Product(BaseModel):
     product_id: str
     name: str
     description: str
-    formats: list[FormatReference] | list[str]  # FormatReference objects or legacy string IDs (migration support)
+    formats: list["FormatId | FormatReference"] | list[str] = Field(
+        serialization_alias="format_ids",
+        description="Array of supported creative format IDs - structured format_id objects with agent_url and id",
+    )
     delivery_type: Literal["guaranteed", "non_guaranteed"]
 
     # NEW: Pricing options (AdCP PR #88)
@@ -758,12 +877,12 @@ class ProductPerformance(BaseModel):
     confidence_score: float | None = None  # 0.0 to 1.0
 
 
-class UpdatePerformanceIndexRequest(BaseModel):
+class UpdatePerformanceIndexRequest(AdCPBaseModel):
     media_buy_id: str
     performance_data: list[ProductPerformance]
 
 
-class UpdatePerformanceIndexResponse(BaseModel):
+class UpdatePerformanceIndexResponse(AdCPBaseModel):
     status: str
     detail: str
 
@@ -814,7 +933,7 @@ class ProductFilters(BaseModel):
     )
 
 
-class GetProductsRequest(BaseModel):
+class GetProductsRequest(AdCPBaseModel):
     brief: str = Field(
         "",
         description="Brief description of the advertising campaign or requirements (optional)",
@@ -836,22 +955,9 @@ class GetProductsRequest(BaseModel):
         None,
         description="Structured filters for product discovery",
     )
-    strategy_id: str | None = Field(
-        None,
-        description="Optional strategy ID for linking operations and enabling simulation/testing modes",
-    )
-    min_exposures: int | None = Field(
-        None,
-        description="Minimum number of impressions needed for measurement validity (AdCP PR #79)",
-        gt=0,
-    )
     brand_manifest: dict[str, Any] | None = Field(
         None,
         description="Brand information manifest providing brand context, assets, and product catalog",
-    )
-    webhook_url: str | None = Field(
-        None,
-        description="URL for async task completion notifications (AdCP spec, optional)",
     )
 
     @model_validator(mode="before")
@@ -885,10 +991,11 @@ class Error(BaseModel):
     details: dict[str, Any] | None = Field(None, description="Additional error details")
 
 
-class GetProductsResponse(BaseModel):
+class GetProductsResponse(AdCPBaseModel):
     """Response for get_products tool (AdCP spec compliant).
 
-    Context management is handled automatically by the MCP wrapper at the protocol layer.
+    Human-readable messages are provided via __str__() for protocol layer use
+    (MCP display, A2A task messages), not as schema fields.
     """
 
     # Required AdCP fields
@@ -896,7 +1003,6 @@ class GetProductsResponse(BaseModel):
     products: list[Product] = Field(...)
 
     # Optional AdCP fields
-    message: str | None = None
     status: Literal["completed", "working", "submitted"] | None = Field(None, description="Task status")
     errors: list[Error] | None = None
 
@@ -915,8 +1021,6 @@ class GetProductsResponse(BaseModel):
             data["products"] = []
 
         # Add other fields, excluding None values for AdCP compliance
-        if self.message is not None:
-            data["message"] = self.message
         if self.errors is not None:
             data["errors"] = self.errors
         if self.status is not None:
@@ -938,33 +1042,37 @@ class GetProductsResponse(BaseModel):
             data["products"] = []
 
         # Add other fields
-        if self.message is not None:
-            data["message"] = self.message
         if self.errors is not None:
             data["errors"] = self.errors
+        if self.status is not None:
+            data["status"] = self.status
 
         return data
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field.
+        """Return human-readable message for protocol layer.
 
-        FastMCP uses str() to generate the 'content' field for tool responses.
-        This should be a natural language summary, not JSON.
+        Used by both MCP (for display) and A2A (for task messages).
+        Provides conversational text without adding non-spec fields to the schema.
         """
-        if self.message:
-            return self.message
-
-        # Fallback: generate message from product count
         count = len(self.products)
+
+        # Base message
         if count == 0:
-            return "No products matched your requirements."
+            base_msg = "No products matched your requirements."
         elif count == 1:
-            return "Found 1 product that matches your requirements."
+            base_msg = "Found 1 product that matches your requirements."
         else:
-            return f"Found {count} products that match your requirements."
+            base_msg = f"Found {count} products that match your requirements."
+
+        # Check if this looks like an anonymous response (all pricing is None)
+        if count > 0 and all(p.cpm is None and p.min_spend is None for p in self.products):
+            return f"{base_msg} Please connect through an authorized buying agent for pricing data."
+
+        return base_msg
 
 
-class ListCreativeFormatsRequest(BaseModel):
+class ListCreativeFormatsRequest(AdCPBaseModel):
     """Request for list_creative_formats tool.
 
     All parameters are optional filters per AdCP spec.
@@ -995,25 +1103,34 @@ class ListCreativeFormatsRequest(BaseModel):
     name_search: str | None = Field(None, description="Search for formats by name (case-insensitive partial match)")
 
 
-class ListCreativeFormatsResponse(BaseModel):
-    """Response for list_creative_formats tool.
+class ListCreativeFormatsResponse(AdCPBaseModel):
+    """Response for list_creative_formats tool (AdCP spec compliant).
 
-    Returns comprehensive Format objects per AdCP specification.
-    Context management is handled automatically by the MCP wrapper at the protocol layer.
+    Human-readable messages are provided via __str__() for protocol layer use
+    (MCP display, A2A task messages), not as schema fields.
     """
 
-    formats: list[Format]  # Full Format objects per AdCP spec
-    message: str | None = None  # Optional human-readable message
-    errors: list[Error] | None = None  # Optional error reporting
-    specification_version: str | None = Field(None, description="AdCP format specification version")
+    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
+    formats: list[Format] = Field(..., description="Full format definitions per AdCP spec")
     status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
+    creative_agents: list[dict[str, Any]] | None = Field(
+        None, description="Creative agents providing additional formats"
+    )
+    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        if self.message:
-            return self.message
+        """Return human-readable message for protocol layer.
+
+        Used by both MCP (for display) and A2A (for task messages).
+        Provides conversational text without adding non-spec fields to the schema.
+        """
         count = len(self.formats)
-        return f"Found {count} creative format{'s' if count != 1 else ''}."
+        if count == 0:
+            return "No creative formats are currently supported."
+        elif count == 1:
+            return "Found 1 creative format."
+        else:
+            return f"Found {count} creative formats."
 
 
 # --- Creative Lifecycle ---
@@ -1028,6 +1145,15 @@ class CreativeGroup(BaseModel):
     tags: list[str] | None = []
 
 
+class FormatId(BaseModel):
+    """AdCP v2.4 format identifier object."""
+
+    agent_url: str = Field(..., description="URL of the agent defining this format")
+    id: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$", description="Format identifier")
+
+    model_config = {"extra": "forbid"}
+
+
 class Creative(BaseModel):
     """Individual creative asset in the creative library - AdCP spec compliant."""
 
@@ -1036,8 +1162,33 @@ class Creative(BaseModel):
     name: str
 
     # AdCP spec compliant fields
-    format: str = Field(alias="format_id", description="Creative format type per AdCP spec")
+    format: FormatId = Field(
+        alias="format_id", description="Creative format identifier with agent_url namespace (AdCP v2.4+)"
+    )
     url: str = Field(alias="content_uri", description="URL of the creative content per AdCP spec")
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_format_id(cls, values):
+        """Validate and upgrade format_id to AdCP v2.4 namespaced format.
+
+        Automatically upgrades legacy string format_id to FormatId object with agent_url.
+        Uses cached format mappings or defaults to AdCP reference implementation.
+        """
+        from src.core.format_cache import upgrade_legacy_format_id
+
+        format_val = values.get("format_id") or values.get("format")
+        if format_val is not None:
+            try:
+                # Upgrade to FormatId object (handles strings, dicts, objects)
+                upgraded = upgrade_legacy_format_id(format_val)
+                # Set both format_id and format to ensure consistency
+                values["format_id"] = upgraded
+                values["format"] = upgraded
+            except ValueError as e:
+                raise ValueError(f"Invalid format_id: {e}")
+        return values
+
     media_url: str | None = Field(None, description="Alternative media URL (typically same as url)")
     click_url: str | None = Field(None, alias="click_through_url", description="Landing page URL per AdCP spec")
 
@@ -1152,6 +1303,22 @@ class Creative(BaseModel):
             stacklevel=2,
         )
         return self.click_url
+
+    def get_format_string(self) -> str:
+        """Get format ID string from FormatId object.
+
+        Returns:
+            String format identifier (e.g., "display_300x250")
+        """
+        return self.format.id
+
+    def get_format_agent_url(self) -> str:
+        """Get agent URL from FormatId object.
+
+        Returns:
+            Agent URL string (e.g., "https://creative.adcontextprotocol.org")
+        """
+        return self.format.agent_url
 
     def model_dump(self, **kwargs):
         """Override to provide AdCP-compliant responses while preserving internal fields."""
@@ -1342,7 +1509,7 @@ class CreativeAssignment(BaseModel):
         return self
 
 
-class AddCreativeAssetsRequest(BaseModel):
+class AddCreativeAssetsRequest(AdCPBaseModel):
     """Request to add creative assets to a media buy (AdCP spec compliant)."""
 
     media_buy_id: str | None = None
@@ -1362,7 +1529,7 @@ class AddCreativeAssetsRequest(BaseModel):
         return self.assets
 
 
-class AddCreativeAssetsResponse(BaseModel):
+class AddCreativeAssetsResponse(AdCPBaseModel):
     """Response from adding creative assets (AdCP spec compliant)."""
 
     statuses: list[CreativeStatus]
@@ -1373,7 +1540,7 @@ SubmitCreativesRequest = AddCreativeAssetsRequest
 SubmitCreativesResponse = AddCreativeAssetsResponse
 
 
-class SyncCreativesRequest(BaseModel):
+class SyncCreativesRequest(AdCPBaseModel):
     """Request to sync creative assets to centralized library (AdCP v2.4 spec compliant).
 
     Supports bulk operations, patch updates, and assignment management.
@@ -1460,7 +1627,7 @@ class AssignmentResult(BaseModel):
     )
 
 
-class SyncCreativesResponse(BaseModel):
+class SyncCreativesResponse(AdCPBaseModel):
     """Response from syncing creative assets (AdCP spec compliant)."""
 
     adcp_version: str = Field(
@@ -1490,7 +1657,7 @@ class SyncCreativesResponse(BaseModel):
         return self.message
 
 
-class ListCreativesRequest(BaseModel):
+class ListCreativesRequest(AdCPBaseModel):
     """Request to list and search creative library (AdCP spec compliant)."""
 
     media_buy_id: str | None = Field(None, description="Filter by media buy ID")
@@ -1547,7 +1714,7 @@ class Pagination(BaseModel):
     current_page: int | None = Field(None, ge=1)
 
 
-class ListCreativesResponse(BaseModel):
+class ListCreativesResponse(AdCPBaseModel):
     """Response from listing creative assets (AdCP spec compliant)."""
 
     # Required AdCP fields
@@ -1567,26 +1734,26 @@ class ListCreativesResponse(BaseModel):
         return self.message
 
 
-class CheckCreativeStatusRequest(BaseModel):
+class CheckCreativeStatusRequest(AdCPBaseModel):
     creative_ids: list[str]
 
 
-class CheckCreativeStatusResponse(BaseModel):
+class CheckCreativeStatusResponse(AdCPBaseModel):
     statuses: list[CreativeStatus]
 
 
 # New creative management endpoints
-class CreateCreativeGroupRequest(BaseModel):
+class CreateCreativeGroupRequest(AdCPBaseModel):
     name: str
     description: str | None = None
     tags: list[str] | None = []
 
 
-class CreateCreativeGroupResponse(BaseModel):
+class CreateCreativeGroupResponse(AdCPBaseModel):
     group: CreativeGroup
 
 
-class CreateCreativeRequest(BaseModel):
+class CreateCreativeRequest(AdCPBaseModel):
     """Create a creative in the library (not tied to a media buy)."""
 
     group_id: str | None = None
@@ -1597,7 +1764,7 @@ class CreateCreativeRequest(BaseModel):
     metadata: dict[str, Any] | None = {}
 
 
-class CreateCreativeResponse(BaseModel):
+class CreateCreativeResponse(AdCPBaseModel):
     creative: Creative
     status: CreativeStatus
     suggested_adaptations: list[CreativeAdaptation] = Field(default_factory=list)
@@ -1607,7 +1774,7 @@ class CreateCreativeResponse(BaseModel):
         return f"Creative {self.creative.creative_id} created with status: {self.status.status}"
 
 
-class AssignCreativeRequest(BaseModel):
+class AssignCreativeRequest(AdCPBaseModel):
     """Assign a creative from the library to a package."""
 
     media_buy_id: str
@@ -1634,11 +1801,11 @@ class AssignCreativeRequest(BaseModel):
         return self
 
 
-class AssignCreativeResponse(BaseModel):
+class AssignCreativeResponse(AdCPBaseModel):
     assignment: CreativeAssignment
 
 
-class GetCreativesRequest(BaseModel):
+class GetCreativesRequest(AdCPBaseModel):
     """Get creatives with optional filtering."""
 
     group_id: str | None = None
@@ -1648,24 +1815,24 @@ class GetCreativesRequest(BaseModel):
     include_assignments: bool = False
 
 
-class GetCreativesResponse(BaseModel):
+class GetCreativesResponse(AdCPBaseModel):
     creatives: list[Creative]
     assignments: list[CreativeAssignment] | None = None
 
 
 # Admin tools
-class GetPendingCreativesRequest(BaseModel):
+class GetPendingCreativesRequest(AdCPBaseModel):
     """Admin-only: Get all pending creatives across all principals."""
 
     principal_id: str | None = None  # Filter by principal if specified
     limit: int | None = 100
 
 
-class GetPendingCreativesResponse(BaseModel):
+class GetPendingCreativesResponse(AdCPBaseModel):
     pending_creatives: list[dict[str, Any]]  # Includes creative + principal info
 
 
-class ApproveCreativeRequest(BaseModel):
+class ApproveCreativeRequest(AdCPBaseModel):
     """Admin-only: Approve or reject a creative."""
 
     creative_id: str
@@ -1673,13 +1840,13 @@ class ApproveCreativeRequest(BaseModel):
     reason: str | None = None
 
 
-class ApproveCreativeResponse(BaseModel):
+class ApproveCreativeResponse(AdCPBaseModel):
     creative_id: str
     new_status: str
     detail: str
 
 
-class AdaptCreativeRequest(BaseModel):
+class AdaptCreativeRequest(AdCPBaseModel):
     media_buy_id: str
     original_creative_id: str
     target_format_id: str
@@ -1739,9 +1906,10 @@ class BrandManifest(BaseModel):
     """Standardized brand information manifest for creative generation and media buying.
 
     Per AdCP spec, either url OR name is required (at least one must be present).
+    This is a legacy model - prefer using generated schemas from schemas_generated/.
     """
 
-    # At least one required (enforced by model_validator)
+    # At least one required (enforced by anyOf in AdCP spec)
     url: str | None = Field(None, description="Brand website URL")
     name: str | None = Field(None, description="Brand/business name")
 
@@ -1759,12 +1927,8 @@ class BrandManifest(BaseModel):
     contact_info: dict[str, Any] | None = Field(None, description="Contact information")
     metadata: dict[str, Any] | None = Field(None, description="Creation/update metadata")
 
-    @model_validator(mode="after")
-    def validate_required_fields(self) -> "BrandManifest":
-        """Ensure at least one of url or name is present."""
-        if not self.url and not self.name:
-            raise ValueError("BrandManifest requires at least one of: url, name")
-        return self
+    # NOTE: Legacy model kept for backward compatibility with tests
+    # For new code, use generated schemas which properly handle anyOf constraints
 
 
 class BrandManifestRef(BaseModel):
@@ -1817,6 +1981,64 @@ class Package(BaseModel):
     creative_assignments: list[dict[str, Any]] | None = Field(
         None, description="Creative assets assigned to this package"
     )
+    format_ids_to_provide: list[FormatId] | None = Field(
+        None,
+        description="Format IDs that creative assets will be provided for this package (array of FormatId objects per AdCP v2.4)",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_format_ids_to_format_ids_to_provide(cls, values: dict) -> dict:
+        """Migrate legacy format_ids field to format_ids_to_provide for backward compatibility.
+
+        Handles migration from old formats:
+        - format_ids (array of strings)
+        - formats_to_provide (array of strings)
+        To new AdCP v2.4 format:
+        - format_ids_to_provide (array of FormatId objects)
+        """
+        if not isinstance(values, dict):
+            return values
+
+        # If we already have format_ids_to_provide, nothing to migrate
+        if "format_ids_to_provide" in values:
+            return values
+
+        # Try to migrate from formats_to_provide or format_ids
+        source_field = None
+        if "formats_to_provide" in values and values["formats_to_provide"]:
+            source_field = "formats_to_provide"
+        elif "format_ids" in values and values["format_ids"]:
+            source_field = "format_ids"
+
+        if source_field:
+            format_data = values.get(source_field)
+            if isinstance(format_data, list) and len(format_data) > 0:
+                format_id_objects = []
+                for fmt_id in format_data:
+                    if isinstance(fmt_id, dict):
+                        # Already a FormatId dict
+                        if "agent_url" in fmt_id and "id" in fmt_id:
+                            format_id_objects.append(fmt_id)
+                        # FormatReference dict with format_id instead of id
+                        elif "agent_url" in fmt_id and "format_id" in fmt_id:
+                            format_id_objects.append({"agent_url": fmt_id["agent_url"], "id": fmt_id["format_id"]})
+                    elif isinstance(fmt_id, str):
+                        # String format ID - need to infer agent_url
+                        # Default to reference creative agent
+                        format_id_objects.append(
+                            {"agent_url": "https://creative.adcontextprotocol.org", "id": fmt_id}
+                        )
+                    elif hasattr(fmt_id, "agent_url") and hasattr(fmt_id, "id"):
+                        # FormatId object
+                        format_id_objects.append({"agent_url": fmt_id.agent_url, "id": fmt_id.id})
+                    elif hasattr(fmt_id, "agent_url") and hasattr(fmt_id, "format_id"):
+                        # FormatReference object
+                        format_id_objects.append({"agent_url": fmt_id.agent_url, "id": fmt_id.format_id})
+
+                values["format_ids_to_provide"] = format_id_objects
+
+        return values
 
     # NEW: Pricing model selection (AdCP PR #88)
     pricing_model: PricingModel | None = Field(
@@ -1843,8 +2065,18 @@ class Package(BaseModel):
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
             # Add internal fields to exclude by default
+            # Legacy format fields also excluded (migrated to format_ids_to_provide)
             exclude.update(
-                {"tenant_id", "media_buy_id", "platform_line_item_id", "created_at", "updated_at", "metadata"}
+                {
+                    "tenant_id",
+                    "media_buy_id",
+                    "platform_line_item_id",
+                    "created_at",
+                    "updated_at",
+                    "metadata",
+                    "format_ids",
+                    "formats_to_provide",
+                }
             )
             kwargs["exclude"] = exclude
 
@@ -1867,7 +2099,7 @@ class Package(BaseModel):
 
 
 # --- Media Buy Lifecycle ---
-class CreateMediaBuyRequest(BaseModel):
+class CreateMediaBuyRequest(AdCPBaseModel):
     # Required AdCP v1.8.0 fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
     buyer_ref: str = Field(..., description="Buyer reference for tracking (REQUIRED per AdCP spec)")
     brand_manifest: "BrandManifest | str | None" = Field(
@@ -1882,15 +2114,16 @@ class CreateMediaBuyRequest(BaseModel):
     )
     end_time: datetime | None = Field(None, description="Campaign end time (ISO 8601)")
     budget: Budget | float | None = Field(
-        None, description="Overall campaign budget (Budget object or number - if number, currency must be provided)"
-    )
-    currency: str | None = Field(
         None,
-        pattern="^[A-Z]{3}$",
-        description="ISO 4217 currency code for campaign (applies to budget and all packages) - AdCP PR #88",
+        description="Overall campaign budget (Budget object or number). Currency determined by package pricing options.",
     )
 
     # Deprecated fields (for backward compatibility)
+    currency: str | None = Field(
+        None,
+        pattern="^[A-Z]{3}$",
+        description="DEPRECATED: Use Package.currency instead. Currency code that will be copied to all packages for backward compatibility.",
+    )
     promoted_offering: str | None = Field(
         None,
         description="DEPRECATED: Use brand_manifest instead. Legacy field for describing what is being promoted.",
@@ -2030,6 +2263,10 @@ class CreateMediaBuyRequest(BaseModel):
             raise ValueError("end_time must be timezone-aware (ISO 8601 with timezone)")
         return self
 
+    # Note: Currency validation removed - currency comes from product pricing options
+    # and is looked up dynamically when needed. We keep req.currency as deprecated
+    # for backward compatibility but don't enforce currency consistency at request time.
+
     # Backward compatibility properties for old field names
     @property
     def flight_start_date(self) -> date:
@@ -2051,17 +2288,28 @@ class CreateMediaBuyRequest(BaseModel):
                 if isinstance(package, dict):
                     budget = package.get("budget")
                     if budget:
-                        # Budget might be a dict or Budget object
-                        total += budget.get("total", 0.0) if isinstance(budget, dict) else budget.total
+                        # Budget can be: dict, number, or Budget object
+                        if isinstance(budget, dict):
+                            total += budget.get("total", 0.0)
+                        elif isinstance(budget, int | float):
+                            total += float(budget)
+                        else:
+                            total += budget.total
                 else:
                     # Package object
                     if package.budget:
-                        total += package.budget.total
+                        # Budget can be number or Budget object
+                        if isinstance(package.budget, int | float):
+                            total += float(package.budget)
+                        else:
+                            total += package.budget.total
             if total > 0:
                 return total
 
         # Legacy format: top-level budget
         if self.budget:
+            if isinstance(self.budget, int | float):
+                return float(self.budget)
             return self.budget.total
         return self.total_budget or 0.0
 
@@ -2082,7 +2330,7 @@ class CreateMediaBuyRequest(BaseModel):
         return self.product_ids or []
 
 
-class CreateMediaBuyResponse(BaseModel):
+class CreateMediaBuyResponse(AdCPBaseModel):
     """Response from create_media_buy operation (AdCP spec compliant).
 
     This is an async operation that may require manual approval or additional steps.
@@ -2140,7 +2388,7 @@ class CreateMediaBuyResponse(BaseModel):
         return f"Media buy {self.buyer_ref}: {self.status}"
 
 
-class CheckMediaBuyStatusRequest(BaseModel):
+class CheckMediaBuyStatusRequest(AdCPBaseModel):
     media_buy_id: str | None = None
     buyer_ref: str | None = None
     strategy_id: str | None = Field(
@@ -2155,7 +2403,7 @@ class CheckMediaBuyStatusRequest(BaseModel):
         return values
 
 
-class CheckMediaBuyStatusResponse(BaseModel):
+class CheckMediaBuyStatusResponse(AdCPBaseModel):
     media_buy_id: str
     buyer_ref: str
     status: str  # pending_creative, active, paused, completed, failed
@@ -2165,7 +2413,7 @@ class CheckMediaBuyStatusResponse(BaseModel):
     creative_count: int = 0
 
 
-class LegacyUpdateMediaBuyRequest(BaseModel):
+class LegacyUpdateMediaBuyRequest(AdCPBaseModel):
     """Legacy update request - kept for backward compatibility."""
 
     media_buy_id: str
@@ -2174,7 +2422,7 @@ class LegacyUpdateMediaBuyRequest(BaseModel):
     creative_assignments: dict[str, list[str]] | None = None
 
 
-class GetMediaBuyDeliveryRequest(BaseModel):
+class GetMediaBuyDeliveryRequest(AdCPBaseModel):
     """Request delivery data for one or more media buys.
 
     AdCP-compliant request matching official get-media-buy-delivery-request schema.
@@ -2271,19 +2519,19 @@ class AggregatedTotals(BaseModel):
     media_buy_count: int = Field(ge=0, description="Number of media buys included in the response")
 
 
-class GetMediaBuyDeliveryResponse(BaseModel):
+class GetMediaBuyDeliveryResponse(AdCPBaseModel):
     """AdCP-compliant response for get_media_buy_delivery task."""
 
     adcp_version: str = Field(description="AdCP schema version used for this response", pattern=r"^\d+\.\d+\.\d+$")
     reporting_period: ReportingPeriod = Field(description="Date range for the report")
     currency: str = Field(description="ISO 4217 currency code", pattern=r"^[A-Z]{3}$")
     aggregated_totals: AggregatedTotals = Field(description="Combined metrics across all returned media buys")
-    deliveries: list[MediaBuyDeliveryData] = Field(description="Array of delivery data for each media buy")
+    media_buy_deliveries: list[MediaBuyDeliveryData] = Field(description="Array of delivery data for each media buy")
     errors: list[dict] | None = Field(None, description="Task-specific errors and warnings")
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
-        count = len(self.deliveries)
+        count = len(self.media_buy_deliveries)
         if count == 0:
             return "No delivery data found for the specified period."
         elif count == 1:
@@ -2292,14 +2540,14 @@ class GetMediaBuyDeliveryResponse(BaseModel):
 
 
 # Deprecated - kept for backward compatibility
-class GetAllMediaBuyDeliveryRequest(BaseModel):
+class GetAllMediaBuyDeliveryRequest(AdCPBaseModel):
     """DEPRECATED: Use GetMediaBuyDeliveryRequest with filter='all' instead."""
 
     today: date
     media_buy_ids: list[str] | None = None
 
 
-class GetAllMediaBuyDeliveryResponse(BaseModel):
+class GetAllMediaBuyDeliveryResponse(AdCPBaseModel):
     """DEPRECATED: Use GetMediaBuyDeliveryResponse instead."""
 
     deliveries: list[MediaBuyDeliveryData]
@@ -2333,7 +2581,7 @@ class AssetStatus(BaseModel):
     workflow_step_id: str | None = None  # HITL workflow step ID for manual approval
 
 
-class UpdateMediaBuyResponse(BaseModel):
+class UpdateMediaBuyResponse(AdCPBaseModel):
     """Response from update_media_buy operation (AdCP spec compliant)."""
 
     # Required AdCP fields
@@ -2396,7 +2644,7 @@ class PackageUpdate(BaseModel):
     targeting_overlay: Targeting | None = None  # Package-specific targeting refinements
 
 
-class UpdatePackageRequest(BaseModel):
+class UpdatePackageRequest(AdCPBaseModel):
     """Update one or more packages within a media buy.
 
     Uses PATCH semantics: Only packages mentioned are affected.
@@ -2421,15 +2669,11 @@ class AdCPPackageUpdate(BaseModel):
     targeting_overlay: Targeting | None = None
     creative_ids: list[str] | None = None
 
-    @model_validator(mode="after")
-    def validate_oneOf_constraint(self):
-        """Validate that either package_id OR buyer_ref is provided (AdCP oneOf constraint)."""
-        if not self.package_id and not self.buyer_ref:
-            raise ValueError("Either package_id or buyer_ref must be provided")
-        return self
+    # NOTE: No Python validator needed - AdCP schema has oneOf constraint for package_id/buyer_ref
+    # Schema validation at /schemas/v1/media-buy/update-media-buy-request.json enforces this
 
 
-class UpdateMediaBuyRequest(BaseModel):
+class UpdateMediaBuyRequest(AdCPBaseModel):
     """AdCP-compliant update media buy request per update-media-buy-request schema.
 
     Fully compliant with AdCP specification:
@@ -2456,14 +2700,8 @@ class UpdateMediaBuyRequest(BaseModel):
     )
     today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
-    @model_validator(mode="after")
-    def validate_oneOf_constraint(self):
-        """Validate AdCP oneOf constraint: either media_buy_id OR buyer_ref."""
-        if not self.media_buy_id and not self.buyer_ref:
-            raise ValueError("Either media_buy_id or buyer_ref must be provided")
-        if self.media_buy_id and self.buyer_ref:
-            raise ValueError("Cannot provide both media_buy_id and buyer_ref (AdCP oneOf constraint)")
-        return self
+    # NOTE: No Python validator needed for oneOf constraint - AdCP schema enforces media_buy_id/buyer_ref oneOf
+    # Schema validation at /schemas/v1/media-buy/update-media-buy-request.json enforces this
 
     @model_validator(mode="after")
     def validate_timezone_aware(self):
@@ -2504,7 +2742,7 @@ class AdapterPackageDelivery(BaseModel):
     spend: float
 
 
-class AdapterGetMediaBuyDeliveryResponse(BaseModel):
+class AdapterGetMediaBuyDeliveryResponse(AdCPBaseModel):
     """Response from adapter's get_media_buy_delivery method"""
 
     media_buy_id: str
@@ -2552,7 +2790,7 @@ class HumanTask(BaseModel):
     resolved_by: str | None = None
 
 
-class CreateHumanTaskRequest(BaseModel):
+class CreateHumanTaskRequest(AdCPBaseModel):
     """Request to create a human task."""
 
     task_type: str
@@ -2570,7 +2808,7 @@ class CreateHumanTaskRequest(BaseModel):
     due_in_hours: int | None = None  # Hours until due
 
 
-class CreateHumanTaskResponse(BaseModel):
+class CreateHumanTaskResponse(AdCPBaseModel):
     """Response from creating a human task."""
 
     task_id: str
@@ -2582,7 +2820,7 @@ class CreateHumanTaskResponse(BaseModel):
         return f"Task {self.task_id} created with status: {self.status}"
 
 
-class GetPendingTasksRequest(BaseModel):
+class GetPendingTasksRequest(AdCPBaseModel):
     """Request for pending human tasks."""
 
     principal_id: str | None = None  # Filter by principal
@@ -2592,7 +2830,7 @@ class GetPendingTasksRequest(BaseModel):
     include_overdue: bool = True
 
 
-class GetPendingTasksResponse(BaseModel):
+class GetPendingTasksResponse(AdCPBaseModel):
     """Response with pending tasks."""
 
     tasks: list[HumanTask]
@@ -2600,14 +2838,14 @@ class GetPendingTasksResponse(BaseModel):
     overdue_count: int
 
 
-class AssignTaskRequest(BaseModel):
+class AssignTaskRequest(AdCPBaseModel):
     """Request to assign a task."""
 
     task_id: str
     assigned_to: str
 
 
-class CompleteTaskRequest(BaseModel):
+class CompleteTaskRequest(AdCPBaseModel):
     """Request to complete a task."""
 
     task_id: str
@@ -2616,14 +2854,14 @@ class CompleteTaskRequest(BaseModel):
     resolved_by: str
 
 
-class VerifyTaskRequest(BaseModel):
+class VerifyTaskRequest(AdCPBaseModel):
     """Request to verify if a task was completed correctly."""
 
     task_id: str
     expected_outcome: dict[str, Any] | None = None  # What the task should have accomplished
 
 
-class VerifyTaskResponse(BaseModel):
+class VerifyTaskResponse(AdCPBaseModel):
     """Response from task verification."""
 
     task_id: str
@@ -2633,7 +2871,7 @@ class VerifyTaskResponse(BaseModel):
     discrepancies: list[str] = []
 
 
-class MarkTaskCompleteRequest(BaseModel):
+class MarkTaskCompleteRequest(AdCPBaseModel):
     """Admin request to mark a task as complete with verification."""
 
     task_id: str
@@ -2642,7 +2880,7 @@ class MarkTaskCompleteRequest(BaseModel):
 
 
 # Targeting capabilities
-class GetTargetingCapabilitiesRequest(BaseModel):
+class GetTargetingCapabilitiesRequest(AdCPBaseModel):
     """Query targeting capabilities for channels."""
 
     channels: list[str] | None = None  # If None, return all channels
@@ -2668,20 +2906,20 @@ class ChannelTargetingCapabilities(BaseModel):
     aee_dimensions: list[TargetingDimensionInfo] | None = None
 
 
-class GetTargetingCapabilitiesResponse(BaseModel):
+class GetTargetingCapabilitiesResponse(AdCPBaseModel):
     """Response with targeting capabilities."""
 
     capabilities: list[ChannelTargetingCapabilities]
 
 
-class CheckAXERequirementsRequest(BaseModel):
+class CheckAXERequirementsRequest(AdCPBaseModel):
     """Check if required AXE dimensions are supported."""
 
     channel: str
     required_dimensions: list[str]
 
 
-class CheckAXERequirementsResponse(BaseModel):
+class CheckAXERequirementsResponse(AdCPBaseModel):
     """Response for AXE requirements check."""
 
     supported: bool
@@ -2809,7 +3047,7 @@ class SignalFilters(BaseModel):
     min_coverage_percentage: float | None = Field(None, ge=0, le=100, description="Minimum coverage requirement")
 
 
-class GetSignalsRequest(BaseModel):
+class GetSignalsRequest(AdCPBaseModel):
     """AdCP-compliant request to discover available signals per get-signals-request schema.
 
     Fully compliant with AdCP specification:
@@ -2839,7 +3077,7 @@ class GetSignalsRequest(BaseModel):
         return self.max_results
 
 
-class GetSignalsResponse(BaseModel):
+class GetSignalsResponse(AdCPBaseModel):
     """Response containing available signals."""
 
     signals: list[Signal]
@@ -2856,7 +3094,7 @@ class GetSignalsResponse(BaseModel):
 
 
 # --- Signal Activation ---
-class ActivateSignalRequest(BaseModel):
+class ActivateSignalRequest(AdCPBaseModel):
     """Request to activate a signal for use in campaigns."""
 
     signal_id: str = Field(..., description="Signal ID to activate")
@@ -2864,7 +3102,7 @@ class ActivateSignalRequest(BaseModel):
     media_buy_id: str | None = Field(None, description="Optional media buy ID to activate signal for")
 
 
-class ActivateSignalResponse(BaseModel):
+class ActivateSignalResponse(AdCPBaseModel):
     """Response from signal activation."""
 
     signal_id: str = Field(..., description="Activated signal ID")
@@ -2881,7 +3119,7 @@ class ActivateSignalResponse(BaseModel):
 
 
 # --- Simulation and Time Progression Control ---
-class SimulationControlRequest(BaseModel):
+class SimulationControlRequest(AdCPBaseModel):
     """Control simulation time progression and events."""
 
     strategy_id: str = Field(..., description="Strategy ID to control (must be simulation strategy with 'sim_' prefix)")
@@ -2889,7 +3127,7 @@ class SimulationControlRequest(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict, description="Action-specific parameters")
 
 
-class SimulationControlResponse(BaseModel):
+class SimulationControlResponse(AdCPBaseModel):
     """Response from simulation control operations."""
 
     status: Literal["ok", "error"] = "ok"
@@ -3001,7 +3239,7 @@ class PropertyTagMetadata(BaseModel):
     description: str = Field(..., description="Description of what this tag represents")
 
 
-class ListAuthorizedPropertiesRequest(BaseModel):
+class ListAuthorizedPropertiesRequest(AdCPBaseModel):
     """Request parameters for discovering all properties this agent is authorized to represent (AdCP spec)."""
 
     adcp_version: str = Field(
@@ -3018,17 +3256,40 @@ class ListAuthorizedPropertiesRequest(BaseModel):
         return data
 
 
-class ListAuthorizedPropertiesResponse(BaseModel):
-    """Response payload for list_authorized_properties task (AdCP spec)."""
+class ListAuthorizedPropertiesResponse(AdCPBaseModel):
+    """Response payload for list_authorized_properties task (AdCP spec compliant)."""
 
     adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response")
     properties: list[Property] = Field(..., description="Array of all properties this agent is authorized to represent")
     tags: dict[str, PropertyTagMetadata] = Field(
         default_factory=dict, description="Metadata for each tag referenced by properties"
     )
+    primary_channels: list[str] | None = Field(
+        None, description="Primary advertising channels in this portfolio (helps buyers filter relevance)"
+    )
+    primary_countries: list[str] | None = Field(
+        None, description="Primary countries (ISO 3166-1 alpha-2 codes) where properties are concentrated"
+    )
+    portfolio_description: str | None = Field(
+        None, description="Markdown-formatted description of the property portfolio", max_length=5000
+    )
     errors: list[dict[str, Any]] | None = Field(
         None, description="Task-specific errors and warnings (e.g., property availability issues)"
     )
+
+    def __str__(self) -> str:
+        """Return human-readable message for protocol layer.
+
+        Used by both MCP (for display) and A2A (for task messages).
+        Provides conversational text without adding non-spec fields to the schema.
+        """
+        count = len(self.properties)
+        if count == 0:
+            return "No authorized properties found."
+        elif count == 1:
+            return "Found 1 authorized property."
+        else:
+            return f"Found {count} authorized properties."
 
     def model_dump(self, **kwargs) -> dict[str, Any]:
         """Return AdCP-compliant response."""

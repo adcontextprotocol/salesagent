@@ -317,12 +317,15 @@ class MockAdServer(AdServerAdapter):
                     f"ReservationDetailsError.PERCENTAGE_UNITS_BOUGHT_TOO_HIGH @ lineItem[0].primaryGoal.units; trigger:'{package.impressions}'"
                 )
 
-        # Budget validation
-        if request.budget and request.budget.total <= 0:
-            errors.append("InvalidArgumentError @ order.totalBudget")
+        # Budget validation (v1.8.0 compatible)
+        if request.budget:
+            from src.core.schemas import extract_budget_amount
 
-        if request.budget and request.budget.total > 1000000:  # Mock limit
-            errors.append("InvalidArgumentError.VALUE_TOO_LARGE @ order.totalBudget")
+            budget_amount, _ = extract_budget_amount(request.budget, request.currency or "USD")
+            if budget_amount <= 0:
+                errors.append("InvalidArgumentError @ order.totalBudget")
+            if budget_amount > 1000000:  # Mock limit
+                errors.append("InvalidArgumentError.VALUE_TOO_LARGE @ order.totalBudget")
 
         # If we have errors, format them like GAM does
         if errors:

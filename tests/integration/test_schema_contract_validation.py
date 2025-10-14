@@ -315,7 +315,7 @@ class TestCreativeSchemaContract:
         test_data = {
             "creative_id": "video_contract_test",
             "name": "Video Creative Contract Test",
-            "format_id": "video_30s",
+            "format_id": "video_640x480",
             "status": "pending",
             "content_uri": "https://example.com/video.mp4",
             "principal_id": "test_principal",
@@ -472,10 +472,10 @@ class TestGetProductsResponseContract:
             ),
         ]
 
-        test_data = {"products": products, "message": "Found 2 matching products for your campaign"}
+        test_data = {"products": products}
 
-        # AdCP spec required fields for get_products response
-        adcp_spec_fields = {"products", "message"}
+        # AdCP spec required fields for get_products response (message is NOT in spec - provided via __str__())
+        adcp_spec_fields = {"products"}
 
         validator.validate_schema_contract(GetProductsResponse, test_data, adcp_spec_fields)
 

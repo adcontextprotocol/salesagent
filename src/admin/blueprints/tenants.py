@@ -233,8 +233,13 @@ def tenant_settings(tenant_id, section=None):
             # Get creative formats
             from src.core.database.models import CreativeFormat
 
-            stmt = select(CreativeFormat).filter_by(tenant_id=tenant_id)
-            creative_formats = db_session.scalars(stmt).all()
+            try:
+                stmt = select(CreativeFormat).filter_by(tenant_id=tenant_id)
+                creative_formats = db_session.scalars(stmt).all()
+            except Exception as e:
+                # Table may not exist in older databases - gracefully handle
+                logger.warning(f"Could not load creative formats: {e}")
+                creative_formats = []
 
             # Get inventory counts
             from src.core.database.models import GAMInventory

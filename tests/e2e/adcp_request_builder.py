@@ -6,7 +6,7 @@ All helpers enforce the NEW AdCP V2.3 format with proper schema validation.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -65,6 +65,7 @@ def build_adcp_media_buy_request(
         buyer_ref = generate_buyer_ref()
 
     # Build the request following AdCP V2.3 spec exactly
+    # Note: ALL budgets are plain numbers per spec (currency from pricing_option_id)
     request: dict[str, Any] = {
         "buyer_ref": buyer_ref,
         "promoted_offering": promoted_offering,
@@ -72,12 +73,12 @@ def build_adcp_media_buy_request(
             {
                 "buyer_ref": generate_buyer_ref("pkg"),
                 "products": product_ids,
-                "budget": {"total": total_budget, "currency": currency, "pacing": pacing},
+                "budget": total_budget,  # Package budget is plain number per AdCP spec
             }
         ],
         "start_time": start_time,
         "end_time": end_time,
-        "budget": {"total": total_budget, "currency": currency, "pacing": pacing},
+        "budget": total_budget,  # Top-level budget is plain number per AdCP spec
     }
 
     # Add optional fields
@@ -137,24 +138,35 @@ def build_creative(
     status: str = "active",
 ) -> dict[str, Any]:
     """
-    Build a valid AdCP V2.3 creative object.
+    Build a valid AdCP V2.4 creative object with assets.
 
     Args:
         creative_id: Unique creative identifier
         format_id: Format ID (e.g., "display_300x250")
         name: Human-readable creative name
-        asset_url: URL to the creative asset
+        asset_url: URL to the creative asset (converted to assets structure)
         click_through_url: Optional click-through destination
         status: Creative status (default: active)
 
     Returns:
-        Valid AdCP V2.3 Creative dict
+        Valid AdCP V2.4 Creative dict with assets
     """
+    # Build assets structure based on format type
+    # For display formats, use image asset
+    # For video formats, use video asset
+    # Default to image for now
+    assets: dict[str, Any] = {
+        "primary": {
+            "asset_type": "image",
+            "url": asset_url,
+        }
+    }
+
     creative: dict[str, Any] = {
         "creative_id": creative_id,
         "format_id": format_id,
         "name": name,
-        "asset_url": asset_url,
+        "assets": assets,
         "status": status,
     }
 
@@ -233,7 +245,7 @@ def get_test_date_range(days_from_now: int = 1, duration_days: int = 30) -> tupl
     """
     from datetime import timedelta
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start = now + timedelta(days=days_from_now)
     end = start + timedelta(days=duration_days)
 

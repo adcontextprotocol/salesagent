@@ -125,6 +125,11 @@ class TestAdCPReferenceImplementation:
             )
             products_data = json.loads(products_result.content[0].text)
 
+            print(f"   🔍 DEBUG: products_result type: {type(products_result)}")
+            print(f"   🔍 DEBUG: products_result.content: {products_result.content}")
+            print(f"   🔍 DEBUG: products_data keys: {products_data.keys()}")
+            print(f"   🔍 DEBUG: products_data: {json.dumps(products_data, indent=2)[:500]}")
+
             assert "products" in products_data, "Response must contain products"
             assert len(products_data["products"]) > 0, "Must have at least one product"
 
@@ -132,7 +137,7 @@ class TestAdCPReferenceImplementation:
             product = products_data["products"][0]
             product_id = product["product_id"]
             print(f"   ✓ Found product: {product['name']} ({product_id})")
-            print(f"   ✓ Formats: {product['formats']}")
+            print(f"   ✓ Formats: {product['format_ids']}")
 
             # Get creative formats (no req wrapper - takes optional params directly)
             formats_result = await client.call_tool("list_creative_formats", {})

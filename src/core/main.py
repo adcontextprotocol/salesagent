@@ -57,12 +57,25 @@ from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 
 # Schema models (explicit imports to avoid collisions)
-from src.core.schemas import (
+# Schema adapters (wrapping generated schemas)
+from src.core.schema_adapters import (
     ActivateSignalResponse,
-    AggregatedTotals,
+    CreateMediaBuyResponse,
+    GetMediaBuyDeliveryResponse,
+    GetProductsResponse,
+    GetSignalsResponse,
+    ListAuthorizedPropertiesRequest,
+    ListAuthorizedPropertiesResponse,
+    ListCreativeFormatsRequest,
+    ListCreativeFormatsResponse,
+    ListCreativesResponse,
+    SyncCreativesResponse,
+    UpdateMediaBuyResponse,
+)
+from src.core.schema_helpers import create_get_products_request
+from src.core.schemas import (
     CreateHumanTaskResponse,
     CreateMediaBuyRequest,
-    CreateMediaBuyResponse,
     Creative,
     CreativeAssignment,
     CreativeGroup,
@@ -70,17 +83,8 @@ from src.core.schemas import (
     DeliveryTotals,
     Error,
     GetMediaBuyDeliveryRequest,
-    GetMediaBuyDeliveryResponse,
-    GetProductsRequest,
-    GetProductsResponse,
     GetSignalsRequest,
-    GetSignalsResponse,
     HumanTask,
-    ListAuthorizedPropertiesRequest,
-    ListAuthorizedPropertiesResponse,
-    ListCreativeFormatsRequest,
-    ListCreativeFormatsResponse,
-    ListCreativesResponse,
     MediaBuyDeliveryData,
     MediaPackage,
     Package,
@@ -95,14 +99,16 @@ from src.core.schemas import (
     Signal,
     SignalDeployment,
     SignalPricing,
-    SyncCreativesResponse,
     TaskStatus,
     UpdateMediaBuyRequest,
-    UpdateMediaBuyResponse,
     UpdatePerformanceIndexRequest,
     UpdatePerformanceIndexResponse,
     VerifyTaskRequest,
     VerifyTaskResponse,
+)
+from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
+    GetProductsRequest1,
+    GetProductsRequest2,
 )
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
@@ -640,6 +646,51 @@ console.print(f"[bold cyan]🔌 Using adapter: {SELECTED_ADAPTER.upper()}[/bold 
 
 
 # --- Creative Conversion Helper ---
+def _extract_format_namespace(format_value: Any) -> tuple[str, str]:
+    """Extract agent_url and format ID from format_id field (AdCP v2.4).
+
+    Args:
+        format_value: FormatId dict/object with agent_url+id fields
+
+    Returns:
+        Tuple of (agent_url, format_id)
+
+    Raises:
+        ValueError: If format_value doesn't have required agent_url and id fields
+    """
+    if isinstance(format_value, dict):
+        agent_url = format_value.get("agent_url")
+        format_id = format_value.get("id")
+        if not agent_url or not format_id:
+            raise ValueError(f"format_id must have both 'agent_url' and 'id' fields. Got: {format_value}")
+        return agent_url, format_id
+    if hasattr(format_value, "agent_url") and hasattr(format_value, "id"):
+        return format_value.agent_url, format_value.id
+    if isinstance(format_value, str):
+        raise ValueError(
+            f"format_id must be an object with 'agent_url' and 'id' fields (AdCP v2.4). "
+            f"Got string: '{format_value}'. "
+            f"String format_id is no longer supported - all formats must be namespaced."
+        )
+    raise ValueError(f"Invalid format_id format. Expected object with agent_url and id, got: {type(format_value)}")
+
+
+def _normalize_format_value(format_value: Any) -> str:
+    """Normalize format value to string ID (for legacy code compatibility).
+
+    Args:
+        format_value: FormatId dict/object with agent_url+id fields
+
+    Returns:
+        String format identifier
+
+    Note: This is a legacy compatibility function. New code should use _extract_format_namespace
+    to properly handle the agent_url namespace.
+    """
+    _, format_id = _extract_format_namespace(format_value)
+    return format_id
+
+
 def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: list[str]) -> dict[str, Any]:
     """Convert AdCP v1.3+ Creative object to format expected by ad server adapters."""
 
@@ -647,7 +698,7 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
     asset = {
         "creative_id": creative.creative_id,
         "name": creative.name,
-        "format": creative.format,
+        "format": creative.get_format_string(),  # Handle both string and FormatId object
         "package_assignments": package_assignments,
     }
 
@@ -859,19 +910,29 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 # --- MCP Tools (Full Implementation) ---
 
 
-async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetProductsResponse:
+async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, context: Context) -> GetProductsResponse:
     """Shared implementation for get_products.
 
     Contains all business logic for product discovery including policy checks,
     product catalog providers, dynamic pricing, and filtering.
 
     Args:
-        req: GetProductsRequest with all query parameters
+        req: GetProductsRequest variant (GetProductsRequest1 or GetProductsRequest2)
         context: FastMCP Context for tenant/principal resolution
 
     Returns:
         GetProductsResponse containing matching products
     """
+    import sys
+
+    print("=" * 80, file=sys.stderr, flush=True)
+    print(
+        f"🔧 _get_products_impl CALLED: req={req.promoted_offering}, brief={req.brief[:50] if req.brief else 'N/A'}",
+        file=sys.stderr,
+        flush=True,
+    )
+    print("=" * 80, file=sys.stderr, flush=True)
+
     from src.core.tool_context import ToolContext
 
     start_time = time.time()
@@ -893,9 +954,17 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         # Legacy path - extract from FastMCP Context
         testing_ctx = get_testing_context(context)
         # For discovery endpoints, authentication is optional
+        logger.info("[GET_PRODUCTS] About to call get_principal_from_context")
+        print("🔍 [GET_PRODUCTS DEBUG] About to call get_principal_from_context", flush=True)
         principal_id = get_principal_from_context(context)  # Returns None if no auth
+        logger.info(f"[GET_PRODUCTS] principal_id returned: {principal_id}")
+        print(f"🔍 [GET_PRODUCTS DEBUG] principal_id returned: {principal_id}", flush=True)
         tenant = get_current_tenant()
+        logger.info(f"[GET_PRODUCTS] tenant returned: {tenant}")
+        print(f"🔍 [GET_PRODUCTS DEBUG] tenant returned: {tenant}", flush=True)
         if not tenant:
+            logger.error("[GET_PRODUCTS] No tenant context available - raising ToolError")
+            print("❌ [GET_PRODUCTS DEBUG] No tenant context - raising ToolError", flush=True)
             raise ToolError("No tenant context available")
 
     # Get the Principal object with ad server mappings
@@ -1132,6 +1201,8 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         "principal_id": principal_id,
     }
 
+    logger.info(f"[GET_PRODUCTS] Calling provider.get_products for tenant_id={tenant['tenant_id']}")
+    print(f"🔍 [GET_PRODUCTS DEBUG] Calling provider.get_products for tenant_id={tenant['tenant_id']}", flush=True)
     products = await provider.get_products(
         brief=req.brief,
         tenant_id=tenant["tenant_id"],
@@ -1139,6 +1210,8 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         principal_data=principal_data,
         context=context_data,
     )
+    logger.info(f"[GET_PRODUCTS] Got {len(products)} products from provider")
+    print(f"🔍 [GET_PRODUCTS DEBUG] Got {len(products)} products from provider", flush=True)
 
     # Enrich products with dynamic pricing (AdCP PR #79)
     # Calculate floor_cpm, recommended_cpm, estimated_exposures from cached metrics
@@ -1155,7 +1228,7 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
                 products,
                 tenant_id=tenant["tenant_id"],
                 country_code=country_code,
-                min_exposures=req.min_exposures,
+                min_exposures=getattr(req, "min_exposures", None),
             )
     except Exception as e:
         logger.warning(f"Failed to enrich products with dynamic pricing: {e}. Using defaults.")
@@ -1246,17 +1319,18 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
         eligible_products = products
 
     # Apply min_exposures filtering (AdCP PR #79)
-    if req.min_exposures is not None:
+    min_exposures = getattr(req, "min_exposures", None)
+    if min_exposures is not None:
         filtered_products = []
         for product in eligible_products:
             # For guaranteed products, check estimated_exposures
             if product.delivery_type == "guaranteed":
-                if product.estimated_exposures is not None and product.estimated_exposures >= req.min_exposures:
+                if product.estimated_exposures is not None and product.estimated_exposures >= min_exposures:
                     filtered_products.append(product)
                 else:
                     logger.info(
                         f"Product {product.product_id} excluded: estimated_exposures "
-                        f"({product.estimated_exposures}) < min_exposures ({req.min_exposures})"
+                        f"({product.estimated_exposures}) < min_exposures ({min_exposures})"
                     )
             else:
                 # For non-guaranteed, include if recommended_cpm is set (indicates it can meet min_exposures)
@@ -1302,27 +1376,22 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
 
     # Filter pricing data for anonymous users
-    pricing_message = None
     if principal_id is None:  # Anonymous user
         # Remove pricing data from products for anonymous users
         for product in modified_products:
             product.cpm = None
             product.min_spend = None
-        pricing_message = "Please connect through an authorized buying agent for pricing data"
 
     # Log activity
     log_tool_activity(context, "get_products", start_time)
-
-    # Create response with pricing message if anonymous
-    base_message = f"Found {len(modified_products)} matching products"
-    final_message = f"{base_message}. {pricing_message}" if pricing_message else base_message
 
     # Set status based on operation result
     status = TaskStatus.from_operation_state(
         operation_type="discovery", has_errors=False, requires_approval=False, requires_auth=principal_id is None
     )
 
-    return GetProductsResponse(products=modified_products, message=final_message, status=status)
+    # Response __str__() will generate appropriate message based on content
+    return GetProductsResponse(products=modified_products, status=status)
 
 
 @mcp.tool
@@ -1330,11 +1399,7 @@ async def get_products(
     promoted_offering: str | None = None,
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
-    adcp_version: str = "1.0.0",
-    min_exposures: int | None = None,
     filters: dict | None = None,
-    strategy_id: str | None = None,
-    webhook_url: str | None = None,
     context: Context = None,
 ) -> GetProductsResponse:
     """Get available products matching the brief.
@@ -1345,30 +1410,32 @@ async def get_products(
         promoted_offering: DEPRECATED: Use brand_manifest instead (still supported for backward compatibility)
         brand_manifest: Brand information manifest (inline object or URL string)
         brief: Brief description of the advertising campaign or requirements (optional)
-        adcp_version: AdCP schema version for this request (default: 1.0.0)
-        min_exposures: Minimum impressions needed for measurement validity (AdCP PR #79, optional)
-        brand_manifest: Brand information manifest providing brand context (optional)
         filters: Structured filters for product discovery (optional)
-        strategy_id: Optional strategy ID for linking operations (optional)
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
         GetProductsResponse containing matching products
     """
-    # Build request object for shared implementation
-    req = GetProductsRequest(
+    import sys
+
+    print("=" * 80, file=sys.stderr, flush=True)
+    print(
+        f"🚀 MCP get_products CALLED: offered={promoted_offering}, brief={brief[:50] if brief else 'N/A'}",
+        file=sys.stderr,
+        flush=True,
+    )
+    print("=" * 80, file=sys.stderr, flush=True)
+
+    # Build request object for shared implementation using helper
+    req = create_get_products_request(
         promoted_offering=promoted_offering,
         brief=brief,
-        adcp_version=adcp_version,
-        min_exposures=min_exposures,
         brand_manifest=brand_manifest,
         filters=filters,
-        strategy_id=strategy_id,
-        webhook_url=webhook_url,
     )
-    # Call shared implementation
-    return await _get_products_impl(req, context)
+    # Call shared implementation with unwrapped variant
+    # GetProductsRequest is a RootModel, so we pass req.root (the actual variant)
+    return await _get_products_impl(req.root, context)  # type: ignore[arg-type]
 
 
 def _list_creative_formats_impl(
@@ -1461,17 +1528,13 @@ def _list_creative_formats_impl(
     # Log activity
     log_tool_activity(context, "list_creative_formats", start_time)
 
-    message = f"Found {len(formats)} creative formats across {len({f.type for f in formats})} format types"
-
     # Set status based on operation result
     status = TaskStatus.from_operation_state(
         operation_type="discovery", has_errors=False, requires_approval=False, requires_auth=principal_id is None
     )
 
-    # Create response with schema validation metadata
-    response = ListCreativeFormatsResponse(
-        formats=formats, message=message, specification_version="AdCP v2.4", status=status
-    )
+    # Create response (no message/specification_version - not in adapter schema)
+    response = ListCreativeFormatsResponse(formats=formats, status=status)
 
     # Add schema validation metadata for client validation
     from src.core.schema_validation import INCLUDE_SCHEMAS_IN_RESPONSES, enhance_mcp_response_with_schema
@@ -1492,7 +1555,6 @@ def _list_creative_formats_impl(
 
 @mcp.tool()
 def list_creative_formats(
-    adcp_version: str = "1.0.0",
     type: str | None = None,
     standard_only: bool | None = None,
     category: str | None = None,
@@ -1505,7 +1567,6 @@ def list_creative_formats(
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        adcp_version: AdCP schema version for this request (default: "1.0.0")
         type: Filter by format type (audio, video, display)
         standard_only: Only return IAB standard formats
         category: Filter by format category (standard, custom)
@@ -1517,7 +1578,6 @@ def list_creative_formats(
         ListCreativeFormatsResponse with all available formats
     """
     req = ListCreativeFormatsRequest(
-        adcp_version=adcp_version,
         type=type,
         standard_only=standard_only,
         category=category,
@@ -1642,18 +1702,12 @@ def _sync_creatives_impl(
                         "status": "pending",
                     }
 
-                    # Handle snippet vs media content properly (mutually exclusive)
-                    if creative.get("snippet"):
-                        # Snippet-based creative
-                        schema_data.update(
-                            {
-                                "snippet": creative.get("snippet"),
-                                "snippet_type": creative.get("snippet_type"),
-                                "content_uri": "<script>/* Snippet-based creative */</script>",  # HTML-looking placeholder
-                            }
-                        )
+                    # Handle assets vs media content
+                    if creative.get("assets"):
+                        # Asset-based creative (new AdCP format)
+                        schema_data["content_uri"] = creative.get("url") or f"asset://{creative.get('creative_id')}"
                     else:
-                        # Media-based creative
+                        # Media-based creative (legacy)
                         schema_data["content_uri"] = (
                             creative.get("url") or "https://placeholder.example.com/missing.jpg"
                         )
@@ -1663,7 +1717,8 @@ def _sync_creatives_impl(
 
                     # Validate by creating a Creative schema object
                     # This will fail if required fields are missing or invalid (like empty name)
-                    Creative(**schema_data)
+                    # Also auto-upgrades string format_ids to FormatId objects via validator
+                    validated_creative = Creative(**schema_data)
 
                     # Additional business logic validation
                     if not creative.get("name") or str(creative.get("name")).strip() == "":
@@ -1671,6 +1726,9 @@ def _sync_creatives_impl(
 
                     if not creative.get("format_id") and not creative.get("format"):
                         raise ValueError("Creative format is required")
+
+                    # Use validated format (auto-upgraded from string if needed)
+                    format_value = validated_creative.format
 
                 except (ValidationError, ValueError) as validation_error:
                     # Creative failed validation - add to failed list
@@ -1713,8 +1771,13 @@ def _sync_creatives_impl(
                                 existing_creative.name = creative.get("name")
                                 changes.append("name")
                             if creative.get("format_id") or creative.get("format"):
-                                new_format = creative.get("format_id") or creative.get("format")
-                                if new_format != existing_creative.format:
+                                # Use validated format_value (already auto-upgraded from string)
+                                new_agent_url, new_format = _extract_format_namespace(format_value)
+                                if (
+                                    new_agent_url != existing_creative.agent_url
+                                    or new_format != existing_creative.format
+                                ):
+                                    existing_creative.agent_url = new_agent_url
                                     existing_creative.format = new_format
                                     changes.append("format")
                         else:
@@ -1722,8 +1785,10 @@ def _sync_creatives_impl(
                             if creative.get("name") != existing_creative.name:
                                 existing_creative.name = creative.get("name")
                                 changes.append("name")
-                            new_format = creative.get("format_id") or creative.get("format")
-                            if new_format != existing_creative.format:
+                            # Use validated format_value (already auto-upgraded from string)
+                            new_agent_url, new_format = _extract_format_namespace(format_value)
+                            if new_agent_url != existing_creative.agent_url or new_format != existing_creative.format:
+                                existing_creative.agent_url = new_agent_url
                                 existing_creative.format = new_format
                                 changes.append("format")
 
@@ -1804,10 +1869,9 @@ def _sync_creatives_impl(
                             ):
                                 data["duration"] = creative.get("duration")
                                 changes.append("duration")
-                            if creative.get("snippet") is not None:
-                                data["snippet"] = creative.get("snippet")
-                                data["snippet_type"] = creative.get("snippet_type")
-                                changes.append("snippet")
+                            if creative.get("assets") is not None:
+                                data["assets"] = creative.get("assets")
+                                changes.append("assets")
                             if creative.get("template_variables") is not None:
                                 data["template_variables"] = creative.get("template_variables")
                                 changes.append("template_variables")
@@ -1820,14 +1884,13 @@ def _sync_creatives_impl(
                                 "height": creative.get("height"),
                                 "duration": creative.get("duration"),
                             }
-                            if creative.get("snippet"):
-                                data["snippet"] = creative.get("snippet")
-                                data["snippet_type"] = creative.get("snippet_type")
+                            if creative.get("assets"):
+                                data["assets"] = creative.get("assets")
                             if creative.get("template_variables"):
                                 data["template_variables"] = creative.get("template_variables")
 
-                            # If no preview data provided in update, try to get it from creative agent
-                            if not data.get("url") and not data.get("snippet") and creative_format:
+                            # ALWAYS validate updates with creative agent
+                            if creative_format:
                                 try:
                                     # Get format to find creative agent URL
                                     import asyncio
@@ -1854,15 +1917,18 @@ def _sync_creatives_impl(
                                             "format_id": creative_format,
                                         }
 
-                                        # Add any provided asset data
+                                        # Add any provided asset data for validation
                                         if creative.get("assets"):
                                             creative_manifest["assets"] = creative.get("assets")
+                                        if data.get("url"):
+                                            creative_manifest["url"] = data.get("url")
 
-                                        # Call creative agent's preview_creative
+                                        # Call creative agent's preview_creative for validation + preview
                                         logger.info(
-                                            f"[sync_creatives] Calling preview_creative for existing creative "
+                                            f"[sync_creatives] Calling preview_creative for validation (update): "
                                             f"{existing_creative.creative_id} format {creative_format} "
-                                            f"from agent {format_obj.agent_url}"
+                                            f"from agent {format_obj.agent_url}, has_assets={bool(creative.get('assets'))}, "
+                                            f"has_url={bool(data.get('url'))}"
                                         )
 
                                         preview_result = asyncio.run(
@@ -1904,12 +1970,16 @@ def _sync_creatives_impl(
                                             f"height={data.get('height')}"
                                         )
 
-                                except Exception as preview_error:
-                                    # Log error but continue - preview is optional
+                                except Exception as validation_error:
+                                    # Creative agent validation failed for update - log warning but continue
+                                    # This allows updates even if creative agent is down
+                                    error_msg = f"Creative agent validation failed: {str(validation_error)}"
                                     logger.warning(
-                                        f"[sync_creatives] Failed to get preview from creative agent for update: {preview_error}",
+                                        f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id} - continuing with update",
                                         exc_info=True,
                                     )
+                                    # Note: We continue instead of failing to allow graceful degradation
+                                    # when creative agent is unavailable
 
                             # In full upsert, consider all fields as changed
                             changes.extend(["url", "click_url", "width", "height", "duration"])
@@ -1975,9 +2045,9 @@ def _sync_creatives_impl(
                         if creative.get("template_variables"):
                             data["template_variables"] = creative.get("template_variables")
 
-                        # If no preview data provided, try to get it from creative agent
+                        # ALWAYS validate creatives with the creative agent (validation + preview generation)
                         creative_format = creative.get("format_id") or creative.get("format")
-                        if not data.get("url") and not data.get("snippet") and creative_format:
+                        if creative_format:
                             try:
                                 # Get format to find creative agent URL
                                 import asyncio
@@ -2004,14 +2074,17 @@ def _sync_creatives_impl(
                                         "format_id": creative_format,
                                     }
 
-                                    # Add any provided asset data
+                                    # Add any provided asset data for validation
                                     if creative.get("assets"):
                                         creative_manifest["assets"] = creative.get("assets")
+                                    if data.get("url"):
+                                        creative_manifest["url"] = data.get("url")
 
-                                    # Call creative agent's preview_creative
+                                    # Call creative agent's preview_creative for validation + preview
                                     logger.info(
-                                        f"[sync_creatives] Calling preview_creative for {creative_format} "
-                                        f"from agent {format_obj.agent_url}"
+                                        f"[sync_creatives] Calling preview_creative for validation: {creative_format} "
+                                        f"from agent {format_obj.agent_url}, has_assets={bool(creative.get('assets'))}, "
+                                        f"has_url={bool(data.get('url'))}"
                                     )
 
                                     preview_result = asyncio.run(
@@ -2049,12 +2122,16 @@ def _sync_creatives_impl(
                                         f"height={data.get('height')}"
                                     )
 
-                            except Exception as preview_error:
-                                # Log error but continue - preview is optional
+                            except Exception as validation_error:
+                                # Creative agent validation failed - log warning but continue
+                                # This allows creatives to be stored even if creative agent is down
+                                error_msg = f"Creative agent validation failed: {str(validation_error)}"
                                 logger.warning(
-                                    f"[sync_creatives] Failed to get preview from creative agent: {preview_error}",
+                                    f"[sync_creatives] {error_msg} - continuing with creative storage",
                                     exc_info=True,
                                 )
+                                # Note: We continue instead of failing to allow graceful degradation
+                                # when creative agent is unavailable
 
                         # Determine creative status based on approval mode
 
@@ -2062,11 +2139,16 @@ def _sync_creatives_impl(
                         creative_status = "pending"
                         needs_approval = False
 
+                        # Extract agent_url and format ID from format_id field
+                        # Use validated format_value (already auto-upgraded from string)
+                        agent_url, format_id = _extract_format_namespace(format_value)
+
                         db_creative = DBCreative(
                             tenant_id=tenant["tenant_id"],
                             creative_id=creative.get("creative_id") or str(uuid.uuid4()),
                             name=creative.get("name"),
-                            format=creative.get("format_id") or creative.get("format"),
+                            agent_url=agent_url,
+                            format=format_id,
                             principal_id=principal_id,
                             status=creative_status,
                             created_at=datetime.now(UTC),
@@ -2387,7 +2469,6 @@ def _sync_creatives_impl(
     total_processed = created_count + updated_count + unchanged_count + failed_count
 
     return SyncCreativesResponse(
-        adcp_version="2.3.0",
         message=message,
         status="completed",
         summary=SyncSummary(
@@ -2619,7 +2700,10 @@ def _list_creatives_impl(
             schema_data = {
                 "creative_id": db_creative.creative_id,
                 "name": db_creative.name,
-                "format_id": db_creative.format,  # Use correct field name
+                "format_id": {  # Structured format_id per AdCP v2.4 spec
+                    "agent_url": db_creative.agent_url,
+                    "id": db_creative.format,
+                },
                 "click_through_url": db_creative.data.get("click_url") if db_creative.data else None,  # From data field
                 "width": db_creative.data.get("width") if db_creative.data else None,
                 "height": db_creative.data.get("height") if db_creative.data else None,
@@ -2942,12 +3026,19 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
     if req.max_results:
         signals = signals[: req.max_results]
 
-    # Set status based on operation result
-    status = TaskStatus.from_operation_state(
-        operation_type="discovery", has_errors=False, requires_approval=False, requires_auth=False
-    )
+    # Generate message (required field in adapter schema)
+    count = len(signals)
+    if count == 0:
+        message = "No signals matched your query."
+    elif count == 1:
+        message = "Found 1 signal matching your query."
+    else:
+        message = f"Found {count} signals matching your query."
 
-    return GetSignalsResponse(signals=signals, status=status)
+    # Generate context_id (required field)
+    context_id = f"signals_{uuid.uuid4().hex[:12]}"
+
+    return GetSignalsResponse(signals=signals, message=message, context_id=context_id)
 
 
 @mcp.tool()
@@ -2997,41 +3088,53 @@ async def activate_signal(
         activation_success = True
         requires_approval = signal_id.startswith("premium_")  # Mock rule: premium signals need approval
 
+        task_id = f"task_{uuid.uuid4().hex[:12]}"
+
         if requires_approval:
             # Create a human task for approval
-            status = TaskStatus.INPUT_REQUIRED
-            message = f"Signal {signal_id} requires manual approval before activation"
-            activation_details = {
-                "approval_required": True,
-                "estimated_approval_time_hours": 24,
-                "contact": "signals-approval@example.com",
-            }
+            status = "pending"
+            errors = [
+                {
+                    "code": "APPROVAL_REQUIRED",
+                    "message": f"Signal {signal_id} requires manual approval before activation",
+                }
+            ]
         elif activation_success:
-            status = TaskStatus.WORKING  # Activation in progress
-            message = f"Signal {signal_id} activation initiated successfully"
-            activation_details = {
-                "activation_started": datetime.now(UTC).isoformat(),
-                "estimated_completion_minutes": 15,
-                "platform_segment_id": f"seg_{signal_id}_{uuid.uuid4().hex[:8]}",
-            }
+            status = "processing"  # Activation in progress
+            estimated_activation_duration_minutes = 15.0
+            decisioning_platform_segment_id = f"seg_{signal_id}_{uuid.uuid4().hex[:8]}"
         else:
-            status = TaskStatus.FAILED
-            message = f"Failed to activate signal {signal_id}"
-            activation_details = {"error": "Signal provider unavailable"}
+            status = "failed"
+            errors = [{"code": "ACTIVATION_FAILED", "message": "Signal provider unavailable"}]
 
         # Log activity
         log_tool_activity(context, "activate_signal", start_time)
 
-        return ActivateSignalResponse(
-            signal_id=signal_id, status=status, message=message, activation_details=activation_details
-        )
+        # Build response with only adapter schema fields - use explicit fields for validator
+        if status == "processing":
+            return ActivateSignalResponse(
+                task_id=task_id,
+                status=status,
+                estimated_activation_duration_minutes=estimated_activation_duration_minutes,
+                decisioning_platform_segment_id=decisioning_platform_segment_id,
+            )
+        elif requires_approval or not activation_success:
+            return ActivateSignalResponse(
+                task_id=task_id,
+                status=status,
+                errors=errors,
+            )
+        else:
+            return ActivateSignalResponse(
+                task_id=task_id,
+                status=status,
+            )
 
     except Exception as e:
         logger.error(f"Error activating signal {signal_id}: {e}")
         return ActivateSignalResponse(
-            signal_id=signal_id,
-            status=TaskStatus.FAILED,
-            message=f"Failed to activate signal: {str(e)}",
+            task_id=f"task_{uuid.uuid4().hex[:12]}",
+            status="failed",
             errors=[{"code": "ACTIVATION_ERROR", "message": str(e)}],
         )
 
@@ -3135,9 +3238,7 @@ def _list_authorized_properties_impl(
                     tag_metadata[tag.tag_id] = PropertyTagMetadata(name=tag.name, description=tag.description)
 
             # Create response
-            response = ListAuthorizedPropertiesResponse(
-                adcp_version=req.adcp_version, properties=properties, tags=tag_metadata, errors=[]
-            )
+            response = ListAuthorizedPropertiesResponse(properties=properties, tags=tag_metadata, errors=[])
 
             # Log audit
             audit_logger = get_audit_logger("AdCP", tenant_id)
@@ -3530,7 +3631,9 @@ def _create_media_buy_impl(
             start_time = now
         else:
             # Ensure start_time is timezone-aware for comparison
-            start_time = req.start_time
+            # At this point, req.start_time is guaranteed to be datetime (not str)
+            assert isinstance(req.start_time, datetime), "start_time must be datetime when not 'asap'"
+            start_time = req.start_time  # type: datetime
             if start_time.tzinfo is None:
                 start_time = start_time.replace(tzinfo=UTC)
 
@@ -3578,20 +3681,64 @@ def _create_media_buy_impl(
         from src.core.database.models import CurrencyLimit
         from src.core.database.models import Product as ProductModel
 
-        # Get currency from campaign level (AdCP PR #88), budget, or default to USD
-        request_currency = None
-        if req.currency:
-            # NEW: Campaign-level currency (AdCP PR #88)
-            request_currency = req.currency
-        elif req.budget:
-            request_currency = req.budget.currency
-        elif req.packages and req.packages[0].budget:
-            request_currency = req.packages[0].budget.currency
-        else:
-            request_currency = "USD"  # Default
-
-        # Get currency limits for this tenant and currency
+        # Get products first to determine currency from pricing options
         with get_db_session() as session:
+            # Get products from database
+            stmt = select(ProductModel).where(
+                ProductModel.tenant_id == tenant["tenant_id"], ProductModel.product_id.in_(product_ids)
+            )
+            products = session.scalars(stmt).all()
+
+            # Build product lookup map
+            product_map = {p.product_id: p for p in products}
+
+            # Get currency from product pricing options (per AdCP spec)
+            request_currency = None
+
+            # First, try to get currency from first package's pricing option
+            if req.packages and len(req.packages) > 0:
+                first_package = req.packages[0]
+                package_product_ids = first_package.products or (
+                    [first_package.product_id] if first_package.product_id else []
+                )
+
+                if package_product_ids and package_product_ids[0] in product_map:
+                    product = product_map[package_product_ids[0]]
+                    pricing_options = product.pricing_options or []
+
+                    # Find the pricing option matching the package's pricing_model
+                    if first_package.pricing_model and pricing_options:
+                        matching_option = next(
+                            (po for po in pricing_options if po.pricing_model == first_package.pricing_model), None
+                        )
+                        if matching_option:
+                            request_currency = matching_option.currency
+
+                    # If no pricing_model specified, use first pricing option's currency
+                    if not request_currency and pricing_options:
+                        request_currency = pricing_options[0].currency
+
+            # Fallback to deprecated/legacy sources
+            if not request_currency and req.currency:
+                # Deprecated field, but still supported for backward compatibility
+                request_currency = req.currency
+            elif not request_currency and req.budget and hasattr(req.budget, "currency"):
+                # Legacy: Extract currency from Budget object
+                request_currency = req.budget.currency
+            elif (
+                not request_currency
+                and req.packages
+                and req.packages[0].budget
+                and hasattr(req.packages[0].budget, "currency")
+            ):
+                # Legacy: Extract currency from package budget object
+                request_currency = req.packages[0].budget.currency
+
+            # Final fallback
+            if not request_currency:
+                request_currency = "USD"
+
+            # Get currency limits for this tenant and currency
             stmt = select(CurrencyLimit).where(
                 CurrencyLimit.tenant_id == tenant["tenant_id"], CurrencyLimit.currency_code == request_currency
             )
@@ -3604,15 +3751,6 @@ def _create_media_buy_impl(
                     f"Contact the publisher to add support for this currency."
                 )
                 raise ValueError(error_msg)
-
-            # Get products from database to check pricing and minimums
-            stmt = select(ProductModel).where(
-                ProductModel.tenant_id == tenant["tenant_id"], ProductModel.product_id.in_(product_ids)
-            )
-            products = session.scalars(stmt).all()
-
-            # Build product lookup map for pricing validation
-            product_map = {p.product_id: p for p in products}
 
             # NEW: Validate pricing_model selections (AdCP PR #88)
             # Store validated pricing info for later use in adapter
@@ -3683,14 +3821,11 @@ def _create_media_buy_impl(
                             if applicable_min_spends:
                                 # Use the highest minimum spend among all products in package
                                 required_min_spend = max(applicable_min_spends)
-                                # Extract budget amount (handle Budget object, float, or dict)
-                                if isinstance(package.budget, dict):
-                                    package_budget = Decimal(str(package.budget.get("total", 0)))
-                                elif isinstance(package.budget, int | float):
-                                    package_budget = Decimal(str(package.budget))
-                                else:
-                                    # Budget object with .total attribute
-                                    package_budget = Decimal(str(package.budget.total))
+                                # Extract budget amount (v1.8.0 compatible)
+                                from src.core.schemas import extract_budget_amount
+
+                                package_budget_amount, _ = extract_budget_amount(package.budget, request_currency)
+                                package_budget = Decimal(str(package_budget_amount))
 
                                 if package_budget < required_min_spend:
                                     error_msg = (
@@ -3727,14 +3862,11 @@ def _create_media_buy_impl(
                     for package in req.packages:
                         if not package.budget:
                             continue
-                        # Extract budget amount (handle Budget object, float, or dict)
-                        if isinstance(package.budget, dict):
-                            package_budget = Decimal(str(package.budget.get("total", 0)))
-                        elif isinstance(package.budget, int | float):
-                            package_budget = Decimal(str(package.budget))
-                        else:
-                            # Budget object with .total attribute
-                            package_budget = Decimal(str(package.budget.total))
+                        # Extract budget amount (v1.8.0 compatible)
+                        from src.core.schemas import extract_budget_amount
+
+                        package_budget_amount, _ = extract_budget_amount(package.budget, request_currency)
+                        package_budget = Decimal(str(package_budget_amount))
                         package_daily_budget = package_budget / Decimal(str(flight_days))
 
                         if package_daily_budget > currency_limit.max_daily_package_spend:
@@ -3771,7 +3903,6 @@ def _create_media_buy_impl(
 
         # Return proper error response per AdCP spec (status=failed for validation errors)
         return CreateMediaBuyResponse(
-            adcp_version="2.3.0",
             status="failed",  # AdCP spec: failed status for execution errors
             buyer_ref=buyer_ref or "unknown",
             errors=[Error(code="validation_error", message=str(e))],
@@ -3783,7 +3914,6 @@ def _create_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return CreateMediaBuyResponse(
-            adcp_version="2.3.0",
             status="rejected",  # AdCP spec: rejected status for auth failures before execution
             buyer_ref=buyer_ref or "unknown",
             errors=[Error(code="authentication_error", message=error_msg)],
@@ -3861,9 +3991,8 @@ def _create_media_buy_impl(
                 buyer_ref=req.buyer_ref,
                 media_buy_id=pending_media_buy_id,
                 status=TaskStatus.INPUT_REQUIRED,
-                detail=response_msg,
                 creative_deadline=None,
-                message="Your media buy request requires manual approval from the publisher. The request has been queued and will be reviewed shortly.",
+                errors=[{"code": "APPROVAL_REQUIRED", "message": response_msg}],
             )
 
         # Get products for the media buy to check product-level auto-creation settings
@@ -3915,11 +4044,7 @@ def _create_media_buy_impl(
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return CreateMediaBuyResponse(
                     buyer_ref=req.buyer_ref,
-                    media_buy_id="",
                     status=TaskStatus.FAILED,
-                    detail=error_detail,
-                    creative_deadline=None,
-                    message="Media buy creation failed due to invalid product configuration. Please fix the configuration in Admin UI and try again.",
                     errors=[{"code": "invalid_configuration", "message": err} for err in config_errors],
                 )
 
@@ -3985,7 +4110,6 @@ def _create_media_buy_impl(
                 console.print(f"[yellow]⚠️ Failed to send configuration approval Slack notification: {e}[/yellow]")
 
             return CreateMediaBuyResponse(
-                adcp_version="2.3.0",
                 status="input-required",
                 buyer_ref=req.buyer_ref,
                 task_id=step.step_id,
@@ -4024,7 +4148,6 @@ def _create_media_buy_impl(
             error_msg = "start_time and end_time are required but were not properly set"
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return CreateMediaBuyResponse(
-                adcp_version="2.3.0",
                 status="failed",  # AdCP spec: failed status for validation errors
                 buyer_ref=req.buyer_ref,
                 errors=[Error(code="invalid_datetime", message=error_msg)],
@@ -4067,7 +4190,7 @@ def _create_media_buy_impl(
                 campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
                 kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
                 budget=total_budget,  # Extract total budget
-                currency=req.budget.currency if req.budget else "USD",  # AdCP v2.4 currency field
+                currency=request_currency,  # AdCP v2.4 currency field (resolved above)
                 start_date=start_time.date(),  # Legacy field for compatibility
                 end_date=end_time.date(),  # Legacy field for compatibility
                 start_time=start_time,  # AdCP v2.4 datetime scheduling (resolved from 'asap' if needed)
@@ -4231,7 +4354,6 @@ def _create_media_buy_impl(
             buyer_ref_value = f"missing-{response.media_buy_id}"
 
         adcp_response = CreateMediaBuyResponse(
-            adcp_version="2.3.0",
             status=api_status,  # Use adapter status or time-based status (not hardcoded "working")
             buyer_ref=buyer_ref_value,
             media_buy_id=response.media_buy_id,
@@ -4262,8 +4384,9 @@ def _create_media_buy_impl(
                 duration_days=duration_days,
                 action="created",
             )
-        except:
-            pass
+        except Exception as e:
+            # Activity feed logging is non-critical, but we should log the failure
+            logger.warning(f"Failed to log media buy creation to activity feed: {e}")
 
         # Apply testing hooks to response with campaign information (resolved from 'asap' if needed)
         campaign_info = {"start_date": start_time, "end_date": end_time, "total_budget": total_budget}
@@ -4291,7 +4414,6 @@ def _create_media_buy_impl(
         # Reconstruct response from modified data
         # Filter out testing hook fields that aren't part of CreateMediaBuyResponse schema
         valid_fields = {
-            "adcp_version",
             "status",
             "buyer_ref",
             "task_id",
@@ -4312,7 +4434,22 @@ def _create_media_buy_impl(
         else:
             logger.info(f"✅ buyer_ref present in filtered_data: {filtered_data['buyer_ref']}")
 
-        modified_response = CreateMediaBuyResponse(**filtered_data)
+        # Ensure required fields are present (validator compliance)
+        if "status" not in filtered_data:
+            filtered_data["status"] = "completed"
+        if "buyer_ref" not in filtered_data:
+            filtered_data["buyer_ref"] = buyer_ref_value
+
+        # Use explicit fields for validator (instead of **kwargs)
+        modified_response = CreateMediaBuyResponse(
+            status=filtered_data["status"],
+            buyer_ref=filtered_data["buyer_ref"],
+            task_id=filtered_data.get("task_id"),
+            media_buy_id=filtered_data.get("media_buy_id"),
+            creative_deadline=filtered_data.get("creative_deadline"),
+            packages=filtered_data.get("packages"),
+            errors=filtered_data.get("errors"),
+        )
 
         # Mark workflow step as completed on success
         ctx_manager.update_workflow_step(step.step_id, status="completed")
@@ -4449,8 +4586,9 @@ def _create_media_buy_impl(
                     "total_budget": total_budget if "total_budget" in locals() else 0,
                 },
             )
-        except:
-            pass
+        except Exception as audit_error:
+            # Audit logging failure is non-critical, but we should log it
+            logger.warning(f"Failed to log failed media buy creation to audit: {audit_error}")
 
         raise ToolError("MEDIA_BUY_CREATION_ERROR", f"Failed to create media buy: {str(e)}")
 
@@ -4583,6 +4721,12 @@ def _update_media_buy_impl(
         UpdateMediaBuyResponse with updated media buy details
     """
     # Create request object from individual parameters (MCP-compliant)
+    # Handle deprecated field names (backward compatibility)
+    if flight_start_date and not start_time:
+        start_time = flight_start_date
+    if flight_end_date and not end_time:
+        end_time = flight_end_date
+
     # Convert flat budget/currency/pacing to Budget object if budget provided
     budget_obj = None
     if budget is not None:
@@ -4595,19 +4739,23 @@ def _update_media_buy_impl(
             daily_cap=daily_budget,  # Map daily_budget to daily_cap
         )
 
-    req = UpdateMediaBuyRequest(
-        media_buy_id=media_buy_id,
-        buyer_ref=buyer_ref,
-        active=active,
-        flight_start_date=flight_start_date,
-        flight_end_date=flight_end_date,
-        budget=budget_obj,
-        targeting_overlay=targeting_overlay,
-        start_time=start_time,
-        end_time=end_time,
-        packages=packages,
-        creatives=creatives,
-    )
+    # Build request with only valid AdCP fields
+    # Note: flight_start_date, flight_end_date are mapped to start_time/end_time above
+    # creatives and targeting_overlay are deprecated - use packages for updates
+    # Filter out None values to avoid passing them to the request (strict validation in dev mode)
+    request_params = {
+        "media_buy_id": media_buy_id,
+        "buyer_ref": buyer_ref,
+        "active": active,
+        "start_time": start_time,
+        "end_time": end_time,
+        "budget": budget_obj,
+        "packages": packages,
+        "push_notification_config": push_notification_config,
+    }
+    # Remove None values to avoid validation errors in strict mode
+    request_params = {k: v for k, v in request_params.items() if v is not None}
+    req = UpdateMediaBuyRequest(**request_params)  # type: ignore[arg-type]
 
     if context is None:
         raise ValueError("Context is required for update_media_buy")
@@ -4695,14 +4843,18 @@ def _update_media_buy_impl(
 
             if media_buy:
                 # Determine currency (use updated or existing)
-                # Extract currency from Budget object if present, otherwise from media buy
-                request_currency = (req.budget.currency if req.budget else None) or media_buy.currency or "USD"
+                # Extract currency from Budget object if present (and if it's an object, not plain number)
+                request_currency: str
+                if req.budget and hasattr(req.budget, "currency"):
+                    request_currency = str(req.budget.currency)
+                else:
+                    request_currency = str(media_buy.currency) if media_buy.currency else "USD"
 
                 # Get currency limit
-                stmt = select(CurrencyLimit).where(
+                currency_stmt = select(CurrencyLimit).where(
                     CurrencyLimit.tenant_id == tenant["tenant_id"], CurrencyLimit.currency_code == request_currency
                 )
-                currency_limit = session.scalars(stmt).first()
+                currency_limit = session.scalars(currency_stmt).first()
 
                 if not currency_limit:
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
@@ -4820,20 +4972,13 @@ def _update_media_buy_impl(
                     )
                     return result
 
-    # Handle budget updates (Budget object from AdCP spec)
+    # Handle budget updates (Budget object from AdCP spec - v1.8.0 compatible)
     if req.budget is not None:
-        if isinstance(req.budget, dict):
-            # Handle Budget dict
-            total_budget = req.budget.get("total", 0)
-            currency = req.budget.get("currency", "USD")
-        elif hasattr(req.budget, "total"):
-            # Handle Budget model instance (standard case)
-            total_budget = req.budget.total
-            currency = req.budget.currency
-        else:
-            # Fallback: treat as float (shouldn't happen with Budget object)
-            total_budget = float(req.budget)
-            currency = "USD"  # Default when budget is just a number
+        from src.core.schemas import extract_budget_amount
+
+        # For UpdateMediaBuyRequest, budget is always a Budget object (not a float)
+        # The currency comes from the Budget object itself or defaults to USD
+        total_budget, currency = extract_budget_amount(req.budget, "USD")
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
@@ -4900,7 +5045,6 @@ def _update_media_buy_impl(
         status="completed",
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
-        implementation_date=datetime.combine(today, datetime.min.time()),
     )
 
 
@@ -4986,11 +5130,9 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
     if not principal:
         # Return AdCP-compliant error response
         return GetMediaBuyDeliveryResponse(
-            adcp_version="1.5.0",
             reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
             currency="USD",
-            aggregated_totals=AggregatedTotals(impressions=0, spend=0, media_buy_count=0),
-            deliveries=[],
+            media_buy_deliveries=[],
             errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
         )
 
@@ -5158,13 +5300,9 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
 
     # Create AdCP-compliant response
     response = GetMediaBuyDeliveryResponse(
-        adcp_version="1.5.0",
         reporting_period=reporting_period,
         currency="USD",
-        aggregated_totals=AggregatedTotals(
-            impressions=total_impressions, spend=total_spend, media_buy_count=media_buy_count
-        ),
-        deliveries=deliveries,
+        media_buy_deliveries=deliveries,
     )
 
     # Apply testing hooks if needed
@@ -5183,8 +5321,40 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
         response_data = response.model_dump()
         response_data = apply_testing_hooks(response_data, testing_ctx, "get_media_buy_delivery", campaign_info)
 
-        # Reconstruct response from modified data
-        response = GetMediaBuyDeliveryResponse(**response_data)
+        # Reconstruct response from modified data - filter out testing hook fields
+        valid_fields = {
+            "reporting_period",
+            "currency",
+            "media_buy_deliveries",
+            "notification_type",
+            "partial_data",
+            "unavailable_count",
+            "sequence_number",
+            "next_expected_at",
+            "errors",
+        }
+        filtered_data = {k: v for k, v in response_data.items() if k in valid_fields}
+
+        # Ensure required fields are present (validator compliance)
+        if "reporting_period" not in filtered_data:
+            filtered_data["reporting_period"] = response_data.get("reporting_period", reporting_period)
+        if "currency" not in filtered_data:
+            filtered_data["currency"] = response_data.get("currency", "USD")
+        if "media_buy_deliveries" not in filtered_data:
+            filtered_data["media_buy_deliveries"] = response_data.get("media_buy_deliveries", [])
+
+        # Use explicit fields for validator (instead of **kwargs)
+        response = GetMediaBuyDeliveryResponse(
+            reporting_period=filtered_data["reporting_period"],
+            currency=filtered_data["currency"],
+            media_buy_deliveries=filtered_data["media_buy_deliveries"],
+            notification_type=filtered_data.get("notification_type"),
+            partial_data=filtered_data.get("partial_data"),
+            unavailable_count=filtered_data.get("unavailable_count"),
+            sequence_number=filtered_data.get("sequence_number"),
+            next_expected_at=filtered_data.get("next_expected_at"),
+            errors=filtered_data.get("errors"),
+        )
 
     return response
 
@@ -5431,8 +5601,9 @@ def create_workflow_step_for_task(req, context):
                 },
                 timeout=5,
             )
-        except:
-            pass  # Don't fail task creation if webhook fails
+        except Exception as webhook_error:
+            # Webhook notification is non-critical, but we should log the failure
+            logger.warning(f"Failed to send webhook notification for task {task_id}: {webhook_error}")
 
     # Task is now handled entirely through WorkflowStep - no separate Task table needed
     console.print(f"[green]✅ Created workflow step {task_id}[/green]")
@@ -5935,6 +6106,119 @@ def get_strategy_manager(context: Context | None) -> StrategyManager:
 async def health(request: Request):
     """Health check endpoint."""
     return JSONResponse({"status": "healthy", "service": "mcp"})
+
+
+@mcp.custom_route("/admin/reset-db-pool", methods=["POST"])
+async def reset_db_pool(request: Request):
+    """Reset database connection pool after external data changes.
+
+    This is a testing-only endpoint that flushes the SQLAlchemy connection pool,
+    ensuring fresh connections see recently committed data. Only works when
+    ADCP_TESTING environment variable is set to 'true'.
+
+    Use case: E2E tests that initialize data via external script need to ensure
+    the running MCP server's connection pool picks up that fresh data.
+    """
+    # Security: Only allow in testing mode
+    if os.getenv("ADCP_TESTING") != "true":
+        logger.warning("Attempted to reset DB pool outside testing mode")
+        return JSONResponse({"error": "This endpoint is only available in testing mode"}, status_code=403)
+
+    try:
+        from src.core.database.database_session import reset_engine
+
+        logger.info("Resetting database connection pool, provider cache, and tenant context (testing mode)")
+
+        # Reset SQLAlchemy connection pool
+        reset_engine()
+        logger.info("  ✓ Database connection pool reset")
+
+        # CRITICAL: Also clear the product catalog provider cache
+        # The provider cache holds DatabaseProductCatalog instances that may have
+        # stale data from before init_database_ci.py ran
+        from product_catalog_providers.factory import _provider_cache
+
+        provider_count = len(_provider_cache)
+        _provider_cache.clear()
+        logger.info(f"  ✓ Cleared {provider_count} cached product catalog provider(s)")
+
+        # CRITICAL: Clear tenant context ContextVar
+        # After data initialization, the tenant context may contain stale tenant data
+        # that was loaded before products were created. Force fresh tenant lookup.
+        from src.core.config_loader import current_tenant
+
+        try:
+            current_tenant.set(None)
+            logger.info("  ✓ Cleared tenant context (will force fresh lookup on next request)")
+        except Exception as ctx_error:
+            logger.warning(f"  ⚠️ Could not clear tenant context: {ctx_error}")
+
+        return JSONResponse(
+            {
+                "status": "success",
+                "message": "Database connection pool, provider cache, and tenant context reset successfully",
+                "providers_cleared": provider_count,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to reset database state: {e}")
+        return JSONResponse({"error": f"Failed to reset: {str(e)}"}, status_code=500)
+
+
+@mcp.custom_route("/debug/db-state", methods=["GET"])
+async def debug_db_state(request: Request):
+    """Debug endpoint to show database state (testing only)."""
+    if os.getenv("ADCP_TESTING") != "true":
+        return JSONResponse({"error": "Only available in testing mode"}, status_code=403)
+
+    try:
+        from src.core.database.database_session import get_db_session
+
+        with get_db_session() as session:
+            # Count all products
+            product_stmt = select(ModelProduct)
+            all_products = session.scalars(product_stmt).all()
+
+            # Get ci-test-token principal
+            principal_stmt = select(ModelPrincipal).filter_by(access_token="ci-test-token")
+            principal = session.scalars(principal_stmt).first()
+
+            principal_info = None
+            tenant_info = None
+            tenant_products: list[ModelProduct] = []
+
+            if principal:
+                principal_info = {
+                    "principal_id": principal.principal_id,
+                    "tenant_id": principal.tenant_id,
+                }
+
+                # Get tenant
+                tenant_stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id)
+                tenant = session.scalars(tenant_stmt).first()
+                if tenant:
+                    tenant_info = {
+                        "tenant_id": tenant.tenant_id,
+                        "name": tenant.name,
+                        "is_active": tenant.is_active,
+                    }
+
+                # Get products for that tenant
+                tenant_product_stmt = select(ModelProduct).filter_by(tenant_id=principal.tenant_id)
+                tenant_products = list(session.scalars(tenant_product_stmt).all())
+
+            return JSONResponse(
+                {
+                    "total_products": len(all_products),
+                    "principal": principal_info,
+                    "tenant": tenant_info,
+                    "tenant_products_count": len(tenant_products),
+                    "tenant_product_ids": [p.product_id for p in tenant_products],
+                }
+            )
+    except Exception as e:
+        logger.error(f"Debug endpoint error: {e}", exc_info=True)
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @mcp.custom_route("/debug/tenant", methods=["GET"])

@@ -38,6 +38,9 @@
                     <p style="margin: 0; color: #666;">
                         <strong>Advertiser:</strong> {{ creative.principal_name }} |
                         <strong>Format:</strong> <span class="format-badge">{{ creative.format }}</span>
+                    </p>
+                    <p style="margin: 0.25rem 0 0 0; color: #666; font-size: 0.9rem;">
+                        <strong>ID:</strong> <code style="background: #f4f4f4; padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.85rem;">{{ creative.creative_id }}</code>
                         {% if creative.promoted_offering %}
                         | <strong>Promoted Offering:</strong> {{ creative.promoted_offering }}
                         {% endif %}
