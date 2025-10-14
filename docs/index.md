@@ -55,6 +55,11 @@ See [deployment.md](deployment.md) for platform-specific guides. We support your
 - **[deployment/](deployment/)** - Deployment guides
   - Docker Hub authentication
 
+### Partners
+- **[partners/](partners/)** - Partner-specific documentation
+  - Bug analyses and postmortems
+  - Integration notes
+
 ### Reference
 - **[adcp-field-mapping.md](adcp-field-mapping.md)** - AdCP protocol field mappings
 
@@ -73,6 +78,7 @@ docs/
 ├── adapters/                      # Adapter documentation
 ├── development/                   # Development guides
 ├── deployment/                    # Deployment guides
+├── partners/                      # Partner-specific docs
 └── testing/                       # Testing documentation
 ```
 
