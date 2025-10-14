@@ -1430,17 +1430,13 @@ def _list_creative_formats_impl(
     # Log activity
     log_tool_activity(context, "list_creative_formats", start_time)
 
-    message = f"Found {len(formats)} creative formats across {len({f.type for f in formats})} format types"
-
     # Set status based on operation result
     status = TaskStatus.from_operation_state(
         operation_type="discovery", has_errors=False, requires_approval=False, requires_auth=principal_id is None
     )
 
-    # Create response with schema validation metadata
-    response = ListCreativeFormatsResponse(
-        formats=formats, message=message, specification_version="AdCP v2.4", status=status
-    )
+    # Create response (no message/specification_version - not in adapter schema)
+    response = ListCreativeFormatsResponse(formats=formats, status=status)
 
     # Add schema validation metadata for client validation
     from src.core.schema_validation import INCLUDE_SCHEMAS_IN_RESPONSES, enhance_mcp_response_with_schema
@@ -2907,12 +2903,19 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
     if req.max_results:
         signals = signals[: req.max_results]
 
-    # Set status based on operation result
-    status = TaskStatus.from_operation_state(
-        operation_type="discovery", has_errors=False, requires_approval=False, requires_auth=False
-    )
+    # Generate message (required field in adapter schema)
+    count = len(signals)
+    if count == 0:
+        message = "No signals matched your query."
+    elif count == 1:
+        message = "Found 1 signal matching your query."
+    else:
+        message = f"Found {count} signals matching your query."
 
-    return GetSignalsResponse(signals=signals, status=status)
+    # Generate context_id (required field)
+    context_id = f"signals_{uuid.uuid4().hex[:12]}"
+
+    return GetSignalsResponse(signals=signals, message=message, context_id=context_id)
 
 
 @mcp.tool()
@@ -2962,41 +2965,53 @@ async def activate_signal(
         activation_success = True
         requires_approval = signal_id.startswith("premium_")  # Mock rule: premium signals need approval
 
+        task_id = f"task_{uuid.uuid4().hex[:12]}"
+
         if requires_approval:
             # Create a human task for approval
-            status = TaskStatus.INPUT_REQUIRED
-            message = f"Signal {signal_id} requires manual approval before activation"
-            activation_details = {
-                "approval_required": True,
-                "estimated_approval_time_hours": 24,
-                "contact": "signals-approval@example.com",
-            }
+            status = "pending"
+            errors = [
+                {
+                    "code": "APPROVAL_REQUIRED",
+                    "message": f"Signal {signal_id} requires manual approval before activation",
+                }
+            ]
         elif activation_success:
-            status = TaskStatus.WORKING  # Activation in progress
-            message = f"Signal {signal_id} activation initiated successfully"
-            activation_details = {
-                "activation_started": datetime.now(UTC).isoformat(),
-                "estimated_completion_minutes": 15,
-                "platform_segment_id": f"seg_{signal_id}_{uuid.uuid4().hex[:8]}",
-            }
+            status = "processing"  # Activation in progress
+            estimated_activation_duration_minutes = 15.0
+            decisioning_platform_segment_id = f"seg_{signal_id}_{uuid.uuid4().hex[:8]}"
         else:
-            status = TaskStatus.FAILED
-            message = f"Failed to activate signal {signal_id}"
-            activation_details = {"error": "Signal provider unavailable"}
+            status = "failed"
+            errors = [{"code": "ACTIVATION_FAILED", "message": "Signal provider unavailable"}]
 
         # Log activity
         log_tool_activity(context, "activate_signal", start_time)
 
-        return ActivateSignalResponse(
-            signal_id=signal_id, status=status, message=message, activation_details=activation_details
-        )
+        # Build response with only adapter schema fields - use explicit fields for validator
+        if status == "processing":
+            return ActivateSignalResponse(
+                task_id=task_id,
+                status=status,
+                estimated_activation_duration_minutes=estimated_activation_duration_minutes,
+                decisioning_platform_segment_id=decisioning_platform_segment_id,
+            )
+        elif requires_approval or not activation_success:
+            return ActivateSignalResponse(
+                task_id=task_id,
+                status=status,
+                errors=errors,
+            )
+        else:
+            return ActivateSignalResponse(
+                task_id=task_id,
+                status=status,
+            )
 
     except Exception as e:
         logger.error(f"Error activating signal {signal_id}: {e}")
         return ActivateSignalResponse(
-            signal_id=signal_id,
-            status=TaskStatus.FAILED,
-            message=f"Failed to activate signal: {str(e)}",
+            task_id=f"task_{uuid.uuid4().hex[:12]}",
+            status="failed",
             errors=[{"code": "ACTIVATION_ERROR", "message": str(e)}],
         )
 
@@ -3822,9 +3837,8 @@ def _create_media_buy_impl(
                 buyer_ref=req.buyer_ref,
                 media_buy_id=pending_media_buy_id,
                 status=TaskStatus.INPUT_REQUIRED,
-                detail=response_msg,
                 creative_deadline=None,
-                message="Your media buy request requires manual approval from the publisher. The request has been queued and will be reviewed shortly.",
+                errors=[{"code": "APPROVAL_REQUIRED", "message": response_msg}],
             )
 
         # Get products for the media buy to check product-level auto-creation settings
@@ -3876,11 +3890,7 @@ def _create_media_buy_impl(
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return CreateMediaBuyResponse(
                     buyer_ref=req.buyer_ref,
-                    media_buy_id="",
                     status=TaskStatus.FAILED,
-                    detail=error_detail,
-                    creative_deadline=None,
-                    message="Media buy creation failed due to invalid product configuration. Please fix the configuration in Admin UI and try again.",
                     errors=[{"code": "invalid_configuration", "message": err} for err in config_errors],
                 )
 
@@ -4270,7 +4280,22 @@ def _create_media_buy_impl(
         else:
             logger.info(f"✅ buyer_ref present in filtered_data: {filtered_data['buyer_ref']}")
 
-        modified_response = CreateMediaBuyResponse(**filtered_data)
+        # Ensure required fields are present (validator compliance)
+        if "status" not in filtered_data:
+            filtered_data["status"] = "completed"
+        if "buyer_ref" not in filtered_data:
+            filtered_data["buyer_ref"] = buyer_ref_value
+
+        # Use explicit fields for validator (instead of **kwargs)
+        modified_response = CreateMediaBuyResponse(
+            status=filtered_data["status"],
+            buyer_ref=filtered_data["buyer_ref"],
+            task_id=filtered_data.get("task_id"),
+            media_buy_id=filtered_data.get("media_buy_id"),
+            creative_deadline=filtered_data.get("creative_deadline"),
+            packages=filtered_data.get("packages"),
+            errors=filtered_data.get("errors"),
+        )
 
         # Mark workflow step as completed on success
         ctx_manager.update_workflow_step(step.step_id, status="completed")
@@ -4859,7 +4884,6 @@ def _update_media_buy_impl(
         status="completed",
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
-        implementation_date=datetime.combine(today, datetime.min.time()),
     )
 
 
@@ -5136,8 +5160,40 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
         response_data = response.model_dump()
         response_data = apply_testing_hooks(response_data, testing_ctx, "get_media_buy_delivery", campaign_info)
 
-        # Reconstruct response from modified data
-        response = GetMediaBuyDeliveryResponse(**response_data)
+        # Reconstruct response from modified data - filter out testing hook fields
+        valid_fields = {
+            "reporting_period",
+            "currency",
+            "media_buy_deliveries",
+            "notification_type",
+            "partial_data",
+            "unavailable_count",
+            "sequence_number",
+            "next_expected_at",
+            "errors",
+        }
+        filtered_data = {k: v for k, v in response_data.items() if k in valid_fields}
+
+        # Ensure required fields are present (validator compliance)
+        if "reporting_period" not in filtered_data:
+            filtered_data["reporting_period"] = response_data.get("reporting_period", reporting_period)
+        if "currency" not in filtered_data:
+            filtered_data["currency"] = response_data.get("currency", "USD")
+        if "media_buy_deliveries" not in filtered_data:
+            filtered_data["media_buy_deliveries"] = response_data.get("media_buy_deliveries", [])
+
+        # Use explicit fields for validator (instead of **kwargs)
+        response = GetMediaBuyDeliveryResponse(
+            reporting_period=filtered_data["reporting_period"],
+            currency=filtered_data["currency"],
+            media_buy_deliveries=filtered_data["media_buy_deliveries"],
+            notification_type=filtered_data.get("notification_type"),
+            partial_data=filtered_data.get("partial_data"),
+            unavailable_count=filtered_data.get("unavailable_count"),
+            sequence_number=filtered_data.get("sequence_number"),
+            next_expected_at=filtered_data.get("next_expected_at"),
+            errors=filtered_data.get("errors"),
+        )
 
     return response
 
