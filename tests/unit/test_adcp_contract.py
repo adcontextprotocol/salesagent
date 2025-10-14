@@ -1858,19 +1858,23 @@ class TestAdCPContract:
         # Test AdCP-compliant response
         adcp_response = response.model_dump()
 
-        # Verify required AdCP fields present and non-null (per official spec)
-        # NOTE: adcp_version is NOT in official spec
+        # Verify required AdCP fields present and non-null
         required_fields = ["properties"]
         for field in required_fields:
             assert field in adcp_response
             assert adcp_response[field] is not None
 
         # Verify optional AdCP fields present (can be null)
-        optional_fields = ["tags", "errors", "primary_channels", "primary_countries", "portfolio_description"]
+        optional_fields = [
+            "tags",
+            "errors",
+            "primary_channels",
+            "primary_countries",
+            "portfolio_description",
+            "advertising_policies",
+        ]
         for field in optional_fields:
             assert field in adcp_response
-
-        # Verify properties structure
 
         # Verify properties is array
         assert isinstance(adcp_response["properties"], list)

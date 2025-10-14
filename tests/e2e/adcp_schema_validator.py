@@ -20,7 +20,7 @@ import asyncio
 import functools
 import hashlib
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
@@ -115,67 +115,115 @@ class AdCPSchemaValidator:
         # Return main path for new files
         return main_cache_path
 
-    def _is_cache_valid(self, cache_path: Path, max_age_hours: int = 24) -> bool:
-        """Check if cached schema is still valid."""
-        if not cache_path.exists():
-            return False
-
-        # Check age
-        mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
-        if datetime.now() - mtime > timedelta(hours=max_age_hours):
-            return False
-
-        return True
+    def _get_cache_metadata_path(self, cache_path: Path) -> Path:
+        """Get path for cache metadata file (stores ETag, last-modified, etc)."""
+        return cache_path.with_suffix(cache_path.suffix + ".meta")
 
     async def _download_schema_index(self) -> dict[str, Any]:
-        """Download the main schema index/registry."""
-        cache_path = self.cache_dir / "index.json"
+        """
+        Download the main schema index/registry with ETag-based caching.
 
-        # Try cache first
-        if self._is_cache_valid(cache_path) or self.offline_mode:
+        Uses conditional GET with If-None-Match header to avoid re-downloading
+        unchanged schemas. Falls back to cached version if server unavailable.
+        """
+        cache_path = self.cache_dir / "index.json"
+        meta_path = self._get_cache_metadata_path(cache_path)
+
+        # In offline mode, use cache only
+        if self.offline_mode:
             if cache_path.exists():
                 try:
                     with open(cache_path) as f:
                         return json.load(f)
                 except (json.JSONDecodeError, OSError):
-                    if self.offline_mode:
-                        raise SchemaDownloadError(f"Offline mode enabled but cached index is invalid: {cache_path}")
-
-        if self.offline_mode:
+                    raise SchemaDownloadError(f"Offline mode enabled but cached index is invalid: {cache_path}")
             raise SchemaDownloadError("Offline mode enabled but no valid cached index found")
 
-        # Download fresh index
-        try:
-            response = await self._http_client.get(self.INDEX_URL)
-            response.raise_for_status()
+        # Load cached metadata (ETag, Last-Modified)
+        cached_etag = None
+        if meta_path.exists():
+            try:
+                with open(meta_path) as f:
+                    metadata = json.load(f)
+                    cached_etag = metadata.get("etag")
+            except (json.JSONDecodeError, OSError):
+                pass
 
+        # Download with conditional GET
+        try:
+            headers = {}
+            if cached_etag:
+                headers["If-None-Match"] = cached_etag
+
+            response = await self._http_client.get(self.INDEX_URL, headers=headers)
+
+            # 304 Not Modified - use cache
+            if response.status_code == 304:
+                if cache_path.exists():
+                    with open(cache_path) as f:
+                        return json.load(f)
+                # Fallthrough to re-download if cache missing
+
+            response.raise_for_status()
             index_data = response.json()
 
-            # Cache the index
+            # Delete old metadata first (prevents stale ETag issues)
+            if meta_path.exists():
+                meta_path.unlink()
+
+            # Save to cache
             with open(cache_path, "w") as f:
                 json.dump(index_data, f, indent=2)
+
+            # Save new metadata
+            metadata = {
+                "etag": response.headers.get("etag"),
+                "last-modified": response.headers.get("last-modified"),
+                "downloaded_at": datetime.now().isoformat(),
+            }
+            with open(meta_path, "w") as f:
+                json.dump(metadata, f, indent=2)
 
             return index_data
 
         except (httpx.HTTPError, json.JSONDecodeError) as e:
+            # If download fails but we have cache, use it
+            if cache_path.exists():
+                print(f"Warning: Failed to download index, using cached version: {e}")
+                with open(cache_path) as f:
+                    return json.load(f)
+
             raise SchemaDownloadError(f"Failed to download schema index: {e}")
 
     async def _download_schema(self, schema_ref: str) -> dict[str, Any]:
-        """Download a specific schema by reference."""
-        cache_path = self._get_cache_path(schema_ref)
+        """
+        Download a specific schema by reference with ETag-based caching.
 
-        # Try cache first
-        if self._is_cache_valid(cache_path) or self.offline_mode:
+        Uses conditional GET with If-None-Match header to avoid re-downloading
+        unchanged schemas. Falls back to cached version if server unavailable.
+        """
+        cache_path = self._get_cache_path(schema_ref)
+        meta_path = self._get_cache_metadata_path(cache_path)
+
+        # In offline mode, use cache only
+        if self.offline_mode:
             if cache_path.exists():
                 try:
                     with open(cache_path) as f:
                         return json.load(f)
                 except (json.JSONDecodeError, OSError):
-                    if self.offline_mode:
-                        raise SchemaDownloadError(f"Offline mode enabled but cached schema is invalid: {cache_path}")
-
-        if self.offline_mode:
+                    raise SchemaDownloadError(f"Offline mode enabled but cached schema is invalid: {cache_path}")
             raise SchemaDownloadError(f"Offline mode enabled but no valid cached schema: {schema_ref}")
+
+        # Load cached metadata (ETag, Last-Modified)
+        cached_etag = None
+        if meta_path.exists():
+            try:
+                with open(meta_path) as f:
+                    metadata = json.load(f)
+                    cached_etag = metadata.get("etag")
+            except (json.JSONDecodeError, OSError):
+                pass
 
         # Construct full URL
         if schema_ref.startswith("/"):
@@ -183,19 +231,51 @@ class AdCPSchemaValidator:
         else:
             schema_url = urljoin(self.BASE_SCHEMA_URL, schema_ref)
 
+        # Download with conditional GET
         try:
-            response = await self._http_client.get(schema_url)
-            response.raise_for_status()
+            headers = {}
+            if cached_etag:
+                headers["If-None-Match"] = cached_etag
 
+            response = await self._http_client.get(schema_url, headers=headers)
+
+            # 304 Not Modified - use cache
+            if response.status_code == 304:
+                if cache_path.exists():
+                    with open(cache_path) as f:
+                        return json.load(f)
+                # Fallthrough to re-download if cache missing
+
+            response.raise_for_status()
             schema_data = response.json()
 
-            # Cache the schema
+            # Delete old metadata first (prevents stale ETag issues)
+            if meta_path.exists():
+                meta_path.unlink()
+
+            # Save to cache
             with open(cache_path, "w") as f:
                 json.dump(schema_data, f, indent=2)
+
+            # Save new metadata
+            metadata = {
+                "etag": response.headers.get("etag"),
+                "last-modified": response.headers.get("last-modified"),
+                "downloaded_at": datetime.now().isoformat(),
+                "schema_ref": schema_ref,
+            }
+            with open(meta_path, "w") as f:
+                json.dump(metadata, f, indent=2)
 
             return schema_data
 
         except (httpx.HTTPError, json.JSONDecodeError) as e:
+            # If download fails but we have cache, use it
+            if cache_path.exists():
+                print(f"Warning: Failed to download {schema_ref}, using cached version: {e}")
+                with open(cache_path) as f:
+                    return json.load(f)
+
             raise SchemaDownloadError(f"Failed to download schema {schema_ref}: {e}")
 
     async def get_schema_index(self) -> dict[str, Any]:
@@ -365,18 +445,39 @@ class AdCPSchemaValidator:
 
         return adcp_payload
 
-    async def _preload_schema_references(self, schema_ref: str) -> None:
-        """Preload all schemas referenced by the given schema."""
+    async def _preload_schema_references(self, schema_ref: str, _visited: set[str] | None = None) -> None:
+        """
+        Recursively preload all schemas referenced by the given schema.
+
+        Args:
+            schema_ref: The schema reference to preload
+            _visited: Set of already-visited refs to avoid infinite recursion (internal use)
+        """
+        if _visited is None:
+            _visited = set()
+
+        # Avoid infinite recursion
+        if schema_ref in _visited:
+            return
+        _visited.add(schema_ref)
+
         try:
             schema = await self.get_schema(schema_ref)
             refs_to_load = self._find_schema_references(schema)
 
-            # Load all referenced schemas
+            # Recursively load all referenced schemas (download them so they're in cache for validation)
             for ref in refs_to_load:
                 try:
                     await self.get_schema(ref)
-                except Exception as e:
+                    # Recursively preload refs within this schema
+                    await self._preload_schema_references(ref, _visited)
+                except SchemaDownloadError as e:
+                    # Schema download failed - log but continue
+                    # (validation will use strict fallback for this ref)
                     print(f"Warning: Could not preload referenced schema {ref}: {e}")
+                except Exception as e:
+                    # Unexpected error - log but continue
+                    print(f"Warning: Unexpected error preloading schema {ref}: {e}")
 
         except Exception as e:
             print(f"Warning: Could not preload schema references for {schema_ref}: {e}")

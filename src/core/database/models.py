@@ -70,6 +70,11 @@ class Tenant(Base, JSONValidatorMixin):
     ai_policy = Column(
         JSONType, nullable=True, comment="AI review policy configuration with confidence thresholds"
     )  # Stores AIReviewPolicy as JSON
+    advertising_policy = Column(
+        JSONType,
+        nullable=True,
+        comment="Advertising policy configuration with prohibited categories, tactics, and advertisers",
+    )  # Stores advertising policy rules as JSON
 
     # Naming templates (business rules - shared across all adapters)
     order_name_template = Column(
@@ -131,36 +136,9 @@ class Tenant(Base, JSONValidatorMixin):
         self._gemini_api_key = encrypt_api_key(value)
 
 
-class CreativeFormat(Base):
-    __tablename__ = "creative_formats"
-
-    format_id = Column(String(50), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=True)
-    name = Column(String(200), nullable=False)
-    type = Column(String(20), nullable=False)
-    description = Column(Text)
-    width = Column(Integer)
-    height = Column(Integer)
-    duration_seconds = Column(Integer)
-    max_file_size_kb = Column(Integer)
-    specs = Column(JSONType, nullable=False)  # JSONB in PostgreSQL
-    is_standard = Column(Boolean, default=True)
-    is_foundational = Column(Boolean, default=False)
-    extends = Column(
-        String(50),
-        ForeignKey("creative_formats.format_id", ondelete="RESTRICT"),
-        nullable=True,
-    )
-    modifications = Column(JSONType, nullable=True)  # JSONB in PostgreSQL
-    source_url = Column(Text)
-    created_at = Column(DateTime, server_default=func.now())
-    # updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())  # TEMPORARILY DISABLED - migration 018 not applied in production
-
-    # Relationships
-    tenant = relationship("Tenant", backref="creative_formats")
-    base_format = relationship("CreativeFormat", remote_side=[format_id], backref="extensions")
-
-    __table_args__ = (CheckConstraint("type IN ('display', 'video', 'audio', 'native')"),)
+# CreativeFormat model removed - table dropped in migration f2addf453200 (Oct 13, 2025)
+# Creative formats are now fetched from creative agents via AdCP protocol
+# Historical note: Previously stored format definitions locally, now use AdCP list_creative_formats
 
 
 class Product(Base, JSONValidatorMixin):

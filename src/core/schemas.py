@@ -2311,17 +2311,28 @@ class CreateMediaBuyRequest(AdCPBaseModel):
                 if isinstance(package, dict):
                     budget = package.get("budget")
                     if budget:
-                        # Budget might be a dict or Budget object
-                        total += budget.get("total", 0.0) if isinstance(budget, dict) else budget.total
+                        # Budget can be: dict, number, or Budget object
+                        if isinstance(budget, dict):
+                            total += budget.get("total", 0.0)
+                        elif isinstance(budget, int | float):
+                            total += float(budget)
+                        else:
+                            total += budget.total
                 else:
                     # Package object
                     if package.budget:
-                        total += package.budget.total
+                        # Budget can be number or Budget object
+                        if isinstance(package.budget, int | float):
+                            total += float(package.budget)
+                        else:
+                            total += package.budget.total
             if total > 0:
                 return total
 
         # Legacy format: top-level budget
         if self.budget:
+            if isinstance(self.budget, int | float):
+                return float(self.budget)
             return self.budget.total
         return self.total_budget or 0.0
 
@@ -3282,7 +3293,6 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
 class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     """Response payload for list_authorized_properties task (AdCP spec compliant)."""
 
-    # NOTE: adcp_version NOT in official spec - removed for compliance
     properties: list[Property] = Field(..., description="Array of all properties this agent is authorized to represent")
     tags: dict[str, PropertyTagMetadata] = Field(
         default_factory=dict, description="Metadata for each tag referenced by properties"
@@ -3295,6 +3305,16 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     )
     portfolio_description: str | None = Field(
         None, description="Markdown-formatted description of the property portfolio", max_length=5000
+    )
+    advertising_policies: str | None = Field(
+        None,
+        description=(
+            "Publisher's advertising content policies, restrictions, and guidelines in natural language. "
+            "May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, "
+            "or links to full policy documentation."
+        ),
+        min_length=1,
+        max_length=10000,
     )
     errors: list[dict[str, Any]] | None = Field(
         None, description="Task-specific errors and warnings (e.g., property availability issues)"

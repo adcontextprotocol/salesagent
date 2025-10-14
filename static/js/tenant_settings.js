@@ -596,6 +596,16 @@ function updateApprovalModeUI() {
     }
 }
 
+// Update advertising policy UI (show/hide config when checkbox toggled)
+function updateAdvertisingPolicyUI() {
+    const policyCheckEnabled = document.getElementById('policy_check_enabled');
+    const policyConfigSection = document.getElementById('advertising-policy-config');
+
+    if (policyCheckEnabled && policyConfigSection) {
+        policyConfigSection.style.display = policyCheckEnabled.checked ? 'block' : 'none';
+    }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     // Check OAuth status if GAM adapter is active
@@ -611,5 +621,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize approval mode UI
     if (document.getElementById('approval_mode')) {
         updateApprovalModeUI();
+    }
+
+    // Initialize advertising policy UI
+    if (document.getElementById('policy_check_enabled')) {
+        updateAdvertisingPolicyUI();
+        // Add event listener for checkbox toggle
+        document.getElementById('policy_check_enabled').addEventListener('change', updateAdvertisingPolicyUI);
     }
 });

@@ -39,6 +39,12 @@ def pytest_addoption(parser):
         default=False,
         help="Skip Docker setup and assume services are already running",
     )
+    parser.addoption(
+        "--offline-schemas",
+        action="store_true",
+        default=False,
+        help="Use cached AdCP schemas only (no network requests for schema validation)",
+    )
 
 
 @pytest.fixture(scope="session")
@@ -253,9 +259,9 @@ def docker_services_e2e(request):
         if db_state_response.status_code == 200:
             db_state = db_state_response.json()
             print(f"   MCP server sees: {db_state['total_products']} total products")
-            if db_state.get('principal'):
+            if db_state.get("principal"):
                 print(f"   Principal: {db_state['principal']}")
-            if db_state.get('tenant'):
+            if db_state.get("tenant"):
                 print(f"   Tenant: {db_state['tenant']}")
             print(f"   Tenant products: {db_state['tenant_products_count']} ({db_state.get('tenant_product_ids', [])})")
         else:
@@ -437,3 +443,16 @@ def performance_monitor():
     monitor = PerformanceMonitor()
     yield monitor
     monitor.report()
+
+
+@pytest.fixture
+async def adcp_validator(request):
+    """Provide AdCP schema validator with offline mode support.
+
+    Use --offline-schemas flag to use cached schemas only (no network requests).
+    """
+    from tests.e2e.adcp_schema_validator import AdCPSchemaValidator
+
+    offline = request.config.getoption("--offline-schemas")
+    async with AdCPSchemaValidator(offline_mode=offline) as validator:
+        yield validator
