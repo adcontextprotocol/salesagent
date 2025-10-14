@@ -29,7 +29,7 @@ class TestAIReviewCreative:
         tenant.creative_review_criteria = "Approve if creative is brand-safe and follows guidelines."
         tenant.ai_policy = {
             "auto_approve_threshold": 0.90,
-            "auto_reject_threshold": 0.10,
+            "auto_reject_threshold": 0.90,  # Same as approve - need high confidence for auto actions
             "always_require_human_for": ["political", "healthcare", "financial"],
         }
         return tenant
@@ -116,7 +116,8 @@ class TestAIReviewCreative:
         assert result["confidence_score"] == 0.6
         assert result["policy_triggered"] == "low_confidence_approval"
         assert result["ai_recommendation"] == "approve"
-        assert "below threshold" in result["reason"]
+        assert "recommended approval" in result["reason"]
+        assert "90%" in result["reason"]  # Check threshold is shown
 
     # Decision Path 3: Sensitive category requires human review
     @patch("google.generativeai.GenerativeModel")
@@ -139,22 +140,22 @@ class TestAIReviewCreative:
         assert "political" in result["reason"].lower()
         assert "requires human review" in result["reason"]
 
-    # Decision Path 4: Auto-reject with high confidence (low score)
+    # Decision Path 4: Low confidence rejection requires human review
     @patch("google.generativeai.GenerativeModel")
-    def test_auto_reject_low_confidence_score(self, mock_model, mock_db_session):
-        """Test auto-rejection when AI has low confidence score (≤0.10)."""
+    def test_low_confidence_rejection(self, mock_model, mock_db_session):
+        """Test that low confidence rejections require human review."""
         from src.admin.blueprints.creatives import _ai_review_creative_impl
 
         mock_instance = mock_model.return_value
         mock_response = Mock()
         mock_response.text = json.dumps(
-            {"decision": "REJECT", "reason": "Violates brand safety", "confidence": "low"}  # 0.3 > 0.1, so pending
+            {"decision": "REJECT", "reason": "Violates brand safety", "confidence": "low"}  # 0.3 < 0.9 threshold
         )
         mock_instance.generate_content.return_value = mock_response
 
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
-        # Note: With confidence=low (0.3), it's > 0.1 threshold, so it goes to pending
+        # Note: With confidence=low (0.3), it's < 0.9 threshold, so it goes to pending for human review
         assert result["status"] == "pending"
         assert result["policy_triggered"] == "uncertain_rejection"
         assert result["ai_recommendation"] == "reject"
@@ -178,7 +179,8 @@ class TestAIReviewCreative:
         assert result["confidence"] == "medium"
         assert result["policy_triggered"] == "uncertain_rejection"
         assert result["ai_recommendation"] == "reject"
-        assert "not confident enough" in result["reason"]
+        assert "recommended rejection" in result["reason"]
+        assert "90%" in result["reason"]  # Check threshold is shown
 
     # Decision Path 6: Explicit "REQUIRE HUMAN APPROVAL"
     @patch("google.generativeai.GenerativeModel")

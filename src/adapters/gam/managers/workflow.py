@@ -167,19 +167,24 @@ class GAMWorkflowManager:
         order_name = apply_naming_template(order_name_template, context)
 
         # Build detailed action list for humans to manually create the order
+        # Extract budget amount (v1.8.0 compatible)
+        from src.core.schemas import extract_budget_amount
+
+        total_budget_amount, _ = extract_budget_amount(request.budget, request.currency or "USD")
+
         action_details = {
             "action_type": "create_gam_order",
             "order_id": media_buy_id,
             "platform": "Google Ad Manager",
             "automation_mode": "manual_creation_required",
             "campaign_name": order_name,
-            "total_budget": request.budget.total,
+            "total_budget": total_budget_amount,
             "flight_start": start_time.isoformat(),
             "flight_end": end_time.isoformat(),
             "instructions": [
                 "Navigate to Google Ad Manager and create a new order",
                 f"Set order name to: {order_name}",
-                f"Set total budget to: ${request.budget.total:,.2f}",
+                f"Set total budget to: ${total_budget_amount:,.2f}",
                 f"Set flight dates: {start_time.strftime('%Y-%m-%d')} to {end_time.strftime('%Y-%m-%d')}",
                 "Create line items for each package according to the specifications below",
                 "Once order is created, update this workflow with the GAM order ID",
