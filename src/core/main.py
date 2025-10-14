@@ -3583,15 +3583,15 @@ def _create_media_buy_impl(
                     # Find the pricing option matching the package's pricing_model
                     if first_package.pricing_model and pricing_options:
                         matching_option = next(
-                            (po for po in pricing_options if po.get("pricing_model") == first_package.pricing_model),
+                            (po for po in pricing_options if po.pricing_model == first_package.pricing_model),
                             None
                         )
                         if matching_option:
-                            request_currency = matching_option.get("currency")
+                            request_currency = matching_option.currency
 
                     # If no pricing_model specified, use first pricing option's currency
                     if not request_currency and pricing_options:
-                        request_currency = pricing_options[0].get("currency")
+                        request_currency = pricing_options[0].currency
 
             # Fallback to deprecated/legacy sources
             if not request_currency and req.currency:
