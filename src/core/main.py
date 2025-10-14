@@ -3525,17 +3525,16 @@ def _create_media_buy_impl(
         from src.core.database.models import CurrencyLimit
         from src.core.database.models import Product as ProductModel
 
-        # Get currency from campaign level (AdCP PR #88), budget, or default to USD
+        # Get currency from packages (per AdCP spec, currency comes from pricing options)
         request_currency = None
-        if req.currency:
-            # NEW: Campaign-level currency (AdCP PR #88 / v1.8.0)
-            # This should be the currency from the pricing option selected for the campaign
-            request_currency = req.currency
-        elif req.budget:
+        if req.packages and req.packages[0].currency:
+            # Currency from first package's pricing option (validated to be same across all packages)
+            request_currency = req.packages[0].currency
+        elif req.budget and hasattr(req.budget, "currency"):
             # Legacy: Extract currency from Budget object
             request_currency = req.budget.currency
-        elif req.packages and req.packages[0].budget:
-            # Legacy: Extract currency from package budget
+        elif req.packages and req.packages[0].budget and hasattr(req.packages[0].budget, "currency"):
+            # Legacy: Extract currency from package budget object
             request_currency = req.packages[0].budget.currency
         else:
             request_currency = "USD"  # Default fallback

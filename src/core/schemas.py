@@ -464,9 +464,9 @@ def extract_budget_amount(budget: "Budget | float | dict | None", default_curren
         For legacy Budget objects, the currency from the object is used instead.
 
     Example:
-        # v1.8.0: currency from pricing option
-        pricing_currency = product.pricing_options[0].currency
-        amount, currency = extract_budget_amount(request.budget, pricing_currency)
+        # v1.8.0: currency from package pricing option
+        package_currency = request.packages[0].currency  # From pricing option
+        amount, currency = extract_budget_amount(request.budget, package_currency)
 
         # Legacy: currency from Budget object
         amount, currency = extract_budget_amount(Budget(total=5000, currency="EUR"))
@@ -1866,6 +1866,11 @@ class Package(BaseModel):
     pricing_model: PricingModel | None = Field(
         None, description="Selected pricing model for this package (from product's pricing_options)"
     )
+    currency: str | None = Field(
+        None,
+        pattern="^[A-Z]{3}$",
+        description="ISO 4217 currency code (from selected pricing option). All packages must use same currency.",
+    )
     bid_price: float | None = Field(
         None, ge=0, description="Bid price for auction-based pricing (required if pricing option is auction-based)"
     )
@@ -1926,15 +1931,15 @@ class CreateMediaBuyRequest(BaseModel):
     )
     end_time: datetime | None = Field(None, description="Campaign end time (ISO 8601)")
     budget: Budget | float | None = Field(
-        None, description="Overall campaign budget (Budget object or number - if number, currency must be provided)"
-    )
-    currency: str | None = Field(
-        None,
-        pattern="^[A-Z]{3}$",
-        description="ISO 4217 currency code for campaign (applies to budget and all packages) - AdCP PR #88",
+        None, description="Overall campaign budget (Budget object or number). Currency determined by package pricing options."
     )
 
     # Deprecated fields (for backward compatibility)
+    currency: str | None = Field(
+        None,
+        pattern="^[A-Z]{3}$",
+        description="DEPRECATED: Use Package.currency instead. Currency code that will be copied to all packages for backward compatibility.",
+    )
     promoted_offering: str | None = Field(
         None,
         description="DEPRECATED: Use brand_manifest instead. Legacy field for describing what is being promoted.",
@@ -2072,6 +2077,42 @@ class CreateMediaBuyRequest(BaseModel):
             raise ValueError("start_time must be timezone-aware (ISO 8601 with timezone) or 'asap'")
         if self.end_time and self.end_time.tzinfo is None:
             raise ValueError("end_time must be timezone-aware (ISO 8601 with timezone)")
+        return self
+
+    @model_validator(mode="after")
+    def validate_package_currencies(self):
+        """Validate that all packages use the same currency and copy from deprecated req.currency.
+
+        Per AdCP spec, currency is determined by pricing options. We enforce that
+        all packages must specify the same currency for simplicity.
+
+        For backward compatibility, if req.currency is specified (deprecated field),
+        it will be copied to any packages that don't have a currency set.
+        """
+        if not self.packages or len(self.packages) == 0:
+            return self
+
+        # Backward compatibility: Copy deprecated req.currency to packages without currency
+        if self.currency:
+            for pkg in self.packages:
+                if not pkg.currency:
+                    pkg.currency = self.currency
+
+        # Get currencies from packages (some may be None)
+        currencies = [pkg.currency for pkg in self.packages if pkg.currency]
+
+        if not currencies:
+            # No packages have currency specified - this is ok, will default to USD
+            return self
+
+        # Check all specified currencies are the same
+        first_currency = currencies[0]
+        if not all(curr == first_currency for curr in currencies):
+            raise ValueError(
+                f"All packages must use the same currency. Found: {set(currencies)}. "
+                "Currency is determined by the pricing option selected for each package."
+            )
+
         return self
 
     # Backward compatibility properties for old field names
