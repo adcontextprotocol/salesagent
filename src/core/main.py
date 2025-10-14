@@ -760,22 +760,48 @@ def _get_principal_id_from_context(context: Context) -> str:
 
 
 def _verify_principal(media_buy_id: str, context: Context):
-    principal_id = _get_principal_id_from_context(context)
-    if media_buy_id not in media_buys:
-        raise ValueError(f"Media buy '{media_buy_id}' not found.")
-    if media_buys[media_buy_id][1] != principal_id:
-        # Log security violation
-        from src.core.audit_logger import get_audit_logger
+    """Verify that the principal from context owns the media buy.
 
-        tenant = get_current_tenant()
-        security_logger = get_audit_logger("AdCP", tenant["tenant_id"])
-        security_logger.log_security_violation(
-            operation="access_media_buy",
-            principal_id=principal_id,
-            resource_id=media_buy_id,
-            reason=f"Principal does not own media buy (owner: {media_buys[media_buy_id][1]})",
+    Checks database for media buy ownership, not in-memory dictionary.
+
+    Args:
+        media_buy_id: Media buy ID to verify
+        context: FastMCP context with principal info
+
+    Raises:
+        ValueError: Media buy not found
+        PermissionError: Principal doesn't own media buy
+    """
+    from sqlalchemy import select
+
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import MediaBuy as MediaBuyModel
+
+    principal_id = _get_principal_id_from_context(context)
+    tenant = get_current_tenant()
+
+    # Query database for media buy
+    with get_db_session() as session:
+        stmt = select(MediaBuyModel).where(
+            MediaBuyModel.media_buy_id == media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
         )
-        raise PermissionError(f"Principal '{principal_id}' does not own media buy '{media_buy_id}'.")
+        media_buy = session.scalars(stmt).first()
+
+        if not media_buy:
+            raise ValueError(f"Media buy '{media_buy_id}' not found.")
+
+        if media_buy.principal_id != principal_id:
+            # Log security violation
+            from src.core.audit_logger import get_audit_logger
+
+            security_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+            security_logger.log_security_violation(
+                operation="access_media_buy",
+                principal_id=principal_id,
+                resource_id=media_buy_id,
+                reason=f"Principal does not own media buy (owner: {media_buy.principal_id})",
+            )
+            raise PermissionError(f"Principal '{principal_id}' does not own media buy '{media_buy_id}'.")
 
 
 # --- Activity Feed Helper ---
@@ -1778,6 +1804,92 @@ def _sync_creatives_impl(
                                 data["snippet_type"] = creative.get("snippet_type")
                             if creative.get("template_variables"):
                                 data["template_variables"] = creative.get("template_variables")
+
+                            # If no preview data provided in update, try to get it from creative agent
+                            if not data.get("url") and not data.get("snippet") and creative_format:
+                                try:
+                                    # Get format to find creative agent URL
+                                    import asyncio
+
+                                    from src.core.creative_agent_registry import get_creative_agent_registry
+
+                                    registry = get_creative_agent_registry()
+
+                                    # List all formats to find the matching one
+                                    all_formats = asyncio.run(registry.list_all_formats(tenant_id=tenant["tenant_id"]))
+
+                                    # Find matching format
+                                    format_obj = None
+                                    for fmt in all_formats:
+                                        if fmt.format_id == creative_format:
+                                            format_obj = fmt
+                                            break
+
+                                    if format_obj and format_obj.agent_url:
+                                        # Build creative manifest from available data
+                                        creative_manifest = {
+                                            "creative_id": existing_creative.creative_id,
+                                            "name": creative.get("name") or existing_creative.name,
+                                            "format_id": creative_format,
+                                        }
+
+                                        # Add any provided asset data
+                                        if creative.get("assets"):
+                                            creative_manifest["assets"] = creative.get("assets")
+
+                                        # Call creative agent's preview_creative
+                                        logger.info(
+                                            f"[sync_creatives] Calling preview_creative for existing creative "
+                                            f"{existing_creative.creative_id} format {creative_format} "
+                                            f"from agent {format_obj.agent_url}"
+                                        )
+
+                                        preview_result = asyncio.run(
+                                            registry.preview_creative(
+                                                agent_url=format_obj.agent_url,
+                                                format_id=creative_format,
+                                                creative_manifest=creative_manifest,
+                                            )
+                                        )
+
+                                        # Extract preview data and store in data field
+                                        if preview_result and preview_result.get("previews"):
+                                            # Get first preview variant
+                                            first_preview = preview_result["previews"][0]
+
+                                            # Store preview URL as the creative URL
+                                            if first_preview.get("preview_url"):
+                                                data["url"] = first_preview["preview_url"]
+                                                changes.append("url")
+                                                logger.info(
+                                                    f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
+                                                )
+
+                                            # Extract dimensions if available
+                                            if first_preview.get("width"):
+                                                data["width"] = first_preview["width"]
+                                                changes.append("width")
+                                            if first_preview.get("height"):
+                                                data["height"] = first_preview["height"]
+                                                changes.append("height")
+                                            if first_preview.get("duration"):
+                                                data["duration"] = first_preview["duration"]
+                                                changes.append("duration")
+
+                                        logger.info(
+                                            f"[sync_creatives] Preview data populated for update: "
+                                            f"url={bool(data.get('url'))}, "
+                                            f"width={data.get('width')}, "
+                                            f"height={data.get('height')}"
+                                        )
+
+                                except Exception as preview_error:
+                                    # Log error but continue - preview is optional
+                                    logger.warning(
+                                        f"[sync_creatives] Failed to get preview from creative agent for update: {preview_error}",
+                                        exc_info=True,
+                                    )
+
                             # In full upsert, consider all fields as changed
                             changes.extend(["url", "click_url", "width", "height", "duration"])
 
@@ -1842,8 +1954,88 @@ def _sync_creatives_impl(
                         if creative.get("template_variables"):
                             data["template_variables"] = creative.get("template_variables")
 
-                        # Determine creative status based on approval mode
+                        # If no preview data provided, try to get it from creative agent
                         creative_format = creative.get("format_id") or creative.get("format")
+                        if not data.get("url") and not data.get("snippet") and creative_format:
+                            try:
+                                # Get format to find creative agent URL
+                                import asyncio
+
+                                from src.core.creative_agent_registry import get_creative_agent_registry
+
+                                registry = get_creative_agent_registry()
+
+                                # List all formats to find the matching one
+                                all_formats = asyncio.run(registry.list_all_formats(tenant_id=tenant["tenant_id"]))
+
+                                # Find matching format
+                                format_obj = None
+                                for fmt in all_formats:
+                                    if fmt.format_id == creative_format:
+                                        format_obj = fmt
+                                        break
+
+                                if format_obj and format_obj.agent_url:
+                                    # Build creative manifest from available data
+                                    creative_manifest = {
+                                        "creative_id": creative.get("creative_id") or str(uuid.uuid4()),
+                                        "name": creative.get("name"),
+                                        "format_id": creative_format,
+                                    }
+
+                                    # Add any provided asset data
+                                    if creative.get("assets"):
+                                        creative_manifest["assets"] = creative.get("assets")
+
+                                    # Call creative agent's preview_creative
+                                    logger.info(
+                                        f"[sync_creatives] Calling preview_creative for {creative_format} "
+                                        f"from agent {format_obj.agent_url}"
+                                    )
+
+                                    preview_result = asyncio.run(
+                                        registry.preview_creative(
+                                            agent_url=format_obj.agent_url,
+                                            format_id=creative_format,
+                                            creative_manifest=creative_manifest,
+                                        )
+                                    )
+
+                                    # Extract preview data and store in data field
+                                    if preview_result and preview_result.get("previews"):
+                                        # Get first preview variant
+                                        first_preview = preview_result["previews"][0]
+
+                                        # Store preview URL as the creative URL
+                                        if first_preview.get("preview_url"):
+                                            data["url"] = first_preview["preview_url"]
+                                            logger.info(
+                                                f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
+                                            )
+
+                                        # Extract dimensions if available
+                                        if first_preview.get("width"):
+                                            data["width"] = first_preview["width"]
+                                        if first_preview.get("height"):
+                                            data["height"] = first_preview["height"]
+                                        if first_preview.get("duration"):
+                                            data["duration"] = first_preview["duration"]
+
+                                    logger.info(
+                                        f"[sync_creatives] Preview data populated: "
+                                        f"url={bool(data.get('url'))}, "
+                                        f"width={data.get('width')}, "
+                                        f"height={data.get('height')}"
+                                    )
+
+                            except Exception as preview_error:
+                                # Log error but continue - preview is optional
+                                logger.warning(
+                                    f"[sync_creatives] Failed to get preview from creative agent: {preview_error}",
+                                    exc_info=True,
+                                )
+
+                        # Determine creative status based on approval mode
 
                         # Create initial creative with pending status for AI review
                         creative_status = "pending"
@@ -2118,12 +2310,26 @@ def _sync_creatives_impl(
 
     # Audit logging
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+
+    # Build error message from failed creatives
+    error_message = None
+    if failed_creatives:
+        error_lines = []
+        for fc in failed_creatives[:5]:  # Limit to first 5 errors to avoid huge messages
+            creative_id = fc.get("creative_id", "unknown")
+            error_text = fc.get("error", "Unknown error")
+            error_lines.append(f"{creative_id}: {error_text}")
+        error_message = "; ".join(error_lines)
+        if len(failed_creatives) > 5:
+            error_message += f" (and {len(failed_creatives) - 5} more)"
+
     audit_logger.log_operation(
         operation="sync_creatives",
         principal_name=principal_id,
         principal_id=principal_id,
         adapter_id="N/A",
         success=len(failed_creatives) == 0,
+        error=error_message,
         details={
             "synced_count": len(synced_creatives),
             "failed_count": len(failed_creatives),
@@ -3821,7 +4027,7 @@ def _create_media_buy_impl(
         # Determine initial status based on flight dates
         now = datetime.now(UTC)
         if now < start_time:
-            media_buy_status = "pending"
+            media_buy_status = "ready"  # Scheduled to go live at flight start date
         elif now > end_time:
             media_buy_status = "completed"
         else:
@@ -4384,8 +4590,15 @@ def _update_media_buy_impl(
         creatives=creatives,
     )
 
+    if context is None:
+        raise ValueError("Context is required for update_media_buy")
+
+    if not req.media_buy_id:
+        # TODO: Handle buyer_ref case - for now just raise error
+        raise ValueError("media_buy_id is required (buyer_ref lookup not yet implemented)")
+
     _verify_principal(req.media_buy_id, context)
-    _, principal_id = media_buys[req.media_buy_id]
+    principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
     tenant = get_current_tenant()
 
     # Create or get persistent context
@@ -4805,7 +5018,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                 target_media_buys.append((media_buy_id, buy_request))
     else:
         # Use status_filter to determine which buys to fetch
-        valid_statuses = ["active", "pending", "paused", "completed", "failed"]
+        valid_statuses = ["active", "ready", "paused", "completed", "failed"]
         filter_statuses = []
 
         if req.status_filter:
@@ -4824,7 +5037,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
             if buy_principal_id == principal_id:
                 # Determine current status
                 if reference_date < buy_request.flight_start_date:
-                    current_status = "pending"
+                    current_status = "ready"
                 elif reference_date > buy_request.flight_end_date:
                     current_status = "completed"
                 else:
@@ -4855,7 +5068,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
 
             # Determine status
             if simulation_datetime.date() < buy_request.flight_start_date:
-                status = "pending"
+                status = "ready"
             elif simulation_datetime.date() > buy_request.flight_end_date:
                 status = "completed"
             else:
@@ -4882,7 +5095,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                 days_elapsed = max(0, (simulation_datetime.date() - buy_request.flight_start_date).days)
 
                 if campaign_days > 0:
-                    progress = min(1.0, days_elapsed / campaign_days) if status != "pending" else 0.0
+                    progress = min(1.0, days_elapsed / campaign_days) if status != "ready" else 0.0
                 else:
                     progress = 1.0 if status == "completed" else 0.0
 
@@ -5027,8 +5240,11 @@ def update_performance_index(
     performance_objects = [ProductPerformance(**perf) for perf in performance_data]
     req = UpdatePerformanceIndexRequest(media_buy_id=media_buy_id, performance_data=performance_objects)
 
+    if context is None:
+        raise ValueError("Context is required for update_performance_index")
+
     _verify_principal(req.media_buy_id, context)
-    buy_request, principal_id = media_buys[req.media_buy_id]
+    principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
 
     # Get the Principal object
     principal = get_principal_object(principal_id)

@@ -172,7 +172,7 @@
                     ❌ Revoke Approval
                 </button>
                 {% endif %}
-                <button onclick="viewCreativeDetails('{{ creative.creative_id }}', {{ creative.data|tojson|safe }})" class="btn btn-sm btn-secondary">
+                <button onclick="viewCreativeDetails('{{ creative.creative_id }}')" class="btn btn-sm btn-secondary" data-creative-data="{{ creative.data|tojson|forceescape }}">
                     👁️ View Preview
                 </button>
             </div>
@@ -307,8 +307,16 @@ function approveCreative(creativeId) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
+        body: JSON.stringify({
+            approved_by: 'admin'
+        })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             alert('✅ Creative approved successfully!');
@@ -318,22 +326,36 @@ function approveCreative(creativeId) {
         }
     })
     .catch(error => {
-        alert('Failed to approve creative: ' + error);
+        console.error('Approve error:', error);
+        alert('Failed to approve creative: ' + error.message);
     });
 }
 
 // Reject creative
 function rejectCreative(creativeId) {
-    const reason = prompt('Please provide a reason for rejection (optional):');
+    const reason = prompt('Please provide a reason for rejection:');
     if (reason === null) return; // User cancelled
+
+    if (!reason.trim()) {
+        alert('Rejection reason is required.');
+        return;
+    }
 
     fetch(`${scriptName}/tenant/${tenantId}/creative-formats/review/${creativeId}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ reason: reason })
+        body: JSON.stringify({
+            rejected_by: 'admin',
+            rejection_reason: reason.trim()
+        })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             alert('❌ Creative rejected.');
@@ -343,7 +365,8 @@ function rejectCreative(creativeId) {
         }
     })
     .catch(error => {
-        alert('Failed to reject creative: ' + error);
+        console.error('Reject error:', error);
+        alert('Failed to reject creative: ' + error.message);
     });
 }
 
@@ -379,10 +402,21 @@ function aiReviewCreative(creativeId) {
 }
 
 // View creative details and preview
-async function viewCreativeDetails(creativeId, creativeData) {
+function viewCreativeDetails(creativeId) {
     const modal = document.getElementById('previewModal');
     const content = document.getElementById('previewContent');
     const title = document.getElementById('previewTitle');
+
+    // Get creative data from the button's data attribute
+    const button = event.target.closest('button[data-creative-data]');
+    let creativeData = null;
+    if (button && button.dataset.creativeData) {
+        try {
+            creativeData = JSON.parse(button.dataset.creativeData);
+        } catch (error) {
+            console.error('Error parsing creative data:', error);
+        }
+    }
 
     title.textContent = `Creative Preview - ${creativeId.substring(0, 8)}...`;
 

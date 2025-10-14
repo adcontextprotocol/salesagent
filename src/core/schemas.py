@@ -2266,8 +2266,8 @@ class MediaBuyDeliveryData(BaseModel):
 
     media_buy_id: str = Field(description="Publisher's media buy identifier")
     buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this media buy")
-    status: Literal["pending", "active", "paused", "completed", "failed"] = Field(
-        description="Current media buy status"
+    status: Literal["ready", "active", "paused", "completed", "failed"] = Field(
+        description="Current media buy status. 'ready' means scheduled to go live at flight start date."
     )
     totals: DeliveryTotals = Field(description="Aggregate metrics for this media buy across all packages")
     by_package: list[PackageDelivery] = Field(description="Metrics broken down by package")

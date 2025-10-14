@@ -577,6 +577,25 @@ function selectAdvertiser(advertiserId, advertiserName) {
     }
 }
 
+// Update approval mode UI (show/hide descriptions and AI config)
+function updateApprovalModeUI() {
+    const approvalMode = document.getElementById('approval_mode').value;
+
+    // Hide all descriptions
+    document.getElementById('desc-auto-approve').style.display = 'none';
+    document.getElementById('desc-require-human').style.display = 'none';
+    document.getElementById('desc-ai-powered').style.display = 'none';
+
+    // Show selected description
+    document.getElementById(`desc-${approvalMode}`).style.display = 'block';
+
+    // Show/hide AI configuration section
+    const aiConfigSection = document.getElementById('ai-config-section');
+    if (aiConfigSection) {
+        aiConfigSection.style.display = (approvalMode === 'ai-powered') ? 'block' : 'none';
+    }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     // Check OAuth status if GAM adapter is active
@@ -587,5 +606,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Generate A2A code if section exists
     if (document.getElementById('a2a-code-output')) {
         generateA2ACode();
+    }
+
+    // Initialize approval mode UI
+    if (document.getElementById('approval_mode')) {
+        updateApprovalModeUI();
     }
 });
