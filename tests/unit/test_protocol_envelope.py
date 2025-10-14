@@ -35,10 +35,8 @@ class TestProtocolEnvelope:
 
     def test_wrap_pydantic_model_with_all_fields(self):
         """Test wrapping with all optional envelope fields."""
-        # Create domain response
-        response = CreateMediaBuyResponse(
-            status="completed", buyer_ref="ref123", media_buy_id="mb_456", packages=[], errors=None
-        )
+        # Create domain response (no protocol fields - those go in envelope)
+        response = CreateMediaBuyResponse(buyer_ref="ref123", media_buy_id="mb_456", packages=[], errors=None)
 
         # Create push notification config
         push_config = {
@@ -126,7 +124,6 @@ class TestProtocolEnvelope:
     def test_payload_excludes_internal_fields(self):
         """Test that payload excludes internal fields via model_dump."""
         response = CreateMediaBuyResponse(
-            status="completed",
             buyer_ref="ref123",
             media_buy_id="mb_456",
             workflow_step_id="ws_789",  # Internal field
@@ -142,9 +139,7 @@ class TestProtocolEnvelope:
 
     def test_message_generation_from_payload_str(self):
         """Test that message is auto-generated from payload.__str__ if not provided."""
-        response = CreateMediaBuyResponse(
-            status="completed", buyer_ref="ref123", media_buy_id="mb_456", packages=[], errors=None
-        )
+        response = CreateMediaBuyResponse(buyer_ref="ref123", media_buy_id="mb_456", packages=[], errors=None)
 
         envelope = ProtocolEnvelope.wrap(payload=response, status="completed", add_timestamp=False)
 
@@ -171,7 +166,7 @@ class TestProtocolEnvelope:
 
     def test_async_operation_with_task_id(self):
         """Test envelope for async operation (submitted status with task_id)."""
-        response = CreateMediaBuyResponse(status="submitted", buyer_ref="ref123", packages=[], errors=None)
+        response = CreateMediaBuyResponse(buyer_ref="ref123", packages=[], errors=None)
 
         envelope = ProtocolEnvelope.wrap(
             payload=response, status="submitted", task_id="task_async_123", message="Processing media buy creation"
@@ -186,7 +181,6 @@ class TestProtocolEnvelope:
         from src.core.schemas import Error
 
         response = CreateMediaBuyResponse(
-            status="failed",
             buyer_ref="ref123",
             errors=[Error(code="INVALID_BUDGET", message="Budget too low", severity="error")],
             packages=[],
