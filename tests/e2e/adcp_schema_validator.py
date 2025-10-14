@@ -119,26 +119,6 @@ class AdCPSchemaValidator:
         """Get path for cache metadata file (stores ETag, last-modified, etc)."""
         return cache_path.with_suffix(cache_path.suffix + ".meta")
 
-    def _is_cache_valid(self, cache_path: Path, max_age_hours: int = 24) -> bool:
-        """
-        Check if cached schema is still valid.
-
-        DEPRECATED: This time-based approach is inappropriate for rapidly evolving specs.
-        Use _should_revalidate_cache() instead which checks against upstream.
-
-        Only returns True in offline mode to use whatever cache exists.
-        Otherwise, we always revalidate against the server using ETags.
-        """
-        if not cache_path.exists():
-            return False
-
-        # In offline mode, accept any cache
-        if self.offline_mode:
-            return True
-
-        # For online mode, always revalidate (don't trust time-based cache)
-        return False
-
     async def _download_schema_index(self) -> dict[str, Any]:
         """
         Download the main schema index/registry with ETag-based caching.
@@ -187,11 +167,15 @@ class AdCPSchemaValidator:
             response.raise_for_status()
             index_data = response.json()
 
+            # Delete old metadata first (prevents stale ETag issues)
+            if meta_path.exists():
+                meta_path.unlink()
+
             # Save to cache
             with open(cache_path, "w") as f:
                 json.dump(index_data, f, indent=2)
 
-            # Save metadata
+            # Save new metadata
             metadata = {
                 "etag": response.headers.get("etag"),
                 "last-modified": response.headers.get("last-modified"),
@@ -265,11 +249,15 @@ class AdCPSchemaValidator:
             response.raise_for_status()
             schema_data = response.json()
 
+            # Delete old metadata first (prevents stale ETag issues)
+            if meta_path.exists():
+                meta_path.unlink()
+
             # Save to cache
             with open(cache_path, "w") as f:
                 json.dump(schema_data, f, indent=2)
 
-            # Save metadata
+            # Save new metadata
             metadata = {
                 "etag": response.headers.get("etag"),
                 "last-modified": response.headers.get("last-modified"),
