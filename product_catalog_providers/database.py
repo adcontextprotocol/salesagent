@@ -216,26 +216,18 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     loaded_products.append(validated_product)
                     logger.debug(f"Successfully validated product {product_data.get('product_id')}")
                 except Exception as e:
-                    import sys
-
                     # CRITICAL: Product validation failures indicate data corruption or schema mismatch
                     # We MUST fail loudly, not silently skip products
-                    print(
-                        f"❌ FATAL: Product validation failed for {product_data.get('product_id')}: {e}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    print(
-                        f"   Product data: {json.dumps(product_data, default=str)[:500]}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    logger.error(f"Product {product_data.get('product_id')} failed validation: {e}")
-                    logger.debug(f"Product data that failed: {product_data}")
-                    # Re-raise with context - don't silently skip products!
-                    raise ValueError(
+                    error_msg = (
                         f"Product '{product_data.get('product_id')}' in database failed AdCP schema validation. "
                         f"This indicates data corruption or migration issue. Error: {e}"
-                    ) from e
+                    )
+
+                    # Log with full context for production debugging
+                    logger.error(error_msg)
+                    logger.error(f"Failed product data: {json.dumps(product_data, default=str)[:1000]}")
+
+                    # Re-raise with context - don't silently skip products!
+                    raise ValueError(error_msg) from e
 
             return loaded_products

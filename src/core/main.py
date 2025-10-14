@@ -4035,8 +4035,9 @@ def _create_media_buy_impl(
                 duration_days=duration_days,
                 action="created",
             )
-        except:
-            pass
+        except Exception as e:
+            # Activity feed logging is non-critical, but we should log the failure
+            logger.warning(f"Failed to log media buy creation to activity feed: {e}")
 
         # Apply testing hooks to response with campaign information (resolved from 'asap' if needed)
         campaign_info = {"start_date": start_time, "end_date": end_time, "total_budget": total_budget}
@@ -4222,8 +4223,9 @@ def _create_media_buy_impl(
                     "total_budget": total_budget if "total_budget" in locals() else 0,
                 },
             )
-        except:
-            pass
+        except Exception as audit_error:
+            # Audit logging failure is non-critical, but we should log it
+            logger.warning(f"Failed to log failed media buy creation to audit: {audit_error}")
 
         raise ToolError("MEDIA_BUY_CREATION_ERROR", f"Failed to create media buy: {str(e)}")
 
@@ -5194,8 +5196,9 @@ def create_workflow_step_for_task(req, context):
                 },
                 timeout=5,
             )
-        except:
-            pass  # Don't fail task creation if webhook fails
+        except Exception as webhook_error:
+            # Webhook notification is non-critical, but we should log the failure
+            logger.warning(f"Failed to send webhook notification for task {task_id}: {webhook_error}")
 
     # Task is now handled entirely through WorkflowStep - no separate Task table needed
     console.print(f"[green]✅ Created workflow step {task_id}[/green]")
