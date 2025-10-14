@@ -1649,18 +1649,12 @@ def _sync_creatives_impl(
                         "status": "pending",
                     }
 
-                    # Handle snippet vs media content properly (mutually exclusive)
-                    if creative.get("snippet"):
-                        # Snippet-based creative
-                        schema_data.update(
-                            {
-                                "snippet": creative.get("snippet"),
-                                "snippet_type": creative.get("snippet_type"),
-                                "content_uri": "<script>/* Snippet-based creative */</script>",  # HTML-looking placeholder
-                            }
-                        )
+                    # Handle assets vs media content
+                    if creative.get("assets"):
+                        # Asset-based creative (new AdCP format)
+                        schema_data["content_uri"] = creative.get("url") or f"asset://{creative.get('creative_id')}"
                     else:
-                        # Media-based creative
+                        # Media-based creative (legacy)
                         schema_data["content_uri"] = (
                             creative.get("url") or "https://placeholder.example.com/missing.jpg"
                         )
@@ -1822,10 +1816,9 @@ def _sync_creatives_impl(
                             ):
                                 data["duration"] = creative.get("duration")
                                 changes.append("duration")
-                            if creative.get("snippet") is not None:
-                                data["snippet"] = creative.get("snippet")
-                                data["snippet_type"] = creative.get("snippet_type")
-                                changes.append("snippet")
+                            if creative.get("assets") is not None:
+                                data["assets"] = creative.get("assets")
+                                changes.append("assets")
                             if creative.get("template_variables") is not None:
                                 data["template_variables"] = creative.get("template_variables")
                                 changes.append("template_variables")
@@ -1838,9 +1831,8 @@ def _sync_creatives_impl(
                                 "height": creative.get("height"),
                                 "duration": creative.get("duration"),
                             }
-                            if creative.get("snippet"):
-                                data["snippet"] = creative.get("snippet")
-                                data["snippet_type"] = creative.get("snippet_type")
+                            if creative.get("assets"):
+                                data["assets"] = creative.get("assets")
                             if creative.get("template_variables"):
                                 data["template_variables"] = creative.get("template_variables")
 
@@ -1865,28 +1857,24 @@ def _sync_creatives_impl(
                                             break
 
                                     if format_obj and format_obj.agent_url:
-                                        # Build creative manifest from available data (including provided snippet/url)
+                                        # Build creative manifest from available data
                                         creative_manifest = {
                                             "creative_id": existing_creative.creative_id,
                                             "name": creative.get("name") or existing_creative.name,
                                             "format_id": creative_format,
                                         }
 
-                                        # Add any provided asset data (url, snippet, etc.) for validation
+                                        # Add any provided asset data for validation
                                         if creative.get("assets"):
                                             creative_manifest["assets"] = creative.get("assets")
                                         if data.get("url"):
                                             creative_manifest["url"] = data.get("url")
-                                        if data.get("snippet"):
-                                            creative_manifest["snippet"] = data.get("snippet")
-                                        if data.get("snippet_type"):
-                                            creative_manifest["snippet_type"] = data.get("snippet_type")
 
                                         # Call creative agent's preview_creative for validation + preview
                                         logger.info(
                                             f"[sync_creatives] Calling preview_creative for validation (update): "
                                             f"{existing_creative.creative_id} format {creative_format} "
-                                            f"from agent {format_obj.agent_url}, has_snippet={bool(data.get('snippet'))}, "
+                                            f"from agent {format_obj.agent_url}, has_assets={bool(creative.get('assets'))}, "
                                             f"has_url={bool(data.get('url'))}"
                                         )
 
@@ -2036,27 +2024,23 @@ def _sync_creatives_impl(
                                         break
 
                                 if format_obj and format_obj.agent_url:
-                                    # Build creative manifest from available data (including provided snippet/url)
+                                    # Build creative manifest from available data
                                     creative_manifest = {
                                         "creative_id": creative.get("creative_id") or str(uuid.uuid4()),
                                         "name": creative.get("name"),
                                         "format_id": creative_format,
                                     }
 
-                                    # Add any provided asset data (url, snippet, etc.) for validation
+                                    # Add any provided asset data for validation
                                     if creative.get("assets"):
                                         creative_manifest["assets"] = creative.get("assets")
                                     if data.get("url"):
                                         creative_manifest["url"] = data.get("url")
-                                    if data.get("snippet"):
-                                        creative_manifest["snippet"] = data.get("snippet")
-                                    if data.get("snippet_type"):
-                                        creative_manifest["snippet_type"] = data.get("snippet_type")
 
                                     # Call creative agent's preview_creative for validation + preview
                                     logger.info(
                                         f"[sync_creatives] Calling preview_creative for validation: {creative_format} "
-                                        f"from agent {format_obj.agent_url}, has_snippet={bool(data.get('snippet'))}, "
+                                        f"from agent {format_obj.agent_url}, has_assets={bool(creative.get('assets'))}, "
                                         f"has_url={bool(data.get('url'))}"
                                     )
 
