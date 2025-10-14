@@ -124,7 +124,13 @@
                         {{ icon }} AI Review: {{ ai_review.decision|title }}
                     </summary>
                     <div style="margin-top: 0.75rem; color: #374151; font-size: 0.9rem;">
-                        <p style="margin: 0 0 0.5rem 0;"><strong>Reason:</strong> {{ ai_review.reason }}</p>
+                        <p style="margin: 0 0 0.5rem 0;"><strong>Status:</strong> {{ ai_review.reason }}</p>
+                        {% if ai_review.ai_recommendation %}
+                        <p style="margin: 0 0 0.5rem 0;"><strong>AI Recommendation:</strong> {{ ai_review.ai_recommendation|title }}</p>
+                        {% endif %}
+                        {% if ai_review.ai_reason %}
+                        <p style="margin: 0 0 0.5rem 0;"><strong>AI's Reasoning:</strong> {{ ai_review.ai_reason }}</p>
+                        {% endif %}
                         <p style="margin: 0 0 0.5rem 0;"><strong>Confidence:</strong> {{ ai_review.confidence }}</p>
                         {% if ai_review.reviewed_at %}
                         <p style="margin: 0; color: #666; font-size: 0.875rem;">Reviewed: {{ ai_review.reviewed_at }}</p>
