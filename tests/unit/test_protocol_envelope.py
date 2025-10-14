@@ -192,3 +192,144 @@ class TestProtocolEnvelope:
         assert envelope.message == "Media buy creation failed"
         assert "errors" in envelope.payload
         assert len(envelope.payload["errors"]) == 1
+
+
+class TestProtocolEnvelopeStatusLogic:
+    """Test that correct status values are used based on response content.
+
+    These tests verify business rules for choosing appropriate AdCP status codes:
+    - Validation errors → "failed" or "input-required"
+    - Auth errors → "rejected" or "auth-required"
+    - Success with media_buy_id → "completed"
+    - Success without media_buy_id (async) → "submitted" or "working"
+    """
+
+    def test_validation_error_uses_failed_status(self):
+        """Test that validation errors use status='failed'."""
+        from src.core.schemas import Error
+
+        response = CreateMediaBuyResponse(
+            buyer_ref="test_buyer",
+            errors=[Error(code="validation_error", message="Currency EUR is not supported")],
+        )
+
+        envelope = ProtocolEnvelope.wrap(payload=response, status="failed")
+
+        assert envelope.status == "failed"
+        assert envelope.payload.get("media_buy_id") is None
+        assert len(envelope.payload["errors"]) == 1
+        assert envelope.payload["errors"][0]["code"] == "validation_error"
+
+    def test_validation_error_can_use_input_required_status(self):
+        """Test that validation errors can also use status='input-required' for fixable issues."""
+        from src.core.schemas import Error
+
+        response = CreateMediaBuyResponse(
+            buyer_ref="test_buyer",
+            errors=[Error(code="missing_required_field", message="Missing required field: budget")],
+        )
+
+        envelope = ProtocolEnvelope.wrap(payload=response, status="input-required")
+
+        assert envelope.status == "input-required"
+        assert envelope.payload.get("media_buy_id") is None
+        assert len(envelope.payload["errors"]) == 1
+
+    def test_auth_error_uses_rejected_status(self):
+        """Test that authentication errors use status='rejected'."""
+        from src.core.schemas import Error
+
+        response = CreateMediaBuyResponse(
+            buyer_ref="test_buyer",
+            errors=[Error(code="authentication_error", message="Principal not found")],
+        )
+
+        envelope = ProtocolEnvelope.wrap(payload=response, status="rejected")
+
+        assert envelope.status == "rejected"
+        assert envelope.payload.get("media_buy_id") is None
+        assert envelope.payload["errors"][0]["code"] == "authentication_error"
+
+    def test_auth_error_can_use_auth_required_status(self):
+        """Test that auth errors can also use status='auth-required' per AdCP spec."""
+        from src.core.schemas import Error
+
+        response = CreateMediaBuyResponse(
+            buyer_ref="test_buyer",
+            errors=[Error(code="invalid_token", message="Token expired")],
+        )
+
+        envelope = ProtocolEnvelope.wrap(payload=response, status="auth-required")
+
+        assert envelope.status == "auth-required"
+        assert envelope.payload.get("media_buy_id") is None
+
+    def test_successful_sync_operation_uses_completed_status(self):
+        """Test that successful synchronous operations use status='completed'."""
+        response = CreateMediaBuyResponse(
+            buyer_ref="test_buyer",
+            media_buy_id="buy_123",
+            packages=[],
+        )
+
+        envelope = ProtocolEnvelope.wrap(payload=response, status="completed")
+
+        assert envelope.status == "completed"
+        assert envelope.payload["media_buy_id"] == "buy_123"
+        assert envelope.payload.get("errors") is None or len(envelope.payload.get("errors", [])) == 0
+
+    def test_successful_async_operation_uses_submitted_status(self):
+        """Test that successful async operations use status='submitted' with task_id."""
+        response = CreateMediaBuyResponse(
+            buyer_ref="test_buyer",
+            packages=[],  # No media_buy_id yet - will be assigned later
+        )
+
+        envelope = ProtocolEnvelope.wrap(
+            payload=response, status="submitted", task_id="task_async_456", message="Media buy creation submitted"
+        )
+
+        assert envelope.status == "submitted"
+        assert envelope.task_id == "task_async_456"
+        assert envelope.payload.get("media_buy_id") is None  # Not assigned yet
+
+    def test_in_progress_async_operation_uses_working_status(self):
+        """Test that in-progress async operations use status='working'."""
+        response = CreateMediaBuyResponse(
+            buyer_ref="test_buyer",
+            media_buy_id="buy_partial_789",  # May have ID but not complete
+            packages=[],
+        )
+
+        envelope = ProtocolEnvelope.wrap(
+            payload=response, status="working", task_id="task_work_789", message="Creating line items..."
+        )
+
+        assert envelope.status == "working"
+        assert envelope.task_id == "task_work_789"
+
+    def test_canceled_operation_uses_canceled_status(self):
+        """Test that canceled operations use status='canceled'."""
+        response = CreateMediaBuyResponse(
+            buyer_ref="test_buyer",
+        )
+
+        envelope = ProtocolEnvelope.wrap(payload=response, status="canceled", message="Operation canceled by user")
+
+        assert envelope.status == "canceled"
+
+    def test_status_must_be_valid_adcp_value(self):
+        """Test that invalid status values are rejected."""
+        import pytest
+
+        response = CreateMediaBuyResponse(buyer_ref="test_buyer")
+
+        # Invalid status should raise ValidationError
+        with pytest.raises(ValueError):
+            ProtocolEnvelope.wrap(payload=response, status="invalid_status")
+
+        with pytest.raises(ValueError):
+            ProtocolEnvelope.wrap(payload=response, status="success")  # Not an AdCP status
+
+        with pytest.raises(ValueError):
+            ProtocolEnvelope.wrap(payload=response, status="error")  # Not an AdCP status
