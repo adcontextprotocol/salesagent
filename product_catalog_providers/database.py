@@ -113,6 +113,7 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     "description": product_obj.description,
                     "formats": product_obj.formats,
                     "pricing_options": pricing_options,
+                    "delivery_type": product_obj.delivery_type,  # Required by AdCP spec
                     "is_custom": product_obj.is_custom,
                     "countries": product_obj.countries,
                     "properties": product_obj.properties if hasattr(product_obj, "properties") else None,
