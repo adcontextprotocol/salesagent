@@ -1713,23 +1713,30 @@ class Pagination(BaseModel):
 
 
 class ListCreativesResponse(AdCPBaseModel):
-    """Response from listing creative assets (AdCP spec compliant)."""
+    """Response from listing creative assets (AdCP v2.4 spec compliant).
 
-    # Required AdCP fields
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
-    message: str = Field(...)
-    query_summary: QuerySummary = Field(...)
-    pagination: Pagination = Field(...)
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
+
+    # Required AdCP domain fields
+    query_summary: QuerySummary = Field(..., description="Summary of the query that was executed")
+    pagination: Pagination = Field(..., description="Pagination information for navigating results")
     creatives: list[Creative] = Field(..., description="Array of creative assets")
 
-    # Optional AdCP fields
-    context_id: str | None = None
-    format_summary: dict[str, int] | None = None
-    status_summary: dict[str, int] | None = None
+    # Optional AdCP domain fields
+    format_summary: dict[str, int] | None = Field(None, description="Breakdown by format type")
+    status_summary: dict[str, int] | None = Field(None, description="Breakdown by creative status")
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        return self.message
+        """Return human-readable summary message for protocol envelope."""
+        count = self.query_summary.returned
+        total = self.query_summary.total_matching
+        if count == total:
+            return f"Found {count} creative{'s' if count != 1 else ''}."
+        else:
+            return f"Showing {count} of {total} creatives."
 
 
 class CheckCreativeStatusRequest(AdCPBaseModel):
@@ -2504,17 +2511,21 @@ class AggregatedTotals(BaseModel):
 
 
 class GetMediaBuyDeliveryResponse(AdCPBaseModel):
-    """AdCP-compliant response for get_media_buy_delivery task."""
+    """AdCP v2.4-compliant response for get_media_buy_delivery task.
 
-    adcp_version: str = Field(description="AdCP schema version used for this response", pattern=r"^\d+\.\d+\.\d+$")
-    reporting_period: ReportingPeriod = Field(description="Date range for the report")
-    currency: str = Field(description="ISO 4217 currency code", pattern=r"^[A-Z]{3}$")
-    aggregated_totals: AggregatedTotals = Field(description="Combined metrics across all returned media buys")
-    media_buy_deliveries: list[MediaBuyDeliveryData] = Field(description="Array of delivery data for each media buy")
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
+
+    reporting_period: ReportingPeriod = Field(..., description="Date range for the report")
+    currency: str = Field(..., description="ISO 4217 currency code", pattern=r"^[A-Z]{3}$")
+    aggregated_totals: AggregatedTotals = Field(..., description="Combined metrics across all returned media buys")
+    media_buy_deliveries: list[MediaBuyDeliveryData] = Field(..., description="Array of delivery data for each media buy")
     errors: list[dict] | None = Field(None, description="Task-specific errors and warnings")
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
+        """Return human-readable summary message for protocol envelope."""
         count = len(self.media_buy_deliveries)
         if count == 0:
             return "No delivery data found for the specified period."
@@ -3061,13 +3072,17 @@ class GetSignalsRequest(AdCPBaseModel):
 
 
 class GetSignalsResponse(AdCPBaseModel):
-    """Response containing available signals."""
+    """Response containing available signals (AdCP v2.4 spec compliant).
 
-    signals: list[Signal]
-    status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
+
+    signals: list[Signal] = Field(..., description="Array of available signals")
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
+        """Return human-readable summary message for protocol envelope."""
         count = len(self.signals)
         if count == 0:
             return "No signals found matching your criteria."
@@ -3086,18 +3101,21 @@ class ActivateSignalRequest(AdCPBaseModel):
 
 
 class ActivateSignalResponse(AdCPBaseModel):
-    """Response from signal activation."""
+    """Response from signal activation (AdCP v2.4 spec compliant).
+
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
 
     signal_id: str = Field(..., description="Activated signal ID")
-    status: str = Field(..., description="Task status per AdCP MCP Status specification")
-    message: str | None = Field(None, description="Human-readable status message")
     activation_details: dict[str, Any] | None = Field(None, description="Platform-specific activation details")
     errors: list[Error] | None = Field(None, description="Optional error reporting")
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        if self.message:
-            return self.message
+        """Return human-readable summary message for protocol envelope."""
+        if self.errors:
+            return f"Signal {self.signal_id} activation encountered {len(self.errors)} error(s)."
         return f"Signal {self.signal_id} activated successfully."
 
 
@@ -3240,7 +3258,12 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
 
 
 class ListAuthorizedPropertiesResponse(AdCPBaseModel):
-    """Response payload for list_authorized_properties task (AdCP spec compliant)."""
+    """Response payload for list_authorized_properties task (AdCP v2.4 spec compliant).
+
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
 
     properties: list[Property] = Field(..., description="Array of all properties this agent is authorized to represent")
     tags: dict[str, PropertyTagMetadata] = Field(
