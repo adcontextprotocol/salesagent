@@ -54,8 +54,8 @@ def upgrade() -> None:
                 text(
                     """
                 INSERT INTO pricing_options
-                (tenant_id, product_id, pricing_model, rate, currency, is_fixed, created_at, updated_at)
-                VALUES (:tenant_id, :product_id, 'cpm', :rate, :currency, true, NOW(), NOW())
+                (tenant_id, product_id, pricing_model, rate, currency, is_fixed)
+                VALUES (:tenant_id, :product_id, 'cpm', :rate, :currency, true)
             """
                 ),
                 {"tenant_id": tenant_id, "product_id": product_id, "rate": float(cpm), "currency": currency_code},
@@ -92,8 +92,8 @@ def upgrade() -> None:
                     text(
                         """
                     INSERT INTO pricing_options
-                    (tenant_id, product_id, pricing_model, currency, is_fixed, price_guidance, created_at, updated_at)
-                    VALUES (:tenant_id, :product_id, 'cpm', :currency, false, :price_guidance, NOW(), NOW())
+                    (tenant_id, product_id, pricing_model, currency, is_fixed, price_guidance)
+                    VALUES (:tenant_id, :product_id, 'cpm', :currency, false, :price_guidance)
                 """
                     ),
                     {
