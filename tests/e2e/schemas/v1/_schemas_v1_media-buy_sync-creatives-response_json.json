@@ -15,8 +15,7 @@
     },
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",
-      "description": "Current task state - 'completed' for immediate success, 'working' for operations under 120s, 'submitted' for long-running operations",
-      "default": "completed"
+      "description": "Current task state - 'completed' for immediate success, 'working' for operations under 120s, 'submitted' for long-running operations"
     },
     "task_id": {
       "type": "string",

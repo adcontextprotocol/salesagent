@@ -7,8 +7,7 @@
   "properties": {
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",
-      "description": "Current task state",
-      "default": "completed"
+      "description": "Current task state"
     },
     "formats": {
       "type": "array",
