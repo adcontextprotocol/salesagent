@@ -315,7 +315,7 @@ class TestCreativeSchemaContract:
         test_data = {
             "creative_id": "video_contract_test",
             "name": "Video Creative Contract Test",
-            "format_id": "video_30s",
+            "format_id": "video_640x480",
             "status": "pending",
             "content_uri": "https://example.com/video.mp4",
             "principal_id": "test_principal",
