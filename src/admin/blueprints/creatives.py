@@ -1226,8 +1226,9 @@ Respond with a JSON object containing:
 
             # Get AI policy from tenant (with defaults)
             ai_policy_data = tenant.ai_policy if tenant.ai_policy else {}
-            auto_approve_threshold = ai_policy_data.get("auto_approve_threshold", 0.90)
-            auto_reject_threshold = ai_policy_data.get("auto_reject_threshold", 0.10)
+            # Thresholds represent MINIMUM confidence required for automatic action
+            auto_approve_threshold = ai_policy_data.get("auto_approve_threshold", 0.90)  # Need 90%+ to auto-approve
+            auto_reject_threshold = ai_policy_data.get("auto_reject_threshold", 0.90)  # Need 90%+ to auto-reject
             sensitive_categories = ai_policy_data.get(
                 "always_require_human_for", ["political", "healthcare", "financial"]
             )
@@ -1293,7 +1294,7 @@ Respond with a JSON object containing:
                 else:
                     result_dict = {
                         "status": "pending",
-                        "reason": f"AI approved but confidence {confidence_score:.0%} below threshold {auto_approve_threshold:.0%}. Human review recommended.",
+                        "reason": f"AI recommended approval with {confidence_score:.0%} confidence (below {auto_approve_threshold:.0%} threshold). Human review recommended.",
                         "confidence": confidence_str,
                         "confidence_score": confidence_score,
                         "policy_triggered": "low_confidence_approval",
@@ -1315,7 +1316,7 @@ Respond with a JSON object containing:
 
             elif "REJECT" in decision:
                 # AI wants to reject - check confidence threshold
-                if confidence_score <= auto_reject_threshold:
+                if confidence_score >= auto_reject_threshold:
                     result_dict = {
                         "status": "rejected",
                         "reason": review_result.get("reason", ""),
@@ -1338,7 +1339,7 @@ Respond with a JSON object containing:
                 else:
                     result_dict = {
                         "status": "pending",
-                        "reason": f"AI rejected but not confident enough ({confidence_score:.0%}). Human review recommended.",
+                        "reason": f"AI recommended rejection with {confidence_score:.0%} confidence (below {auto_reject_threshold:.0%} threshold). Human review recommended.",
                         "confidence": confidence_str,
                         "confidence_score": confidence_score,
                         "policy_triggered": "uncertain_rejection",
