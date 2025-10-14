@@ -1177,6 +1177,55 @@ class Creative(BaseModel):
         None, description="Type of snippet content (required when snippet is provided)"
     )
 
+    @model_validator(mode="after")
+    def validate_snippet_content(self):
+        """Validate that snippet contains valid HTML/JS/VAST content."""
+        if self.snippet:
+            snippet = self.snippet.strip()
+
+            # Check minimum length (avoid trivial strings)
+            if len(snippet) < 10:
+                raise ValueError(f"Snippet is too short ({len(snippet)} chars). Expected valid HTML/JS/VAST code.")
+
+            # Check for common HTML/JS/VAST markers
+            valid_markers = [
+                "<script",
+                "</script>",
+                "<iframe",
+                "</iframe>",  # HTML tags
+                "<ins",
+                "<div",
+                "<img",  # Common ad tags
+                "VAST",
+                "<Ad>",
+                "<Creative>",  # VAST XML
+                "document.",
+                "window.",
+                "function(",  # JavaScript
+                "http://",
+                "https://",  # URLs in snippets
+            ]
+
+            # Snippet should contain at least one valid marker
+            has_valid_marker = any(marker.lower() in snippet.lower() for marker in valid_markers)
+
+            if not has_valid_marker:
+                raise ValueError(
+                    f"Snippet does not appear to contain valid HTML/JS/VAST code. "
+                    f"Got: '{snippet[:50]}...' (must contain HTML tags, JavaScript code, or VAST XML)"
+                )
+
+            # If snippet_type is specified, do type-specific validation
+            if self.snippet_type:
+                if self.snippet_type == "vast_xml" and "<VAST" not in snippet:
+                    raise ValueError("snippet_type is 'vast_xml' but snippet does not contain <VAST> tag")
+                elif self.snippet_type == "vast_url" and not snippet.startswith(("http://", "https://")):
+                    raise ValueError("snippet_type is 'vast_url' but snippet is not a URL")
+                elif self.snippet_type in ["html", "javascript"] and not has_valid_marker:
+                    raise ValueError(f"snippet_type is '{self.snippet_type}' but snippet does not contain valid code")
+
+        return self
+
     template_variables: dict[str, Any] | None = Field(
         None,
         description="Variables for native ad templates per AdCP spec",
