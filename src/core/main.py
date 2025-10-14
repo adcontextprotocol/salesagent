@@ -2477,6 +2477,7 @@ def _sync_creatives_impl(
             updated=updated_count,
             unchanged=unchanged_count,
             failed=failed_count,
+            deleted=0,
         ),
         results=results,
         dry_run=dry_run,
