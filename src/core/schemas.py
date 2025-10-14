@@ -1934,6 +1934,47 @@ class Package(BaseModel):
     creative_assignments: list[dict[str, Any]] | None = Field(
         None, description="Creative assets assigned to this package"
     )
+    formats_to_provide: list[str] | None = Field(
+        None,
+        description="Format IDs that creative assets will be provided for this package (array of strings, not FormatId objects)",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_format_ids_to_formats_to_provide(cls, values: dict) -> dict:
+        """Migrate legacy format_ids field to formats_to_provide for backward compatibility.
+
+        Package requests use format_ids (array of strings), but responses use formats_to_provide.
+        This validator ensures consistent handling.
+        """
+        if not isinstance(values, dict):
+            return values
+
+        # If format_ids is present but formats_to_provide is not, migrate it
+        if "format_ids" in values and "formats_to_provide" not in values:
+            format_ids = values.get("format_ids")
+            if format_ids:
+                # Handle both strings and FormatReference objects
+                if isinstance(format_ids, list):
+                    string_ids = []
+                    for fmt_id in format_ids:
+                        if isinstance(fmt_id, str):
+                            string_ids.append(fmt_id)
+                        elif isinstance(fmt_id, dict) and "id" in fmt_id:
+                            # FormatId object serialized as dict
+                            string_ids.append(fmt_id["id"])
+                        elif isinstance(fmt_id, dict) and "format_id" in fmt_id:
+                            # FormatReference object serialized as dict
+                            string_ids.append(fmt_id["format_id"])
+                        elif hasattr(fmt_id, "id"):
+                            # FormatId object
+                            string_ids.append(fmt_id.id)
+                        elif hasattr(fmt_id, "format_id"):
+                            # FormatReference object
+                            string_ids.append(fmt_id.format_id)
+                    values["formats_to_provide"] = string_ids
+
+        return values
 
     # NEW: Pricing model selection (AdCP PR #88)
     pricing_model: PricingModel | None = Field(
