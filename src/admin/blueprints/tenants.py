@@ -230,34 +230,37 @@ def tenant_settings(tenant_id, section=None):
             active_products = product_count  # All products are considered active
             draft_products = 0  # No draft status tracking
 
-            # Get creative formats
-            from src.core.database.models import CreativeFormat
-
-            try:
-                stmt = select(CreativeFormat).filter_by(tenant_id=tenant_id)
-                creative_formats = db_session.scalars(stmt).all()
-            except Exception as e:
-                # Table may not exist in older databases - gracefully handle
-                logger.warning(f"Could not load creative formats: {e}")
-                creative_formats = []
+            # Creative formats - no longer stored in database (fetched from creative agents via AdCP)
+            # Table was dropped in migration f2addf453200 (Oct 13, 2025)
+            creative_formats = []
 
             # Get inventory counts
             from src.core.database.models import GAMInventory
 
-            stmt = select(func.count()).select_from(GAMInventory).filter_by(tenant_id=tenant_id)
-            inventory_count = db_session.scalar(stmt) or 0
+            try:
+                stmt = select(func.count()).select_from(GAMInventory).filter_by(tenant_id=tenant_id)
+                inventory_count = db_session.scalar(stmt) or 0
 
-            stmt = (
-                select(func.count()).select_from(GAMInventory).filter_by(tenant_id=tenant_id, inventory_type="ad_unit")
-            )
-            ad_units_count = db_session.scalar(stmt) or 0
+                stmt = (
+                    select(func.count())
+                    .select_from(GAMInventory)
+                    .filter_by(tenant_id=tenant_id, inventory_type="ad_unit")
+                )
+                ad_units_count = db_session.scalar(stmt) or 0
 
-            stmt = (
-                select(func.count())
-                .select_from(GAMInventory)
-                .filter_by(tenant_id=tenant_id, inventory_type="placement")
-            )
-            placements_count = db_session.scalar(stmt) or 0
+                stmt = (
+                    select(func.count())
+                    .select_from(GAMInventory)
+                    .filter_by(tenant_id=tenant_id, inventory_type="placement")
+                )
+                placements_count = db_session.scalar(stmt) or 0
+            except Exception as e:
+                # Table may not exist or query may fail - rollback and gracefully handle
+                logger.warning(f"Could not load inventory counts: {e}")
+                db_session.rollback()
+                inventory_count = 0
+                ad_units_count = 0
+                placements_count = 0
 
             # Get admin port
             admin_port = int(os.environ.get("ADMIN_UI_PORT", 8001))
@@ -281,6 +284,9 @@ def tenant_settings(tenant_id, section=None):
             except Exception as e:
                 logger.warning(f"Failed to load setup checklist: {e}")
 
+            # Get script_name for production URL handling
+            script_name = "/admin" if is_production else ""
+
             return render_template(
                 "tenant_settings.html",
                 tenant=tenant,
@@ -298,6 +304,7 @@ def tenant_settings(tenant_id, section=None):
                 a2a_port=a2a_port,
                 admin_port=admin_port,
                 is_production=is_production,
+                script_name=script_name,
                 authorized_domains=authorized_domains,
                 authorized_emails=authorized_emails,
                 product_count=product_count,
