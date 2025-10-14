@@ -2173,17 +2173,28 @@ class CreateMediaBuyRequest(BaseModel):
                 if isinstance(package, dict):
                     budget = package.get("budget")
                     if budget:
-                        # Budget might be a dict or Budget object
-                        total += budget.get("total", 0.0) if isinstance(budget, dict) else budget.total
+                        # Budget can be: dict, number, or Budget object
+                        if isinstance(budget, dict):
+                            total += budget.get("total", 0.0)
+                        elif isinstance(budget, int | float):
+                            total += float(budget)
+                        else:
+                            total += budget.total
                 else:
                     # Package object
                     if package.budget:
-                        total += package.budget.total
+                        # Budget can be number or Budget object
+                        if isinstance(package.budget, int | float):
+                            total += float(package.budget)
+                        else:
+                            total += package.budget.total
             if total > 0:
                 return total
 
         # Legacy format: top-level budget
         if self.budget:
+            if isinstance(self.budget, int | float):
+                return float(self.budget)
             return self.budget.total
         return self.total_budget or 0.0
 
