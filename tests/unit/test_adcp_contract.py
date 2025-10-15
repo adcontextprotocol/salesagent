@@ -73,7 +73,7 @@ class TestAdCPContract:
         return {
             "tenant_id": tenant_id,
             "product_id": product_id,
-            "pricing_model": "CPM",
+            "pricing_model": "cpm",
             "rate": Decimal(str(rate)) if rate else None,
             "currency": "USD",
             "is_fixed": is_fixed,
