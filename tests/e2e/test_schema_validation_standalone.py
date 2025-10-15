@@ -92,9 +92,10 @@ async def test_invalid_get_products_response():
 async def test_get_products_request_validation():
     """Test validation of get-products request parameters."""
     async with AdCPSchemaValidator() as validator:
-        # Valid request with required brand_manifest field (per AdCP v1.0.0 schema)
+        # Valid request with brand_manifest as URL string (per AdCP v1.0.0 schema)
+        # brand_manifest can be either a string URL or an inline object
         valid_request = {
-            "brand_manifest": {"brand_name": "Test Brand", "promoted_offering": "premium display"},
+            "brand_manifest": "https://example.com/brand-manifest.json",
             "brief": "Looking for display advertising",
         }
 
@@ -102,7 +103,8 @@ async def test_get_products_request_validation():
         await validator.validate_request("get-products", valid_request)
 
         # Test with minimal required request (only brand_manifest required)
-        minimal_request = {"brand_manifest": {"brand_name": "Test Brand"}}
+        # Using inline object format
+        minimal_request = {"brand_manifest": {"name": "Test Brand", "url": "https://example.com"}}
         await validator.validate_request("get-products", minimal_request)
 
 

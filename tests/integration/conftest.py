@@ -68,7 +68,9 @@ def integration_db():
         cur.close()
         conn.close()
 
-    os.environ["DATABASE_URL"] = f"postgresql://adcp_user:test_password@localhost:5433/{unique_db_name}"
+    # Build DATABASE_URL using parsed connection params
+    test_db_url = f"postgresql://{conn_params['user']}:{conn_params['password']}@{conn_params['host']}:{conn_params['port']}/{unique_db_name}"
+    os.environ["DATABASE_URL"] = test_db_url
     os.environ["DB_TYPE"] = "postgresql"
     db_path = unique_db_name  # For cleanup reference
 
@@ -86,7 +88,7 @@ def integration_db():
     # (in case the module import doesn't trigger class definition)
     _ = (Context, WorkflowStep, ObjectWorkflowMapping)
 
-    engine = create_engine(f"postgresql://adcp_user:test_password@localhost:5433/{unique_db_name}", echo=False)
+    engine = create_engine(test_db_url, echo=False)
 
     # Ensure all model classes are imported and registered with Base.metadata
     # Import order matters - some models may not be registered if imported too early
