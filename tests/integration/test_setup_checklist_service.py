@@ -19,6 +19,8 @@ from src.services.setup_checklist_service import (
     validate_setup_complete,
 )
 
+pytestmark = pytest.mark.requires_db
+
 
 @pytest.fixture
 def test_tenant_id():
@@ -30,6 +32,15 @@ def test_tenant_id():
 def setup_minimal_tenant(db_session, test_tenant_id):
     """Create minimal tenant for testing (incomplete setup)."""
     from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    # Check if tenant already exists and delete it
+    stmt = select(Tenant).filter_by(tenant_id=test_tenant_id)
+    existing = db_session.scalars(stmt).first()
+    if existing:
+        db_session.delete(existing)
+        db_session.commit()
 
     now = datetime.now(UTC)
     tenant = Tenant(
@@ -43,13 +54,34 @@ def setup_minimal_tenant(db_session, test_tenant_id):
     )
     db_session.add(tenant)
     db_session.commit()
-    return tenant
+
+    yield tenant
+
+    # Cleanup after test
+    db_session.delete(tenant)
+    db_session.commit()
 
 
 @pytest.fixture
 def setup_complete_tenant(db_session, test_tenant_id):
     """Create fully configured tenant for testing."""
     from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    # Check if tenant already exists and delete it (and related records)
+    stmt = select(Tenant).filter_by(tenant_id=test_tenant_id)
+    existing = db_session.scalars(stmt).first()
+    if existing:
+        # Delete related records first (due to foreign keys)
+        from sqlalchemy import delete
+
+        db_session.execute(delete(Principal).where(Principal.tenant_id == test_tenant_id))
+        db_session.execute(delete(Product).where(Product.tenant_id == test_tenant_id))
+        db_session.execute(delete(AuthorizedProperty).where(AuthorizedProperty.tenant_id == test_tenant_id))
+        db_session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == test_tenant_id))
+        db_session.delete(existing)
+        db_session.commit()
 
     now = datetime.now(UTC)
 
@@ -105,7 +137,16 @@ def setup_complete_tenant(db_session, test_tenant_id):
     db_session.add(principal)
 
     db_session.commit()
-    return tenant
+
+    yield tenant
+
+    # Cleanup after test
+    db_session.execute(delete(Principal).where(Principal.tenant_id == test_tenant_id))
+    db_session.execute(delete(Product).where(Product.tenant_id == test_tenant_id))
+    db_session.execute(delete(AuthorizedProperty).where(AuthorizedProperty.tenant_id == test_tenant_id))
+    db_session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == test_tenant_id))
+    db_session.delete(tenant)
+    db_session.commit()
 
 
 class TestSetupChecklistService:
