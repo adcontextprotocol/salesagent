@@ -153,6 +153,28 @@ def create_tenant():
             if creator_email and creator_email not in email_list:
                 email_list.append(creator_email)
 
+            domain_list = data.get("authorized_domains", [])
+
+            # Validate access control - prevent tenant lockout
+            if not email_list and not domain_list:
+                if creator_email:
+                    # Auto-add creator as fallback with warning
+                    email_list.append(creator_email)
+                    logger.warning(
+                        f"No access control specified for tenant {data['name']}, "
+                        f"auto-adding creator {creator_email}"
+                    )
+                else:
+                    return (
+                        jsonify(
+                            {
+                                "error": "Must specify at least one authorized email or domain. "
+                                "Provide 'authorized_emails', 'authorized_domains', or 'creator_email'."
+                            }
+                        ),
+                        400,
+                    )
+
             # Create tenant
             new_tenant = Tenant(
                 tenant_id=tenant_id,
@@ -165,7 +187,7 @@ def create_tenant():
                 max_daily_budget=data.get("max_daily_budget", 10000),
                 enable_axe_signals=data.get("enable_axe_signals", True),
                 authorized_emails=json.dumps(email_list),
-                authorized_domains=json.dumps(data.get("authorized_domains", [])),
+                authorized_domains=json.dumps(domain_list),
                 slack_webhook_url=data.get("slack_webhook_url"),
                 slack_audit_webhook_url=data.get("slack_audit_webhook_url"),
                 hitl_webhook_url=data.get("hitl_webhook_url"),

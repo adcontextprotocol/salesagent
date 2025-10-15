@@ -203,6 +203,30 @@ class SetupChecklistService:
             )
         )
 
+        # 8. Access Control Configured
+        has_domains = bool(tenant.authorized_domains and len(tenant.authorized_domains) > 0)
+        has_emails = bool(tenant.authorized_emails and len(tenant.authorized_emails) > 0)
+        access_control_configured = bool(has_domains or has_emails)
+
+        details = []
+        if has_domains:
+            details.append(f"{len(tenant.authorized_domains)} domain(s)")
+        if has_emails:
+            details.append(f"{len(tenant.authorized_emails)} email(s)")
+
+        tasks.append(
+            SetupTask(
+                key="access_control",
+                name="Access Control",
+                description="Configure who can access this tenant (domains or emails)",
+                is_complete=access_control_configured,
+                action_url=f"/tenant/{self.tenant_id}/settings#account",
+                details=(
+                    ", ".join(details) if details else "No access control configured - only super admins can access"
+                ),
+            )
+        )
+
         return tasks
 
     def _check_recommended_tasks(self, session, tenant: Tenant) -> list[SetupTask]:
