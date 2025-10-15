@@ -705,20 +705,10 @@ def edit_product(tenant_id, product_id):
 
                         attributes.flag_modified(product, "implementation_config")
 
-                # Update minimum spend override
-                from decimal import Decimal, InvalidOperation
-
-                min_spend_str = form_data.get("min_spend", "").strip()
-                if min_spend_str:
-                    try:
-                        product.min_spend = Decimal(min_spend_str)
-                    except (ValueError, InvalidOperation):
-                        flash("Invalid minimum spend value", "error")
-                        return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
-                else:
-                    product.min_spend = None
-
                 # Update pricing options (AdCP PR #88)
+                # Note: min_spend is now stored in pricing_options[].min_spend_per_package
+                from decimal import Decimal
+
                 # Delete existing pricing options and recreate from form
                 db_session.query(PricingOption).filter_by(  # legacy-ok
                     tenant_id=tenant_id, product_id=product_id
