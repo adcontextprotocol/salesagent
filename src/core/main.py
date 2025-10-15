@@ -4384,16 +4384,13 @@ def _create_media_buy_impl(
             }
             response_packages.append(response_package)
 
-        # Create AdCP v2.4 compliant response
-        # Use adapter's status if provided, otherwise calculate based on flight dates
-        api_status = response.status if response.status else media_buy_status
-
         # Ensure buyer_ref is set (defensive check)
         buyer_ref_value = req.buyer_ref if req.buyer_ref else buyer_ref
         if not buyer_ref_value:
             logger.error(f"🚨 buyer_ref is missing! req.buyer_ref={req.buyer_ref}, buyer_ref={buyer_ref}")
             buyer_ref_value = f"missing-{response.media_buy_id}"
 
+        # Create AdCP response (protocol fields like status are added by ProtocolEnvelope wrapper)
         adcp_response = CreateMediaBuyResponse(
             buyer_ref=buyer_ref_value,
             media_buy_id=response.media_buy_id,

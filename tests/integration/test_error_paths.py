@@ -445,12 +445,13 @@ class TestImportValidation:
         assert error.message == "test message"
 
     def test_create_media_buy_response_with_errors(self):
-        """Verify CreateMediaBuyResponse can contain Error objects."""
+        """Verify CreateMediaBuyResponse can contain Error objects.
+
+        Protocol fields (adcp_version, status) removed in protocol envelope migration.
+        """
         from src.core.schemas import CreateMediaBuyResponse, Error
 
         response = CreateMediaBuyResponse(
-            adcp_version="2.4.0",
-            status="completed",
             buyer_ref="test",
             errors=[Error(code="test", message="test error")],
         )

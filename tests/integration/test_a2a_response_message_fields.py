@@ -162,11 +162,13 @@ class TestA2AResponseDictConstruction:
     """
 
     def test_create_media_buy_response_to_dict(self):
-        """Test CreateMediaBuyResponse can be converted to A2A dict."""
+        """Test CreateMediaBuyResponse can be converted to A2A dict.
+
+        Protocol fields (status) are added by A2A wrapper, not in domain response.
+        """
         from src.core.schemas import CreateMediaBuyResponse
 
         response = CreateMediaBuyResponse(
-            status="completed",
             buyer_ref="test-123",
             media_buy_id="mb-456",
         )
@@ -176,19 +178,22 @@ class TestA2AResponseDictConstruction:
         a2a_dict = {
             "success": True,
             "media_buy_id": response.media_buy_id,
-            "status": response.status,
             "message": str(response),  # Safe for all response types
         }
 
         assert a2a_dict["message"] == "Media buy mb-456 created successfully."
 
     def test_sync_creatives_response_to_dict(self):
-        """Test SyncCreativesResponse can be converted to A2A dict."""
-        from src.core.schemas import SyncCreativeResult, SyncCreativesResponse
+        """Test SyncCreativesResponse can be converted to A2A dict.
+
+        Protocol fields (status, message) are added by A2A wrapper.
+        Domain response uses __str__() to generate message.
+        """
+        from src.core.schemas import SyncCreativeResult, SyncCreativesResponse, SyncSummary
 
         response = SyncCreativesResponse(
-            status="completed",
-            message="Synced 1 creative successfully",
+            summary=SyncSummary(total_processed=1, created=1, updated=0, unchanged=0, deleted=0, failed=0),
+            dry_run=False,
             results=[
                 SyncCreativeResult(
                     buyer_ref="test-001",
@@ -201,8 +206,7 @@ class TestA2AResponseDictConstruction:
 
         # ✅ This should NOT raise AttributeError
         a2a_dict = {
-            "success": response.status == "completed",
-            "status": response.status,
+            "success": True,
             "message": str(response),  # Safe - uses __str__ method
         }
 
