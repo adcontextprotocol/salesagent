@@ -226,6 +226,13 @@ function initiateGAMAuth() {
 function detectGAMNetwork() {
     const button = document.querySelector('button[onclick="detectGAMNetwork()"]');
     const originalText = button.textContent;
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+
+    if (!refreshToken) {
+        alert('Please enter a refresh token first');
+        return;
+    }
+
     button.disabled = true;
     button.textContent = 'Detecting...';
 
@@ -233,7 +240,10 @@ function detectGAMNetwork() {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-        }
+        },
+        body: JSON.stringify({
+            refresh_token: refreshToken
+        })
     })
     .then(response => response.json())
     .then(data => {
