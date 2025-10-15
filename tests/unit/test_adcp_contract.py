@@ -704,7 +704,6 @@ class TestAdCPContract:
             status="active",
             buyer_ref="buyer_ref_abc",
             product_id="product_xyz",
-            products=["product_xyz", "product_def"],
             impressions=50000,
             creative_assignments=[
                 {"creative_id": "creative_1", "weight": 70},
@@ -726,15 +725,15 @@ class TestAdCPContract:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify AdCP optional fields are present (can be null)
+        # Verify AdCP optional fields from official spec (https://adcontextprotocol.org/schemas/v1/core/package.json)
         adcp_optional_fields = [
             "buyer_ref",
-            "product_id",
-            "products",
+            "product_id",  # Singular, per AdCP spec (NOT "products")
             "budget",
             "impressions",
             "targeting_overlay",
             "creative_assignments",
+            "format_ids_to_provide",  # Per AdCP v2.4 spec (not formats_to_provide)
         ]
         for field in adcp_optional_fields:
             assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
@@ -1133,27 +1132,27 @@ class TestAdCPContract:
         # Test model_dump
         adcp_response = response.model_dump()
 
-        # Verify required AdCP fields are present
-        adcp_required_fields = ["adcp_version", "message", "status"]
+        # Verify required AdCP fields are present (per official spec)
+        # NOTE: adcp_version is NOT in official spec - excluded from responses
+        adcp_required_fields = ["message", "status", "creatives"]
         for field in adcp_required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
         # Verify AdCP optional fields can be present
-        adcp_optional_fields = ["summary", "results", "context_id", "task_id", "dry_run"]
+        adcp_optional_fields = ["context_id", "task_id", "dry_run"]
         # Don't require all optional fields, just verify they're in the schema if present
         for field in adcp_optional_fields:
             if field in adcp_response and adcp_response[field] is not None:
-                # Field is present and not None, verify its structure
-                if field == "summary":
-                    assert isinstance(adcp_response["summary"], dict), "Summary must be object"
-                    assert "total_processed" in adcp_response["summary"], "Summary must have total_processed"
-                elif field == "results":
-                    assert isinstance(adcp_response["results"], list), "Results must be array"
-                    if adcp_response["results"]:
-                        result = adcp_response["results"][0]
-                        assert "creative_id" in result, "Result must have creative_id"
-                        assert "action" in result, "Result must have action"
+                # Field is present and not None - basic validation
+                pass
+
+        # Verify creatives array structure (required field)
+        assert isinstance(adcp_response["creatives"], list), "Creatives must be array"
+        if adcp_response["creatives"]:
+            creative_result = adcp_response["creatives"][0]
+            assert "creative_id" in creative_result, "Creative result must have creative_id"
+            assert "action" in creative_result, "Creative result must have action"
 
         # Verify status is valid enum value
         assert adcp_response["status"] in ["completed", "working", "submitted"], "Status must be valid enum"
@@ -1259,14 +1258,13 @@ class TestAdCPContract:
                 total_pages=1,
                 current_page=1,
             ),
-            message="Found 2 creatives",
         )
 
         # Test model_dump
         adcp_response = response.model_dump()
 
-        # Verify required AdCP fields are present
-        adcp_required_fields = ["creatives", "query_summary", "pagination", "message"]
+        # Verify required AdCP fields are present (message is not in AdCP spec)
+        adcp_required_fields = ["creatives", "query_summary", "pagination"]
         for field in adcp_required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
@@ -1659,24 +1657,21 @@ class TestAdCPContract:
         # Test AdCP-compliant response
         adcp_response = response.model_dump()
 
-        # Verify required AdCP fields present and non-null
-        required_fields = ["adcp_version", "reporting_period", "currency", "aggregated_totals", "media_buy_deliveries"]
+        # Verify required AdCP fields present and non-null (per official spec)
+        # NOTE: adcp_version is NOT in official spec - excluded from responses
+        required_fields = ["reporting_period", "currency", "media_buy_deliveries"]
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
         # Verify optional AdCP fields present (can be null)
-        optional_fields = ["errors"]
+        optional_fields = ["aggregated_totals", "errors"]
         for field in optional_fields:
             assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
 
-        # Verify adcp_version format
+        # Verify currency format
         import re
 
-        version_pattern = r"^\d+\.\d+\.\d+$"
-        assert re.match(version_pattern, adcp_response["adcp_version"]), "adcp_version must match pattern"
-
-        # Verify currency format
         currency_pattern = r"^[A-Z]{3}$"
         assert re.match(currency_pattern, adcp_response["currency"]), "currency must be 3-letter ISO code"
 
@@ -1746,10 +1741,10 @@ class TestAdCPContract:
             empty_adcp_response["media_buy_deliveries"] == []
         ), "Empty media_buy_deliveries list should be empty array"
 
-        # Verify field count (6 fields total)
+        # Verify field count (5 fields per official spec, excluding adcp_version)
         assert (
-            len(adcp_response) == 6
-        ), f"GetMediaBuyDeliveryResponse should have exactly 6 fields, got {len(adcp_response)}"
+            len(adcp_response) == 5
+        ), f"GetMediaBuyDeliveryResponse should have exactly 5 fields (per official spec), got {len(adcp_response)}"
 
     def test_property_identifier_adcp_compliance(self):
         """Test that PropertyIdentifier complies with AdCP property identifier schema."""
@@ -1918,7 +1913,7 @@ class TestAdCPContract:
         # Verify message is provided via __str__() not as schema field (response already created above)
         assert str(response) == "Found 1 authorized property."
 
-        # Verify field count expectations (now 7 fields with new additions)
+        # Verify field count expectations (7 fields per AdCP v2.4 spec)
         assert len(adcp_response) == 7
 
     def test_get_signals_request_adcp_compliance(self):
@@ -2198,6 +2193,47 @@ class TestAdCPContract:
         assert "media_buy_id" in internal_dump, "media_buy_id SHOULD be in internal dump"
         assert internal_dump["media_buy_id"] == "mb_test_456"
 
+    def test_package_compatible_with_generated_schema(self):
+        """Test that our custom Package model is compatible with generated AdCP Package schema.
+
+        This ensures we don't drift from the official spec. Our custom Package adds internal
+        fields (tenant_id, media_buy_id, etc.) but must be convertible to the official schema.
+        """
+        from src.core.schemas_generated._schemas_v1_core_package_json import (
+            Package as GeneratedPackage,
+        )
+
+        # Create package with our custom model
+        custom_pkg = Package(
+            package_id="pkg_test_123",
+            status="active",
+            buyer_ref="test_ref",
+            product_id="prod_xyz",
+            impressions=50000.0,
+            # Internal fields (will be excluded from AdCP response)
+            tenant_id="tenant_test",
+            media_buy_id="mb_123",
+        )
+
+        # Convert to AdCP-compliant dict (excludes internal fields)
+        adcp_dict = custom_pkg.model_dump()
+
+        # Verify it can be loaded into generated schema (validates spec compliance)
+        try:
+            generated_pkg = GeneratedPackage(**adcp_dict)
+            assert generated_pkg.package_id == "pkg_test_123"
+            assert generated_pkg.status.value == "active"  # Enum
+            assert generated_pkg.product_id == "prod_xyz"
+            assert generated_pkg.impressions == 50000.0
+        except Exception as e:
+            pytest.fail(
+                f"Custom Package model is not compatible with generated AdCP schema: {e}\n" f"AdCP dict: {adcp_dict}"
+            )
+
+        # Verify internal fields were excluded (not in generated schema)
+        assert "tenant_id" not in adcp_dict
+        assert "media_buy_id" not in adcp_dict
+
     def test_create_media_buy_asap_start_time(self):
         """Test that CreateMediaBuyRequest accepts 'asap' as start_time per AdCP v1.7.0."""
         end_date = datetime.now(UTC) + timedelta(days=30)
@@ -2459,3 +2495,44 @@ class TestAdCPContract:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+    def test_package_compatible_with_generated_schema(self):
+        """Test that our custom Package model is compatible with generated AdCP Package schema.
+
+        This ensures we don't drift from the official spec. Our custom Package adds internal
+        fields (tenant_id, media_buy_id, etc.) but must be convertible to the official schema.
+        """
+        from src.core.schemas_generated._schemas_v1_core_package_json import (
+            Package as GeneratedPackage,
+        )
+
+        # Create package with our custom model
+        custom_pkg = Package(
+            package_id="pkg_test_123",
+            status="active",
+            buyer_ref="test_ref",
+            product_id="prod_xyz",
+            impressions=50000.0,
+            # Internal fields (will be excluded from AdCP response)
+            tenant_id="tenant_test",
+            media_buy_id="mb_123",
+        )
+
+        # Convert to AdCP-compliant dict (excludes internal fields)
+        adcp_dict = custom_pkg.model_dump()
+
+        # Verify it can be loaded into generated schema (validates spec compliance)
+        try:
+            generated_pkg = GeneratedPackage(**adcp_dict)
+            assert generated_pkg.package_id == "pkg_test_123"
+            assert generated_pkg.status.value == "active"  # Enum
+            assert generated_pkg.product_id == "prod_xyz"
+            assert generated_pkg.impressions == 50000.0
+        except Exception as e:
+            pytest.fail(
+                f"Custom Package model is not compatible with generated AdCP schema: {e}\n" f"AdCP dict: {adcp_dict}"
+            )
+
+        # Verify internal fields were excluded (not in generated schema)
+        assert "tenant_id" not in adcp_dict
+        assert "media_buy_id" not in adcp_dict

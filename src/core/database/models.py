@@ -63,7 +63,9 @@ class Tenant(Base, JSONValidatorMixin):
     policy_settings = Column(JSONType)  # JSON object
     signals_agent_config = Column(JSONType)  # JSON object for upstream signals discovery agent configuration
     creative_review_criteria = Column(Text, nullable=True)  # AI review prompt for creative approval
-    _gemini_api_key = Column("gemini_api_key", String(500), nullable=True)  # Encrypted Gemini API key
+    _gemini_api_key: Mapped[str | None] = mapped_column(
+        "gemini_api_key", String(500), nullable=True
+    )  # Encrypted Gemini API key
     approval_mode = Column(
         String(50), nullable=False, default="require-human"
     )  # auto-approve, require-human, ai-powered
@@ -914,26 +916,26 @@ class WorkflowStep(Base, JSONValidatorMixin):
 
     __tablename__ = "workflow_steps"
 
-    step_id = Column(String(100), primary_key=True)
-    context_id = Column(
+    # SQLAlchemy 2.0 style with Mapped[] annotations for proper type inference
+    step_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    context_id: Mapped[str] = mapped_column(
         String(100),
         ForeignKey("contexts.context_id", ondelete="CASCADE"),
-        nullable=False,
     )
-    step_type = Column(String(50), nullable=False)  # tool_call, approval, notification, etc.
-    tool_name = Column(String(100), nullable=True)  # MCP tool name if applicable
-    request_data = Column(JSONType, nullable=True)  # Original request JSON
-    response_data = Column(JSONType, nullable=True)  # Response/result JSON
-    status = Column(
-        String(20), nullable=False, default="pending"
+    step_type: Mapped[str] = mapped_column(String(50))  # tool_call, approval, notification, etc.
+    tool_name: Mapped[str | None] = mapped_column(String(100))  # MCP tool name if applicable
+    request_data: Mapped[dict | None] = mapped_column(JSONType)  # Original request JSON
+    response_data: Mapped[dict | None] = mapped_column(JSONType)  # Response/result JSON
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending"
     )  # pending, in_progress, completed, failed, requires_approval
-    owner = Column(String(20), nullable=False)  # principal, publisher, system
-    assigned_to = Column(String(255), nullable=True)  # Specific user/system if assigned
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    completed_at = Column(DateTime, nullable=True)
-    error_message = Column(Text, nullable=True)
-    transaction_details = Column(JSONType, nullable=True)  # Actual API calls made to GAM, etc.
-    comments = Column(JSONType, nullable=False, default=list)  # Array of {user, timestamp, comment} objects
+    owner: Mapped[str] = mapped_column(String(20))  # principal, publisher, system
+    assigned_to: Mapped[str | None] = mapped_column(String(255))  # Specific user/system if assigned
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    completed_at: Mapped[DateTime | None] = mapped_column(DateTime)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    transaction_details: Mapped[dict | None] = mapped_column(JSONType)  # Actual API calls made to GAM, etc.
+    comments: Mapped[list] = mapped_column(JSONType, default=list)  # Array of {user, timestamp, comment} objects
 
     # Relationships
     context = relationship("Context", back_populates="workflow_steps")
