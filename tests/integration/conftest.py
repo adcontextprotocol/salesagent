@@ -10,9 +10,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.admin.app import create_app
-
-admin_app, _ = create_app()
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 from tests.fixtures import TenantFactory
@@ -212,6 +209,10 @@ def integration_db():
 @pytest.fixture
 def admin_client(integration_db):
     """Create test client for admin UI with proper configuration."""
+    from src.admin.app import create_app
+
+    # Create app AFTER integration_db sets up the test database
+    admin_app, _ = create_app()
     admin_app.config["TESTING"] = True
     admin_app.config["SECRET_KEY"] = "test-secret-key"
     admin_app.config["PROPAGATE_EXCEPTIONS"] = True  # Critical for catching template errors
