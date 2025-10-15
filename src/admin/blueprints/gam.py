@@ -217,7 +217,7 @@ def detect_gam_network(tenant_id):
             )
 
     except Exception as e:
-        logger.error(f"Error detecting GAM network for tenant {tenant_id}: {e}")
+        logger.error(f"Error detecting GAM network for tenant {tenant_id}: {e}", exc_info=True)
         return (
             jsonify({"success": False, "error": f"Error detecting network: {str(e)}"}),
             500,
