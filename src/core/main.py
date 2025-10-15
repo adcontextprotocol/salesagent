@@ -2278,11 +2278,24 @@ def _sync_creatives_impl(
     # Note: assignments should be a dict, but handle both dict and None
     if assignments and isinstance(assignments, dict):
         with get_db_session() as session:
+            from src.core.database.models import Creative as DBCreative
             from src.core.database.models import CreativeAssignment as DBAssignment
             from src.core.database.models import MediaBuy
             from src.core.schemas import CreativeAssignment
 
             for creative_id, package_ids in assignments.items():
+                # Verify creative exists (wasn't rejected during validation)
+                stmt_creative = select(DBCreative).filter_by(tenant_id=tenant["tenant_id"], creative_id=creative_id)
+                creative_exists = session.scalars(stmt_creative).first()
+
+                if not creative_exists:
+                    # Creative doesn't exist (failed validation) - skip if in lenient mode, error if strict
+                    if validation_mode == "strict":
+                        raise ToolError(f"Creative not found: {creative_id}")
+                    else:
+                        logger.warning(f"Creative not found during assignment: {creative_id}, skipping")
+                        continue
+
                 for package_id in package_ids:
                     # Find which media buy this package belongs to
                     # Packages are stored in media_buy.raw_request["packages"]
