@@ -19,11 +19,13 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Import database fixtures for all tests
-# IMPORTANT: Commented out to prevent session-scoped test_database fixture
-# from interfering with integration_db fixture in integration tests.
+# IMPORTANT: Only import specific fixtures needed, NOT session-scoped ones.
+# Session-scoped test_database fixture interferes with integration_db fixture.
 # Integration tests use function-scoped integration_db instead.
-# Unit tests that need database fixtures should import them explicitly.
-# from tests.conftest_db import *  # noqa: F401,F403
+try:
+    from tests.conftest_db import db_session  # noqa: F401
+except ImportError:
+    pass  # Integration tests don't need this
 
 # Note: Environment variables are now set via fixtures to avoid global pollution
 # See test_environment fixture below for configuration
