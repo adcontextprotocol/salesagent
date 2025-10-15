@@ -196,8 +196,9 @@ class TestHelperFunctionDocumentation:
             print(f"{name}({', '.join(params)})")
 
         # Verify create_get_products_request (the one that caused the bug)
+        # NOTE: brand_manifest is now first (required per AdCP spec after removing promoted_offering)
         assert "create_get_products_request" in signatures
-        expected = ["brief", "brand_manifest", "filters"]
+        expected = ["brand_manifest", "brief", "filters"]
         actual = signatures["create_get_products_request"]
         assert actual == expected, (
             f"create_get_products_request signature changed!\n"

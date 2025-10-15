@@ -113,6 +113,12 @@ class GetProductsRequest(BaseModel):
         # Extract data from the RootModel union
         data = generated.root.model_dump()
 
+        # Convert AnyUrl to string if present (from generated schema)
+        if "brand_manifest" in data and hasattr(data["brand_manifest"], "__str__"):
+            # AnyUrl objects have __str__ that returns the URL string
+            if not isinstance(data["brand_manifest"], (dict, str)):
+                data["brand_manifest"] = str(data["brand_manifest"])
+
         return cls(**data)
 
     def model_dump_adcp_compliant(self, **kwargs) -> dict[str, Any]:
