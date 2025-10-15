@@ -104,12 +104,16 @@ def sync_orders(tenant_id):
     """Sync GAM orders for a tenant."""
     try:
         with get_db_session() as db_session:
+
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
-            if not tenant.gam_network_code or not tenant.gam_refresh_token:
+            # Get GAM configuration from adapter_config
+            adapter_config = tenant.adapter_config
+
+            if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                 return (
                     jsonify(
                         {
@@ -125,8 +129,8 @@ def sync_orders(tenant_id):
             # Perform sync
             result = sync_gam_orders(
                 tenant_id=tenant_id,
-                network_code=tenant.gam_network_code,
-                refresh_token=tenant.gam_refresh_token,
+                network_code=adapter_config.gam_network_code,
+                refresh_token=adapter_config.gam_refresh_token,
             )
 
             return jsonify(result)

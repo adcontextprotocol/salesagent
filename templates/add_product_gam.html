@@ -136,25 +136,16 @@
         <!-- Section 5: GAM Line Item Configuration -->
         <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">GAM Line Item Configuration</h3>
 
-        <div class="form-group">
-            <label for="line_item_type">Line Item Type *</label>
-            <select id="line_item_type" name="line_item_type" required>
-                <option value="STANDARD">Standard (Fixed CPM + Priority)</option>
-                <option value="SPONSORSHIP">Sponsorship (Fixed CPM + Roadblock)</option>
-                <option value="PRICE_PRIORITY">Price Priority (Floor CPM)</option>
-                <option value="HOUSE">House (No Price)</option>
-            </select>
-            <small style="color: #666; display: block; margin-top: 0.25rem;">
-                Standard/Sponsorship: Fixed price + priority<br>
-                Price Priority: Floor price, priority 12<br>
-                House: Free, priority 16
-            </small>
-        </div>
-
-        <div id="priority-section" style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
-            <div class="form-group" id="priority-container" style="margin: 0;">
-                <!-- Priority field shown/hidden based on line item type -->
-            </div>
+        <div style="padding: 1rem; background: #e7f3ff; border-left: 4px solid #007bff; border-radius: 4px;">
+            <strong>ℹ️ Automatic Configuration</strong>
+            <p style="margin: 0.5rem 0 0 0; color: #666; font-size: 0.9rem;">
+                Line item type and priority are automatically determined based on your selected pricing model:
+            </p>
+            <ul style="margin: 0.5rem 0 0 1.5rem; color: #666; font-size: 0.9rem;">
+                <li><strong>CPM Fixed</strong> → Standard line item (priority 8, guaranteed delivery)</li>
+                <li><strong>Flat Rate</strong> → Sponsorship line item (priority 4, guaranteed delivery)</li>
+                <li><strong>CPM/VCPM/CPC Auction</strong> → Price Priority line item (priority 12, non-guaranteed)</li>
+            </ul>
         </div>
 
         <!-- Submit Buttons -->
@@ -182,30 +173,6 @@
 </style>
 
 <script>
-// Dynamic priority field based on line item type
-document.getElementById('line_item_type').addEventListener('change', function() {
-    const priorityContainer = document.getElementById('priority-container');
-    const lineItemType = this.value;
-    const prioritySection = document.getElementById('priority-section');
-
-    if (lineItemType === 'STANDARD' || lineItemType === 'SPONSORSHIP') {
-        // Standard/Sponsorship: Show custom priority input
-        prioritySection.style.display = 'block';
-        priorityContainer.innerHTML = `
-            <label for="priority">Priority (1-10) *</label>
-            <input type="number" id="priority" name="priority" min="1" max="10" placeholder="e.g., 5" required>
-            <small style="color: #666; display: block; margin-top: 0.25rem;">Lower number = higher priority. Standard line items typically use priorities 6-10.</small>
-        `;
-    } else {
-        // Price Priority & House: Hide priority section (handled automatically)
-        prioritySection.style.display = 'none';
-        priorityContainer.innerHTML = '';
-    }
-});
-
-// Trigger on page load
-document.getElementById('line_item_type').dispatchEvent(new Event('change'));
-
 // Inventory picker functionality
 let currentPickerType = null;
 
@@ -645,10 +612,17 @@ function addPricingOption(existingData = null) {
                     <label>Pricing Model *</label>
                     <select name="pricing_model_${index}" class="pricing-model-select" onchange="updatePricingFields${index}()" required>
                         <option value="">Select...</option>
-                        <option value="cpm_fixed" ${existingData && existingData.pricing_model === 'cpm' && existingData.is_fixed ? 'selected' : ''}>CPM - Fixed Rate</option>
-                        <option value="cpm_auction" ${existingData && existingData.pricing_model === 'cpm' && !existingData.is_fixed ? 'selected' : ''}>CPM - Auction</option>
+                        <optgroup label="Guaranteed (Fixed Price)">
+                            <option value="cpm_fixed" ${existingData && existingData.pricing_model === 'cpm' && existingData.is_fixed ? 'selected' : ''}>CPM - Fixed Rate (Cost per 1,000 impressions)</option>
+                            <option value="flat_rate" ${existingData && existingData.pricing_model === 'flat_rate' ? 'selected' : ''}>Flat Rate - Fixed Campaign Cost (Sponsorship)</option>
+                        </optgroup>
+                        <optgroup label="Non-Guaranteed (Auction/Bidding)">
+                            <option value="cpm_auction" ${existingData && existingData.pricing_model === 'cpm' && !existingData.is_fixed ? 'selected' : ''}>CPM - Auction (Floor price bidding)</option>
+                            <option value="vcpm" ${existingData && existingData.pricing_model === 'vcpm' ? 'selected' : ''}>VCPM - Auction (Viewable impressions)</option>
+                            <option value="cpc" ${existingData && existingData.pricing_model === 'cpc' ? 'selected' : ''}>CPC - Auction (Cost per click)</option>
+                        </optgroup>
                     </select>
-                    <small style="color: #666;">GAM only supports CPM pricing</small>
+                    <small style="color: #666;">All pricing models shown are supported by Google Ad Manager.</small>
                 </div>
 
                 <div class="form-group">
@@ -665,7 +639,7 @@ function addPricingOption(existingData = null) {
                 <div class="form-group" id="rate-group-${index}">
                     <label>Rate *</label>
                     <input type="number" name="rate_${index}" step="0.01" min="0" placeholder="e.g., 12.50" value="${existingData && existingData.rate ? existingData.rate : ''}">
-                    <small style="color: #666;">Price per unit (CPM, CPCV, etc.)</small>
+                    <small style="color: #666;">Price per unit: CPM=$12.50 per 1K imps, CPC=$2.50 per click, FLAT_RATE=$5000 total campaign</small>
                 </div>
 
                 <div class="form-group" id="floor-group-${index}" style="display: none;">
@@ -753,14 +727,9 @@ function removePricingOption(index) {
     const product = {{ product | tojson }};
     const config = product.implementation_config || {};
 
-    // Set line item type
-    if (config.line_item_type) {
-        document.getElementById('line_item_type').value = config.line_item_type;
-        // Trigger change event to populate pricing fields
-        document.getElementById('line_item_type').dispatchEvent(new Event('change'));
-    }
+    // Line item type is now automatically determined from pricing model - no need to set it
 
-    // Set pricing values after a brief delay to let the change event populate the fields
+    // Set pricing values
     setTimeout(() => {
         if (product.cpm) {
             const cpmField = document.getElementById('cpm');

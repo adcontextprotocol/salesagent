@@ -36,6 +36,7 @@ from src.adapters.gam.managers.orders import (
     GUARANTEED_LINE_ITEM_TYPES,
     NON_GUARANTEED_LINE_ITEM_TYPES,
 )
+from src.adapters.gam.pricing_compatibility import PricingCompatibility
 from src.core.audit_logger import AuditLogger
 from src.core.schemas import (
     AssetStatus,
@@ -225,6 +226,20 @@ class GoogleAdManager(AdServerAdapter):
             raise ValueError("GAM adapter not configured for order operations")
         return self.orders_manager.check_order_has_guaranteed_items(order_id)
 
+    def get_supported_pricing_models(self) -> set[str]:
+        """Return set of pricing models GAM adapter supports.
+
+        Google Ad Manager supports:
+        - CPM: All line item types
+        - VCPM: STANDARD only (viewable CPM)
+        - CPC: STANDARD, SPONSORSHIP, NETWORK, PRICE_PRIORITY
+        - FLAT_RATE: SPONSORSHIP (translated to CPD internally)
+
+        Returns:
+            Set of pricing model strings supported by this adapter
+        """
+        return {"cpm", "vcpm", "cpc", "flat_rate"}
+
     # Legacy properties for backward compatibility
     @property
     def GEO_COUNTRY_MAP(self):
@@ -269,30 +284,34 @@ class GoogleAdManager(AdServerAdapter):
         """
         self.log("[bold]GoogleAdManager.create_media_buy[/bold] - Creating GAM order")
 
-        # Validate pricing models - GAM only supports CPM (AdCP PR #88)
+        # Validate pricing models - check GAM compatibility
         if package_pricing_info:
             for pkg_id, pricing in package_pricing_info.items():
                 pricing_model = pricing["pricing_model"]
-                self.log(
-                    f"📊 Package {pkg_id} pricing: {pricing_model} "
-                    f"({pricing['currency']}, {'fixed' if pricing['is_fixed'] else 'auction'})"
-                )
 
-                # Enforce GAM limitation: only CPM pricing supported
-                if pricing_model != "cpm":
+                # Check if pricing model is supported by GAM adapter at all
+                try:
+                    gam_cost_type = PricingCompatibility.get_gam_cost_type(pricing_model)
+                except ValueError as e:
                     error_msg = (
-                        f"Google Ad Manager adapter only supports CPM pricing. "
-                        f"Package '{pkg_id}' requested '{pricing_model}' pricing model. "
-                        f"Please choose a product with CPM pricing or contact the publisher "
-                        f"about CPM pricing options for this inventory."
+                        f"Google Ad Manager adapter does not support '{pricing_model}' pricing. "
+                        f"Supported pricing models: CPM, VCPM, CPC, FLAT_RATE. "
+                        f"The requested pricing model ('{pricing_model}') is not available in GAM. "
+                        f"Please choose a product with compatible pricing."
                     )
                     self.log(f"[red]Error: {error_msg}[/red]")
                     return CreateMediaBuyResponse(
+                        buyer_ref=request.buyer_ref if hasattr(request, "buyer_ref") else "",
                         media_buy_id="",
                         status="failed",
-                        message=error_msg,
-                        errors=[Error(code="unsupported_pricing_model", message=error_msg)],
+                        adcp_version="1.0",
+                        errors=[Error(code="unsupported_pricing_model", message=error_msg, details=None)],
                     )
+
+                self.log(
+                    f"📊 Package {pkg_id} pricing: {pricing_model} → GAM {gam_cost_type} "
+                    f"({pricing['currency']}, {'fixed' if pricing['is_fixed'] else 'auction'})"
+                )
 
         # Validate that advertiser_id and trafficker_id are configured
         if not self.advertiser_id or not self.trafficker_id:
@@ -320,13 +339,12 @@ class GoogleAdManager(AdServerAdapter):
         products_map = {}
         with get_db_session() as db_session:
             for package in packages:
-                product = (
-                    db_session.query(Product)
-                    .filter_by(
-                        tenant_id=self.tenant_id, product_id=package.package_id  # package_id is actually product_id
-                    )
-                    .first()
+                from sqlalchemy import select
+
+                stmt = select(Product).filter_by(
+                    tenant_id=self.tenant_id, product_id=package.package_id  # package_id is actually product_id
                 )
+                product = db_session.scalars(stmt).first()
                 if product:
                     products_map[package.package_id] = {
                         "product_id": product.product_id,
@@ -443,6 +461,7 @@ class GoogleAdManager(AdServerAdapter):
                 tenant_id=self.tenant_id,
                 order_name=order_name,
                 targeting_overlay=request.targeting_overlay,
+                package_pricing_info=package_pricing_info,
             )
             self.log(f"✓ Created {len(line_item_ids)} line items")
         except Exception as e:

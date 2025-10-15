@@ -659,15 +659,17 @@ function addPricingOption() {
                     <label>Pricing Model *</label>
                     <select name="pricing_model_${index}" class="pricing-model-select" onchange="updatePricingFields${index}()" required>
                         <option value="">Select...</option>
-                        <option value="cpm_fixed">CPM - Fixed Rate</option>
-                        <option value="cpm_auction">CPM - Auction</option>
-                        <option value="cpcv">CPCV (Cost per completed view)</option>
-                        <option value="cpp">CPP (Cost per point/GRP)</option>
-                        <option value="cpc">CPC (Cost per click)</option>
-                        <option value="cpv">CPV (Cost per view)</option>
-                        <option value="flat_rate">Flat Rate</option>
+                        <optgroup label="Guaranteed (Fixed Price)">
+                            <option value="cpm_fixed">CPM - Fixed Rate (Cost per 1,000 impressions)</option>
+                            <option value="flat_rate">Flat Rate - Fixed Campaign Cost (Sponsorship)</option>
+                        </optgroup>
+                        <optgroup label="Non-Guaranteed (Auction/Bidding)">
+                            <option value="cpm_auction">CPM - Auction (Floor price bidding)</option>
+                            <option value="vcpm">VCPM - Auction (Viewable impressions)</option>
+                            <option value="cpc">CPC - Auction (Cost per click)</option>
+                        </optgroup>
                     </select>
-                    <small style="color: #666;">CPCV/CPP/CPC/CPV/Flat are always fixed rate</small>
+                    <small style="color: #666;">All pricing models shown are supported by Google Ad Manager.</small>
                 </div>
 
                 <div class="form-group">
@@ -728,29 +730,33 @@ function addPricingOption() {
         const priceGuidance = document.getElementById(`price-guidance-${index}`);
 
         // Determine if fixed or auction from pricing model selection
-        const isFixed = pricingModel !== 'cpm_auction';
+        const isAuction = pricingModel.includes('_auction');
 
-        if (isFixed) {
-            rateGroup.style.display = 'block';
-            floorGroup.style.display = 'none';
-            priceGuidance.style.display = 'none';
-            document.querySelector(`input[name="rate_${index}"]`).required = true;
-            document.querySelector(`input[name="floor_${index}"]`).required = false;
-        } else {
-            // Auction mode (only cpm_auction)
+        if (isAuction) {
+            // Auction mode (cpm_auction or cpc_auction)
             rateGroup.style.display = 'none';
             floorGroup.style.display = 'block';
             priceGuidance.style.display = 'block';
             document.querySelector(`input[name="rate_${index}"]`).required = false;
             document.querySelector(`input[name="floor_${index}"]`).required = true;
+        } else {
+            // Fixed rate mode
+            rateGroup.style.display = 'block';
+            floorGroup.style.display = 'none';
+            priceGuidance.style.display = 'none';
+            document.querySelector(`input[name="rate_${index}"]`).required = true;
+            document.querySelector(`input[name="floor_${index}"]`).required = false;
         }
 
         // Show model-specific parameters based on selected model
         const parametersDiv = document.getElementById(`parameters-${index}`);
         const paramsContent = document.getElementById(`params-content-${index}`);
 
-        // Extract base model from cpm_fixed/cpm_auction
-        const baseModel = pricingModel.startsWith('cpm_') ? 'cpm' : pricingModel;
+        // Extract base model - strip _fixed/_auction suffix
+        let baseModel = pricingModel;
+        if (pricingModel.includes('_fixed') || pricingModel.includes('_auction')) {
+            baseModel = pricingModel.split('_')[0]; // cpm_fixed → cpm, cpc_auction → cpc
+        }
 
         if (baseModel === 'cpp') {
             parametersDiv.style.display = 'block';
