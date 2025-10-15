@@ -236,12 +236,16 @@ def list_products(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            products = db_session.scalars(
-                select(Product)
-                .options(joinedload(Product.pricing_options))
-                .filter_by(tenant_id=tenant_id)
-                .order_by(Product.name)
-            ).all()
+            products = (
+                db_session.scalars(
+                    select(Product)
+                    .options(joinedload(Product.pricing_options))
+                    .filter_by(tenant_id=tenant_id)
+                    .order_by(Product.name)
+                )
+                .unique()
+                .all()
+            )
 
             # Convert products to dict format for template
             products_list = []
@@ -739,7 +743,7 @@ def edit_product(tenant_id, product_id):
 
                 # Update pricing options (AdCP PR #88)
                 # Delete existing pricing options and recreate from form
-                db_session.query(PricingOption).filter_by(tenant_id=tenant_id, product_id=product_id).delete()
+                db_session.query(PricingOption).filter_by(tenant_id=tenant_id, product_id=product_id).delete()  # legacy-ok
 
                 pricing_options_data = parse_pricing_options_from_form(form_data)
                 if pricing_options_data:
