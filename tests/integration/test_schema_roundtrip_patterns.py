@@ -501,9 +501,6 @@ class TestRoundtripErrorScenarios:
             "description": "Testing for data loss during roundtrip",
             "formats": ["display_300x250", "video_15s"],
             "delivery_type": "guaranteed",
-            "is_fixed_price": True,
-            "cpm": 20.0,
-            "min_spend": 3000.0,
             "measurement": Measurement(
                 type="incremental_sales_lift",
                 attribution="probabilistic",
@@ -515,8 +512,19 @@ class TestRoundtripErrorScenarios:
                 templates_available=False,
             ),
             "is_custom": False,
-            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "property_tags": ["all_inventory"],
             "brief_relevance": "Test relevance explanation",
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=20.0,
+                    currency="USD",
+                    is_fixed=True,
+                    supported=True,
+                    min_spend_per_package=3000.0,
+                )
+            ],
         }
 
         original_product = Product(**original_data)
