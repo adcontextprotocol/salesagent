@@ -399,8 +399,6 @@ class MockAdServer(AdServerAdapter):
             if scenario.should_ask_question:
                 return CreateMediaBuyResponse(
                     media_buy_id=f"pending_question_{id(request)}",
-                    status="pending",
-                    message=scenario.question_text or "Additional information needed",
                     creative_deadline=None,
                     buyer_ref=request.buyer_ref,
                 )
@@ -510,9 +508,8 @@ class MockAdServer(AdServerAdapter):
 
         # Return pending response
         return CreateMediaBuyResponse(
+            buyer_ref=request.buyer_ref,
             media_buy_id=f"pending_{step.step_id}",
-            status="submitted",
-            message=f"Media buy submitted for processing. Task ID: {step.step_id}",
             creative_deadline=None,
         )
 
