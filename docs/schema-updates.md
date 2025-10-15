@@ -13,13 +13,29 @@ We maintain local cached copies of AdCP schemas in `tests/e2e/schemas/v1/` for:
 
 ## Automated Protection
 
-The pre-commit hook runs `scripts/check_schema_sync.py --ci` which:
+### Pre-commit Hook (Runs Automatically)
+
+The pre-commit hook runs `scripts/check_schema_sync.py --ci` on **every commit**, which:
 1. **Validates format_ids structure** - Ensures package-request.json uses FormatId objects, not strings
-2. **Checks critical schemas** - Compares package-request.json, format-id.json, and other key schemas
-3. **Validates all schemas** - Checks all cached schemas match live versions
-4. **Reports mismatches** - Blocks commits if schemas are out of sync
+2. **Checks critical schemas** - Compares package-request.json, format-id.json, and 5 other key schemas
+3. **Validates all schemas** - Checks all 30+ cached schemas match live versions
+4. **Reports mismatches** - **Blocks commits** if schemas are out of sync
 
 **This prevents the root cause of the format_ids issue** where outdated cached schemas caused the generator to produce incorrect types.
+
+### What Gets Validated
+
+**Every commit automatically checks:**
+- ✅ Format IDs structure (FormatId objects, not strings)
+- ✅ 7 critical schemas (package-request, format-id, product, creative-asset, targeting, get-products)
+- ✅ 30+ implemented endpoint schemas
+- ✅ Schema index version
+
+**If validation fails, commit is blocked:**
+```bash
+❌ ERROR: Schema out of sync: /schemas/v1/media-buy/package-request.json
+💡 To fix: uv run python scripts/check_schema_sync.py --update
+```
 
 ## When to Update Schemas
 
