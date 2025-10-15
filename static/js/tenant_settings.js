@@ -612,7 +612,7 @@ function syncGAMInventory() {
             const targetingValueCount = (data.custom_targeting || {}).total_values || 0;
             const audienceCount = (data.audience_segments || {}).total || 0;
 
-            const totalCount = adUnitCount + placementCount + labelCount + targetingKeyCount + audienceCount;
+            const totalCount = adUnitCount + placementCount + labelCount + targetingKeyCount + targetingValueCount + audienceCount;
 
             let message = `✅ Inventory synced successfully!\n\n`;
             if (adUnitCount > 0) message += `• ${adUnitCount} ad units\n`;
