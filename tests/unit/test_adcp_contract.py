@@ -714,7 +714,7 @@ class TestAdCPContract:
             "impressions",
             "targeting_overlay",
             "creative_assignments",
-            "formats_to_provide",
+            "format_ids_to_provide",  # Per AdCP v2.4 spec (not formats_to_provide)
         ]
         for field in adcp_optional_fields:
             assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
