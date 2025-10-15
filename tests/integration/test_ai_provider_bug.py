@@ -41,6 +41,7 @@ async def test_ai_provider_bug(integration_db):
             targeting_template={},
             delivery_type="guaranteed",
             is_custom=False,
+            property_tags=["all_inventory"],
         )
         session.merge(test_product)
         session.commit()

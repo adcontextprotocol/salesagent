@@ -124,6 +124,7 @@ class TestMCPToolsAudit:
                 targeting_template={},
                 delivery_type="non_guaranteed",
                 is_custom=False,
+                property_tags=["all_inventory"],
             )
             session.add(product)
 
