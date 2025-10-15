@@ -344,23 +344,16 @@ def add_product(tenant_id):
                 # Parse and create pricing options (AdCP PR #88)
                 pricing_options_data = parse_pricing_options_from_form(form_data)
 
-                # Derive legacy fields (delivery_type, cpm, price_guidance) from first pricing option for backwards compatibility
-                # These legacy fields are used by implementation_config but will eventually be deprecated
+                # Derive delivery_type from first pricing option for implementation_config
                 delivery_type = "guaranteed"  # Default
-                cpm = None
-                price_guidance = None
 
                 if pricing_options_data and len(pricing_options_data) > 0:
                     first_option = pricing_options_data[0]
                     # Determine delivery_type based on is_fixed
                     if first_option.get("is_fixed", True):
                         delivery_type = "guaranteed"
-                        cpm = first_option.get("rate")
                     else:
                         delivery_type = "non-guaranteed"
-                        pg = first_option.get("price_guidance")
-                        if pg and "floor" in pg:
-                            price_guidance = {"min": pg["floor"], "max": pg.get("p90", pg["floor"])}
 
                 # Build implementation config based on adapter type
                 implementation_config = {}
@@ -404,9 +397,6 @@ def add_product(tenant_id):
                     "description": form_data.get("description", ""),
                     "formats": formats,
                     "delivery_type": delivery_type,
-                    "is_fixed_price": (delivery_type == "guaranteed"),
-                    "cpm": cpm,
-                    "price_guidance": price_guidance,
                     "targeting_template": {},
                     "implementation_config": implementation_config,
                 }
@@ -676,24 +666,11 @@ def edit_product(tenant_id, product_id):
                 line_item_type = form_data.get("line_item_type")
 
                 if line_item_type:
-                    # GAM form: map line item type to delivery type and pricing
+                    # GAM form: map line item type to delivery type
                     if line_item_type in ["STANDARD", "SPONSORSHIP"]:
                         product.delivery_type = "guaranteed"
-                        product.is_fixed_price = True
-                        product.cpm = float(form_data.get("cpm", 0)) if form_data.get("cpm") else None
-                        product.price_guidance = None
-                    elif line_item_type == "PRICE_PRIORITY":
+                    elif line_item_type in ["PRICE_PRIORITY", "HOUSE"]:
                         product.delivery_type = "non-guaranteed"
-                        product.is_fixed_price = False
-                        product.cpm = None
-                        floor_cpm = float(form_data.get("floor_cpm", 0)) if form_data.get("floor_cpm") else None
-                        if floor_cpm:
-                            product.price_guidance = {"min": floor_cpm, "max": floor_cpm}
-                    elif line_item_type == "HOUSE":
-                        product.delivery_type = "non-guaranteed"
-                        product.is_fixed_price = False
-                        product.cpm = None
-                        product.price_guidance = None
 
                     # Update implementation_config with GAM-specific fields
                     if adapter_type == "google_ad_manager":
@@ -795,20 +772,18 @@ def edit_product(tenant_id, product_id):
                     }
                 )
 
-            # Derive legacy fields from pricing_options (preferred) or product model (fallback)
-            # This ensures form displays pricing_options data, not potentially stale legacy fields
+            # Derive display values from pricing_options
+            delivery_type = product.delivery_type
+            is_fixed_price = None
+            cpm = None
+            price_guidance = None
+
             if pricing_options_list:
                 first_pricing = pricing_options_list[0]
                 delivery_type = "guaranteed" if first_pricing["is_fixed"] else "non_guaranteed"
                 is_fixed_price = first_pricing["is_fixed"]
                 cpm = first_pricing["rate"]
                 price_guidance = first_pricing["price_guidance"]
-            else:
-                # Fallback to legacy fields if no pricing_options exist
-                delivery_type = product.delivery_type
-                is_fixed_price = product.is_fixed_price
-                cpm = product.cpm
-                price_guidance = product.price_guidance
 
             product_dict = {
                 "product_id": product.product_id,
@@ -817,7 +792,6 @@ def edit_product(tenant_id, product_id):
                 "delivery_type": delivery_type,
                 "is_fixed_price": is_fixed_price,
                 "cpm": cpm,
-                "min_spend": product.min_spend,
                 "price_guidance": price_guidance,
                 "formats": (
                     product.formats

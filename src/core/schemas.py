@@ -627,25 +627,12 @@ class Product(BaseModel):
         None, description="Available pricing models for this product (AdCP PR #88)"
     )
 
-    # DEPRECATED: Old pricing fields (maintained for backward compatibility)
-    # Use pricing_options instead in new implementations
-    is_fixed_price: bool | None = Field(
-        None, description="DEPRECATED: Use pricing_options instead. Whether this product has fixed pricing"
-    )
-    cpm: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options instead. Cost per thousand impressions"
-    )
-    min_spend: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options[].min_spend_per_package instead", gt=-1
-    )
-    currency: str | None = Field(
-        None, description="DEPRECATED: Use pricing_options[].currency instead. ISO 4217 currency code"
-    )
+    # Pricing fields (AdCP PR #88)
     floor_cpm: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options with price_guidance instead", gt=0
+        None, description="Calculated dynamically from pricing_options price_guidance", gt=0
     )
     recommended_cpm: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options with price_guidance instead", gt=0
+        None, description="Calculated dynamically from pricing_options price_guidance", gt=0
     )
 
     # Other fields
@@ -677,19 +664,16 @@ class Product(BaseModel):
 
     @model_validator(mode="after")
     def validate_pricing_fields(self) -> "Product":
-        """Validate that either pricing_options OR legacy pricing fields are present per AdCP spec.
+        """Validate that pricing_options are present per AdCP spec.
 
-        Per AdCP PR #88: Products should use pricing_options (new format).
-        Legacy fields (is_fixed_price, cpm, etc.) are maintained for backward compatibility.
-        At least one pricing method must be specified.
+        Per AdCP PR #88: All products must use pricing_options.
         """
         has_pricing_options = self.pricing_options is not None and len(self.pricing_options) > 0
-        has_legacy_pricing = self.is_fixed_price is not None
 
-        if not has_pricing_options and not has_legacy_pricing:
+        if not has_pricing_options:
             raise ValueError(
-                "Product must have either pricing_options (recommended) or legacy pricing fields (is_fixed_price). "
-                "See AdCP PR #88 for new pricing options format."
+                "Product must have pricing_options with at least one pricing option. "
+                "See AdCP PR #88 for pricing options format."
             )
 
         return self
@@ -744,11 +728,6 @@ class Product(BaseModel):
         Returns None if no pricing information available.
         """
         if not self.pricing_options or len(self.pricing_options) == 0:
-            # Fallback to legacy pricing
-            if self.is_fixed_price is not None:
-                if self.cpm:
-                    return f"CPM: ${self.cpm:.2f} ({self.currency or 'USD'}, fixed)"
-                return "Fixed pricing (contact for rates)"
             return None
 
         summary_parts = []
@@ -798,9 +777,7 @@ class Product(BaseModel):
             "description",
             "format_ids",
             "delivery_type",
-            "is_fixed_price",
             "is_custom",
-            "currency",  # PR #79: Always include currency
         }
 
         adcp_data = {}

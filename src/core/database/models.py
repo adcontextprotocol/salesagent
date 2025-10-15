@@ -156,12 +156,6 @@ class Product(Base, JSONValidatorMixin):
     targeting_template = Column(JSONType, nullable=False)  # JSONB in PostgreSQL
     delivery_type = Column(String(50), nullable=False)
 
-    # DEPRECATED: Old pricing fields (maintained for backward compatibility)
-    is_fixed_price = Column(Boolean, nullable=True)  # Made nullable in migration
-    cpm: Mapped[Decimal | None] = mapped_column(DECIMAL(10, 2))
-    min_spend: Mapped[Decimal | None] = mapped_column(DECIMAL(10, 2), nullable=True)
-    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)  # Added in migration
-
     # Other fields
     measurement = Column(JSONType, nullable=True)  # JSONB in PostgreSQL - AdCP measurement object
     creative_policy = Column(JSONType, nullable=True)  # JSONB in PostgreSQL - AdCP creative policy object
