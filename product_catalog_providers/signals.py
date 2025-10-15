@@ -244,18 +244,27 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         product_id = f"signal_{product_id_hash}"
 
         # Create AdCP-compliant Product (without internal fields like tenant_id)
+        from src.core.schemas import PricingOption
+
         return Product(
             product_id=product_id,
             name=product_name,
             description=product_description,
             formats=["display_300x250", "display_728x90", "video_pre_roll"],  # Standard format IDs
             delivery_type="non_guaranteed",  # Signals products are typically programmatic
-            is_fixed_price=False,  # Signals products are typically programmatic
-            cpm=adjusted_price,  # Use cpm field instead of base_price
-            min_spend=100.0,
             is_custom=True,  # These are custom products created from signals
             brief_relevance=f"Generated from {len(signals)} signals in {category} category for: {brief[:100]}...",
             property_tags=["all_inventory"],  # Required per AdCP spec
+            pricing_options=[
+                PricingOption(
+                    pricing_option_id="cpm_usd_auction",
+                    pricing_model="cpm",
+                    currency="USD",
+                    is_fixed=False,
+                    price_guidance={"floor": float(adjusted_price), "suggested_rate": float(adjusted_price) * 1.5},
+                    min_spend_per_package=100.0,
+                )
+            ],
         )
 
     async def _get_database_products(self, brief: str, tenant_id: str, principal_id: str | None) -> list[Product]:
