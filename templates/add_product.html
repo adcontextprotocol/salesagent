@@ -569,27 +569,17 @@ function addPricingOption() {
                     <label>Pricing Model *</label>
                     <select name="pricing_model_${index}" class="pricing-model-select" onchange="updatePricingFields${index}()" required>
                         <option value="">Select...</option>
-                        <optgroup label="Impressions-Based">
+                        <optgroup label="Guaranteed (Fixed Price)">
                             <option value="cpm_fixed">CPM - Fixed Rate (Cost per 1,000 impressions)</option>
+                            <option value="flat_rate">Flat Rate - Fixed Campaign Cost (Sponsorship)</option>
+                        </optgroup>
+                        <optgroup label="Non-Guaranteed (Auction/Bidding)">
                             <option value="cpm_auction">CPM - Auction (Floor price bidding)</option>
-                            <option value="vcpm_fixed">VCPM - Fixed Rate (Viewable impressions only)</option>
-                        </optgroup>
-                        <optgroup label="Performance-Based">
-                            <option value="cpc_fixed">CPC - Fixed Rate (Cost per click)</option>
-                            <option value="cpc_auction">CPC - Auction (Bid per click)</option>
-                        </optgroup>
-                        <optgroup label="Video-Based">
-                            <option value="cpcv">CPCV (Cost per completed view - 100% watched)</option>
-                            <option value="cpv">CPV (Cost per view at threshold)</option>
-                        </optgroup>
-                        <optgroup label="TV/Linear">
-                            <option value="cpp">CPP (Cost per point/GRP - TV metrics)</option>
-                        </optgroup>
-                        <optgroup label="Sponsorship">
-                            <option value="flat_rate">FLAT_RATE (Fixed campaign cost)</option>
+                            <option value="vcpm">VCPM - Auction (Viewable impressions)</option>
+                            <option value="cpc">CPC - Auction (Cost per click)</option>
                         </optgroup>
                     </select>
-                    <small style="color: #666;">Note: GAM adapter supports CPM, VCPM, CPC, and FLAT_RATE. Other models require compatible ad servers.</small>
+                    <small style="color: #666;">All pricing models shown are supported by Google Ad Manager.</small>
                 </div>
 
                 <div class="form-group">

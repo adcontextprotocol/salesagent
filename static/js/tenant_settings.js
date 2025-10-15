@@ -577,20 +577,38 @@ function testGAMConnection() {
 
 // Sync GAM inventory
 function syncGAMInventory() {
+    console.log('=== syncGAMInventory START ===');
     const button = document.querySelector('button[onclick="syncGAMInventory()"]');
+    console.log('Button:', button);
+    console.log('Button disabled?', button ? button.disabled : 'NO BUTTON FOUND');
     const originalText = button.innerHTML;
+    console.log('Original text:', originalText);
 
     button.disabled = true;
-    button.innerHTML = '<span style="display: inline-block; animation: spin 1s linear infinite;">🔄</span> Syncing...';
 
-    fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/sync-inventory`, {
+    // Simple animated dots loading indicator
+    let dots = '';
+    button.innerHTML = '⏳ Syncing';
+    console.log('Set button to:', button.innerHTML);
+    const loadingInterval = setInterval(() => {
+        dots = dots.length >= 3 ? '' : dots + '.';
+        button.innerHTML = `⏳ Syncing${dots}`;
+        console.log('Button text now:', button.innerHTML);
+    }, 300);
+
+    const url = `${config.scriptName}/tenant/${config.tenantId}/gam/sync-inventory`;
+
+    fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        return response.json();
+    })
     .then(data => {
+        clearInterval(loadingInterval);
         button.disabled = false;
         button.innerHTML = originalText;
 
@@ -627,6 +645,7 @@ function syncGAMInventory() {
         }
     })
     .catch(error => {
+        clearInterval(loadingInterval);
         button.disabled = false;
         button.innerHTML = originalText;
         alert('❌ Error: ' + error.message);

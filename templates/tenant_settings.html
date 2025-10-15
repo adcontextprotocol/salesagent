@@ -641,19 +641,7 @@
 
             {% if active_adapter %}
             <div class="status-card success">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong>✅ Connected to {{ active_adapter|title|replace('_', ' ') }}</strong>
-                        <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem;">
-                            Last synced: {{ last_sync_time or 'Never' }}
-                        </p>
-                    </div>
-                    {% if active_adapter == 'google_ad_manager' %}
-                    <button onclick="syncGAMInventory()" class="btn btn-small btn-primary">
-                        <span id="sync-icon">🔄</span> Sync Inventory
-                    </button>
-                    {% endif %}
-                </div>
+                <strong>✅ Connected to {{ active_adapter|title|replace('_', ' ') }}</strong>
             </div>
             {% else %}
             <div class="status-card warning">
@@ -1253,7 +1241,7 @@ REJECT - Creative cannot be approved:
             <div class="form-section">
                 <h3>Inventory Sync Status</h3>
 
-                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
                     <div class="stat-card">
                         <div class="stat-value">{{ inventory_count|default(0) }}</div>
                         <div class="stat-label">Total Items</div>
@@ -1265,6 +1253,10 @@ REJECT - Creative cannot be approved:
                     <div class="stat-card">
                         <div class="stat-value">{{ placements_count|default(0) }}</div>
                         <div class="stat-label">Placements</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">{{ (custom_targeting_keys_count|default(0) + custom_targeting_values_count|default(0)) }}</div>
+                        <div class="stat-label">Targeting (Keys+Values)</div>
                     </div>
                 </div>
 
@@ -1285,10 +1277,10 @@ REJECT - Creative cannot be approved:
                 <div class="form-section" style="margin-top: 1.5rem;">
                     <h3>Actions</h3>
                     <div style="display: flex; gap: 1rem;">
-                        <a href="/admin/tenant/{{ tenant_id }}/inventory?type=all" class="btn btn-secondary">
+                        <a href="{{ url_for('inventory.inventory_browser', tenant_id=tenant_id, type='all') }}" class="btn btn-secondary">
                             📊 Browse Inventory
                         </a>
-                        <a href="/admin/tenant/{{ tenant_id }}/targeting" class="btn btn-secondary">
+                        <a href="{{ url_for('inventory.targeting_browser', tenant_id=tenant_id) }}" class="btn btn-secondary">
                             🎯 Browse Targeting
                         </a>
                     </div>

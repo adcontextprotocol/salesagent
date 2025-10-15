@@ -578,7 +578,7 @@ def add_product(tenant_id):
         for prop in authorized_properties:
             properties_list.append(
                 {
-                    "id": prop.id,
+                    "id": prop.property_id,
                     "name": prop.name,
                     "property_type": prop.property_type,
                     "tags": prop.tags or [],
