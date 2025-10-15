@@ -28,6 +28,8 @@ from src.core.schemas import (
     Creative,
     CreativePolicy,
     Measurement,
+    PriceGuidance,
+    PricingOption,
     Product,
     Signal,
     SignalDeployment,
@@ -110,7 +112,7 @@ class SchemaRoundtripValidator:
             assert isinstance(adcp_dict["format_ids"], list), "format_ids must be a list"
 
             # Required Product fields per AdCP spec
-            required_fields = ["product_id", "name", "description", "delivery_type", "is_fixed_price"]
+            required_fields = ["product_id", "name", "description", "delivery_type", "pricing_options"]
             for field in required_fields:
                 assert field in adcp_dict, f"Required AdCP field '{field}' missing from Product output"
 
@@ -136,15 +138,23 @@ class TestProductSchemaRoundtrip:
             "description": "Testing guaranteed product roundtrip conversion",
             "formats": ["display_300x250", "display_728x90"],
             "delivery_type": "guaranteed",
-            "is_fixed_price": True,
-            "cpm": 15.0,
-            "min_spend": 2500.0,
             "measurement": Measurement(
                 type="brand_lift", attribution="deterministic_purchase", reporting="weekly_dashboard"
             ),
             "creative_policy": CreativePolicy(co_branding="optional", landing_page="any", templates_available=True),
             "is_custom": False,
-            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "property_tags": ["all_inventory"],
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=15.0,
+                    currency="USD",
+                    is_fixed=True,
+                    supported=True,
+                    min_spend_per_package=2500.0,
+                )
+            ],
         }
 
         validator.test_model_roundtrip(Product, test_data)
@@ -157,11 +167,19 @@ class TestProductSchemaRoundtrip:
             "description": "Testing non-guaranteed product roundtrip conversion",
             "formats": ["video_15s", "video_30s"],
             "delivery_type": "non_guaranteed",
-            "is_fixed_price": False,
-            "cpm": None,  # Test null handling
-            "min_spend": 5000.0,
             "is_custom": True,
-            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "property_tags": ["all_inventory"],
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_auction",
+                    pricing_model="cpm",
+                    currency="USD",
+                    is_fixed=False,
+                    supported=True,
+                    price_guidance=PriceGuidance(floor=5.0, p50=10.0, p75=15.0, p90=20.0),
+                    min_spend_per_package=5000.0,
+                )
+            ],
         }
 
         validator.test_model_roundtrip(Product, test_data)
@@ -174,9 +192,18 @@ class TestProductSchemaRoundtrip:
             "description": "Testing minimal product with required fields only",
             "formats": ["display_320x50"],
             "delivery_type": "non_guaranteed",
-            "is_fixed_price": False,
             "is_custom": False,
-            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "property_tags": ["all_inventory"],
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_auction",
+                    pricing_model="cpm",
+                    currency="USD",
+                    is_fixed=False,
+                    supported=True,
+                    price_guidance=PriceGuidance(floor=1.0, p50=3.0, p75=5.0, p90=7.0),
+                )
+            ],
         }
 
         validator.test_model_roundtrip(Product, test_data)
@@ -190,9 +217,6 @@ class TestProductSchemaRoundtrip:
             "description": "Testing complex product with all fields populated",
             "formats": ["display_300x250", "video_15s", "audio_30s"],
             "delivery_type": "guaranteed",
-            "is_fixed_price": True,
-            "cpm": 25.75,
-            "min_spend": 10000.0,
             "measurement": Measurement(
                 type="incremental_sales_lift", attribution="probabilistic", window="30_days", reporting="real_time_api"
             ),
@@ -200,8 +224,19 @@ class TestProductSchemaRoundtrip:
                 co_branding="required", landing_page="retailer_site_only", templates_available=True
             ),
             "is_custom": True,
-            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "property_tags": ["all_inventory"],
             "brief_relevance": "Highly relevant for video advertising campaigns",
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=25.75,
+                    currency="USD",
+                    is_fixed=True,
+                    supported=True,
+                    min_spend_per_package=10000.0,
+                )
+            ],
         }
 
         validator.test_model_roundtrip(Product, test_data)
