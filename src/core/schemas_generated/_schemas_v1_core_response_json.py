@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,13 +28,13 @@ class ProtocolResponse(BaseModel):
     )
     message: Annotated[str, Field(description="Human-readable summary")]
     status: Annotated[
-        Optional[Status],
+        Status | None,
         Field(
             description="Standardized task status values based on A2A TaskState enum. Indicates the current state of any AdCP operation.",
             title="Task Status",
         ),
     ] = None
-    context_id: Annotated[Optional[str], Field(description="Session continuity identifier")] = None
+    context_id: Annotated[str | None, Field(description="Session continuity identifier")] = None
     data: Annotated[
-        Optional[Any], Field(description="AdCP task-specific response data (see individual task response schemas)")
+        Any | None, Field(description="AdCP task-specific response data (see individual task response schemas)")
     ] = None

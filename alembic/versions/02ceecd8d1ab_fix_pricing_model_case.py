@@ -8,17 +8,18 @@ Revises: b61ff75713c0
 Create Date: 2025-10-15 07:20:46.905113
 
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 from sqlalchemy import text
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '02ceecd8d1ab'
-down_revision: Union[str, Sequence[str], None] = 'b61ff75713c0'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "02ceecd8d1ab"
+down_revision: str | Sequence[str] | None = "b61ff75713c0"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

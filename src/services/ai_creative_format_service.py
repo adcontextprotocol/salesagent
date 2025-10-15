@@ -18,9 +18,7 @@ from typing import Any
 import aiohttp
 import google.generativeai as genai
 from bs4 import BeautifulSoup
-from sqlalchemy import select
 
-from src.core.database.database_session import get_db_session
 # CreativeFormat model removed - table dropped in migration f2addf453200
 # from src.core.database.models import CreativeFormat
 from src.core.retry_utils import http_retry

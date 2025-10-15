@@ -11,17 +11,18 @@ Revises: 7426aa7e2f1a
 Create Date: 2025-10-15 07:00:07.929952
 
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'b61ff75713c0'
-down_revision: Union[str, Sequence[str], None] = '7426aa7e2f1a'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "b61ff75713c0"
+down_revision: str | Sequence[str] | None = "7426aa7e2f1a"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -97,11 +98,7 @@ def downgrade() -> None:
     connection = op.get_bind()
 
     # Drop trigger
-    connection.execute(
-        sa.text("DROP TRIGGER IF EXISTS enforce_min_one_pricing_option ON pricing_options;")
-    )
+    connection.execute(sa.text("DROP TRIGGER IF EXISTS enforce_min_one_pricing_option ON pricing_options;"))
 
     # Drop function
-    connection.execute(
-        sa.text("DROP FUNCTION IF EXISTS prevent_empty_pricing_options();")
-    )
+    connection.execute(sa.text("DROP FUNCTION IF EXISTS prevent_empty_pricing_options();"))

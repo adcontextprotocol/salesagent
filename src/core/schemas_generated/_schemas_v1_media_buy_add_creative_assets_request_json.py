@@ -164,9 +164,7 @@ class Asset(BaseModel):
         list[Input] | None,
         Field(description="Preview contexts for generative formats - defines what scenarios to generate previews for"),
     ] = None
-    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = (
-        None
-    )
+    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = None
     approved: Annotated[
         bool | None,
         Field(
@@ -296,9 +294,7 @@ class Asset6(BaseModel):
         list[Input] | None,
         Field(description="Preview contexts for generative formats - defines what scenarios to generate previews for"),
     ] = None
-    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = (
-        None
-    )
+    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = None
     approved: Annotated[
         bool | None,
         Field(
@@ -311,9 +307,7 @@ class AddCreativeAssetsRequest2(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    media_buy_id: Annotated[str | None, Field(description="Publisher's ID of the media buy to add creatives to")] = (
-        None
-    )
+    media_buy_id: Annotated[str | None, Field(description="Publisher's ID of the media buy to add creatives to")] = None
     buyer_ref: Annotated[str, Field(description="Buyer's reference for the media buy")]
     assets: Annotated[list[Asset6], Field(description="Array of creative assets to upload")]
 

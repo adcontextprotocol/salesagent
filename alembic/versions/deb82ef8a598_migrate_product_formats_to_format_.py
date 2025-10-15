@@ -18,19 +18,19 @@ Revises: 31ff6218695a
 Create Date: 2025-10-12 22:04:09.934758
 
 """
-from typing import Sequence, Union
-import json
 
-from alembic import op
-import sqlalchemy as sa
+import json
+from collections.abc import Sequence
+
 from sqlalchemy import text
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'deb82ef8a598'
-down_revision: Union[str, Sequence[str], None] = '31ff6218695a'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "deb82ef8a598"
+down_revision: str | Sequence[str] | None = "31ff6218695a"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # Default creative agent URL
 DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"

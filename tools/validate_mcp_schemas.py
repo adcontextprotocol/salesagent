@@ -257,7 +257,7 @@ class ToolSchemaValidator:
                                     original_raw_params.append(arg.arg)
 
                 if original_raw_params == ["req"]:
-                    print(f"  ✅ Schema-first A2A function (takes 'req' parameter)")
+                    print("  ✅ Schema-first A2A function (takes 'req' parameter)")
                 else:
                     # Validate like a normal tool
                     self.validate_tool(raw_function_name, raw_params, schema_class)

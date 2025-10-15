@@ -6,7 +6,6 @@ the _impl functions directly.
 """
 
 
-
 class TestMCPToolImports:
     """Test that MCP tool wrapper functions have all their dependencies imported."""
 

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
@@ -19,4 +19,4 @@ class ListAuthorizedPropertiesRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    tags: Annotated[Optional[list[Tag]], Field(description="Filter properties by specific tags (optional)")] = None
+    tags: Annotated[list[Tag] | None, Field(description="Filter properties by specific tags (optional)")] = None

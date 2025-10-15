@@ -26,9 +26,9 @@ class PerformanceMetrics(BaseModel):
     average_ctr: Annotated[
         float | None, Field(description="Average click-through rate across assignments", ge=0.0, le=1.0)
     ] = None
-    last_served: Annotated[
-        AwareDatetime | None, Field(description="When this creative last served an impression")
-    ] = None
+    last_served: Annotated[AwareDatetime | None, Field(description="When this creative last served an impression")] = (
+        None
+    )
 
 
 class Status1(Enum):
@@ -100,9 +100,7 @@ class CreativeLibraryItem(BaseModel):
     width: Annotated[float | None, Field(description="Width in pixels (for video/display)", ge=0.0)] = None
     height: Annotated[float | None, Field(description="Height in pixels (for video/display)", ge=0.0)] = None
     file_size: Annotated[int | None, Field(description="File size in bytes", ge=0)] = None
-    assignments: Annotated[list[str] | None, Field(description="Current package assignments for this creative")] = (
-        None
-    )
+    assignments: Annotated[list[str] | None, Field(description="Current package assignments for this creative")] = None
     assignment_count: Annotated[int | None, Field(description="Number of active package assignments", ge=0)] = None
     performance_metrics: Annotated[
         PerformanceMetrics | None, Field(description="Aggregated performance data across all assignments")

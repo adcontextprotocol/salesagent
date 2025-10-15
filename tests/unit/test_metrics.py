@@ -1,7 +1,6 @@
 """Tests for Prometheus metrics module."""
 
 
-
 def test_metrics_are_registered():
     """Test that all metrics are registered with Prometheus."""
     from src.core.metrics import (

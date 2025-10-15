@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Optional, Union
+from typing import Annotated, Any, Union
 
 from pydantic import AnyUrl, AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, RootModel
 
@@ -13,35 +13,33 @@ from pydantic import AnyUrl, AwareDatetime, BaseModel, ConfigDict, EmailStr, Fie
 class Logo(BaseModel):
     url: Annotated[AnyUrl, Field(description="URL to the logo asset")]
     tags: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Semantic tags describing the logo variant (e.g., 'dark', 'light', 'square', 'horizontal', 'icon')"
         ),
     ] = None
-    width: Annotated[Optional[int], Field(description="Logo width in pixels")] = None
-    height: Annotated[Optional[int], Field(description="Logo height in pixels")] = None
+    width: Annotated[int | None, Field(description="Logo width in pixels")] = None
+    height: Annotated[int | None, Field(description="Logo height in pixels")] = None
 
 
 class Colors(BaseModel):
     primary: Annotated[
-        Optional[str], Field(description="Primary brand color (hex format)", pattern="^#[0-9A-Fa-f]{6}$")
+        str | None, Field(description="Primary brand color (hex format)", pattern="^#[0-9A-Fa-f]{6}$")
     ] = None
     secondary: Annotated[
-        Optional[str], Field(description="Secondary brand color (hex format)", pattern="^#[0-9A-Fa-f]{6}$")
+        str | None, Field(description="Secondary brand color (hex format)", pattern="^#[0-9A-Fa-f]{6}$")
     ] = None
-    accent: Annotated[Optional[str], Field(description="Accent color (hex format)", pattern="^#[0-9A-Fa-f]{6}$")] = None
+    accent: Annotated[str | None, Field(description="Accent color (hex format)", pattern="^#[0-9A-Fa-f]{6}$")] = None
     background: Annotated[
-        Optional[str], Field(description="Background color (hex format)", pattern="^#[0-9A-Fa-f]{6}$")
+        str | None, Field(description="Background color (hex format)", pattern="^#[0-9A-Fa-f]{6}$")
     ] = None
-    text: Annotated[Optional[str], Field(description="Text color (hex format)", pattern="^#[0-9A-Fa-f]{6}$")] = None
+    text: Annotated[str | None, Field(description="Text color (hex format)", pattern="^#[0-9A-Fa-f]{6}$")] = None
 
 
 class Fonts(BaseModel):
-    primary: Annotated[Optional[str], Field(description="Primary font family name")] = None
-    secondary: Annotated[Optional[str], Field(description="Secondary font family name")] = None
-    font_urls: Annotated[Optional[list[AnyUrl]], Field(description="URLs to web font files if using custom fonts")] = (
-        None
-    )
+    primary: Annotated[str | None, Field(description="Primary font family name")] = None
+    secondary: Annotated[str | None, Field(description="Secondary font family name")] = None
+    font_urls: Annotated[list[AnyUrl] | None, Field(description="URLs to web font files if using custom fonts")] = None
 
 
 class AssetType(Enum):
@@ -59,17 +57,17 @@ class Asset(BaseModel):
     asset_type: Annotated[AssetType, Field(description="Type of asset")]
     url: Annotated[AnyUrl, Field(description="URL to CDN-hosted asset file")]
     tags: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')"),
     ] = None
-    name: Annotated[Optional[str], Field(description="Human-readable asset name")] = None
-    description: Annotated[Optional[str], Field(description="Asset description or usage notes")] = None
-    width: Annotated[Optional[int], Field(description="Image/video width in pixels")] = None
-    height: Annotated[Optional[int], Field(description="Image/video height in pixels")] = None
-    duration_seconds: Annotated[Optional[float], Field(description="Video/audio duration in seconds")] = None
-    file_size_bytes: Annotated[Optional[int], Field(description="File size in bytes")] = None
-    format: Annotated[Optional[str], Field(description="File format (e.g., 'jpg', 'mp4', 'mp3')")] = None
-    metadata: Annotated[Optional[dict[str, Any]], Field(description="Additional asset-specific metadata")] = None
+    name: Annotated[str | None, Field(description="Human-readable asset name")] = None
+    description: Annotated[str | None, Field(description="Asset description or usage notes")] = None
+    width: Annotated[int | None, Field(description="Image/video width in pixels")] = None
+    height: Annotated[int | None, Field(description="Image/video height in pixels")] = None
+    duration_seconds: Annotated[float | None, Field(description="Video/audio duration in seconds")] = None
+    file_size_bytes: Annotated[int | None, Field(description="File size in bytes")] = None
+    format: Annotated[str | None, Field(description="File format (e.g., 'jpg', 'mp4', 'mp3')")] = None
+    metadata: Annotated[dict[str, Any] | None, Field(description="Additional asset-specific metadata")] = None
 
 
 class FeedFormat(Enum):
@@ -90,40 +88,36 @@ class ProductCatalog(BaseModel):
         extra="forbid",
     )
     feed_url: Annotated[AnyUrl, Field(description="URL to product catalog feed")]
-    feed_format: Annotated[Optional[FeedFormat], Field(description="Format of the product feed")] = (
+    feed_format: Annotated[FeedFormat | None, Field(description="Format of the product feed")] = (
         "google_merchant_center"
     )
     categories: Annotated[
-        Optional[list[str]], Field(description="Product categories available in the catalog (for filtering)")
+        list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[Optional[AwareDatetime], Field(description="When the product catalog was last updated")] = (
-        None
-    )
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
     update_frequency: Annotated[
-        Optional[UpdateFrequency], Field(description="How frequently the product catalog is updated")
+        UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
 
 
 class Disclaimer(BaseModel):
     text: Annotated[str, Field(description="Disclaimer text")]
     context: Annotated[
-        Optional[str],
+        str | None,
         Field(description="When this disclaimer applies (e.g., 'financial_products', 'health_claims', 'all')"),
     ] = None
-    required: Annotated[Optional[bool], Field(description="Whether this disclaimer must appear")] = True
+    required: Annotated[bool | None, Field(description="Whether this disclaimer must appear")] = True
 
 
 class Contact(BaseModel):
-    email: Annotated[Optional[EmailStr], Field(description="Contact email")] = None
-    phone: Annotated[Optional[str], Field(description="Contact phone number")] = None
+    email: Annotated[EmailStr | None, Field(description="Contact email")] = None
+    phone: Annotated[str | None, Field(description="Contact phone number")] = None
 
 
 class Metadata(BaseModel):
-    created_date: Annotated[Optional[AwareDatetime], Field(description="When this brand manifest was created")] = None
-    updated_date: Annotated[Optional[AwareDatetime], Field(description="When this brand manifest was last updated")] = (
-        None
-    )
-    version: Annotated[Optional[str], Field(description="Brand card version number")] = None
+    created_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was created")] = None
+    updated_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was last updated")] = None
+    version: Annotated[str | None, Field(description="Brand card version number")] = None
 
 
 class BrandManifest(BaseModel):
@@ -136,41 +130,41 @@ class BrandManifest(BaseModel):
             description="Primary brand URL for context and asset discovery. Creative agents can infer brand information from this URL."
         ),
     ]
-    name: Annotated[Optional[str], Field(description="Brand or business name")] = None
+    name: Annotated[str | None, Field(description="Brand or business name")] = None
     logos: Annotated[
-        Optional[list[Logo]], Field(description="Brand logo assets with semantic tags for different use cases")
+        list[Logo] | None, Field(description="Brand logo assets with semantic tags for different use cases")
     ] = None
-    colors: Annotated[Optional[Colors], Field(description="Brand color palette")] = None
-    fonts: Annotated[Optional[Fonts], Field(description="Brand typography guidelines")] = None
+    colors: Annotated[Colors | None, Field(description="Brand color palette")] = None
+    fonts: Annotated[Fonts | None, Field(description="Brand typography guidelines")] = None
     tone: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Brand voice and messaging tone (e.g., 'professional', 'casual', 'humorous', 'trustworthy', 'innovative')"
         ),
     ] = None
-    tagline: Annotated[Optional[str], Field(description="Brand tagline or slogan")] = None
+    tagline: Annotated[str | None, Field(description="Brand tagline or slogan")] = None
     assets: Annotated[
-        Optional[list[Asset]],
+        list[Asset] | None,
         Field(
             description="Brand asset library with explicit assets and tags. Assets are referenced inline with URLs pointing to CDN-hosted files."
         ),
     ] = None
     product_catalog: Annotated[
-        Optional[ProductCatalog],
+        ProductCatalog | None,
         Field(
             description="Product catalog information for e-commerce advertisers. Enables SKU-level creative generation and product selection."
         ),
     ] = None
     disclaimers: Annotated[
-        Optional[list[Disclaimer]],
+        list[Disclaimer] | None,
         Field(description="Legal disclaimers or required text that must appear in creatives"),
     ] = None
     industry: Annotated[
-        Optional[str], Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")
+        str | None, Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")
     ] = None
-    target_audience: Annotated[Optional[str], Field(description="Primary target audience description")] = None
-    contact: Annotated[Optional[Contact], Field(description="Brand contact information")] = None
-    metadata: Annotated[Optional[Metadata], Field(description="Additional brand metadata")] = None
+    target_audience: Annotated[str | None, Field(description="Primary target audience description")] = None
+    contact: Annotated[Contact | None, Field(description="Brand contact information")] = None
+    metadata: Annotated[Metadata | None, Field(description="Additional brand metadata")] = None
 
 
 class Asset10(BaseModel):
@@ -181,17 +175,17 @@ class Asset10(BaseModel):
     asset_type: Annotated[AssetType, Field(description="Type of asset")]
     url: Annotated[AnyUrl, Field(description="URL to CDN-hosted asset file")]
     tags: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')"),
     ] = None
-    name: Annotated[Optional[str], Field(description="Human-readable asset name")] = None
-    description: Annotated[Optional[str], Field(description="Asset description or usage notes")] = None
-    width: Annotated[Optional[int], Field(description="Image/video width in pixels")] = None
-    height: Annotated[Optional[int], Field(description="Image/video height in pixels")] = None
-    duration_seconds: Annotated[Optional[float], Field(description="Video/audio duration in seconds")] = None
-    file_size_bytes: Annotated[Optional[int], Field(description="File size in bytes")] = None
-    format: Annotated[Optional[str], Field(description="File format (e.g., 'jpg', 'mp4', 'mp3')")] = None
-    metadata: Annotated[Optional[dict[str, Any]], Field(description="Additional asset-specific metadata")] = None
+    name: Annotated[str | None, Field(description="Human-readable asset name")] = None
+    description: Annotated[str | None, Field(description="Asset description or usage notes")] = None
+    width: Annotated[int | None, Field(description="Image/video width in pixels")] = None
+    height: Annotated[int | None, Field(description="Image/video height in pixels")] = None
+    duration_seconds: Annotated[float | None, Field(description="Video/audio duration in seconds")] = None
+    file_size_bytes: Annotated[int | None, Field(description="File size in bytes")] = None
+    format: Annotated[str | None, Field(description="File format (e.g., 'jpg', 'mp4', 'mp3')")] = None
+    metadata: Annotated[dict[str, Any] | None, Field(description="Additional asset-specific metadata")] = None
 
 
 class ProductCatalog9(BaseModel):
@@ -199,17 +193,15 @@ class ProductCatalog9(BaseModel):
         extra="forbid",
     )
     feed_url: Annotated[AnyUrl, Field(description="URL to product catalog feed")]
-    feed_format: Annotated[Optional[FeedFormat], Field(description="Format of the product feed")] = (
+    feed_format: Annotated[FeedFormat | None, Field(description="Format of the product feed")] = (
         "google_merchant_center"
     )
     categories: Annotated[
-        Optional[list[str]], Field(description="Product categories available in the catalog (for filtering)")
+        list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[Optional[AwareDatetime], Field(description="When the product catalog was last updated")] = (
-        None
-    )
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
     update_frequency: Annotated[
-        Optional[UpdateFrequency], Field(description="How frequently the product catalog is updated")
+        UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
 
 
@@ -218,46 +210,46 @@ class BrandManifest8(BaseModel):
         extra="forbid",
     )
     url: Annotated[
-        Optional[AnyUrl],
+        AnyUrl | None,
         Field(
             description="Primary brand URL for context and asset discovery. Creative agents can infer brand information from this URL."
         ),
     ] = None
     name: Annotated[str, Field(description="Brand or business name")]
     logos: Annotated[
-        Optional[list[Logo]], Field(description="Brand logo assets with semantic tags for different use cases")
+        list[Logo] | None, Field(description="Brand logo assets with semantic tags for different use cases")
     ] = None
-    colors: Annotated[Optional[Colors], Field(description="Brand color palette")] = None
-    fonts: Annotated[Optional[Fonts], Field(description="Brand typography guidelines")] = None
+    colors: Annotated[Colors | None, Field(description="Brand color palette")] = None
+    fonts: Annotated[Fonts | None, Field(description="Brand typography guidelines")] = None
     tone: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Brand voice and messaging tone (e.g., 'professional', 'casual', 'humorous', 'trustworthy', 'innovative')"
         ),
     ] = None
-    tagline: Annotated[Optional[str], Field(description="Brand tagline or slogan")] = None
+    tagline: Annotated[str | None, Field(description="Brand tagline or slogan")] = None
     assets: Annotated[
-        Optional[list[Asset10]],
+        list[Asset10] | None,
         Field(
             description="Brand asset library with explicit assets and tags. Assets are referenced inline with URLs pointing to CDN-hosted files."
         ),
     ] = None
     product_catalog: Annotated[
-        Optional[ProductCatalog9],
+        ProductCatalog9 | None,
         Field(
             description="Product catalog information for e-commerce advertisers. Enables SKU-level creative generation and product selection."
         ),
     ] = None
     disclaimers: Annotated[
-        Optional[list[Disclaimer]],
+        list[Disclaimer] | None,
         Field(description="Legal disclaimers or required text that must appear in creatives"),
     ] = None
     industry: Annotated[
-        Optional[str], Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")
+        str | None, Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")
     ] = None
-    target_audience: Annotated[Optional[str], Field(description="Primary target audience description")] = None
-    contact: Annotated[Optional[Contact], Field(description="Brand contact information")] = None
-    metadata: Annotated[Optional[Metadata], Field(description="Additional brand metadata")] = None
+    target_audience: Annotated[str | None, Field(description="Primary target audience description")] = None
+    contact: Annotated[Contact | None, Field(description="Brand contact information")] = None
+    metadata: Annotated[Metadata | None, Field(description="Additional brand metadata")] = None
 
 
 class DeliveryType(Enum):
@@ -295,16 +287,16 @@ class Filters(BaseModel):
         extra="forbid",
     )
     delivery_type: Annotated[
-        Optional[DeliveryType], Field(description="Type of inventory delivery", title="Delivery Type")
+        DeliveryType | None, Field(description="Type of inventory delivery", title="Delivery Type")
     ] = None
-    is_fixed_price: Annotated[Optional[bool], Field(description="Filter for fixed price vs auction products")] = None
-    format_types: Annotated[Optional[list[FormatType]], Field(description="Filter by format types")] = None
-    format_ids: Annotated[Optional[list[FormatId]], Field(description="Filter by specific format IDs")] = None
+    is_fixed_price: Annotated[bool | None, Field(description="Filter for fixed price vs auction products")] = None
+    format_types: Annotated[list[FormatType] | None, Field(description="Filter by format types")] = None
+    format_ids: Annotated[list[FormatId] | None, Field(description="Filter by specific format IDs")] = None
     standard_formats_only: Annotated[
-        Optional[bool], Field(description="Only return products accepting IAB standard formats")
+        bool | None, Field(description="Only return products accepting IAB standard formats")
     ] = None
     min_exposures: Annotated[
-        Optional[int], Field(description="Minimum exposures/impressions needed for measurement validity", ge=1)
+        int | None, Field(description="Minimum exposures/impressions needed for measurement validity", ge=1)
     ] = None
 
 
@@ -312,7 +304,7 @@ class GetProductsRequest1(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    brief: Annotated[Optional[str], Field(description="Natural language description of campaign requirements")] = None
+    brief: Annotated[str | None, Field(description="Natural language description of campaign requirements")] = None
     promoted_offering: Annotated[
         str,
         Field(
@@ -320,7 +312,7 @@ class GetProductsRequest1(BaseModel):
         ),
     ]
     brand_manifest: Annotated[
-        Optional[Union[Union[BrandManifest, BrandManifest8], AnyUrl]],
+        BrandManifest | BrandManifest8 | AnyUrl | None,
         Field(
             description="Brand manifest provided either as an inline object or a URL string pointing to a hosted manifest",
             examples=[
@@ -340,7 +332,7 @@ class GetProductsRequest1(BaseModel):
             title="Brand Manifest Reference",
         ),
     ] = None
-    filters: Annotated[Optional[Filters], Field(description="Structured filters for product discovery")] = None
+    filters: Annotated[Filters | None, Field(description="Structured filters for product discovery")] = None
 
 
 class Asset11(BaseModel):
@@ -351,17 +343,17 @@ class Asset11(BaseModel):
     asset_type: Annotated[AssetType, Field(description="Type of asset")]
     url: Annotated[AnyUrl, Field(description="URL to CDN-hosted asset file")]
     tags: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')"),
     ] = None
-    name: Annotated[Optional[str], Field(description="Human-readable asset name")] = None
-    description: Annotated[Optional[str], Field(description="Asset description or usage notes")] = None
-    width: Annotated[Optional[int], Field(description="Image/video width in pixels")] = None
-    height: Annotated[Optional[int], Field(description="Image/video height in pixels")] = None
-    duration_seconds: Annotated[Optional[float], Field(description="Video/audio duration in seconds")] = None
-    file_size_bytes: Annotated[Optional[int], Field(description="File size in bytes")] = None
-    format: Annotated[Optional[str], Field(description="File format (e.g., 'jpg', 'mp4', 'mp3')")] = None
-    metadata: Annotated[Optional[dict[str, Any]], Field(description="Additional asset-specific metadata")] = None
+    name: Annotated[str | None, Field(description="Human-readable asset name")] = None
+    description: Annotated[str | None, Field(description="Asset description or usage notes")] = None
+    width: Annotated[int | None, Field(description="Image/video width in pixels")] = None
+    height: Annotated[int | None, Field(description="Image/video height in pixels")] = None
+    duration_seconds: Annotated[float | None, Field(description="Video/audio duration in seconds")] = None
+    file_size_bytes: Annotated[int | None, Field(description="File size in bytes")] = None
+    format: Annotated[str | None, Field(description="File format (e.g., 'jpg', 'mp4', 'mp3')")] = None
+    metadata: Annotated[dict[str, Any] | None, Field(description="Additional asset-specific metadata")] = None
 
 
 class ProductCatalog10(BaseModel):
@@ -369,17 +361,15 @@ class ProductCatalog10(BaseModel):
         extra="forbid",
     )
     feed_url: Annotated[AnyUrl, Field(description="URL to product catalog feed")]
-    feed_format: Annotated[Optional[FeedFormat], Field(description="Format of the product feed")] = (
+    feed_format: Annotated[FeedFormat | None, Field(description="Format of the product feed")] = (
         "google_merchant_center"
     )
     categories: Annotated[
-        Optional[list[str]], Field(description="Product categories available in the catalog (for filtering)")
+        list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[Optional[AwareDatetime], Field(description="When the product catalog was last updated")] = (
-        None
-    )
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
     update_frequency: Annotated[
-        Optional[UpdateFrequency], Field(description="How frequently the product catalog is updated")
+        UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
 
 
@@ -393,41 +383,41 @@ class BrandManifest9(BaseModel):
             description="Primary brand URL for context and asset discovery. Creative agents can infer brand information from this URL."
         ),
     ]
-    name: Annotated[Optional[str], Field(description="Brand or business name")] = None
+    name: Annotated[str | None, Field(description="Brand or business name")] = None
     logos: Annotated[
-        Optional[list[Logo]], Field(description="Brand logo assets with semantic tags for different use cases")
+        list[Logo] | None, Field(description="Brand logo assets with semantic tags for different use cases")
     ] = None
-    colors: Annotated[Optional[Colors], Field(description="Brand color palette")] = None
-    fonts: Annotated[Optional[Fonts], Field(description="Brand typography guidelines")] = None
+    colors: Annotated[Colors | None, Field(description="Brand color palette")] = None
+    fonts: Annotated[Fonts | None, Field(description="Brand typography guidelines")] = None
     tone: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Brand voice and messaging tone (e.g., 'professional', 'casual', 'humorous', 'trustworthy', 'innovative')"
         ),
     ] = None
-    tagline: Annotated[Optional[str], Field(description="Brand tagline or slogan")] = None
+    tagline: Annotated[str | None, Field(description="Brand tagline or slogan")] = None
     assets: Annotated[
-        Optional[list[Asset11]],
+        list[Asset11] | None,
         Field(
             description="Brand asset library with explicit assets and tags. Assets are referenced inline with URLs pointing to CDN-hosted files."
         ),
     ] = None
     product_catalog: Annotated[
-        Optional[ProductCatalog10],
+        ProductCatalog10 | None,
         Field(
             description="Product catalog information for e-commerce advertisers. Enables SKU-level creative generation and product selection."
         ),
     ] = None
     disclaimers: Annotated[
-        Optional[list[Disclaimer]],
+        list[Disclaimer] | None,
         Field(description="Legal disclaimers or required text that must appear in creatives"),
     ] = None
     industry: Annotated[
-        Optional[str], Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")
+        str | None, Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")
     ] = None
-    target_audience: Annotated[Optional[str], Field(description="Primary target audience description")] = None
-    contact: Annotated[Optional[Contact], Field(description="Brand contact information")] = None
-    metadata: Annotated[Optional[Metadata], Field(description="Additional brand metadata")] = None
+    target_audience: Annotated[str | None, Field(description="Primary target audience description")] = None
+    contact: Annotated[Contact | None, Field(description="Brand contact information")] = None
+    metadata: Annotated[Metadata | None, Field(description="Additional brand metadata")] = None
 
 
 class Asset12(BaseModel):
@@ -438,17 +428,17 @@ class Asset12(BaseModel):
     asset_type: Annotated[AssetType, Field(description="Type of asset")]
     url: Annotated[AnyUrl, Field(description="URL to CDN-hosted asset file")]
     tags: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')"),
     ] = None
-    name: Annotated[Optional[str], Field(description="Human-readable asset name")] = None
-    description: Annotated[Optional[str], Field(description="Asset description or usage notes")] = None
-    width: Annotated[Optional[int], Field(description="Image/video width in pixels")] = None
-    height: Annotated[Optional[int], Field(description="Image/video height in pixels")] = None
-    duration_seconds: Annotated[Optional[float], Field(description="Video/audio duration in seconds")] = None
-    file_size_bytes: Annotated[Optional[int], Field(description="File size in bytes")] = None
-    format: Annotated[Optional[str], Field(description="File format (e.g., 'jpg', 'mp4', 'mp3')")] = None
-    metadata: Annotated[Optional[dict[str, Any]], Field(description="Additional asset-specific metadata")] = None
+    name: Annotated[str | None, Field(description="Human-readable asset name")] = None
+    description: Annotated[str | None, Field(description="Asset description or usage notes")] = None
+    width: Annotated[int | None, Field(description="Image/video width in pixels")] = None
+    height: Annotated[int | None, Field(description="Image/video height in pixels")] = None
+    duration_seconds: Annotated[float | None, Field(description="Video/audio duration in seconds")] = None
+    file_size_bytes: Annotated[int | None, Field(description="File size in bytes")] = None
+    format: Annotated[str | None, Field(description="File format (e.g., 'jpg', 'mp4', 'mp3')")] = None
+    metadata: Annotated[dict[str, Any] | None, Field(description="Additional asset-specific metadata")] = None
 
 
 class ProductCatalog11(BaseModel):
@@ -456,17 +446,15 @@ class ProductCatalog11(BaseModel):
         extra="forbid",
     )
     feed_url: Annotated[AnyUrl, Field(description="URL to product catalog feed")]
-    feed_format: Annotated[Optional[FeedFormat], Field(description="Format of the product feed")] = (
+    feed_format: Annotated[FeedFormat | None, Field(description="Format of the product feed")] = (
         "google_merchant_center"
     )
     categories: Annotated[
-        Optional[list[str]], Field(description="Product categories available in the catalog (for filtering)")
+        list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[Optional[AwareDatetime], Field(description="When the product catalog was last updated")] = (
-        None
-    )
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
     update_frequency: Annotated[
-        Optional[UpdateFrequency], Field(description="How frequently the product catalog is updated")
+        UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
 
 
@@ -475,46 +463,46 @@ class BrandManifest10(BaseModel):
         extra="forbid",
     )
     url: Annotated[
-        Optional[AnyUrl],
+        AnyUrl | None,
         Field(
             description="Primary brand URL for context and asset discovery. Creative agents can infer brand information from this URL."
         ),
     ] = None
     name: Annotated[str, Field(description="Brand or business name")]
     logos: Annotated[
-        Optional[list[Logo]], Field(description="Brand logo assets with semantic tags for different use cases")
+        list[Logo] | None, Field(description="Brand logo assets with semantic tags for different use cases")
     ] = None
-    colors: Annotated[Optional[Colors], Field(description="Brand color palette")] = None
-    fonts: Annotated[Optional[Fonts], Field(description="Brand typography guidelines")] = None
+    colors: Annotated[Colors | None, Field(description="Brand color palette")] = None
+    fonts: Annotated[Fonts | None, Field(description="Brand typography guidelines")] = None
     tone: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Brand voice and messaging tone (e.g., 'professional', 'casual', 'humorous', 'trustworthy', 'innovative')"
         ),
     ] = None
-    tagline: Annotated[Optional[str], Field(description="Brand tagline or slogan")] = None
+    tagline: Annotated[str | None, Field(description="Brand tagline or slogan")] = None
     assets: Annotated[
-        Optional[list[Asset12]],
+        list[Asset12] | None,
         Field(
             description="Brand asset library with explicit assets and tags. Assets are referenced inline with URLs pointing to CDN-hosted files."
         ),
     ] = None
     product_catalog: Annotated[
-        Optional[ProductCatalog11],
+        ProductCatalog11 | None,
         Field(
             description="Product catalog information for e-commerce advertisers. Enables SKU-level creative generation and product selection."
         ),
     ] = None
     disclaimers: Annotated[
-        Optional[list[Disclaimer]],
+        list[Disclaimer] | None,
         Field(description="Legal disclaimers or required text that must appear in creatives"),
     ] = None
     industry: Annotated[
-        Optional[str], Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")
+        str | None, Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")
     ] = None
-    target_audience: Annotated[Optional[str], Field(description="Primary target audience description")] = None
-    contact: Annotated[Optional[Contact], Field(description="Brand contact information")] = None
-    metadata: Annotated[Optional[Metadata], Field(description="Additional brand metadata")] = None
+    target_audience: Annotated[str | None, Field(description="Primary target audience description")] = None
+    contact: Annotated[Contact | None, Field(description="Brand contact information")] = None
+    metadata: Annotated[Metadata | None, Field(description="Additional brand metadata")] = None
 
 
 class Filters1(BaseModel):
@@ -522,16 +510,16 @@ class Filters1(BaseModel):
         extra="forbid",
     )
     delivery_type: Annotated[
-        Optional[DeliveryType], Field(description="Type of inventory delivery", title="Delivery Type")
+        DeliveryType | None, Field(description="Type of inventory delivery", title="Delivery Type")
     ] = None
-    is_fixed_price: Annotated[Optional[bool], Field(description="Filter for fixed price vs auction products")] = None
-    format_types: Annotated[Optional[list[FormatType]], Field(description="Filter by format types")] = None
-    format_ids: Annotated[Optional[list[FormatId]], Field(description="Filter by specific format IDs")] = None
+    is_fixed_price: Annotated[bool | None, Field(description="Filter for fixed price vs auction products")] = None
+    format_types: Annotated[list[FormatType] | None, Field(description="Filter by format types")] = None
+    format_ids: Annotated[list[FormatId] | None, Field(description="Filter by specific format IDs")] = None
     standard_formats_only: Annotated[
-        Optional[bool], Field(description="Only return products accepting IAB standard formats")
+        bool | None, Field(description="Only return products accepting IAB standard formats")
     ] = None
     min_exposures: Annotated[
-        Optional[int], Field(description="Minimum exposures/impressions needed for measurement validity", ge=1)
+        int | None, Field(description="Minimum exposures/impressions needed for measurement validity", ge=1)
     ] = None
 
 
@@ -539,15 +527,15 @@ class GetProductsRequest2(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    brief: Annotated[Optional[str], Field(description="Natural language description of campaign requirements")] = None
+    brief: Annotated[str | None, Field(description="Natural language description of campaign requirements")] = None
     promoted_offering: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="DEPRECATED: Use brand_manifest instead. Legacy field for describing what is being promoted."
         ),
     ] = None
     brand_manifest: Annotated[
-        Union[Union[BrandManifest9, BrandManifest10], AnyUrl],
+        BrandManifest9 | BrandManifest10 | AnyUrl,
         Field(
             description="Brand manifest provided either as an inline object or a URL string pointing to a hosted manifest",
             examples=[
@@ -567,12 +555,12 @@ class GetProductsRequest2(BaseModel):
             title="Brand Manifest Reference",
         ),
     ]
-    filters: Annotated[Optional[Filters1], Field(description="Structured filters for product discovery")] = None
+    filters: Annotated[Filters1 | None, Field(description="Structured filters for product discovery")] = None
 
 
 class GetProductsRequest(RootModel[Union[GetProductsRequest1, GetProductsRequest2]]):
     root: Annotated[
-        Union[GetProductsRequest1, GetProductsRequest2],
+        GetProductsRequest1 | GetProductsRequest2,
         Field(
             description="Request parameters for discovering available advertising products",
             title="Get Products Request",

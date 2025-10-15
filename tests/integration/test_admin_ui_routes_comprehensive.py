@@ -415,34 +415,22 @@ class TestAllLinksValid:
         tenant_id = test_tenant_with_data["tenant_id"]
         validator = LinkValidator(authenticated_admin_session)
 
-        response = authenticated_admin_session.get(
-            f"/tenant/{tenant_id}/settings", follow_redirects=True
-        )
+        response = authenticated_admin_session.get(f"/tenant/{tenant_id}/settings", follow_redirects=True)
         assert response.status_code == 200
 
-        broken_links = validator.validate_response(
-            response, current_page=f"/tenant/{tenant_id}/settings"
-        )
-        assert not broken_links, format_broken_links_report(
-            broken_links, f"/tenant/{tenant_id}/settings"
-        )
+        broken_links = validator.validate_response(response, current_page=f"/tenant/{tenant_id}/settings")
+        assert not broken_links, format_broken_links_report(broken_links, f"/tenant/{tenant_id}/settings")
 
     def test_all_products_page_links_valid(self, authenticated_admin_session, test_tenant_with_data):
         """Test all links on products page are valid."""
         tenant_id = test_tenant_with_data["tenant_id"]
         validator = LinkValidator(authenticated_admin_session)
 
-        response = authenticated_admin_session.get(
-            f"/tenant/{tenant_id}/products/", follow_redirects=True
-        )
+        response = authenticated_admin_session.get(f"/tenant/{tenant_id}/products/", follow_redirects=True)
         assert response.status_code == 200
 
-        broken_links = validator.validate_response(
-            response, current_page=f"/tenant/{tenant_id}/products/"
-        )
-        assert not broken_links, format_broken_links_report(
-            broken_links, f"/tenant/{tenant_id}/products/"
-        )
+        broken_links = validator.validate_response(response, current_page=f"/tenant/{tenant_id}/products/")
+        assert not broken_links, format_broken_links_report(broken_links, f"/tenant/{tenant_id}/products/")
 
 
 class TestNotFoundRoutes:
