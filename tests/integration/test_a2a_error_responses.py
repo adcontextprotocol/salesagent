@@ -118,7 +118,6 @@ class TestA2AErrorPropagation:
                 principal_id="a2a_error_principal",
                 name="A2A Error Test Principal",
                 access_token="a2a_error_token_123",
-                is_active=True,
                 approval_mode="manual",
                 platform_mappings={"mock": {"advertiser_id": "mock_adv_123"}},
             )
