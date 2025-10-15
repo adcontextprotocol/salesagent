@@ -4382,7 +4382,8 @@ def _create_media_buy_impl(
                 package_dict = package
 
             # Convert format_ids (request field) to format_ids_to_provide (response field)
-            # Per AdCP v1.8.0: request has format_ids: array of strings, response has format_ids_to_provide: array of FormatId objects
+            # Per AdCP spec: request has format_ids, response has format_ids_to_provide (both use FormatId objects)
+            # Supports backward compatibility with string format IDs from older clients
             if "format_ids" in package_dict and package_dict["format_ids"]:
                 format_ids_to_provide = []
                 for fmt_id in package_dict["format_ids"]:
