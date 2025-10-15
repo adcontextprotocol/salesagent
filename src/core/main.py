@@ -2477,6 +2477,7 @@ def _sync_creatives_impl(
             updated=updated_count,
             unchanged=unchanged_count,
             failed=failed_count,
+            deleted=0,
         ),
         results=results,
         dry_run=dry_run,
@@ -3709,7 +3710,7 @@ def _create_media_buy_impl(
         product_ids = req.get_product_ids()
         logger.info(f"DEBUG: Extracted product_ids: {product_ids}")
         logger.info(
-            f"DEBUG: Request packages: {[{'package_id': p.package_id, 'product_id': p.product_id, 'products': p.products, 'buyer_ref': p.buyer_ref} for p in (req.packages or [])]}"
+            f"DEBUG: Request packages: {[{'package_id': p.package_id, 'product_id': p.product_id, 'buyer_ref': p.buyer_ref} for p in (req.packages or [])]}"
         )
         if not product_ids:
             error_msg = "At least one product is required."
@@ -3717,9 +3718,9 @@ def _create_media_buy_impl(
 
         if req.packages:
             for package in req.packages:
-                # Check both products (array) and product_id (single) fields per AdCP spec
-                if not package.products and not package.product_id:
-                    error_msg = f"Package {package.buyer_ref} must contain at least one product."
+                # Check product_id field per AdCP spec
+                if not package.product_id:
+                    error_msg = f"Package {package.buyer_ref} must specify product_id."
                     raise ValueError(error_msg)
 
         # 4. Currency-specific budget validation
@@ -3748,9 +3749,7 @@ def _create_media_buy_impl(
             # First, try to get currency from first package's pricing option
             if req.packages and len(req.packages) > 0:
                 first_package = req.packages[0]
-                package_product_ids = first_package.products or (
-                    [first_package.product_id] if first_package.product_id else []
-                )
+                package_product_ids = [first_package.product_id] if first_package.product_id else []
 
                 if package_product_ids and package_product_ids[0] in product_map:
                     product = product_map[package_product_ids[0]]
@@ -3807,14 +3806,10 @@ def _create_media_buy_impl(
             package_pricing_info = {}
             if req.packages:
                 for package in req.packages:
-                    # Get product IDs for this package
-                    package_product_ids = []
-                    if package.products:
-                        package_product_ids = package.products
-                    elif package.product_id:
-                        package_product_ids = [package.product_id]
+                    # Get product ID for this package (AdCP spec: single product per package)
+                    package_product_ids = [package.product_id] if package.product_id else []
 
-                    # Validate pricing for first product (packages typically have one product)
+                    # Validate pricing for the product
                     if package_product_ids:
                         product_id = package_product_ids[0]
                         if product_id in product_map:
@@ -3855,14 +3850,8 @@ def _create_media_buy_impl(
                             if not package.budget:
                                 continue
 
-                            # Get the minimum spend requirement for products in this package
-                            # Support both products (array) and product_id (single) per AdCP spec
-                            if package.products:
-                                package_product_ids = package.products
-                            elif package.product_id:
-                                package_product_ids = [package.product_id]
-                            else:
-                                package_product_ids = []
+                            # Get the minimum spend requirement for product in this package (AdCP spec: single product)
+                            package_product_ids = [package.product_id] if package.product_id else []
 
                             applicable_min_spends = [
                                 product_min_spends[pid] for pid in package_product_ids if pid in product_min_spends
@@ -3955,7 +3944,7 @@ def _create_media_buy_impl(
         return CreateMediaBuyResponse(
             status="failed",  # AdCP spec: failed status for execution errors
             buyer_ref=buyer_ref or "unknown",
-            errors=[Error(code="validation_error", message=str(e))],
+            errors=[Error(code="validation_error", message=str(e), details=None)],
         )
 
     # Get the Principal object (needed for adapter)
@@ -3966,7 +3955,7 @@ def _create_media_buy_impl(
         return CreateMediaBuyResponse(
             status="rejected",  # AdCP spec: rejected status for auth failures before execution
             buyer_ref=buyer_ref or "unknown",
-            errors=[Error(code="authentication_error", message=error_msg)],
+            errors=[Error(code="authentication_error", message=error_msg, details=None)],
         )
 
     try:
@@ -4200,7 +4189,7 @@ def _create_media_buy_impl(
             return CreateMediaBuyResponse(
                 status="failed",  # AdCP spec: failed status for validation errors
                 buyer_ref=req.buyer_ref,
-                errors=[Error(code="invalid_datetime", message=error_msg)],
+                errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
             )
 
         # Call adapter with detailed error logging

@@ -111,7 +111,7 @@ class TestResponseStrMethods:
         assert str(resp) == "Successfully synced 3 creatives"
 
     def test_list_creatives_response(self):
-        """ListCreativesResponse returns the message field."""
+        """ListCreativesResponse generates message dynamically from query_summary."""
         creative = Creative(
             creative_id="cr1",
             name="Test Creative",
@@ -122,12 +122,11 @@ class TestResponseStrMethods:
             updated_at=datetime.now(UTC),
         )
         resp = ListCreativesResponse(
-            message="Found 1 creative",
             query_summary=QuerySummary(total_matching=1, returned=1, has_more=False),
             pagination=Pagination(limit=10, offset=0, has_more=False),
             creatives=[creative],
         )
-        assert str(resp) == "Found 1 creative"
+        assert str(resp) == "Found 1 creative."
 
     def test_activate_signal_response_deployed(self):
         """ActivateSignalResponse with deployed status shows platform ID."""

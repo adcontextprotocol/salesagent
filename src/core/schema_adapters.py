@@ -713,7 +713,6 @@ class ListCreativesResponse(AdCPBaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    message: str = Field(..., description="Human-readable result message")
     query_summary: Any = Field(..., description="Summary of the query")
     pagination: Any = Field(..., description="Pagination information")
     creatives: list[Any] = Field(..., description="Array of creative assets")
@@ -722,8 +721,15 @@ class ListCreativesResponse(AdCPBaseModel):
     status_summary: dict[str, int] | None = None
 
     def __str__(self) -> str:
-        """Return message field (it's in the spec for this one)."""
-        return self.message
+        """Generate human-readable message from query_summary."""
+        total = self.query_summary.total_matching
+        returned = self.query_summary.returned
+        if total == 0:
+            return "No creatives found."
+        elif returned == total:
+            return f"Found {total} creative{'s' if total != 1 else ''}."
+        else:
+            return f"Found {total} creatives, showing {returned}."
 
 
 # ============================================================================

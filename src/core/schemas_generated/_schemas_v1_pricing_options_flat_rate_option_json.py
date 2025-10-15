@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -14,32 +14,32 @@ class Parameters(BaseModel):
         extra="forbid",
     )
     duration_hours: Annotated[
-        Optional[float], Field(description="Duration in hours for time-based flat rate pricing (DOOH)", ge=0.0)
+        float | None, Field(description="Duration in hours for time-based flat rate pricing (DOOH)", ge=0.0)
     ] = None
     sov_percentage: Annotated[
-        Optional[float], Field(description="Guaranteed share of voice as percentage (DOOH, 0-100)", ge=0.0, le=100.0)
+        float | None, Field(description="Guaranteed share of voice as percentage (DOOH, 0-100)", ge=0.0, le=100.0)
     ] = None
     loop_duration_seconds: Annotated[
-        Optional[int], Field(description="Duration of ad loop rotation in seconds (DOOH)", ge=1)
+        int | None, Field(description="Duration of ad loop rotation in seconds (DOOH)", ge=1)
     ] = None
     min_plays_per_hour: Annotated[
-        Optional[int], Field(description="Minimum number of times ad plays per hour (DOOH frequency guarantee)", ge=0)
+        int | None, Field(description="Minimum number of times ad plays per hour (DOOH frequency guarantee)", ge=0)
     ] = None
     venue_package: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Named venue package identifier for DOOH (e.g., 'times_square_network', 'airport_terminals')"
         ),
     ] = None
     estimated_impressions: Annotated[
-        Optional[int],
+        int | None,
         Field(
             description="Estimated impressions for this flat rate option (informational, commonly used with SOV or time-based DOOH)",
             ge=0,
         ),
     ] = None
     daypart: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Specific daypart for time-based pricing (e.g., 'morning_commute', 'evening_prime', 'overnight')"
         ),
@@ -65,10 +65,10 @@ class FlatRatePricingOption(BaseModel):
         Literal[True], Field(description="Whether this is a fixed rate (true) or auction-based (false)")
     ]
     parameters: Annotated[
-        Optional[Parameters], Field(description="Flat rate parameters for DOOH and time-based campaigns")
+        Parameters | None, Field(description="Flat rate parameters for DOOH and time-based campaigns")
     ] = None
     min_spend_per_package: Annotated[
-        Optional[float],
+        float | None,
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,
