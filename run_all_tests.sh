@@ -66,6 +66,9 @@ setup_postgres_container() {
     done
 
     # Export database URL for integration tests
+    # CRITICAL: Unset first to prevent .env file from being used
+    unset DATABASE_URL
+    unset ADCP_TEST_DB_URL
     export DATABASE_URL="postgresql://adcp_user:test_password@localhost:5433/adcp_test"
     export ADCP_TEST_DB_URL="postgresql://adcp_user:test_password@localhost:5433/adcp_test"
     export ADCP_TESTING=true
