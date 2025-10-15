@@ -172,7 +172,8 @@ if [ "$MODE" == "ci" ]; then
     echo "🔗 Step 3/4: Running integration tests (WITH database)..."
     # Run ALL integration tests (including requires_db) - exactly like CI
     # Keep DATABASE_URL set so integration tests can access the PostgreSQL container
-    if ! DATABASE_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/integration/ -x --tb=short -q -m "not requires_server and not skip_ci"; then
+    # Note: We don't filter by markers here - we want ALL integration tests to run
+    if ! DATABASE_URL="$DATABASE_URL" ADCP_TEST_DB_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/integration/ -x --tb=short -q; then
         echo -e "${RED}❌ Integration tests failed!${NC}"
         exit 1
     fi
