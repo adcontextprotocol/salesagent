@@ -231,16 +231,21 @@ class TestAdCPContract:
             description="Test product with exposure estimates",
             formats=["display_300x250"],
             delivery_type="guaranteed",
-            cpm=15.0,
-            currency="USD",
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=15.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
             estimated_exposures=50000,
             property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         # Verify AdCP-compliant response includes PR #79 fields
         adcp_response = guaranteed_product.model_dump()
-        assert "currency" in adcp_response
-        assert adcp_response["currency"] == "USD"
         assert "estimated_exposures" in adcp_response
         assert adcp_response["estimated_exposures"] == 50000
 
@@ -251,7 +256,16 @@ class TestAdCPContract:
             description="Test product with CPM guidance",
             formats=["video_15s"],
             delivery_type="non_guaranteed",
-            currency="EUR",
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_eur_auction",
+                    pricing_model="cpm",
+                    rate=None,
+                    currency="EUR",
+                    is_fixed=False,
+                    price_guidance={"floor": 5.0, "p90": 8.5},
+                )
+            ],
             floor_cpm=5.0,
             recommended_cpm=8.5,
             property_tags=["all_inventory"],  # Required per AdCP spec
