@@ -31,7 +31,18 @@ def test_database_url():
 
 @pytest.fixture(scope="session")
 def test_database(test_database_url):
-    """Create and initialize test database once per session."""
+    """Create and initialize test database once per session.
+
+    NOTE: This fixture is SKIPPED for integration tests in CI mode.
+    Integration tests use the function-scoped 'integration_db' fixture instead,
+    which provides better isolation by creating a unique database per test.
+    """
+    # CRITICAL: Skip this fixture if integration_db is being used (CI mode)
+    # integration_db sets ADCP_TEST_DB_URL, which indicates we should use
+    # the function-scoped fixture instead of this session-scoped one.
+    if os.environ.get("ADCP_TEST_DB_URL"):
+        pytest.skip("Using integration_db fixture instead (CI mode)")
+
     # Set the database URL for the application
     os.environ["DATABASE_URL"] = test_database_url
     os.environ["DB_TYPE"] = "postgresql"
