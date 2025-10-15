@@ -63,7 +63,7 @@ class TestCreateMediaBuyErrorPaths:
             )
             session.add(tenant)
 
-            # Create product
+            # Create product (without deprecated fields)
             product = ModelProduct(
                 tenant_id="error_test_tenant",
                 product_id="error_test_product",
@@ -71,10 +71,8 @@ class TestCreateMediaBuyErrorPaths:
                 description="Product for error testing",
                 formats=["display_300x250"],
                 delivery_type="guaranteed",
-                cpm=10.0,
-                min_spend=1000.0,
                 targeting_template={},
-                is_fixed_price=True,
+                property_tags=["all_inventory"],  # Required field
             )
             session.add(product)
 

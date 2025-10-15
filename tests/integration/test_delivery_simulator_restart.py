@@ -22,7 +22,7 @@ class TestDeliverySimulatorRestart:
         """Create test tenant."""
         with get_db_session() as session:
             tenant = Tenant(
-                tenant_id="test_tenant_restart", name="Test Tenant for Restart", subdomain="test-restart", config={}
+                tenant_id="test_tenant_restart", name="Test Tenant for Restart", subdomain="test-restart"
             )
             session.add(tenant)
             session.commit()

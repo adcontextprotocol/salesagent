@@ -65,7 +65,7 @@ class TestCreateMediaBuyV24Format:
             )
             session.add(principal)
 
-            # Create product
+            # Create product (without deprecated cpm, min_spend, is_fixed_price fields)
             product = ModelProduct(
                 tenant_id="test_tenant_v24",
                 product_id="prod_test_v24",
@@ -73,10 +73,8 @@ class TestCreateMediaBuyV24Format:
                 description="Test product for v2.4 format",
                 formats=["display_300x250"],
                 delivery_type="guaranteed",
-                cpm=10.0,
-                min_spend=1000.0,
                 targeting_template={},  # Required field
-                is_fixed_price=True,  # Required field
+                property_tags=["all_inventory"],  # Required: at least one of properties or property_tags
             )
             session.add(product)
 
