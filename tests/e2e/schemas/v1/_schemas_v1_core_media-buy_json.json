@@ -16,7 +16,7 @@
     "status": {
       "$ref": "/schemas/v1/enums/media-buy-status.json"
     },
-    "brand_manifest": {
+    "promoted_offering": {
       "type": "string",
       "description": "Description of advertiser and what is being promoted"
     },
@@ -51,7 +51,7 @@
   "required": [
     "media_buy_id",
     "status",
-    "brand_manifest",
+    "promoted_offering",
     "total_budget",
     "packages"
   ],

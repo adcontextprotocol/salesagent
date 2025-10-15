@@ -107,8 +107,8 @@
               "id": "premium_bespoke_display"
             },
             "assets": {
-              "brand_manifests": {
-                "asset_type": "brand_manifests",
+              "promoted_offerings": {
+                "asset_type": "promoted_offerings",
                 "url": "https://retailer.com",
                 "colors": {
                   "primary": "#C41E3A",

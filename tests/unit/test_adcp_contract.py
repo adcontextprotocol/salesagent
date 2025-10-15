@@ -383,8 +383,16 @@ class TestAdCPContract:
         request = CreateMediaBuyRequest(
             brand_manifest="Nike Air Jordan 2025 basketball shoes",  # Required per AdCP spec
             buyer_ref="nike_jordan_2025_q1",  # Required per AdCP spec
-            product_ids=["product_1", "product_2"],
-            total_budget=5000.0,
+            packages=[
+                {
+                    "product_id": "product_1",  # Singular product_id per AdCP spec
+                    "budget": 2500.0,
+                },
+                {
+                    "product_id": "product_2",  # Singular product_id per AdCP spec
+                    "budget": 2500.0,
+                },
+            ],
             start_date=start_date.date(),
             end_date=end_date.date(),
             po_number="PO-12345",  # Required per AdCP spec
