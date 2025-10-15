@@ -40,13 +40,13 @@ class TestGeneratedSchemaCompatibility:
             errors=None,
         )
 
-        # Convert to AdCP-compliant dict (exclude non-spec fields)
-        adcp_dict = custom_response.model_dump(exclude={"adcp_version"})
+        # Convert to AdCP-compliant dict (exclude protocol envelope and non-spec fields)
+        # Protocol fields (status, task_id, message, context_id) are added by transport layer
+        adcp_dict = custom_response.model_dump(exclude={"adcp_version", "status", "task_id", "message", "context_id"})
 
         # Validate it loads into generated schema
         try:
             generated = GeneratedCreateMediaBuyResponse(**adcp_dict)
-            assert generated.status.value == "completed"
             assert generated.buyer_ref == "test_ref_123"
             assert generated.media_buy_id == "mb_test_456"
         except Exception as e:
@@ -67,11 +67,10 @@ class TestGeneratedSchemaCompatibility:
             status="completed",
         )
 
-        adcp_dict = custom_response.model_dump(exclude={"adcp_version"})
+        adcp_dict = custom_response.model_dump(exclude={"adcp_version", "status", "task_id", "message", "context_id"})
 
         try:
             generated = GeneratedGetProductsResponse(**adcp_dict)
-            assert generated.status.value == "completed"
             assert generated.products == []
         except Exception as e:
             pytest.fail(f"GetProductsResponse not compatible: {e}\n" f"AdCP dict keys: {list(adcp_dict.keys())}")
@@ -88,13 +87,11 @@ class TestGeneratedSchemaCompatibility:
             creatives=[],  # AdCP spec uses "creatives" field
         )
 
-        # model_dump() automatically excludes non-spec fields
-        adcp_dict = custom_response.model_dump()
+        # Exclude protocol envelope fields
+        adcp_dict = custom_response.model_dump(exclude={"adcp_version", "status", "task_id", "message", "context_id"})
 
         try:
             generated = GeneratedSyncCreativesResponse(**adcp_dict)
-            assert generated.status.value == "completed"
-            assert generated.message == "Creatives synced successfully"
             assert generated.creatives == []
         except Exception as e:
             pytest.fail(f"SyncCreativesResponse not compatible: {e}\n" f"AdCP dict keys: {list(adcp_dict.keys())}")
@@ -120,11 +117,10 @@ class TestGeneratedSchemaCompatibility:
             creatives=[],
         )
 
-        adcp_dict = custom_response.model_dump(exclude={"adcp_version"})
+        adcp_dict = custom_response.model_dump(exclude={"adcp_version", "status", "task_id", "context_id"})
 
         try:
             generated = GeneratedListCreativesResponse(**adcp_dict)
-            assert generated.message == "Successfully retrieved 0 creatives"
             assert generated.query_summary.total_matching == 0
             assert generated.pagination.limit == 50
         except Exception as e:
@@ -176,11 +172,11 @@ class TestGeneratedSchemaCompatibility:
             formats=[],
         )
 
-        adcp_dict = custom_response.model_dump(exclude={"adcp_version"})
+        adcp_dict = custom_response.model_dump(exclude={"adcp_version", "status", "task_id", "message", "context_id"})
 
         try:
             generated = GeneratedListCreativeFormatsResponse(**adcp_dict)
-            assert generated.status.value == "completed"
+            assert generated.formats == []
         except Exception as e:
             pytest.fail(
                 f"ListCreativeFormatsResponse not compatible: {e}\n" f"AdCP dict keys: {list(adcp_dict.keys())}"
@@ -218,11 +214,10 @@ class TestGeneratedSchemaCompatibility:
             buyer_ref="test_buyer_ref",  # Required per AdCP spec
         )
 
-        adcp_dict = custom_response.model_dump(exclude={"adcp_version"})
+        adcp_dict = custom_response.model_dump(exclude={"adcp_version", "status", "task_id", "message", "context_id"})
 
         try:
             generated = GeneratedUpdateMediaBuyResponse(**adcp_dict)
-            assert generated.status.value == "completed"
             assert generated.media_buy_id == "mb_123"
             assert generated.buyer_ref == "test_buyer_ref"
         except Exception as e:
