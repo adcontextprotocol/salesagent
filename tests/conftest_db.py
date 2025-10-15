@@ -17,17 +17,12 @@ def test_database_url():
 
     REQUIRES: PostgreSQL container running (via run_all_tests.sh ci)
 
-    NOTE: This fixture is SKIPPED for integration tests in CI mode.
-    Integration tests use the function-scoped 'integration_db' fixture instead.
+    NOTE: In CI mode, returns ADCP_TEST_DB_URL to avoid port conflicts.
+    Integration tests set ADCP_TEST_DB_URL to use correct test database.
     """
-    # CRITICAL: Skip this fixture if integration_db is being used (CI mode)
-    # integration_db sets ADCP_TEST_DB_URL, which indicates we should use
-    # the function-scoped fixture instead of this session-scoped one.
-    if os.environ.get("ADCP_TEST_DB_URL"):
-        pytest.skip("Using integration_db fixture instead (CI mode)")
-
-    # Use TEST_DATABASE_URL if set, otherwise DATABASE_URL (for CI)
-    url = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
+    # CRITICAL: In CI mode, use ADCP_TEST_DB_URL (set by run_all_tests.sh ci)
+    # This ensures we use the correct test database port (5433) not development (5494)
+    url = os.environ.get("ADCP_TEST_DB_URL") or os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
 
     if not url:
         pytest.skip("Tests require PostgreSQL. Run: ./run_all_tests.sh ci")
@@ -42,16 +37,9 @@ def test_database_url():
 def test_database(test_database_url):
     """Create and initialize test database once per session.
 
-    NOTE: This fixture is SKIPPED for integration tests in CI mode.
-    Integration tests use the function-scoped 'integration_db' fixture instead,
-    which provides better isolation by creating a unique database per test.
+    NOTE: In CI mode, uses ADCP_TEST_DB_URL (via test_database_url fixture).
+    This ensures session-scoped fixtures work with correct test database.
     """
-    # CRITICAL: Skip this fixture if integration_db is being used (CI mode)
-    # integration_db sets ADCP_TEST_DB_URL, which indicates we should use
-    # the function-scoped fixture instead of this session-scoped one.
-    if os.environ.get("ADCP_TEST_DB_URL"):
-        pytest.skip("Using integration_db fixture instead (CI mode)")
-
     # Set the database URL for the application
     os.environ["DATABASE_URL"] = test_database_url
     os.environ["DB_TYPE"] = "postgresql"
