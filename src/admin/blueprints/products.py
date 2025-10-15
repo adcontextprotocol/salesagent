@@ -236,12 +236,16 @@ def list_products(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            products = db_session.scalars(
-                select(Product)
-                .options(joinedload(Product.pricing_options))
-                .filter_by(tenant_id=tenant_id)
-                .order_by(Product.name)
-            ).all()
+            products = (
+                db_session.scalars(
+                    select(Product)
+                    .options(joinedload(Product.pricing_options))
+                    .filter_by(tenant_id=tenant_id)
+                    .order_by(Product.name)
+                )
+                .unique()
+                .all()
+            )
 
             # Convert products to dict format for template
             products_list = []
