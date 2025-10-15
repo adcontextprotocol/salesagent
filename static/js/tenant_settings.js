@@ -630,3 +630,33 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('policy_check_enabled').addEventListener('change', updateAdvertisingPolicyUI);
     }
 });
+
+// Adapter selection functions (called from template onclick handlers)
+function selectAdapter(adapterType) {
+    // Save the adapter selection via API
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/settings/adapter`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            adapter: adapterType
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reload to show the adapter's configuration
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error.message);
+    });
+}
+
+function selectGAMAdapter() {
+    selectAdapter('google_ad_manager');
+}
