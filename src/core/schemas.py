@@ -1012,19 +1012,25 @@ class GetProductsResponse(AdCPBaseModel):
         # Get basic structure
         data = {}
 
-        # Add required adcp_version field
-        data["adcp_version"] = self.adcp_version
+        # Respect exclude parameter from kwargs
+        exclude = kwargs.get("exclude", set())
+        if not isinstance(exclude, set):
+            exclude = set(exclude) if exclude else set()
+
+        # NOTE: adcp_version NOT in official spec - excluded for spec compliance
+        # data["adcp_version"] = self.adcp_version
 
         # Serialize products using their custom model_dump method
-        if self.products:
-            data["products"] = [product.model_dump(**kwargs) for product in self.products]
-        else:
-            data["products"] = []
+        if "products" not in exclude:
+            if self.products:
+                data["products"] = [product.model_dump(**kwargs) for product in self.products]
+            else:
+                data["products"] = []
 
         # Add other fields, excluding None values for AdCP compliance
-        if self.errors is not None:
+        if "errors" not in exclude and self.errors is not None:
             data["errors"] = self.errors
-        if self.status is not None:
+        if "status" not in exclude and self.status is not None:
             data["status"] = self.status
 
         return data
@@ -1631,6 +1637,7 @@ class AssignmentResult(BaseModel):
 class SyncCreativesResponse(AdCPBaseModel):
     """Response from syncing creative assets (AdCP spec compliant)."""
 
+    # NOTE: adcp_version NOT in official spec - kept for internal use, excluded from responses
     adcp_version: str = Field(
         "2.3.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response"
     )
@@ -1644,14 +1651,28 @@ class SyncCreativesResponse(AdCPBaseModel):
         None, description="Unique identifier for tracking this async operation (present for submitted/working status)"
     )
     dry_run: bool = Field(False, description="Whether this was a dry run (no actual changes made)")
+
+    # AdCP spec field: "creatives" array with action/status per creative
+    creatives: list[SyncCreativeResult] = Field(default_factory=list, description="Results for each creative processed")
+
+    # Extension fields (NOT in official spec) - for backward compatibility
     summary: SyncSummary | None = Field(None, description="High-level summary of sync operation results")
-    results: list[SyncCreativeResult] | None = Field(None, description="Detailed results for each creative processed")
+    results: list[SyncCreativeResult] | None = Field(None, description="DEPRECATED: Use 'creatives' field instead")
     assignments_summary: AssignmentsSummary | None = Field(
         None, description="Summary of assignment operations (when assignments were included)"
     )
     assignment_results: list[AssignmentResult] | None = Field(
         None, description="Detailed assignment results (when assignments were included)"
     )
+
+    def model_dump(self, **kwargs):
+        """Override to provide AdCP-compliant responses."""
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            # Exclude fields not in official spec
+            exclude.update({"adcp_version", "summary", "results", "assignments_summary", "assignment_results"})
+            kwargs["exclude"] = exclude
+        return super().model_dump(**kwargs)
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
@@ -1720,7 +1741,6 @@ class ListCreativesResponse(AdCPBaseModel):
 
     # Required AdCP fields
     adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
-    message: str = Field(...)
     query_summary: QuerySummary = Field(...)
     pagination: Pagination = Field(...)
     creatives: list[Creative] = Field(..., description="Array of creative assets")
@@ -1732,7 +1752,14 @@ class ListCreativesResponse(AdCPBaseModel):
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
-        return self.message
+        total = self.query_summary.total_matching
+        returned = self.query_summary.returned
+        if total == 0:
+            return "No creatives found."
+        elif returned == total:
+            return f"Found {total} creative{'s' if total != 1 else ''}."
+        else:
+            return f"Found {total} creatives, showing {returned}."
 
 
 class CheckCreativeStatusRequest(AdCPBaseModel):
@@ -1984,7 +2011,7 @@ class Package(BaseModel):
     )
     format_ids_to_provide: list[FormatId] | None = Field(
         None,
-        description="Format IDs that creative assets will be provided for this package (array of FormatId objects per AdCP v2.4)",
+        description="Format IDs that creative assets will be provided for this package (per AdCP v2.4 spec)",
     )
 
     @model_validator(mode="before")
@@ -1992,9 +2019,8 @@ class Package(BaseModel):
     def migrate_format_ids_to_format_ids_to_provide(cls, values: dict) -> dict:
         """Migrate legacy format_ids field to format_ids_to_provide for backward compatibility.
 
-        Handles migration from old formats:
+        Handles migration from old format:
         - format_ids (array of strings)
-        - formats_to_provide (array of strings)
         To new AdCP v2.4 format:
         - format_ids_to_provide (array of FormatId objects)
         """
@@ -2005,11 +2031,9 @@ class Package(BaseModel):
         if "format_ids_to_provide" in values:
             return values
 
-        # Try to migrate from formats_to_provide or format_ids
+        # Try to migrate from format_ids
         source_field = None
-        if "formats_to_provide" in values and values["formats_to_provide"]:
-            source_field = "formats_to_provide"
-        elif "format_ids" in values and values["format_ids"]:
+        if "format_ids" in values and values["format_ids"]:
             source_field = "format_ids"
 
         if source_field:
@@ -2064,7 +2088,8 @@ class Package(BaseModel):
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
             # Add internal fields to exclude by default
-            # Legacy format fields also excluded (migrated to format_ids_to_provide)
+            # NOTE: format_ids_to_provide IS in official AdCP v2.4 spec
+            # We exclude legacy field names, internal fields, and extension fields not in spec
             exclude.update(
                 {
                     "tenant_id",
@@ -2073,8 +2098,13 @@ class Package(BaseModel):
                     "created_at",
                     "updated_at",
                     "metadata",
-                    "format_ids",
-                    "formats_to_provide",
+                    "format_ids",  # Legacy field - excluded (use format_ids_to_provide)
+                    # Extension fields not in official spec:
+                    "products",  # Use product_id (singular) per spec
+                    "creative_ids",  # Use creative_assignments per spec
+                    "pricing_model",  # Extension field for pricing selection
+                    "bid_price",  # Extension field for auction pricing
+                    "pacing",  # Extension field for pacing strategy
                 }
             )
             kwargs["exclude"] = exclude
@@ -2521,12 +2551,21 @@ class AggregatedTotals(BaseModel):
 class GetMediaBuyDeliveryResponse(AdCPBaseModel):
     """AdCP-compliant response for get_media_buy_delivery task."""
 
+    # NOTE: adcp_version NOT in official spec - kept for internal use, excluded from responses
     adcp_version: str = Field(description="AdCP schema version used for this response", pattern=r"^\d+\.\d+\.\d+$")
     reporting_period: ReportingPeriod = Field(description="Date range for the report")
     currency: str = Field(description="ISO 4217 currency code", pattern=r"^[A-Z]{3}$")
     aggregated_totals: AggregatedTotals = Field(description="Combined metrics across all returned media buys")
     media_buy_deliveries: list[MediaBuyDeliveryData] = Field(description="Array of delivery data for each media buy")
     errors: list[dict] | None = Field(None, description="Task-specific errors and warnings")
+
+    def model_dump(self, **kwargs):
+        """Override to provide AdCP-compliant responses."""
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            exclude.add("adcp_version")  # Not in official spec
+            kwargs["exclude"] = exclude
+        return super().model_dump(**kwargs)
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
@@ -2605,6 +2644,8 @@ class UpdateMediaBuyResponse(AdCPBaseModel):
         if isinstance(exclude, set):
             # Add internal fields to exclude by default
             exclude.add("workflow_step_id")
+            # Exclude adcp_version (not in official spec)
+            exclude.add("adcp_version")
             kwargs["exclude"] = exclude
         return super().model_dump(**kwargs)
 
@@ -3258,7 +3299,6 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
 class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     """Response payload for list_authorized_properties task (AdCP spec compliant)."""
 
-    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response")
     properties: list[Property] = Field(..., description="Array of all properties this agent is authorized to represent")
     tags: dict[str, PropertyTagMetadata] = Field(
         default_factory=dict, description="Metadata for each tag referenced by properties"
@@ -3271,6 +3311,16 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     )
     portfolio_description: str | None = Field(
         None, description="Markdown-formatted description of the property portfolio", max_length=5000
+    )
+    advertising_policies: str | None = Field(
+        None,
+        description=(
+            "Publisher's advertising content policies, restrictions, and guidelines in natural language. "
+            "May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, "
+            "or links to full policy documentation."
+        ),
+        min_length=1,
+        max_length=10000,
     )
     errors: list[dict[str, Any]] | None = Field(
         None, description="Task-specific errors and warnings (e.g., property availability issues)"

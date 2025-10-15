@@ -44,7 +44,7 @@ class TestNotificationUrlsExist:
         route_patterns = []
         for url in urls:
             # Skip if it's part of a full URL
-            if content[content.find(url) - 10:content.find(url)].find("http") != -1:
+            if content[content.find(url) - 10 : content.find(url)].find("http") != -1:
                 continue
             # Skip static files and external paths
             if url.startswith("/static") or url.startswith("/admin/admin"):
@@ -83,8 +83,7 @@ class TestNotificationUrlsExist:
 
             # Check if route exists (exact match or as a prefix)
             route_exists = any(
-                route == flask_route or
-                route.startswith(flask_route + "/") or
+                route == flask_route or route.startswith(flask_route + "/") or
                 # Handle both /tenant/<tenant_id>/workflows and /tenant/<string:tenant_id>/workflows
                 route.replace("<string:", "<") == flask_route
                 for route in app_routes
@@ -116,22 +115,20 @@ class TestNotificationUrlsExist:
         # Known notification URLs that should exist
         required_routes = [
             "/tenant/<tenant_id>/workflows",  # Fixed in this PR (was /operations)
-            "/tenant/<tenant_id>/creative-formats/review",  # Creative review
+            # creative-formats/review removed - creative_formats table dropped in migration f2addf453200
         ]
 
         missing = []
         for route in required_routes:
             # Check with both regular and string: type hints
             route_exists = any(
-                app_route == route or
-                app_route.replace("<string:", "<") == route
-                for app_route in app_routes
+                app_route == route or app_route.replace("<string:", "<") == route for app_route in app_routes
             )
             if not route_exists:
                 missing.append(route)
 
         if missing:
-            error_msg = f"Required notification routes don't exist:\n"
+            error_msg = "Required notification routes don't exist:\n"
             for route in missing:
                 error_msg += f"  - {route}\n"
             error_msg += "\nAvailable routes:\n"
@@ -151,10 +148,7 @@ class TestNotificationUrlsExist:
             "/tenant/{tenant_id}/operations",  # Tenant operations (doesn't exist)
         ]
 
-        found_deprecated = [
-            pattern for pattern in deprecated_patterns
-            if pattern in slack_notifier_urls
-        ]
+        found_deprecated = [pattern for pattern in deprecated_patterns if pattern in slack_notifier_urls]
 
         if found_deprecated:
             pytest.fail(

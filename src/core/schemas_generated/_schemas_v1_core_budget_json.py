@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Optional
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,4 +24,4 @@ class Budget(BaseModel):
     currency: Annotated[
         str, Field(description="ISO 4217 currency code", examples=["USD", "EUR", "GBP"], pattern="^[A-Z]{3}$")
     ]
-    pacing: Annotated[Optional[Pacing], Field(description="Budget pacing strategy", title="Pacing")] = None
+    pacing: Annotated[Pacing | None, Field(description="Budget pacing strategy", title="Pacing")] = None

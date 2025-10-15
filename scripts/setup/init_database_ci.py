@@ -46,6 +46,14 @@ def init_db_ci():
                 print(f"CI test tenant already exists (ID: {existing_tenant.tenant_id})")
                 tenant_id = existing_tenant.tenant_id
 
+                # Backfill access control if missing (required by setup checklist)
+                needs_access_control = not existing_tenant.authorized_emails and not existing_tenant.authorized_domains
+                if needs_access_control:
+                    print("Backfilling access control for existing tenant...")
+                    existing_tenant.authorized_emails = ["ci-test@example.com"]
+                    session.flush()
+                    print("   ✓ Access control configured")
+
                 # Check if principal exists GLOBALLY by access_token (it's unique across all tenants)
                 stmt_principal = select(Principal).filter_by(access_token="ci-test-token")
                 existing_principal = session.scalars(stmt_principal).first()
@@ -122,8 +130,8 @@ def init_db_ci():
                     ad_server="mock",
                     enable_axe_signals=True,
                     is_active=True,  # Explicitly set for auth lookup
-                    authorized_emails=None,  # SQL NULL (satisfies constraint)
-                    authorized_domains=None,  # SQL NULL (satisfies constraint)
+                    authorized_emails=["ci-test@example.com"],  # Required by setup checklist
+                    authorized_domains=None,  # Optional when emails are set
                     policy_settings=None,  # SQL NULL
                     signals_agent_config=None,  # SQL NULL
                     ai_policy=None,  # SQL NULL

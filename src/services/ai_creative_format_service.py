@@ -21,7 +21,8 @@ from bs4 import BeautifulSoup
 from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import CreativeFormat
+# CreativeFormat model removed - table dropped in migration f2addf453200
+# from src.core.database.models import CreativeFormat
 from src.core.retry_utils import http_retry
 
 logger = logging.getLogger(__name__)
@@ -800,40 +801,5 @@ async def discover_creative_format(
     }
 
 
-async def sync_standard_formats():
-    """Sync standard formats from adcontextprotocol.org to database."""
-    service = AICreativeFormatService()
-    formats = await service.fetch_standard_formats()
-
-    with get_db_session() as session:
-        for fmt in formats:
-            try:
-                # Check if format already exists
-                stmt = select(CreativeFormat).filter_by(format_id=fmt.format_id)
-                existing = session.scalars(stmt).first()
-
-                if not existing:
-                    # Insert new format
-                    new_format = CreativeFormat(
-                        format_id=fmt.format_id,
-                        tenant_id=None,  # Standard formats have no tenant
-                        name=fmt.name,
-                        type=fmt.type,
-                        description=fmt.description,
-                        width=getattr(fmt, "width", None),
-                        height=getattr(fmt, "height", None),
-                        duration_seconds=getattr(fmt, "duration_seconds", None),
-                        max_file_size_kb=getattr(fmt, "max_file_size_kb", None),
-                        specs=getattr(fmt, "specs", {}) or {},
-                        is_standard=True,
-                        extends=fmt.extends,
-                        source_url=fmt.source_url,
-                    )
-                    session.add(new_format)
-
-            except Exception as e:
-                logger.error(f"Error syncing format {fmt.format_id}: {e}")
-
-        session.commit()
-
-    return len(formats)
+# sync_standard_formats() removed - creative_formats table dropped in migration f2addf453200
+# Creative formats are now fetched from creative agents via AdCP list_creative_formats tool

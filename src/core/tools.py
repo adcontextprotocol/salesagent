@@ -119,7 +119,6 @@ async def get_products_raw(
         brief=brief or "",
         promoted_offering=promoted_offering,
         brand_manifest=brand_manifest,
-        adcp_version=adcp_version,
         filters=filters,
     )
 

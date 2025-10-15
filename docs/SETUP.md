@@ -145,15 +145,20 @@ DB_TYPE=sqlite
 ### Tenant Setup
 
 ```bash
-# Create publisher/tenant
+# Create publisher/tenant with access control
 docker exec -it adcp-server python setup_tenant.py "Publisher Name" \
   --adapter google_ad_manager \
-  --gam-network-code 123456
+  --gam-network-code 123456 \
+  --domain publisher.com \
+  --admin-email admin@publisher.com
 
 # Create with mock adapter for testing
 docker exec -it adcp-server python setup_tenant.py "Test Publisher" \
-  --adapter mock
+  --adapter mock \
+  --admin-email test@example.com
 ```
+
+**⚠️ Important:** Always specify `--domain` or `--admin-email` to configure access control. Without this, nobody can access the tenant.
 
 ## Admin UI Management
 

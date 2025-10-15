@@ -48,7 +48,7 @@ def test_database(test_database_url):
         Context,
         Creative,
         CreativeAssignment,
-        CreativeFormat,
+        # CreativeFormat removed - table dropped in migration f2addf453200
         FormatPerformanceMetrics,
         GAMInventory,
         GAMLineItem,

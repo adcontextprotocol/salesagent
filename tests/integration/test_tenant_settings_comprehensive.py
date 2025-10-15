@@ -62,24 +62,11 @@ def test_database_queries():
         result = cursor.fetchone()
         print(f"   ✓ Active advertisers: {result[0]}")
 
-        # Test 3: Check creative_formats query (without auto_approve column)
+        # Test 3: Check creative_formats query (SKIPPED - table dropped in Oct 2025)
         print("\n3. Testing creative formats query...")
-        cursor.execute(
-            """
-            SELECT
-                format_id,
-                name,
-                width,
-                height,
-                0 as auto_approve
-            FROM creative_formats
-            WHERE tenant_id = %s OR tenant_id IS NULL
-            ORDER BY name
-        """,
-            ("default",),
-        )
-        formats = cursor.fetchall()
-        print(f"   ✓ Creative formats found: {len(formats)}")
+        print("   ⚠️  Skipping - creative_formats table removed in migration f2addf453200")
+        print("   ℹ️  Creative formats now fetched from creative agents via AdCP")
+        formats = []
 
         # Test 4: Check principals table
         print("\n4. Testing principals query...")
