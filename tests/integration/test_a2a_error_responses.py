@@ -55,7 +55,7 @@ class TestA2AErrorPropagation:
             session.execute(delete(ModelTenant).where(ModelTenant.tenant_id == "a2a_error_test"))
             session.commit()
 
-            # Create tenant
+            # Create tenant with required access control
             tenant = ModelTenant(
                 tenant_id="a2a_error_test",
                 name="A2A Error Test Tenant",
@@ -63,10 +63,33 @@ class TestA2AErrorPropagation:
                 ad_server="mock",
                 is_active=True,
                 approval_mode="manual",
+                authorized_emails=["test@example.com"],  # Required for setup validation
                 created_at=now,
                 updated_at=now,
             )
             session.add(tenant)
+
+            # Create PropertyTag for "all_inventory" (required for property_tags references)
+            from src.core.database.models import PropertyTag
+
+            property_tag = PropertyTag(
+                tenant_id="a2a_error_test",
+                tag_id="all_inventory",
+                name="All Inventory",
+                description="All available inventory",
+            )
+            session.add(property_tag)
+
+            # Create AuthorizedProperty (required for setup validation)
+            from src.core.database.models import AuthorizedProperty
+
+            auth_property = AuthorizedProperty(
+                tenant_id="a2a_error_test",
+                property_url="https://example.com",
+                property_name="Example Property",
+                verification_status="verified",
+            )
+            session.add(auth_property)
 
             # Create product
             product = ModelProduct(

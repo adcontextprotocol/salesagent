@@ -73,11 +73,17 @@ class TestConfiguration:
     @pytest.mark.smoke
     def test_config_loader_works(self):
         """Test that config loader can be imported and used."""
+        from unittest.mock import MagicMock, patch
+
         from src.core.config_loader import load_config
 
-        # Should not raise an error
-        config = load_config()
-        assert config is not None
+        # Mock get_current_tenant to avoid database connection in smoke test
+        with patch("src.core.config_loader.get_current_tenant") as mock_tenant:
+            mock_tenant.return_value = MagicMock(tenant_id="test", subdomain="test")
+
+            # Should not raise an error
+            config = load_config()
+            assert config is not None
 
 
 class TestCriticalPaths:
