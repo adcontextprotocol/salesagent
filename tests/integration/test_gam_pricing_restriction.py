@@ -3,6 +3,7 @@
 Tests that GAM adapter properly enforces CPM-only restriction.
 """
 
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -163,7 +164,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
 
 
 @pytest.mark.requires_db
-def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
+async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPCV pricing model with clear error."""
     request = CreateMediaBuyRequest(
         buyer_ref="test_buyer_ref_cpcv",
@@ -182,8 +183,7 @@ def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
         currency="USD",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
+    from src.core.tool_context import ToolContext
 
     with get_db_session() as session:
         tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_tenant").first()
@@ -196,9 +196,26 @@ def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
 
         principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_tenant").first()
 
+    context = ToolContext(
+        context_id="test_ctx_gam_cpcv",
+        tenant_id="test_gam_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+    )
+
     # This should fail with a clear error about GAM not supporting CPCV
     with pytest.raises(Exception) as exc_info:
-        _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+        await _create_media_buy_impl(
+            buyer_ref=request.buyer_ref,
+            brand_manifest=request.brand_manifest,
+            packages=[p.model_dump_internal() for p in request.packages] if request.packages else None,
+            start_time=request.start_time,
+            end_time=request.end_time,
+            budget=request.budget,
+            currency=request.currency,
+            context=context,
+        )
 
     error_msg = str(exc_info.value)
     # Should mention GAM limitation and CPCV

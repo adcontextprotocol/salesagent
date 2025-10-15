@@ -319,9 +319,9 @@ class TestMinimumSpendValidation:
         assert "900" in response.detail
         assert "EUR" in response.detail
 
-    def test_no_minimum_when_not_set(self, setup_test_data):
+    async def test_no_minimum_when_not_set(self, setup_test_data):
         """Test that media buys with no minimum set in currency limit are allowed."""
-        from unittest.mock import MagicMock
+        from src.core.tool_context import ToolContext
 
         # Create a new currency limit with NO minimum (only max)
         with get_db_session() as session:
@@ -334,20 +334,26 @@ class TestMinimumSpendValidation:
             session.add(currency_limit_gbp)
             session.commit()
 
-        context = MagicMock()
-        context.headers = {"x-adcp-auth": "test_minspend_token"}
-
         start_time = datetime.now(UTC) + timedelta(days=1)
         end_time = start_time + timedelta(days=7)
 
+        context = ToolContext(
+            context_id="test_ctx_gbp",
+            tenant_id="test_minspend_tenant",
+            principal_id="test_principal",
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
+        )
+
         # Create media buy with low budget in GBP (should succeed - no minimum)
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_gbp",
             promoted_offering="Test Campaign",
             product_ids=["prod_global"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             total_budget=100.0,  # Low budget, but no minimum for GBP
-            budget=Budget(amount=100.0, currency="GBP"),
+            budget=Budget(total=100.0, currency="GBP"),
             context=context,
         )
 
