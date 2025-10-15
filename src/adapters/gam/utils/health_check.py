@@ -17,6 +17,7 @@ from typing import Any
 import google.oauth2.service_account
 from googleads import ad_manager
 
+from .constants import GAM_API_VERSION
 from .error_handler import GAMAuthenticationError, GAMConfigurationError
 from .logging import logger
 
@@ -149,7 +150,7 @@ class GAMHealthChecker:
             from googleads import ad_manager
 
             statement = (
-                ad_manager.StatementBuilder(version="v202505")
+                ad_manager.StatementBuilder(version=GAM_API_VERSION)
                 .Where("id = :id")
                 .WithBindVariable("id", int(advertiser_id))
                 .ToStatement()
@@ -277,7 +278,7 @@ class GAMHealthChecker:
             for ad_unit_id in ad_unit_ids[:5]:  # Check first 5 only
                 try:
                     statement = (
-                        ad_manager.StatementBuilder(version="v202505")
+                        ad_manager.StatementBuilder(version=GAM_API_VERSION)
                         .Where("id = :id")
                         .WithBindVariable("id", int(ad_unit_id))
                         .ToStatement()

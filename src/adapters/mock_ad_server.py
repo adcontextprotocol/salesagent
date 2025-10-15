@@ -89,7 +89,7 @@ class MockAdServer(AdServerAdapter):
 
     def get_supported_pricing_models(self) -> set[str]:
         """Mock adapter supports all pricing models (AdCP PR #88)."""
-        return {"cpm", "cpcv", "cpp", "cpc", "cpv", "flat_rate"}
+        return {"cpm", "vcpm", "cpcv", "cpp", "cpc", "cpv", "flat_rate"}
 
     def _initialize_hitl_config(self):
         """Initialize Human-in-the-Loop configuration from principal platform_mappings."""

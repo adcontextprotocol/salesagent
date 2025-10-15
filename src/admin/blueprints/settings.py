@@ -300,13 +300,45 @@ def update_adapter(tenant_id):
                     network_code = (
                         request.json.get("gam_network_code", "").strip() if request.json.get("gam_network_code") else ""
                     )
+                    refresh_token = (
+                        request.json.get("gam_refresh_token", "").strip()
+                        if request.json.get("gam_refresh_token")
+                        else ""
+                    )
+                    trafficker_id = (
+                        request.json.get("gam_trafficker_id", "").strip()
+                        if request.json.get("gam_trafficker_id")
+                        else ""
+                    )
+                    order_name_template = (
+                        request.json.get("order_name_template", "").strip()
+                        if request.json.get("order_name_template")
+                        else ""
+                    )
+                    line_item_name_template = (
+                        request.json.get("line_item_name_template", "").strip()
+                        if request.json.get("line_item_name_template")
+                        else ""
+                    )
                     manual_approval = request.json.get("gam_manual_approval", False)
                 else:
                     network_code = request.form.get("gam_network_code", "").strip()
+                    refresh_token = request.form.get("gam_refresh_token", "").strip()
+                    trafficker_id = request.form.get("gam_trafficker_id", "").strip()
+                    order_name_template = request.form.get("order_name_template", "").strip()
+                    line_item_name_template = request.form.get("line_item_name_template", "").strip()
                     manual_approval = request.form.get("gam_manual_approval") == "on"
 
                 if network_code:
                     adapter_config_obj.gam_network_code = network_code
+                if refresh_token:
+                    adapter_config_obj.gam_refresh_token = refresh_token
+                if trafficker_id:
+                    adapter_config_obj.gam_trafficker_id = trafficker_id
+                if order_name_template:
+                    adapter_config_obj.gam_order_name_template = order_name_template
+                if line_item_name_template:
+                    adapter_config_obj.gam_line_item_name_template = line_item_name_template
                 adapter_config_obj.gam_manual_approval_required = manual_approval
             elif new_adapter == "mock":
                 if request.is_json:

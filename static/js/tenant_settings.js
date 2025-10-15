@@ -176,6 +176,11 @@ function checkOAuthStatus() {
             const statusBadge = document.getElementById('oauth-status-badge');
             const statusText = document.getElementById('oauth-status-text');
 
+            // Only update if elements exist (they may not be on all pages)
+            if (!statusBadge || !statusText) {
+                return;
+            }
+
             if (data.authenticated) {
                 statusBadge.textContent = 'Connected';
                 statusBadge.className = 'badge badge-success';
@@ -208,11 +213,11 @@ function initiateGAMAuth() {
         `width=${width},height=${height},left=${left},top=${top}`
     );
 
-    // Poll for completion
+    // Poll for completion and reload to show updated config
     const pollTimer = setInterval(() => {
         if (popup.closed) {
             clearInterval(pollTimer);
-            checkOAuthStatus();
+            location.reload();
         }
     }, 1000);
 }
@@ -221,6 +226,13 @@ function initiateGAMAuth() {
 function detectGAMNetwork() {
     const button = document.querySelector('button[onclick="detectGAMNetwork()"]');
     const originalText = button.textContent;
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+
+    if (!refreshToken) {
+        alert('Please enter a refresh token first');
+        return;
+    }
+
     button.disabled = true;
     button.textContent = 'Detecting...';
 
@@ -228,7 +240,10 @@ function detectGAMNetwork() {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-        }
+        },
+        body: JSON.stringify({
+            refresh_token: refreshToken
+        })
     })
     .then(response => response.json())
     .then(data => {
@@ -236,10 +251,242 @@ function detectGAMNetwork() {
         button.textContent = originalText;
 
         if (data.success) {
-            document.getElementById('gam_network_code').value = data.network_code;
-            alert(`✅ Network code detected: ${data.network_code}`);
+            // Handle multiple networks - show dropdown for selection
+            if (data.multiple_networks && data.networks) {
+                showNetworkSelector(data.networks, refreshToken);
+            } else {
+                // Single network - auto-select
+                document.getElementById('gam_network_code').value = data.network_code;
+
+                // Update trafficker ID if provided
+                if (data.trafficker_id) {
+                    document.getElementById('gam_trafficker_id').value = data.trafficker_id;
+                }
+
+                alert(`✅ Network code detected: ${data.network_code}`);
+            }
         } else {
             alert('❌ ' + (data.error || data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.textContent = originalText;
+        alert('❌ Error: ' + error.message);
+    });
+}
+
+// Show network selector when multiple networks found
+function showNetworkSelector(networks, refreshToken) {
+    const container = document.createElement('div');
+    container.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background: white; padding: 2rem; border-radius: 8px; max-width: 500px; width: 90%;';
+
+    modal.innerHTML = `
+        <h3 style="margin-top: 0;">Select GAM Network</h3>
+        <p style="color: #666;">You have access to multiple GAM networks. Please select which one to use:</p>
+        <select id="network-selector" class="form-control" style="margin: 1rem 0; padding: 0.5rem; font-size: 1rem;">
+            ${networks.map(net => `
+                <option value="${net.network_code}">
+                    ${net.network_name} (${net.network_code})
+                </option>
+            `).join('')}
+        </select>
+        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+            <button onclick="cancelNetworkSelection()" class="btn btn-secondary">Cancel</button>
+            <button onclick="confirmNetworkSelection('${refreshToken}')" class="btn btn-primary">Confirm Selection</button>
+        </div>
+    `;
+
+    container.appendChild(modal);
+    document.body.appendChild(container);
+
+    // Store networks data for later use
+    window.gamNetworks = networks;
+    window.networkSelectorContainer = container;
+}
+
+// Cancel network selection
+function cancelNetworkSelection() {
+    if (window.networkSelectorContainer) {
+        window.networkSelectorContainer.remove();
+        window.networkSelectorContainer = null;
+        window.gamNetworks = null;
+    }
+}
+
+// Confirm network selection and get trafficker ID
+function confirmNetworkSelection(refreshToken) {
+    const selector = document.getElementById('network-selector');
+    const selectedNetworkCode = selector.value;
+    const selectedNetwork = window.gamNetworks.find(n => n.network_code === selectedNetworkCode);
+
+    if (!selectedNetwork) {
+        alert('Error: Network not found');
+        return;
+    }
+
+    // Close modal
+    cancelNetworkSelection();
+
+    // Get trafficker ID for selected network
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/detect-network`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            refresh_token: refreshToken,
+            network_code: selectedNetworkCode
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('gam_network_code').value = selectedNetworkCode;
+
+            if (data.trafficker_id) {
+                document.getElementById('gam_trafficker_id').value = data.trafficker_id;
+            }
+
+            alert(`✅ Network selected: ${selectedNetwork.network_name} (${selectedNetworkCode})`);
+        } else {
+            alert('❌ Error getting trafficker ID: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('❌ Error: ' + error.message);
+    });
+}
+
+// Save manually entered token
+function saveManualToken() {
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+
+    if (!refreshToken) {
+        alert('Please enter a refresh token first');
+        return;
+    }
+
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Saving...';
+
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/settings/adapter`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            adapter: 'google_ad_manager',
+            gam_refresh_token: refreshToken
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.disabled = false;
+        button.textContent = originalText;
+
+        if (data.success) {
+            alert('✅ Token saved! Page will reload to show next steps.');
+            location.reload();
+        } else {
+            alert('❌ Failed to save: ' + (data.error || data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.textContent = originalText;
+        alert('❌ Error: ' + error.message);
+    });
+}
+
+// Save GAM configuration
+function saveGAMConfig() {
+    const networkCode = document.getElementById('gam_network_code').value;
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+    const traffickerId = document.getElementById('gam_trafficker_id').value;
+    const orderNameTemplate = (document.getElementById('gam_order_name_template') || document.getElementById('order_name_template'))?.value || '';
+    const lineItemNameTemplate = (document.getElementById('gam_line_item_name_template') || document.getElementById('line_item_name_template'))?.value || '';
+
+    if (!refreshToken) {
+        alert('Please provide a Refresh Token');
+        return;
+    }
+
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Saving...';
+
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/settings/adapter`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            adapter: 'google_ad_manager',
+            gam_network_code: networkCode,
+            gam_refresh_token: refreshToken,
+            gam_trafficker_id: traffickerId,
+            order_name_template: orderNameTemplate,
+            line_item_name_template: lineItemNameTemplate
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.disabled = false;
+        button.textContent = originalText;
+
+        if (data.success) {
+            alert('✅ GAM configuration saved successfully');
+            location.reload();
+        } else {
+            alert('❌ Failed to save: ' + (data.error || data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.textContent = originalText;
+        alert('❌ Error: ' + error.message);
+    });
+}
+
+// Test GAM connection
+function testGAMConnection() {
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+
+    if (!refreshToken) {
+        alert('Please provide a refresh token first');
+        return;
+    }
+
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Testing...';
+
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/test-connection`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            refresh_token: refreshToken
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.disabled = false;
+        button.textContent = originalText;
+
+        if (data.success) {
+            alert('✅ Connection successful!');
+        } else {
+            alert('❌ Connection failed: ' + (data.error || data.message || 'Unknown error'));
         }
     })
     .catch(error => {
@@ -330,32 +577,77 @@ function testGAMConnection() {
 
 // Sync GAM inventory
 function syncGAMInventory() {
+    console.log('=== syncGAMInventory START ===');
     const button = document.querySelector('button[onclick="syncGAMInventory()"]');
-    const originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Syncing...';
+    console.log('Button:', button);
+    console.log('Button disabled?', button ? button.disabled : 'NO BUTTON FOUND');
+    const originalText = button.innerHTML;
+    console.log('Original text:', originalText);
 
-    fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/sync-inventory`, {
+    button.disabled = true;
+
+    // Simple animated dots loading indicator
+    let dots = '';
+    button.innerHTML = '⏳ Syncing';
+    console.log('Set button to:', button.innerHTML);
+    const loadingInterval = setInterval(() => {
+        dots = dots.length >= 3 ? '' : dots + '.';
+        button.innerHTML = `⏳ Syncing${dots}`;
+        console.log('Button text now:', button.innerHTML);
+    }, 300);
+
+    const url = `${config.scriptName}/tenant/${config.tenantId}/gam/sync-inventory`;
+
+    fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        return response.json();
+    })
     .then(data => {
+        clearInterval(loadingInterval);
         button.disabled = false;
-        button.textContent = originalText;
+        button.innerHTML = originalText;
 
         if (data.success) {
-            alert(`✅ Synced ${data.count} ad units successfully!`);
+            // Extract actual counts from response (not dict keys!)
+            const adUnitCount = (data.ad_units || {}).total || 0;
+            const placementCount = (data.placements || {}).total || 0;
+            const labelCount = (data.labels || {}).total || 0;
+            const targetingKeyCount = (data.custom_targeting || {}).total_keys || 0;
+            const targetingValueCount = (data.custom_targeting || {}).total_values || 0;
+            const audienceCount = (data.audience_segments || {}).total || 0;
+
+            const totalCount = adUnitCount + placementCount + labelCount + targetingKeyCount + targetingValueCount + audienceCount;
+
+            let message = `✅ Inventory synced successfully!\n\n`;
+            if (adUnitCount > 0) message += `• ${adUnitCount} ad units\n`;
+            if (placementCount > 0) message += `• ${placementCount} placements\n`;
+            if (labelCount > 0) message += `• ${labelCount} labels\n`;
+            if (targetingKeyCount > 0) {
+                message += `• ${targetingKeyCount} custom targeting keys`;
+                if (targetingValueCount > 0) message += ` (${targetingValueCount} values)`;
+                message += `\n`;
+            }
+            if (audienceCount > 0) message += `• ${audienceCount} audience segments\n`;
+
+            if (totalCount === 0) {
+                message = '✅ Inventory synced successfully!\n\nNo inventory items found in GAM.';
+            }
+
+            alert(message);
             location.reload();
         } else {
             alert('❌ Sync failed: ' + (data.error || data.message || 'Unknown error'));
         }
     })
     .catch(error => {
+        clearInterval(loadingInterval);
         button.disabled = false;
-        button.textContent = originalText;
+        button.innerHTML = originalText;
         alert('❌ Error: ' + error.message);
     });
 }
@@ -608,11 +900,6 @@ function updateAdvertisingPolicyUI() {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
-    // Check OAuth status if GAM adapter is active
-    if (config.activeAdapter === 'google_ad_manager') {
-        checkOAuthStatus();
-    }
-
     // Generate A2A code if section exists
     if (document.getElementById('a2a-code-output')) {
         generateA2ACode();
@@ -630,3 +917,33 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('policy_check_enabled').addEventListener('change', updateAdvertisingPolicyUI);
     }
 });
+
+// Adapter selection functions (called from template onclick handlers)
+function selectAdapter(adapterType) {
+    // Save the adapter selection via API
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/settings/adapter`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            adapter: adapterType
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reload to show the adapter's configuration
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error.message);
+    });
+}
+
+function selectGAMAdapter() {
+    selectAdapter('google_ad_manager');
+}

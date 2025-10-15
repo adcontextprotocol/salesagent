@@ -114,6 +114,7 @@ class PricingModel(str, Enum):
     """Supported pricing models per AdCP spec."""
 
     CPM = "cpm"  # Cost per 1,000 impressions
+    VCPM = "vcpm"  # Cost per 1,000 viewable impressions
     CPC = "cpc"  # Cost per click
     CPCV = "cpcv"  # Cost per completed view (100% completion)
     CPV = "cpv"  # Cost per view at threshold
