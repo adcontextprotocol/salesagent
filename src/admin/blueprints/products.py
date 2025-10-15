@@ -344,6 +344,11 @@ def add_product(tenant_id):
                 # Parse and create pricing options (AdCP PR #88)
                 pricing_options_data = parse_pricing_options_from_form(form_data)
 
+                # CRITICAL: Products MUST have at least one pricing option
+                if not pricing_options_data or len(pricing_options_data) == 0:
+                    flash("Product must have at least one pricing option", "error")
+                    return redirect(url_for("products.create_product", tenant_id=tenant_id))
+
                 # Derive delivery_type from first pricing option for implementation_config
                 delivery_type = "guaranteed"  # Default
 
@@ -715,6 +720,12 @@ def edit_product(tenant_id, product_id):
                 ).delete()
 
                 pricing_options_data = parse_pricing_options_from_form(form_data)
+
+                # CRITICAL: Products MUST have at least one pricing option
+                if not pricing_options_data or len(pricing_options_data) == 0:
+                    flash("Product must have at least one pricing option", "error")
+                    return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
+
                 if pricing_options_data:
                     logger.info(
                         f"Updating {len(pricing_options_data)} pricing options for product {product.product_id}"
