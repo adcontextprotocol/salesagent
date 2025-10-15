@@ -18,10 +18,11 @@ from pathlib import Path
 
 
 class ImportCollector(ast.NodeVisitor):
-    """Collect all imported names from a module."""
+    """Collect all imported names and locally defined classes/functions from a module."""
 
     def __init__(self):
         self.imports: set[str] = set()
+        self.has_star_import: bool = False
 
     def visit_Import(self, node):
         for alias in node.names:
@@ -31,8 +32,22 @@ class ImportCollector(ast.NodeVisitor):
 
     def visit_ImportFrom(self, node):
         for alias in node.names:
-            name = alias.asname if alias.asname else alias.name
-            self.imports.add(name)
+            # Check for wildcard import (from foo import *)
+            if alias.name == "*":
+                self.has_star_import = True
+            else:
+                name = alias.asname if alias.asname else alias.name
+                self.imports.add(name)
+        self.generic_visit(node)
+
+    def visit_ClassDef(self, node):
+        """Track class definitions (they don't need imports)."""
+        self.imports.add(node.name)
+        self.generic_visit(node)
+
+    def visit_FunctionDef(self, node):
+        """Track function definitions (they don't need imports)."""
+        self.imports.add(node.name)
         self.generic_visit(node)
 
     def visit_Assign(self, node):
@@ -44,6 +59,13 @@ class ImportCollector(ast.NodeVisitor):
             # Add to imports so it's recognized as defined
             # This handles aliases (Task = WorkflowStep) and constants (SELECTED_ADAPTER = ...)
             self.imports.add(var_name)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node):
+        """Collect annotated assignments (e.g., VAR: Type = value)."""
+        # Track annotated assignments like TARGETING_CAPABILITIES: dict[str, X] = {...}
+        if isinstance(node.target, ast.Name):
+            self.imports.add(node.target.id)
         self.generic_visit(node)
 
 
@@ -101,6 +123,10 @@ def check_file(filepath: Path) -> list[str]:
     import_collector = ImportCollector()
     import_collector.visit(tree)
 
+    # Skip files with wildcard imports (can't reliably check them)
+    if import_collector.has_star_import:
+        return []
+
     # Collect usages
     usage_collector = UsageCollector()
     usage_collector.visit(tree)
@@ -125,6 +151,8 @@ def check_file(filepath: Path) -> list[str]:
         "PermissionError",
         "TimeoutError",
         "ConnectionError",
+        "SystemExit",
+        "KeyboardInterrupt",
         "dict",
         "list",
         "set",
