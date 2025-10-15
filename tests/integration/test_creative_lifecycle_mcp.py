@@ -803,9 +803,8 @@ class TestCreativeLifecycleMCP:
 
             mock_adapter_instance = mock_adapter.return_value
             mock_adapter_instance.create_media_buy.return_value = CreateMediaBuyResponse(
+                buyer_ref="test_buyer_ref",
                 media_buy_id="test_buy_123",
-                status=TaskStatus.WORKING,
-                message="Media buy created",
             )
             mock_adapter_instance.manual_approval_required = False
 
