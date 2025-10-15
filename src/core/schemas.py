@@ -624,29 +624,19 @@ class Product(BaseModel):
 
     # NEW: Pricing options (AdCP PR #88)
     # Note: This is populated from database relationship, not a column
-    pricing_options: list[PricingOption] | None = Field(
-        None, description="Available pricing models for this product (AdCP PR #88)"
+    # REQUIRED: All products must have at least one pricing option in database
+    # Can be empty list for anonymous users (hidden for privacy)
+    pricing_options: list[PricingOption] = Field(
+        default_factory=list,
+        description="Available pricing models for this product (AdCP PR #88). May be empty for unauthenticated requests.",
     )
 
-    # DEPRECATED: Old pricing fields (maintained for backward compatibility)
-    # Use pricing_options instead in new implementations
-    is_fixed_price: bool | None = Field(
-        None, description="DEPRECATED: Use pricing_options instead. Whether this product has fixed pricing"
-    )
-    cpm: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options instead. Cost per thousand impressions"
-    )
-    min_spend: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options[].min_spend_per_package instead", gt=-1
-    )
-    currency: str | None = Field(
-        None, description="DEPRECATED: Use pricing_options[].currency instead. ISO 4217 currency code"
-    )
+    # Pricing fields (AdCP PR #88)
     floor_cpm: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options with price_guidance instead", gt=0
+        None, description="Calculated dynamically from pricing_options price_guidance", gt=0
     )
     recommended_cpm: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options with price_guidance instead", gt=0
+        None, description="Calculated dynamically from pricing_options price_guidance", gt=0
     )
 
     # Other fields
@@ -678,21 +668,14 @@ class Product(BaseModel):
 
     @model_validator(mode="after")
     def validate_pricing_fields(self) -> "Product":
-        """Validate that either pricing_options OR legacy pricing fields are present per AdCP spec.
+        """Validate pricing_options per AdCP spec.
 
-        Per AdCP PR #88: Products should use pricing_options (new format).
-        Legacy fields (is_fixed_price, cpm, etc.) are maintained for backward compatibility.
-        At least one pricing method must be specified.
+        Per AdCP PR #88: All products must use pricing_options in the database.
+        However, pricing_options may be empty in API responses for anonymous/unauthenticated
+        users to hide pricing information.
         """
-        has_pricing_options = self.pricing_options is not None and len(self.pricing_options) > 0
-        has_legacy_pricing = self.is_fixed_price is not None
-
-        if not has_pricing_options and not has_legacy_pricing:
-            raise ValueError(
-                "Product must have either pricing_options (recommended) or legacy pricing fields (is_fixed_price). "
-                "See AdCP PR #88 for new pricing options format."
-            )
-
+        # pricing_options defaults to empty list if not provided
+        # This allows filtering pricing info for anonymous users
         return self
 
     @model_validator(mode="after")
@@ -745,11 +728,6 @@ class Product(BaseModel):
         Returns None if no pricing information available.
         """
         if not self.pricing_options or len(self.pricing_options) == 0:
-            # Fallback to legacy pricing
-            if self.is_fixed_price is not None:
-                if self.cpm:
-                    return f"CPM: ${self.cpm:.2f} ({self.currency or 'USD'}, fixed)"
-                return "Fixed pricing (contact for rates)"
             return None
 
         summary_parts = []
@@ -799,14 +777,15 @@ class Product(BaseModel):
             "description",
             "format_ids",
             "delivery_type",
-            "is_fixed_price",
             "is_custom",
-            "currency",  # PR #79: Always include currency
         }
 
         adcp_data = {}
         for key, value in data.items():
             # Include core fields always, and non-null optional fields
+            # Exclude empty pricing_options (for anonymous users)
+            if key == "pricing_options" and value == []:
+                continue
             if key in core_fields or value is not None:
                 adcp_data[key] = value
 
@@ -993,32 +972,27 @@ class Error(BaseModel):
 
 
 class GetProductsResponse(AdCPBaseModel):
-    """Response for get_products tool (AdCP spec compliant).
+    """Response for get_products tool (AdCP v2.4 spec compliant).
 
-    Human-readable messages are provided via __str__() for protocol layer use
-    (MCP display, A2A task messages), not as schema fields.
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    # Required AdCP fields
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version")
-    products: list[Product] = Field(...)
+    # Required AdCP domain fields
+    products: list[Product] = Field(..., description="List of available advertising products")
 
-    # Optional AdCP fields
-    status: Literal["completed", "working", "submitted"] | None = Field(None, description="Task status")
-    errors: list[Error] | None = None
+    # Optional AdCP domain fields
+    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     def model_dump(self, **kwargs):
         """Override to ensure products use AdCP-compliant serialization."""
-        # Get basic structure
         data = {}
 
         # Respect exclude parameter from kwargs
         exclude = kwargs.get("exclude", set())
         if not isinstance(exclude, set):
             exclude = set(exclude) if exclude else set()
-
-        # NOTE: adcp_version NOT in official spec - excluded for spec compliance
-        # data["adcp_version"] = self.adcp_version
 
         # Serialize products using their custom model_dump method
         if "products" not in exclude:
@@ -1030,17 +1004,12 @@ class GetProductsResponse(AdCPBaseModel):
         # Add other fields, excluding None values for AdCP compliance
         if "errors" not in exclude and self.errors is not None:
             data["errors"] = self.errors
-        if "status" not in exclude and self.status is not None:
-            data["status"] = self.status
 
         return data
 
     def model_dump_internal(self, **kwargs):
         """Override to ensure products use internal field names for reconstruction."""
         data = {}
-
-        # Add required adcp_version field
-        data["adcp_version"] = self.adcp_version
 
         # Serialize products using their internal model_dump method
         if self.products:
@@ -1051,8 +1020,6 @@ class GetProductsResponse(AdCPBaseModel):
         # Add other fields
         if self.errors is not None:
             data["errors"] = self.errors
-        if self.status is not None:
-            data["status"] = self.status
 
         return data
 
@@ -1072,8 +1039,10 @@ class GetProductsResponse(AdCPBaseModel):
         else:
             base_msg = f"Found {count} products that match your requirements."
 
-        # Check if this looks like an anonymous response (all pricing is None)
-        if count > 0 and all(p.cpm is None and p.min_spend is None for p in self.products):
+        # Check if this looks like an anonymous response (all pricing options have no rates)
+        if count > 0 and all(
+            all(po.rate is None for po in p.pricing_options) for p in self.products if p.pricing_options
+        ):
             return f"{base_msg} Please connect through an authorized buying agent for pricing data."
 
         return base_msg
@@ -1111,15 +1080,14 @@ class ListCreativeFormatsRequest(AdCPBaseModel):
 
 
 class ListCreativeFormatsResponse(AdCPBaseModel):
-    """Response for list_creative_formats tool (AdCP spec compliant).
+    """Response for list_creative_formats tool (AdCP v2.4 spec compliant).
 
-    Human-readable messages are provided via __str__() for protocol layer use
-    (MCP display, A2A task messages), not as schema fields.
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
     formats: list[Format] = Field(..., description="Full format definitions per AdCP spec")
-    status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
     creative_agents: list[dict[str, Any]] | None = Field(
         None, description="Creative agents providing additional formats"
     )
@@ -1635,48 +1603,48 @@ class AssignmentResult(BaseModel):
 
 
 class SyncCreativesResponse(AdCPBaseModel):
-    """Response from syncing creative assets (AdCP spec compliant)."""
+    """Response from syncing creative assets (AdCP v2.4 spec compliant).
 
-    # NOTE: adcp_version NOT in official spec - kept for internal use, excluded from responses
-    adcp_version: str = Field(
-        "2.3.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response"
-    )
-    message: str = Field(..., description="Human-readable result message summarizing the sync operation")
-    status: Literal["completed", "working", "submitted"] = Field(
-        "completed",
-        description="Current task state - 'completed' for immediate success, 'working' for operations under 120s, 'submitted' for long-running",
-    )
-    context_id: str | None = Field(None, description="Context ID for tracking async operations")
-    task_id: str | None = Field(
-        None, description="Unique identifier for tracking this async operation (present for submitted/working status)"
-    )
-    dry_run: bool = Field(False, description="Whether this was a dry run (no actual changes made)")
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
 
-    # AdCP spec field: "creatives" array with action/status per creative
-    creatives: list[SyncCreativeResult] = Field(default_factory=list, description="Results for each creative processed")
+    Official spec: /schemas/v1/media-buy/sync-creatives-response.json
+    """
 
-    # Extension fields (NOT in official spec) - for backward compatibility
-    summary: SyncSummary | None = Field(None, description="High-level summary of sync operation results")
-    results: list[SyncCreativeResult] | None = Field(None, description="DEPRECATED: Use 'creatives' field instead")
-    assignments_summary: AssignmentsSummary | None = Field(
-        None, description="Summary of assignment operations (when assignments were included)"
-    )
-    assignment_results: list[AssignmentResult] | None = Field(
-        None, description="Detailed assignment results (when assignments were included)"
-    )
+    # Required fields (per official spec)
+    creatives: list[SyncCreativeResult] = Field(..., description="Results for each creative processed")
 
-    def model_dump(self, **kwargs):
-        """Override to provide AdCP-compliant responses."""
-        exclude = kwargs.get("exclude", set())
-        if isinstance(exclude, set):
-            # Exclude fields not in official spec
-            exclude.update({"adcp_version", "summary", "results", "assignments_summary", "assignment_results"})
-            kwargs["exclude"] = exclude
-        return super().model_dump(**kwargs)
+    # Optional fields (per official spec)
+    dry_run: bool | None = Field(None, description="Whether this was a dry run (no actual changes made)")
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        return self.message
+        """Return human-readable summary message for protocol envelope."""
+        # Count actions from creatives list
+        created = sum(1 for c in self.creatives if c.action == "created")
+        updated = sum(1 for c in self.creatives if c.action == "updated")
+        deleted = sum(1 for c in self.creatives if c.action == "deleted")
+        failed = sum(1 for c in self.creatives if c.action == "failed")
+
+        parts = []
+        if created:
+            parts.append(f"{created} created")
+        if updated:
+            parts.append(f"{updated} updated")
+        if deleted:
+            parts.append(f"{deleted} deleted")
+        if failed:
+            parts.append(f"{failed} failed")
+
+        if parts:
+            msg = f"Creative sync completed: {', '.join(parts)}"
+        else:
+            msg = "Creative sync completed: no changes"
+
+        if self.dry_run:
+            msg += " (dry run)"
+
+        return msg
 
 
 class ListCreativesRequest(AdCPBaseModel):
@@ -1737,29 +1705,30 @@ class Pagination(BaseModel):
 
 
 class ListCreativesResponse(AdCPBaseModel):
-    """Response from listing creative assets (AdCP spec compliant)."""
+    """Response from listing creative assets (AdCP v2.4 spec compliant).
 
-    # Required AdCP fields
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
-    query_summary: QuerySummary = Field(...)
-    pagination: Pagination = Field(...)
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
+
+    # Required AdCP domain fields
+    query_summary: QuerySummary = Field(..., description="Summary of the query that was executed")
+    pagination: Pagination = Field(..., description="Pagination information for navigating results")
     creatives: list[Creative] = Field(..., description="Array of creative assets")
 
-    # Optional AdCP fields
-    context_id: str | None = None
-    format_summary: dict[str, int] | None = None
-    status_summary: dict[str, int] | None = None
+    # Optional AdCP domain fields
+    format_summary: dict[str, int] | None = Field(None, description="Breakdown by format type")
+    status_summary: dict[str, int] | None = Field(None, description="Breakdown by creative status")
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
+        """Return human-readable summary message for protocol envelope."""
+        count = self.query_summary.returned
         total = self.query_summary.total_matching
-        returned = self.query_summary.returned
-        if total == 0:
-            return "No creatives found."
-        elif returned == total:
-            return f"Found {total} creative{'s' if total != 1 else ''}."
+        if count == total:
+            return f"Found {count} creative{'s' if count != 1 else ''}."
         else:
-            return f"Found {total} creatives, showing {returned}."
+            return f"Showing {count} of {total} creatives."
 
 
 class CheckCreativeStatusRequest(AdCPBaseModel):
@@ -2009,59 +1978,17 @@ class Package(BaseModel):
     creative_assignments: list[dict[str, Any]] | None = Field(
         None, description="Creative assets assigned to this package"
     )
-    format_ids_to_provide: list[FormatId] | None = Field(
+    # AdCP v2.4 request field (input) - array of strings
+    format_ids: list[str] | None = Field(
         None,
-        description="Format IDs that creative assets will be provided for this package (per AdCP v2.4 spec)",
+        description="Format IDs for this package (array of format ID strings from list_creative_formats)",
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def migrate_format_ids_to_format_ids_to_provide(cls, values: dict) -> dict:
-        """Migrate legacy format_ids field to format_ids_to_provide for backward compatibility.
-
-        Handles migration from old format:
-        - format_ids (array of strings)
-        To new AdCP v2.4 format:
-        - format_ids_to_provide (array of FormatId objects)
-        """
-        if not isinstance(values, dict):
-            return values
-
-        # If we already have format_ids_to_provide, nothing to migrate
-        if "format_ids_to_provide" in values:
-            return values
-
-        # Try to migrate from format_ids
-        source_field = None
-        if "format_ids" in values and values["format_ids"]:
-            source_field = "format_ids"
-
-        if source_field:
-            format_data = values.get(source_field)
-            if isinstance(format_data, list) and len(format_data) > 0:
-                format_id_objects = []
-                for fmt_id in format_data:
-                    if isinstance(fmt_id, dict):
-                        # Already a FormatId dict
-                        if "agent_url" in fmt_id and "id" in fmt_id:
-                            format_id_objects.append(fmt_id)
-                        # FormatReference dict with format_id instead of id
-                        elif "agent_url" in fmt_id and "format_id" in fmt_id:
-                            format_id_objects.append({"agent_url": fmt_id["agent_url"], "id": fmt_id["format_id"]})
-                    elif isinstance(fmt_id, str):
-                        # String format ID - need to infer agent_url
-                        # Default to reference creative agent
-                        format_id_objects.append({"agent_url": "https://creative.adcontextprotocol.org", "id": fmt_id})
-                    elif hasattr(fmt_id, "agent_url") and hasattr(fmt_id, "id"):
-                        # FormatId object
-                        format_id_objects.append({"agent_url": fmt_id.agent_url, "id": fmt_id.id})
-                    elif hasattr(fmt_id, "agent_url") and hasattr(fmt_id, "format_id"):
-                        # FormatReference object
-                        format_id_objects.append({"agent_url": fmt_id.agent_url, "id": fmt_id.format_id})
-
-                values["format_ids_to_provide"] = format_id_objects
-
-        return values
+    # AdCP v2.4 response field (output) - array of FormatId objects
+    format_ids_to_provide: list[FormatId] | None = Field(
+        None,
+        description="Format IDs that creative assets will be provided for this package (array of FormatId objects per AdCP v2.4)",
+    )
 
     # NEW: Pricing model selection (AdCP PR #88)
     pricing_model: PricingModel | None = Field(
@@ -2088,8 +2015,7 @@ class Package(BaseModel):
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
             # Add internal fields to exclude by default
-            # NOTE: format_ids_to_provide IS in official AdCP v2.4 spec
-            # We exclude legacy field names, internal fields, and extension fields not in spec
+            # Legacy format fields also excluded (migrated to format_ids_to_provide)
             exclude.update(
                 {
                     "tenant_id",
@@ -2098,13 +2024,8 @@ class Package(BaseModel):
                     "created_at",
                     "updated_at",
                     "metadata",
-                    "format_ids",  # Legacy field - excluded (use format_ids_to_provide)
-                    # Extension fields not in official spec:
-                    "products",  # Use product_id (singular) per spec
-                    "creative_ids",  # Use creative_assignments per spec
-                    "pricing_model",  # Extension field for pricing selection
-                    "bid_price",  # Extension field for auction pricing
-                    "pacing",  # Extension field for pacing strategy
+                    "format_ids",
+                    "formats_to_provide",
                 }
             )
             kwargs["exclude"] = exclude
@@ -2360,30 +2281,21 @@ class CreateMediaBuyRequest(AdCPBaseModel):
 
 
 class CreateMediaBuyResponse(AdCPBaseModel):
-    """Response from create_media_buy operation (AdCP spec compliant).
+    """Response from create_media_buy operation (AdCP v2.4 spec compliant).
 
-    This is an async operation that may require manual approval or additional steps.
-    The status field indicates the current state of the media buy creation.
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    # Required AdCP fields
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
-    status: Literal[
-        "submitted", "working", "input-required", "completed", "canceled", "failed", "rejected", "auth-required"
-    ] = Field(
-        ...,
-        description="Task status per AdCP spec: submitted (queued), working (processing), completed (success), "
-        "failed (error during execution), rejected (not started), input-required (needs user input), "
-        "auth-required (needs auth), canceled (user canceled)",
-    )
-    buyer_ref: str = Field(...)
+    # Required AdCP domain fields
+    buyer_ref: str = Field(..., description="Buyer's reference identifier for this media buy")
 
-    # Optional AdCP fields
-    task_id: str | None = None
-    media_buy_id: str | None = None
-    creative_deadline: datetime | None = None
+    # Optional AdCP domain fields
+    media_buy_id: str | None = Field(None, description="Publisher's unique identifier for the created media buy")
+    creative_deadline: datetime | None = Field(None, description="ISO 8601 timestamp for creative upload deadline")
     packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
-    errors: list[Error] | None = None
+    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
@@ -2405,16 +2317,13 @@ class CreateMediaBuyResponse(AdCPBaseModel):
         return super().model_dump(**kwargs)
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        if self.status == "completed":
-            return f"Media buy {self.media_buy_id or self.buyer_ref} created successfully."
-        elif self.status == "working":
-            return f"Media buy {self.buyer_ref} is being created..."
-        elif self.status == "submitted":
-            return f"Media buy {self.buyer_ref} submitted for approval."
-        elif self.status == "input-required":
-            return f"Media buy {self.buyer_ref} requires additional input."
-        return f"Media buy {self.buyer_ref}: {self.status}"
+        """Return human-readable summary message for protocol envelope."""
+        if self.media_buy_id:
+            return f"Media buy {self.media_buy_id} created successfully."
+        elif self.errors:
+            return f"Media buy creation for {self.buyer_ref} encountered {len(self.errors)} error(s)."
+        else:
+            return f"Media buy {self.buyer_ref} created."
 
 
 class CheckMediaBuyStatusRequest(AdCPBaseModel):
@@ -2549,26 +2458,23 @@ class AggregatedTotals(BaseModel):
 
 
 class GetMediaBuyDeliveryResponse(AdCPBaseModel):
-    """AdCP-compliant response for get_media_buy_delivery task."""
+    """AdCP v2.4-compliant response for get_media_buy_delivery task.
 
-    # NOTE: adcp_version NOT in official spec - kept for internal use, excluded from responses
-    adcp_version: str = Field(description="AdCP schema version used for this response", pattern=r"^\d+\.\d+\.\d+$")
-    reporting_period: ReportingPeriod = Field(description="Date range for the report")
-    currency: str = Field(description="ISO 4217 currency code", pattern=r"^[A-Z]{3}$")
-    aggregated_totals: AggregatedTotals = Field(description="Combined metrics across all returned media buys")
-    media_buy_deliveries: list[MediaBuyDeliveryData] = Field(description="Array of delivery data for each media buy")
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
+
+    reporting_period: ReportingPeriod = Field(..., description="Date range for the report")
+    currency: str = Field(..., description="ISO 4217 currency code", pattern=r"^[A-Z]{3}$")
+    aggregated_totals: AggregatedTotals = Field(..., description="Combined metrics across all returned media buys")
+    media_buy_deliveries: list[MediaBuyDeliveryData] = Field(
+        ..., description="Array of delivery data for each media buy"
+    )
     errors: list[dict] | None = Field(None, description="Task-specific errors and warnings")
 
-    def model_dump(self, **kwargs):
-        """Override to provide AdCP-compliant responses."""
-        exclude = kwargs.get("exclude", set())
-        if isinstance(exclude, set):
-            exclude.add("adcp_version")  # Not in official spec
-            kwargs["exclude"] = exclude
-        return super().model_dump(**kwargs)
-
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
+        """Return human-readable summary message for protocol envelope."""
         count = len(self.media_buy_deliveries)
         if count == 0:
             return "No delivery data found for the specified period."
@@ -2620,19 +2526,21 @@ class AssetStatus(BaseModel):
 
 
 class UpdateMediaBuyResponse(AdCPBaseModel):
-    """Response from update_media_buy operation (AdCP spec compliant)."""
+    """Response from update_media_buy operation (AdCP v2.4 spec compliant).
 
-    # Required AdCP fields
-    adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
-    status: Literal["completed", "working", "submitted", "input-required"] = Field(...)
-    media_buy_id: str = Field(...)
-    buyer_ref: str = Field(...)
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
 
-    # Optional AdCP fields
-    task_id: str | None = None
-    implementation_date: datetime | None = None
-    affected_packages: list[dict[str, Any]] = Field(default_factory=list)
-    errors: list[Error] | None = None
+    # Required AdCP domain fields
+    media_buy_id: str = Field(..., description="Publisher's unique identifier for the media buy")
+    buyer_ref: str = Field(..., description="Buyer's reference identifier for this media buy")
+
+    # Optional AdCP domain fields
+    implementation_date: datetime | None = Field(None, description="When the update will take effect")
+    affected_packages: list[dict[str, Any]] = Field(default_factory=list, description="Packages affected by update")
+    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
@@ -2644,8 +2552,6 @@ class UpdateMediaBuyResponse(AdCPBaseModel):
         if isinstance(exclude, set):
             # Add internal fields to exclude by default
             exclude.add("workflow_step_id")
-            # Exclude adcp_version (not in official spec)
-            exclude.add("adcp_version")
             kwargs["exclude"] = exclude
         return super().model_dump(**kwargs)
 
@@ -2656,16 +2562,13 @@ class UpdateMediaBuyResponse(AdCPBaseModel):
         return super().model_dump(**kwargs)
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        if self.status == "completed":
+        """Return human-readable summary message for protocol envelope."""
+        if self.errors:
+            return f"Media buy {self.media_buy_id} update encountered {len(self.errors)} error(s)."
+        elif self.affected_packages:
+            return f"Media buy {self.media_buy_id} updated: {len(self.affected_packages)} package(s) affected."
+        else:
             return f"Media buy {self.media_buy_id} updated successfully."
-        elif self.status == "working":
-            return f"Media buy {self.media_buy_id} is being updated..."
-        elif self.status == "submitted":
-            return f"Media buy {self.media_buy_id} update submitted for approval."
-        elif self.status == "input-required":
-            return f"Media buy {self.media_buy_id} update requires additional input."
-        return f"Media buy {self.media_buy_id}: {self.status}"
 
 
 # Unified update models
@@ -3118,13 +3021,17 @@ class GetSignalsRequest(AdCPBaseModel):
 
 
 class GetSignalsResponse(AdCPBaseModel):
-    """Response containing available signals."""
+    """Response containing available signals (AdCP v2.4 spec compliant).
 
-    signals: list[Signal]
-    status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
+
+    signals: list[Signal] = Field(..., description="Array of available signals")
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
+        """Return human-readable summary message for protocol envelope."""
         count = len(self.signals)
         if count == 0:
             return "No signals found matching your criteria."
@@ -3143,18 +3050,21 @@ class ActivateSignalRequest(AdCPBaseModel):
 
 
 class ActivateSignalResponse(AdCPBaseModel):
-    """Response from signal activation."""
+    """Response from signal activation (AdCP v2.4 spec compliant).
+
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
 
     signal_id: str = Field(..., description="Activated signal ID")
-    status: str = Field(..., description="Task status per AdCP MCP Status specification")
-    message: str | None = Field(None, description="Human-readable status message")
     activation_details: dict[str, Any] | None = Field(None, description="Platform-specific activation details")
     errors: list[Error] | None = Field(None, description="Optional error reporting")
 
     def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        if self.message:
-            return self.message
+        """Return human-readable summary message for protocol envelope."""
+        if self.errors:
+            return f"Signal {self.signal_id} activation encountered {len(self.errors)} error(s)."
         return f"Signal {self.signal_id} activated successfully."
 
 
@@ -3297,7 +3207,12 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
 
 
 class ListAuthorizedPropertiesResponse(AdCPBaseModel):
-    """Response payload for list_authorized_properties task (AdCP spec compliant)."""
+    """Response payload for list_authorized_properties task (AdCP v2.4 spec compliant).
+
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    """
 
     properties: list[Property] = Field(..., description="Array of all properties this agent is authorized to represent")
     tags: dict[str, PropertyTagMetadata] = Field(

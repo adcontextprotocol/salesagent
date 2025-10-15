@@ -29,7 +29,6 @@ def test_create_media_buy_response_message_access():
     """
     # Create a response like the one from create_media_buy
     response = CreateMediaBuyResponse(
-        status="completed",
         buyer_ref="test-webhook-mb-001",
         media_buy_id="mb-12345",
     )
@@ -48,10 +47,11 @@ def test_create_media_buy_response_message_access():
 
     # TEST 3: Verify the A2A response dict construction works
     # This is what _handle_create_media_buy_skill does
+    # Note: status is now a protocol field, not in domain response
     a2a_response = {
         "success": True,
         "media_buy_id": response.media_buy_id,
-        "status": response.status,
+        # status would be added by protocol envelope wrapper
         "message": str(response),  # The fix
     }
     assert a2a_response["message"] == "Media buy mb-12345 created successfully."
@@ -61,19 +61,19 @@ def test_other_response_types():
     """Test that str() pattern works for all response types.
 
     Verifies that using str(response) is safe for:
-    - Responses with __str__() generating messages (GetProductsResponse)
-    - Responses with explicit message fields (SyncCreativesResponse)
+    - Responses with __str__() generating messages (GetProductsResponse, SyncCreativesResponse)
+    All responses now generate messages via __str__() from domain data.
     """
+
     # Test GetProductsResponse (generates message via __str__())
     response1 = GetProductsResponse(products=[])
     msg1 = str(response1)
     assert msg1 == "No products matched your requirements."
 
-    # Test SyncCreativesResponse (HAS .message field)
+    # Test SyncCreativesResponse (generates message via __str__() from creatives list)
     response2 = SyncCreativesResponse(
-        status="completed",
-        message="Synced 1 creative",
-        results=[SyncCreativeResult(buyer_ref="test-001", creative_id="cr-001", status="approved", action="created")],
+        creatives=[SyncCreativeResult(buyer_ref="test-001", creative_id="cr-001", status="approved", action="created")],
+        dry_run=False,
     )
     msg2 = str(response2)
-    assert "Synced 1 creative" in msg2
+    assert "1 created" in msg2  # Generated from creatives list

@@ -59,8 +59,8 @@ class DynamicPricingService:
             try:
                 pricing = self._calculate_product_pricing(product, tenant_id, country_code, min_exposures, cutoff_date)
 
-                # Update product fields
-                product.currency = pricing["currency"]
+                # Update product fields with dynamic pricing
+                # Note: currency is now in pricing_options, not on Product top-level
                 product.floor_cpm = pricing["floor_cpm"]
                 product.recommended_cpm = pricing["recommended_cpm"]
                 product.estimated_exposures = pricing["estimated_exposures"]
@@ -73,7 +73,7 @@ class DynamicPricingService:
 
             except Exception as e:
                 logger.warning(f"Failed to calculate pricing for product {product.product_id}: {e}. " "Using defaults.")
-                # Leave defaults (currency="USD", others=None)
+                # Leave defaults (floor_cpm, recommended_cpm, estimated_exposures remain None)
 
         return products
 

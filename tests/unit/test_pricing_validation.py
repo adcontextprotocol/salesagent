@@ -14,14 +14,11 @@ class TestPricingValidation:
     """Test pricing model validation logic."""
 
     def test_legacy_product_without_pricing_model_in_package(self):
-        """Test legacy product (no pricing_options) with package not specifying pricing_model."""
-        # Setup: Legacy product with is_fixed_price and cpm
+        """Test product with no pricing_options should raise data integrity error."""
+        # Since pricing_options is now required, products without them trigger data integrity errors
         product = Mock()
         product.product_id = "legacy_product"
-        product.is_fixed_price = True
-        product.cpm = Decimal("12.50")
-        product.currency = "USD"
-        product.pricing_options = []
+        product.pricing_options = []  # No pricing options = data integrity error
 
         # Package doesn't specify pricing_model
         package = Package(
@@ -30,22 +27,19 @@ class TestPricingValidation:
             budget=5000.0,
         )
 
-        # Should return legacy pricing info
-        result = _validate_pricing_model_selection(package, product, "USD")
+        # Should raise data integrity error
+        with pytest.raises(ToolError) as exc_info:
+            _validate_pricing_model_selection(package, product, "USD")
 
-        assert result["pricing_model"] == "cpm"
-        assert result["rate"] == 12.50
-        assert result["currency"] == "USD"
-        assert result["is_fixed"] is True
-        assert result["bid_price"] is None
+        assert "has no pricing_options configured" in str(exc_info.value)
+        assert "data integrity error" in str(exc_info.value)
 
     def test_legacy_product_with_pricing_model_in_package_should_error(self):
-        """Test legacy product when package specifies pricing_model (should fail)."""
+        """Test product with no pricing_options should raise data integrity error."""
+        # Since pricing_options is now required, products without them trigger data integrity errors
         product = Mock()
         product.product_id = "legacy_product"
-        product.is_fixed_price = True
-        product.cpm = Decimal("12.50")
-        product.pricing_options = []
+        product.pricing_options = []  # No pricing options = data integrity error
 
         package = Package(
             package_id="pkg_1",
@@ -57,7 +51,8 @@ class TestPricingValidation:
         with pytest.raises(ToolError) as exc_info:
             _validate_pricing_model_selection(package, product, "USD")
 
-        assert "does not offer new pricing models" in str(exc_info.value)
+        assert "has no pricing_options configured" in str(exc_info.value)
+        assert "data integrity error" in str(exc_info.value)
 
     def test_new_product_with_matching_pricing_model(self):
         """Test product with pricing_options and package specifying valid pricing_model."""
@@ -264,11 +259,11 @@ class TestPricingValidation:
         assert result["bid_price"] == 18.0
 
     def test_product_with_no_pricing_information(self):
-        """Test product with neither pricing_options nor legacy fields."""
+        """Test product with no pricing_options should raise data integrity error."""
+        # Since pricing_options is now required, products without them trigger data integrity errors
         product = Mock()
         product.product_id = "broken_product"
-        product.is_fixed_price = None
-        product.pricing_options = []
+        product.pricing_options = []  # No pricing options = data integrity error
 
         package = Package(
             package_id="pkg_1",
@@ -279,4 +274,5 @@ class TestPricingValidation:
         with pytest.raises(ToolError) as exc_info:
             _validate_pricing_model_selection(package, product, "USD")
 
-        assert "no pricing information" in str(exc_info.value)
+        assert "has no pricing_options configured" in str(exc_info.value)
+        assert "data integrity error" in str(exc_info.value)

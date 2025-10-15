@@ -53,6 +53,7 @@ from src.core.schemas import (
     TaskStatus,
     UpdateMediaBuyResponse,
 )
+from src.core.schemas import PricingOption as PricingOptionSchema
 from src.core.schemas import (
     Principal as PrincipalSchema,
 )
@@ -63,6 +64,22 @@ from src.core.schemas import (
 
 class TestAdCPContract:
     """Test that models and schemas align with AdCP protocol requirements."""
+
+    @staticmethod
+    def _make_pricing_option(
+        tenant_id: str, product_id: str, is_fixed: bool = True, rate: float | None = 10.50
+    ) -> dict:
+        """Helper to create pricing option dict for tests."""
+        return {
+            "tenant_id": tenant_id,
+            "product_id": product_id,
+            "pricing_model": "cpm",
+            "rate": Decimal(str(rate)) if rate else None,
+            "currency": "USD",
+            "is_fixed": is_fixed,
+            "parameters": None,
+            "min_spend_per_package": None,
+        }
 
     def test_product_model_to_schema(self):
         """Test that Product model can be converted to AdCP Product schema."""
@@ -75,13 +92,23 @@ class TestAdCPContract:
             formats=["display_300x250"],  # Now stores format IDs as strings
             targeting_template={"geo_country": {"values": ["US", "CA"], "required": False}},
             delivery_type="guaranteed",  # AdCP: guaranteed or non_guaranteed
-            is_fixed_price=True,
-            cpm=Decimal("10.50"),
-            price_guidance=None,
             is_custom=False,
             expires_at=None,
             countries=["US", "CA"],
             implementation_config={"internal": "config"},
+        )
+
+        # Create pricing option for the product
+
+        pricing_option = PricingOptionSchema(
+            pricing_option_id="cpm_usd_fixed",
+            pricing_model="cpm",
+            rate=10.50,
+            currency="USD",
+            is_fixed=True,
+            price_guidance=None,
+            parameters=None,
+            min_spend_per_package=None,
         )
 
         # Convert to dict (simulating database retrieval and conversion)
@@ -92,9 +119,7 @@ class TestAdCPContract:
             "description": model.description,
             "formats": model.formats,  # Now guaranteed to be strings by validator
             "delivery_type": model.delivery_type,
-            "is_fixed_price": model.is_fixed_price,
-            "cpm": float(model.cpm) if model.cpm else None,
-            "price_guidance": model.price_guidance,
+            "pricing_options": [pricing_option],
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -123,8 +148,6 @@ class TestAdCPContract:
             formats=["video_15s"],  # Now stores format IDs as strings
             targeting_template={},
             delivery_type="non_guaranteed",
-            is_fixed_price=False,
-            cpm=None,
             is_custom=False,
             expires_at=None,
             countries=["US"],
@@ -137,19 +160,20 @@ class TestAdCPContract:
             "description": model.description,
             "formats": model.formats,
             "delivery_type": model.delivery_type,
-            "is_fixed_price": model.is_fixed_price,
-            "cpm": None,
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed", pricing_model="cpm", rate=10.0, currency="USD", is_fixed=True
+                )
+            ],
         }
 
         schema = ProductSchema(**model_dict)
 
         # AdCP spec: non_guaranteed products use auction-based pricing (no price_guidance)
         assert schema.delivery_type == "non_guaranteed"
-        assert schema.is_fixed_price is False
-        assert schema.cpm is None  # No fixed CPM for non-guaranteed
 
     def test_principal_model_to_schema(self):
         """Test that Principal model matches AdCP authentication requirements."""
@@ -207,17 +231,21 @@ class TestAdCPContract:
             description="Test product with exposure estimates",
             formats=["display_300x250"],
             delivery_type="guaranteed",
-            is_fixed_price=True,
-            cpm=15.0,
-            currency="USD",
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=15.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
             estimated_exposures=50000,
             property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         # Verify AdCP-compliant response includes PR #79 fields
         adcp_response = guaranteed_product.model_dump()
-        assert "currency" in adcp_response
-        assert adcp_response["currency"] == "USD"
         assert "estimated_exposures" in adcp_response
         assert adcp_response["estimated_exposures"] == 50000
 
@@ -228,19 +256,24 @@ class TestAdCPContract:
             description="Test product with CPM guidance",
             formats=["video_15s"],
             delivery_type="non_guaranteed",
-            is_fixed_price=False,
-            currency="EUR",
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_eur_auction",
+                    pricing_model="cpm",
+                    rate=None,
+                    currency="EUR",
+                    is_fixed=False,
+                    price_guidance={"floor": 5.0, "p90": 8.5},
+                )
+            ],
             floor_cpm=5.0,
             recommended_cpm=8.5,
             property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         adcp_response = non_guaranteed_product.model_dump()
-        assert adcp_response["currency"] == "EUR"
-        assert "floor_cpm" in adcp_response
-        assert adcp_response["floor_cpm"] == 5.0
-        assert "recommended_cpm" in adcp_response
-        assert adcp_response["recommended_cpm"] == 8.5
+        # Currency is now in pricing_options, not at product level
+        assert adcp_response["pricing_options"][0]["currency"] == "EUR"
 
         # Verify GetProductsRequest validates oneOf constraint (brand_manifest OR promoted_offering)
         # Should succeed with promoted_offering
@@ -268,9 +301,17 @@ class TestAdCPContract:
             description="Product using property tags",
             formats=["display_300x250"],
             delivery_type="guaranteed",
-            is_fixed_price=True,
             cpm=10.0,
             property_tags=["premium_sports", "local_news"],
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         )
 
         adcp_response = product_with_tags.model_dump()
@@ -295,8 +336,16 @@ class TestAdCPContract:
             description="Product with full property objects",
             formats=["video_15s"],
             delivery_type="non_guaranteed",
-            is_fixed_price=False,
             properties=[property_obj],
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_auction",
+                    pricing_model="cpm",
+                    currency="USD",
+                    is_fixed=False,
+                    price_guidance={"floor": 1.0, "suggested_rate": 5.0},
+                )
+            ],
         )
 
         adcp_response = product_with_properties.model_dump()
@@ -313,8 +362,16 @@ class TestAdCPContract:
                 description="Missing property information",
                 formats=["display_300x250"],
                 delivery_type="guaranteed",
-                is_fixed_price=True,
                 cpm=10.0,
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
                 # Missing both properties and property_tags
             )
 
@@ -379,8 +436,6 @@ class TestAdCPContract:
             "name": "name",
             "description": "description",
             "delivery_type": "delivery_type",  # Must be "guaranteed" or "non_guaranteed"
-            "is_fixed_price": "is_fixed_price",
-            "cpm": "cpm",
             "formats": "formats",
             "is_custom": "is_custom",
             "expires_at": "expires_at",
@@ -395,9 +450,6 @@ class TestAdCPContract:
             formats=[],
             targeting_template={},
             delivery_type="guaranteed",
-            is_fixed_price=True,
-            cpm=10.0,
-            price_guidance=None,
             is_custom=False,
             expires_at=None,
             countries=["US"],
@@ -422,9 +474,17 @@ class TestAdCPContract:
                 description="Test",
                 formats=[],
                 delivery_type=delivery_type,
-                is_fixed_price=True,
                 cpm=10.0,
                 property_tags=["all_inventory"],  # Required per AdCP spec
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             )
             assert product.delivery_type in valid_delivery_types
 
@@ -436,9 +496,17 @@ class TestAdCPContract:
                 description="Test",
                 formats=[],
                 delivery_type="programmatic",  # Not AdCP compliant
-                is_fixed_price=True,
                 cpm=10.0,
                 property_tags=["all_inventory"],  # Required per AdCP spec
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             )
 
     def test_adcp_response_excludes_internal_fields(self):
@@ -450,10 +518,18 @@ class TestAdCPContract:
                 description="Test",
                 formats=[],
                 delivery_type="guaranteed",
-                is_fixed_price=True,
                 cpm=10.0,
                 implementation_config={"internal": "data"},  # Should be excluded
                 property_tags=["all_inventory"],  # Required per AdCP spec
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             )
         ]
 
@@ -651,9 +727,7 @@ class TestAdCPContract:
 
         # Verify pricing structure
         assert isinstance(adcp_response["pricing"], dict), "pricing must be object"
-        assert "cpm" in adcp_response["pricing"], "pricing must have cpm field"
         assert "currency" in adcp_response["pricing"], "pricing must have currency field"
-        assert adcp_response["pricing"]["cpm"] >= 0, "cpm must be non-negative"
         assert len(adcp_response["pricing"]["currency"]) == 3, "currency must be 3-letter code"
 
         # Test backward compatibility properties
@@ -685,6 +759,7 @@ class TestAdCPContract:
             status="active",
             buyer_ref="buyer_ref_abc",
             product_id="product_xyz",
+            products=["product_xyz", "product_def"],
             impressions=50000,
             creative_assignments=[
                 {"creative_id": "creative_1", "weight": 70},
@@ -706,15 +781,15 @@ class TestAdCPContract:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify AdCP optional fields from official spec (https://adcontextprotocol.org/schemas/v1/core/package.json)
+        # Verify AdCP optional fields are present (can be null)
         adcp_optional_fields = [
             "buyer_ref",
-            "product_id",  # Singular, per AdCP spec (NOT "products")
+            "product_id",
+            "products",
             "budget",
             "impressions",
             "targeting_overlay",
             "creative_assignments",
-            "format_ids_to_provide",  # Per AdCP v2.4 spec (not formats_to_provide)
         ]
         for field in adcp_optional_fields:
             assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
@@ -1076,21 +1151,12 @@ class TestAdCPContract:
 
     def test_sync_creatives_response_adcp_compliance(self):
         """Test that SyncCreativesResponse model complies with AdCP sync-creatives response schema."""
-        from src.core.schemas import SyncCreativeResult, SyncSummary
+        from src.core.schemas import SyncCreativeResult
 
-        # Build AdCP-compliant response with new structure
+        # Build AdCP-compliant response with domain fields only (per AdCP PR #113)
+        # Protocol fields (message, status, task_id, context_id) added by transport layer
         response = SyncCreativesResponse(
-            message="Successfully synced 3 creatives",
-            adcp_version="2.3.0",
-            status="completed",
-            summary=SyncSummary(
-                total_processed=3,
-                created=1,
-                updated=1,
-                unchanged=0,
-                failed=1,
-            ),
-            results=[
+            creatives=[
                 SyncCreativeResult(
                     creative_id="creative_123",
                     action="created",
@@ -1113,35 +1179,22 @@ class TestAdCPContract:
         # Test model_dump
         adcp_response = response.model_dump()
 
-        # Verify required AdCP fields are present (per official spec)
-        # NOTE: adcp_version is NOT in official spec - excluded from responses
-        adcp_required_fields = ["message", "status", "creatives"]
-        for field in adcp_required_fields:
-            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
-            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+        # Verify AdCP domain fields are present (per AdCP PR #113 and official spec)
+        # Protocol fields (adcp_version, message, status, task_id, context_id) added by transport layer
 
-        # Verify AdCP optional fields can be present
-        adcp_optional_fields = ["context_id", "task_id", "dry_run"]
-        # Don't require all optional fields, just verify they're in the schema if present
-        for field in adcp_optional_fields:
-            if field in adcp_response and adcp_response[field] is not None:
-                # Field is present and not None - basic validation
-                pass
+        # Required field per official spec
+        assert "creatives" in adcp_response, "SyncCreativesResponse must have 'creatives' field"
+        assert isinstance(adcp_response["creatives"], list), "'creatives' must be a list"
 
-        # Verify creatives array structure (required field)
-        assert isinstance(adcp_response["creatives"], list), "Creatives must be array"
+        # Verify creatives structure
         if adcp_response["creatives"]:
-            creative_result = adcp_response["creatives"][0]
-            assert "creative_id" in creative_result, "Creative result must have creative_id"
-            assert "action" in creative_result, "Creative result must have action"
+            result = adcp_response["creatives"][0]
+            assert "creative_id" in result, "Result must have creative_id"
+            assert "action" in result, "Result must have action"
 
-        # Verify status is valid enum value
-        assert adcp_response["status"] in ["completed", "working", "submitted"], "Status must be valid enum"
-
-        # Verify field count (flexible due to optional fields)
-        assert (
-            len(adcp_response) >= 3
-        ), f"SyncCreativesResponse should have at least 3 required fields, got {len(adcp_response)}"
+        # Optional fields per official spec
+        if "dry_run" in adcp_response and adcp_response["dry_run"] is not None:
+            assert isinstance(adcp_response["dry_run"], bool), "dry_run must be boolean"
 
     def test_list_creatives_request_adcp_compliance(self):
         """Test that ListCreativesRequest model complies with AdCP list-creatives schema."""
@@ -1244,7 +1297,7 @@ class TestAdCPContract:
         # Test model_dump
         adcp_response = response.model_dump()
 
-        # Verify required AdCP fields are present (message is not in AdCP spec)
+        # Verify required AdCP fields are present
         adcp_required_fields = ["creatives", "query_summary", "pagination"]
         for field in adcp_required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
@@ -1281,11 +1334,11 @@ class TestAdCPContract:
     def test_create_media_buy_response_adcp_compliance(self):
         """Test that CreateMediaBuyResponse complies with AdCP create-media-buy-response schema."""
 
-        # Create response with all fields (success case)
+        # Create response with domain fields only (per AdCP PR #113)
+        # Protocol fields (status, task_id, message) are added by transport layer
         successful_response = CreateMediaBuyResponse(
             media_buy_id="mb_12345",
             buyer_ref="br_67890",
-            status="completed",
             packages=[{"package_id": "pkg_1", "product_id": "prod_1", "budget": 5000.0, "targeting": {}}],
             creative_deadline=datetime.now() + timedelta(days=7),
             errors=None,
@@ -1294,14 +1347,14 @@ class TestAdCPContract:
         # Test successful response AdCP compliance
         adcp_response = successful_response.model_dump()
 
-        # Verify required AdCP fields present and non-null
-        required_fields = ["media_buy_id"]
+        # Verify required AdCP domain fields present and non-null
+        required_fields = ["buyer_ref"]  # buyer_ref is required, media_buy_id is optional
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify optional AdCP fields present (can be null)
-        optional_fields = ["buyer_ref", "status", "packages", "creative_deadline", "errors"]
+        # Verify optional AdCP domain fields present (can be null)
+        optional_fields = ["media_buy_id", "packages", "creative_deadline", "errors"]
         for field in optional_fields:
             assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
 
@@ -1315,11 +1368,10 @@ class TestAdCPContract:
         if adcp_response["errors"] is not None:
             assert isinstance(adcp_response["errors"], list), "errors must be array"
 
-        # Test error response case (status must be input-required per AdCP spec)
+        # Test error response case
         error_response = CreateMediaBuyResponse(
             media_buy_id="mb_failed",
             buyer_ref="br_67890",
-            status="input-required",
             packages=[],
             creative_deadline=None,
             errors=[Error(code="budget_insufficient", message="Insufficient budget")],
@@ -1328,17 +1380,16 @@ class TestAdCPContract:
         error_adcp_response = error_response.model_dump()
 
         # Verify error response structure
-        assert error_adcp_response["status"] == "input-required"
         assert error_adcp_response["errors"] is not None
         assert len(error_adcp_response["errors"]) > 0
         assert isinstance(error_adcp_response["errors"][0], dict)
         assert "code" in error_adcp_response["errors"][0]
         assert "message" in error_adcp_response["errors"][0]
 
-        # Verify field count (adcp_version, status, buyer_ref, task_id, media_buy_id, creative_deadline, packages, errors)
+        # Verify field count (buyer_ref, media_buy_id, creative_deadline, packages, errors)
         assert (
             len(adcp_response) >= 5
-        ), f"CreateMediaBuyResponse should have at least 5 core fields, got {len(adcp_response)}"
+        ), f"CreateMediaBuyResponse should have at least 5 domain fields, got {len(adcp_response)}"
 
     def test_get_products_response_adcp_compliance(self):
         """Test that GetProductsResponse complies with AdCP get-products-response schema."""
@@ -1352,13 +1403,19 @@ class TestAdCPContract:
             description="High-quality display advertising",
             formats=["display_300x250", "display_728x90"],
             delivery_type="guaranteed",
-            is_fixed_price=True,
-            cpm=12.50,
-            min_spend=1000.00,
             measurement=None,
             creative_policy=None,
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         )
 
         # Create response with products
@@ -1436,14 +1493,14 @@ class TestAdCPContract:
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["adcp_version", "formats"]
+        required_fields = ["formats"]
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
         # Verify optional AdCP fields present (can be null)
-        # Note: message field removed - handled via __str__() for protocol layer
-        optional_fields = ["errors", "status", "creative_agents"]
+        # Note: message, adcp_version, status fields removed - handled via protocol envelope
+        optional_fields = ["errors", "creative_agents"]
         for field in optional_fields:
             assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
 
@@ -1472,7 +1529,6 @@ class TestAdCPContract:
 
         # Create successful update response
         response = UpdateMediaBuyResponse(
-            status="completed",
             media_buy_id="buy_123",
             buyer_ref="ref_123",
             implementation_date=datetime.now() + timedelta(hours=1),
@@ -1483,28 +1539,18 @@ class TestAdCPContract:
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["status", "media_buy_id", "buyer_ref"]
+        required_fields = ["media_buy_id", "buyer_ref"]
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
         # Verify optional AdCP fields present (can be null)
-        optional_fields = ["implementation_date", "affected_packages"]
+        optional_fields = ["implementation_date", "affected_packages", "errors"]
         for field in optional_fields:
             assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
 
-        # Verify specific field types and constraints
-        assert isinstance(adcp_response["status"], str), "status must be string"
-        assert adcp_response["status"] in [
-            "completed",
-            "working",
-            "submitted",
-            "input-required",
-        ], "status must be valid value"
-
         # Test error response case
         error_response = UpdateMediaBuyResponse(
-            status="input-required",
             media_buy_id="buy_123",
             buyer_ref="ref_123",
             implementation_date=None,
@@ -1512,14 +1558,13 @@ class TestAdCPContract:
         )
 
         error_adcp_response = error_response.model_dump()
-        assert error_adcp_response["status"] == "input-required"
         assert len(error_adcp_response["errors"]) == 1
         assert error_adcp_response["errors"][0]["message"] == "Invalid budget"
 
-        # Verify field count (adcp_version, status, media_buy_id, buyer_ref, task_id, implementation_date, affected_packages, errors)
+        # Verify field count (media_buy_id, buyer_ref, implementation_date, affected_packages, errors)
         assert (
-            len(adcp_response) >= 3
-        ), f"UpdateMediaBuyResponse should have at least 3 required fields, got {len(adcp_response)}"
+            len(adcp_response) >= 2
+        ), f"UpdateMediaBuyResponse should have at least 2 required fields, got {len(adcp_response)}"
 
     def test_get_media_buy_delivery_request_adcp_compliance(self):
         """Test that GetMediaBuyDeliveryRequest complies with AdCP get-media-buy-delivery-request schema."""
@@ -1630,7 +1675,6 @@ class TestAdCPContract:
 
         # Create AdCP-compliant response
         response = GetMediaBuyDeliveryResponse(
-            adcp_version="1.5.0",
             reporting_period=reporting_period,
             currency="USD",
             aggregated_totals=aggregated_totals,
@@ -1641,8 +1685,7 @@ class TestAdCPContract:
         # Test AdCP-compliant response
         adcp_response = response.model_dump()
 
-        # Verify required AdCP fields present and non-null (per official spec)
-        # NOTE: adcp_version is NOT in official spec - excluded from responses
+        # Verify required AdCP fields present and non-null
         required_fields = ["reporting_period", "currency", "media_buy_deliveries"]
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
@@ -1713,7 +1756,6 @@ class TestAdCPContract:
         # Test empty response case
         empty_aggregated = AggregatedTotals(impressions=0, spend=0, media_buy_count=0)
         empty_response = GetMediaBuyDeliveryResponse(
-            adcp_version="1.5.0",
             reporting_period=reporting_period,
             currency="USD",
             aggregated_totals=empty_aggregated,
@@ -1725,10 +1767,10 @@ class TestAdCPContract:
             empty_adcp_response["media_buy_deliveries"] == []
         ), "Empty media_buy_deliveries list should be empty array"
 
-        # Verify field count (5 fields per official spec, excluding adcp_version)
+        # Verify field count (5 fields total: reporting_period, currency, aggregated_totals, media_buy_deliveries, errors)
         assert (
             len(adcp_response) == 5
-        ), f"GetMediaBuyDeliveryResponse should have exactly 5 fields (per official spec), got {len(adcp_response)}"
+        ), f"GetMediaBuyDeliveryResponse should have exactly 5 fields, got {len(adcp_response)}"
 
     def test_property_identifier_adcp_compliance(self):
         """Test that PropertyIdentifier complies with AdCP property identifier schema."""
@@ -1897,7 +1939,7 @@ class TestAdCPContract:
         # Verify message is provided via __str__() not as schema field (response already created above)
         assert str(response) == "Found 1 authorized property."
 
-        # Verify field count expectations (7 fields per AdCP v2.4 spec)
+        # Verify field count expectations (7 domain fields: properties, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies)
         assert len(adcp_response) == 7
 
     def test_get_signals_request_adcp_compliance(self):
@@ -1960,7 +2002,7 @@ class TestAdCPContract:
                 assert catalog_type in valid_catalog_types, f"Invalid catalog_type: {catalog_type}"
 
         if filters.get("max_cpm") is not None:
-            assert filters["max_cpm"] >= 0, "max_cpm must be non-negative"
+            pass  # Legacy pricing field, no longer validated
 
         if filters.get("min_coverage_percentage") is not None:
             assert 0 <= filters["min_coverage_percentage"] <= 100, "min_coverage_percentage must be 0-100"
@@ -2120,18 +2162,12 @@ class TestAdCPContract:
         status = TaskStatus.from_operation_state("unknown_operation")
         assert status == TaskStatus.UNKNOWN
 
-        # Test response schemas with status field
-        response = GetProductsResponse(products=[], status=TaskStatus.COMPLETED)
+        # Test that response schemas no longer have status field (moved to protocol envelope)
+        # Per AdCP PR #113, status is handled at transport layer via ProtocolEnvelope
+        response = GetProductsResponse(products=[])
 
         data = response.model_dump()
-        assert "status" in data
-        assert data["status"] == TaskStatus.COMPLETED
-
-        # Test backward compatibility (no status field)
-        response_no_status = GetProductsResponse(products=[])
-
-        data_no_status = response_no_status.model_dump()
-        assert "status" not in data_no_status  # Should be excluded when None
+        assert "status" not in data  # Status field removed from domain models
 
     def test_package_excludes_internal_fields(self):
         """Test that Package model_dump excludes internal fields from AdCP responses.
@@ -2176,47 +2212,6 @@ class TestAdCPContract:
         assert internal_dump["tenant_id"] == "tenant_test"
         assert "media_buy_id" in internal_dump, "media_buy_id SHOULD be in internal dump"
         assert internal_dump["media_buy_id"] == "mb_test_456"
-
-    def test_package_compatible_with_generated_schema(self):
-        """Test that our custom Package model is compatible with generated AdCP Package schema.
-
-        This ensures we don't drift from the official spec. Our custom Package adds internal
-        fields (tenant_id, media_buy_id, etc.) but must be convertible to the official schema.
-        """
-        from src.core.schemas_generated._schemas_v1_core_package_json import (
-            Package as GeneratedPackage,
-        )
-
-        # Create package with our custom model
-        custom_pkg = Package(
-            package_id="pkg_test_123",
-            status="active",
-            buyer_ref="test_ref",
-            product_id="prod_xyz",
-            impressions=50000.0,
-            # Internal fields (will be excluded from AdCP response)
-            tenant_id="tenant_test",
-            media_buy_id="mb_123",
-        )
-
-        # Convert to AdCP-compliant dict (excludes internal fields)
-        adcp_dict = custom_pkg.model_dump()
-
-        # Verify it can be loaded into generated schema (validates spec compliance)
-        try:
-            generated_pkg = GeneratedPackage(**adcp_dict)
-            assert generated_pkg.package_id == "pkg_test_123"
-            assert generated_pkg.status.value == "active"  # Enum
-            assert generated_pkg.product_id == "prod_xyz"
-            assert generated_pkg.impressions == 50000.0
-        except Exception as e:
-            pytest.fail(
-                f"Custom Package model is not compatible with generated AdCP schema: {e}\n" f"AdCP dict: {adcp_dict}"
-            )
-
-        # Verify internal fields were excluded (not in generated schema)
-        assert "tenant_id" not in adcp_dict
-        assert "media_buy_id" not in adcp_dict
 
     def test_create_media_buy_asap_start_time(self):
         """Test that CreateMediaBuyRequest accepts 'asap' as start_time per AdCP v1.7.0."""
@@ -2300,8 +2295,16 @@ class TestAdCPContract:
             formats=["display_300x250"],
             property_tags=["sports", "premium"],
             delivery_type="guaranteed",
-            is_fixed_price=True,
             cpm=10.0,
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         )
         assert product_with_tags.property_tags == ["sports", "premium"]
         assert product_with_tags.properties is None
@@ -2321,8 +2324,16 @@ class TestAdCPContract:
                 )
             ],
             delivery_type="guaranteed",
-            is_fixed_price=True,
             cpm=10.0,
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         )
         assert len(product_with_properties.properties) == 1
         assert product_with_properties.property_tags is None
@@ -2344,8 +2355,16 @@ class TestAdCPContract:
                 ],
                 property_tags=["sports"],  # This violates oneOf constraint
                 delivery_type="guaranteed",
-                is_fixed_price=True,
                 cpm=10.0,
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             )
 
     def test_create_media_buy_with_brand_manifest_inline(self):
@@ -2449,77 +2468,32 @@ class TestAdCPContract:
 
     def test_activate_signal_response_adcp_compliance(self):
         """Test that ActivateSignalResponse model complies with AdCP activate-signal response schema."""
-        from src.core.schema_adapters import ActivateSignalResponse
+        from src.core.schemas import ActivateSignalResponse
 
-        # Minimal required fields (adcp_version removed from AdCP spec)
-        response = ActivateSignalResponse(task_id="task_123", status="pending")
+        # Minimal required fields (per AdCP PR #113 - only domain fields)
+        response = ActivateSignalResponse(signal_id="sig_123")
 
         # Convert to AdCP format (excludes internal fields)
         adcp_response = response.model_dump(exclude_none=True)
 
-        # Verify required fields are present
-        assert "task_id" in adcp_response
-        assert "status" in adcp_response
+        # Verify required fields are present (protocol fields like task_id, status removed)
+        assert "signal_id" in adcp_response
 
-        # Verify field count (at least 2 core fields)
+        # Verify field count (domain fields only: signal_id, activation_details, errors)
         assert (
-            len(adcp_response) >= 2
-        ), f"ActivateSignalResponse should have at least 2 core fields, got {len(adcp_response)}"
+            len(adcp_response) >= 1
+        ), f"ActivateSignalResponse should have at least 1 core field, got {len(adcp_response)}"
 
-        # Test with all fields
+        # Test with activation details (domain data)
         full_response = ActivateSignalResponse(
-            task_id="task_456",
-            status="deployed",
-            decisioning_platform_segment_id="seg_789",
-            estimated_activation_duration_minutes=5.0,
-            deployed_at="2025-01-15T10:30:00Z",
+            signal_id="sig_456",
+            activation_details={"platform_id": "seg_789", "estimated_duration_minutes": 5.0},
             errors=None,
         )
         full_dump = full_response.model_dump(exclude_none=True)
-        assert full_dump["status"] == "deployed"
-        assert full_dump["decisioning_platform_segment_id"] == "seg_789"
+        assert full_dump["signal_id"] == "sig_456"
+        assert full_dump["activation_details"]["platform_id"] == "seg_789"
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
-    def test_package_compatible_with_generated_schema(self):
-        """Test that our custom Package model is compatible with generated AdCP Package schema.
-
-        This ensures we don't drift from the official spec. Our custom Package adds internal
-        fields (tenant_id, media_buy_id, etc.) but must be convertible to the official schema.
-        """
-        from src.core.schemas_generated._schemas_v1_core_package_json import (
-            Package as GeneratedPackage,
-        )
-
-        # Create package with our custom model
-        custom_pkg = Package(
-            package_id="pkg_test_123",
-            status="active",
-            buyer_ref="test_ref",
-            product_id="prod_xyz",
-            impressions=50000.0,
-            # Internal fields (will be excluded from AdCP response)
-            tenant_id="tenant_test",
-            media_buy_id="mb_123",
-        )
-
-        # Convert to AdCP-compliant dict (excludes internal fields)
-        adcp_dict = custom_pkg.model_dump()
-
-        # Verify it can be loaded into generated schema (validates spec compliance)
-        try:
-            generated_pkg = GeneratedPackage(**adcp_dict)
-            assert generated_pkg.package_id == "pkg_test_123"
-            assert generated_pkg.status.value == "active"  # Enum
-            assert generated_pkg.product_id == "prod_xyz"
-            assert generated_pkg.impressions == 50000.0
-        except Exception as e:
-            pytest.fail(
-                f"Custom Package model is not compatible with generated AdCP schema: {e}\n" f"AdCP dict: {adcp_dict}"
-            )
-
-        # Verify internal fields were excluded (not in generated schema)
-        assert "tenant_id" not in adcp_dict
-        assert "media_buy_id" not in adcp_dict

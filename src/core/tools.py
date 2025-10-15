@@ -206,7 +206,7 @@ async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> Ge
     return GetSignalsResponse(signals=signals)
 
 
-def create_media_buy_raw(
+async def create_media_buy_raw(
     buyer_ref: str,
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     po_number: str | None = None,
@@ -266,7 +266,7 @@ def create_media_buy_raw(
     from src.core.main import _create_media_buy_impl
 
     # Call the shared implementation
-    return _create_media_buy_impl(
+    return await _create_media_buy_impl(
         buyer_ref=buyer_ref,
         brand_manifest=brand_manifest,
         po_number=po_number,
