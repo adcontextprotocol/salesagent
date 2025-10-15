@@ -35,7 +35,7 @@ class TestCreateMediaBuyV24Format:
         from datetime import datetime
 
         from src.core.config_loader import set_current_tenant
-        from src.core.database.models import CurrencyLimit
+        from src.core.database.models import AuthorizedProperty, CurrencyLimit
         from src.core.database.models import Principal as ModelPrincipal
         from src.core.database.models import Product as ModelProduct
         from src.core.database.models import Tenant as ModelTenant
@@ -43,7 +43,7 @@ class TestCreateMediaBuyV24Format:
         with get_db_session() as session:
             now = datetime.now(UTC)
 
-            # Create tenant
+            # Create tenant with access control configured
             tenant = ModelTenant(
                 tenant_id="test_tenant_v24",
                 name="Test V24 Tenant",
@@ -51,6 +51,7 @@ class TestCreateMediaBuyV24Format:
                 ad_server="mock",
                 is_active=True,
                 approval_mode="manual",
+                authorized_emails=["test@example.com"],  # Required for access control
                 created_at=now,
                 updated_at=now,
             )
@@ -96,6 +97,18 @@ class TestCreateMediaBuyV24Format:
             )
             session.add(currency_limit_eur)
 
+            # Create authorized property (required for setup checklist)
+            authorized_property = AuthorizedProperty(
+                tenant_id="test_tenant_v24",
+                property_id="test_property_v24",
+                property_type="website",
+                name="Test Website",
+                identifiers=[{"type": "domain", "value": "example.com"}],
+                publisher_domain="example.com",
+                verification_status="verified",
+            )
+            session.add(authorized_property)
+
             session.commit()
 
             # Set tenant context
@@ -118,6 +131,7 @@ class TestCreateMediaBuyV24Format:
             session.execute(delete(ModelProduct).where(ModelProduct.tenant_id == "test_tenant_v24"))
             session.execute(delete(ModelPrincipal).where(ModelPrincipal.tenant_id == "test_tenant_v24"))
             session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "test_tenant_v24"))
+            session.execute(delete(AuthorizedProperty).where(AuthorizedProperty.tenant_id == "test_tenant_v24"))
             session.execute(delete(ModelTenant).where(ModelTenant.tenant_id == "test_tenant_v24"))
             session.commit()
 

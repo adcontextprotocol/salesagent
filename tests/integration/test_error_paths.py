@@ -40,6 +40,7 @@ class TestCreateMediaBuyErrorPaths:
     def test_tenant_minimal(self, integration_db):
         """Create minimal tenant without principal (for auth error tests)."""
         from src.core.config_loader import set_current_tenant
+        from src.core.database.models import AuthorizedProperty
 
         with get_db_session() as session:
             now = datetime.now(UTC)
@@ -48,10 +49,11 @@ class TestCreateMediaBuyErrorPaths:
             session.execute(delete(ModelPrincipal).where(ModelPrincipal.tenant_id == "error_test_tenant"))
             session.execute(delete(ModelProduct).where(ModelProduct.tenant_id == "error_test_tenant"))
             session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "error_test_tenant"))
+            session.execute(delete(AuthorizedProperty).where(AuthorizedProperty.tenant_id == "error_test_tenant"))
             session.execute(delete(ModelTenant).where(ModelTenant.tenant_id == "error_test_tenant"))
             session.commit()
 
-            # Create tenant
+            # Create tenant with access control
             tenant = ModelTenant(
                 tenant_id="error_test_tenant",
                 name="Error Test Tenant",
@@ -59,6 +61,7 @@ class TestCreateMediaBuyErrorPaths:
                 ad_server="mock",
                 is_active=True,
                 approval_mode="manual",
+                authorized_emails=["test@example.com"],  # Required for access control
                 created_at=now,
                 updated_at=now,
             )
@@ -86,6 +89,18 @@ class TestCreateMediaBuyErrorPaths:
             )
             session.add(currency_limit)
 
+            # Create authorized property (required for setup checklist)
+            authorized_property = AuthorizedProperty(
+                tenant_id="error_test_tenant",
+                property_id="error_test_property",
+                property_type="website",
+                name="Error Test Website",
+                identifiers=[{"type": "domain", "value": "errortest.com"}],
+                publisher_domain="errortest.com",
+                verification_status="verified",
+            )
+            session.add(authorized_property)
+
             session.commit()
 
             # Set tenant context
@@ -104,6 +119,7 @@ class TestCreateMediaBuyErrorPaths:
             session.execute(delete(ModelPrincipal).where(ModelPrincipal.tenant_id == "error_test_tenant"))
             session.execute(delete(ModelProduct).where(ModelProduct.tenant_id == "error_test_tenant"))
             session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "error_test_tenant"))
+            session.execute(delete(AuthorizedProperty).where(AuthorizedProperty.tenant_id == "error_test_tenant"))
             session.execute(delete(ModelTenant).where(ModelTenant.tenant_id == "error_test_tenant"))
             session.commit()
 

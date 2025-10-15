@@ -38,6 +38,7 @@ def test_simplified_context(integration_db):
             principal_id="test_principal",
             name="Test Principal",
             access_token="test-token-123",
+            platform_mappings={"mock": {"advertiser_id": "test_adv_123"}},  # Required field with valid mapping
         )
         session.add(principal)
         session.commit()

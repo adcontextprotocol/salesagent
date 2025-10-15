@@ -20,13 +20,16 @@ pytestmark = pytest.mark.requires_db
 @pytest.fixture
 def setup_gam_tenant_with_non_cpm_product(integration_db):
     """Create a GAM tenant with a product offering non-CPM pricing."""
+    from src.core.database.models import AuthorizedProperty
+
     with get_db_session() as session:
-        # Create GAM tenant
+        # Create GAM tenant with access control
         tenant = create_tenant_with_timestamps(
             tenant_id="test_gam_tenant",
             name="GAM Test Publisher",
             subdomain="gam-test",
             ad_server="google_ad_manager",
+            authorized_emails=["test@example.com"],  # Required for access control
         )
         session.add(tenant)
         session.flush()
@@ -150,16 +153,32 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
         )
         session.add(pricing_multi_cpp)
 
+        # Create authorized property (required for setup checklist)
+        authorized_property = AuthorizedProperty(
+            tenant_id="test_gam_tenant",
+            property_id="gam_test_property",
+            property_type="website",
+            name="GAM Test Website",
+            identifiers=[{"type": "domain", "value": "gamtest.com"}],
+            publisher_domain="gamtest.com",
+            verification_status="verified",
+        )
+        session.add(authorized_property)
+
         session.commit()
 
     yield
 
     # Cleanup
     with get_db_session() as session:
-        session.query(PricingOption).filter_by(tenant_id="test_gam_tenant").delete()
-        session.query(Product).filter_by(tenant_id="test_gam_tenant").delete()
-        session.query(Principal).filter_by(tenant_id="test_gam_tenant").delete()
-        session.query(Tenant).filter_by(tenant_id="test_gam_tenant").delete()
+        from sqlalchemy import delete as sql_delete
+
+        session.execute(sql_delete(PricingOption).where(PricingOption.tenant_id == "test_gam_tenant"))
+        session.execute(sql_delete(Product).where(Product.tenant_id == "test_gam_tenant"))
+        session.execute(sql_delete(Principal).where(Principal.tenant_id == "test_gam_tenant"))
+        session.execute(sql_delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "test_gam_tenant"))
+        session.execute(sql_delete(AuthorizedProperty).where(AuthorizedProperty.tenant_id == "test_gam_tenant"))
+        session.execute(sql_delete(Tenant).where(Tenant.tenant_id == "test_gam_tenant"))
         session.commit()
 
 
@@ -210,7 +229,7 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
             start_time=request.start_time,
             end_time=request.end_time,
             budget=request.budget,
-            currency=request.currency,
+            # currency is derived from product pricing, not passed directly
             context=context,
         )
 
@@ -321,7 +340,7 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
             start_time=request.start_time,
             end_time=request.end_time,
             budget=request.budget,
-            currency=request.currency,
+            # currency is derived from product pricing, not passed directly
             context=context,
         )
 
