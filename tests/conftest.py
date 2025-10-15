@@ -19,7 +19,11 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Import database fixtures for all tests
-from tests.conftest_db import *  # noqa: F401,F403
+# IMPORTANT: Commented out to prevent session-scoped test_database fixture
+# from interfering with integration_db fixture in integration tests.
+# Integration tests use function-scoped integration_db instead.
+# Unit tests that need database fixtures should import them explicitly.
+# from tests.conftest_db import *  # noqa: F401,F403
 
 # Note: Environment variables are now set via fixtures to avoid global pollution
 # See test_environment fixture below for configuration
