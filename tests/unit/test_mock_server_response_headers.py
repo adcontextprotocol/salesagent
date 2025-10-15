@@ -14,6 +14,7 @@ from src.core.testing_hooks import (
     apply_testing_hooks,
     get_session_manager,
 )
+from src.core.schemas import PricingOption
 
 
 class TestMockServerResponseHeaders:
@@ -133,9 +134,17 @@ class TestMockServerResponseHeaders:
             description="Real product object for testing",
             formats=["display_300x250"],  # Internal field name
             delivery_type="non_guaranteed",
-            is_fixed_price=False,
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
+            pricing_options=[
+                PricingOption(
+                    pricing_option_id="cpm_usd_auction",
+                    pricing_model="cpm",
+                    currency="USD",
+                    is_fixed=False,
+                    price_guidance={"floor": 1.0, "suggested_rate": 5.0},
+                )
+            ],
         )
 
         response_data = {"products": [test_product.model_dump_internal()]}
