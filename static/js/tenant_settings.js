@@ -594,7 +594,23 @@ function syncGAMInventory() {
         button.textContent = originalText;
 
         if (data.success) {
-            alert(`✅ Synced ${data.count} ad units successfully!`);
+            // Calculate total items synced
+            const adUnitCount = Object.keys(data.ad_units || {}).length;
+            const placementCount = Object.keys(data.placements || {}).length;
+            const labelCount = Object.keys(data.labels || {}).length;
+            const targetingCount = Object.keys(data.custom_targeting || {}).length;
+            const audienceCount = Object.keys(data.audience_segments || {}).length;
+
+            const totalCount = adUnitCount + placementCount + labelCount + targetingCount + audienceCount;
+
+            let message = `✅ Inventory synced successfully!\n\n`;
+            if (adUnitCount > 0) message += `• ${adUnitCount} ad units\n`;
+            if (placementCount > 0) message += `• ${placementCount} placements\n`;
+            if (labelCount > 0) message += `• ${labelCount} labels\n`;
+            if (targetingCount > 0) message += `• ${targetingCount} custom targeting keys\n`;
+            if (audienceCount > 0) message += `• ${audienceCount} audience segments\n`;
+
+            alert(message || '✅ Inventory synced successfully!');
             location.reload();
         } else {
             alert('❌ Sync failed: ' + (data.error || data.message || 'Unknown error'));
