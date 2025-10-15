@@ -289,8 +289,7 @@ def init_db_ci():
                     "formats": ["display_300x250", "display_728x90", "display_160x600"],
                     "targeting_template": {"geo": ["US"], "device_type": "any"},
                     "delivery_type": "guaranteed",
-                    "is_fixed_price": True,
-                    "cpm": 15.0,
+                    "pricing": {"model": "cpm", "rate": 15.0, "is_fixed": True},
                 },
                 {
                     "product_id": "prod_video_premium",
@@ -299,8 +298,7 @@ def init_db_ci():
                     "formats": ["video_15s", "video_30s"],
                     "targeting_template": {"geo": ["US"], "device_type": "any"},
                     "delivery_type": "guaranteed",
-                    "is_fixed_price": True,
-                    "cpm": 25.0,
+                    "pricing": {"model": "cpm", "rate": 25.0, "is_fixed": True},
                 },
             ]
 
@@ -318,8 +316,6 @@ def init_db_ci():
                         formats=p["formats"],
                         targeting_template=p["targeting_template"],
                         delivery_type=p["delivery_type"],
-                        is_fixed_price=p["is_fixed_price"],
-                        cpm=p.get("cpm"),
                         property_tags=["all_inventory"],  # Required per AdCP spec
                         # Explicitly set all JSONB fields to None (SQL NULL) to satisfy constraints
                         measurement=None,
@@ -333,13 +329,14 @@ def init_db_ci():
                     print(f"  ✓ Created product: {p['name']} (property_tags=['all_inventory'])")
 
                     # Create corresponding pricing_option (required for pricing display)
+                    pricing = p["pricing"]
                     pricing_option = PricingOption(
                         tenant_id=tenant_id,
                         product_id=p["product_id"],
-                        pricing_model="cpm",
-                        rate=p.get("cpm"),
+                        pricing_model=pricing["model"],
+                        rate=pricing["rate"],
                         currency="USD",
-                        is_fixed=p["is_fixed_price"],
+                        is_fixed=pricing["is_fixed"],
                         price_guidance=None,  # Not used for fixed price products
                     )
                     session.add(pricing_option)
