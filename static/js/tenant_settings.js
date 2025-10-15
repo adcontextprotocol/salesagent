@@ -252,9 +252,107 @@ function detectGAMNetwork() {
 
         if (data.success) {
             document.getElementById('gam_network_code').value = data.network_code;
+
+            // Update trafficker ID if provided
+            if (data.trafficker_id) {
+                document.getElementById('gam_trafficker_id').value = data.trafficker_id;
+            }
+
             alert(`✅ Network code detected: ${data.network_code}`);
         } else {
             alert('❌ ' + (data.error || data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.textContent = originalText;
+        alert('❌ Error: ' + error.message);
+    });
+}
+
+// Save GAM configuration
+function saveGAMConfig() {
+    const networkCode = document.getElementById('gam_network_code').value;
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+    const traffickerId = document.getElementById('gam_trafficker_id').value;
+    const orderNameTemplate = (document.getElementById('gam_order_name_template') || document.getElementById('order_name_template'))?.value || '';
+    const lineItemNameTemplate = (document.getElementById('gam_line_item_name_template') || document.getElementById('line_item_name_template'))?.value || '';
+
+    if (!refreshToken) {
+        alert('Please provide a Refresh Token');
+        return;
+    }
+
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Saving...';
+
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/settings/adapter`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            adapter: 'google_ad_manager',
+            gam_network_code: networkCode,
+            gam_refresh_token: refreshToken,
+            gam_trafficker_id: traffickerId,
+            order_name_template: orderNameTemplate,
+            line_item_name_template: lineItemNameTemplate
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.disabled = false;
+        button.textContent = originalText;
+
+        if (data.success) {
+            alert('✅ GAM configuration saved successfully');
+            location.reload();
+        } else {
+            alert('❌ Failed to save: ' + (data.error || data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.textContent = originalText;
+        alert('❌ Error: ' + error.message);
+    });
+}
+
+// Test GAM connection
+function testGAMConnection() {
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+
+    if (!refreshToken) {
+        alert('Please provide a refresh token first');
+        return;
+    }
+
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Testing...';
+
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/test-connection`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            refresh_token: refreshToken
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.disabled = false;
+        button.textContent = originalText;
+
+        if (data.success) {
+            alert('✅ Connection successful!');
+        } else {
+            alert('❌ Connection failed: ' + (data.error || data.message || 'Unknown error'));
         }
     })
     .catch(error => {
