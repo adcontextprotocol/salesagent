@@ -188,18 +188,19 @@ class GetProductsResponse(AdCPBaseModel):
         else:
             base_msg = f"Found {count} products that match your requirements."
 
-        # Check if this looks like an anonymous response (all pricing is None)
+        # Check if this looks like an anonymous response (all pricing_options have no rates)
         # Products can be dicts or objects, so we need to handle both
         if count > 0:
             all_missing_pricing = True
             for p in self.products:
                 if isinstance(p, dict):
-                    if p.get("cpm") is not None or p.get("min_spend") is not None:
+                    pricing_options = p.get("pricing_options", [])
+                    if pricing_options and any(po.get("rate") is not None for po in pricing_options):
                         all_missing_pricing = False
                         break
                 else:
-                    if hasattr(p, "cpm") and hasattr(p, "min_spend"):
-                        if p.cpm is not None or p.min_spend is not None:
+                    if hasattr(p, "pricing_options") and p.pricing_options:
+                        if any(po.rate is not None for po in p.pricing_options):
                             all_missing_pricing = False
                             break
 
