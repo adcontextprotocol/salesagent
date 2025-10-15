@@ -92,15 +92,22 @@ async def test_invalid_get_products_response():
 async def test_get_products_request_validation():
     """Test validation of get-products request parameters."""
     async with AdCPSchemaValidator() as validator:
-        # Valid request
-        valid_request = {"brief": "Looking for display advertising", "promoted_offering": "premium display"}
+        # Valid request with required brand_manifest (must have url or name)
+        valid_request = {
+            "brief": "Looking for display advertising",
+            "brand_manifest": {"url": "https://example.com", "name": "Example Brand"},
+        }
 
         # Should not raise exception
         await validator.validate_request("get-products", valid_request)
 
-        # Test with minimal required request
-        minimal_request = {"promoted_offering": "test product"}
+        # Test with minimal required request (brand_manifest with just name)
+        minimal_request = {"brand_manifest": {"name": "Test Brand"}}
         await validator.validate_request("get-products", minimal_request)
+
+        # Test with brand_manifest as URL string (alternative format)
+        url_request = {"brand_manifest": "https://cdn.example.com/brand-manifest.json"}
+        await validator.validate_request("get-products", url_request)
 
 
 @pytest.mark.asyncio

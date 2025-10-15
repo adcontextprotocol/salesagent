@@ -4,6 +4,12 @@
 
 {% block content %}
 <style>
+    /* Spinning animation for sync button */
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
     .settings-layout {
         display: grid;
         grid-template-columns: 250px 1fr;
@@ -635,19 +641,7 @@
 
             {% if active_adapter %}
             <div class="status-card success">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong>✅ Connected to {{ active_adapter|title|replace('_', ' ') }}</strong>
-                        <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem;">
-                            Last synced: {{ last_sync_time or 'Never' }}
-                        </p>
-                    </div>
-                    {% if active_adapter == 'google_ad_manager' %}
-                    <button onclick="syncGAMInventory()" class="btn btn-small btn-primary">
-                        <span id="sync-icon">🔄</span> Sync Inventory
-                    </button>
-                    {% endif %}
-                </div>
+                <strong>✅ Connected to {{ active_adapter|title|replace('_', ' ') }}</strong>
             </div>
             {% else %}
             <div class="status-card warning">
@@ -708,57 +702,43 @@
                 <div class="form-section" style="margin-top: 2rem;">
                     <h3>Google Ad Manager Configuration</h3>
 
-                    <!-- OAuth Prerequisites Check -->
-                    <div id="oauth-status" class="status-card" style="background: #f5f5f5; border-left: 4px solid #666; margin-bottom: 1rem;">
-                        <h4>OAuth Setup Status</h4>
-                        <p>Checking OAuth configuration...</p>
-                    </div>
-
-                    {% if adapter_config %}
-                    <div class="status-card" style="background: #f0f9ff; border-left: 4px solid #0066cc;">
-                        <h4>Current Configuration</h4>
+                    {% if adapter_config and adapter_config.get('refresh_token') and adapter_config.get('network_code') %}
+                    <!-- Fully configured - show success state -->
+                    <div class="status-card" style="background: #f0fdf4; border-left: 4px solid #10b981;">
+                        <h4>✅ Configuration Complete</h4>
                         <ul style="list-style: none; padding: 0; margin: 0.5rem 0;">
-                            {% if adapter_config.get('network_code') %}
+                            <li>✅ OAuth Token: Configured</li>
                             <li>✅ Network Code: {{ adapter_config.get('network_code') }}</li>
-                            {% else %}
-                            <li>❌ Network Code: Not configured</li>
-                            {% endif %}
-
-                            {% if adapter_config.get('refresh_token') %}
-                            <li>✅ OAuth Refresh Token: Configured</li>
-                            {% else %}
-                            <li>❌ OAuth Refresh Token: Not configured</li>
-                            {% endif %}
-
-                            {% if adapter_config.get('application_name') %}
-                            <li>✅ Application Name: {{ adapter_config.get('application_name') }}</li>
-                            {% else %}
-                            <li>ℹ️ Application Name: Using default</li>
+                            {% if adapter_config.get('trafficker_id') %}
+                            <li>✅ Trafficker ID: {{ adapter_config.get('trafficker_id') }}</li>
                             {% endif %}
                         </ul>
+                        <button onclick="testGAMConnection()" class="btn btn-secondary btn-sm" style="margin-top: 0.5rem;">
+                            Test Connection
+                        </button>
+                        <button onclick="initiateGAMAuth()" class="btn btn-secondary btn-sm" style="margin-top: 0.5rem; margin-left: 0.5rem;">
+                            Refresh OAuth Token
+                        </button>
                     </div>
                     {% else %}
-                    <div class="alert alert-warning">
-                        <strong>Not Configured</strong>
-                        <p>Google Ad Manager adapter needs configuration. Please set up your GAM credentials below.</p>
-                    </div>
-                    {% endif %}
+                    <!-- Not configured or partially configured -->
 
-                    <div class="form-group" style="margin-top: 1rem;">
-                        <label>OAuth Setup</label>
+                    <!-- Step 1: Get OAuth Token -->
+                    <div class="form-group">
+                        <label><strong>Step 1:</strong> Get OAuth Token</label>
                         {% if adapter_config and adapter_config.get('refresh_token') %}
-                        <div class="status-card success">
+                        <div class="status-card" style="background: #f0fdf4; border-left: 4px solid #10b981;">
                             <strong>✅ OAuth Token Configured</strong>
-                            <p>Your refresh token is active and ready to use.</p>
-                            <button onclick="startGAMOAuth()" class="btn btn-secondary btn-sm" style="margin-top: 0.5rem;">
+                            <p>Your refresh token is active.</p>
+                            <button onclick="initiateGAMAuth()" class="btn btn-secondary btn-sm" style="margin-top: 0.5rem;">
                                 Refresh OAuth Token
                             </button>
                         </div>
                         {% else %}
-                        <div class="status-card warning">
-                            <strong>OAuth Setup Required</strong>
+                        <div class="status-card" style="background: #fef3c7; border-left: 4px solid #f59e0b;">
+                            <strong>⚠️ OAuth Setup Required</strong>
                             <p>Click the button below to authorize AdCP access to your Google Ad Manager account.</p>
-                            <button onclick="startGAMOAuth()" class="btn btn-primary" style="margin-top: 0.5rem;">
+                            <button onclick="initiateGAMAuth()" class="btn btn-primary" style="margin-top: 0.5rem;">
                                 🔑 Get OAuth Token
                             </button>
                         </div>
@@ -766,41 +746,59 @@
 
                         <!-- Advanced option for manual token entry -->
                         <details style="margin-top: 1rem;">
-                            <summary style="cursor: pointer; color: #666; font-size: 0.9em;">Advanced: Manual Token Entry</summary>
+                            <summary style="cursor: pointer; color: #666; font-size: 0.9em;">▸ Advanced: Manual Token Entry</summary>
                             <div style="margin-top: 0.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
                                 <label for="gam_refresh_token">Manual OAuth Refresh Token</label>
                                 <input type="text" id="gam_refresh_token" class="form-control"
                                        value="{{ adapter_config.get('refresh_token', '') if adapter_config else '' }}"
                                        placeholder="Paste your OAuth refresh token here">
                                 <small class="form-text text-muted">For advanced users: manually enter a refresh token if you have one.</small>
+                                <button onclick="saveManualToken()" class="btn btn-primary" style="margin-top: 0.5rem;">
+                                    Save Token
+                                </button>
                             </div>
                         </details>
                     </div>
 
-                    <div class="form-group">
-                        <label for="gam_network_code">Network Code</label>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="gam_network_code" class="form-control"
-                                   value="{{ adapter_config.get('network_code', '') if adapter_config else '' }}"
-                                   placeholder="Will be auto-detected" readonly>
-                            <button onclick="detectGAMNetwork()" class="btn btn-secondary"
-                                    id="detect-network-btn">Auto-detect Network</button>
+                    <!-- Step 2: Auto-detect Network (only show if token exists) -->
+                    {% if adapter_config and adapter_config.get('refresh_token') %}
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label><strong>Step 2:</strong> Auto-detect Network Code</label>
+                        {% if adapter_config.get('network_code') %}
+                        <div class="status-card" style="background: #f0fdf4; border-left: 4px solid #10b981;">
+                            <strong>✅ Network Code Detected: {{ adapter_config.get('network_code') }}</strong>
+                            {% if adapter_config.get('trafficker_id') %}
+                            <p>Trafficker ID: {{ adapter_config.get('trafficker_id') }}</p>
+                            {% endif %}
                         </div>
-                        <small class="form-text text-muted">Automatically retrieved from your GAM account</small>
-                    </div>
+                        {% else %}
+                        <div style="display: flex; gap: 0.5rem; align-items: start;">
+                            <div style="flex: 1;">
+                                <input type="text" id="gam_network_code" class="form-control"
+                                       value="{{ adapter_config.get('network_code', '') if adapter_config else '' }}"
+                                       placeholder="Click button to auto-detect →" readonly>
+                            </div>
+                            <button onclick="detectGAMNetwork()" class="btn btn-primary" id="detect-network-btn">
+                                Auto-detect Network
+                            </button>
+                        </div>
+                        <small class="form-text text-muted">Uses your OAuth token to automatically retrieve your GAM network code and trafficker ID.</small>
 
-                    <div class="form-group">
-                        <label for="gam_trafficker_id">Trafficker User ID</label>
-                        <input type="text" id="gam_trafficker_id" class="form-control"
-                               value="{{ adapter_config.get('trafficker_id', '') if adapter_config else '' }}"
-                               placeholder="Your GAM user ID (will be auto-detected)">
-                        <small class="form-text text-muted">The GAM user ID who will create line items. Auto-detected when you click "Auto-detect Network" above.</small>
+                        <input type="hidden" id="gam_trafficker_id"
+                               value="{{ adapter_config.get('trafficker_id', '') if adapter_config else '' }}">
+                        {% endif %}
                     </div>
+                    {% endif %}
+                    {% endif %}
 
                     <div class="form-group" style="margin-top: 2rem;">
-                        <button onclick="saveGAMConfig()" class="btn btn-primary">Save GAM Configuration</button>
                         {% if adapter_config and adapter_config.get('refresh_token') %}
-                        <button onclick="testGAMConnection()" class="btn btn-secondary" style="margin-left: 0.5rem;">Test Connection</button>
+                        <button onclick="saveGAMConfig()" class="btn btn-primary">Save Configuration</button>
+                        {% else %}
+                        <button onclick="saveGAMConfig()" class="btn btn-primary" disabled title="Get OAuth token first">
+                            Save Configuration
+                        </button>
+                        <small class="form-text text-muted">Complete Step 1 to enable saving</small>
                         {% endif %}
                     </div>
                 </div>
@@ -1243,7 +1241,7 @@ REJECT - Creative cannot be approved:
             <div class="form-section">
                 <h3>Inventory Sync Status</h3>
 
-                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
                     <div class="stat-card">
                         <div class="stat-value">{{ inventory_count|default(0) }}</div>
                         <div class="stat-label">Total Items</div>
@@ -1255,6 +1253,10 @@ REJECT - Creative cannot be approved:
                     <div class="stat-card">
                         <div class="stat-value">{{ placements_count|default(0) }}</div>
                         <div class="stat-label">Placements</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">{{ (custom_targeting_keys_count|default(0) + custom_targeting_values_count|default(0)) }}</div>
+                        <div class="stat-label">Targeting (Keys+Values)</div>
                     </div>
                 </div>
 
@@ -1275,10 +1277,10 @@ REJECT - Creative cannot be approved:
                 <div class="form-section" style="margin-top: 1.5rem;">
                     <h3>Actions</h3>
                     <div style="display: flex; gap: 1rem;">
-                        <a href="/admin/tenant/{{ tenant_id }}/inventory?type=all" class="btn btn-secondary">
+                        <a href="{{ url_for('inventory.inventory_browser', tenant_id=tenant_id, type='all') }}" class="btn btn-secondary">
                             📊 Browse Inventory
                         </a>
-                        <a href="/admin/tenant/{{ tenant_id }}/targeting" class="btn btn-secondary">
+                        <a href="{{ url_for('inventory.targeting_browser', tenant_id=tenant_id) }}" class="btn btn-secondary">
                             🎯 Browse Targeting
                         </a>
                     </div>

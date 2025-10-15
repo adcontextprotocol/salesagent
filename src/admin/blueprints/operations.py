@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 operations_bp = Blueprint("operations", __name__)
 
 
-@operations_bp.route("/targeting", methods=["GET"])
-@require_tenant_access()
-def targeting(tenant_id, **kwargs):
-    """TODO: Extract implementation from admin_ui.py."""
-    # Placeholder implementation
-    return jsonify({"error": "Not yet implemented"}), 501
+# @operations_bp.route("/targeting", methods=["GET"])
+# @require_tenant_access()
+# def targeting(tenant_id, **kwargs):
+#     """TODO: Extract implementation from admin_ui.py."""
+#     # Placeholder implementation - DISABLED: Conflicts with inventory_bp.targeting_browser route
+#     return jsonify({"error": "Not yet implemented"}), 501
 
 
 # @operations_bp.route("/inventory", methods=["GET"])

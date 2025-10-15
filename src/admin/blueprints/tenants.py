@@ -191,15 +191,41 @@ def tenant_settings(tenant_id, section=None):
                 oauth_configured = bool(adapter_config_obj.gam_refresh_token)
 
             # Get advertiser data for the advertisers section
-            from src.core.database.models import Principal
+            from src.core.database.models import GAMInventory, Principal
 
             stmt = select(Principal).filter_by(tenant_id=tenant_id)
             principals = db_session.scalars(stmt).all()
             advertiser_count = len(principals)
             active_advertisers = len(principals)  # For now, assume all are active
 
-            # Get additional variables that the template expects
-            last_sync_time = None  # Could be enhanced to track actual sync times
+            # Get last sync time from most recently updated inventory item
+            last_sync_time = None
+            print(f"DEBUG: Checking last sync time - active_adapter: {active_adapter}")
+            if active_adapter == "google_ad_manager":
+                stmt = (
+                    select(GAMInventory.updated_at)
+                    .filter_by(tenant_id=tenant_id)
+                    .order_by(GAMInventory.updated_at.desc())
+                    .limit(1)
+                )
+                last_updated = db_session.scalar(stmt)
+                print(f"DEBUG: Last inventory update for tenant {tenant_id}: {last_updated}")
+                if last_updated:
+                    from datetime import datetime
+
+                    # Format as human-readable time
+                    now = datetime.now(UTC)
+                    diff = now - last_updated.replace(tzinfo=UTC)
+                    if diff.total_seconds() < 60:
+                        last_sync_time = "Just now"
+                    elif diff.total_seconds() < 3600:
+                        mins = int(diff.total_seconds() / 60)
+                        last_sync_time = f"{mins} minute{'s' if mins != 1 else ''} ago"
+                    elif diff.total_seconds() < 86400:
+                        hours = int(diff.total_seconds() / 3600)
+                        last_sync_time = f"{hours} hour{'s' if hours != 1 else ''} ago"
+                    else:
+                        last_sync_time = last_updated.strftime("%b %d, %Y at %I:%M %p")
 
             # Convert adapter_config to dict format for template compatibility
             adapter_config_dict = {}
@@ -254,6 +280,20 @@ def tenant_settings(tenant_id, section=None):
                     .filter_by(tenant_id=tenant_id, inventory_type="placement")
                 )
                 placements_count = db_session.scalar(stmt) or 0
+
+                stmt = (
+                    select(func.count())
+                    .select_from(GAMInventory)
+                    .filter_by(tenant_id=tenant_id, inventory_type="custom_targeting_key")
+                )
+                custom_targeting_keys_count = db_session.scalar(stmt) or 0
+
+                stmt = (
+                    select(func.count())
+                    .select_from(GAMInventory)
+                    .filter_by(tenant_id=tenant_id, inventory_type="custom_targeting_value")
+                )
+                custom_targeting_values_count = db_session.scalar(stmt) or 0
             except Exception as e:
                 # Table may not exist or query may fail - rollback and gracefully handle
                 logger.warning(f"Could not load inventory counts: {e}")
@@ -261,6 +301,8 @@ def tenant_settings(tenant_id, section=None):
                 inventory_count = 0
                 ad_units_count = 0
                 placements_count = 0
+                custom_targeting_keys_count = 0
+                custom_targeting_values_count = 0
 
             # Get admin port
             admin_port = int(os.environ.get("ADMIN_UI_PORT", 8001))
@@ -314,6 +356,8 @@ def tenant_settings(tenant_id, section=None):
                 ad_units_count=ad_units_count,
                 currency_limits=currency_limits,
                 placements_count=placements_count,
+                custom_targeting_keys_count=custom_targeting_keys_count,
+                custom_targeting_values_count=custom_targeting_values_count,
                 setup_status=setup_status,
             )
 
