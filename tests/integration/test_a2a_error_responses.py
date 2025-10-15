@@ -135,7 +135,12 @@ class TestA2AErrorPropagation:
         return AdCPRequestHandler()
 
     def create_message_with_skill(self, skill_name: str, parameters: dict) -> Message:
-        """Helper to create message with explicit skill invocation."""
+        """Helper to create message with explicit skill invocation.
+
+        Uses correct A2A format:
+        - skill: string (skill name)
+        - parameters: dict (skill arguments)
+        """
         return Message(
             message_id="msg_error_test",
             context_id="ctx_error_test",
@@ -143,8 +148,8 @@ class TestA2AErrorPropagation:
             parts=[
                 Part(
                     data={
-                        "type": "skill",
-                        "skill": {"name": skill_name, "arguments": parameters},
+                        "skill": skill_name,
+                        "parameters": parameters,
                     }
                 )
             ],
