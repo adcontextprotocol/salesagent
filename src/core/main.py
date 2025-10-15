@@ -1241,9 +1241,12 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
             if req.filters.delivery_type and product.delivery_type != req.filters.delivery_type:
                 continue
 
-            # Filter by is_fixed_price
-            if req.filters.is_fixed_price is not None and product.is_fixed_price != req.filters.is_fixed_price:
-                continue
+            # Filter by is_fixed_price (check pricing_options)
+            if req.filters.is_fixed_price is not None:
+                # Check if product has any pricing option matching the fixed/auction filter
+                has_matching_pricing = any(po.is_fixed == req.filters.is_fixed_price for po in product.pricing_options)
+                if not has_matching_pricing:
+                    continue
 
             # Filter by format_types
             if req.filters.format_types:
@@ -1379,8 +1382,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
     if principal_id is None:  # Anonymous user
         # Remove pricing data from products for anonymous users
         for product in modified_products:
-            product.cpm = None
-            product.min_spend = None
+            product.pricing_options = None
 
     # Log activity
     log_tool_activity(context, "get_products", start_time)
@@ -3357,31 +3359,23 @@ def _validate_pricing_model_selection(
     """
     from decimal import Decimal
 
-    # If package doesn't specify pricing_model, use legacy product pricing
-    if not package.pricing_model:
-        # Use legacy pricing from product
-        if product.is_fixed_price is not None:
-            return {
-                "pricing_model": "cpm",  # Legacy products are CPM
-                "rate": float(product.cpm) if product.cpm else None,
-                "currency": product.currency or campaign_currency or "USD",
-                "is_fixed": product.is_fixed_price,
-                "bid_price": None,
-            }
-        # No pricing information available
-        raise ToolError(
-            "PRICING_ERROR",
-            f"Product {product.product_id} has no pricing information (neither pricing_options nor legacy fields)",
-        )
-
-    # Package specifies pricing_model - validate against product's pricing_options
+    # All products must have pricing_options
     if not product.pricing_options or len(product.pricing_options) == 0:
         raise ToolError(
             "PRICING_ERROR",
-            f"Product {product.product_id} does not offer new pricing models. "
-            f"It uses legacy pricing (CPM: {product.cpm}, fixed: {product.is_fixed_price}). "
-            f"Remove pricing_model from package to use legacy pricing.",
+            f"Product {product.product_id} has no pricing_options configured. This is a data integrity error.",
         )
+
+    # If package doesn't specify pricing_model, use first pricing option from product
+    if not package.pricing_model:
+        first_option = product.pricing_options[0]
+        return {
+            "pricing_model": first_option.pricing_model,
+            "rate": float(first_option.rate) if first_option.rate else None,
+            "currency": first_option.currency or campaign_currency or "USD",
+            "is_fixed": first_option.is_fixed,
+            "bid_price": None,
+        }
 
     # Find matching pricing option
     selected_option = None
@@ -3817,10 +3811,12 @@ def _create_media_buy_impl(
                 # Build map of product_id -> minimum spend
                 product_min_spends = {}
                 for product in products:
-                    # Use product-specific override if set, otherwise use currency limit minimum
-                    min_spend = (
-                        product.min_spend if product.min_spend is not None else currency_limit.min_package_budget
-                    )
+                    # Use product pricing_options min_spend if set, otherwise use currency limit minimum
+                    min_spend = currency_limit.min_package_budget
+                    if product.pricing_options and len(product.pricing_options) > 0:
+                        first_option = product.pricing_options[0]
+                        if first_option.min_spend_per_package is not None:
+                            min_spend = first_option.min_spend_per_package
                     if min_spend is not None:
                         product_min_spends[product.product_id] = Decimal(str(min_spend))
 
@@ -4150,13 +4146,21 @@ def _create_media_buy_impl(
         for product in products_in_buy:
             # Use the first format for now
             first_format_id = product.formats[0] if product.formats else None
+
+            # Get CPM from pricing_options
+            cpm = 10.0  # Default
+            if product.pricing_options and len(product.pricing_options) > 0:
+                first_option = product.pricing_options[0]
+                if first_option.rate:
+                    cpm = float(first_option.rate)
+
             packages.append(
                 MediaPackage(
                     package_id=product.product_id,
                     name=product.name,
                     delivery_type=product.delivery_type,
-                    cpm=product.cpm if product.cpm else 10.0,  # Default CPM
-                    impressions=int(total_budget / (product.cpm if product.cpm else 10.0) * 1000),
+                    cpm=cpm,
+                    impressions=int(total_budget / cpm * 1000),
                     format_ids=[first_format_id] if first_format_id else [],
                 )
             )
@@ -5774,15 +5778,21 @@ def complete_task(req, context):
                     packages = []
                     for product in products_in_buy:
                         first_format_id = product.formats[0] if product.formats else None
+
+                        # Get CPM from pricing_options
+                        cpm = 10.0  # Default
+                        if product.pricing_options and len(product.pricing_options) > 0:
+                            first_option = product.pricing_options[0]
+                            if first_option.rate:
+                                cpm = float(first_option.rate)
+
                         packages.append(
                             MediaPackage(
                                 package_id=product.product_id,
                                 name=product.name,
                                 delivery_type=product.delivery_type,
-                                cpm=product.cpm if product.cpm else 10.0,
-                                impressions=int(
-                                    original_req.total_budget / (product.cpm if product.cpm else 10.0) * 1000
-                                ),
+                                cpm=cpm,
+                                impressions=int(original_req.total_budget / cpm * 1000),
                                 format_ids=[first_format_id] if first_format_id else [],
                             )
                         )
@@ -6053,9 +6063,6 @@ def get_product_catalog() -> list[Product]:
                 "description": product.description,
                 "formats": format_ids,
                 "delivery_type": product.delivery_type,
-                "is_fixed_price": product.is_fixed_price,
-                "cpm": float(product.cpm) if product.cpm else None,
-                "min_spend": float(product.min_spend) if hasattr(product, "min_spend") and product.min_spend else None,
                 "measurement": (
                     safe_json_parse(product.measurement)
                     if hasattr(product, "measurement") and product.measurement

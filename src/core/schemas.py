@@ -623,29 +623,19 @@ class Product(BaseModel):
 
     # NEW: Pricing options (AdCP PR #88)
     # Note: This is populated from database relationship, not a column
-    pricing_options: list[PricingOption] | None = Field(
-        None, description="Available pricing models for this product (AdCP PR #88)"
+    # REQUIRED: All products must have at least one pricing option
+    pricing_options: list[PricingOption] = Field(
+        ...,
+        min_length=1,
+        description="Available pricing models for this product (AdCP PR #88). At least one pricing option is required.",
     )
 
-    # DEPRECATED: Old pricing fields (maintained for backward compatibility)
-    # Use pricing_options instead in new implementations
-    is_fixed_price: bool | None = Field(
-        None, description="DEPRECATED: Use pricing_options instead. Whether this product has fixed pricing"
-    )
-    cpm: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options instead. Cost per thousand impressions"
-    )
-    min_spend: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options[].min_spend_per_package instead", gt=-1
-    )
-    currency: str | None = Field(
-        None, description="DEPRECATED: Use pricing_options[].currency instead. ISO 4217 currency code"
-    )
+    # Pricing fields (AdCP PR #88)
     floor_cpm: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options with price_guidance instead", gt=0
+        None, description="Calculated dynamically from pricing_options price_guidance", gt=0
     )
     recommended_cpm: float | None = Field(
-        None, description="DEPRECATED: Use pricing_options with price_guidance instead", gt=0
+        None, description="Calculated dynamically from pricing_options price_guidance", gt=0
     )
 
     # Other fields
@@ -677,21 +667,15 @@ class Product(BaseModel):
 
     @model_validator(mode="after")
     def validate_pricing_fields(self) -> "Product":
-        """Validate that either pricing_options OR legacy pricing fields are present per AdCP spec.
+        """Validate pricing_options per AdCP spec.
 
-        Per AdCP PR #88: Products should use pricing_options (new format).
-        Legacy fields (is_fixed_price, cpm, etc.) are maintained for backward compatibility.
-        At least one pricing method must be specified.
+        Per AdCP PR #88: All products must use pricing_options.
+        Note: Pydantic already validates that pricing_options is present and non-empty
+        (via required field with min_length=1). This validator can be used for
+        additional business logic validation if needed in the future.
         """
-        has_pricing_options = self.pricing_options is not None and len(self.pricing_options) > 0
-        has_legacy_pricing = self.is_fixed_price is not None
-
-        if not has_pricing_options and not has_legacy_pricing:
-            raise ValueError(
-                "Product must have either pricing_options (recommended) or legacy pricing fields (is_fixed_price). "
-                "See AdCP PR #88 for new pricing options format."
-            )
-
+        # Pydantic handles the basic validation via Field(..., min_length=1)
+        # This validator is kept for future pricing-related validation logic
         return self
 
     @model_validator(mode="after")
@@ -744,11 +728,6 @@ class Product(BaseModel):
         Returns None if no pricing information available.
         """
         if not self.pricing_options or len(self.pricing_options) == 0:
-            # Fallback to legacy pricing
-            if self.is_fixed_price is not None:
-                if self.cpm:
-                    return f"CPM: ${self.cpm:.2f} ({self.currency or 'USD'}, fixed)"
-                return "Fixed pricing (contact for rates)"
             return None
 
         summary_parts = []
@@ -798,9 +777,7 @@ class Product(BaseModel):
             "description",
             "format_ids",
             "delivery_type",
-            "is_fixed_price",
             "is_custom",
-            "currency",  # PR #79: Always include currency
         }
 
         adcp_data = {}
@@ -1059,8 +1036,10 @@ class GetProductsResponse(AdCPBaseModel):
         else:
             base_msg = f"Found {count} products that match your requirements."
 
-        # Check if this looks like an anonymous response (all pricing is None)
-        if count > 0 and all(p.cpm is None and p.min_spend is None for p in self.products):
+        # Check if this looks like an anonymous response (all pricing options have no rates)
+        if count > 0 and all(
+            all(po.rate is None for po in p.pricing_options) for p in self.products if p.pricing_options
+        ):
             return f"{base_msg} Please connect through an authorized buying agent for pricing data."
 
         return base_msg

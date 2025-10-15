@@ -21,6 +21,9 @@ from src.core.schemas import (
     UpdateMediaBuyResponse,
     UpdatePerformanceIndexResponse,
 )
+from src.core.schemas import (
+    PricingOption as PricingOptionSchema,
+)
 
 
 class TestResponseStrMethods:
@@ -34,12 +37,17 @@ class TestResponseStrMethods:
             description="Test",
             formats=["banner"],
             delivery_type="guaranteed",
-            is_fixed_price=True,
             is_custom=False,
-            currency="USD",
             property_tags=["all_inventory"],  # Required per AdCP spec
-            cpm=10.0,  # Has pricing
-            min_spend=100.0,
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         )
         resp = GetProductsResponse(products=[product])
         assert str(resp) == "Found 1 product that matches your requirements."
@@ -54,11 +62,16 @@ class TestResponseStrMethods:
                 formats=["banner"],
                 property_tags=["all_inventory"],  # Required per AdCP spec
                 delivery_type="guaranteed",
-                is_fixed_price=True,
                 is_custom=False,
-                currency="USD",
-                cpm=10.0,  # Has pricing
-                min_spend=100.0,
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             )
             for i in range(3)
         ]
@@ -75,10 +88,17 @@ class TestResponseStrMethods:
                 formats=["banner"],
                 property_tags=["all_inventory"],
                 delivery_type="guaranteed",
-                is_fixed_price=True,
                 is_custom=False,
-                currency="USD",
-                # No cpm or min_spend - anonymous user
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_auction",
+                        pricing_model="cpm",
+                        currency="USD",
+                        is_fixed=False,
+                        price_guidance={"floor": 1.0, "suggested_rate": 5.0},
+                        # No rate field - anonymous user doesn't see pricing
+                    )
+                ],
             )
             for i in range(2)
         ]

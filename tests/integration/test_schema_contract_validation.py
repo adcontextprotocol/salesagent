@@ -26,6 +26,7 @@ from src.core.schemas import (
     Budget,
     Creative,
     GetProductsResponse,
+    PricingOption,
     Product,
     Signal,
     SignalDeployment,
@@ -153,9 +154,6 @@ class TestProductSchemaContract:
             "description": "Product for testing AdCP contract compliance",
             "formats": ["display_300x250", "video_15s"],  # Internal field name
             "delivery_type": "guaranteed",
-            "is_fixed_price": True,
-            "cpm": 15.0,
-            "min_spend": 2000.0,
             "measurement": {
                 "type": "brand_lift",
                 "attribution": "deterministic_purchase",
@@ -172,6 +170,16 @@ class TestProductSchemaContract:
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
             "brief_relevance": "Highly relevant for display advertising",
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=15.0,
+                    currency="USD",
+                    is_fixed=True,
+                    min_spend_per_package=2000.0,
+                )
+            ],
             # Internal fields
             "expires_at": datetime(2025, 12, 31),
             "implementation_config": {"gam_placement_id": "12345"},
@@ -184,10 +192,8 @@ class TestProductSchemaContract:
             "description",
             "format_ids",
             "delivery_type",
-            "is_fixed_price",
             "is_custom",
-            "cpm",
-            "min_spend",
+            "pricing_options",
         }
 
         # Internal-only fields that should not appear in AdCP output
@@ -203,9 +209,17 @@ class TestProductSchemaContract:
             "description": "Testing field mapping consistency",
             "formats": ["display_300x250", "display_728x90"],  # Internal field
             "delivery_type": "non_guaranteed",
-            "is_fixed_price": False,
             "is_custom": True,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_auction",
+                    pricing_model="cpm",
+                    currency="USD",
+                    is_fixed=False,
+                    price_guidance={"floor": 5.0, "p50": 10.0, "p90": 15.0},
+                )
+            ],
         }
 
         # Internal to external field mappings
@@ -222,9 +236,6 @@ class TestProductSchemaContract:
             "description": "Testing roundtrip safety with complex data",
             "formats": ["display_300x250", "video_15s", "audio_30s"],
             "delivery_type": "guaranteed",
-            "is_fixed_price": True,
-            "cpm": 25.75,
-            "min_spend": 5000.0,
             "measurement": {
                 "type": "incremental_sales_lift",
                 "attribution": "probabilistic",
@@ -246,10 +257,20 @@ class TestProductSchemaContract:
             "is_custom": True,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
             "brief_relevance": "Perfect match for multi-format campaign requirements",
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=25.75,
+                    currency="USD",
+                    is_fixed=True,
+                    min_spend_per_package=5000.0,
+                )
+            ],
         }
 
         # Required fields that must survive roundtrip
-        required_fields = {"product_id", "name", "description", "format_ids", "delivery_type", "is_fixed_price"}
+        required_fields = {"product_id", "name", "description", "format_ids", "delivery_type", "pricing_options"}
 
         validator.validate_schema_contract(Product, complex_product_data, required_fields)
 
@@ -261,9 +282,17 @@ class TestProductSchemaContract:
             "description": "Testing with minimal required fields only",
             "formats": ["display_300x250"],
             "delivery_type": "non_guaranteed",
-            "is_fixed_price": False,
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         }
 
         required_fields = {
@@ -272,8 +301,8 @@ class TestProductSchemaContract:
             "description",
             "format_ids",
             "delivery_type",
-            "is_fixed_price",
             "is_custom",
+            "pricing_options",
         }
 
         validator.validate_schema_contract(Product, minimal_data, required_fields)
@@ -455,10 +484,17 @@ class TestGetProductsResponseContract:
                 description="First product for response testing",
                 formats=["display_300x250"],
                 delivery_type="guaranteed",
-                is_fixed_price=True,
-                cpm=10.0,
                 is_custom=False,
                 property_tags=["all_inventory"],  # Required per AdCP spec
+                pricing_options=[
+                    PricingOption(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             ),
             Product(
                 product_id="response_test_2",
@@ -466,9 +502,17 @@ class TestGetProductsResponseContract:
                 description="Second product for response testing",
                 formats=["video_15s"],
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
                 is_custom=True,
                 property_tags=["all_inventory"],  # Required per AdCP spec
+                pricing_options=[
+                    PricingOption(
+                        pricing_option_id="cpm_usd_auction",
+                        pricing_model="cpm",
+                        currency="USD",
+                        is_fixed=False,
+                        price_guidance={"floor": 5.0, "p50": 10.0, "p90": 15.0},
+                    )
+                ],
             ),
         ]
 
@@ -508,9 +552,17 @@ class TestSchemaEvolutionSafety:
             "description": "Testing schema evolution safety",
             "formats": ["display_300x250"],
             "delivery_type": "guaranteed",
-            "is_fixed_price": True,
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         }
 
         # Should still work with existing data
@@ -531,9 +583,17 @@ class TestSchemaEvolutionSafety:
             "description": "Testing field removal safety",
             "formats": ["display_300x250"],
             "delivery_type": "non_guaranteed",
-            "is_fixed_price": False,
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_auction",
+                    pricing_model="cpm",
+                    currency="USD",
+                    is_fixed=False,
+                    price_guidance={"floor": 5.0, "p50": 10.0, "p90": 15.0},
+                )
+            ],
         }
 
         product = Product(**minimal_data)
@@ -554,17 +614,27 @@ class TestSchemaEvolutionSafety:
             description="Testing numeric type evolution",
             formats=["display_300x250"],
             delivery_type="guaranteed",
-            is_fixed_price=True,
-            cpm=Decimal("15.50"),  # Decimal input
-            min_spend=Decimal("2000.00"),  # Decimal input
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
+            pricing_options=[
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=Decimal("15.50"),  # Decimal input
+                    currency="USD",
+                    is_fixed=True,
+                    min_spend_per_package=Decimal("2000.00"),  # Decimal input
+                )
+            ],
         )
 
         adcp_output = product_with_decimal.model_dump()
 
         # Numeric fields should be converted to appropriate types for AdCP
-        assert isinstance(adcp_output["cpm"], int | float)
-        assert isinstance(adcp_output["min_spend"], int | float)
-        assert adcp_output["cpm"] == 15.5  # Decimal converted to float
-        assert adcp_output["min_spend"] == 2000.0  # Decimal converted to float
+        assert "pricing_options" in adcp_output
+        assert len(adcp_output["pricing_options"]) == 1
+        pricing_option = adcp_output["pricing_options"][0]
+        assert isinstance(pricing_option["rate"], int | float)
+        assert isinstance(pricing_option["min_spend_per_package"], int | float)
+        assert pricing_option["rate"] == 15.5  # Decimal converted to float
+        assert pricing_option["min_spend_per_package"] == 2000.0  # Decimal converted to float
