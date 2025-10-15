@@ -34,7 +34,12 @@ class TestSchemaValidationModes:
 
             # Verify the valid fields work
             assert request.brief == "test"
-            assert request.brand_manifest == {"name": "Test Brand"}
+            # brand_manifest may be converted to BrandManifest object or kept as dict
+            if isinstance(request.brand_manifest, dict):
+                assert request.brand_manifest == {"name": "Test Brand"}
+            else:
+                # It's a BrandManifest object
+                assert request.brand_manifest.name == "Test Brand"
 
             # Verify unknown field was dropped
             assert not hasattr(request, "unknown_field")
