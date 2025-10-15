@@ -1164,7 +1164,7 @@ class AdCPRequestHandler(RequestHandler):
                 }
 
             # Call core function with AdCP spec-compliant parameters
-            response = core_create_media_buy_tool(
+            response = await core_create_media_buy_tool(
                 promoted_offering=parameters["promoted_offering"],
                 po_number=parameters.get("po_number", f"A2A-{uuid.uuid4().hex[:8]}"),
                 buyer_ref=parameters.get("buyer_ref", f"A2A-{tool_context.principal_id}"),
