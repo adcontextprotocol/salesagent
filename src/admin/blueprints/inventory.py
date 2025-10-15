@@ -104,7 +104,6 @@ def sync_orders(tenant_id):
     """Sync GAM orders for a tenant."""
     try:
         with get_db_session() as db_session:
-            from src.core.database.models import AdapterConfig
 
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 

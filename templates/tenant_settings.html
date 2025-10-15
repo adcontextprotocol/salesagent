@@ -759,6 +759,9 @@
                                        value="{{ adapter_config.get('refresh_token', '') if adapter_config else '' }}"
                                        placeholder="Paste your OAuth refresh token here">
                                 <small class="form-text text-muted">For advanced users: manually enter a refresh token if you have one.</small>
+                                <button onclick="saveManualToken()" class="btn btn-primary" style="margin-top: 0.5rem;">
+                                    Save Token
+                                </button>
                             </div>
                         </details>
                     </div>

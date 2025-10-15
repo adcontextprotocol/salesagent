@@ -270,6 +270,49 @@ function detectGAMNetwork() {
     });
 }
 
+// Save manually entered token
+function saveManualToken() {
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+
+    if (!refreshToken) {
+        alert('Please enter a refresh token first');
+        return;
+    }
+
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Saving...';
+
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/settings/adapter`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            adapter: 'google_ad_manager',
+            gam_refresh_token: refreshToken
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.disabled = false;
+        button.textContent = originalText;
+
+        if (data.success) {
+            alert('✅ Token saved! Page will reload to show next steps.');
+            location.reload();
+        } else {
+            alert('❌ Failed to save: ' + (data.error || data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.textContent = originalText;
+        alert('❌ Error: ' + error.message);
+    });
+}
+
 // Save GAM configuration
 function saveGAMConfig() {
     const networkCode = document.getElementById('gam_network_code').value;
