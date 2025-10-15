@@ -126,7 +126,7 @@ class TestCreateMediaBuyErrorPaths:
             session.execute(delete(ModelPrincipal).where(ModelPrincipal.principal_id == "error_test_principal"))
             session.commit()
 
-    def test_missing_principal_returns_authentication_error(self, test_tenant_minimal):
+    async def test_missing_principal_returns_authentication_error(self, test_tenant_minimal):
         """Test that missing principal returns Error response with authentication_error code.
 
         This tests line 3159 in main.py where Error(code="authentication_error") is used.
@@ -144,7 +144,7 @@ class TestCreateMediaBuyErrorPaths:
         future_end = future_start + timedelta(days=7)
 
         # This should return error response, not raise NameError
-        response = create_media_buy_raw(
+        response = await create_media_buy_raw(
             po_number="error_test_po",
             promoted_offering="Test campaign",
             buyer_ref="test_buyer",
@@ -172,7 +172,7 @@ class TestCreateMediaBuyErrorPaths:
         assert error.code == "authentication_error"
         assert "principal" in error.message.lower() or "not found" in error.message.lower()
 
-    def test_start_time_in_past_returns_validation_error(self, test_tenant_with_principal):
+    async def test_start_time_in_past_returns_validation_error(self, test_tenant_with_principal):
         """Test that start_time in past returns Error response with validation_error code.
 
         This tests line 3147 in main.py where Error(code="validation_error") is used
@@ -190,7 +190,7 @@ class TestCreateMediaBuyErrorPaths:
         past_end = past_start + timedelta(days=7)
 
         # This should return error response for past start time
-        response = create_media_buy_raw(
+        response = await create_media_buy_raw(
             po_number="error_test_po",
             promoted_offering="Test campaign",
             buyer_ref="test_buyer",
@@ -218,7 +218,7 @@ class TestCreateMediaBuyErrorPaths:
         assert error.code == "validation_error"
         assert "past" in error.message.lower() or "start" in error.message.lower()
 
-    def test_end_time_before_start_returns_validation_error(self, test_tenant_with_principal):
+    async def test_end_time_before_start_returns_validation_error(self, test_tenant_with_principal):
         """Test that end_time before start_time returns Error response."""
         context = ToolContext(
             context_id="test_ctx",
@@ -231,7 +231,7 @@ class TestCreateMediaBuyErrorPaths:
         start = datetime.now(UTC) + timedelta(days=7)
         end = start - timedelta(days=1)  # Before start!
 
-        response = create_media_buy_raw(
+        response = await create_media_buy_raw(
             po_number="error_test_po",
             promoted_offering="Test campaign",
             buyer_ref="test_buyer",
@@ -257,7 +257,7 @@ class TestCreateMediaBuyErrorPaths:
         assert error.code == "validation_error"
         assert "end" in error.message.lower() or "after" in error.message.lower()
 
-    def test_negative_budget_returns_validation_error(self, test_tenant_with_principal):
+    async def test_negative_budget_returns_validation_error(self, test_tenant_with_principal):
         """Test that negative budget returns Error response."""
         context = ToolContext(
             context_id="test_ctx",
@@ -270,7 +270,7 @@ class TestCreateMediaBuyErrorPaths:
         future_start = datetime.now(UTC) + timedelta(days=1)
         future_end = future_start + timedelta(days=7)
 
-        response = create_media_buy_raw(
+        response = await create_media_buy_raw(
             po_number="error_test_po",
             promoted_offering="Test campaign",
             buyer_ref="test_buyer",
@@ -296,7 +296,7 @@ class TestCreateMediaBuyErrorPaths:
         assert error.code == "validation_error"
         assert "budget" in error.message.lower() and "positive" in error.message.lower()
 
-    def test_missing_packages_returns_validation_error(self, test_tenant_with_principal):
+    async def test_missing_packages_returns_validation_error(self, test_tenant_with_principal):
         """Test that missing packages returns Error response."""
         context = ToolContext(
             context_id="test_ctx",
@@ -309,7 +309,7 @@ class TestCreateMediaBuyErrorPaths:
         future_start = datetime.now(UTC) + timedelta(days=1)
         future_end = future_start + timedelta(days=7)
 
-        response = create_media_buy_raw(
+        response = await create_media_buy_raw(
             po_number="error_test_po",
             promoted_offering="Test campaign",
             buyer_ref="test_buyer",

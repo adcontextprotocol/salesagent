@@ -89,10 +89,9 @@ class TestGetProductsFilterBehavior:
                     ],
                     targeting_template={},
                     delivery_type="guaranteed",
-                    is_fixed_price=True,
-                    cpm=15.0,
                     is_custom=False,
                     countries=["US"],
+                    property_tags=["all_inventory"],  # Required field
                 ),
                 # Non-guaranteed, dynamic pricing, video only
                 Product(
@@ -106,10 +105,9 @@ class TestGetProductsFilterBehavior:
                     ],
                     targeting_template={},
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    cpm=None,
                     is_custom=False,
                     countries=["US", "CA"],
+                    property_tags=["all_inventory"],  # Required field
                 ),
                 # Guaranteed, fixed-price, mixed formats (display + video)
                 Product(
@@ -123,10 +121,9 @@ class TestGetProductsFilterBehavior:
                     ],
                     targeting_template={},
                     delivery_type="guaranteed",
-                    is_fixed_price=True,
-                    cpm=12.0,
                     is_custom=False,
                     countries=["US"],
+                    property_tags=["all_inventory"],  # Required field
                 ),
                 # Non-guaranteed, dynamic, display only
                 Product(
@@ -139,10 +136,9 @@ class TestGetProductsFilterBehavior:
                     ],
                     targeting_template={},
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    cpm=None,
                     is_custom=False,
                     countries=["US"],
+                    property_tags=["all_inventory"],  # Required field
                 ),
                 # Guaranteed, fixed-price, audio only
                 Product(
@@ -155,10 +151,9 @@ class TestGetProductsFilterBehavior:
                     ],
                     targeting_template={},
                     delivery_type="guaranteed",
-                    is_fixed_price=True,
-                    cpm=20.0,
                     is_custom=False,
                     countries=["US"],
+                    property_tags=["all_inventory"],  # Required field
                 ),
             ]
             session.add_all(products)
@@ -297,10 +292,9 @@ class TestProductFilterLogic:
                     formats=["video_1280x720"],  # Use valid format ID from FORMAT_REGISTRY
                     targeting_template={},
                     delivery_type="guaranteed",
-                    is_fixed_price=True,
-                    cpm=25.0,
                     is_custom=False,
                     countries=["US"],
+                    property_tags=["all_inventory"],  # Required field
                 ),
                 Product(
                     tenant_id="filter_logic_test",
@@ -310,10 +304,9 @@ class TestProductFilterLogic:
                     formats=["display_300x250"],  # Use string format IDs, not dicts
                     targeting_template={},
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    cpm=None,
                     is_custom=False,
                     countries=["US"],
+                    property_tags=["all_inventory"],  # Required field
                 ),
             ]
             session.add_all(products)
@@ -358,7 +351,8 @@ class TestProductFilterLogic:
 
     @pytest.mark.asyncio
     async def test_is_fixed_price_filter_true(self, mock_context_filter_logic):
-        """Test manual filtering by is_fixed_price=True."""
+        """Test manual filtering by
+        ."""
         get_products = self._import_get_products_tool()
 
         context = mock_context_filter_logic
@@ -378,7 +372,8 @@ class TestProductFilterLogic:
 
     @pytest.mark.asyncio
     async def test_is_fixed_price_filter_false(self, mock_context_filter_logic):
-        """Test manual filtering by is_fixed_price=False."""
+        """Test manual filtering by
+        ."""
         get_products = self._import_get_products_tool()
 
         context = mock_context_filter_logic
@@ -577,10 +572,9 @@ class TestFilterEdgeCases:
                     formats=[],  # Empty formats list
                     targeting_template={},
                     delivery_type="guaranteed",
-                    is_fixed_price=True,
-                    cpm=10.0,
                     is_custom=False,
                     countries=["US"],
+                    property_tags=["all_inventory"],  # Required field
                 ),
             ]
             session.add_all(products)

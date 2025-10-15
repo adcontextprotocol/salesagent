@@ -18,7 +18,6 @@ from src.core.database.models import CreativeAssignment, MediaBuy, Principal
 from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
-
 class MockContext:
     """Mock FastMCP Context for testing."""
 
@@ -27,7 +26,6 @@ class MockContext:
             self.meta = {"headers": {}}  # No auth header for testing optional auth
         else:
             self.meta = {"headers": {"x-adcp-auth": auth_token}}
-
 
 class TestCreativeLifecycleMCP:
     """Integration tests for creative lifecycle MCP tools."""
@@ -821,8 +819,8 @@ class TestCreativeLifecycleMCP:
                     description="Test",
                     formats=[],
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
                     price_guidance={"floor": 5.0, "p50": 10.0, "p90": 15.0},
+                    property_tags=["all_inventory"],  # Required field
                 )
             ]
 

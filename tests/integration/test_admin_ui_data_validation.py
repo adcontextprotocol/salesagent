@@ -153,8 +153,6 @@ class TestProductsDataValidation:
                 targeting_template={},
                 property_tags=["all_inventory"],  # Required per AdCP spec
                 # Legacy pricing fields (no pricing_options relationship)
-                is_fixed_price=True,
-                cpm=15.0,
             )
             db_session.add(product)
             db_session.commit()

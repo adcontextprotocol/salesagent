@@ -33,7 +33,6 @@ from src.core.database.models import Tenant as ModelTenant
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-
 @pytest.mark.integration
 @pytest.mark.requires_db
 @pytest.mark.asyncio
@@ -75,10 +74,8 @@ class TestA2AErrorPropagation:
                 description="Product for error testing",
                 formats=["display_300x250"],
                 delivery_type="guaranteed",
-                cpm=10.0,
-                min_spend=1000.0,
                 targeting_template={},
-                is_fixed_price=True,
+                property_tags=["all_inventory"],  # Required field
             )
             session.add(product)
 
@@ -345,7 +342,6 @@ class TestA2AErrorPropagation:
             # A2A-specific augmentation fields
             assert "success" in artifact_data, "A2A wrapper must add success field"
             assert "message" in artifact_data, "A2A wrapper must add message field"
-
 
 @pytest.mark.integration
 @pytest.mark.requires_db

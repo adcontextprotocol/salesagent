@@ -10,15 +10,14 @@ fields map to valid database fields, allowing 'Product' object has no attribute 
 errors to reach production.
 """
 
-
 import pytest
 from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative, MediaBuy, Principal, Tenant
 from src.core.database.models import Product as ProductModel
-from src.core.schemas import Principal as PrincipalSchema
 from src.core.schemas import PricingOption, Product
+from src.core.schemas import Principal as PrincipalSchema
 from tests.utils.database_helpers import (
     create_tenant_with_timestamps,
 )
@@ -414,7 +413,7 @@ class TestFieldAccessPatterns:
         assert product.name == "Pattern Test Product"
 
         # Pattern 2: Conditional access for optional fields
-        cpm = getattr(product, "cpm", None)
+        cpm = product.model_dump().get("cpm", None)
         assert cpm is None  # Optional field, not provided
 
         # Pattern 3: hasattr check before access

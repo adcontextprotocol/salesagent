@@ -15,7 +15,6 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Product, Tenant
 from src.core.schemas import MediaPackage, Principal
 
-
 class TestGAMAutomationBasics:
     """Test basic GAM automation constants and configuration."""
 
@@ -33,7 +32,6 @@ class TestGAMAutomationBasics:
 
         # Ensure no overlap
         assert not (GUARANTEED_LINE_ITEM_TYPES & NON_GUARANTEED_LINE_ITEM_TYPES)
-
 
 @pytest.mark.skip_ci
 @pytest.mark.requires_db
@@ -64,9 +62,7 @@ class TestGAMProductConfiguration:
                 formats=[{"format_id": "display_300x250", "name": "Display 300x250", "type": "display"}],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=True,
-                cpm=2.50,
-                # JSONType expects dict, not json.dumps() string
+                property_tags=["all_inventory"],  # Required field
                 implementation_config={
                     "line_item_type": "NETWORK",
                     "non_guaranteed_automation": "automatic",
@@ -82,9 +78,7 @@ class TestGAMProductConfiguration:
                 formats=[{"format_id": "display_728x90", "name": "Leaderboard 728x90", "type": "display"}],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=True,
-                cpm=1.00,
-                # JSONType expects dict, not json.dumps() string
+                property_tags=["all_inventory"],  # Required field
                 implementation_config={
                     "line_item_type": "HOUSE",
                     "non_guaranteed_automation": "confirmation_required",
@@ -134,7 +128,6 @@ class TestGAMProductConfiguration:
             assert config["non_guaranteed_automation"] == "confirmation_required"
             assert config["line_item_type"] == "HOUSE"
 
-
 class TestGAMPackageTypes:
     """Test media package type detection and validation."""
 
@@ -146,8 +139,7 @@ class TestGAMPackageTypes:
             name="Network Package",
             delivery_type="non_guaranteed",
             impressions=10000,
-            cpm=2.50,
-            format_ids=["display_300x250"],
+format_ids=["display_300x250"],
         )
 
         assert non_guaranteed_pkg.delivery_type == "non_guaranteed"
@@ -158,8 +150,7 @@ class TestGAMPackageTypes:
             name="Standard Package",
             delivery_type="guaranteed",
             impressions=50000,
-            cpm=5.00,
-            format_ids=["display_300x250"],
+format_ids=["display_300x250"],
         )
 
         assert guaranteed_pkg.delivery_type == "guaranteed"

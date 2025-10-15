@@ -82,10 +82,9 @@ class TestMCPEndpointsComprehensive:
                     ],
                     targeting_template={"geo_country": {"values": ["US", "CA"], "required": False}},
                     delivery_type="guaranteed",
-                    is_fixed_price=True,
-                    cpm=10.0,
                     is_custom=False,
                     countries=["US", "CA"],
+                    property_tags=["all_inventory"],  # Required field
                 ),
                 Product(
                     tenant_id="test_mcp",
@@ -102,9 +101,9 @@ class TestMCPEndpointsComprehensive:
                     ],
                     targeting_template={"content_category": {"values": ["sports"], "required": True}},
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
                     is_custom=False,
                     countries=["US"],
+                    property_tags=["all_inventory"],  # Required field
                 ),
             ]
             for product in products:
@@ -114,12 +113,6 @@ class TestMCPEndpointsComprehensive:
 
             # Explicitly close connections to ensure data is flushed to disk
             session.close()
-
-        # Close the global session factory to ensure all connections are closed
-        from src.core.database import database_session
-
-        if database_session.db_session:
-            database_session.db_session.remove()
 
         # Store data for tests
         self.test_token = "test_mcp_token_12345"

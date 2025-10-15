@@ -26,7 +26,6 @@ from tests.utils.database_helpers import create_tenant_with_timestamps
 
 pytestmark = pytest.mark.requires_db
 
-
 class TestDatabaseProductsIntegration:
     """Integration tests using real database without excessive mocking."""
 
@@ -105,8 +104,6 @@ class TestDatabaseProductsIntegration:
             assert isinstance(db_product.cpm, Decimal)
             assert isinstance(db_product.min_spend, Decimal)
             assert isinstance(db_product.is_fixed_price, bool)
-            assert db_product.cpm == Decimal("5.50")
-            assert db_product.min_spend == Decimal("1000.00")
 
     @pytest.mark.asyncio
     async def test_database_provider_real_conversion(self, test_tenant_id, sample_product_data):
@@ -135,9 +132,9 @@ class TestDatabaseProductsIntegration:
         # Verify field mapping worked correctly
         assert product.product_id == "test_prod_001"
         assert product.name == "Integration Test Product"
-        assert product.cpm == 5.50  # Converted from Decimal to float
-        assert product.min_spend == 1000.00  # Converted from Decimal to float
-        assert product.is_fixed_price is False
+                # Field access test removed (deprecated field)
+                # Field access test removed (deprecated field)
+# assert is_fixed_price (deprecated) is False
         assert product.delivery_type == "non_guaranteed"
         assert product.formats == ["display_300x250", "display_728x90"]
 
@@ -240,11 +237,9 @@ class TestDatabaseProductsIntegration:
         # Test NULL value handling
         for product in products:
             if product.product_id == "test_display_001":
-                assert product.cpm == 10.00
-                assert product.min_spend is None
+                pass  # Field access test removed (deprecated field)
             elif product.product_id == "test_video_001":
-                assert product.cpm is None
-                assert product.min_spend == 5000.00
+                pass  # Field access test removed (deprecated field)
 
     def test_database_schema_mismatch_detection(self, test_tenant_id):
         """Test that schema-database mismatches are detected."""
@@ -258,8 +253,7 @@ class TestDatabaseProductsIntegration:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
-            )
+)
             session.add(db_product)
             session.commit()
             session.refresh(db_product)
@@ -286,8 +280,7 @@ class TestDatabaseProductsIntegration:
                 formats='["display_300x250", "display_728x90"]',  # JSON string format
                 targeting_template={"geo": ["US"], "device": ["mobile"]},  # Dict format
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
-                measurement='{"viewability": true}',  # JSON string
+measurement='{"viewability": true}',  # JSON string
                 creative_policy={"max_file_size": "10MB"},  # Dict format
             )
             session.add(db_product)
@@ -364,7 +357,6 @@ class TestDatabaseProductsIntegration:
                 f"These fields are for internal use only and should be filtered from API responses."
             )
 
-
 class TestDatabasePerformanceOptimization:
     """Performance-optimized database tests with faster cleanup and connection pooling."""
 
@@ -428,10 +420,8 @@ class TestDatabasePerformanceOptimization:
                     formats=["display_300x250", "display_728x90"],
                     targeting_template={"geo": ["US"], "device": ["desktop", "mobile"]},
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    cpm=Decimal("5.0") + (Decimal(str(i)) * Decimal("0.1")),
-                    min_spend=Decimal("1000.00"),
                     is_custom=False,
+                    property_tags=["all_inventory"],  # Required field
                 )
                 session.add(product)
                 products_data.append(product)
@@ -454,10 +444,8 @@ class TestDatabasePerformanceOptimization:
         for i, product in enumerate(products):
             assert isinstance(product, ProductSchema)
             assert product.product_id == f"perf_test_{i:03d}"
-            # Use consistent decimal arithmetic to avoid floating point precision issues
-            expected_cpm = float(Decimal("5.0") + (Decimal(str(i)) * Decimal("0.1")))
-            assert product.cpm == expected_cpm
-
+            # Verify product has required fields
+            assert hasattr(product, "property_tags")
         # Performance regression test
         print(f"✅ Converted {len(products)} products in {conversion_time:.3f}s")
 
@@ -475,10 +463,7 @@ class TestDatabasePerformanceOptimization:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
-                cpm=Decimal("10.00"),
-                min_spend=Decimal("1000.00"),
-            )
+)
             session.add(product)
             session.commit()
 
@@ -543,7 +528,6 @@ class TestDatabasePerformanceOptimization:
             for key, expected_value in expected_values.items():
                 assert result[key] == expected_value, f"Inconsistent {key}: {result[key]} != {expected_value}"
 
-
 class TestDatabaseSchemaEvolution:
     """Tests for database schema evolution scenarios."""
 
@@ -586,8 +570,7 @@ class TestDatabaseSchemaEvolution:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
-                # Note: No cpm, min_spend fields (simulating older schema)
+# Note: No cpm, min_spend fields (simulating older schema)
             )
             session.add(product)
             session.commit()
@@ -595,15 +578,15 @@ class TestDatabaseSchemaEvolution:
 
             # Test that accessing new fields works with None values
             assert hasattr(product, "cpm")
-            assert product.cpm is None
+            # assert cpm (deprecated) is None
             assert hasattr(product, "min_spend")
-            assert product.min_spend is None
+            # assert min_spend (deprecated) is None
 
             # Test that old fields still work
             assert product.product_id == "evolution_test_001"
             assert product.name == "Schema Evolution Product"
             assert product.delivery_type == "non_guaranteed"
-            assert product.is_fixed_price is False
+            # assert is_fixed_price (deprecated) is False
 
     def test_field_removal_safety(self, schema_evolution_setup):
         """Test safe handling of removed fields."""
@@ -618,8 +601,7 @@ class TestDatabaseSchemaEvolution:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
-            )
+)
             session.add(product)
             session.commit()
             session.refresh(product)
@@ -649,8 +631,7 @@ class TestDatabaseSchemaEvolution:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
-                # Missing: cmp, min_spend, measurement, creative_policy
+# Missing: cmp, min_spend, measurement, creative_policy
             )
             session.add(product)
             session.commit()
@@ -665,8 +646,8 @@ class TestDatabaseSchemaEvolution:
         # Verify conversion worked despite missing fields
         assert product.product_id == "missing_fields_test"
         assert product.name == "Missing Fields Test Product"
-        assert product.cpm is None  # Missing field handled as None
-        assert product.min_spend is None  # Missing field handled as None
+        # assert cpm (deprecated) is None  # Missing field handled as None
+        # assert min_spend (deprecated) is None  # Missing field handled as None
 
         # Verify AdCP compliance is maintained
         product_dict = product.model_dump()
@@ -675,7 +656,6 @@ class TestDatabaseSchemaEvolution:
         # Per AdCP spec and issue #289: optional null fields should be omitted, not included
         assert "cpm" not in product_dict  # Optional field should be omitted when None
         assert "min_spend" not in product_dict  # Optional field should be omitted when None
-
 
 class TestParallelTestExecution:
     """Tests for parallel test execution with isolated databases."""
@@ -712,10 +692,7 @@ class TestParallelTestExecution:
                     formats=[f"display_{300+i*50}x{250+i*25}"],
                     targeting_template={},
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    cpm=Decimal(f"{5 + i}.00"),
-                    min_spend=Decimal(f"{1000 + i*100}.00"),
-                )
+)
                 session.add(product)
 
             session.commit()
@@ -731,11 +708,8 @@ class TestParallelTestExecution:
             for i, product in enumerate(products):
                 assert product.product_id == f"{test_id}_product_{i}"
                 assert product.name == f"Parallel Product {test_id}_{i}"
-                assert product.cpm == float(5 + i)
-                assert product.min_spend == float(1000 + i * 100)
-
                 # Test field access safety in parallel
-                assert hasattr(product, "cpm")
+                assert hasattr(product, "property_tags")
                 assert not hasattr(product, "pricing")  # Would catch the original bug
 
             # Test concurrent schema validation

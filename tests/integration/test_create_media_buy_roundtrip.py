@@ -27,7 +27,6 @@ from src.core.database.models import Tenant as ModelTenant
 from src.core.schemas import Budget, CreateMediaBuyResponse, Package
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
 
-
 @pytest.mark.integration
 class TestCreateMediaBuyRoundtrip:
     """Test create_media_buy response roundtrip through testing hooks."""
@@ -68,10 +67,8 @@ class TestCreateMediaBuyRoundtrip:
                 description="Product for roundtrip testing",
                 formats=["display_300x250"],
                 delivery_type="guaranteed",
-                cpm=10.0,
-                min_spend=1000.0,
                 targeting_template={},
-                is_fixed_price=True,
+                property_tags=["all_inventory"],  # Required field
             )
             session.add(product)
 

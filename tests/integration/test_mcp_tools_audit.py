@@ -123,7 +123,6 @@ class TestMCPToolsAudit:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
                 is_custom=False,
             )
             session.add(product)

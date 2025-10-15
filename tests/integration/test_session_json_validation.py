@@ -351,9 +351,8 @@ class TestIntegration:
                     ],
                     targeting_template={"geo_targets": ["US", "CA"], "device_targets": ["desktop", "mobile"]},
                     delivery_type="guaranteed",
-                    is_fixed_price=True,
-                    cpm=10.0,
                     countries=["US", "CA"],
+                    property_tags=["all_inventory"],  # Required field
                 )
                 self.session.add(product)
 

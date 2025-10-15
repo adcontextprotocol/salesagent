@@ -79,9 +79,7 @@ class TestMinimumSpendValidation:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="guaranteed",
-                is_fixed_price=True,
-                cpm=Decimal("10.00"),
-                min_spend=None,  # No override, uses currency limit
+                property_tags=["all_inventory"],  # Required field
             )
             session.add(product_no_override)
 
@@ -94,9 +92,7 @@ class TestMinimumSpendValidation:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="guaranteed",
-                is_fixed_price=True,
-                cpm=Decimal("10.00"),
-                min_spend=Decimal("5000.00"),  # Product-specific override
+                property_tags=["all_inventory"],  # Required field
             )
             session.add(product_high_override)
 
@@ -109,9 +105,7 @@ class TestMinimumSpendValidation:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="guaranteed",
-                is_fixed_price=True,
-                cpm=Decimal("10.00"),
-                min_spend=Decimal("500.00"),  # Lower override
+                property_tags=["all_inventory"],  # Required field
             )
             session.add(product_low_override)
 

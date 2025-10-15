@@ -17,7 +17,6 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 from tests.fixtures import TenantFactory
 
-
 @pytest.fixture(scope="function")  # Changed to function scope for better isolation
 def integration_db():
     """Provide an isolated PostgreSQL database for each integration test.
@@ -207,7 +206,6 @@ def integration_db():
     except Exception:
         pass  # Ignore cleanup errors
 
-
 @pytest.fixture
 def admin_client(integration_db):
     """Create test client for admin UI with proper configuration."""
@@ -220,7 +218,6 @@ def admin_client(integration_db):
     admin_app.config["WTF_CSRF_ENABLED"] = False  # Disable CSRF for tests
     with admin_app.test_client() as client:
         yield client
-
 
 @pytest.fixture
 def authenticated_admin_session(admin_client, integration_db):
@@ -255,7 +252,6 @@ def authenticated_admin_session(admin_client, integration_db):
     if "ADCP_AUTH_TEST_MODE" in os.environ:
         del os.environ["ADCP_AUTH_TEST_MODE"]
 
-
 @pytest.fixture
 def test_tenant_with_data(integration_db):
     """Create a test tenant in the database with proper configuration."""
@@ -280,7 +276,6 @@ def test_tenant_with_data(integration_db):
 
     return tenant_data
 
-
 @pytest.fixture
 def populated_db(integration_db):
     """Provide a database populated with test data."""
@@ -290,7 +285,6 @@ def populated_db(integration_db):
     tenant_data = TenantFactory.create()
     PrincipalFactory.create(tenant_id=tenant_data["tenant_id"])
     ProductFactory.create_batch(3, tenant_id=tenant_data["tenant_id"])
-
 
 @pytest.fixture
 def sample_tenant(integration_db):
@@ -326,7 +320,6 @@ def sample_tenant(integration_db):
             "admin_token": tenant.admin_token,
         }
 
-
 @pytest.fixture
 def sample_principal(integration_db, sample_tenant):
     """Create a sample principal with valid platform mappings."""
@@ -354,7 +347,6 @@ def sample_principal(integration_db, sample_tenant):
             "access_token": principal.access_token,
         }
 
-
 @pytest.fixture
 def sample_products(integration_db, sample_tenant):
     """Create sample products that comply with AdCP protocol."""
@@ -381,10 +373,9 @@ def sample_products(integration_db, sample_tenant):
                 ],
                 targeting_template={"geo_country": {"values": ["US"], "required": False}},
                 delivery_type="guaranteed",
-                is_fixed_price=True,
-                cpm=15.0,
                 is_custom=False,
                 countries=["US"],
+                property_tags=["all_inventory"],  # Required field
             ),
             Product(
                 tenant_id=sample_tenant["tenant_id"],
@@ -403,10 +394,10 @@ def sample_products(integration_db, sample_tenant):
                 ],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
                 price_guidance={"floor": 10.0, "p50": 20.0, "p75": 30.0, "p90": 40.0},
                 is_custom=False,
                 countries=["US", "CA"],
+                property_tags=["all_inventory"],  # Required field
             ),
         ]
 
@@ -415,7 +406,6 @@ def sample_products(integration_db, sample_tenant):
         session.commit()
 
         return [p.product_id for p in products]
-
 
 @pytest.fixture
 def mock_external_apis():
@@ -431,7 +421,6 @@ def mock_external_apis():
                 mock_model.return_value = mock_instance
 
                 yield {"requests": mock_post, "gemini": mock_instance}
-
 
 @pytest.fixture(scope="function")
 def mcp_server(integration_db):
@@ -545,7 +534,6 @@ mcp.run(transport='http', host='0.0.0.0', port={port})
 
     # Don't remove db_path - it's managed by integration_db fixture
 
-
 @pytest.fixture
 def test_admin_app(integration_db):
     """Provide a test Admin UI app with real database."""
@@ -561,7 +549,6 @@ def test_admin_app(integration_db):
     app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in tests
 
     yield app
-
 
 @pytest.fixture
 def authenticated_admin_client(test_admin_app):
@@ -586,7 +573,6 @@ def authenticated_admin_client(test_admin_app):
     # Clean up test mode
     if "ADCP_AUTH_TEST_MODE" in os.environ:
         del os.environ["ADCP_AUTH_TEST_MODE"]
-
 
 @pytest.fixture
 def test_media_buy_workflow(populated_db):
@@ -637,7 +623,6 @@ def test_media_buy_workflow(populated_db):
         db_session.commit()
 
     return {**data, "media_buy": media_buy_data, "creatives": creatives_data}
-
 
 @pytest.fixture
 def test_audit_logger(integration_db):

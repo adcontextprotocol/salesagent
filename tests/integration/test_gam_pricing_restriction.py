@@ -58,6 +58,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             delivery_type="non-guaranteed",
             targeting_template={},
             implementation_config={},
+            property_tags=["all_inventory"],  # Required field
         )
         session.add(product)
         session.flush()
@@ -86,6 +87,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             delivery_type="guaranteed",
             targeting_template={},
             implementation_config={},
+            property_tags=["all_inventory"],  # Required field
         )
         session.add(product_cpm)
         session.flush()
@@ -114,6 +116,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             delivery_type="non-guaranteed",
             targeting_template={},
             implementation_config={},
+            property_tags=["all_inventory"],  # Required field
         )
         session.add(product_multi)
         session.flush()

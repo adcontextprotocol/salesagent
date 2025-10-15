@@ -56,7 +56,7 @@ def test_tenant_and_products(integration_db):
             formats=["display_300x250"],
             targeting_template={},
             delivery_type="programmatic",
-            is_fixed_price=False,
+            property_tags=["all_inventory"],  # Required field
         )
 
         product2 = Product(
@@ -66,7 +66,7 @@ def test_tenant_and_products(integration_db):
             formats=["video_30s"],
             targeting_template={},
             delivery_type="programmatic",
-            is_fixed_price=False,
+            property_tags=["all_inventory"],  # Required field
         )
 
         # Product with invalid format data (for pattern validation testing)
@@ -77,7 +77,7 @@ def test_tenant_and_products(integration_db):
             formats='[{"format_id": "test", "type": "invalid_type"}]',  # Invalid type for testing
             targeting_template={},
             delivery_type="programmatic",
-            is_fixed_price=False,
+            property_tags=["all_inventory"],  # Required field
         )
 
         session.add_all([product1, product2, product3])

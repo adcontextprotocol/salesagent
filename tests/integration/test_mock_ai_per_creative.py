@@ -28,7 +28,6 @@ def mock_adapter(integration_db):
             tenant_id="test_tenant_ai_creative",
             name="Test Tenant - AI Creative",
             subdomain="test-ai-creative",
-            config={"adapters": {"mock": {"enabled": True}}},
         )
         session.add(tenant)
 

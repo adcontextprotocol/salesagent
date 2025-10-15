@@ -40,8 +40,6 @@ async def test_ai_provider_bug(integration_db):
             formats=["audio_15s", "audio_30s"],  # JSONType expects list, not json.dumps()
             targeting_template={},
             delivery_type="guaranteed",
-            is_fixed_price=True,
-            cpm=10.0,
             is_custom=False,
         )
         session.merge(test_product)

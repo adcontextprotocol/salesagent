@@ -345,9 +345,9 @@ def test_list_products_json_parsing(client, test_tenant, integration_db):
             ],
             countries=["US", "CA"],
             price_guidance={"min": 10.0, "max": 20.0},
-            is_fixed_price=False,
             delivery_type="guaranteed",
             targeting_template={"geo_country_any_of": ["US", "CA"]},
+            property_tags=["all_inventory"],  # Required field
         )
         session.add(product)
         session.commit()

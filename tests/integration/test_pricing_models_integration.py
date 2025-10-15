@@ -49,6 +49,7 @@ def setup_tenant_with_pricing_products(integration_db):
             delivery_type="guaranteed",
             targeting_template={},
             implementation_config={},
+            property_tags=["all_inventory"],  # Required field
         )
         session.add(product_cpm_fixed)
         session.flush()
@@ -73,6 +74,7 @@ def setup_tenant_with_pricing_products(integration_db):
             delivery_type="non-guaranteed",
             targeting_template={},
             implementation_config={},
+            property_tags=["all_inventory"],  # Required field
         )
         session.add(product_cpm_auction)
         session.flush()
@@ -98,6 +100,7 @@ def setup_tenant_with_pricing_products(integration_db):
             delivery_type="non-guaranteed",
             targeting_template={},
             implementation_config={},
+            property_tags=["all_inventory"],  # Required field
         )
         session.add(product_cpcv)
         session.flush()
@@ -123,6 +126,7 @@ def setup_tenant_with_pricing_products(integration_db):
             delivery_type="non-guaranteed",
             targeting_template={},
             implementation_config={},
+            property_tags=["all_inventory"],  # Required field
         )
         session.add(product_multi)
         session.flush()

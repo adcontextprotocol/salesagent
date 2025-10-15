@@ -44,7 +44,7 @@ class TestDeliverySimulatorRestart:
                 principal_id="test_principal_restart",
                 name="Test Principal",
                 access_token="test_token_restart",
-                platform_mappings={},
+                platform_mappings={"mock": {"account_id": "test_account"}},
             )
             session.add(principal)
             session.commit()
@@ -134,7 +134,7 @@ class TestDeliverySimulatorRestart:
                 principal_id="principal_no_webhook",
                 name="Principal Without Webhook",
                 access_token="token_no_webhook",
-                platform_mappings={},
+                platform_mappings={"mock": {"account_id": "test_account"}},
             )
             session.add(principal_no_webhook)
 

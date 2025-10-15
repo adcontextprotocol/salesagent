@@ -347,7 +347,7 @@ class TestSignalSchemaRoundtrip:
             "data_provider": "Test Data Provider",
             "coverage_percentage": 95.0,
             "deployments": [SignalDeployment(platform="test_platform", is_live=True, scope="platform-wide")],
-            "pricing": SignalPricing(cpm=2.50, currency="USD"),
+            "pricing": SignalPricing(currency="USD"),
         }
 
         validator.test_model_roundtrip(Signal, test_data)
@@ -362,7 +362,7 @@ class TestSignalSchemaRoundtrip:
             "data_provider": "Audience Provider",
             "coverage_percentage": 75.0,
             "deployments": [SignalDeployment(platform="audience_platform", is_live=True, scope="account-specific")],
-            "pricing": SignalPricing(cpm=5.00, currency="USD"),
+            "pricing": SignalPricing(currency="USD"),
         }
 
         validator.test_model_roundtrip(Signal, test_data)

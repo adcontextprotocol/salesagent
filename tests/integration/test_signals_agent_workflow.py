@@ -230,12 +230,10 @@ class TestSignalsAgentWorkflow:
                     name="Database Sports Package",
                     description="Sports content advertising package",
                     delivery_type="non_guaranteed",
-                    is_fixed_price=True,
                     formats=["display_300x250", "display_728x90"],
-                    cpm=4.50,
-                    min_spend=500.0,
                     countries=["US", "CA"],
                     targeting_template={},
+                    property_tags=["all_inventory"],  # Required field
                 ),
                 ModelProduct(
                     product_id="test_db_2",
@@ -243,12 +241,10 @@ class TestSignalsAgentWorkflow:
                     name="Database Automotive Package",
                     description="Automotive content advertising package",
                     delivery_type="non_guaranteed",
-                    is_fixed_price=True,
                     formats=["display_300x250", "video_pre_roll"],
-                    cpm=5.25,
-                    min_spend=750.0,
                     countries=["US"],
                     targeting_template={},
+                    property_tags=["all_inventory"],  # Required field
                 ),
             ]
 
