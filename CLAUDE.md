@@ -986,18 +986,29 @@ pre-commit run adcp-contract-tests --all-files
 ### GAM Adapter
 **Supported Pricing Models**: CPM, VCPM, CPC, FLAT_RATE
 
+**✅ FULLY IMPLEMENTED**: End-to-end pricing support with automatic line item type selection, dynamic cost type assignment, and goal unit configuration.
+
 #### Pricing Model Details
 
-| AdCP Model | GAM Cost Type | Line Item Types | Use Case |
-|------------|---------------|-----------------|----------|
-| **CPM** | CPM | All types (STANDARD, SPONSORSHIP, NETWORK, PRICE_PRIORITY, BULK, HOUSE) | Cost per 1,000 impressions - most common |
-| **VCPM** | VCPM | STANDARD only | Cost per 1,000 viewable impressions - viewability-based |
-| **CPC** | CPC | STANDARD, SPONSORSHIP, NETWORK, PRICE_PRIORITY | Cost per click - performance-based |
-| **FLAT_RATE** | CPD (internal) | SPONSORSHIP | Fixed campaign cost - internally translates to CPD (total / days) |
+| AdCP Model | GAM Cost Type | Line Item Types | Goal Unit Type | Use Case |
+|------------|---------------|-----------------|----------------|----------|
+| **CPM** | CPM | All types (STANDARD, SPONSORSHIP, NETWORK, PRICE_PRIORITY, BULK, HOUSE) | IMPRESSIONS | Cost per 1,000 impressions - most common |
+| **VCPM** | VCPM | STANDARD only | VIEWABLE_IMPRESSIONS | Cost per 1,000 viewable impressions - viewability-based |
+| **CPC** | CPC | STANDARD, SPONSORSHIP, NETWORK, PRICE_PRIORITY | CLICKS | Cost per click - performance-based |
+| **FLAT_RATE** | CPD (internal) | SPONSORSHIP | IMPRESSIONS | Fixed campaign cost - internally translates to CPD (total / days) |
 
 **Not Supported**: CPCV, CPV, CPP (GAM API limitations - video completion and GRP metrics not available)
 
 **Note**: CPD (Cost Per Day) is a GAM cost type but NOT exposed as an AdCP pricing model. It's used internally to translate FLAT_RATE pricing.
+
+**Implementation Status**:
+- ✅ Pricing validation at adapter level
+- ✅ Automatic line item type selection based on pricing + guarantees
+- ✅ Dynamic cost type assignment (CPM, VCPM, CPC, CPD)
+- ✅ Dynamic goal unit types (IMPRESSIONS, VIEWABLE_IMPRESSIONS, CLICKS)
+- ✅ FLAT_RATE → CPD rate calculation (total_budget / campaign_days)
+- ✅ Comprehensive unit tests (22 tests in `test_gam_pricing_compatibility.py`)
+- ✅ Integration tests (6 tests in `test_gam_pricing_models_integration.py`)
 
 #### Line Item Type Selection
 

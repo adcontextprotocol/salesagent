@@ -645,10 +645,20 @@ function addPricingOption(existingData = null) {
                     <label>Pricing Model *</label>
                     <select name="pricing_model_${index}" class="pricing-model-select" onchange="updatePricingFields${index}()" required>
                         <option value="">Select...</option>
-                        <option value="cpm_fixed" ${existingData && existingData.pricing_model === 'cpm' && existingData.is_fixed ? 'selected' : ''}>CPM - Fixed Rate</option>
-                        <option value="cpm_auction" ${existingData && existingData.pricing_model === 'cpm' && !existingData.is_fixed ? 'selected' : ''}>CPM - Auction</option>
+                        <optgroup label="Impressions-Based">
+                            <option value="cpm_fixed" ${existingData && existingData.pricing_model === 'cpm' && existingData.is_fixed ? 'selected' : ''}>CPM - Fixed Rate (Cost per 1,000 impressions)</option>
+                            <option value="cpm_auction" ${existingData && existingData.pricing_model === 'cpm' && !existingData.is_fixed ? 'selected' : ''}>CPM - Auction (Floor price bidding)</option>
+                            <option value="vcpm_fixed" ${existingData && existingData.pricing_model === 'vcpm' && existingData.is_fixed ? 'selected' : ''}>VCPM - Fixed Rate (Viewable impressions only)</option>
+                        </optgroup>
+                        <optgroup label="Performance-Based">
+                            <option value="cpc_fixed" ${existingData && existingData.pricing_model === 'cpc' && existingData.is_fixed ? 'selected' : ''}>CPC - Fixed Rate (Cost per click)</option>
+                            <option value="cpc_auction" ${existingData && existingData.pricing_model === 'cpc' && !existingData.is_fixed ? 'selected' : ''}>CPC - Auction (Bid per click)</option>
+                        </optgroup>
+                        <optgroup label="Sponsorship">
+                            <option value="flat_rate" ${existingData && existingData.pricing_model === 'flat_rate' ? 'selected' : ''}>FLAT_RATE - Fixed Campaign Cost (Sponsorship)</option>
+                        </optgroup>
                     </select>
-                    <small style="color: #666;">GAM only supports CPM pricing</small>
+                    <small style="color: #666;">GAM supports CPM, VCPM, CPC, and FLAT_RATE pricing models</small>
                 </div>
 
                 <div class="form-group">
@@ -665,7 +675,7 @@ function addPricingOption(existingData = null) {
                 <div class="form-group" id="rate-group-${index}">
                     <label>Rate *</label>
                     <input type="number" name="rate_${index}" step="0.01" min="0" placeholder="e.g., 12.50" value="${existingData && existingData.rate ? existingData.rate : ''}">
-                    <small style="color: #666;">Price per unit (CPM, CPCV, etc.)</small>
+                    <small style="color: #666;">Price per unit: CPM=$12.50 per 1K imps, CPC=$2.50 per click, FLAT_RATE=$5000 total campaign</small>
                 </div>
 
                 <div class="form-group" id="floor-group-${index}" style="display: none;">

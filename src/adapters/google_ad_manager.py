@@ -304,6 +304,7 @@ class GoogleAdManager(AdServerAdapter):
                         buyer_ref=request.buyer_ref if hasattr(request, "buyer_ref") else "",
                         media_buy_id="",
                         status="failed",
+                        adcp_version="1.0",
                         errors=[Error(code="unsupported_pricing_model", message=error_msg, details=None)],
                     )
 
@@ -460,6 +461,7 @@ class GoogleAdManager(AdServerAdapter):
                 tenant_id=self.tenant_id,
                 order_name=order_name,
                 targeting_overlay=request.targeting_overlay,
+                package_pricing_info=package_pricing_info,
             )
             self.log(f"✓ Created {len(line_item_ids)} line items")
         except Exception as e:
