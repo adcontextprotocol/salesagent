@@ -244,7 +244,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         product_id = f"signal_{product_id_hash}"
 
         # Create AdCP-compliant Product (without internal fields like tenant_id)
-        from src.core.schemas import PricingOption
+        from src.core.schemas import PriceGuidance, PricingOption
 
         return Product(
             product_id=product_id,
@@ -254,35 +254,47 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             delivery_type="non_guaranteed",  # Signals products are typically programmatic
             is_custom=True,  # These are custom products created from signals
             brief_relevance=f"Generated from {len(signals)} signals in {category} category for: {brief[:100]}...",
-            property_tags=["all_inventory"],  # Required per AdCP spec
+            property_tags=["all_inventory"],  # Required per AdCP spec (using property_tags instead of properties)
+            properties=None,  # Using property_tags instead
+            estimated_exposures=None,  # Optional - signals products don't have exposure estimates
             pricing_options=[
                 PricingOption(
                     pricing_option_id="cpm_usd_auction",
-                    pricing_model="cpm",
+                    pricing_model="cpm",  # type: ignore[arg-type]  # String literal matches PricingModel enum
                     currency="USD",
                     is_fixed=False,
-                    price_guidance={"floor": float(adjusted_price), "suggested_rate": float(adjusted_price) * 1.5},
+                    supported=True,  # Required field - signals products are supported
+                    price_guidance=PriceGuidance(
+                        floor=float(adjusted_price),
+                        p50=float(adjusted_price) * 1.2,
+                        p75=float(adjusted_price) * 1.5,
+                        p90=float(adjusted_price) * 1.8,  # Required field
+                    ),
                     min_spend_per_package=100.0,
+                    unsupported_reason=None,  # Optional field
                 )
             ],
         )
 
     async def _get_database_products(self, brief: str, tenant_id: str, principal_id: str | None) -> list[Product]:
         """Fallback method to get products from database."""
+        from sqlalchemy import select
+
         products = []
 
         try:
             with get_db_session() as db_session:
-                query = db_session.query(ModelProduct).filter_by(tenant_id=tenant_id, is_active=True)
+                stmt = select(ModelProduct).filter_by(tenant_id=tenant_id, is_active=True)
 
                 # Simple brief matching (could be enhanced with better search)
                 if brief and brief.strip():
                     brief_lower = brief.lower()
-                    query = query.filter(
+                    stmt = stmt.where(
                         ModelProduct.name.ilike(f"%{brief_lower}%") | ModelProduct.description.ilike(f"%{brief_lower}%")
                     )
 
-                db_products = query.limit(20).all()
+                stmt = stmt.limit(20)
+                db_products = db_session.scalars(stmt).all()
 
                 for db_product in db_products:
                     # Convert database model to AdCP-compliant Product schema
