@@ -357,7 +357,7 @@ def add_product(tenant_id):
                         delivery_type = "guaranteed"
                         cpm = first_option.get("rate")
                     else:
-                        delivery_type = "non-guaranteed"
+                        delivery_type = "non_guaranteed"
                         pg = first_option.get("price_guidance")
                         if pg and "floor" in pg:
                             price_guidance = {"min": pg["floor"], "max": pg.get("p90", pg["floor"])}
@@ -683,14 +683,14 @@ def edit_product(tenant_id, product_id):
                         product.cpm = float(form_data.get("cpm", 0)) if form_data.get("cpm") else None
                         product.price_guidance = None
                     elif line_item_type == "PRICE_PRIORITY":
-                        product.delivery_type = "non-guaranteed"
+                        product.delivery_type = "non_guaranteed"
                         product.is_fixed_price = False
                         product.cpm = None
                         floor_cpm = float(form_data.get("floor_cpm", 0)) if form_data.get("floor_cpm") else None
                         if floor_cpm:
                             product.price_guidance = {"min": floor_cpm, "max": floor_cpm}
                     elif line_item_type == "HOUSE":
-                        product.delivery_type = "non-guaranteed"
+                        product.delivery_type = "non_guaranteed"
                         product.is_fixed_price = False
                         product.cpm = None
                         product.price_guidance = None
