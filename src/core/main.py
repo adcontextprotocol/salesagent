@@ -927,7 +927,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
 
     print("=" * 80, file=sys.stderr, flush=True)
     print(
-        f"🔧 _get_products_impl CALLED: req={req.promoted_offering}, brief={req.brief[:50] if req.brief else 'N/A'}",
+        f"🔧 _get_products_impl CALLED: brand_manifest={req.brand_manifest}, brief={req.brief[:50] if req.brief else 'N/A'}",
         file=sys.stderr,
         flush=True,
     )
@@ -971,8 +971,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
     principal = get_principal_object(principal_id) if principal_id else None
     principal_data = principal.model_dump() if principal else None
 
-    # Extract offering text from brand_manifest or promoted_offering
-    # The validator ensures at least one is present
+    # Extract offering text from brand_manifest (required per AdCP v2.5)
     offering = None
     if req.brand_manifest:
         if isinstance(req.brand_manifest, str):
@@ -986,45 +985,14 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
                 offering = req.brand_manifest.name
             elif isinstance(req.brand_manifest, dict):
                 offering = req.brand_manifest.get("name", "")
-    elif req.promoted_offering:
-        offering = req.promoted_offering.strip()
 
     if not offering:
-        raise ToolError("Either brand_manifest or promoted_offering must provide brand information")
+        raise ToolError("brand_manifest must provide brand information")
 
     # Skip strict validation in test environments (allow simple test values)
     import os
 
     is_test_mode = (testing_ctx and testing_ctx.test_session_id is not None) or os.getenv("ADCP_TESTING") == "true"
-
-    # Only validate promoted_offering format (brand_manifest has its own structure)
-    if req.promoted_offering and not is_test_mode:
-        generic_terms = {
-            "footwear",
-            "shoes",
-            "clothing",
-            "apparel",
-            "electronics",
-            "food",
-            "beverages",
-            "automotive",
-            "athletic",
-        }
-        words = req.promoted_offering.split()
-
-        # Must have at least 2 words (brand + product)
-        if len(words) < 2:
-            raise ToolError(
-                f"Invalid promoted_offering: '{req.promoted_offering}'. Must include both brand and specific product "
-                f"(e.g., 'Nike Air Jordan 2025 basketball shoes', not just 'shoes')"
-            )
-
-        # Check if it's just generic category terms without a brand
-        if all(word.lower() in generic_terms or word.lower() in ["and", "or", "the", "a", "an"] for word in words):
-            raise ToolError(
-                f"Invalid promoted_offering: '{req.promoted_offering}'. Must include brand name and specific product, "
-                f"not just generic category (e.g., 'Nike Air Jordan 2025' not 'athletic footwear')"
-            )
 
     # Check policy compliance first (if enabled)
     advertising_policy = safe_parse_json_field(
@@ -1067,7 +1035,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
             try:
                 policy_result = await policy_service.check_brief_compliance(
                     brief=req.brief,
-                    promoted_offering=req.promoted_offering,
+                    promoted_offering=offering,  # Use extracted offering from brand_manifest
                     brand_manifest=brand_manifest_dict,
                     tenant_policies=tenant_policies if tenant_policies else None,
                 )
@@ -1082,11 +1050,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
                     success=policy_result.status != PolicyStatus.BLOCKED,
                     details={
                         "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
-                        "promoted_offering": (
-                            req.promoted_offering[:100] + "..."
-                            if req.promoted_offering and len(req.promoted_offering) > 100
-                            else req.promoted_offering
-                        ),
+                        "brand_name": offering[:100] + "..." if offering and len(offering) > 100 else offering,
                         "policy_status": policy_result.status,
                         "reason": policy_result.reason,
                         "restrictions": policy_result.restrictions,
@@ -1144,7 +1108,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
                 success=False,
                 details={
                     "brief": req.brief,
-                    "promoted_offering": req.promoted_offering,
+                    "brand_name": offering,
                     "policy_status": policy_result.status,
                     "restrictions": policy_result.restrictions,
                     "reason": policy_result.reason,
@@ -1196,7 +1160,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
 
     # Query products using the brief, including context for signals forwarding
     context_data = {
-        "promoted_offering": req.promoted_offering,
+        "brand_name": offering,
         "tenant_id": tenant["tenant_id"],
         "principal_id": principal_id,
     }
@@ -3634,7 +3598,6 @@ async def _create_media_buy_impl(
         brand_manifest=brand_manifest,
         campaign_name=None,  # Optional display name
         po_number=po_number,
-        promoted_offering=promoted_offering,
         packages=packages,
         start_time=start_time,
         end_time=end_time,
