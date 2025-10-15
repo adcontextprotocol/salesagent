@@ -125,25 +125,30 @@ class TestMinimumSpendValidation:
             session.execute(delete(Tenant).where(Tenant.tenant_id == "test_minspend_tenant"))
             session.commit()
 
-    def test_currency_minimum_spend_enforced(self, setup_test_data):
+    async def test_currency_minimum_spend_enforced(self, setup_test_data):
         """Test that currency-specific minimum spend is enforced."""
-        from unittest.mock import MagicMock
-
-        # Create mock context
-        context = MagicMock()
-        context.headers = {"x-adcp-auth": "test_minspend_token"}
+        from src.core.tool_context import ToolContext
 
         # Try to create media buy below USD minimum ($1000)
         start_time = datetime.now(UTC) + timedelta(days=1)
         end_time = start_time + timedelta(days=7)
 
-        response = _create_media_buy_impl(
+        context = ToolContext(
+            context_id="test_ctx_minspend",
+            tenant_id="test_minspend_tenant",
+            principal_id="test_principal",
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
+        )
+
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_min_spend",
             promoted_offering="Test Campaign",
             product_ids=["prod_global"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             total_budget=500.0,  # Below $1000 minimum
-            budget=Budget(amount=500.0, currency="USD"),  # Explicit USD
+            budget=Budget(total=500.0, currency="USD"),  # Explicit USD
             context=context,
         )
 
@@ -153,24 +158,30 @@ class TestMinimumSpendValidation:
         assert "1000" in response.detail
         assert "USD" in response.detail
 
-    def test_product_override_enforced(self, setup_test_data):
+    async def test_product_override_enforced(self, setup_test_data):
         """Test that product-specific minimum spend override is enforced."""
-        from unittest.mock import MagicMock
-
-        context = MagicMock()
-        context.headers = {"x-adcp-auth": "test_minspend_token"}
+        from src.core.tool_context import ToolContext
 
         start_time = datetime.now(UTC) + timedelta(days=1)
         end_time = start_time + timedelta(days=7)
 
+        context = ToolContext(
+            context_id="test_ctx_override",
+            tenant_id="test_minspend_tenant",
+            principal_id="test_principal",
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
+        )
+
         # Try to create media buy below product override ($5000)
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_override",
             promoted_offering="Test Campaign",
             product_ids=["prod_high"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             total_budget=3000.0,  # Below $5000 product minimum
-            budget=Budget(amount=3000.0, currency="USD"),
+            budget=Budget(total=3000.0, currency="USD"),
             context=context,
         )
 
@@ -180,48 +191,60 @@ class TestMinimumSpendValidation:
         assert "5000" in response.detail
         assert "USD" in response.detail
 
-    def test_lower_override_allows_smaller_spend(self, setup_test_data):
+    async def test_lower_override_allows_smaller_spend(self, setup_test_data):
         """Test that lower product override allows smaller spend than currency limit."""
-        from unittest.mock import MagicMock
-
-        context = MagicMock()
-        context.headers = {"x-adcp-auth": "test_minspend_token"}
+        from src.core.tool_context import ToolContext
 
         start_time = datetime.now(UTC) + timedelta(days=1)
         end_time = start_time + timedelta(days=7)
 
+        context = ToolContext(
+            context_id="test_ctx_lower",
+            tenant_id="test_minspend_tenant",
+            principal_id="test_principal",
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
+        )
+
         # Create media buy above product minimum ($500) but below currency limit ($1000)
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_lower",
             promoted_offering="Test Campaign",
             product_ids=["prod_low"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             total_budget=750.0,  # Above $500 product min, below $1000 currency limit
-            budget=Budget(amount=750.0, currency="USD"),
+            budget=Budget(total=750.0, currency="USD"),
             context=context,
         )
 
         # Should succeed because product override is lower
         assert response.status != TaskStatus.FAILED
 
-    def test_minimum_spend_met_success(self, setup_test_data):
+    async def test_minimum_spend_met_success(self, setup_test_data):
         """Test that media buy succeeds when minimum spend is met."""
-        from unittest.mock import MagicMock
-
-        context = MagicMock()
-        context.headers = {"x-adcp-auth": "test_minspend_token"}
+        from src.core.tool_context import ToolContext
 
         start_time = datetime.now(UTC) + timedelta(days=1)
         end_time = start_time + timedelta(days=7)
 
+        context = ToolContext(
+            context_id="test_ctx_success",
+            tenant_id="test_minspend_tenant",
+            principal_id="test_principal",
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
+        )
+
         # Create media buy above minimum
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_success",
             promoted_offering="Test Campaign",
             product_ids=["prod_global"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             total_budget=2000.0,  # Above $1000 minimum
-            budget=Budget(amount=2000.0, currency="USD"),
+            budget=Budget(total=2000.0, currency="USD"),
             context=context,
         )
 
@@ -229,24 +252,30 @@ class TestMinimumSpendValidation:
         assert response.status != TaskStatus.FAILED
         assert response.media_buy_id
 
-    def test_unsupported_currency_rejected(self, setup_test_data):
+    async def test_unsupported_currency_rejected(self, setup_test_data):
         """Test that unsupported currencies are rejected."""
-        from unittest.mock import MagicMock
-
-        context = MagicMock()
-        context.headers = {"x-adcp-auth": "test_minspend_token"}
+        from src.core.tool_context import ToolContext
 
         start_time = datetime.now(UTC) + timedelta(days=1)
         end_time = start_time + timedelta(days=7)
 
+        context = ToolContext(
+            context_id="test_ctx_jpy",
+            tenant_id="test_minspend_tenant",
+            principal_id="test_principal",
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
+        )
+
         # Try to create media buy with unsupported currency (JPY)
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_jpy",
             promoted_offering="Test Campaign",
             product_ids=["prod_global"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             total_budget=100000.0,  # ¥100,000
-            budget=Budget(amount=100000.0, currency="JPY"),  # Not configured
+            budget=Budget(total=100000.0, currency="JPY"),  # Not configured
             context=context,
         )
 
@@ -256,25 +285,31 @@ class TestMinimumSpendValidation:
         assert "not supported" in response.detail.lower()
         assert "JPY" in response.detail
 
-    def test_different_currency_different_minimum(self, setup_test_data):
+    async def test_different_currency_different_minimum(self, setup_test_data):
         """Test that different currencies have different minimums."""
-        from unittest.mock import MagicMock
-
-        context = MagicMock()
-        context.headers = {"x-adcp-auth": "test_minspend_token"}
+        from src.core.tool_context import ToolContext
 
         start_time = datetime.now(UTC) + timedelta(days=1)
         end_time = start_time + timedelta(days=7)
 
+        context = ToolContext(
+            context_id="test_ctx_eur",
+            tenant_id="test_minspend_tenant",
+            principal_id="test_principal",
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
+        )
+
         # €950 should fail (below €900 minimum... wait, that should pass)
         # Let's try €800 which should fail
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_eur",
             promoted_offering="Test Campaign",
             product_ids=["prod_global"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             total_budget=800.0,  # Below €900 minimum
-            budget=Budget(amount=800.0, currency="EUR"),
+            budget=Budget(total=800.0, currency="EUR"),
             context=context,
         )
 

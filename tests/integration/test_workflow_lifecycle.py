@@ -41,7 +41,12 @@ class TestWorkflowLifecycle:
 
             # Create test tenant and principal for the tests
             tenant = Tenant(
-                tenant_id=self.tenant_id, name="Test Tenant", subdomain="test", is_active=True, ad_server="mock"
+                tenant_id=self.tenant_id,
+                name="Test Tenant",
+                subdomain="test",
+                is_active=True,
+                approval_mode="manual",
+                ad_server="mock",
             )
             session.add(tenant)
 

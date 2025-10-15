@@ -22,6 +22,7 @@ def test_creative_review_model_creation(db_session):
         name="Test Tenant",
         subdomain="test",
         is_active=True,
+        approval_mode="manual",
     )
     db_session.add(tenant)
     db_session.commit()
@@ -78,6 +79,7 @@ def test_creative_review_relationship(db_session):
         name="Test Tenant 2",
         subdomain="test2",
         is_active=True,
+        approval_mode="manual",
     )
     db_session.add(tenant)
     db_session.commit()
@@ -134,6 +136,7 @@ def test_get_creative_reviews_query(db_session):
         name="Test Tenant 3",
         subdomain="test3",
         is_active=True,
+        approval_mode="manual",
     )
     db_session.add(tenant)
     db_session.commit()
@@ -202,6 +205,7 @@ def test_human_override_detection(db_session):
         name="Test Tenant 4",
         subdomain="test4",
         is_active=True,
+        approval_mode="manual",
     )
     db_session.add(tenant)
     db_session.commit()

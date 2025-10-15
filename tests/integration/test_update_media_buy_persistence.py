@@ -56,6 +56,7 @@ def test_tenant_setup(integration_db):
             subdomain="test-update-persist",
             ad_server="mock",
             is_active=True,
+            approval_mode="manual",
             human_review_required=False,
             auto_approve_formats=[],
             policy_settings={},

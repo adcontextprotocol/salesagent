@@ -219,7 +219,8 @@ def test_get_products_returns_pricing_options(setup_tenant_with_pricing_products
 def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing_products):
     """Test creating media buy with fixed CPM pricing."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        buyer_ref="test_buyer_ref_cpm_fixed",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
@@ -228,10 +229,10 @@ def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing_produ
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
+        budget=10000.0,
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
     )
 
     class MockContext:
@@ -258,7 +259,8 @@ def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing_produ
 def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_pricing_products):
     """Test creating media buy with auction CPM pricing."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        buyer_ref="test_buyer_ref_cpm_auction",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
@@ -268,10 +270,10 @@ def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_pricing_pro
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
+        budget=10000.0,
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
     )
 
     class MockContext:
@@ -298,7 +300,8 @@ def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_pricing_pro
 def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_pricing_products):
     """Test that auction bid below floor price fails."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        buyer_ref="test_buyer_ref_below_floor",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
@@ -308,10 +311,10 @@ def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_pricin
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
+        budget=10000.0,
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
     )
 
     class MockContext:
@@ -338,7 +341,8 @@ def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_pricin
 def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_products):
     """Test creating media buy with CPCV pricing."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        buyer_ref="test_buyer_ref_cpcv",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
@@ -347,10 +351,10 @@ def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_products):
                 budget=8000.0,  # Above min spend of 5000
             )
         ],
-        budget={"total": 8000.0, "currency": "USD"},
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
+        budget=8000.0,
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
     )
 
     class MockContext:
@@ -377,7 +381,8 @@ def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_products):
 def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_products):
     """Test that budget below min_spend_per_package fails."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        buyer_ref="test_buyer_ref_below_min",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
@@ -386,10 +391,10 @@ def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_produc
                 budget=3000.0,  # Below min spend of 5000
             )
         ],
-        budget={"total": 3000.0, "currency": "USD"},
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
+        budget=3000.0,
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
     )
 
     class MockContext:
@@ -416,7 +421,8 @@ def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_produc
 def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_pricing_products):
     """Test creating media buy choosing CPP from multi-pricing product."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        buyer_ref="test_buyer_ref_cpp",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
@@ -425,10 +431,10 @@ def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_pricing_pro
                 budget=15000.0,  # Above min spend of 10000
             )
         ],
-        budget={"total": 15000.0, "currency": "USD"},
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
+        budget=15000.0,
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
     )
 
     class MockContext:
@@ -455,7 +461,8 @@ def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_pricing_pro
 def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pricing_products):
     """Test that requesting unavailable pricing model fails."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        buyer_ref="test_buyer_ref_invalid",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
@@ -464,10 +471,10 @@ def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pricing_
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
+        budget=10000.0,
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
     )
 
     class MockContext:

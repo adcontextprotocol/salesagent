@@ -58,6 +58,7 @@ class TestCreateMediaBuyErrorPaths:
                 subdomain="errortest",
                 ad_server="mock",
                 is_active=True,
+                approval_mode="manual",
                 created_at=now,
                 updated_at=now,
             )

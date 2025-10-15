@@ -44,6 +44,7 @@ class TestTenantDashboard:
                 name="Test Dashboard Tenant",
                 subdomain="test-dashboard",
                 is_active=True,
+                approval_mode="manual",
                 # Use new schema fields
                 enable_axe_signals=True,
                 human_review_required=False,
@@ -101,6 +102,7 @@ class TestTenantDashboard:
                 name="Test Metrics Tenant",
                 subdomain="test-metrics",
                 is_active=True,
+                approval_mode="manual",
             )
             db_session.add(tenant)
 
@@ -146,6 +148,7 @@ class TestTenantDashboard:
                 name="Test Config Tenant",
                 subdomain="test-config",
                 is_active=True,
+                approval_mode="manual",
                 # New schema fields
                 enable_axe_signals=True,
                 human_review_required=True,
@@ -205,7 +208,9 @@ class TestTenantDashboard:
         """Test dashboard loads correctly for tenant with no data."""
         # Create minimal tenant
         with get_db_session() as db_session:
-            tenant = Tenant(tenant_id="empty_tenant", name="Empty Tenant", subdomain="empty", is_active=True)
+            tenant = Tenant(
+                tenant_id="empty_tenant", name="Empty Tenant", subdomain="empty", is_active=True, approval_mode="manual"
+            )
             db_session.add(tenant)
             db_session.commit()
 

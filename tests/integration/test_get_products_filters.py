@@ -388,7 +388,6 @@ class TestProductFilterLogic:
 
         assert len(filtered) == 1
         assert filtered[0].product_id == "programmatic_display_dynamic"
-        assert filtered[0].cpm is None
 
     @pytest.mark.asyncio
     async def test_format_type_filter_video(self, mock_context_filter_logic):

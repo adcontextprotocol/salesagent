@@ -21,9 +21,7 @@ class TestDeliverySimulatorRestart:
     def test_tenant(self, integration_db):
         """Create test tenant."""
         with get_db_session() as session:
-            tenant = Tenant(
-                tenant_id="test_tenant_restart", name="Test Tenant for Restart", subdomain="test-restart"
-            )
+            tenant = Tenant(tenant_id="test_tenant_restart", name="Test Tenant for Restart", subdomain="test-restart")
             session.add(tenant)
             session.commit()
             yield tenant.tenant_id
@@ -62,6 +60,7 @@ class TestDeliverySimulatorRestart:
                 authentication_type="bearer",
                 authentication_token="test_auth_token",
                 is_active=True,
+                approval_mode="manual",
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
             )

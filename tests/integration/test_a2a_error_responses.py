@@ -33,6 +33,7 @@ from src.core.database.models import Tenant as ModelTenant
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
 @pytest.mark.integration
 @pytest.mark.requires_db
 @pytest.mark.asyncio
@@ -61,6 +62,7 @@ class TestA2AErrorPropagation:
                 subdomain="a2aerror",
                 ad_server="mock",
                 is_active=True,
+                approval_mode="manual",
                 created_at=now,
                 updated_at=now,
             )
@@ -117,6 +119,7 @@ class TestA2AErrorPropagation:
                 name="A2A Error Test Principal",
                 access_token="a2a_error_token_123",
                 is_active=True,
+                approval_mode="manual",
                 platform_mappings={"mock": {"advertiser_id": "mock_adv_123"}},
             )
             session.add(principal)
@@ -341,6 +344,7 @@ class TestA2AErrorPropagation:
             # A2A-specific augmentation fields
             assert "success" in artifact_data, "A2A wrapper must add success field"
             assert "message" in artifact_data, "A2A wrapper must add message field"
+
 
 @pytest.mark.integration
 @pytest.mark.requires_db

@@ -54,6 +54,7 @@ def setup_minimal_tenant(integration_db, test_tenant_id):
             created_at=now,
             updated_at=now,
             is_active=True,
+            approval_mode="manual",
         )
         db_session.add(tenant)
         db_session.commit()
@@ -108,6 +109,7 @@ def setup_complete_tenant(integration_db, test_tenant_id):
             created_at=now,
             updated_at=now,
             is_active=True,
+            approval_mode="manual",
         )
         db_session.add(tenant)
 
@@ -251,6 +253,7 @@ class TestSetupChecklistService:
                 created_at=now,
                 updated_at=now,
                 is_active=True,
+                approval_mode="manual",
             )
             db_session.add(tenant)
 
@@ -401,6 +404,7 @@ class TestTaskDetails:
                 created_at=now,
                 updated_at=now,
                 is_active=True,
+                approval_mode="manual",
             )
             db_session.add(tenant)
 

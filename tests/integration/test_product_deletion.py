@@ -45,6 +45,7 @@ def test_tenant_and_products(integration_db):
             subdomain="test-delete",
             ad_server="mock",
             is_active=True,
+            approval_mode="manual",
         )
         session.add(tenant)
 

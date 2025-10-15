@@ -15,7 +15,14 @@ def test_tenant(integration_db, request):
     """Create a test tenant (requires integration_db fixture)."""
     tenant_id = f"test_readiness_{request.node.name[-20:]}"  # Truncate to avoid long names
     with get_db_session() as session:
-        tenant = Tenant(tenant_id=tenant_id, name="Test Tenant", subdomain="test", is_active=True, ad_server="mock")
+        tenant = Tenant(
+            tenant_id=tenant_id,
+            name="Test Tenant",
+            subdomain="test",
+            is_active=True,
+            approval_mode="manual",
+            ad_server="mock",
+        )
         session.add(tenant)
         session.commit()
 
@@ -157,6 +164,7 @@ class TestMediaBuyReadinessService:
                 tenant_id=test_tenant,
                 principal_id=test_principal,
                 name="Pending Creative",
+                agent_url="http://test-agent.example.com",
                 format="display_300x250",
                 status="pending",  # Pending approval
                 data={},
@@ -218,6 +226,7 @@ class TestMediaBuyReadinessService:
                 tenant_id=test_tenant,
                 principal_id=test_principal,
                 name="Approved Creative",
+                agent_url="http://test-agent.example.com",
                 format="display_300x250",
                 status="approved",
                 data={},
@@ -279,6 +288,7 @@ class TestMediaBuyReadinessService:
                 tenant_id=test_tenant,
                 principal_id=test_principal,
                 name="Live Creative",
+                agent_url="http://test-agent.example.com",
                 format="display_300x250",
                 status="approved",
                 data={},

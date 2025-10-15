@@ -50,6 +50,7 @@ class TestCreateMediaBuyV24Format:
                 subdomain="testv24",
                 ad_server="mock",
                 is_active=True,
+                approval_mode="manual",
                 created_at=now,
                 updated_at=now,
             )

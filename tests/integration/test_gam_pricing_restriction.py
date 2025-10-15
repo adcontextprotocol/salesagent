@@ -166,7 +166,8 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
 def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPCV pricing model with clear error."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        buyer_ref="test_buyer_ref_cpcv",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
@@ -175,10 +176,10 @@ def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
+        budget=10000.0,
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
     )
 
     class MockContext:
@@ -209,7 +210,8 @@ def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
 def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM pricing model."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        buyer_ref="test_buyer_ref_cpm",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
@@ -218,10 +220,10 @@ def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
+        budget=10000.0,
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
     )
 
     class MockContext:
@@ -249,7 +251,8 @@ def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
 def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPP when buyer chooses it from multi-pricing product."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        buyer_ref="test_buyer_ref_cpp",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
@@ -258,10 +261,10 @@ def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cp
                 budget=15000.0,
             )
         ],
-        budget={"total": 15000.0, "currency": "USD"},
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
+        budget=15000.0,
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
     )
 
     class MockContext:
@@ -290,7 +293,8 @@ def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cp
 def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM when buyer chooses it from multi-pricing product."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        buyer_ref="test_buyer_ref_cpm_multi",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
@@ -299,10 +303,10 @@ def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cp
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
+        budget=10000.0,
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
     )
 
     class MockContext:

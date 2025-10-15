@@ -27,6 +27,7 @@ from src.core.database.models import Tenant as ModelTenant
 from src.core.schemas import CreateMediaBuyResponse
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
 
+
 @pytest.mark.integration
 class TestCreateMediaBuyRoundtrip:
     """Test create_media_buy response roundtrip through testing hooks."""
@@ -44,6 +45,7 @@ class TestCreateMediaBuyRoundtrip:
                 subdomain="test-roundtrip",
                 ad_server="mock",
                 is_active=True,
+                approval_mode="manual",
                 created_at=now,
                 updated_at=now,
             )

@@ -17,6 +17,7 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 from tests.fixtures import TenantFactory
 
+
 @pytest.fixture(scope="function")  # Changed to function scope for better isolation
 def integration_db():
     """Provide an isolated PostgreSQL database for each integration test.
@@ -43,9 +44,10 @@ def integration_db():
     unique_db_name = f"test_{uuid.uuid4().hex[:8]}"
 
     # Create the test database
+    from urllib.parse import urlparse
+
     import psycopg2
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-    from urllib.parse import urlparse
 
     # Parse connection params from DATABASE_URL
     parsed = urlparse(postgres_url)
@@ -206,6 +208,7 @@ def integration_db():
     except Exception:
         pass  # Ignore cleanup errors
 
+
 @pytest.fixture
 def admin_client(integration_db):
     """Create test client for admin UI with proper configuration."""
@@ -218,6 +221,7 @@ def admin_client(integration_db):
     admin_app.config["WTF_CSRF_ENABLED"] = False  # Disable CSRF for tests
     with admin_app.test_client() as client:
         yield client
+
 
 @pytest.fixture
 def authenticated_admin_session(admin_client, integration_db):
@@ -252,6 +256,7 @@ def authenticated_admin_session(admin_client, integration_db):
     if "ADCP_AUTH_TEST_MODE" in os.environ:
         del os.environ["ADCP_AUTH_TEST_MODE"]
 
+
 @pytest.fixture
 def test_tenant_with_data(integration_db):
     """Create a test tenant in the database with proper configuration."""
@@ -276,6 +281,7 @@ def test_tenant_with_data(integration_db):
 
     return tenant_data
 
+
 @pytest.fixture
 def populated_db(integration_db):
     """Provide a database populated with test data."""
@@ -285,6 +291,7 @@ def populated_db(integration_db):
     tenant_data = TenantFactory.create()
     PrincipalFactory.create(tenant_id=tenant_data["tenant_id"])
     ProductFactory.create_batch(3, tenant_id=tenant_data["tenant_id"])
+
 
 @pytest.fixture
 def sample_tenant(integration_db):
@@ -301,6 +308,7 @@ def sample_tenant(integration_db):
             name="Test Tenant",
             subdomain="test",
             is_active=True,
+            approval_mode="manual",
             ad_server="mock",
             enable_axe_signals=True,
             authorized_emails=["test@example.com"],
@@ -319,6 +327,7 @@ def sample_tenant(integration_db):
             "name": tenant.name,
             "admin_token": tenant.admin_token,
         }
+
 
 @pytest.fixture
 def sample_principal(integration_db, sample_tenant):
@@ -346,6 +355,7 @@ def sample_principal(integration_db, sample_tenant):
             "name": principal.name,
             "access_token": principal.access_token,
         }
+
 
 @pytest.fixture
 def sample_products(integration_db, sample_tenant):
@@ -407,6 +417,7 @@ def sample_products(integration_db, sample_tenant):
 
         return [p.product_id for p in products]
 
+
 @pytest.fixture
 def mock_external_apis():
     """Mock external APIs but allow database access."""
@@ -421,6 +432,7 @@ def mock_external_apis():
                 mock_model.return_value = mock_instance
 
                 yield {"requests": mock_post, "gemini": mock_instance}
+
 
 @pytest.fixture(scope="function")
 def mcp_server(integration_db):
@@ -534,6 +546,7 @@ mcp.run(transport='http', host='0.0.0.0', port={port})
 
     # Don't remove db_path - it's managed by integration_db fixture
 
+
 @pytest.fixture
 def test_admin_app(integration_db):
     """Provide a test Admin UI app with real database."""
@@ -549,6 +562,7 @@ def test_admin_app(integration_db):
     app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in tests
 
     yield app
+
 
 @pytest.fixture
 def authenticated_admin_client(test_admin_app):
@@ -573,6 +587,7 @@ def authenticated_admin_client(test_admin_app):
     # Clean up test mode
     if "ADCP_AUTH_TEST_MODE" in os.environ:
         del os.environ["ADCP_AUTH_TEST_MODE"]
+
 
 @pytest.fixture
 def test_media_buy_workflow(populated_db):
@@ -623,6 +638,7 @@ def test_media_buy_workflow(populated_db):
         db_session.commit()
 
     return {**data, "media_buy": media_buy_data, "creatives": creatives_data}
+
 
 @pytest.fixture
 def test_audit_logger(integration_db):

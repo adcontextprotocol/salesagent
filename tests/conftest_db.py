@@ -203,6 +203,7 @@ def test_tenant(db_session):
         subdomain=f"test_{unique_id}",
         is_active=True,
         ad_server="mock",
+        approval_mode="manual",
         created_at=now,
         updated_at=now,
     )

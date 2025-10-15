@@ -214,6 +214,7 @@ class TestCreativeLifecycleMCP:
                 creative_id="creative_update_test",
                 principal_id=self.test_principal_id,
                 name="Old Creative Name",
+                agent_url="http://test-agent.example.com",
                 format="display_300x250",
                 status="pending",
                 data={
@@ -388,6 +389,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"list_test_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Test Creative {i}",
+                    agent_url="http://test-agent.example.com",
                     format="display_300x250",
                     status="approved" if i % 2 == 0 else "pending",
                     data={
@@ -431,6 +433,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"status_test_approved_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Approved Creative {i}",
+                    agent_url="http://test-agent.example.com",
                     format="display_300x250",
                     status="approved",
                 )
@@ -441,6 +444,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"status_test_pending_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Pending Creative {i}",
+                    agent_url="http://test-agent.example.com",
                     format="display_728x90",
                     status="pending",
                 )
@@ -475,6 +479,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"format_test_300x250_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Banner {i}",
+                    agent_url="http://test-agent.example.com",
                     format="display_300x250",
                     status="approved",
                 )
@@ -485,6 +490,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"format_test_video_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Video {i}",
+                    agent_url="http://test-agent.example.com",
                     format="video_pre_roll",
                     status="approved",
                     data={"duration": 15.0},
@@ -522,6 +528,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"date_test_old_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Old Creative {i}",
+                    agent_url="http://test-agent.example.com",
                     format="display_300x250",
                     status="approved",
                     created_at=now - timedelta(days=10 + i),  # 10+ days ago
@@ -533,6 +540,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"date_test_recent_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Recent Creative {i}",
+                    agent_url="http://test-agent.example.com",
                     format="display_300x250",
                     status="approved",
                     created_at=now - timedelta(days=2 + i),  # 2-3 days ago
@@ -568,6 +576,7 @@ class TestCreativeLifecycleMCP:
                     creative_id="search_test_banner_1",
                     principal_id=self.test_principal_id,
                     name="Holiday Banner Ad",
+                    agent_url="http://test-agent.example.com",
                     format="display_300x250",
                     status="approved",
                 ),
@@ -576,6 +585,7 @@ class TestCreativeLifecycleMCP:
                     creative_id="search_test_video_1",
                     principal_id=self.test_principal_id,
                     name="Holiday Video Ad",
+                    agent_url="http://test-agent.example.com",
                     format="video_pre_roll",
                     status="approved",
                 ),
@@ -584,6 +594,7 @@ class TestCreativeLifecycleMCP:
                     creative_id="search_test_summer_1",
                     principal_id=self.test_principal_id,
                     name="Summer Sale Banner",
+                    agent_url="http://test-agent.example.com",
                     format="display_728x90",
                     status="approved",
                 ),
@@ -617,6 +628,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"page_test_{i:02d}",
                     principal_id=self.test_principal_id,
                     name=f"Creative {i:02d}",
+                    agent_url="http://test-agent.example.com",
                     format="display_300x250",
                     status="approved",
                 )
@@ -668,6 +680,7 @@ class TestCreativeLifecycleMCP:
                 creative_id="assignment_test_1",
                 principal_id=self.test_principal_id,
                 name="Assigned Creative 1",
+                agent_url="http://test-agent.example.com",
                 format="display_300x250",
                 status="approved",
             )
@@ -676,6 +689,7 @@ class TestCreativeLifecycleMCP:
                 creative_id="assignment_test_2",
                 principal_id=self.test_principal_id,
                 name="Unassigned Creative",
+                agent_url="http://test-agent.example.com",
                 format="display_300x250",
                 status="approved",
             )

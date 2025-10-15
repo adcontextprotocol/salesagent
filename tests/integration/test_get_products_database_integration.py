@@ -11,7 +11,6 @@ error reached production because tests over-mocked the database layer.
 
 import threading
 import time
-from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -64,8 +63,6 @@ class TestDatabaseProductsIntegration:
             "formats": ["display_300x250", "display_728x90"],
             "targeting_template": {"geo": ["country"], "device": ["desktop", "mobile"]},
             "delivery_type": "non_guaranteed",
-            "cpm": Decimal("5.50"),
-            "min_spend": Decimal("1000.00"),
             "measurement": {"viewability": True, "brand_safety": True},
             "creative_policy": {"max_file_size": "5MB"},
             "price_guidance": {"min": 2.0, "max": 8.0},
@@ -73,6 +70,7 @@ class TestDatabaseProductsIntegration:
             "expires_at": None,
             "countries": ["US", "CA"],
             "implementation_config": {"gam_placement_id": "12345"},
+            "property_tags": ["all_inventory"],
         }
 
     def test_database_model_to_schema_conversion_without_mocking(self, test_tenant_id, sample_product_data):
@@ -91,17 +89,12 @@ class TestDatabaseProductsIntegration:
             assert hasattr(db_product, "name")
             assert hasattr(db_product, "description")
             assert hasattr(db_product, "formats")
-            assert hasattr(db_product, "cpm")
-            assert hasattr(db_product, "min_spend")
             assert hasattr(db_product, "delivery_type")
+            assert hasattr(db_product, "property_tags")
 
             # These fields should NOT exist - would catch if someone tries to access them
             assert not hasattr(db_product, "pricing")  # This would have caused the bug
             assert not hasattr(db_product, "format_ids")  # Schema property, not DB field
-
-            # Verify field values are correct types from database
-            assert isinstance(db_product.cpm, Decimal)
-            assert isinstance(db_product.min_spend, Decimal)
 
     @pytest.mark.asyncio
     async def test_database_provider_real_conversion(self, test_tenant_id, sample_product_data):
@@ -157,8 +150,6 @@ class TestDatabaseProductsIntegration:
                 "description",
                 "formats",
                 "delivery_type",
-                "cpm",
-                "min_spend",
                 "measurement",
                 "creative_policy",
                 "price_guidance",
@@ -167,6 +158,7 @@ class TestDatabaseProductsIntegration:
                 "implementation_config",
                 "targeting_template",
                 "expires_at",
+                "property_tags",
             ]
 
             for field in valid_fields:
@@ -193,9 +185,8 @@ class TestDatabaseProductsIntegration:
                 "formats": ["display_300x250"],
                 "targeting_template": {},
                 "delivery_type": "guaranteed",
-                "cpm": Decimal("10.00"),
-                "min_spend": None,  # Test NULL handling
                 "is_custom": False,
+                "property_tags": ["all_inventory"],
             },
             {
                 "product_id": "test_video_001",
@@ -204,9 +195,8 @@ class TestDatabaseProductsIntegration:
                 "formats": ["video_15s", "video_30s"],
                 "targeting_template": {},
                 "delivery_type": "non_guaranteed",
-                "cpm": None,  # Test NULL handling
-                "min_spend": Decimal("5000.00"),
                 "is_custom": True,
+                "property_tags": ["all_inventory"],
             },
         ]
 
@@ -479,8 +469,6 @@ class TestDatabasePerformanceOptimization:
                     field_values = {
                         "product_id": db_product.product_id,
                         "name": db_product.name,
-                        "cpm": db_product.cpm,
-                        "min_spend": db_product.min_spend,
                         "delivery_type": db_product.delivery_type,
                     }
 
@@ -515,8 +503,6 @@ class TestDatabasePerformanceOptimization:
         expected_values = {
             "product_id": "concurrent_test_001",
             "name": "Concurrent Test Product",
-            "cpm": Decimal("10.00"),
-            "min_spend": Decimal("1000.00"),
             "delivery_type": "non_guaranteed",
         }
 
@@ -573,12 +559,6 @@ class TestDatabaseSchemaEvolution:
             session.add(product)
             session.commit()
             session.refresh(product)
-
-            # Test that accessing new fields works with None values
-            assert hasattr(product, "cpm")
-            # assert cpm (deprecated) is None
-            assert hasattr(product, "min_spend")
-            # assert min_spend (deprecated) is None
 
             # Test that old fields still work
             assert product.product_id == "evolution_test_001"
@@ -645,16 +625,11 @@ class TestDatabaseSchemaEvolution:
         # Verify conversion worked despite missing fields
         assert product.product_id == "missing_fields_test"
         assert product.name == "Missing Fields Test Product"
-        # assert cpm (deprecated) is None  # Missing field handled as None
-        # assert min_spend (deprecated) is None  # Missing field handled as None
 
         # Verify AdCP compliance is maintained
         product_dict = product.model_dump()
         assert "product_id" in product_dict
         assert "name" in product_dict
-        # Per AdCP spec and issue #289: optional null fields should be omitted, not included
-        assert "cpm" not in product_dict  # Optional field should be omitted when None
-        assert "min_spend" not in product_dict  # Optional field should be omitted when None
 
 
 class TestParallelTestExecution:
