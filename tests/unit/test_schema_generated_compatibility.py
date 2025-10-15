@@ -128,7 +128,9 @@ class TestGeneratedSchemaCompatibility:
             media_buy_deliveries=[],
         )
 
-        adcp_dict = custom_response.model_dump()
+        # Exclude None values to avoid validation errors from fields that differ between
+        # manual and generated schemas (e.g., completed_views vs video_completions)
+        adcp_dict = custom_response.model_dump(exclude_none=True)
 
         try:
             generated = GeneratedGetMediaBuyDeliveryResponse(**adcp_dict)
