@@ -18,6 +18,7 @@ from src.core.database.models import CreativeAssignment, MediaBuy, Principal
 from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
+
 class MockContext:
     """Mock FastMCP Context for testing."""
 
@@ -26,6 +27,7 @@ class MockContext:
             self.meta = {"headers": {}}  # No auth header for testing optional auth
         else:
             self.meta = {"headers": {"x-adcp-auth": auth_token}}
+
 
 class TestCreativeLifecycleMCP:
     """Integration tests for creative lifecycle MCP tools."""
@@ -165,15 +167,13 @@ class TestCreativeLifecycleMCP:
 
             # Verify response structure (AdCP-compliant)
             assert isinstance(response, SyncCreativesResponse)
-            assert response.adcp_version == "2.3.0"
-            assert response.status == "completed"
-            assert response.summary is not None
-            assert response.summary.total_processed == 3
-            assert response.summary.created == 3
-            assert response.summary.failed == 0
-            assert len(response.results) == 3
-            assert all(r.action == "created" for r in response.results)
-            assert "3 creatives" in response.message
+            # Calculate summary from creatives list (v2.4 schema doesn't have .summary attribute)
+            assert len(response.creatives) == 3
+            created_count = sum(1 for c in response.creatives if c.action == "created")
+            failed_count = sum(1 for c in response.creatives if c.action == "failed")
+            assert created_count == 3
+            assert failed_count == 0
+            assert all(c.action == "created" for c in response.creatives)
 
             # Verify database persistence
             with get_db_session() as session:
@@ -246,12 +246,13 @@ class TestCreativeLifecycleMCP:
             # Upsert with patch=False (default): full replacement
             response = core_sync_creatives_tool(creatives=updated_creative_data, context=mock_context)
 
-            # Verify response
-            assert response.summary.total_processed == 1
-            assert response.summary.updated == 1
-            assert response.summary.failed == 0
-            assert len(response.results) == 1
-            assert response.results[0].action == "updated"
+            # Verify response (v2.4 schema: creatives list only, no summary attribute)
+            assert len(response.creatives) == 1
+            updated_count = sum(1 for c in response.creatives if c.action == "updated")
+            failed_count = sum(1 for c in response.creatives if c.action == "failed")
+            assert updated_count == 1
+            assert failed_count == 0
+            assert response.creatives[0].action == "updated"
 
             # Verify database update
             with get_db_session() as session:
@@ -284,8 +285,9 @@ class TestCreativeLifecycleMCP:
                 context=mock_context,
             )
 
-            # Verify assignments created (check message - assignments not returned in response)
-            assert "2 assignments created" in response.message
+            # Verify response (v2.4 schema: no message field, assignments info added by protocol wrapper)
+            assert isinstance(response, SyncCreativesResponse)
+            assert len(response.creatives) >= 1
 
             # Verify database assignments
             with get_db_session() as session:
@@ -320,8 +322,9 @@ class TestCreativeLifecycleMCP:
                 context=mock_context,
             )
 
-            # Verify assignment created (check message - assignments not returned in response)
-            assert "1 assignments created" in response.message or "1 assignment created" in response.message
+            # Verify response (v2.4 schema: no message field, assignments info added by protocol wrapper)
+            assert isinstance(response, SyncCreativesResponse)
+            assert len(response.creatives) >= 1
 
             # Verify assignment in database
             with get_db_session() as session:
@@ -357,14 +360,14 @@ class TestCreativeLifecycleMCP:
 
             response = core_sync_creatives_tool(creatives=invalid_creatives, context=mock_context)
 
-            # Should sync valid creative but fail on invalid one
-            assert response.summary.total_processed == 2
-            assert response.summary.created == 1
-            assert response.summary.failed == 1
-            assert len(response.results) == 2
-            assert sum(1 for r in response.results if r.action == "created") == 1
-            assert sum(1 for r in response.results if r.action == "failed") == 1
-            assert "1 failed" in response.message
+            # Should sync valid creative but fail on invalid one (v2.4 schema: creatives list only)
+            assert len(response.creatives) == 2
+            created_count = sum(1 for c in response.creatives if c.action == "created")
+            failed_count = sum(1 for c in response.creatives if c.action == "failed")
+            assert created_count == 1
+            assert failed_count == 1
+            # __str__() method generates message from creatives list
+            assert "1 failed" in str(response)
 
             # Verify only valid creative was persisted
             with get_db_session() as session:
@@ -799,7 +802,7 @@ class TestCreativeLifecycleMCP:
             )
 
             # Mock adapter
-            from src.core.schemas import CreateMediaBuyResponse, TaskStatus
+            from src.core.schemas import CreateMediaBuyResponse
 
             mock_adapter_instance = mock_adapter.return_value
             mock_adapter_instance.create_media_buy.return_value = CreateMediaBuyResponse(
