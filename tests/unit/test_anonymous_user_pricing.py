@@ -1,6 +1,6 @@
 """Test that anonymous users get products with empty pricing_options."""
 
-from src.core.schemas import Product, PricingOption
+from src.core.schemas import PricingOption, Product
 
 
 def test_product_with_empty_pricing_options():

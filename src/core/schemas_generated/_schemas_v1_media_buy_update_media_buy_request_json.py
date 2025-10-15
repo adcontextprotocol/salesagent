@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Optional, Union
+from typing import Annotated, Union
 
 from pydantic import AnyUrl, AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 
@@ -26,31 +26,31 @@ class TargetingOverlay(BaseModel):
         extra="forbid",
     )
     geo_country_any_of: Annotated[
-        Optional[list[GeoCountryAnyOfItem]],
+        list[GeoCountryAnyOfItem] | None,
         Field(
             description="Restrict delivery to specific countries (ISO codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_region_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific regions/states. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_metro_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific metro areas (DMA codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_postal_code_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific postal/ZIP codes. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     frequency_cap: Annotated[
-        Optional[FrequencyCap],
+        FrequencyCap | None,
         Field(description="Frequency capping settings for package-level application", title="Frequency Cap"),
     ] = None
 
@@ -60,23 +60,23 @@ class Packages(BaseModel):
         extra="forbid",
     )
     package_id: Annotated[str, Field(description="Publisher's ID of package to update")]
-    buyer_ref: Annotated[Optional[str], Field(description="Buyer's reference for the package to update")] = None
+    buyer_ref: Annotated[str | None, Field(description="Buyer's reference for the package to update")] = None
     budget: Annotated[
-        Optional[float],
+        float | None,
         Field(
             description="Updated budget allocation for this package in the currency specified by the pricing option",
             ge=0.0,
         ),
     ] = None
-    active: Annotated[Optional[bool], Field(description="Pause/resume specific package")] = None
+    active: Annotated[bool | None, Field(description="Pause/resume specific package")] = None
     targeting_overlay: Annotated[
-        Optional[TargetingOverlay],
+        TargetingOverlay | None,
         Field(
             description="Optional geographic refinements for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are primarily for geographic restrictions (RCT testing, regulatory compliance).",
             title="Targeting Overlay",
         ),
     ] = None
-    creative_ids: Annotated[Optional[list[str]], Field(description="Update creative assignments")] = None
+    creative_ids: Annotated[list[str] | None, Field(description="Update creative assignments")] = None
 
 
 class TargetingOverlay9(BaseModel):
@@ -84,31 +84,31 @@ class TargetingOverlay9(BaseModel):
         extra="forbid",
     )
     geo_country_any_of: Annotated[
-        Optional[list[GeoCountryAnyOfItem]],
+        list[GeoCountryAnyOfItem] | None,
         Field(
             description="Restrict delivery to specific countries (ISO codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_region_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific regions/states. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_metro_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific metro areas (DMA codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_postal_code_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific postal/ZIP codes. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     frequency_cap: Annotated[
-        Optional[FrequencyCap],
+        FrequencyCap | None,
         Field(description="Frequency capping settings for package-level application", title="Frequency Cap"),
     ] = None
 
@@ -117,24 +117,24 @@ class Packages5(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    package_id: Annotated[Optional[str], Field(description="Publisher's ID of package to update")] = None
+    package_id: Annotated[str | None, Field(description="Publisher's ID of package to update")] = None
     buyer_ref: Annotated[str, Field(description="Buyer's reference for the package to update")]
     budget: Annotated[
-        Optional[float],
+        float | None,
         Field(
             description="Updated budget allocation for this package in the currency specified by the pricing option",
             ge=0.0,
         ),
     ] = None
-    active: Annotated[Optional[bool], Field(description="Pause/resume specific package")] = None
+    active: Annotated[bool | None, Field(description="Pause/resume specific package")] = None
     targeting_overlay: Annotated[
-        Optional[TargetingOverlay9],
+        TargetingOverlay9 | None,
         Field(
             description="Optional geographic refinements for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are primarily for geographic restrictions (RCT testing, regulatory compliance).",
             title="Targeting Overlay",
         ),
     ] = None
-    creative_ids: Annotated[Optional[list[str]], Field(description="Update creative assignments")] = None
+    creative_ids: Annotated[list[str] | None, Field(description="Update creative assignments")] = None
 
 
 class Scheme(Enum):
@@ -169,7 +169,7 @@ class PushNotificationConfig(BaseModel):
     )
     url: Annotated[AnyUrl, Field(description="Webhook endpoint URL for task status notifications")]
     token: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
             min_length=16,
@@ -185,25 +185,23 @@ class UpdateMediaBuyRequest1(BaseModel):
         extra="forbid",
     )
     media_buy_id: Annotated[str, Field(description="Publisher's ID of the media buy to update")]
-    buyer_ref: Annotated[Optional[str], Field(description="Buyer's reference for the media buy to update")] = None
-    active: Annotated[Optional[bool], Field(description="Pause/resume the entire media buy")] = None
+    buyer_ref: Annotated[str | None, Field(description="Buyer's reference for the media buy to update")] = None
+    active: Annotated[bool | None, Field(description="Pause/resume the entire media buy")] = None
     start_time: Annotated[
-        Optional[Union[str, AwareDatetime]],
+        str | AwareDatetime | None,
         Field(description="Campaign start timing: 'asap' or ISO 8601 date-time", title="Start Timing"),
     ] = None
-    end_time: Annotated[Optional[AwareDatetime], Field(description="New end date/time in ISO 8601 format")] = None
+    end_time: Annotated[AwareDatetime | None, Field(description="New end date/time in ISO 8601 format")] = None
     budget: Annotated[
-        Optional[float],
+        float | None,
         Field(
             description="Updated total budget for this media buy. Currency is determined by the pricing_option_id selected in each package.",
             ge=0.0,
         ),
     ] = None
-    packages: Annotated[Optional[list[Union[Packages, Packages5]]], Field(description="Package-specific updates")] = (
-        None
-    )
+    packages: Annotated[list[Packages | Packages5] | None, Field(description="Package-specific updates")] = None
     push_notification_config: Annotated[
-        Optional[PushNotificationConfig],
+        PushNotificationConfig | None,
         Field(
             description="Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. Supports Bearer tokens (simple) or HMAC signatures (production-recommended).",
             title="Push Notification Config",
@@ -216,31 +214,31 @@ class TargetingOverlay10(BaseModel):
         extra="forbid",
     )
     geo_country_any_of: Annotated[
-        Optional[list[GeoCountryAnyOfItem]],
+        list[GeoCountryAnyOfItem] | None,
         Field(
             description="Restrict delivery to specific countries (ISO codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_region_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific regions/states. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_metro_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific metro areas (DMA codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_postal_code_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific postal/ZIP codes. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     frequency_cap: Annotated[
-        Optional[FrequencyCap],
+        FrequencyCap | None,
         Field(description="Frequency capping settings for package-level application", title="Frequency Cap"),
     ] = None
 
@@ -250,23 +248,23 @@ class Packages6(BaseModel):
         extra="forbid",
     )
     package_id: Annotated[str, Field(description="Publisher's ID of package to update")]
-    buyer_ref: Annotated[Optional[str], Field(description="Buyer's reference for the package to update")] = None
+    buyer_ref: Annotated[str | None, Field(description="Buyer's reference for the package to update")] = None
     budget: Annotated[
-        Optional[float],
+        float | None,
         Field(
             description="Updated budget allocation for this package in the currency specified by the pricing option",
             ge=0.0,
         ),
     ] = None
-    active: Annotated[Optional[bool], Field(description="Pause/resume specific package")] = None
+    active: Annotated[bool | None, Field(description="Pause/resume specific package")] = None
     targeting_overlay: Annotated[
-        Optional[TargetingOverlay10],
+        TargetingOverlay10 | None,
         Field(
             description="Optional geographic refinements for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are primarily for geographic restrictions (RCT testing, regulatory compliance).",
             title="Targeting Overlay",
         ),
     ] = None
-    creative_ids: Annotated[Optional[list[str]], Field(description="Update creative assignments")] = None
+    creative_ids: Annotated[list[str] | None, Field(description="Update creative assignments")] = None
 
 
 class TargetingOverlay11(BaseModel):
@@ -274,31 +272,31 @@ class TargetingOverlay11(BaseModel):
         extra="forbid",
     )
     geo_country_any_of: Annotated[
-        Optional[list[GeoCountryAnyOfItem]],
+        list[GeoCountryAnyOfItem] | None,
         Field(
             description="Restrict delivery to specific countries (ISO codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_region_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific regions/states. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_metro_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific metro areas (DMA codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_postal_code_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific postal/ZIP codes. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     frequency_cap: Annotated[
-        Optional[FrequencyCap],
+        FrequencyCap | None,
         Field(description="Frequency capping settings for package-level application", title="Frequency Cap"),
     ] = None
 
@@ -307,24 +305,24 @@ class Packages7(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    package_id: Annotated[Optional[str], Field(description="Publisher's ID of package to update")] = None
+    package_id: Annotated[str | None, Field(description="Publisher's ID of package to update")] = None
     buyer_ref: Annotated[str, Field(description="Buyer's reference for the package to update")]
     budget: Annotated[
-        Optional[float],
+        float | None,
         Field(
             description="Updated budget allocation for this package in the currency specified by the pricing option",
             ge=0.0,
         ),
     ] = None
-    active: Annotated[Optional[bool], Field(description="Pause/resume specific package")] = None
+    active: Annotated[bool | None, Field(description="Pause/resume specific package")] = None
     targeting_overlay: Annotated[
-        Optional[TargetingOverlay11],
+        TargetingOverlay11 | None,
         Field(
             description="Optional geographic refinements for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are primarily for geographic restrictions (RCT testing, regulatory compliance).",
             title="Targeting Overlay",
         ),
     ] = None
-    creative_ids: Annotated[Optional[list[str]], Field(description="Update creative assignments")] = None
+    creative_ids: Annotated[list[str] | None, Field(description="Update creative assignments")] = None
 
 
 class Authentication6(BaseModel):
@@ -354,7 +352,7 @@ class PushNotificationConfig3(BaseModel):
     )
     url: Annotated[AnyUrl, Field(description="Webhook endpoint URL for task status notifications")]
     token: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
             min_length=16,
@@ -369,26 +367,24 @@ class UpdateMediaBuyRequest2(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    media_buy_id: Annotated[Optional[str], Field(description="Publisher's ID of the media buy to update")] = None
+    media_buy_id: Annotated[str | None, Field(description="Publisher's ID of the media buy to update")] = None
     buyer_ref: Annotated[str, Field(description="Buyer's reference for the media buy to update")]
-    active: Annotated[Optional[bool], Field(description="Pause/resume the entire media buy")] = None
+    active: Annotated[bool | None, Field(description="Pause/resume the entire media buy")] = None
     start_time: Annotated[
-        Optional[Union[str, AwareDatetime]],
+        str | AwareDatetime | None,
         Field(description="Campaign start timing: 'asap' or ISO 8601 date-time", title="Start Timing"),
     ] = None
-    end_time: Annotated[Optional[AwareDatetime], Field(description="New end date/time in ISO 8601 format")] = None
+    end_time: Annotated[AwareDatetime | None, Field(description="New end date/time in ISO 8601 format")] = None
     budget: Annotated[
-        Optional[float],
+        float | None,
         Field(
             description="Updated total budget for this media buy. Currency is determined by the pricing_option_id selected in each package.",
             ge=0.0,
         ),
     ] = None
-    packages: Annotated[Optional[list[Union[Packages6, Packages7]]], Field(description="Package-specific updates")] = (
-        None
-    )
+    packages: Annotated[list[Packages6 | Packages7] | None, Field(description="Package-specific updates")] = None
     push_notification_config: Annotated[
-        Optional[PushNotificationConfig3],
+        PushNotificationConfig3 | None,
         Field(
             description="Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. Supports Bearer tokens (simple) or HMAC signatures (production-recommended).",
             title="Push Notification Config",
@@ -398,7 +394,7 @@ class UpdateMediaBuyRequest2(BaseModel):
 
 class UpdateMediaBuyRequest(RootModel[Union[UpdateMediaBuyRequest1, UpdateMediaBuyRequest2]]):
     root: Annotated[
-        Union[UpdateMediaBuyRequest1, UpdateMediaBuyRequest2],
+        UpdateMediaBuyRequest1 | UpdateMediaBuyRequest2,
         Field(
             description="Request parameters for updating campaign and package settings",
             title="Update Media Buy Request",

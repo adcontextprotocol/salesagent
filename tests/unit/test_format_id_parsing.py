@@ -8,20 +8,16 @@ from src.core.schemas import FormatId
 
 def test_extract_format_namespace_with_dict():
     """Test _extract_format_namespace with dict format from wire."""
-    agent_url, format_id = _extract_format_namespace({
-        "agent_url": "https://creative.adcontextprotocol.org",
-        "id": "display_300x250"
-    })
+    agent_url, format_id = _extract_format_namespace(
+        {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
+    )
     assert agent_url == "https://creative.adcontextprotocol.org"
     assert format_id == "display_300x250"
 
 
 def test_extract_format_namespace_with_format_id_object():
     """Test _extract_format_namespace with FormatId object."""
-    format_obj = FormatId(
-        agent_url="https://creative.adcontextprotocol.org",
-        id="display_300x250"
-    )
+    format_obj = FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250")
     agent_url, format_id = _extract_format_namespace(format_obj)
     assert agent_url == "https://creative.adcontextprotocol.org"
     assert format_id == "display_300x250"
@@ -41,10 +37,7 @@ def test_extract_format_namespace_rejects_incomplete_dict():
 
 def test_normalize_format_value_extracts_id():
     """Test _normalize_format_value extracts ID from FormatId object."""
-    result = _normalize_format_value({
-        "agent_url": "https://creative.adcontextprotocol.org",
-        "id": "display_300x250"
-    })
+    result = _normalize_format_value({"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"})
     assert result == "display_300x250"
 
 

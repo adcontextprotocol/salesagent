@@ -8,7 +8,6 @@ These tests demonstrate:
 5. Tests don't break when spec changes (auto-regenerate schemas)
 """
 
-
 from src.core.schema_adapters import GetProductsRequest
 
 

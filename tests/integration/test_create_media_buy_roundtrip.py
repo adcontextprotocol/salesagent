@@ -24,7 +24,7 @@ from src.core.database.models import CurrencyLimit
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 from src.core.database.models import Tenant as ModelTenant
-from src.core.schemas import Budget, CreateMediaBuyResponse, Package
+from src.core.schemas import CreateMediaBuyResponse
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
 
 @pytest.mark.integration

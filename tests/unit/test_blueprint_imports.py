@@ -185,6 +185,7 @@ class TestImportRegressionPrevention:
 
         # public.py uses or_
         from sqlalchemy import or_ as SQLAlchemyOr
+
         from src.admin.blueprints.public import or_ as public_or
 
         assert public_or is SQLAlchemyOr

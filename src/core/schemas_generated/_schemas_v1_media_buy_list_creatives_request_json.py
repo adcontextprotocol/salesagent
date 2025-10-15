@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -21,43 +21,43 @@ class Filters(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    format: Annotated[
-        Optional[str], Field(description="Filter by creative format type (e.g., video, audio, display)")
-    ] = None
-    formats: Annotated[Optional[list[str]], Field(description="Filter by multiple creative format types")] = None
-    status: Annotated[Optional[Status], Field(description="Status of a creative asset", title="Creative Status")] = None
-    statuses: Annotated[Optional[list[Any]], Field(description="Filter by multiple creative statuses")] = None
-    tags: Annotated[Optional[list[str]], Field(description="Filter by creative tags (all tags must match)")] = None
-    tags_any: Annotated[Optional[list[str]], Field(description="Filter by creative tags (any tag must match)")] = None
+    format: Annotated[str | None, Field(description="Filter by creative format type (e.g., video, audio, display)")] = (
+        None
+    )
+    formats: Annotated[list[str] | None, Field(description="Filter by multiple creative format types")] = None
+    status: Annotated[Status | None, Field(description="Status of a creative asset", title="Creative Status")] = None
+    statuses: Annotated[list[Any] | None, Field(description="Filter by multiple creative statuses")] = None
+    tags: Annotated[list[str] | None, Field(description="Filter by creative tags (all tags must match)")] = None
+    tags_any: Annotated[list[str] | None, Field(description="Filter by creative tags (any tag must match)")] = None
     name_contains: Annotated[
-        Optional[str], Field(description="Filter by creative names containing this text (case-insensitive)")
+        str | None, Field(description="Filter by creative names containing this text (case-insensitive)")
     ] = None
-    creative_ids: Annotated[
-        Optional[list[str]], Field(description="Filter by specific creative IDs", max_length=100)
-    ] = None
+    creative_ids: Annotated[list[str] | None, Field(description="Filter by specific creative IDs", max_length=100)] = (
+        None
+    )
     created_after: Annotated[
-        Optional[AwareDatetime], Field(description="Filter creatives created after this date (ISO 8601)")
+        AwareDatetime | None, Field(description="Filter creatives created after this date (ISO 8601)")
     ] = None
     created_before: Annotated[
-        Optional[AwareDatetime], Field(description="Filter creatives created before this date (ISO 8601)")
+        AwareDatetime | None, Field(description="Filter creatives created before this date (ISO 8601)")
     ] = None
     updated_after: Annotated[
-        Optional[AwareDatetime], Field(description="Filter creatives last updated after this date (ISO 8601)")
+        AwareDatetime | None, Field(description="Filter creatives last updated after this date (ISO 8601)")
     ] = None
     updated_before: Annotated[
-        Optional[AwareDatetime], Field(description="Filter creatives last updated before this date (ISO 8601)")
+        AwareDatetime | None, Field(description="Filter creatives last updated before this date (ISO 8601)")
     ] = None
     assigned_to_package: Annotated[
-        Optional[str], Field(description="Filter creatives assigned to this specific package")
+        str | None, Field(description="Filter creatives assigned to this specific package")
     ] = None
     assigned_to_packages: Annotated[
-        Optional[list[str]], Field(description="Filter creatives assigned to any of these packages")
+        list[str] | None, Field(description="Filter creatives assigned to any of these packages")
     ] = None
     unassigned: Annotated[
-        Optional[bool], Field(description="Filter for unassigned creatives when true, assigned creatives when false")
+        bool | None, Field(description="Filter for unassigned creatives when true, assigned creatives when false")
     ] = None
     has_performance_data: Annotated[
-        Optional[bool], Field(description="Filter creatives that have performance data when true")
+        bool | None, Field(description="Filter creatives that have performance data when true")
     ] = None
 
 
@@ -79,16 +79,16 @@ class Sort(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    field: Annotated[Optional[FieldModel], Field(description="Field to sort by")] = "created_date"
-    direction: Annotated[Optional[Direction], Field(description="Sort direction")] = "desc"
+    field: Annotated[FieldModel | None, Field(description="Field to sort by")] = "created_date"
+    direction: Annotated[Direction | None, Field(description="Sort direction")] = "desc"
 
 
 class Pagination(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    limit: Annotated[Optional[int], Field(description="Maximum number of creatives to return", ge=1, le=100)] = 50
-    offset: Annotated[Optional[int], Field(description="Number of creatives to skip", ge=0)] = 0
+    limit: Annotated[int | None, Field(description="Maximum number of creatives to return", ge=1, le=100)] = 50
+    offset: Annotated[int | None, Field(description="Number of creatives to skip", ge=0)] = 0
 
 
 class Field1(Enum):
@@ -108,18 +108,18 @@ class ListCreativesRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    filters: Annotated[Optional[Filters], Field(description="Filter criteria for querying creatives")] = None
-    sort: Annotated[Optional[Sort], Field(description="Sorting parameters")] = None
-    pagination: Annotated[Optional[Pagination], Field(description="Pagination parameters")] = None
+    filters: Annotated[Filters | None, Field(description="Filter criteria for querying creatives")] = None
+    sort: Annotated[Sort | None, Field(description="Sorting parameters")] = None
+    pagination: Annotated[Pagination | None, Field(description="Pagination parameters")] = None
     include_assignments: Annotated[
-        Optional[bool], Field(description="Include package assignment information in response")
+        bool | None, Field(description="Include package assignment information in response")
     ] = True
     include_performance: Annotated[
-        Optional[bool], Field(description="Include aggregated performance metrics in response")
+        bool | None, Field(description="Include aggregated performance metrics in response")
     ] = False
     include_sub_assets: Annotated[
-        Optional[bool], Field(description="Include sub-assets (for carousel/native formats) in response")
+        bool | None, Field(description="Include sub-assets (for carousel/native formats) in response")
     ] = False
     fields: Annotated[
-        Optional[list[Field1]], Field(description="Specific fields to include in response (omit for all fields)")
+        list[Field1] | None, Field(description="Specific fields to include in response (omit for all fields)")
     ] = None

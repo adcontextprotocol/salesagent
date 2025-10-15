@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Optional, Union
+from typing import Annotated, Any
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
@@ -33,17 +33,17 @@ class Unit(Enum):
 
 
 class Dimensions(BaseModel):
-    width: Annotated[Optional[float], Field(description="Fixed width in specified units", ge=0.0)] = None
-    height: Annotated[Optional[float], Field(description="Fixed height in specified units", ge=0.0)] = None
-    min_width: Annotated[Optional[float], Field(description="Minimum width for responsive renders", ge=0.0)] = None
-    min_height: Annotated[Optional[float], Field(description="Minimum height for responsive renders", ge=0.0)] = None
-    max_width: Annotated[Optional[float], Field(description="Maximum width for responsive renders", ge=0.0)] = None
-    max_height: Annotated[Optional[float], Field(description="Maximum height for responsive renders", ge=0.0)] = None
-    responsive: Annotated[
-        Optional[Responsive], Field(description="Indicates which dimensions are responsive/fluid")
-    ] = None
+    width: Annotated[float | None, Field(description="Fixed width in specified units", ge=0.0)] = None
+    height: Annotated[float | None, Field(description="Fixed height in specified units", ge=0.0)] = None
+    min_width: Annotated[float | None, Field(description="Minimum width for responsive renders", ge=0.0)] = None
+    min_height: Annotated[float | None, Field(description="Minimum height for responsive renders", ge=0.0)] = None
+    max_width: Annotated[float | None, Field(description="Maximum width for responsive renders", ge=0.0)] = None
+    max_height: Annotated[float | None, Field(description="Maximum height for responsive renders", ge=0.0)] = None
+    responsive: Annotated[Responsive | None, Field(description="Indicates which dimensions are responsive/fluid")] = (
+        None
+    )
     aspect_ratio: Annotated[
-        Optional[str],
+        str | None,
         Field(description="Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1')", pattern="^\\d+:\\d+$"),
     ] = None
     unit: Annotated[Unit, Field(description="Unit of measurement for dimensions")]
@@ -71,11 +71,11 @@ class AssetsRequired(BaseModel):
     asset_id: Annotated[str, Field(description="Identifier for this asset in the format")]
     asset_type: Annotated[AssetType, Field(description="Type of asset")]
     asset_role: Annotated[
-        Optional[str], Field(description="Purpose of this asset (e.g., 'hero_image', 'logo', 'headline', 'cta_button')")
+        str | None, Field(description="Purpose of this asset (e.g., 'hero_image', 'logo', 'headline', 'cta_button')")
     ] = None
-    required: Annotated[Optional[bool], Field(description="Whether this asset is required")] = None
+    required: Annotated[bool | None, Field(description="Whether this asset is required")] = None
     requirements: Annotated[
-        Optional[dict[str, Any]],
+        dict[str, Any] | None,
         Field(description="Technical requirements for this asset (dimensions, file size, duration, etc.)"),
     ] = None
 
@@ -87,9 +87,9 @@ class Repeatable(Enum):
 class Asset(BaseModel):
     asset_id: Annotated[str, Field(description="Identifier for this asset within the group")]
     asset_type: Annotated[AssetType, Field(description="Type of asset")]
-    asset_role: Annotated[Optional[str], Field(description="Purpose of this asset")] = None
-    required: Annotated[Optional[bool], Field(description="Whether this asset is required in each repetition")] = None
-    requirements: Annotated[Optional[dict[str, Any]], Field(description="Technical requirements for this asset")] = None
+    asset_role: Annotated[str | None, Field(description="Purpose of this asset")] = None
+    required: Annotated[bool | None, Field(description="Whether this asset is required in each repetition")] = None
+    requirements: Annotated[dict[str, Any] | None, Field(description="Technical requirements for this asset")] = None
 
 
 class AssetsRequired1(BaseModel):
@@ -108,53 +108,53 @@ class Format(BaseModel):
     )
     format_id: Annotated[str, Field(description="Unique identifier for the format")]
     agent_url: Annotated[
-        Optional[AnyUrl],
+        AnyUrl | None,
         Field(
             description="Base URL of the agent that provides this format (authoritative source). E.g., 'https://reference.adcp.org', 'https://dco.example.com'"
         ),
     ] = None
     name: Annotated[str, Field(description="Human-readable format name")]
     description: Annotated[
-        Optional[str], Field(description="Plain text explanation of what this format does and what assets it requires")
+        str | None, Field(description="Plain text explanation of what this format does and what assets it requires")
     ] = None
     preview_image: Annotated[
-        Optional[AnyUrl],
+        AnyUrl | None,
         Field(
             description="Optional preview image URL for format browsing/discovery UI. Should be 400x300px (4:3 aspect ratio) PNG or JPG. Used as thumbnail/card image in format browsers."
         ),
     ] = None
     example_url: Annotated[
-        Optional[AnyUrl],
+        AnyUrl | None,
         Field(description="Optional URL to showcase page with examples and interactive demos of this format"),
     ] = None
     type: Annotated[
         Type, Field(description="Media type of this format - determines rendering method and asset requirements")
     ]
     renders: Annotated[
-        Optional[list[Render]],
+        list[Render] | None,
         Field(
             description="Specification of rendered pieces for this format. Most formats produce a single render. Companion ad formats (video + banner), adaptive formats, and multi-placement formats produce multiple renders. Each render specifies its role and dimensions.",
             min_length=1,
         ),
     ] = None
     assets_required: Annotated[
-        Optional[list[Union[AssetsRequired, AssetsRequired1]]],
+        list[AssetsRequired | AssetsRequired1] | None,
         Field(
             description="Array of required assets or asset groups for this format. Can contain individual assets or repeatable asset sequences (e.g., carousel products, slideshow frames)."
         ),
     ] = None
     delivery: Annotated[
-        Optional[dict[str, Any]],
+        dict[str, Any] | None,
         Field(description="Delivery method specifications (e.g., hosted, VAST, third-party tags)"),
     ] = None
     supported_macros: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="List of universal macros supported by this format (e.g., MEDIA_BUY_ID, CACHEBUSTER, DEVICE_ID). Used for validation and developer tooling."
         ),
     ] = None
     output_format_ids: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="For generative formats: array of format IDs that this format can generate. When a format accepts inputs like brand_manifest and message, this specifies what concrete output formats can be produced (e.g., a generative banner format might output standard image banner formats)."
         ),

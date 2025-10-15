@@ -7,6 +7,7 @@ the AdCP testing specification.
 
 from datetime import datetime
 
+from src.core.schemas import PricingOption
 from src.core.testing_hooks import (
     CampaignEvent,
     NextEventCalculator,
@@ -14,7 +15,6 @@ from src.core.testing_hooks import (
     apply_testing_hooks,
     get_session_manager,
 )
-from src.core.schemas import PricingOption
 
 
 class TestMockServerResponseHeaders:

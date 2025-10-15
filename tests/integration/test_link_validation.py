@@ -108,9 +108,7 @@ class TestLinkValidation:
         # Assert no broken links (allow 501 for unimplemented routes)
         assert not broken_links, format_broken_links_report(broken_links, inventory_url)
 
-    def test_authorized_properties_page_links_are_valid(
-        self, authenticated_admin_session, test_tenant_with_data
-    ):
+    def test_authorized_properties_page_links_are_valid(self, authenticated_admin_session, test_tenant_with_data):
         """Test that all links on the authorized properties page are valid."""
         tenant_id = test_tenant_with_data["tenant_id"]
         validator = LinkValidator(authenticated_admin_session)
@@ -134,9 +132,7 @@ class TestLinkValidation:
         # Assert no broken links
         assert not broken_links, format_broken_links_report(broken_links, tags_url)
 
-    def test_creative_review_page_links_are_valid(
-        self, authenticated_admin_session, test_tenant_with_data
-    ):
+    def test_creative_review_page_links_are_valid(self, authenticated_admin_session, test_tenant_with_data):
         """Test that all links on the creative review page are valid.
 
         This specifically tests the route that was broken in PR #421 - the

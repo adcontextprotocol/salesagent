@@ -18,17 +18,16 @@ Performance impact:
   - With GIN index: Index scan O(log n)
   - Especially important for catalogs with 1000+ products
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
-revision: str = 'ab57bdcf4bd8'
-down_revision: Union[str, Sequence[str], None] = '1aa2f5893a4d'  # Must run after JSONB conversion
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "ab57bdcf4bd8"
+down_revision: str | Sequence[str] | None = "1aa2f5893a4d"  # Must run after JSONB conversion
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

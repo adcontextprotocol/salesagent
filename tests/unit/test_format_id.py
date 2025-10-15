@@ -100,9 +100,7 @@ def test_extract_format_namespace():
     from src.core.main import _extract_format_namespace
 
     # Dict format with agent_url
-    agent_url, format_id = _extract_format_namespace(
-        {"agent_url": "https://example.com", "id": "display_300x250"}
-    )
+    agent_url, format_id = _extract_format_namespace({"agent_url": "https://example.com", "id": "display_300x250"})
     assert agent_url == "https://example.com"
     assert format_id == "display_300x250"
 

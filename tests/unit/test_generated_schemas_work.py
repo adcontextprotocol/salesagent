@@ -15,14 +15,13 @@ a hybrid approach.
 import pytest
 
 pytestmark = pytest.mark.skip(reason="Generated schemas use RootModel - need adapter layer for usability")
-from pydantic import ValidationError
 
 # Import from GENERATED schemas instead of manual
-from src.core.schemas_generated._schemas_v1_media_buy_get_products_response_json import (
-    GetProductsResponse as GeneratedGetProductsResponse,
-)
 from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
     GetProductsRequest as GeneratedGetProductsRequest,
+)
+from src.core.schemas_generated._schemas_v1_media_buy_get_products_response_json import (
+    GetProductsResponse as GeneratedGetProductsResponse,
 )
 
 

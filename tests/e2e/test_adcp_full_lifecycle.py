@@ -6,8 +6,6 @@ See GitHub issue #330 for reimplementation roadmap.
 See E2E_TEST_COVERAGE_GAPS.md for details.
 """
 
-import pytest
-
 
 class TestAdCPFullLifecycle:
     """E2E tests for AdCP full lifecycle - all tests deleted."""

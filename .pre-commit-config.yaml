@@ -245,10 +245,11 @@ repos:
         files: '\.html$'
         pass_filenames: false
 
-      # Check mypy errors on changed lines only (incremental type safety)
-      - id: mypy-diff
-        name: Check mypy errors on changed lines
-        entry: uv run python scripts/check_mypy_diff.py
+      # Check mypy error count doesn't increase (no regression)
+      # Much faster than per-file checks: 3s vs 2+ minutes
+      - id: mypy-no-regression
+        name: Check mypy error count (no regression)
+        entry: uv run python scripts/check_mypy_no_regression.py
         language: system
         files: '\.py$'
         pass_filenames: false

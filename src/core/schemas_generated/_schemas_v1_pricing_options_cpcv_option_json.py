@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,7 +23,7 @@ class CpcvPricingOption(BaseModel):
         str, Field(description="ISO 4217 currency code", examples=["USD", "EUR", "GBP", "JPY"], pattern="^[A-Z]{3}$")
     ]
     min_spend_per_package: Annotated[
-        Optional[float],
+        float | None,
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,

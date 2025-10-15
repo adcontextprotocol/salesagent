@@ -86,7 +86,6 @@ def test_correct_product_construction():
     """
 
     # Correct product_data dict with only AdCP-compliant fields
-    from src.core.schemas import PricingOption
 
     correct_product_data = {
         "product_id": "test_product",
