@@ -1943,10 +1943,13 @@ def _sync_creatives_impl(
 
                                         # Extract preview data and store in data field
                                         if preview_result and preview_result.get("previews"):
-                                            # Get first preview variant
-                                            first_preview = preview_result["previews"][0]
+                                            # Store full preview response for UI (per AdCP PR #119)
+                                            # This preserves all variants and renders for UI display
+                                            data["preview_response"] = preview_result
+                                            changes.append("preview_response")
 
-                                            # Get first render from the preview (per AdCP PR #119)
+                                            # Also extract primary preview URL for backward compatibility
+                                            first_preview = preview_result["previews"][0]
                                             renders = first_preview.get("renders", [])
                                             if renders:
                                                 first_render = renders[0]
@@ -1975,7 +1978,8 @@ def _sync_creatives_impl(
                                             f"[sync_creatives] Preview data populated for update: "
                                             f"url={bool(data.get('url'))}, "
                                             f"width={data.get('width')}, "
-                                            f"height={data.get('height')}"
+                                            f"height={data.get('height')}, "
+                                            f"variants={len(preview_result.get('previews', [])) if preview_result else 0}"
                                         )
 
                                 except Exception as validation_error:
@@ -2105,10 +2109,12 @@ def _sync_creatives_impl(
 
                                     # Extract preview data and store in data field
                                     if preview_result and preview_result.get("previews"):
-                                        # Get first preview variant
-                                        first_preview = preview_result["previews"][0]
+                                        # Store full preview response for UI (per AdCP PR #119)
+                                        # This preserves all variants and renders for UI display
+                                        data["preview_response"] = preview_result
 
-                                        # Get first render from the preview (per AdCP PR #119)
+                                        # Also extract primary preview URL for backward compatibility
+                                        first_preview = preview_result["previews"][0]
                                         renders = first_preview.get("renders", [])
                                         if renders:
                                             first_render = renders[0]
@@ -2133,7 +2139,8 @@ def _sync_creatives_impl(
                                         f"[sync_creatives] Preview data populated: "
                                         f"url={bool(data.get('url'))}, "
                                         f"width={data.get('width')}, "
-                                        f"height={data.get('height')}"
+                                        f"height={data.get('height')}, "
+                                        f"variants={len(preview_result.get('previews', [])) if preview_result else 0}"
                                     )
 
                             except Exception as validation_error:

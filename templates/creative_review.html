@@ -57,10 +57,98 @@
             <!-- Preview Area -->
             <div class="preview-section">
                 <h4 style="margin: 0 0 1rem 0;">Preview</h4>
-                <div class="creative-preview" data-format="{{ creative.format }}">
-                    {% if creative.data.url %}
+
+                {% if creative.data.preview_response and creative.data.preview_response.previews %}
+                    <!-- Multi-variant preview support (AdCP PR #119) -->
+                    <div class="multi-preview-container" data-creative-id="{{ creative.creative_id }}">
+                        {% set preview_data = creative.data.preview_response %}
+                        {% set num_variants = preview_data.previews | length %}
+
+                        {% if num_variants > 1 %}
+                        <div class="preview-variant-selector">
+                            <label style="font-weight: 500; color: #666; font-size: 0.9rem; margin-right: 0.5rem;">
+                                Variant:
+                            </label>
+                            {% for variant_idx in range(num_variants) %}
+                            <button class="variant-btn {% if variant_idx == 0 %}active{% endif %}"
+                                    onclick="showVariant('{{ creative.creative_id }}', {{ variant_idx }})">
+                                {% set variant = preview_data.previews[variant_idx] %}
+                                {{ variant.preview_id or ('Variant ' ~ (variant_idx + 1)) }}
+                            </button>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
+                        {% for variant_idx, variant in enumerate(preview_data.previews) %}
+                        <div class="preview-variant"
+                             data-variant-index="{{ variant_idx }}"
+                             style="{% if variant_idx != 0 %}display: none;{% endif %}">
+
+                            {% if variant.renders | length > 1 %}
+                            <div class="preview-render-selector">
+                                <label style="font-weight: 500; color: #666; font-size: 0.85rem; margin-right: 0.5rem;">
+                                    Render:
+                                </label>
+                                {% for render_idx in range(variant.renders | length) %}
+                                <button class="render-btn {% if render_idx == 0 %}active{% endif %}"
+                                        onclick="showRender('{{ creative.creative_id }}', {{ variant_idx }}, {{ render_idx }})">
+                                    {% set render = variant.renders[render_idx] %}
+                                    {{ render.role or render.render_id or ('Render ' ~ (render_idx + 1)) }}
+                                </button>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+
+                            {% for render_idx, render in enumerate(variant.renders) %}
+                            <div class="preview-render"
+                                 data-render-index="{{ render_idx }}"
+                                 style="{% if render_idx != 0 %}display: none;{% endif %}">
+                                <div class="creative-preview" data-format="{{ creative.format }}">
+                                    {% if render.preview_url %}
+                                        {% if creative.format.startswith('display_') %}
+                                            <div class="display-preview">
+                                                {% if render.dimensions %}
+                                                <div class="preview-dimensions">
+                                                    {{ render.dimensions.width }}x{{ render.dimensions.height }}
+                                                    {% if render.role %}
+                                                    <span class="render-role-badge">{{ render.role }}</span>
+                                                    {% endif %}
+                                                </div>
+                                                {% endif %}
+                                                <img src="{{ render.preview_url }}"
+                                                     alt="{{ creative.name }}"
+                                                     style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;">
+                                            </div>
+                                        {% elif creative.format.startswith('video_') %}
+                                            <div class="video-preview">
+                                                <video controls style="max-width: 100%; height: auto; border-radius: 4px;">
+                                                    <source src="{{ render.preview_url }}" type="video/mp4">
+                                                    Your browser does not support video playback.
+                                                </video>
+                                            </div>
+                                        {% else %}
+                                            <div class="generic-preview">
+                                                <img src="{{ render.preview_url }}"
+                                                     alt="{{ creative.name }}"
+                                                     style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;">
+                                            </div>
+                                        {% endif %}
+                                    {% else %}
+                                        <div style="text-align: center; padding: 2rem; background: #f8f9fa; border-radius: 4px;">
+                                            <p style="margin: 0; color: #999;">No preview URL for this render.</p>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                {% elif creative.data.url %}
+                    <!-- Fallback to legacy single preview -->
+                    <div class="creative-preview" data-format="{{ creative.format }}">
                         {% if creative.format.startswith('display_') %}
-                            <!-- Display ad preview -->
                             <div class="display-preview">
                                 {% if creative.data.width and creative.data.height %}
                                 <div class="preview-dimensions">{{ creative.data.width }}x{{ creative.data.height }}</div>
@@ -70,7 +158,6 @@
                                      style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;">
                             </div>
                         {% elif creative.format.startswith('video_') %}
-                            <!-- Video ad preview -->
                             <div class="video-preview">
                                 <video controls style="max-width: 100%; height: auto; border-radius: 4px;">
                                     <source src="{{ creative.data.url }}" type="video/mp4">
@@ -78,7 +165,6 @@
                                 </video>
                             </div>
                         {% elif creative.format.startswith('native_') %}
-                            <!-- Native ad preview -->
                             <div class="native-preview">
                                 <div class="native-card">
                                     {% if creative.data.image_url %}
@@ -98,28 +184,28 @@
                                 </div>
                             </div>
                         {% else %}
-                            <!-- Generic preview -->
                             <div class="generic-preview">
                                 <a href="{{ creative.data.url }}" target="_blank" class="btn btn-secondary">
                                     View Creative Asset →
                                 </a>
                             </div>
                         {% endif %}
-                    {% elif creative.data.snippet %}
-                        <!-- HTML/Script snippet preview -->
-                        <div class="snippet-preview">
-                            <pre style="background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow-x: auto;">{{ creative.data.snippet }}</pre>
-                            <p style="margin-top: 0.5rem; color: #666; font-size: 0.9rem;">
-                                <em>Note: Snippet type creatives cannot be fully previewed in the admin UI.</em>
-                            </p>
-                        </div>
-                    {% else %}
-                        <!-- No preview available -->
-                        <div style="text-align: center; padding: 2rem; background: #f8f9fa; border-radius: 4px;">
-                            <p style="margin: 0; color: #999;">No preview available for this creative format.</p>
-                        </div>
-                    {% endif %}
-                </div>
+                    </div>
+
+                {% elif creative.data.snippet %}
+                    <!-- HTML/Script snippet preview -->
+                    <div class="snippet-preview">
+                        <pre style="background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow-x: auto;">{{ creative.data.snippet }}</pre>
+                        <p style="margin-top: 0.5rem; color: #666; font-size: 0.9rem;">
+                            <em>Note: Snippet type creatives cannot be fully previewed in the admin UI.</em>
+                        </p>
+                    </div>
+                {% else %}
+                    <!-- No preview available -->
+                    <div style="text-align: center; padding: 2rem; background: #f8f9fa; border-radius: 4px;">
+                        <p style="margin: 0; color: #999;">No preview available for this creative format.</p>
+                    </div>
+                {% endif %}
 
                 <!-- Creative Details -->
                 <div class="creative-details" style="margin-top: 1.5rem;">
@@ -355,10 +441,103 @@ code {
     border-radius: 3px;
     font-size: 0.85rem;
 }
+
+/* Multi-variant preview support (AdCP PR #119) */
+.preview-variant-selector,
+.preview-render-selector {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: white;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+}
+
+.variant-btn,
+.render-btn {
+    padding: 0.5rem 1rem;
+    border: 1px solid #ddd;
+    background: white;
+    color: #666;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.9rem;
+    margin-right: 0.5rem;
+}
+
+.variant-btn:hover,
+.render-btn:hover {
+    background: #f8f9fa;
+    border-color: #007bff;
+}
+
+.variant-btn.active,
+.render-btn.active {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.render-role-badge {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.15rem 0.5rem;
+    background: #e3f2fd;
+    color: #1976d2;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
 </style>
 
 <script>
 let currentCreativeId = null;
+
+// Multi-variant preview navigation (AdCP PR #119)
+function showVariant(creativeId, variantIndex) {
+    const container = document.querySelector(`.multi-preview-container[data-creative-id="${creativeId}"]`);
+    if (!container) return;
+
+    // Hide all variants
+    container.querySelectorAll('.preview-variant').forEach(variant => {
+        variant.style.display = 'none';
+    });
+
+    // Show selected variant
+    const selectedVariant = container.querySelector(`.preview-variant[data-variant-index="${variantIndex}"]`);
+    if (selectedVariant) {
+        selectedVariant.style.display = 'block';
+    }
+
+    // Update active button
+    container.querySelectorAll('.variant-btn').forEach((btn, idx) => {
+        btn.classList.toggle('active', idx === variantIndex);
+    });
+}
+
+function showRender(creativeId, variantIndex, renderIndex) {
+    const container = document.querySelector(`.multi-preview-container[data-creative-id="${creativeId}"]`);
+    if (!container) return;
+
+    const variant = container.querySelector(`.preview-variant[data-variant-index="${variantIndex}"]`);
+    if (!variant) return;
+
+    // Hide all renders in this variant
+    variant.querySelectorAll('.preview-render').forEach(render => {
+        render.style.display = 'none';
+    });
+
+    // Show selected render
+    const selectedRender = variant.querySelector(`.preview-render[data-render-index="${renderIndex}"]`);
+    if (selectedRender) {
+        selectedRender.style.display = 'block';
+    }
+
+    // Update active button
+    variant.querySelectorAll('.render-btn').forEach((btn, idx) => {
+        btn.classList.toggle('active', idx === renderIndex);
+    });
+}
 
 function approveCreative(creativeId) {
     if (!confirm('Are you sure you want to approve this creative?')) {
