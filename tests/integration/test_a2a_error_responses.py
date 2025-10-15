@@ -118,7 +118,6 @@ class TestA2AErrorPropagation:
                 principal_id="a2a_error_principal",
                 name="A2A Error Test Principal",
                 access_token="a2a_error_token_123",
-                approval_mode="manual",
                 platform_mappings={"mock": {"advertiser_id": "mock_adv_123"}},
             )
             session.add(principal)
@@ -138,10 +137,12 @@ class TestA2AErrorPropagation:
     def create_message_with_skill(self, skill_name: str, parameters: dict) -> Message:
         """Helper to create message with explicit skill invocation."""
         return Message(
+            message_id="msg_error_test",
+            context_id="ctx_error_test",
             role=Role.user,
             parts=[
                 Part(
-                    root={
+                    data={
                         "type": "skill",
                         "skill": {"name": skill_name, "arguments": parameters},
                     }

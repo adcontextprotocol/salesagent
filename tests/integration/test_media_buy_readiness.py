@@ -157,6 +157,7 @@ class TestMediaBuyReadinessService:
                 raw_request={"packages": [{"package_id": "pkg_1", "product_id": "prod_1"}]},
             )
             session.add(media_buy)
+            session.flush()  # Ensure MediaBuy exists before CreativeAssignment references it
 
             # Create pending creative
             creative = Creative(
@@ -170,6 +171,7 @@ class TestMediaBuyReadinessService:
                 data={},
             )
             session.add(creative)
+            session.flush()  # Ensure Creative exists before CreativeAssignment references it
 
             # Create assignment
             assignment = CreativeAssignment(
@@ -219,6 +221,7 @@ class TestMediaBuyReadinessService:
                 raw_request={"packages": [{"package_id": "pkg_1", "product_id": "prod_1"}]},
             )
             session.add(media_buy)
+            session.flush()  # Ensure MediaBuy exists before CreativeAssignment references it
 
             # Create approved creative
             creative = Creative(
@@ -232,6 +235,7 @@ class TestMediaBuyReadinessService:
                 data={},
             )
             session.add(creative)
+            session.flush()  # Ensure Creative exists before CreativeAssignment references it
 
             # Create assignment
             assignment = CreativeAssignment(
@@ -281,6 +285,7 @@ class TestMediaBuyReadinessService:
                 raw_request={"packages": [{"package_id": "pkg_1", "product_id": "prod_1"}]},
             )
             session.add(media_buy)
+            session.flush()  # Ensure MediaBuy exists before CreativeAssignment references it
 
             # Create approved creative
             creative = Creative(
@@ -294,6 +299,7 @@ class TestMediaBuyReadinessService:
                 data={},
             )
             session.add(creative)
+            session.flush()  # Ensure Creative exists before CreativeAssignment references it
 
             # Create assignment
             assignment = CreativeAssignment(

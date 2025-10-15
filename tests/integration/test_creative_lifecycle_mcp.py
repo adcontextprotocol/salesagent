@@ -694,6 +694,7 @@ class TestCreativeLifecycleMCP:
                 status="approved",
             )
             session.add_all([creative_1, creative_2])
+            session.flush()  # Ensure Creatives exist before CreativeAssignment references them
 
             # Create assignment for only one creative
             assignment = CreativeAssignment(

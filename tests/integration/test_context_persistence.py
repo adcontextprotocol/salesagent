@@ -11,6 +11,8 @@ from rich.console import Console
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.core.context_manager import ContextManager
+from src.core.database.database_session import get_db_session
+from src.core.database.models import Principal, Tenant
 
 console = Console()
 
@@ -20,6 +22,25 @@ def test_simplified_context(integration_db):
 
     console.print("[bold blue]Testing Simplified Context Persistence[/bold blue]")
     console.print("=" * 50)
+
+    # Create test tenant and principal (required for FK constraints)
+    with get_db_session() as session:
+        tenant = Tenant(
+            tenant_id="test_tenant",
+            name="Test Tenant",
+            subdomain="test-tenant",
+            ad_server="mock",
+        )
+        session.add(tenant)
+
+        principal = Principal(
+            tenant_id="test_tenant",
+            principal_id="test_principal",
+            name="Test Principal",
+            access_token="test-token-123",
+        )
+        session.add(principal)
+        session.commit()
 
     # Initialize context manager (will use the integration_db fixture)
     ctx_manager = ContextManager()
