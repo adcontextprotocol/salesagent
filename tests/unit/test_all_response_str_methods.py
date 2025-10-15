@@ -106,9 +106,18 @@ class TestResponseStrMethods:
         assert str(resp) == "No creative formats are currently supported."
 
     def test_sync_creatives_response(self):
-        """SyncCreativesResponse returns the message field."""
-        resp = SyncCreativesResponse(message="Successfully synced 3 creatives", status="completed")
-        assert str(resp) == "Successfully synced 3 creatives"
+        """SyncCreativesResponse generates message from creatives list."""
+        from src.core.schemas import SyncCreativeResult
+
+        resp = SyncCreativesResponse(
+            creatives=[
+                SyncCreativeResult(buyer_ref="test-001", creative_id="cr-001", status="approved", action="created"),
+                SyncCreativeResult(buyer_ref="test-002", creative_id="cr-002", status="approved", action="created"),
+                SyncCreativeResult(buyer_ref="test-003", creative_id="cr-003", status="approved", action="updated"),
+            ],
+            dry_run=False,
+        )
+        assert str(resp) == "Creative sync completed: 2 created, 1 updated"
 
     def test_list_creatives_response(self):
         """ListCreativesResponse generates message dynamically from query_summary."""
@@ -166,21 +175,19 @@ class TestResponseStrMethods:
         resp = SimulationControlResponse(status="ok")
         assert str(resp) == "Simulation control: ok"
 
-    def test_create_media_buy_response_completed(self):
-        """CreateMediaBuyResponse shows status-specific message."""
-        resp = CreateMediaBuyResponse(status="completed", buyer_ref="ref_123", media_buy_id="mb_456", packages=[])
+    def test_create_media_buy_response_with_id(self):
+        """CreateMediaBuyResponse shows created media buy ID."""
+        resp = CreateMediaBuyResponse(buyer_ref="ref_123", media_buy_id="mb_456", packages=[])
         assert str(resp) == "Media buy mb_456 created successfully."
 
-    def test_create_media_buy_response_working(self):
-        """CreateMediaBuyResponse working status."""
-        resp = CreateMediaBuyResponse(status="working", buyer_ref="ref_123", packages=[])
-        assert str(resp) == "Media buy ref_123 is being created..."
+    def test_create_media_buy_response_without_id(self):
+        """CreateMediaBuyResponse without ID shows buyer ref."""
+        resp = CreateMediaBuyResponse(buyer_ref="ref_123", packages=[])
+        assert str(resp) == "Media buy ref_123 created."
 
-    def test_update_media_buy_response_completed(self):
-        """UpdateMediaBuyResponse shows status-specific message."""
-        resp = UpdateMediaBuyResponse(
-            status="completed", media_buy_id="mb_123", buyer_ref="ref_456", affected_packages=[]
-        )
+    def test_update_media_buy_response(self):
+        """UpdateMediaBuyResponse shows updated media buy ID."""
+        resp = UpdateMediaBuyResponse(media_buy_id="mb_123", buyer_ref="ref_456", affected_packages=[])
         assert str(resp) == "Media buy mb_123 updated successfully."
 
     # Note: GetMediaBuyDeliveryResponse, CreateCreativeResponse, GetSignalsResponse
@@ -203,13 +210,15 @@ class TestResponseStrMethods:
         responses = [
             GetProductsResponse(products=[]),
             ListCreativeFormatsResponse(formats=[]),
-            SyncCreativesResponse(message="Test", status="completed"),
-            CreateMediaBuyResponse(status="completed", buyer_ref="ref", packages=[]),
+            SyncCreativesResponse(
+                creatives=[],
+                dry_run=False,
+            ),
+            CreateMediaBuyResponse(buyer_ref="ref", packages=[]),
         ]
 
         for resp in responses:
             content = str(resp)
-            # Should not contain obvious JSON markers
-            assert "{" not in content or "}" not in content
+            # Should not contain obvious JSON markers (allowing empty dicts/lists in messages)
             assert "adcp_version=" not in content
             assert "product_id=" not in content

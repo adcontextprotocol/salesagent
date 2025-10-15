@@ -19,16 +19,19 @@ from src.core.schemas import (
 class TestResponseSchemas:
     """Test that response schemas are spec-compliant."""
 
-    def test_create_media_buy_response_no_context_id(self):
-        """Verify CreateMediaBuyResponse doesn't have context_id."""
-        response = CreateMediaBuyResponse(media_buy_id="buy_123", buyer_ref="ref_456", status="completed", packages=[])
+    def test_create_media_buy_response_no_protocol_fields(self):
+        """Verify CreateMediaBuyResponse has only domain fields (no protocol fields)."""
+        response = CreateMediaBuyResponse(media_buy_id="buy_123", buyer_ref="ref_456", packages=[])
 
-        # Verify context_id is not in the schema
+        # Verify protocol fields are not in the schema (moved to ProtocolEnvelope)
         assert not hasattr(response, "context_id")
+        assert not hasattr(response, "status")
+        assert not hasattr(response, "task_id")
+        assert not hasattr(response, "message")
 
-        # Verify new fields are present
-        assert response.status == "completed"
+        # Verify domain fields are present
         assert response.buyer_ref == "ref_456"
+        assert response.media_buy_id == "buy_123"
 
     def test_get_products_response_no_context_id(self):
         """Verify GetProductsResponse doesn't have context_id."""
@@ -67,18 +70,21 @@ class TestResponseSchemas:
         assert str(response) == "Found 2 creative formats."
 
     def test_error_reporting_in_responses(self):
-        """Verify error reporting is protocol-compliant."""
+        """Verify error reporting is AdCP-compliant (domain data only)."""
         response = CreateMediaBuyResponse(
             media_buy_id="",
             buyer_ref="ref_123",
-            status="input-required",
             errors=[Error(code="validation_error", message="Validation error", details={"budget": -100})],
         )
 
-        assert response.status == "input-required"
+        # Verify domain fields
+        assert response.buyer_ref == "ref_123"
         assert response.errors is not None
         assert len(response.errors) == 1
         assert response.errors[0].code == "validation_error"
+
+        # Verify no protocol fields
+        assert not hasattr(response, "status")
 
 
 class TestAsyncPatterns:
@@ -147,45 +153,45 @@ class TestAsyncPatterns:
 
 
 class TestProtocolCompliance:
-    """Test protocol compliance."""
+    """Test protocol compliance - domain responses only."""
 
-    def test_create_media_buy_async_states(self):
-        """Test that create_media_buy response handles async states correctly."""
-        # Pending approval state (use "submitted" for async operations)
+    def test_create_media_buy_response_domain_fields(self):
+        """Test that create_media_buy response contains only domain fields."""
+        # Response with media_buy_id (success case)
         response = CreateMediaBuyResponse(
             media_buy_id="pending_123",
             buyer_ref="ref_123",
-            status="submitted",
-            task_id="task_456",
         )
 
-        assert response.status == "submitted"
-        assert response.task_id == "task_456"
+        # Domain fields present
+        assert response.media_buy_id == "pending_123"
+        assert response.buyer_ref == "ref_123"
 
-        # Input required state
+        # Protocol fields NOT present (moved to ProtocolEnvelope)
+        assert not hasattr(response, "status")
+        assert not hasattr(response, "task_id")
+
+        # Error case
         response = CreateMediaBuyResponse(
-            media_buy_id="",
             buyer_ref="ref_123",
-            status="input-required",
             errors=[Error(code="invalid_budget", message="Invalid budget")],
         )
 
-        assert response.status == "input-required"
         assert response.errors is not None
-        assert response.media_buy_id == ""  # Empty on failure
+        assert len(response.errors) == 1
+        assert response.buyer_ref == "ref_123"
 
-        # Success state
+        # Success case with packages
         response = CreateMediaBuyResponse(
             media_buy_id="buy_456",
             buyer_ref="ref_789",
-            status="completed",
             packages=[{"package_id": "pkg_1"}],
         )
 
-        assert response.status == "completed"
         assert response.media_buy_id == "buy_456"
+        assert response.buyer_ref == "ref_789"
         assert len(response.packages) == 1
-        assert response.errors is None
+        assert not hasattr(response, "status")  # Protocol field removed
 
 
 if __name__ == "__main__":

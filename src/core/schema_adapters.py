@@ -510,9 +510,12 @@ class ListAuthorizedPropertiesRequest(BaseModel):
 class CreateMediaBuyResponse(AdCPBaseModel):
     """Adapter for CreateMediaBuyResponse - adds __str__() and internal field handling.
 
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+
     Example:
         resp = CreateMediaBuyResponse(
-            status="completed",
             buyer_ref="buy_123",
             media_buy_id="mb_456",
             workflow_step_id="ws_789"  # Internal field
@@ -524,12 +527,10 @@ class CreateMediaBuyResponse(AdCPBaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    # Required AdCP fields
-    status: str = Field(..., description="Task status")
+    # Required AdCP domain fields
     buyer_ref: str = Field(..., description="Buyer's reference identifier")
 
-    # Optional AdCP fields
-    task_id: str | None = None
+    # Optional AdCP domain fields
     media_buy_id: str | None = None
     creative_deadline: Any | None = None
     packages: list[Any] | None = Field(default_factory=list)
@@ -553,15 +554,9 @@ class CreateMediaBuyResponse(AdCPBaseModel):
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer."""
-        if self.status == "completed":
-            return f"Media buy {self.media_buy_id or self.buyer_ref} created successfully."
-        elif self.status == "working":
-            return f"Media buy {self.buyer_ref} is being created..."
-        elif self.status == "submitted":
-            return f"Media buy {self.buyer_ref} submitted for approval."
-        elif self.status == "input-required":
-            return f"Media buy {self.buyer_ref} requires additional input."
-        return f"Media buy {self.buyer_ref}: {self.status}"
+        if self.media_buy_id:
+            return f"Media buy {self.media_buy_id} created successfully."
+        return f"Media buy {self.buyer_ref} created."
 
 
 # ============================================================================
@@ -570,24 +565,23 @@ class CreateMediaBuyResponse(AdCPBaseModel):
 
 
 class UpdateMediaBuyResponse(AdCPBaseModel):
-    """Adapter for UpdateMediaBuyResponse - adds __str__() for protocol abstraction."""
+    """Adapter for UpdateMediaBuyResponse - adds __str__() for protocol abstraction.
+
+    Per AdCP PR #113, protocol fields excluded from domain response.
+    """
 
     model_config = {"arbitrary_types_allowed": True}
 
-    status: str = Field(..., description="Task status")
     buyer_ref: str = Field(..., description="Buyer's reference identifier")
-    task_id: str | None = None
     media_buy_id: str | None = None
-    packages: list[Any] | None = None
+    affected_packages: list[Any] | None = Field(default_factory=list)
     errors: list[Any] | None = None
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer."""
-        if self.status == "completed":
-            return f"Media buy {self.media_buy_id or self.buyer_ref} updated successfully."
-        elif self.status == "working":
-            return f"Media buy {self.buyer_ref} is being updated..."
-        return f"Media buy {self.buyer_ref}: {self.status}"
+        if self.media_buy_id:
+            return f"Media buy {self.media_buy_id} updated successfully."
+        return f"Media buy {self.buyer_ref} updated."
 
 
 # ============================================================================
@@ -596,23 +590,50 @@ class UpdateMediaBuyResponse(AdCPBaseModel):
 
 
 class SyncCreativesResponse(AdCPBaseModel):
-    """Adapter for SyncCreativesResponse - keeps message field (it's in spec!)."""
+    """Adapter for SyncCreativesResponse - adds __str__() for protocol abstraction.
+
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+
+    Official spec: /schemas/v1/media-buy/sync-creatives-response.json
+    """
 
     model_config = {"arbitrary_types_allowed": True}
 
-    message: str = Field(..., description="Human-readable result message")
-    status: str = Field("completed", description="Task status")
-    context_id: str | None = None
-    task_id: str | None = None
-    dry_run: bool = Field(False, description="Whether this was a dry run")
-    summary: Any | None = None
-    results: list[Any] | None = None
-    assignments_summary: Any | None = None
-    assignment_results: list[Any] | None = None
+    # Required fields (per official spec)
+    creatives: list[Any] = Field(..., description="Results for each creative processed")
+
+    # Optional fields (per official spec)
+    dry_run: bool | None = Field(None, description="Whether this was a dry run (no actual changes made)")
 
     def __str__(self) -> str:
-        """Return message field (spec-compliant in this case)."""
-        return self.message
+        """Return human-readable summary message for protocol envelope."""
+        # Count actions from creatives list
+        created = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "created")
+        updated = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "updated")
+        deleted = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "deleted")
+        failed = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "failed")
+
+        parts = []
+        if created:
+            parts.append(f"{created} created")
+        if updated:
+            parts.append(f"{updated} updated")
+        if deleted:
+            parts.append(f"{deleted} deleted")
+        if failed:
+            parts.append(f"{failed} failed")
+
+        if parts:
+            msg = f"Creative sync completed: {', '.join(parts)}"
+        else:
+            msg = "Creative sync completed: no changes"
+
+        if self.dry_run:
+            msg += " (dry run)"
+
+        return msg
 
 
 # ============================================================================

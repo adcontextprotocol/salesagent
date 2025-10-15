@@ -2463,23 +2463,9 @@ def _sync_creatives_impl(
     if creatives_needing_approval:
         message += f", {len(creatives_needing_approval)} require approval"
 
-    # Build AdCP-compliant response
-    from src.core.schemas import SyncSummary
-
-    total_processed = created_count + updated_count + unchanged_count + failed_count
-
+    # Build AdCP-compliant response (per official spec)
     return SyncCreativesResponse(
-        message=message,
-        status="completed",
-        summary=SyncSummary(
-            total_processed=total_processed,
-            created=created_count,
-            updated=updated_count,
-            unchanged=unchanged_count,
-            failed=failed_count,
-            deleted=0,
-        ),
-        results=results,
+        creatives=results,
         dry_run=dry_run,
     )
 
@@ -3039,7 +3025,7 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
     # Generate context_id (required field)
     context_id = f"signals_{uuid.uuid4().hex[:12]}"
 
-    return GetSignalsResponse(signals=signals, message=message, context_id=context_id)
+    return GetSignalsResponse(signals=signals)
 
 
 @mcp.tool()
@@ -3111,31 +3097,31 @@ async def activate_signal(
         # Log activity
         log_tool_activity(context, "activate_signal", start_time)
 
-        # Build response with only adapter schema fields - use explicit fields for validator
-        if status == "processing":
+        # Build response with domain data only (protocol fields added by transport layer)
+        activation_details = {}
+        if estimated_activation_duration_minutes:
+            activation_details["estimated_duration_minutes"] = estimated_activation_duration_minutes
+        if decisioning_platform_segment_id:
+            activation_details["platform_segment_id"] = decisioning_platform_segment_id
+        if requires_approval:
+            activation_details["requires_approval"] = True
+
+        if requires_approval or not activation_success:
             return ActivateSignalResponse(
-                task_id=task_id,
-                status=status,
-                estimated_activation_duration_minutes=estimated_activation_duration_minutes,
-                decisioning_platform_segment_id=decisioning_platform_segment_id,
-            )
-        elif requires_approval or not activation_success:
-            return ActivateSignalResponse(
-                task_id=task_id,
-                status=status,
+                signal_id=signal_id,
+                activation_details=activation_details if activation_details else None,
                 errors=errors,
             )
         else:
             return ActivateSignalResponse(
-                task_id=task_id,
-                status=status,
+                signal_id=signal_id,
+                activation_details=activation_details if activation_details else None,
             )
 
     except Exception as e:
         logger.error(f"Error activating signal {signal_id}: {e}")
         return ActivateSignalResponse(
-            task_id=f"task_{uuid.uuid4().hex[:12]}",
-            status="failed",
+            signal_id=signal_id,
             errors=[{"code": "ACTIVATION_ERROR", "message": str(e)}],
         )
 
@@ -3940,9 +3926,8 @@ def _create_media_buy_impl(
         # Update workflow step as failed
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
 
-        # Return proper error response per AdCP spec (status=failed for validation errors)
+        # Return error response (protocol layer will add status="failed")
         return CreateMediaBuyResponse(
-            status="failed",  # AdCP spec: failed status for execution errors
             buyer_ref=buyer_ref or "unknown",
             errors=[Error(code="validation_error", message=str(e), details=None)],
         )
@@ -3953,7 +3938,6 @@ def _create_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return CreateMediaBuyResponse(
-            status="rejected",  # AdCP spec: rejected status for auth failures before execution
             buyer_ref=buyer_ref or "unknown",
             errors=[Error(code="authentication_error", message=error_msg, details=None)],
         )
@@ -4029,7 +4013,6 @@ def _create_media_buy_impl(
             return CreateMediaBuyResponse(
                 buyer_ref=req.buyer_ref,
                 media_buy_id=pending_media_buy_id,
-                status=TaskStatus.INPUT_REQUIRED,
                 creative_deadline=None,
                 errors=[{"code": "APPROVAL_REQUIRED", "message": response_msg}],
             )
@@ -4083,7 +4066,6 @@ def _create_media_buy_impl(
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return CreateMediaBuyResponse(
                     buyer_ref=req.buyer_ref,
-                    status=TaskStatus.FAILED,
                     errors=[{"code": "invalid_configuration", "message": err} for err in config_errors],
                 )
 
@@ -4149,9 +4131,7 @@ def _create_media_buy_impl(
                 console.print(f"[yellow]⚠️ Failed to send configuration approval Slack notification: {e}[/yellow]")
 
             return CreateMediaBuyResponse(
-                status="input-required",
                 buyer_ref=req.buyer_ref,
-                task_id=step.step_id,
                 workflow_step_id=step.step_id,
             )
 
@@ -4187,7 +4167,6 @@ def _create_media_buy_impl(
             error_msg = "start_time and end_time are required but were not properly set"
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return CreateMediaBuyResponse(
-                status="failed",  # AdCP spec: failed status for validation errors
                 buyer_ref=req.buyer_ref,
                 errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
             )
@@ -4382,18 +4361,14 @@ def _create_media_buy_impl(
             }
             response_packages.append(response_package)
 
-        # Create AdCP v2.4 compliant response
-        # Use adapter's status if provided, otherwise calculate based on flight dates
-        api_status = response.status if response.status else media_buy_status
-
         # Ensure buyer_ref is set (defensive check)
         buyer_ref_value = req.buyer_ref if req.buyer_ref else buyer_ref
         if not buyer_ref_value:
             logger.error(f"🚨 buyer_ref is missing! req.buyer_ref={req.buyer_ref}, buyer_ref={buyer_ref}")
             buyer_ref_value = f"missing-{response.media_buy_id}"
 
+        # Create AdCP response (protocol fields like status are added by ProtocolEnvelope wrapper)
         adcp_response = CreateMediaBuyResponse(
-            status=api_status,  # Use adapter status or time-based status (not hardcoded "working")
             buyer_ref=buyer_ref_value,
             media_buy_id=response.media_buy_id,
             packages=response_packages,
@@ -4481,9 +4456,7 @@ def _create_media_buy_impl(
 
         # Use explicit fields for validator (instead of **kwargs)
         modified_response = CreateMediaBuyResponse(
-            status=filtered_data["status"],
             buyer_ref=filtered_data["buyer_ref"],
-            task_id=filtered_data.get("task_id"),
             media_buy_id=filtered_data.get("media_buy_id"),
             creative_deadline=filtered_data.get("creative_deadline"),
             packages=filtered_data.get("packages"),
