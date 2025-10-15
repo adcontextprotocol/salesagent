@@ -71,7 +71,7 @@ class TestConfiguration:
     """Test configuration can be loaded."""
 
     @pytest.mark.smoke
-    def test_config_loader_works(self, test_database):
+    def test_config_loader_works(self):
         """Test that config loader can be imported and used."""
         from src.core.config_loader import load_config
 
