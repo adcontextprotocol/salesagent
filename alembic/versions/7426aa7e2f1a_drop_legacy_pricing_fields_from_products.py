@@ -29,6 +29,30 @@ def upgrade() -> None:
     - min_spend (DECIMAL)
     - currency (String) - legacy version, product currency is now in pricing_options
     """
+    # Safety check: Verify all products have pricing_options before dropping columns
+    connection = op.get_bind()
+    result = connection.execute(
+        sa.text(
+            "SELECT p.product_id, p.tenant_id "
+            "FROM products p "
+            "LEFT JOIN pricing_options po ON p.tenant_id = po.tenant_id AND p.product_id = po.product_id "
+            "WHERE po.id IS NULL"
+        )
+    )
+    orphaned_products = result.fetchall()
+
+    if orphaned_products:
+        product_list = ", ".join([f"{row[0]} (tenant: {row[1]})" for row in orphaned_products[:5]])
+        if len(orphaned_products) > 5:
+            product_list += f" ... and {len(orphaned_products) - 5} more"
+
+        raise ValueError(
+            f"Cannot drop legacy pricing fields - {len(orphaned_products)} products have no pricing_options configured. "
+            f"Products must have at least one pricing_option before migration can proceed. "
+            f"Affected products: {product_list}. "
+            f"Fix: Create pricing_options for these products before running migration."
+        )
+
     # Drop legacy pricing columns
     op.drop_column("products", "is_fixed_price")
     op.drop_column("products", "cpm")

@@ -623,8 +623,11 @@ class Product(BaseModel):
 
     # NEW: Pricing options (AdCP PR #88)
     # Note: This is populated from database relationship, not a column
-    pricing_options: list[PricingOption] | None = Field(
-        None, description="Available pricing models for this product (AdCP PR #88)"
+    # REQUIRED: All products must have at least one pricing option
+    pricing_options: list[PricingOption] = Field(
+        ...,
+        min_length=1,
+        description="Available pricing models for this product (AdCP PR #88). At least one pricing option is required.",
     )
 
     # Pricing fields (AdCP PR #88)
@@ -664,18 +667,15 @@ class Product(BaseModel):
 
     @model_validator(mode="after")
     def validate_pricing_fields(self) -> "Product":
-        """Validate that pricing_options are present per AdCP spec.
+        """Validate pricing_options per AdCP spec.
 
         Per AdCP PR #88: All products must use pricing_options.
+        Note: Pydantic already validates that pricing_options is present and non-empty
+        (via required field with min_length=1). This validator can be used for
+        additional business logic validation if needed in the future.
         """
-        has_pricing_options = self.pricing_options is not None and len(self.pricing_options) > 0
-
-        if not has_pricing_options:
-            raise ValueError(
-                "Product must have pricing_options with at least one pricing option. "
-                "See AdCP PR #88 for pricing options format."
-            )
-
+        # Pydantic handles the basic validation via Field(..., min_length=1)
+        # This validator is kept for future pricing-related validation logic
         return self
 
     @model_validator(mode="after")
