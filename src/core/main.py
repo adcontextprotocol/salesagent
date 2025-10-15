@@ -3715,9 +3715,10 @@ def _create_media_buy_impl(
         # Get products first to determine currency from pricing options
         with get_db_session() as session:
             # Get products from database
+            from sqlalchemy.orm import selectinload
             stmt = select(ProductModel).where(
                 ProductModel.tenant_id == tenant["tenant_id"], ProductModel.product_id.in_(product_ids)
-            )
+            ).options(selectinload(ProductModel.pricing_options))
             products = session.scalars(stmt).all()
 
             # Build product lookup map
@@ -6033,10 +6034,12 @@ def mark_task_complete(req, context):
 
 def get_product_catalog() -> list[Product]:
     """Get products for the current tenant."""
+    from sqlalchemy.orm import selectinload
+
     tenant = get_current_tenant()
 
     with get_db_session() as session:
-        stmt = select(ModelProduct).filter_by(tenant_id=tenant["tenant_id"])
+        stmt = select(ModelProduct).filter_by(tenant_id=tenant["tenant_id"]).options(selectinload(ModelProduct.pricing_options))
         products = session.scalars(stmt).all()
 
         loaded_products = []
@@ -6057,12 +6060,30 @@ def get_product_catalog() -> list[Product]:
             if not isinstance(format_ids, list):
                 format_ids = []
 
+            # Convert pricing_options ORM objects to Pydantic objects
+            from src.core.schemas import PricingOption as PricingOptionSchema
+
+            pricing_options = []
+            for po in product.pricing_options:
+                pricing_option_data = {
+                    "pricing_option_id": f"{po.pricing_model}_{po.currency}_{po.id}",
+                    "pricing_model": po.pricing_model,
+                    "rate": float(po.rate) if po.rate else None,
+                    "currency": po.currency,
+                    "is_fixed": po.is_fixed,
+                    "price_guidance": safe_json_parse(po.price_guidance) if po.price_guidance else None,
+                    "parameters": safe_json_parse(po.parameters) if po.parameters else None,
+                    "min_spend_per_package": float(po.min_spend_per_package) if po.min_spend_per_package else None,
+                }
+                pricing_options.append(PricingOptionSchema(**pricing_option_data))
+
             product_data = {
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
                 "formats": format_ids,
                 "delivery_type": product.delivery_type,
+                "pricing_options": pricing_options,
                 "measurement": (
                     safe_json_parse(product.measurement)
                     if hasattr(product, "measurement") and product.measurement
