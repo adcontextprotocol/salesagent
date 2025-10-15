@@ -8,6 +8,7 @@ preventing validation errors like the 'brief' is required issue.
 from unittest.mock import Mock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from src.core.schema_adapters import (
     GetProductsRequest,
@@ -45,12 +46,15 @@ class TestMCPContractValidation:
         assert request.brand_manifest == "purina cat food"
 
     def test_get_products_validation_still_enforced(self):
-        """Test that GetProductsRequest allows anonymous queries (no brand_manifest/brand_manifest)."""
-        # This now works - anonymous queries are supported
-        request = GetProductsRequest(brief="just a brief")
+        """Test that GetProductsRequest requires brand_manifest per AdCP spec."""
+        # brand_manifest is now REQUIRED (removed promoted_offering fallback per AdCP PR #126)
+        with pytest.raises(ValidationError):
+            GetProductsRequest(brief="just a brief")
+
+        # Should work with brand_manifest
+        request = GetProductsRequest(brief="just a brief", brand_manifest="Nike")
         assert request.brief == "just a brief"
-        assert request.brand_manifest is None
-        assert request.brand_manifest is None
+        assert request.brand_manifest == "Nike"
 
     def test_list_authorized_properties_minimal(self):
         """Test list_authorized_properties can be called with no parameters."""

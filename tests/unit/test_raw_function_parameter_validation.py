@@ -129,7 +129,8 @@ class TestRawFunctionParameterValidation:
 
         # This test documents what we expect the signature to be
         # If this fails, it means the helper changed and we need to update callers
-        expected_params = ["brief", "brand_manifest", "filters"]
+        # NOTE: brand_manifest is now first (required per AdCP spec after removing promoted_offering)
+        expected_params = ["brand_manifest", "brief", "filters"]
 
         assert params == expected_params, (
             f"create_get_products_request signature changed!\n"

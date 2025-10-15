@@ -220,7 +220,7 @@ class TestA2AResponseDictConstruction:
 
         # ✅ Uses __str__ method to generate message
         a2a_dict = {
-            "products": [p.model_dump() if hasattr(p, "model_dump") else p for p in response.product_id],
+            "products": [p.model_dump() if hasattr(p, "model_dump") else p for p in response.products],
             "message": str(response),  # Uses __str__ method
         }
 
