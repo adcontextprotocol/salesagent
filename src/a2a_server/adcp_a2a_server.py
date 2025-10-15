@@ -1221,24 +1221,14 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Convert response to A2A format (using AdCP spec field names)
+            # Convert response to A2A format (using AdCP v2.4 spec field names)
+            # Note: Per AdCP PR #113, protocol fields (status, task_id, message, context_id)
+            # are added by protocol layer, not in domain response
             return {
-                "success": response.status == "completed",
-                "status": response.status,
+                "success": True,
                 "message": str(response),  # Use __str__ method for human-readable message
-                "summary": response.summary.model_dump() if response.summary else None,
-                "results": [result.model_dump() for result in response.results] if response.results else [],
-                "assignments_summary": (
-                    response.assignments_summary.model_dump() if response.assignments_summary else None
-                ),
-                "assignment_results": (
-                    [result.model_dump() for result in response.assignment_results]
-                    if response.assignment_results
-                    else []
-                ),
-                "dry_run": response.dry_run,
-                "context_id": response.context_id,
-                "task_id": response.task_id,
+                "creatives": [result.model_dump() for result in response.creatives],
+                "dry_run": response.dry_run if response.dry_run is not None else False,
             }
 
         except Exception as e:
