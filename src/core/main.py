@@ -3512,7 +3512,7 @@ async def _validate_and_convert_format_ids(
                 "FORMAT_VALIDATION_ERROR",
                 f"Package {package_idx + 1}, format_ids[{idx}]: Plain string format IDs are not supported. "
                 f"Per AdCP spec, format_ids must be FormatId objects with {{agent_url, id}}. "
-                f"Example: {{\"agent_url\": \"https://creative.adcontextprotocol.org\", \"id\": \"{fmt_id}\"}}. "
+                f'Example: {{"agent_url": "https://creative.adcontextprotocol.org", "id": "{fmt_id}"}}. '
                 f"Use list_creative_formats to discover available formats.",
             )
 

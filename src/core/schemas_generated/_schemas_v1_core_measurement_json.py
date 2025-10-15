@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,7 +19,7 @@ class Measurement(BaseModel):
     attribution: Annotated[
         str, Field(description="Attribution methodology", examples=["deterministic_purchase", "probabilistic"])
     ]
-    window: Annotated[Optional[str], Field(description="Attribution window", examples=["30_days", "7_days"])] = None
+    window: Annotated[str | None, Field(description="Attribution window", examples=["30_days", "7_days"])] = None
     reporting: Annotated[
         str, Field(description="Reporting frequency and format", examples=["weekly_dashboard", "real_time_api"])
     ]

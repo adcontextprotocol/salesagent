@@ -293,8 +293,6 @@ def format_broken_links_report(broken_links: list[dict[str, Any]], page_url: str
         if link["error"]:
             report.append(f"       Error: {link['error']}")
 
-    report.append(
-        f"\nTotal: {len(broken_links)} broken link{'s' if len(broken_links) != 1 else ''}"
-    )
+    report.append(f"\nTotal: {len(broken_links)} broken link{'s' if len(broken_links) != 1 else ''}")
 
     return "\n".join(report)

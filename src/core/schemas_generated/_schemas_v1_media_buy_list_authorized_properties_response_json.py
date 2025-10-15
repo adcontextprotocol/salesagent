@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
@@ -80,7 +80,7 @@ class Property(BaseModel):
     name: Annotated[str, Field(description="Human-readable property name")]
     identifiers: Annotated[list[Identifier], Field(description="Array of identifiers for this property", min_length=1)]
     tags: Annotated[
-        Optional[list[Tag]],
+        list[Tag] | None,
         Field(description="Tags for categorization and grouping (e.g., network membership, content categories)"),
     ] = None
     publisher_domain: Annotated[
@@ -119,13 +119,13 @@ class Error(BaseModel):
     code: Annotated[str, Field(description="Error code for programmatic handling")]
     message: Annotated[str, Field(description="Human-readable error message")]
     field: Annotated[
-        Optional[str], Field(description="Field path associated with the error (e.g., 'packages[0].targeting')")
+        str | None, Field(description="Field path associated with the error (e.g., 'packages[0].targeting')")
     ] = None
-    suggestion: Annotated[Optional[str], Field(description="Suggested fix for the error")] = None
-    retry_after: Annotated[
-        Optional[float], Field(description="Seconds to wait before retrying the operation", ge=0.0)
-    ] = None
-    details: Annotated[Optional[Any], Field(description="Additional task-specific error details")] = None
+    suggestion: Annotated[str | None, Field(description="Suggested fix for the error")] = None
+    retry_after: Annotated[float | None, Field(description="Seconds to wait before retrying the operation", ge=0.0)] = (
+        None
+    )
+    details: Annotated[Any | None, Field(description="Additional task-specific error details")] = None
 
 
 class ListAuthorizedPropertiesResponse(BaseModel):
@@ -135,25 +135,23 @@ class ListAuthorizedPropertiesResponse(BaseModel):
     properties: Annotated[
         list[Property], Field(description="Array of all properties this agent is authorized to represent")
     ]
-    tags: Annotated[Optional[dict[str, Tags]], Field(description="Metadata for each tag referenced by properties")] = (
-        None
-    )
+    tags: Annotated[dict[str, Tags] | None, Field(description="Metadata for each tag referenced by properties")] = None
     primary_channels: Annotated[
-        Optional[list[PrimaryChannel]],
+        list[PrimaryChannel] | None,
         Field(
             description="Primary advertising channels represented in this property portfolio. Helps buying agents quickly filter relevance.",
             min_length=1,
         ),
     ] = None
     primary_countries: Annotated[
-        Optional[list[PrimaryCountry]],
+        list[PrimaryCountry] | None,
         Field(
             description="Primary countries (ISO 3166-1 alpha-2 codes) where properties are concentrated. Helps buying agents quickly filter relevance.",
             min_length=1,
         ),
     ] = None
     portfolio_description: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Markdown-formatted description of the property portfolio, including inventory types, audience characteristics, and special features.",
             max_length=5000,
@@ -161,7 +159,7 @@ class ListAuthorizedPropertiesResponse(BaseModel):
         ),
     ] = None
     advertising_policies: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Publisher's advertising content policies, restrictions, and guidelines in natural language. May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, or links to full policy documentation.",
             max_length=10000,
@@ -169,6 +167,6 @@ class ListAuthorizedPropertiesResponse(BaseModel):
         ),
     ] = None
     errors: Annotated[
-        Optional[list[Error]],
+        list[Error] | None,
         Field(description="Task-specific errors and warnings (e.g., property availability issues)"),
     ] = None

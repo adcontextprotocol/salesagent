@@ -17,8 +17,8 @@ from sqlalchemy import delete
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative, MediaBuy, Principal, Tenant
 from src.core.database.models import Product as ProductModel
-from src.core.schemas import Principal as PrincipalSchema
 from src.core.schemas import PricingOption, Product
+from src.core.schemas import Principal as PrincipalSchema
 from tests.utils.database_helpers import (
     create_tenant_with_timestamps,
 )

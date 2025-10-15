@@ -269,7 +269,9 @@ class SchemaSyncChecker:
                     self.log_success("✅ package-request.json correctly uses FormatId objects (not strings)")
                     return True
                 else:
-                    self.log_error(f"format_ids has unexpected $ref: {ref_value} (expected /schemas/v1/core/format-id.json)")
+                    self.log_error(
+                        f"format_ids has unexpected $ref: {ref_value} (expected /schemas/v1/core/format-id.json)"
+                    )
                     return False
             elif items_def.get("type") == "string":
                 self.log_error("❌ format_ids uses strings instead of FormatId objects! Schema is outdated.")

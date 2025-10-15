@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Optional, Union
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,19 +32,19 @@ class GetMediaBuyDeliveryRequest(BaseModel):
         extra="forbid",
     )
     media_buy_ids: Annotated[
-        Optional[list[str]], Field(description="Array of publisher media buy IDs to get delivery data for")
+        list[str] | None, Field(description="Array of publisher media buy IDs to get delivery data for")
     ] = None
     buyer_refs: Annotated[
-        Optional[list[str]], Field(description="Array of buyer reference IDs to get delivery data for")
+        list[str] | None, Field(description="Array of buyer reference IDs to get delivery data for")
     ] = None
     status_filter: Annotated[
-        Optional[Union[StatusFilter, list[StatusFilterEnum]]],
+        StatusFilter | list[StatusFilterEnum] | None,
         Field(description="Filter by status. Can be a single status or array of statuses"),
     ] = None
     start_date: Annotated[
-        Optional[str],
+        str | None,
         Field(description="Start date for reporting period (YYYY-MM-DD)", pattern="^\\d{4}-\\d{2}-\\d{2}$"),
     ] = None
     end_date: Annotated[
-        Optional[str], Field(description="End date for reporting period (YYYY-MM-DD)", pattern="^\\d{4}-\\d{2}-\\d{2}$")
+        str | None, Field(description="End date for reporting period (YYYY-MM-DD)", pattern="^\\d{4}-\\d{2}-\\d{2}$")
     ] = None

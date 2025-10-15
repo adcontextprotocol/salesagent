@@ -1302,61 +1302,6 @@ class AdCPRequestHandler(RequestHandler):
             logger.error(f"Error in list_creatives skill: {e}")
             raise ServerError(InternalError(message=f"Failed to list creatives: {str(e)}"))
 
-    async def _handle_add_creative_assets_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit add_creative_assets skill invocation."""
-        try:
-            # Create ToolContext from A2A auth info
-            tool_context = self._create_tool_context_from_a2a(
-                auth_token=auth_token,
-                tool_name="add_creative_assets",
-            )
-
-            # Map A2A parameters to AddCreativeAssetsRequest
-            # Required parameters
-            if "media_buy_id" not in parameters and "buyer_ref" not in parameters:
-                return {
-                    "success": False,
-                    "message": "Either 'media_buy_id' or 'buyer_ref' parameter is required",
-                    "required_parameters": ["media_buy_id OR buyer_ref", "assets"],
-                    "received_parameters": list(parameters.keys()),
-                }
-
-            if "assets" not in parameters:
-                return {
-                    "success": False,
-                    "message": "Missing required parameter: 'assets'",
-                    "required_parameters": ["media_buy_id OR buyer_ref", "assets"],
-                    "received_parameters": list(parameters.keys()),
-                }
-
-            # Create request object with parameter mapping
-            request = AddCreativeAssetsRequest(
-                media_buy_id=parameters.get("media_buy_id"),
-                buyer_ref=parameters.get("buyer_ref"),
-                assets=parameters["assets"],
-                creative_group_name=parameters.get("creative_group_name"),
-            )
-
-            # Call core function directly with individual parameters
-            response = core_add_creative_assets_tool(
-                assets=request.assets,
-                media_buy_id=request.media_buy_id,
-                buyer_ref=request.buyer_ref,
-                context=tool_context,
-            )
-
-            # Convert response to A2A format
-            return {
-                "success": True,
-                "message": str(response),  # Use __str__ method for human-readable message
-                "creative_ids": response.creative_ids if hasattr(response, "creative_ids") else [],
-                "status": response.status if hasattr(response, "status") else "pending_review",
-            }
-
-        except Exception as e:
-            logger.error(f"Error in add_creative_assets skill: {e}")
-            raise ServerError(InternalError(message=f"Failed to add creative assets: {str(e)}"))
-
     async def _handle_create_creative_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit create_creative skill invocation."""
         try:

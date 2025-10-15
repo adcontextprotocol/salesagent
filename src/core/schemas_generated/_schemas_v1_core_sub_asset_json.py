@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Optional, Union
+from typing import Annotated, Union
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, RootModel
 
@@ -22,7 +22,7 @@ class SubAsset1(BaseModel):
     asset_id: Annotated[str, Field(description="Unique identifier for the asset within the creative")]
     content_uri: Annotated[AnyUrl, Field(description="URL for media assets (images, videos, etc.)")]
     content: Annotated[
-        Optional[Union[str, list[str]]],
+        str | list[str] | None,
         Field(description="Text content for text-based assets like headlines, body text, CTA text, etc."),
     ] = None
 
@@ -38,16 +38,16 @@ class SubAsset2(BaseModel):
         ),
     ]
     asset_id: Annotated[str, Field(description="Unique identifier for the asset within the creative")]
-    content_uri: Annotated[Optional[AnyUrl], Field(description="URL for media assets (images, videos, etc.)")] = None
+    content_uri: Annotated[AnyUrl | None, Field(description="URL for media assets (images, videos, etc.)")] = None
     content: Annotated[
-        Union[str, list[str]],
+        str | list[str],
         Field(description="Text content for text-based assets like headlines, body text, CTA text, etc."),
     ]
 
 
 class SubAsset(RootModel[Union[SubAsset1, SubAsset2]]):
     root: Annotated[
-        Union[SubAsset1, SubAsset2],
+        SubAsset1 | SubAsset2,
         Field(
             description="Sub-asset for multi-asset creative formats, including carousel images and native ad template variables",
             title="Sub-Asset",

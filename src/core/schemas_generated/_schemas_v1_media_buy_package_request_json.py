@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import Annotated, Any, Literal, Union
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, RootModel
 
@@ -51,31 +51,31 @@ class TargetingOverlay(BaseModel):
         extra="forbid",
     )
     geo_country_any_of: Annotated[
-        Optional[list[GeoCountryAnyOfItem]],
+        list[GeoCountryAnyOfItem] | None,
         Field(
             description="Restrict delivery to specific countries (ISO codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_region_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific regions/states. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_metro_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific metro areas (DMA codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_postal_code_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific postal/ZIP codes. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     frequency_cap: Annotated[
-        Optional[FrequencyCap],
+        FrequencyCap | None,
         Field(description="Frequency capping settings for package-level application", title="Frequency Cap"),
     ] = None
 
@@ -86,10 +86,10 @@ class Assets(BaseModel):
     )
     asset_type: Literal["image"]
     url: Annotated[AnyUrl, Field(description="URL to the image asset")]
-    width: Annotated[Optional[int], Field(description="Image width in pixels", ge=1)] = None
-    height: Annotated[Optional[int], Field(description="Image height in pixels", ge=1)] = None
-    format: Annotated[Optional[str], Field(description="Image file format (jpg, png, gif, webp, etc.)")] = None
-    alt_text: Annotated[Optional[str], Field(description="Alternative text for accessibility")] = None
+    width: Annotated[int | None, Field(description="Image width in pixels", ge=1)] = None
+    height: Annotated[int | None, Field(description="Image height in pixels", ge=1)] = None
+    format: Annotated[str | None, Field(description="Image file format (jpg, png, gif, webp, etc.)")] = None
+    alt_text: Annotated[str | None, Field(description="Alternative text for accessibility")] = None
 
 
 class Assets90(BaseModel):
@@ -98,11 +98,11 @@ class Assets90(BaseModel):
     )
     asset_type: Literal["video"]
     url: Annotated[AnyUrl, Field(description="URL to the video asset")]
-    width: Annotated[Optional[int], Field(description="Video width in pixels", ge=1)] = None
-    height: Annotated[Optional[int], Field(description="Video height in pixels", ge=1)] = None
-    duration_ms: Annotated[Optional[int], Field(description="Video duration in milliseconds", ge=0)] = None
-    format: Annotated[Optional[str], Field(description="Video file format (mp4, webm, mov, etc.)")] = None
-    bitrate_kbps: Annotated[Optional[int], Field(description="Video bitrate in kilobits per second", ge=1)] = None
+    width: Annotated[int | None, Field(description="Video width in pixels", ge=1)] = None
+    height: Annotated[int | None, Field(description="Video height in pixels", ge=1)] = None
+    duration_ms: Annotated[int | None, Field(description="Video duration in milliseconds", ge=0)] = None
+    format: Annotated[str | None, Field(description="Video file format (mp4, webm, mov, etc.)")] = None
+    bitrate_kbps: Annotated[int | None, Field(description="Video bitrate in kilobits per second", ge=1)] = None
 
 
 class Assets91(BaseModel):
@@ -111,9 +111,9 @@ class Assets91(BaseModel):
     )
     asset_type: Literal["audio"]
     url: Annotated[AnyUrl, Field(description="URL to the audio asset")]
-    duration_ms: Annotated[Optional[int], Field(description="Audio duration in milliseconds", ge=0)] = None
-    format: Annotated[Optional[str], Field(description="Audio file format (mp3, wav, aac, etc.)")] = None
-    bitrate_kbps: Annotated[Optional[int], Field(description="Audio bitrate in kilobits per second", ge=1)] = None
+    duration_ms: Annotated[int | None, Field(description="Audio duration in milliseconds", ge=0)] = None
+    format: Annotated[str | None, Field(description="Audio file format (mp3, wav, aac, etc.)")] = None
+    bitrate_kbps: Annotated[int | None, Field(description="Audio bitrate in kilobits per second", ge=1)] = None
 
 
 class Assets92(BaseModel):
@@ -122,8 +122,8 @@ class Assets92(BaseModel):
     )
     asset_type: Literal["text"]
     content: Annotated[str, Field(description="Text content")]
-    max_length: Annotated[Optional[int], Field(description="Maximum character length constraint", ge=1)] = None
-    language: Annotated[Optional[str], Field(description="Language code (e.g., 'en', 'es', 'fr')")] = None
+    max_length: Annotated[int | None, Field(description="Maximum character length constraint", ge=1)] = None
+    language: Annotated[str | None, Field(description="Language code (e.g., 'en', 'es', 'fr')")] = None
 
 
 class Assets93(BaseModel):
@@ -132,7 +132,7 @@ class Assets93(BaseModel):
     )
     asset_type: Literal["html"]
     content: Annotated[str, Field(description="HTML content")]
-    version: Annotated[Optional[str], Field(description="HTML version (e.g., 'HTML5')")] = None
+    version: Annotated[str | None, Field(description="HTML version (e.g., 'HTML5')")] = None
 
 
 class Assets94(BaseModel):
@@ -141,7 +141,7 @@ class Assets94(BaseModel):
     )
     asset_type: Literal["css"]
     content: Annotated[str, Field(description="CSS content")]
-    media: Annotated[Optional[str], Field(description="CSS media query context (e.g., 'screen', 'print')")] = None
+    media: Annotated[str | None, Field(description="CSS media query context (e.g., 'screen', 'print')")] = None
 
 
 class ModuleType(Enum):
@@ -156,7 +156,7 @@ class Assets95(BaseModel):
     )
     asset_type: Literal["javascript"]
     content: Annotated[str, Field(description="JavaScript content")]
-    module_type: Annotated[Optional[ModuleType], Field(description="JavaScript module type")] = None
+    module_type: Annotated[ModuleType | None, Field(description="JavaScript module type")] = None
 
 
 class VastVersion(Enum):
@@ -192,19 +192,19 @@ class Assets96(BaseModel):
     )
     asset_type: Literal["vast"]
     url: Annotated[AnyUrl, Field(description="URL endpoint that returns VAST XML")]
-    content: Annotated[Optional[str], Field(description="Inline VAST XML content")] = None
-    vast_version: Annotated[Optional[VastVersion], Field(description="VAST specification version")] = None
+    content: Annotated[str | None, Field(description="Inline VAST XML content")] = None
+    vast_version: Annotated[VastVersion | None, Field(description="VAST specification version")] = None
     vpaid_enabled: Annotated[
-        Optional[bool], Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
+        bool | None, Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
     ] = None
     max_wrapper_depth: Annotated[
-        Optional[int], Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
+        int | None, Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
     ] = None
     duration_ms: Annotated[
-        Optional[int], Field(description="Expected video duration in milliseconds (if known)", ge=0)
+        int | None, Field(description="Expected video duration in milliseconds (if known)", ge=0)
     ] = None
     tracking_events: Annotated[
-        Optional[list[TrackingEvent]], Field(description="Tracking events supported by this VAST tag")
+        list[TrackingEvent] | None, Field(description="Tracking events supported by this VAST tag")
     ] = None
 
 
@@ -213,20 +213,20 @@ class Assets97(BaseModel):
         extra="forbid",
     )
     asset_type: Literal["vast"]
-    url: Annotated[Optional[AnyUrl], Field(description="URL endpoint that returns VAST XML")] = None
+    url: Annotated[AnyUrl | None, Field(description="URL endpoint that returns VAST XML")] = None
     content: Annotated[str, Field(description="Inline VAST XML content")]
-    vast_version: Annotated[Optional[VastVersion], Field(description="VAST specification version")] = None
+    vast_version: Annotated[VastVersion | None, Field(description="VAST specification version")] = None
     vpaid_enabled: Annotated[
-        Optional[bool], Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
+        bool | None, Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
     ] = None
     max_wrapper_depth: Annotated[
-        Optional[int], Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
+        int | None, Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
     ] = None
     duration_ms: Annotated[
-        Optional[int], Field(description="Expected video duration in milliseconds (if known)", ge=0)
+        int | None, Field(description="Expected video duration in milliseconds (if known)", ge=0)
     ] = None
     tracking_events: Annotated[
-        Optional[list[TrackingEvent]], Field(description="Tracking events supported by this VAST tag")
+        list[TrackingEvent] | None, Field(description="Tracking events supported by this VAST tag")
     ] = None
 
 
@@ -255,15 +255,15 @@ class Assets98(BaseModel):
     )
     asset_type: Literal["daast"]
     url: Annotated[AnyUrl, Field(description="URL endpoint that returns DAAST XML")]
-    content: Annotated[Optional[str], Field(description="Inline DAAST XML content")] = None
-    daast_version: Annotated[Optional[DaastVersion], Field(description="DAAST specification version")] = None
+    content: Annotated[str | None, Field(description="Inline DAAST XML content")] = None
+    daast_version: Annotated[DaastVersion | None, Field(description="DAAST specification version")] = None
     duration_ms: Annotated[
-        Optional[int], Field(description="Expected audio duration in milliseconds (if known)", ge=0)
+        int | None, Field(description="Expected audio duration in milliseconds (if known)", ge=0)
     ] = None
     tracking_events: Annotated[
-        Optional[list[TrackingEvent30]], Field(description="Tracking events supported by this DAAST tag")
+        list[TrackingEvent30] | None, Field(description="Tracking events supported by this DAAST tag")
     ] = None
-    companion_ads: Annotated[Optional[bool], Field(description="Whether companion display ads are included")] = None
+    companion_ads: Annotated[bool | None, Field(description="Whether companion display ads are included")] = None
 
 
 class Assets99(BaseModel):
@@ -271,22 +271,22 @@ class Assets99(BaseModel):
         extra="forbid",
     )
     asset_type: Literal["daast"]
-    url: Annotated[Optional[AnyUrl], Field(description="URL endpoint that returns DAAST XML")] = None
+    url: Annotated[AnyUrl | None, Field(description="URL endpoint that returns DAAST XML")] = None
     content: Annotated[str, Field(description="Inline DAAST XML content")]
-    daast_version: Annotated[Optional[DaastVersion], Field(description="DAAST specification version")] = None
+    daast_version: Annotated[DaastVersion | None, Field(description="DAAST specification version")] = None
     duration_ms: Annotated[
-        Optional[int], Field(description="Expected audio duration in milliseconds (if known)", ge=0)
+        int | None, Field(description="Expected audio duration in milliseconds (if known)", ge=0)
     ] = None
     tracking_events: Annotated[
-        Optional[list[TrackingEvent30]], Field(description="Tracking events supported by this DAAST tag")
+        list[TrackingEvent30] | None, Field(description="Tracking events supported by this DAAST tag")
     ] = None
-    companion_ads: Annotated[Optional[bool], Field(description="Whether companion display ads are included")] = None
+    companion_ads: Annotated[bool | None, Field(description="Whether companion display ads are included")] = None
 
 
 class Colors(BaseModel):
-    primary: Optional[str] = None
-    secondary: Optional[str] = None
-    accent: Optional[str] = None
+    primary: str | None = None
+    secondary: str | None = None
+    accent: str | None = None
 
 
 class Assets100(BaseModel):
@@ -295,11 +295,11 @@ class Assets100(BaseModel):
     )
     asset_type: Literal["promoted_offerings"]
     url: Annotated[
-        Optional[AnyUrl], Field(description="URL of the advertiser's brand or offering (e.g., https://retailer.com)")
+        AnyUrl | None, Field(description="URL of the advertiser's brand or offering (e.g., https://retailer.com)")
     ] = None
-    colors: Annotated[Optional[Colors], Field(description="Brand colors")] = None
-    fonts: Annotated[Optional[list[str]], Field(description="Brand fonts")] = None
-    tone: Annotated[Optional[str], Field(description="Brand tone/voice")] = None
+    colors: Annotated[Colors | None, Field(description="Brand colors")] = None
+    fonts: Annotated[list[str] | None, Field(description="Brand fonts")] = None
+    tone: Annotated[str | None, Field(description="Brand tone/voice")] = None
 
 
 class Assets101(BaseModel):
@@ -308,7 +308,7 @@ class Assets101(BaseModel):
     )
     asset_type: Literal["url"]
     url: Annotated[AnyUrl, Field(description="URL reference")]
-    description: Annotated[Optional[str], Field(description="Description of what this URL points to")] = None
+    description: Annotated[str | None, Field(description="Description of what this URL points to")] = None
 
 
 class Input(BaseModel):
@@ -316,9 +316,9 @@ class Input(BaseModel):
         extra="forbid",
     )
     name: Annotated[str, Field(description="Human-readable name for this preview variant")]
-    macros: Annotated[Optional[dict[str, str]], Field(description="Macro values to apply for this preview")] = None
+    macros: Annotated[dict[str, str] | None, Field(description="Macro values to apply for this preview")] = None
     context_description: Annotated[
-        Optional[str], Field(description="Natural language description of the context for AI-generated content")
+        str | None, Field(description="Natural language description of the context for AI-generated content")
     ] = None
 
 
@@ -332,31 +332,29 @@ class Creative(BaseModel):
     assets: Annotated[
         dict[
             str,
-            Union[
-                Assets,
-                Assets90,
-                Assets91,
-                Assets92,
-                Assets93,
-                Assets94,
-                Assets95,
-                Union[Assets96, Assets97],
-                Union[Assets98, Assets99],
-                Assets100,
-                Assets101,
-            ],
+            Assets
+            | Assets90
+            | Assets91
+            | Assets92
+            | Assets93
+            | Assets94
+            | Assets95
+            | Assets96
+            | Assets97
+            | Assets98
+            | Assets99
+            | Assets100
+            | Assets101,
         ],
         Field(description="Assets required by the format, keyed by asset_role"),
     ]
     inputs: Annotated[
-        Optional[list[Input]],
+        list[Input] | None,
         Field(description="Preview contexts for generative formats - defines what scenarios to generate previews for"),
     ] = None
-    tags: Annotated[Optional[list[str]], Field(description="User-defined tags for organization and searchability")] = (
-        None
-    )
+    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = None
     approved: Annotated[
-        Optional[bool],
+        bool | None,
         Field(
             description="For generative creatives: set to true to approve and finalize, false to request regeneration with updated assets/message. Omit for non-generative creatives."
         ),
@@ -372,11 +370,11 @@ class PackageRequest1(BaseModel):
         str, Field(description="Product ID for this package (recommended - replaces deprecated products array)")
     ]
     products: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(description="DEPRECATED: Use product_id instead. Array of product IDs - only first product will be used"),
     ] = None
     format_ids: Annotated[
-        Optional[list[FormatId]],
+        list[FormatId] | None,
         Field(
             description="Array of format IDs that will be used for this package - must be supported by the product. If omitted, defaults to all formats supported by the product.",
             min_length=1,
@@ -385,29 +383,29 @@ class PackageRequest1(BaseModel):
     budget: Annotated[
         float, Field(description="Budget allocation for this package in the media buy's currency", ge=0.0)
     ]
-    pacing: Annotated[Optional[Pacing], Field(description="Budget pacing strategy", title="Pacing")] = None
+    pacing: Annotated[Pacing | None, Field(description="Budget pacing strategy", title="Pacing")] = None
     pricing_option_id: Annotated[
         str, Field(description="ID of the selected pricing option from the product's pricing_options array")
     ]
     bid_price: Annotated[
-        Optional[float],
+        float | None,
         Field(description="Bid price for auction-based CPM pricing (required if using cpm-auction-option)", ge=0.0),
     ] = None
     targeting_overlay: Annotated[
-        Optional[TargetingOverlay],
+        TargetingOverlay | None,
         Field(
             description="Optional geographic refinements for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are primarily for geographic restrictions (RCT testing, regulatory compliance).",
             title="Targeting Overlay",
         ),
     ] = None
     creative_ids: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Creative IDs to assign to this package at creation time (references existing library creatives)"
         ),
     ] = None
     creatives: Annotated[
-        Optional[list[Creative]],
+        list[Creative] | None,
         Field(
             description="Full creative objects to upload and assign to this package at creation time (alternative to creative_ids - creatives will be added to library). Supports both static and generative creatives.",
             max_length=100,
@@ -420,31 +418,31 @@ class TargetingOverlay7(BaseModel):
         extra="forbid",
     )
     geo_country_any_of: Annotated[
-        Optional[list[GeoCountryAnyOfItem]],
+        list[GeoCountryAnyOfItem] | None,
         Field(
             description="Restrict delivery to specific countries (ISO codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_region_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific regions/states. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_metro_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific metro areas (DMA codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_postal_code_any_of: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Restrict delivery to specific postal/ZIP codes. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     frequency_cap: Annotated[
-        Optional[FrequencyCap],
+        FrequencyCap | None,
         Field(description="Frequency capping settings for package-level application", title="Frequency Cap"),
     ] = None
 
@@ -455,10 +453,10 @@ class Assets102(BaseModel):
     )
     asset_type: Literal["image"]
     url: Annotated[AnyUrl, Field(description="URL to the image asset")]
-    width: Annotated[Optional[int], Field(description="Image width in pixels", ge=1)] = None
-    height: Annotated[Optional[int], Field(description="Image height in pixels", ge=1)] = None
-    format: Annotated[Optional[str], Field(description="Image file format (jpg, png, gif, webp, etc.)")] = None
-    alt_text: Annotated[Optional[str], Field(description="Alternative text for accessibility")] = None
+    width: Annotated[int | None, Field(description="Image width in pixels", ge=1)] = None
+    height: Annotated[int | None, Field(description="Image height in pixels", ge=1)] = None
+    format: Annotated[str | None, Field(description="Image file format (jpg, png, gif, webp, etc.)")] = None
+    alt_text: Annotated[str | None, Field(description="Alternative text for accessibility")] = None
 
 
 class Assets103(BaseModel):
@@ -467,11 +465,11 @@ class Assets103(BaseModel):
     )
     asset_type: Literal["video"]
     url: Annotated[AnyUrl, Field(description="URL to the video asset")]
-    width: Annotated[Optional[int], Field(description="Video width in pixels", ge=1)] = None
-    height: Annotated[Optional[int], Field(description="Video height in pixels", ge=1)] = None
-    duration_ms: Annotated[Optional[int], Field(description="Video duration in milliseconds", ge=0)] = None
-    format: Annotated[Optional[str], Field(description="Video file format (mp4, webm, mov, etc.)")] = None
-    bitrate_kbps: Annotated[Optional[int], Field(description="Video bitrate in kilobits per second", ge=1)] = None
+    width: Annotated[int | None, Field(description="Video width in pixels", ge=1)] = None
+    height: Annotated[int | None, Field(description="Video height in pixels", ge=1)] = None
+    duration_ms: Annotated[int | None, Field(description="Video duration in milliseconds", ge=0)] = None
+    format: Annotated[str | None, Field(description="Video file format (mp4, webm, mov, etc.)")] = None
+    bitrate_kbps: Annotated[int | None, Field(description="Video bitrate in kilobits per second", ge=1)] = None
 
 
 class Assets104(BaseModel):
@@ -480,9 +478,9 @@ class Assets104(BaseModel):
     )
     asset_type: Literal["audio"]
     url: Annotated[AnyUrl, Field(description="URL to the audio asset")]
-    duration_ms: Annotated[Optional[int], Field(description="Audio duration in milliseconds", ge=0)] = None
-    format: Annotated[Optional[str], Field(description="Audio file format (mp3, wav, aac, etc.)")] = None
-    bitrate_kbps: Annotated[Optional[int], Field(description="Audio bitrate in kilobits per second", ge=1)] = None
+    duration_ms: Annotated[int | None, Field(description="Audio duration in milliseconds", ge=0)] = None
+    format: Annotated[str | None, Field(description="Audio file format (mp3, wav, aac, etc.)")] = None
+    bitrate_kbps: Annotated[int | None, Field(description="Audio bitrate in kilobits per second", ge=1)] = None
 
 
 class Assets105(BaseModel):
@@ -491,8 +489,8 @@ class Assets105(BaseModel):
     )
     asset_type: Literal["text"]
     content: Annotated[str, Field(description="Text content")]
-    max_length: Annotated[Optional[int], Field(description="Maximum character length constraint", ge=1)] = None
-    language: Annotated[Optional[str], Field(description="Language code (e.g., 'en', 'es', 'fr')")] = None
+    max_length: Annotated[int | None, Field(description="Maximum character length constraint", ge=1)] = None
+    language: Annotated[str | None, Field(description="Language code (e.g., 'en', 'es', 'fr')")] = None
 
 
 class Assets106(BaseModel):
@@ -501,7 +499,7 @@ class Assets106(BaseModel):
     )
     asset_type: Literal["html"]
     content: Annotated[str, Field(description="HTML content")]
-    version: Annotated[Optional[str], Field(description="HTML version (e.g., 'HTML5')")] = None
+    version: Annotated[str | None, Field(description="HTML version (e.g., 'HTML5')")] = None
 
 
 class Assets107(BaseModel):
@@ -510,7 +508,7 @@ class Assets107(BaseModel):
     )
     asset_type: Literal["css"]
     content: Annotated[str, Field(description="CSS content")]
-    media: Annotated[Optional[str], Field(description="CSS media query context (e.g., 'screen', 'print')")] = None
+    media: Annotated[str | None, Field(description="CSS media query context (e.g., 'screen', 'print')")] = None
 
 
 class Assets108(BaseModel):
@@ -519,7 +517,7 @@ class Assets108(BaseModel):
     )
     asset_type: Literal["javascript"]
     content: Annotated[str, Field(description="JavaScript content")]
-    module_type: Annotated[Optional[ModuleType], Field(description="JavaScript module type")] = None
+    module_type: Annotated[ModuleType | None, Field(description="JavaScript module type")] = None
 
 
 class TrackingEvent32(Enum):
@@ -547,19 +545,19 @@ class Assets109(BaseModel):
     )
     asset_type: Literal["vast"]
     url: Annotated[AnyUrl, Field(description="URL endpoint that returns VAST XML")]
-    content: Annotated[Optional[str], Field(description="Inline VAST XML content")] = None
-    vast_version: Annotated[Optional[VastVersion], Field(description="VAST specification version")] = None
+    content: Annotated[str | None, Field(description="Inline VAST XML content")] = None
+    vast_version: Annotated[VastVersion | None, Field(description="VAST specification version")] = None
     vpaid_enabled: Annotated[
-        Optional[bool], Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
+        bool | None, Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
     ] = None
     max_wrapper_depth: Annotated[
-        Optional[int], Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
+        int | None, Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
     ] = None
     duration_ms: Annotated[
-        Optional[int], Field(description="Expected video duration in milliseconds (if known)", ge=0)
+        int | None, Field(description="Expected video duration in milliseconds (if known)", ge=0)
     ] = None
     tracking_events: Annotated[
-        Optional[list[TrackingEvent32]], Field(description="Tracking events supported by this VAST tag")
+        list[TrackingEvent32] | None, Field(description="Tracking events supported by this VAST tag")
     ] = None
 
 
@@ -568,20 +566,20 @@ class Assets110(BaseModel):
         extra="forbid",
     )
     asset_type: Literal["vast"]
-    url: Annotated[Optional[AnyUrl], Field(description="URL endpoint that returns VAST XML")] = None
+    url: Annotated[AnyUrl | None, Field(description="URL endpoint that returns VAST XML")] = None
     content: Annotated[str, Field(description="Inline VAST XML content")]
-    vast_version: Annotated[Optional[VastVersion], Field(description="VAST specification version")] = None
+    vast_version: Annotated[VastVersion | None, Field(description="VAST specification version")] = None
     vpaid_enabled: Annotated[
-        Optional[bool], Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
+        bool | None, Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
     ] = None
     max_wrapper_depth: Annotated[
-        Optional[int], Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
+        int | None, Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
     ] = None
     duration_ms: Annotated[
-        Optional[int], Field(description="Expected video duration in milliseconds (if known)", ge=0)
+        int | None, Field(description="Expected video duration in milliseconds (if known)", ge=0)
     ] = None
     tracking_events: Annotated[
-        Optional[list[TrackingEvent32]], Field(description="Tracking events supported by this VAST tag")
+        list[TrackingEvent32] | None, Field(description="Tracking events supported by this VAST tag")
     ] = None
 
 
@@ -605,15 +603,15 @@ class Assets111(BaseModel):
     )
     asset_type: Literal["daast"]
     url: Annotated[AnyUrl, Field(description="URL endpoint that returns DAAST XML")]
-    content: Annotated[Optional[str], Field(description="Inline DAAST XML content")] = None
-    daast_version: Annotated[Optional[DaastVersion], Field(description="DAAST specification version")] = None
+    content: Annotated[str | None, Field(description="Inline DAAST XML content")] = None
+    daast_version: Annotated[DaastVersion | None, Field(description="DAAST specification version")] = None
     duration_ms: Annotated[
-        Optional[int], Field(description="Expected audio duration in milliseconds (if known)", ge=0)
+        int | None, Field(description="Expected audio duration in milliseconds (if known)", ge=0)
     ] = None
     tracking_events: Annotated[
-        Optional[list[TrackingEvent34]], Field(description="Tracking events supported by this DAAST tag")
+        list[TrackingEvent34] | None, Field(description="Tracking events supported by this DAAST tag")
     ] = None
-    companion_ads: Annotated[Optional[bool], Field(description="Whether companion display ads are included")] = None
+    companion_ads: Annotated[bool | None, Field(description="Whether companion display ads are included")] = None
 
 
 class Assets112(BaseModel):
@@ -621,16 +619,16 @@ class Assets112(BaseModel):
         extra="forbid",
     )
     asset_type: Literal["daast"]
-    url: Annotated[Optional[AnyUrl], Field(description="URL endpoint that returns DAAST XML")] = None
+    url: Annotated[AnyUrl | None, Field(description="URL endpoint that returns DAAST XML")] = None
     content: Annotated[str, Field(description="Inline DAAST XML content")]
-    daast_version: Annotated[Optional[DaastVersion], Field(description="DAAST specification version")] = None
+    daast_version: Annotated[DaastVersion | None, Field(description="DAAST specification version")] = None
     duration_ms: Annotated[
-        Optional[int], Field(description="Expected audio duration in milliseconds (if known)", ge=0)
+        int | None, Field(description="Expected audio duration in milliseconds (if known)", ge=0)
     ] = None
     tracking_events: Annotated[
-        Optional[list[TrackingEvent34]], Field(description="Tracking events supported by this DAAST tag")
+        list[TrackingEvent34] | None, Field(description="Tracking events supported by this DAAST tag")
     ] = None
-    companion_ads: Annotated[Optional[bool], Field(description="Whether companion display ads are included")] = None
+    companion_ads: Annotated[bool | None, Field(description="Whether companion display ads are included")] = None
 
 
 class Assets113(BaseModel):
@@ -639,11 +637,11 @@ class Assets113(BaseModel):
     )
     asset_type: Literal["promoted_offerings"]
     url: Annotated[
-        Optional[AnyUrl], Field(description="URL of the advertiser's brand or offering (e.g., https://retailer.com)")
+        AnyUrl | None, Field(description="URL of the advertiser's brand or offering (e.g., https://retailer.com)")
     ] = None
-    colors: Annotated[Optional[Colors], Field(description="Brand colors")] = None
-    fonts: Annotated[Optional[list[str]], Field(description="Brand fonts")] = None
-    tone: Annotated[Optional[str], Field(description="Brand tone/voice")] = None
+    colors: Annotated[Colors | None, Field(description="Brand colors")] = None
+    fonts: Annotated[list[str] | None, Field(description="Brand fonts")] = None
+    tone: Annotated[str | None, Field(description="Brand tone/voice")] = None
 
 
 class Assets114(BaseModel):
@@ -652,7 +650,7 @@ class Assets114(BaseModel):
     )
     asset_type: Literal["url"]
     url: Annotated[AnyUrl, Field(description="URL reference")]
-    description: Annotated[Optional[str], Field(description="Description of what this URL points to")] = None
+    description: Annotated[str | None, Field(description="Description of what this URL points to")] = None
 
 
 class Creative6(BaseModel):
@@ -665,31 +663,29 @@ class Creative6(BaseModel):
     assets: Annotated[
         dict[
             str,
-            Union[
-                Assets102,
-                Assets103,
-                Assets104,
-                Assets105,
-                Assets106,
-                Assets107,
-                Assets108,
-                Union[Assets109, Assets110],
-                Union[Assets111, Assets112],
-                Assets113,
-                Assets114,
-            ],
+            Assets102
+            | Assets103
+            | Assets104
+            | Assets105
+            | Assets106
+            | Assets107
+            | Assets108
+            | Assets109
+            | Assets110
+            | Assets111
+            | Assets112
+            | Assets113
+            | Assets114,
         ],
         Field(description="Assets required by the format, keyed by asset_role"),
     ]
     inputs: Annotated[
-        Optional[list[Input]],
+        list[Input] | None,
         Field(description="Preview contexts for generative formats - defines what scenarios to generate previews for"),
     ] = None
-    tags: Annotated[Optional[list[str]], Field(description="User-defined tags for organization and searchability")] = (
-        None
-    )
+    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = None
     approved: Annotated[
-        Optional[bool],
+        bool | None,
         Field(
             description="For generative creatives: set to true to approve and finalize, false to request regeneration with updated assets/message. Omit for non-generative creatives."
         ),
@@ -702,7 +698,7 @@ class PackageRequest2(BaseModel):
     )
     buyer_ref: Annotated[str, Field(description="Buyer's reference identifier for this package")]
     product_id: Annotated[
-        Optional[str],
+        str | None,
         Field(description="Product ID for this package (recommended - replaces deprecated products array)"),
     ] = None
     products: Annotated[
@@ -710,7 +706,7 @@ class PackageRequest2(BaseModel):
         Field(description="DEPRECATED: Use product_id instead. Array of product IDs - only first product will be used"),
     ]
     format_ids: Annotated[
-        Optional[list[FormatId]],
+        list[FormatId] | None,
         Field(
             description="Array of format IDs that will be used for this package - must be supported by the product. If omitted, defaults to all formats supported by the product.",
             min_length=1,
@@ -719,29 +715,29 @@ class PackageRequest2(BaseModel):
     budget: Annotated[
         float, Field(description="Budget allocation for this package in the media buy's currency", ge=0.0)
     ]
-    pacing: Annotated[Optional[Pacing], Field(description="Budget pacing strategy", title="Pacing")] = None
+    pacing: Annotated[Pacing | None, Field(description="Budget pacing strategy", title="Pacing")] = None
     pricing_option_id: Annotated[
         str, Field(description="ID of the selected pricing option from the product's pricing_options array")
     ]
     bid_price: Annotated[
-        Optional[float],
+        float | None,
         Field(description="Bid price for auction-based CPM pricing (required if using cpm-auction-option)", ge=0.0),
     ] = None
     targeting_overlay: Annotated[
-        Optional[TargetingOverlay7],
+        TargetingOverlay7 | None,
         Field(
             description="Optional geographic refinements for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are primarily for geographic restrictions (RCT testing, regulatory compliance).",
             title="Targeting Overlay",
         ),
     ] = None
     creative_ids: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         Field(
             description="Creative IDs to assign to this package at creation time (references existing library creatives)"
         ),
     ] = None
     creatives: Annotated[
-        Optional[list[Creative6]],
+        list[Creative6] | None,
         Field(
             description="Full creative objects to upload and assign to this package at creation time (alternative to creative_ids - creatives will be added to library). Supports both static and generative creatives.",
             max_length=100,
@@ -751,6 +747,6 @@ class PackageRequest2(BaseModel):
 
 class PackageRequest(RootModel[Union[PackageRequest1, PackageRequest2]]):
     root: Annotated[
-        Union[PackageRequest1, PackageRequest2],
+        PackageRequest1 | PackageRequest2,
         Field(description="Package configuration for media buy creation", title="Package Request"),
     ]

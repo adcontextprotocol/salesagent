@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Literal, Union
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, RootModel
 
@@ -43,19 +43,19 @@ class VastAsset1(BaseModel):
     )
     asset_type: Literal["vast"]
     url: Annotated[AnyUrl, Field(description="URL endpoint that returns VAST XML")]
-    content: Annotated[Optional[str], Field(description="Inline VAST XML content")] = None
-    vast_version: Annotated[Optional[VastVersion], Field(description="VAST specification version")] = None
+    content: Annotated[str | None, Field(description="Inline VAST XML content")] = None
+    vast_version: Annotated[VastVersion | None, Field(description="VAST specification version")] = None
     vpaid_enabled: Annotated[
-        Optional[bool], Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
+        bool | None, Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
     ] = None
     max_wrapper_depth: Annotated[
-        Optional[int], Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
+        int | None, Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
     ] = None
     duration_ms: Annotated[
-        Optional[int], Field(description="Expected video duration in milliseconds (if known)", ge=0)
+        int | None, Field(description="Expected video duration in milliseconds (if known)", ge=0)
     ] = None
     tracking_events: Annotated[
-        Optional[list[TrackingEvent]], Field(description="Tracking events supported by this VAST tag")
+        list[TrackingEvent] | None, Field(description="Tracking events supported by this VAST tag")
     ] = None
 
 
@@ -64,25 +64,25 @@ class VastAsset2(BaseModel):
         extra="forbid",
     )
     asset_type: Literal["vast"]
-    url: Annotated[Optional[AnyUrl], Field(description="URL endpoint that returns VAST XML")] = None
+    url: Annotated[AnyUrl | None, Field(description="URL endpoint that returns VAST XML")] = None
     content: Annotated[str, Field(description="Inline VAST XML content")]
-    vast_version: Annotated[Optional[VastVersion], Field(description="VAST specification version")] = None
+    vast_version: Annotated[VastVersion | None, Field(description="VAST specification version")] = None
     vpaid_enabled: Annotated[
-        Optional[bool], Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
+        bool | None, Field(description="Whether VPAID (Video Player-Ad Interface Definition) is supported")
     ] = None
     max_wrapper_depth: Annotated[
-        Optional[int], Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
+        int | None, Field(description="Maximum allowed wrapper/redirect depth", ge=0, le=10)
     ] = None
     duration_ms: Annotated[
-        Optional[int], Field(description="Expected video duration in milliseconds (if known)", ge=0)
+        int | None, Field(description="Expected video duration in milliseconds (if known)", ge=0)
     ] = None
     tracking_events: Annotated[
-        Optional[list[TrackingEvent]], Field(description="Tracking events supported by this VAST tag")
+        list[TrackingEvent] | None, Field(description="Tracking events supported by this VAST tag")
     ] = None
 
 
 class VastAsset(RootModel[Union[VastAsset1, VastAsset2]]):
     root: Annotated[
-        Union[VastAsset1, VastAsset2],
+        VastAsset1 | VastAsset2,
         Field(description="VAST (Video Ad Serving Template) tag for third-party video ad serving", title="VAST Asset"),
     ]
