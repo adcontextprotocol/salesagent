@@ -3938,7 +3938,7 @@ def _create_media_buy_impl(
 
     except (ValueError, PermissionError) as e:
         # Update workflow step as failed
-        ctx_manager.update_workflow_step(str(step.step_id), status="failed", error_message=str(e))
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
 
         # Return proper error response per AdCP spec (status=failed for validation errors)
         return CreateMediaBuyResponse(
@@ -3951,7 +3951,7 @@ def _create_media_buy_impl(
     principal = get_principal_object(principal_id)
     if not principal:
         error_msg = f"Principal {principal_id} not found"
-        ctx_manager.update_workflow_step(str(step.step_id), status="failed", error_message=error_msg)
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return CreateMediaBuyResponse(
             status="rejected",  # AdCP spec: rejected status for auth failures before execution
             buyer_ref=buyer_ref or "unknown",
@@ -4080,7 +4080,7 @@ def _create_media_buy_impl(
                 error_detail = "GAM configuration validation failed:\n" + "\n".join(
                     f"  • {err}" for err in config_errors
                 )
-                ctx_manager.update_workflow_step(str(step.step_id), status="failed", error_message=error_detail)
+                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return CreateMediaBuyResponse(
                     buyer_ref=req.buyer_ref,
                     status=TaskStatus.FAILED,
@@ -4151,8 +4151,8 @@ def _create_media_buy_impl(
             return CreateMediaBuyResponse(
                 status="input-required",
                 buyer_ref=req.buyer_ref,
-                task_id=str(step.step_id),
-                workflow_step_id=str(step.step_id),
+                task_id=step.step_id,
+                workflow_step_id=step.step_id,
             )
 
         # Continue with synchronized media buy creation
@@ -4185,7 +4185,7 @@ def _create_media_buy_impl(
         # Defensive null check: ensure start_time and end_time are set
         if not req.start_time or not req.end_time:
             error_msg = "start_time and end_time are required but were not properly set"
-            ctx_manager.update_workflow_step(str(step.step_id), status="failed", error_message=error_msg)
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return CreateMediaBuyResponse(
                 status="failed",  # AdCP spec: failed status for validation errors
                 buyer_ref=req.buyer_ref,
