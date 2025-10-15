@@ -16,7 +16,16 @@ def test_database_url():
     """Get PostgreSQL test database URL.
 
     REQUIRES: PostgreSQL container running (via run_all_tests.sh ci)
+
+    NOTE: This fixture is SKIPPED for integration tests in CI mode.
+    Integration tests use the function-scoped 'integration_db' fixture instead.
     """
+    # CRITICAL: Skip this fixture if integration_db is being used (CI mode)
+    # integration_db sets ADCP_TEST_DB_URL, which indicates we should use
+    # the function-scoped fixture instead of this session-scoped one.
+    if os.environ.get("ADCP_TEST_DB_URL"):
+        pytest.skip("Using integration_db fixture instead (CI mode)")
+
     # Use TEST_DATABASE_URL if set, otherwise DATABASE_URL (for CI)
     url = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
 
