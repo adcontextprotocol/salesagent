@@ -1946,24 +1946,30 @@ def _sync_creatives_impl(
                                             # Get first preview variant
                                             first_preview = preview_result["previews"][0]
 
-                                            # Store preview URL as the creative URL
-                                            if first_preview.get("preview_url"):
-                                                data["url"] = first_preview["preview_url"]
-                                                changes.append("url")
-                                                logger.info(
-                                                    f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
-                                                )
+                                            # Get first render from the preview (per AdCP PR #119)
+                                            renders = first_preview.get("renders", [])
+                                            if renders:
+                                                first_render = renders[0]
 
-                                            # Extract dimensions if available
-                                            if first_preview.get("width"):
-                                                data["width"] = first_preview["width"]
-                                                changes.append("width")
-                                            if first_preview.get("height"):
-                                                data["height"] = first_preview["height"]
-                                                changes.append("height")
-                                            if first_preview.get("duration"):
-                                                data["duration"] = first_preview["duration"]
-                                                changes.append("duration")
+                                                # Store preview URL from render
+                                                if first_render.get("preview_url"):
+                                                    data["url"] = first_render["preview_url"]
+                                                    changes.append("url")
+                                                    logger.info(
+                                                        f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
+                                                    )
+
+                                                # Extract dimensions from dimensions object
+                                                dimensions = first_render.get("dimensions", {})
+                                                if dimensions.get("width"):
+                                                    data["width"] = dimensions["width"]
+                                                    changes.append("width")
+                                                if dimensions.get("height"):
+                                                    data["height"] = dimensions["height"]
+                                                    changes.append("height")
+                                                if dimensions.get("duration"):
+                                                    data["duration"] = dimensions["duration"]
+                                                    changes.append("duration")
 
                                         logger.info(
                                             f"[sync_creatives] Preview data populated for update: "
@@ -2102,20 +2108,26 @@ def _sync_creatives_impl(
                                         # Get first preview variant
                                         first_preview = preview_result["previews"][0]
 
-                                        # Store preview URL as the creative URL
-                                        if first_preview.get("preview_url"):
-                                            data["url"] = first_preview["preview_url"]
-                                            logger.info(
-                                                f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
-                                            )
+                                        # Get first render from the preview (per AdCP PR #119)
+                                        renders = first_preview.get("renders", [])
+                                        if renders:
+                                            first_render = renders[0]
 
-                                        # Extract dimensions if available
-                                        if first_preview.get("width"):
-                                            data["width"] = first_preview["width"]
-                                        if first_preview.get("height"):
-                                            data["height"] = first_preview["height"]
-                                        if first_preview.get("duration"):
-                                            data["duration"] = first_preview["duration"]
+                                            # Store preview URL from render
+                                            if first_render.get("preview_url"):
+                                                data["url"] = first_render["preview_url"]
+                                                logger.info(
+                                                    f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
+                                                )
+
+                                            # Extract dimensions from dimensions object
+                                            dimensions = first_render.get("dimensions", {})
+                                            if dimensions.get("width"):
+                                                data["width"] = dimensions["width"]
+                                            if dimensions.get("height"):
+                                                data["height"] = dimensions["height"]
+                                            if dimensions.get("duration"):
+                                                data["duration"] = dimensions["duration"]
 
                                     logger.info(
                                         f"[sync_creatives] Preview data populated: "
