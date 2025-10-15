@@ -767,6 +767,60 @@ tests/
 └── ui/           # Admin UI tests
 ```
 
+### Database Test Fixtures - MANDATORY
+
+**🚨 CRITICAL**: Use the correct fixture based on test type.
+
+**Integration Tests** (tests/integration/):
+```python
+# ✅ CORRECT - Use integration_db fixture
+@pytest.mark.requires_db
+def test_something(integration_db):
+    """Integration test with real PostgreSQL database."""
+    with get_db_session() as session:
+        # Your test code using real database
+        tenant = Tenant(...)
+        session.add(tenant)
+        session.commit()
+```
+
+**Unit Tests** (tests/unit/):
+```python
+# ✅ CORRECT - Mock database calls
+def test_something():
+    """Unit test with mocked database."""
+    with patch('src.core.database.database_session.get_db_session') as mock_db:
+        # Your test code with mocked database
+        pass
+```
+
+**⚠️ Common Mistakes:**
+
+```python
+# ❌ WRONG - Don't use db_session in integration tests
+def test_something(db_session):  # This expects DATABASE_URL already set
+    tenant = Tenant(...)
+    db_session.add(tenant)  # Will fail in CI
+
+# ❌ WRONG - Don't use @pytest.mark.requires_db in tests/unit/
+# Unit tests should mock the database, not use a real one
+```
+
+**When to use each:**
+- **integration_db**: Integration tests that need real PostgreSQL (CI sets this up)
+- **db_session**: Legacy fixture, being phased out - use integration_db instead
+- **Mock**: Unit tests - mock get_db_session() for fast, isolated tests
+
+**Fixture Details:**
+- `integration_db`: Creates isolated PostgreSQL database per test (via tests/integration/conftest.py)
+- `db_session`: Expects DATABASE_URL to be set, returns session (via tests/conftest_db.py)
+- Unit tests use auto-mock fixture that mocks get_db_session() automatically
+
+**Migration Path:**
+- ✅ New integration tests: Always use `integration_db`
+- ✅ Existing integration tests: Convert from `db_session` to `integration_db` when touched
+- ✅ Unit tests with `@pytest.mark.requires_db`: Consider moving to tests/integration/
+
 ### Quality Enforcement
 **🚨 Pre-commit hooks enforce:**
 - Max 10 mocks per test file
