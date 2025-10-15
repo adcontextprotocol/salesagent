@@ -52,34 +52,6 @@ class TestPackageProductExtraction:
         product_ids = req.get_product_ids()
         assert product_ids == []
 
-    def test_get_product_ids_fallback_to_legacy_product_ids(self):
-        """Test fallback to legacy product_ids field when no packages."""
-        req = CreateMediaBuyRequest(
-            brand_manifest="Test",
-            buyer_ref="test4",
-            po_number="PO-004",
-            product_ids=["legacy1", "legacy2"],
-        )
-
-        product_ids = req.get_product_ids()
-        assert product_ids == ["legacy1", "legacy2"]
-
-    def test_get_product_ids_packages_override_legacy(self):
-        """Test that packages take precedence over legacy product_ids."""
-        req = CreateMediaBuyRequest(
-            brand_manifest="Test",
-            buyer_ref="test5",
-            po_number="PO-005",
-            packages=[Package(buyer_ref="pkg1", product_id="prod1")],
-            product_ids=["legacy1", "legacy2"],  # Should be ignored
-        )
-
-        product_ids = req.get_product_ids()
-        # Should get from packages, not legacy product_ids
-        assert product_ids == ["prod1"]
-        assert "legacy1" not in product_ids
-        assert "legacy2" not in product_ids
-
     def test_get_product_ids_skips_packages_without_product_id(self):
         """Test that packages without product_id are skipped."""
         req = CreateMediaBuyRequest(
