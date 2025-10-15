@@ -72,6 +72,12 @@ def integration_db():
     os.environ["DB_TYPE"] = "postgresql"
     db_path = unique_db_name  # For cleanup reference
 
+    # CRITICAL: Reset engine cache IMMEDIATELY after changing DATABASE_URL
+    # This must happen BEFORE any imports that might trigger database connections
+    from src.core.database.database_session import reset_engine
+
+    reset_engine()
+
     # Create the database without running migrations
     # (migrations are for production, tests create tables directly)
     from sqlalchemy import create_engine
