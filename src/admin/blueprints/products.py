@@ -743,7 +743,9 @@ def edit_product(tenant_id, product_id):
 
                 # Update pricing options (AdCP PR #88)
                 # Delete existing pricing options and recreate from form
-                db_session.query(PricingOption).filter_by(tenant_id=tenant_id, product_id=product_id).delete()  # legacy-ok
+                db_session.query(PricingOption).filter_by(  # legacy-ok
+                    tenant_id=tenant_id, product_id=product_id
+                ).delete()
 
                 pricing_options_data = parse_pricing_options_from_form(form_data)
                 if pricing_options_data:
