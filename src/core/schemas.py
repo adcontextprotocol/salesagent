@@ -1996,12 +1996,9 @@ class Package(BaseModel):
     creative_assignments: list[dict[str, Any]] | None = Field(
         None, description="Creative assets assigned to this package"
     )
-    formats_to_provide: list[str] | None = Field(
-        None, description="Format IDs that creative assets will be provided for this package (per AdCP spec)"
-    )
     format_ids_to_provide: list[FormatId] | None = Field(
         None,
-        description="DEPRECATED: Format IDs as FormatId objects (use formats_to_provide instead per AdCP v2.4)",
+        description="Format IDs that creative assets will be provided for this package (per AdCP v2.4 spec)",
     )
 
     @model_validator(mode="before")
@@ -2009,9 +2006,8 @@ class Package(BaseModel):
     def migrate_format_ids_to_format_ids_to_provide(cls, values: dict) -> dict:
         """Migrate legacy format_ids field to format_ids_to_provide for backward compatibility.
 
-        Handles migration from old formats:
+        Handles migration from old format:
         - format_ids (array of strings)
-        - formats_to_provide (array of strings)
         To new AdCP v2.4 format:
         - format_ids_to_provide (array of FormatId objects)
         """
@@ -2022,11 +2018,9 @@ class Package(BaseModel):
         if "format_ids_to_provide" in values:
             return values
 
-        # Try to migrate from formats_to_provide or format_ids
+        # Try to migrate from format_ids
         source_field = None
-        if "formats_to_provide" in values and values["formats_to_provide"]:
-            source_field = "formats_to_provide"
-        elif "format_ids" in values and values["format_ids"]:
+        if "format_ids" in values and values["format_ids"]:
             source_field = "format_ids"
 
         if source_field:
@@ -2081,7 +2075,7 @@ class Package(BaseModel):
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
             # Add internal fields to exclude by default
-            # NOTE: formats_to_provide IS in official spec (list[str]), so we don't exclude it
+            # NOTE: format_ids_to_provide IS in official AdCP v2.4 spec
             # We exclude legacy field names, internal fields, and extension fields not in spec
             exclude.update(
                 {
@@ -2091,8 +2085,7 @@ class Package(BaseModel):
                     "created_at",
                     "updated_at",
                     "metadata",
-                    "format_ids",  # Legacy field - excluded
-                    "format_ids_to_provide",  # Deprecated - excluded (use formats_to_provide)
+                    "format_ids",  # Legacy field - excluded (use format_ids_to_provide)
                     # Extension fields not in official spec:
                     "products",  # Use product_id (singular) per spec
                     "creative_ids",  # Use creative_assignments per spec
