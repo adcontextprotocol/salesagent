@@ -764,7 +764,7 @@ class TestCreativeLifecycleMCP:
             assert response.query_summary.returned == 0
             assert response.pagination.has_more is False
 
-    def test_create_media_buy_with_creative_ids(self, mock_context, sample_creatives):
+    async def test_create_media_buy_with_creative_ids(self, mock_context, sample_creatives):
         """Test create_media_buy accepts creative_ids in packages."""
         # First, sync creatives to have IDs to reference
         core_sync_creatives_tool, _ = self._import_mcp_tools()
@@ -833,7 +833,7 @@ class TestCreativeLifecycleMCP:
             ]
 
             # Call create_media_buy with packages containing creative_ids
-            response = create_media_buy_raw(
+            response = await create_media_buy_raw(
                 buyer_ref="test-buyer-creative-ids",
                 po_number="PO-TEST-123",
                 promoted_offering="Test Campaign",
