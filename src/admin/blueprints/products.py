@@ -126,16 +126,26 @@ def parse_pricing_options_from_form(form_data: dict) -> list[dict]:
             index += 1
             continue
 
-        # Parse pricing model and is_fixed from combined value (AdCP PR #88 UI update)
-        # Values are: cpm_fixed, cpm_auction, cpcv, cpp, cpc, cpv, flat_rate
+        # Parse pricing model and is_fixed from combined value
+        # Guaranteed (fixed): cpm_fixed, flat_rate
+        # Non-guaranteed (auction): cpm_auction, vcpm, cpc
         if pricing_model_raw == "cpm_fixed":
             pricing_model = "cpm"
             is_fixed = True
         elif pricing_model_raw == "cpm_auction":
             pricing_model = "cpm"
             is_fixed = False
+        elif pricing_model_raw == "flat_rate":
+            pricing_model = "flat_rate"
+            is_fixed = True
+        elif pricing_model_raw == "vcpm":
+            pricing_model = "vcpm"
+            is_fixed = False  # vCPM is always auction-based
+        elif pricing_model_raw == "cpc":
+            pricing_model = "cpc"
+            is_fixed = False  # CPC is always auction-based
         else:
-            # All other models are fixed-rate only (cpcv, cpp, cpc, cpv, flat_rate)
+            # Fallback for any other models (shouldn't happen with current UI)
             pricing_model = pricing_model_raw
             is_fixed = True
 
