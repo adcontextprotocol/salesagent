@@ -177,6 +177,9 @@ def test_add_product_json_encoding(client, test_tenant, integration_db):
         assert "US" in product.countries
         assert "GB" in product.countries
 
+        # Verify delivery_type is stored correctly (underscore format per AdCP spec)
+        assert product.delivery_type == "non_guaranteed", f"Expected 'non_guaranteed', got '{product.delivery_type}'"
+
         # Price guidance might be stored differently or might be None for non-guaranteed products
         if product.price_guidance:
             assert isinstance(product.price_guidance, dict)
