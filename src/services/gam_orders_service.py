@@ -285,7 +285,7 @@ class GAMOrdersService:
                 stmt = stmt.where(GAMOrder.end_date <= filters["end_date"])
 
         stmt = stmt.order_by(GAMOrder.last_modified_date.desc())
-        orders = self.db.scalars(stmt).all()
+        orders = self.db.scalars(stmt).unique().all()
 
         # Apply has_line_items filter after fetching (requires checking line items)
         result = []
