@@ -60,10 +60,10 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                 pricing_options_data = get_product_pricing_options(product_obj)
 
                 # Convert to Pydantic PricingOption objects
-                pricing_options: list[PricingOption] | None = None
+                # IMPORTANT: Always initialize to empty list, never None (Product schema expects list)
+                pricing_options: list[PricingOption] = []
                 if pricing_options_data:
                     try:
-                        pricing_options = []
                         for po_dict in pricing_options_data:
                             # Generate pricing_option_id if not present
                             pricing_option_id = po_dict.get("pricing_option_id")
@@ -104,7 +104,7 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                             )
                     except Exception as e:
                         logger.warning(f"Failed to convert pricing options for product {product_obj.product_id}: {e}")
-                        pricing_options = None
+                        # Keep empty list on error - don't set to None
 
                 # Convert ORM object to dictionary
                 product_data = {
