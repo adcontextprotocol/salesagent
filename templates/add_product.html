@@ -66,6 +66,14 @@
         <!-- Hidden input to store selected format data -->
         <input type="hidden" id="formats-data" name="formats" value="">
 
+        <!-- Format Preview Modal -->
+        <div id="format-preview-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+            <div style="background: white; border-radius: 8px; max-width: 600px; max-height: 80vh; overflow-y: auto; padding: 2rem; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+                <button onclick="closeFormatPreview()" style="position: absolute; top: 1rem; right: 1rem; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">&times;</button>
+                <div id="format-preview-content"></div>
+            </div>
+        </div>
+
         <script>
         // Format selection state
         let selectedFormats = new Set();
@@ -154,12 +162,18 @@
                     const bgColor = isSelected ? '#f0f7ff' : '#f9f9f9';
                     const checkIcon = isSelected ? '✓ ' : '';
 
+                    // Check if format has preview info
+                    const hasPreview = format.preview_image || format.example_url || format.description;
+
                     html += `
                         <div style="border: 2px solid ${borderColor}; border-radius: 4px; padding: 0.75rem; background: ${bgColor}; min-height: 120px; cursor: pointer; transition: all 0.2s;"
                              onclick="toggleFormat('${format.format_id}', '${format.name}', '${format.agent_url || ''}')">
                             <div style="display: flex; gap: 0.5rem;">
                                 <div style="flex: 1;">
-                                    <div style="font-weight: 600; color: #333;">${checkIcon}${format.name}</div>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <div style="font-weight: 600; color: #333;">${checkIcon}${format.name}</div>
+                                        ${hasPreview ? `<span class="info-icon" onclick="event.stopPropagation(); showFormatPreview('${format.format_id}')" style="cursor: pointer; color: #0066cc; font-size: 1rem;" title="Show preview">ℹ️</span>` : ''}
+                                    </div>
                                     ${format.description ? `<div style="color: #777; font-size: 0.85rem; margin-top: 0.25rem; line-height: 1.3;">${format.description}</div>` : ''}
                                     ${format.category === 'generative' ? '<span style="background: #9b59b6; color: white; font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 3px; margin-top: 0.5rem; display: inline-block;">AI Generated</span>' : ''}
                                 </div>
@@ -229,6 +243,82 @@
 
             document.getElementById('formats-data').value = JSON.stringify(formatRefs);
         }
+
+        function showFormatPreview(formatId) {
+            const format = allFormats.find(f => f.format_id === formatId);
+            if (!format) return;
+
+            const modal = document.getElementById('format-preview-modal');
+            const content = document.getElementById('format-preview-content');
+
+            let html = `
+                <h3 style="margin-top: 0; margin-bottom: 1rem; color: #333;">${format.name}</h3>
+            `;
+
+            // Description
+            if (format.description) {
+                html += `
+                    <div style="margin-bottom: 1rem;">
+                        <strong style="display: block; margin-bottom: 0.5rem; color: #555;">Description:</strong>
+                        <p style="margin: 0; color: #666; line-height: 1.5;">${format.description}</p>
+                    </div>
+                `;
+            }
+
+            // Preview Image (400x300 per AdCP spec)
+            if (format.preview_image) {
+                html += `
+                    <div style="margin-bottom: 1rem;">
+                        <strong style="display: block; margin-bottom: 0.5rem; color: #555;">Preview:</strong>
+                        <img src="${format.preview_image}" alt="${format.name} preview" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                `;
+            }
+
+            // Example URL
+            if (format.example_url) {
+                html += `
+                    <div style="margin-bottom: 1rem;">
+                        <a href="${format.example_url}" target="_blank" class="btn btn-primary" style="display: inline-block;">
+                            View Interactive Demo →
+                        </a>
+                    </div>
+                `;
+            }
+
+            // Format details
+            html += `
+                <div style="margin-top: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+                    <strong style="display: block; margin-bottom: 0.5rem; color: #555;">Format Details:</strong>
+                    <div style="font-size: 0.9rem; color: #666;">
+                        <div><strong>Format ID:</strong> <code>${format.format_id}</code></div>
+                        <div><strong>Type:</strong> ${format.type}</div>
+                        ${format.agent_url ? `<div><strong>Agent:</strong> ${format.agent_url}</div>` : ''}
+                    </div>
+                </div>
+            `;
+
+            content.innerHTML = html;
+            modal.style.display = 'flex';
+        }
+
+        function closeFormatPreview() {
+            document.getElementById('format-preview-modal').style.display = 'none';
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('format-preview-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeFormatPreview();
+            }
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeFormatPreview();
+            }
+        });
         </script>
 
         <h3 style="margin-top: 2rem;">Pricing & Delivery</h3>
