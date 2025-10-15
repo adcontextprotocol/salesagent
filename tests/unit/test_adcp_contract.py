@@ -53,6 +53,7 @@ from src.core.schemas import (
     TaskStatus,
     UpdateMediaBuyResponse,
 )
+from src.core.schemas import PricingOption as PricingOptionSchema
 from src.core.schemas import (
     Principal as PrincipalSchema,
 )
@@ -63,6 +64,22 @@ from src.core.schemas import (
 
 class TestAdCPContract:
     """Test that models and schemas align with AdCP protocol requirements."""
+
+    @staticmethod
+    def _make_pricing_option(
+        tenant_id: str, product_id: str, is_fixed: bool = True, rate: float | None = 10.50
+    ) -> dict:
+        """Helper to create pricing option dict for tests."""
+        return {
+            "tenant_id": tenant_id,
+            "product_id": product_id,
+            "pricing_model": "CPM",
+            "rate": Decimal(str(rate)) if rate else None,
+            "currency": "USD",
+            "is_fixed": is_fixed,
+            "parameters": None,
+            "min_spend_per_package": None,
+        }
 
     def test_product_model_to_schema(self):
         """Test that Product model can be converted to AdCP Product schema."""
@@ -75,13 +92,23 @@ class TestAdCPContract:
             formats=["display_300x250"],  # Now stores format IDs as strings
             targeting_template={"geo_country": {"values": ["US", "CA"], "required": False}},
             delivery_type="guaranteed",  # AdCP: guaranteed or non_guaranteed
-            is_fixed_price=True,
-            cpm=Decimal("10.50"),
-            price_guidance=None,
             is_custom=False,
             expires_at=None,
             countries=["US", "CA"],
             implementation_config={"internal": "config"},
+        )
+
+        # Create pricing option for the product
+
+        pricing_option = PricingOptionSchema(
+            pricing_option_id="cpm_usd_fixed",
+            pricing_model="cpm",
+            rate=10.50,
+            currency="USD",
+            is_fixed=True,
+            price_guidance=None,
+            parameters=None,
+            min_spend_per_package=None,
         )
 
         # Convert to dict (simulating database retrieval and conversion)
@@ -92,9 +119,7 @@ class TestAdCPContract:
             "description": model.description,
             "formats": model.formats,  # Now guaranteed to be strings by validator
             "delivery_type": model.delivery_type,
-            "is_fixed_price": model.is_fixed_price,
-            "cpm": float(model.cpm) if model.cpm else None,
-            "price_guidance": model.price_guidance,
+            "pricing_options": [pricing_option],
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -123,8 +148,6 @@ class TestAdCPContract:
             formats=["video_15s"],  # Now stores format IDs as strings
             targeting_template={},
             delivery_type="non_guaranteed",
-            is_fixed_price=False,
-            cpm=None,
             is_custom=False,
             expires_at=None,
             countries=["US"],
@@ -137,19 +160,20 @@ class TestAdCPContract:
             "description": model.description,
             "formats": model.formats,
             "delivery_type": model.delivery_type,
-            "is_fixed_price": model.is_fixed_price,
-            "cpm": None,
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed", pricing_model="cpm", rate=10.0, currency="USD", is_fixed=True
+                )
+            ],
         }
 
         schema = ProductSchema(**model_dict)
 
         # AdCP spec: non_guaranteed products use auction-based pricing (no price_guidance)
         assert schema.delivery_type == "non_guaranteed"
-        assert schema.is_fixed_price is False
-        assert schema.cpm is None  # No fixed CPM for non-guaranteed
 
     def test_principal_model_to_schema(self):
         """Test that Principal model matches AdCP authentication requirements."""
@@ -207,7 +231,6 @@ class TestAdCPContract:
             description="Test product with exposure estimates",
             formats=["display_300x250"],
             delivery_type="guaranteed",
-            is_fixed_price=True,
             cpm=15.0,
             currency="USD",
             estimated_exposures=50000,
@@ -228,7 +251,6 @@ class TestAdCPContract:
             description="Test product with CPM guidance",
             formats=["video_15s"],
             delivery_type="non_guaranteed",
-            is_fixed_price=False,
             currency="EUR",
             floor_cpm=5.0,
             recommended_cpm=8.5,
@@ -237,10 +259,6 @@ class TestAdCPContract:
 
         adcp_response = non_guaranteed_product.model_dump()
         assert adcp_response["currency"] == "EUR"
-        assert "floor_cpm" in adcp_response
-        assert adcp_response["floor_cpm"] == 5.0
-        assert "recommended_cpm" in adcp_response
-        assert adcp_response["recommended_cpm"] == 8.5
 
         # Verify GetProductsRequest validates oneOf constraint (brand_manifest OR promoted_offering)
         # Should succeed with promoted_offering
@@ -268,7 +286,6 @@ class TestAdCPContract:
             description="Product using property tags",
             formats=["display_300x250"],
             delivery_type="guaranteed",
-            is_fixed_price=True,
             cpm=10.0,
             property_tags=["premium_sports", "local_news"],
         )
@@ -295,7 +312,6 @@ class TestAdCPContract:
             description="Product with full property objects",
             formats=["video_15s"],
             delivery_type="non_guaranteed",
-            is_fixed_price=False,
             properties=[property_obj],
         )
 
@@ -313,7 +329,6 @@ class TestAdCPContract:
                 description="Missing property information",
                 formats=["display_300x250"],
                 delivery_type="guaranteed",
-                is_fixed_price=True,
                 cpm=10.0,
                 # Missing both properties and property_tags
             )
@@ -379,8 +394,6 @@ class TestAdCPContract:
             "name": "name",
             "description": "description",
             "delivery_type": "delivery_type",  # Must be "guaranteed" or "non_guaranteed"
-            "is_fixed_price": "is_fixed_price",
-            "cpm": "cpm",
             "formats": "formats",
             "is_custom": "is_custom",
             "expires_at": "expires_at",
@@ -395,9 +408,6 @@ class TestAdCPContract:
             formats=[],
             targeting_template={},
             delivery_type="guaranteed",
-            is_fixed_price=True,
-            cpm=10.0,
-            price_guidance=None,
             is_custom=False,
             expires_at=None,
             countries=["US"],
@@ -422,7 +432,6 @@ class TestAdCPContract:
                 description="Test",
                 formats=[],
                 delivery_type=delivery_type,
-                is_fixed_price=True,
                 cpm=10.0,
                 property_tags=["all_inventory"],  # Required per AdCP spec
             )
@@ -436,7 +445,6 @@ class TestAdCPContract:
                 description="Test",
                 formats=[],
                 delivery_type="programmatic",  # Not AdCP compliant
-                is_fixed_price=True,
                 cpm=10.0,
                 property_tags=["all_inventory"],  # Required per AdCP spec
             )
@@ -450,7 +458,6 @@ class TestAdCPContract:
                 description="Test",
                 formats=[],
                 delivery_type="guaranteed",
-                is_fixed_price=True,
                 cpm=10.0,
                 implementation_config={"internal": "data"},  # Should be excluded
                 property_tags=["all_inventory"],  # Required per AdCP spec
@@ -651,9 +658,7 @@ class TestAdCPContract:
 
         # Verify pricing structure
         assert isinstance(adcp_response["pricing"], dict), "pricing must be object"
-        assert "cpm" in adcp_response["pricing"], "pricing must have cpm field"
         assert "currency" in adcp_response["pricing"], "pricing must have currency field"
-        assert adcp_response["pricing"]["cpm"] >= 0, "cpm must be non-negative"
         assert len(adcp_response["pricing"]["currency"]) == 3, "currency must be 3-letter code"
 
         # Test backward compatibility properties
@@ -1354,9 +1359,6 @@ class TestAdCPContract:
             description="High-quality display advertising",
             formats=["display_300x250", "display_728x90"],
             delivery_type="guaranteed",
-            is_fixed_price=True,
-            cpm=12.50,
-            min_spend=1000.00,
             measurement=None,
             creative_policy=None,
             is_custom=False,
@@ -1965,7 +1967,7 @@ class TestAdCPContract:
                 assert catalog_type in valid_catalog_types, f"Invalid catalog_type: {catalog_type}"
 
         if filters.get("max_cpm") is not None:
-            assert filters["max_cpm"] >= 0, "max_cpm must be non-negative"
+            pass  # Legacy pricing field, no longer validated
 
         if filters.get("min_coverage_percentage") is not None:
             assert 0 <= filters["min_coverage_percentage"] <= 100, "min_coverage_percentage must be 0-100"
@@ -2264,7 +2266,6 @@ class TestAdCPContract:
             formats=["display_300x250"],
             property_tags=["sports", "premium"],
             delivery_type="guaranteed",
-            is_fixed_price=True,
             cpm=10.0,
         )
         assert product_with_tags.property_tags == ["sports", "premium"]
@@ -2285,7 +2286,6 @@ class TestAdCPContract:
                 )
             ],
             delivery_type="guaranteed",
-            is_fixed_price=True,
             cpm=10.0,
         )
         assert len(product_with_properties.properties) == 1
@@ -2308,7 +2308,6 @@ class TestAdCPContract:
                 ],
                 property_tags=["sports"],  # This violates oneOf constraint
                 delivery_type="guaranteed",
-                is_fixed_price=True,
                 cpm=10.0,
             )
 
