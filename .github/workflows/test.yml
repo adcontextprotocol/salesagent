@@ -225,6 +225,7 @@ jobs:
     - name: Run integration tests
       env:
         DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
+        ADCP_TEST_DB_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
         GEMINI_API_KEY: test_key_for_mocking
         GOOGLE_CLIENT_ID: test_client_id
         GOOGLE_CLIENT_SECRET: test_client_secret

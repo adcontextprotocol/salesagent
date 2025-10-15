@@ -35,8 +35,9 @@ def integration_db():
     original_db_type = os.environ.get("DB_TYPE")
 
     # Require PostgreSQL - no SQLite fallback
-    postgres_url = os.environ.get("ADCP_TEST_DB_URL")
-    if not postgres_url:
+    # Use ADCP_TEST_DB_URL if set (local), otherwise DATABASE_URL (CI)
+    postgres_url = os.environ.get("ADCP_TEST_DB_URL") or os.environ.get("DATABASE_URL")
+    if not postgres_url or not postgres_url.startswith("postgresql://"):
         pytest.skip("Integration tests require PostgreSQL. Run: ./run_all_tests.sh ci")
 
     # PostgreSQL mode - create unique database per test
