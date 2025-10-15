@@ -28,7 +28,6 @@ from src.core.schema_adapters import (
     CreateMediaBuyResponse,
     GetMediaBuyDeliveryResponse,
     GetProductsResponse,
-    GetSignalsResponse,
     ListAuthorizedPropertiesRequest,
     ListAuthorizedPropertiesResponse,
     ListCreativeFormatsRequest,
@@ -39,6 +38,7 @@ from src.core.schema_adapters import (
 from src.core.schemas import (
     GetMediaBuyDeliveryRequest,
     GetSignalsRequest,
+    GetSignalsResponse,
 )
 
 

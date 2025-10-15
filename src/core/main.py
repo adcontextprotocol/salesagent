@@ -3287,12 +3287,10 @@ def _list_authorized_properties_impl(
                         "Violations will result in campaign rejection or require manual review."
                     )
 
-            # Create response
+            # Create response (AdCP v2.4 spec: properties and tags only, no advertising_policies)
             response = ListAuthorizedPropertiesResponse(
                 properties=properties,
                 tags=tag_metadata,
-                advertising_policies=advertising_policies_text,
-                errors=[],
             )
 
             # Log audit
