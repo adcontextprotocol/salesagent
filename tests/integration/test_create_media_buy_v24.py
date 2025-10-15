@@ -123,7 +123,7 @@ class TestCreateMediaBuyV24Format:
             # Clear global tenant context to avoid polluting other tests
             set_current_tenant(None)
 
-    def test_create_media_buy_with_package_budget_mcp(self, setup_test_tenant):
+    async def test_create_media_buy_with_package_budget_mcp(self, setup_test_tenant):
         """Test MCP path with packages containing Budget objects.
 
         This test specifically exercises the bug fix for 'dict' object has no attribute 'model_dump'.
@@ -152,7 +152,7 @@ class TestCreateMediaBuyV24Format:
 
         # Call _impl with individual parameters (not a request object)
         # This exercises the FULL serialization path including response_packages construction
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
             buyer_ref="test-v24-buyer",
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
             po_number="TEST-V24-001",
@@ -175,7 +175,7 @@ class TestCreateMediaBuyV24Format:
         # Verify nested budget was serialized correctly
         assert "budget" in package or "products" in package  # Either field structure is fine
 
-    def test_create_media_buy_with_targeting_overlay_mcp(self, setup_test_tenant):
+    async def test_create_media_buy_with_targeting_overlay_mcp(self, setup_test_tenant):
         """Test MCP path with packages containing Targeting objects.
 
         This tests another potential serialization issue with nested Pydantic objects.
@@ -204,7 +204,7 @@ class TestCreateMediaBuyV24Format:
             request_timestamp=datetime.now(UTC),
         )
 
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
             buyer_ref="test-v24-targeting-buyer",
             promoted_offering="Adidas UltraBoost 2025 running shoes",
             po_number="TEST-V24-002",
@@ -226,7 +226,7 @@ class TestCreateMediaBuyV24Format:
         # Verify nested targeting was serialized (if present in response)
         # Note: targeting_overlay may or may not be included in response depending on impl
 
-    def test_create_media_buy_multiple_packages_with_budgets_mcp(self, setup_test_tenant):
+    async def test_create_media_buy_multiple_packages_with_budgets_mcp(self, setup_test_tenant):
         """Test MCP path with multiple packages, each with different budgets.
 
         This tests the iteration over packages in response construction.
@@ -260,7 +260,7 @@ class TestCreateMediaBuyV24Format:
             request_timestamp=datetime.now(UTC),
         )
 
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
             buyer_ref="test-v24-buyer",
             promoted_offering="Puma RS-X 2025 training shoes",
             po_number="TEST-V24-003",
@@ -279,7 +279,7 @@ class TestCreateMediaBuyV24Format:
         assert "pkg_eur" in buyer_refs
         assert "pkg_gbp" in buyer_refs
 
-    def test_create_media_buy_with_package_budget_a2a(self, setup_test_tenant):
+    async def test_create_media_buy_with_package_budget_a2a(self, setup_test_tenant):
         """Test A2A path with packages containing Budget objects.
 
         This verifies the A2A → tools.py → _impl path also handles nested objects correctly.
@@ -305,7 +305,7 @@ class TestCreateMediaBuyV24Format:
             request_timestamp=datetime.now(UTC),
         )
 
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
             buyer_ref="test-v24-buyer",
             promoted_offering="Reebok Nano 2025 cross-training shoes",
             po_number="TEST-V24-A2A-001",
@@ -324,7 +324,7 @@ class TestCreateMediaBuyV24Format:
         assert isinstance(package, dict), "Package must be serialized to dict"
         assert package["buyer_ref"] == "pkg_a2a_test"
 
-    def test_create_media_buy_legacy_format_still_works(self, setup_test_tenant):
+    async def test_create_media_buy_legacy_format_still_works(self, setup_test_tenant):
         """Verify legacy format (product_ids + total_budget) still works.
 
         This ensures backward compatibility wasn't broken by v2.4 changes.
@@ -341,7 +341,7 @@ class TestCreateMediaBuyV24Format:
         )
 
         # Legacy format using individual parameters
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
             buyer_ref="test-v24-buyer",
             promoted_offering="Under Armour HOVR 2025 running shoes",
             po_number="TEST-LEGACY-001",
