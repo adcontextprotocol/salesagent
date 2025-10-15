@@ -1399,8 +1399,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
 
 @mcp.tool
 async def get_products(
-    promoted_offering: str | None = None,
-    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
+    brand_manifest: Any,  # BrandManifest | str | dict - validated by Pydantic - REQUIRED per AdCP spec
     brief: str = "",
     filters: dict | None = None,
     context: Context = None,
@@ -1410,8 +1409,7 @@ async def get_products(
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        promoted_offering: DEPRECATED: Use brand_manifest instead (still supported for backward compatibility)
-        brand_manifest: Brand information manifest (inline object or URL string)
+        brand_manifest: Brand information manifest (inline object or URL string) - REQUIRED per AdCP spec
         brief: Brief description of the advertising campaign or requirements (optional)
         filters: Structured filters for product discovery (optional)
         context: FastMCP context (automatically provided)
@@ -1423,7 +1421,7 @@ async def get_products(
 
     print("=" * 80, file=sys.stderr, flush=True)
     print(
-        f"🚀 MCP get_products CALLED: offered={promoted_offering}, brief={brief[:50] if brief else 'N/A'}",
+        f"🚀 MCP get_products CALLED: brief={brief[:50] if brief else 'N/A'}",
         file=sys.stderr,
         flush=True,
     )
@@ -1431,7 +1429,6 @@ async def get_products(
 
     # Build request object for shared implementation using helper
     req = create_get_products_request(
-        promoted_offering=promoted_offering,
         brief=brief,
         brand_manifest=brand_manifest,
         filters=filters,
@@ -3580,7 +3577,6 @@ async def _create_media_buy_impl(
     start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
     end_time: Any | None = None,  # datetime | str - validated by Pydantic
     budget: Any | None = None,  # Budget | float | dict - validated by Pydantic
-    promoted_offering: str | None = None,
     product_ids: list[str] | None = None,
     start_date: Any | None = None,  # date | str - validated by Pydantic
     end_date: Any | None = None,  # date | str - validated by Pydantic
@@ -3600,9 +3596,8 @@ async def _create_media_buy_impl(
 
     Args:
         buyer_ref: Buyer reference for tracking (required per AdCP spec)
-        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
+        brand_manifest: Brand information manifest - inline object or URL string
         po_number: Purchase order number (optional)
-        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
         end_time: Campaign end time (ISO 8601)
@@ -4755,7 +4750,6 @@ async def create_media_buy(
     start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
     end_time: Any | None = None,  # datetime | str - validated by Pydantic
     budget: Any | None = None,  # Budget | float | dict - validated by Pydantic
-    promoted_offering: str | None = None,
     product_ids: list[str] | None = None,
     start_date: Any | None = None,  # date | str - validated by Pydantic
     end_date: Any | None = None,  # date | str - validated by Pydantic
@@ -4778,9 +4772,8 @@ async def create_media_buy(
 
     Args:
         buyer_ref: Buyer reference for tracking (required per AdCP spec)
-        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
+        brand_manifest: Brand information manifest - inline object or URL string
         po_number: Purchase order number (optional)
-        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
         end_time: Campaign end time (ISO 8601)
@@ -4807,7 +4800,6 @@ async def create_media_buy(
         buyer_ref=buyer_ref,
         brand_manifest=brand_manifest,
         po_number=po_number,
-        promoted_offering=promoted_offering,
         packages=packages,
         start_time=start_time,
         end_time=end_time,

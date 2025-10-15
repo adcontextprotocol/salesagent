@@ -206,14 +206,14 @@ class TestAdCPContract:
 
     def test_adcp_get_products_request(self):
         """Test AdCP get_products request requirements."""
-        # AdCP requires both brief and promoted_offering
+        # AdCP requires both brief and brand_manifest
         request = GetProductsRequest(
             brief="Looking for display ads on news sites",
-            promoted_offering="B2B SaaS company selling analytics software",
+            brand_manifest="B2B SaaS company selling analytics software",
         )
 
         assert request.brief is not None
-        assert request.promoted_offering is not None
+        assert request.brand_manifest is not None
 
     def test_product_pr79_fields(self):
         """Test Product schema compliance with AdCP PR #79 (filtering and pricing enhancements).
@@ -275,15 +275,15 @@ class TestAdCPContract:
         # Currency is now in pricing_options, not at product level
         assert adcp_response["pricing_options"][0]["currency"] == "EUR"
 
-        # Verify GetProductsRequest validates oneOf constraint (brand_manifest OR promoted_offering)
-        # Should succeed with promoted_offering
+        # Verify GetProductsRequest validates oneOf constraint (brand_manifest OR brand_manifest)
+        # Should succeed with brand_manifest
         request = GetProductsRequest(
             brief="Looking for high-volume campaigns",
-            promoted_offering="Nike Air Max 2024",
+            brand_manifest="Nike Air Max 2024",
         )
-        assert request.promoted_offering == "Nike Air Max 2024"
+        assert request.brand_manifest == "Nike Air Max 2024"
 
-        # Should fail without promoted_offering or brand_manifest (AdCP requirement)
+        # Should fail without brand_manifest or brand_manifest (AdCP requirement)
         with pytest.raises(ValueError):
             GetProductsRequest(brief="Just a brief")
 
@@ -381,7 +381,7 @@ class TestAdCPContract:
         end_date = datetime.now() + timedelta(days=30)
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",  # Required per AdCP spec
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",  # Required per AdCP spec
             buyer_ref="nike_jordan_2025_q1",  # Required per AdCP spec
             product_ids=["product_1", "product_2"],
             total_budget=5000.0,
@@ -543,7 +543,7 @@ class TestAdCPContract:
     def test_adcp_signal_support(self):
         """Test AdCP v2.4 signal support in targeting."""
         request = CreateMediaBuyRequest(
-            promoted_offering="Luxury automotive vehicles and premium accessories",
+            brand_manifest="Luxury automotive vehicles and premium accessories",
             buyer_ref="luxury_auto_campaign_2025",  # Required per AdCP spec
             product_ids=["test_product"],
             total_budget=1000.0,
@@ -759,7 +759,6 @@ class TestAdCPContract:
             status="active",
             buyer_ref="buyer_ref_abc",
             product_id="product_xyz",
-            products=["product_xyz", "product_def"],
             impressions=50000,
             creative_assignments=[
                 {"creative_id": "creative_1", "weight": 70},
@@ -785,7 +784,6 @@ class TestAdCPContract:
         adcp_optional_fields = [
             "buyer_ref",
             "product_id",
-            "products",
             "budget",
             "impressions",
             "targeting_overlay",
@@ -1648,14 +1646,14 @@ class TestAdCPContract:
             impressions=25000.0,
             spend=500.75,
             clicks=125.0,
-            video_completions=None,
+            completed_views=None,
             pacing_index=1.0,
         )
 
         daily_breakdown = DailyBreakdown(date="2025-01-15", impressions=1250.0, spend=25.05)
 
         delivery_totals = DeliveryTotals(
-            impressions=25000.0, spend=500.75, clicks=125.0, ctr=0.005, video_completions=None, completion_rate=None
+            impressions=25000.0, spend=500.75, clicks=125.0, ctr=0.005, completed_views=None, completion_rate=None
         )
 
         delivery_data = MediaBuyDeliveryData(
@@ -1670,7 +1668,7 @@ class TestAdCPContract:
         reporting_period = ReportingPeriod(start="2025-01-01T00:00:00Z", end="2025-01-31T23:59:59Z")
 
         aggregated_totals = AggregatedTotals(
-            impressions=25000.0, spend=500.75, clicks=125.0, video_completions=None, media_buy_count=1
+            impressions=25000.0, spend=500.75, clicks=125.0, completed_views=None, media_buy_count=1
         )
 
         # Create AdCP-compliant response
@@ -2219,7 +2217,7 @@ class TestAdCPContract:
 
         # Test with 'asap' start_time
         request = CreateMediaBuyRequest(
-            promoted_offering="Flash Sale Campaign",
+            brand_manifest="Flash Sale Campaign",
             buyer_ref="flash_sale_2025_q1",
             start_time="asap",  # AdCP v1.7.0 supports literal "asap"
             end_time=end_date,
@@ -2265,7 +2263,7 @@ class TestAdCPContract:
 
         # Test with datetime start_time (should still work)
         request = CreateMediaBuyRequest(
-            promoted_offering="Scheduled Campaign",
+            brand_manifest="Scheduled Campaign",
             buyer_ref="scheduled_2025_q1",
             start_time=start_date,
             end_time=end_date,

@@ -9,7 +9,7 @@
       "type": "string",
       "description": "Natural language description of campaign requirements"
     },
-    "promoted_offering": {
+    "brand_manifest": {
       "type": "string",
       "description": "DEPRECATED: Use brand_manifest instead. Legacy field for describing what is being promoted."
     },
@@ -63,7 +63,7 @@
   "oneOf": [
     {
       "required": [
-        "promoted_offering"
+        "brand_manifest"
       ]
     },
     {

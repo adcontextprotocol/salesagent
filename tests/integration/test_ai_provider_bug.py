@@ -57,7 +57,7 @@ async def test_ai_provider_bug(integration_db):
             brief="test audio campaign",
             tenant_id="default",
             principal_id="test_principal",
-            context={"promoted_offering": "test"},
+            context={"brand_manifest": "test"},
             principal_data={},
         )
 

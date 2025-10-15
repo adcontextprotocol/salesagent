@@ -5,7 +5,7 @@ This test suite automatically validates that ALL Pydantic request/response model
 accept ALL fields defined in their corresponding AdCP JSON schemas.
 
 This prevents regressions like:
-- promoted_offering missing from CreateMediaBuyRequest (current issue)
+- brand_manifest missing from CreateMediaBuyRequest (current issue)
 - filters missing from GetProductsRequest (PR #195)
 - Any future field omissions
 
@@ -36,7 +36,7 @@ from src.core.schemas import (
 #
 # NOTE: CreateMediaBuyRequest is temporarily excluded due to AdCP v2.4 spec evolution.
 # The spec now requires brand_card (AdCP v2.4), but we maintain backward compatibility
-# via promoted_offering (deprecated but supported). Full brand_card implementation
+# via brand_manifest (deprecated but supported). Full brand_card implementation
 # will be added in a separate PR. This allows us to continue testing other schemas
 # while we work on the brand_card feature.
 SCHEMA_TO_MODEL_MAP = {
@@ -282,7 +282,7 @@ class TestPydanticSchemaAlignment:
         """Test that Pydantic model accepts ALL fields defined in JSON schema.
 
         This is the critical test that would have caught:
-        - promoted_offering missing from CreateMediaBuyRequest
+        - brand_manifest missing from CreateMediaBuyRequest
         - filters missing from GetProductsRequest
         """
         # Load the JSON schema
@@ -431,23 +431,23 @@ class TestPydanticSchemaAlignment:
 class TestSpecificFieldValidation:
     """Specific regression tests for fields that have caused issues."""
 
-    def test_create_media_buy_accepts_promoted_offering(self):
-        """REGRESSION TEST: promoted_offering must be accepted (current issue)."""
+    def test_create_media_buy_accepts_brand_manifest(self):
+        """REGRESSION TEST: brand_manifest must be accepted (current issue)."""
         request = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
-            promoted_offering="Nike Air Jordan 2025",
+            brand_manifest="Nike Air Jordan 2025",
             po_number="PO-123",
             product_ids=["prod_1"],
             total_budget=5000.0,
             start_date="2025-02-01",
             end_date="2025-02-28",
         )
-        assert request.promoted_offering == "Nike Air Jordan 2025"
+        assert request.brand_manifest == "Nike Air Jordan 2025"
 
     def test_get_products_accepts_filters(self):
         """REGRESSION TEST: filters must be accepted (PR #195 issue)."""
         request = GetProductsRequest(
-            promoted_offering="Test Product",
+            brand_manifest="Test Product",
             filters={
                 "delivery_type": "guaranteed",
                 "format_types": ["video"],
@@ -460,7 +460,7 @@ class TestSpecificFieldValidation:
     def test_get_products_accepts_adcp_version(self):
         """REGRESSION TEST: adcp_version must be accepted."""
         request = GetProductsRequest(
-            promoted_offering="Test Product",
+            brand_manifest="Test Product",
             adcp_version="1.6.0",
         )
         assert request.adcp_version == "1.6.0"

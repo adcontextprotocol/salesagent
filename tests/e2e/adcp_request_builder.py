@@ -20,7 +20,7 @@ def build_adcp_media_buy_request(
     total_budget: float,
     start_time: str | datetime,
     end_time: str | datetime,
-    promoted_offering: str = "Test Campaign Product",
+    brand_manifest: str = "Test Campaign Product",
     buyer_ref: str | None = None,
     targeting_overlay: dict[str, Any] | None = None,
     currency: str = "USD",
@@ -35,7 +35,7 @@ def build_adcp_media_buy_request(
         total_budget: Total budget for the campaign
         start_time: Campaign start (ISO 8601 string or datetime)
         end_time: Campaign end (ISO 8601 string or datetime)
-        promoted_offering: Description of what's being promoted (REQUIRED by AdCP)
+        brand_manifest: Brand manifest (URL or inline object) (REQUIRED by AdCP)
         buyer_ref: Optional buyer reference (generated if not provided)
         targeting_overlay: Optional targeting parameters
         currency: Currency code (default: USD)
@@ -51,7 +51,7 @@ def build_adcp_media_buy_request(
         ...     total_budget=5000.0,
         ...     start_time="2025-10-01T00:00:00Z",
         ...     end_time="2025-10-31T23:59:59Z",
-        ...     promoted_offering="Nike Air Jordan 2025 Basketball Shoes"
+        ...     brand_manifest="Nike Air Jordan 2025 Basketball Shoes"
         ... )
     """
     # Convert datetime to ISO 8601 string if needed
@@ -68,11 +68,11 @@ def build_adcp_media_buy_request(
     # Note: ALL budgets are plain numbers per spec (currency from pricing_option_id)
     request: dict[str, Any] = {
         "buyer_ref": buyer_ref,
-        "promoted_offering": promoted_offering,
+        "brand_manifest": brand_manifest,
         "packages": [
             {
                 "buyer_ref": generate_buyer_ref("pkg"),
-                "products": product_ids,
+                "product_id": product_ids[0] if product_ids else "",  # Use single product_id per AdCP spec
                 "budget": total_budget,  # Package budget is plain number per AdCP spec
             }
         ],

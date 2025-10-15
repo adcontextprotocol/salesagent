@@ -31,7 +31,7 @@ class TestSignalsDiscoveryProviderIntegration:
             "upstream_token": "test-token",
             "auth_header": "Authorization",
             "timeout": 60,
-            "forward_promoted_offering": False,
+            "forward_brand_manifest": False,
             "fallback_to_database": False,
             "max_signal_products": 5,
         }
@@ -42,7 +42,7 @@ class TestSignalsDiscoveryProviderIntegration:
         assert provider_enabled.upstream_token == "test-token"
         assert provider_enabled.auth_header == "Authorization"
         assert provider_enabled.timeout == 60
-        assert provider_enabled.forward_promoted_offering is False
+        assert provider_enabled.forward_brand_manifest is False
         assert provider_enabled.fallback_to_database is False
         assert provider_enabled.max_signal_products == 5
 
@@ -142,7 +142,7 @@ class TestSignalsDiscoveryProviderIntegration:
 
     def test_fallback_behavior_configuration(self):
         """Test fallback behavior configuration."""
-        # Test all combinations of fallback and forward_promoted_offering
+        # Test all combinations of fallback and forward_brand_manifest
         test_combinations = [
             (True, True),
             (True, False),
@@ -151,10 +151,10 @@ class TestSignalsDiscoveryProviderIntegration:
         ]
 
         for fallback_to_db, forward_promoted in test_combinations:
-            config = {"fallback_to_database": fallback_to_db, "forward_promoted_offering": forward_promoted}
+            config = {"fallback_to_database": fallback_to_db, "forward_brand_manifest": forward_promoted}
             provider = SignalsDiscoveryProvider(config)
             assert provider.fallback_to_database == fallback_to_db
-            assert provider.forward_promoted_offering == forward_promoted
+            assert provider.forward_brand_manifest == forward_promoted
 
     @pytest.mark.asyncio
     async def test_client_lifecycle_management(self):
@@ -184,7 +184,7 @@ class TestSignalsDiscoveryProviderIntegration:
             "auth_header": "Authorization",
             "timeout": 45,
             "fallback_to_database": True,
-            "forward_promoted_offering": True,
+            "forward_brand_manifest": True,
             "max_signal_products": 20,
         }
 
@@ -197,7 +197,7 @@ class TestSignalsDiscoveryProviderIntegration:
         assert provider.auth_header == "Authorization"
         assert provider.timeout == 45
         assert provider.fallback_to_database is True
-        assert provider.forward_promoted_offering is True
+        assert provider.forward_brand_manifest is True
         assert provider.max_signal_products == 20
 
         # Verify the provider is in a valid state for initialization

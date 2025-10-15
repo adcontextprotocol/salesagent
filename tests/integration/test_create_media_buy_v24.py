@@ -155,7 +155,7 @@ class TestCreateMediaBuyV24Format:
         # Call _impl with individual parameters (not a request object)
         # This exercises the FULL serialization path including response_packages construction
         response = _create_media_buy_impl(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             po_number="TEST-V24-001",
             packages=[p.model_dump_internal() for p in packages],  # Use internal to skip package_id validation
             start_time=datetime.now(UTC) + timedelta(days=1),
@@ -206,7 +206,7 @@ class TestCreateMediaBuyV24Format:
         )
 
         response = _create_media_buy_impl(
-            promoted_offering="Adidas UltraBoost 2025 running shoes",
+            brand_manifest="Adidas UltraBoost 2025 running shoes",
             po_number="TEST-V24-002",
             packages=[p.model_dump_internal() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
@@ -261,7 +261,7 @@ class TestCreateMediaBuyV24Format:
         )
 
         response = _create_media_buy_impl(
-            promoted_offering="Puma RS-X 2025 training shoes",
+            brand_manifest="Puma RS-X 2025 training shoes",
             po_number="TEST-V24-003",
             packages=[p.model_dump_internal() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
@@ -305,7 +305,7 @@ class TestCreateMediaBuyV24Format:
         )
 
         response = _create_media_buy_impl(
-            promoted_offering="Reebok Nano 2025 cross-training shoes",
+            brand_manifest="Reebok Nano 2025 cross-training shoes",
             po_number="TEST-V24-A2A-001",
             packages=[p.model_dump_internal() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
@@ -340,7 +340,7 @@ class TestCreateMediaBuyV24Format:
 
         # Legacy format using individual parameters
         response = _create_media_buy_impl(
-            promoted_offering="Under Armour HOVR 2025 running shoes",
+            brand_manifest="Under Armour HOVR 2025 running shoes",
             po_number="TEST-LEGACY-001",
             product_ids=[setup_test_tenant["product_id"]],
             total_budget=4000.0,

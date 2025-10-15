@@ -36,7 +36,7 @@ async def test_direct_get_products():
         # Call get_products directly
         result = await get_products(
             brief="Discover available advertising products for testing",
-            promoted_offering="gourmet robot food",
+            brand_manifest="gourmet robot food",
             context=test_context,
         )
 
@@ -45,8 +45,8 @@ async def test_direct_get_products():
         print(f"Response: {result.model_dump() if hasattr(result, 'model_dump') else result}")
 
         if hasattr(result, "products"):
-            print(f"Number of products: {len(result.products)}")
-            for i, product in enumerate(result.products):
+            print(f"Number of products: {len(result.product_id)}")
+            for i, product in enumerate(result.product_id):
                 print(f"Product {i}: {product.model_dump()}")
 
     except Exception as e:

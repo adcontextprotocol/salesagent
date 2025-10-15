@@ -180,17 +180,17 @@ class TestGetProductsFilterBehavior:
 
         # Call get_products (currently no direct filter param support, will add)
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
         # Verify we got products (baseline test)
-        assert len(result.products) > 0
+        assert len(result.product_id) > 0
 
         # Count products by delivery_type for manual verification
-        guaranteed_count = sum(1 for p in result.products if p.delivery_type == "guaranteed")
-        non_guaranteed_count = sum(1 for p in result.products if p.delivery_type == "non_guaranteed")
+        guaranteed_count = sum(1 for p in result.product_id if p.delivery_type == "guaranteed")
+        non_guaranteed_count = sum(1 for p in result.product_id if p.delivery_type == "non_guaranteed")
 
         # Should have both types before filtering
         assert guaranteed_count >= 3  # guaranteed_display, multiformat_guaranteed, guaranteed_audio
@@ -204,16 +204,16 @@ class TestGetProductsFilterBehavior:
         context = mock_context
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
         # Should return all 5 products created in fixture
-        assert len(result.products) == 5
+        assert len(result.product_id) == 5
 
         # Verify diversity of products
-        product_ids = {p.product_id for p in result.products}
+        product_ids = {p.product_id for p in result.product_id}
         assert "guaranteed_display" in product_ids
         assert "programmatic_video" in product_ids
         assert "multiformat_guaranteed" in product_ids
@@ -228,13 +228,13 @@ class TestGetProductsFilterBehavior:
         context = mock_context
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
         # Check first product has all required fields
-        product = result.products[0]
+        product = result.product_id[0]
         assert hasattr(product, "product_id")
         assert hasattr(product, "name")
         assert hasattr(product, "description")
@@ -327,13 +327,13 @@ class TestProductFilterLogic:
         context = mock_context_filter_logic
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
         # Manual filter - simulating what the filter logic should do
-        filtered = [p for p in result.products if p.delivery_type == DeliveryType.GUARANTEED.value]
+        filtered = [p for p in result.product_id if p.delivery_type == DeliveryType.GUARANTEED.value]
 
         assert len(filtered) == 1
         assert filtered[0].product_id == "guaranteed_video_fixed"
@@ -346,12 +346,12 @@ class TestProductFilterLogic:
         context = mock_context_filter_logic
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
-        filtered = [p for p in result.products if p.delivery_type == DeliveryType.NON_GUARANTEED.value]
+        filtered = [p for p in result.product_id if p.delivery_type == DeliveryType.NON_GUARANTEED.value]
 
         assert len(filtered) == 1
         assert filtered[0].product_id == "programmatic_display_dynamic"
@@ -364,12 +364,12 @@ class TestProductFilterLogic:
         context = mock_context_filter_logic
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
-        filtered = [p for p in result.products if p.is_fixed_price is True]
+        filtered = [p for p in result.product_id if p.is_fixed_price is True]
 
         assert len(filtered) == 1
         assert filtered[0].product_id == "guaranteed_video_fixed"
@@ -384,12 +384,12 @@ class TestProductFilterLogic:
         context = mock_context_filter_logic
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
-        filtered = [p for p in result.products if p.is_fixed_price is False]
+        filtered = [p for p in result.product_id if p.is_fixed_price is False]
 
         assert len(filtered) == 1
         assert filtered[0].product_id == "programmatic_display_dynamic"
@@ -403,7 +403,7 @@ class TestProductFilterLogic:
         context = mock_context_filter_logic
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
@@ -412,7 +412,7 @@ class TestProductFilterLogic:
         from src.core.schemas import get_format_by_id
 
         filtered = []
-        for p in result.products:
+        for p in result.product_id:
             format_types = set()
             for fmt_id in p.formats:
                 if isinstance(fmt_id, str):
@@ -436,7 +436,7 @@ class TestProductFilterLogic:
         context = mock_context_filter_logic
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
@@ -445,7 +445,7 @@ class TestProductFilterLogic:
         from src.core.schemas import get_format_by_id
 
         filtered = []
-        for p in result.products:
+        for p in result.product_id:
             format_types = set()
             for fmt_id in p.formats:
                 if isinstance(fmt_id, str):
@@ -469,14 +469,14 @@ class TestProductFilterLogic:
         context = mock_context_filter_logic
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
         # Filter for products with video_1280x720 format
         filtered = []
-        for p in result.products:
+        for p in result.product_id:
             format_ids = set()
             for fmt_id in p.formats:
                 if isinstance(fmt_id, str):
@@ -498,14 +498,14 @@ class TestProductFilterLogic:
         context = mock_context_filter_logic
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
         # Filter for guaranteed + fixed price
         filtered = []
-        for p in result.products:
+        for p in result.product_id:
             if p.delivery_type == DeliveryType.GUARANTEED.value and p.is_fixed_price is True:
                 filtered.append(p)
 
@@ -520,14 +520,14 @@ class TestProductFilterLogic:
         context = mock_context_filter_logic
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
         # Filter for impossible combination (guaranteed + dynamic pricing)
         filtered = []
-        for p in result.products:
+        for p in result.product_id:
             if p.delivery_type == DeliveryType.GUARANTEED.value and p.is_fixed_price is False:
                 filtered.append(p)
 
@@ -594,15 +594,15 @@ class TestFilterEdgeCases:
         context = mock_context_edge_case
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
         # Should return the product even with empty formats
-        assert len(result.products) == 1
-        assert result.products[0].product_id == "no_formats_product"
-        assert result.products[0].formats == []
+        assert len(result.product_id) == 1
+        assert result.product_id[0].product_id == "no_formats_product"
+        assert result.product_id[0].formats == []
 
     @pytest.mark.asyncio
     async def test_format_filter_with_empty_formats_product(self, mock_context_edge_case):
@@ -612,14 +612,14 @@ class TestFilterEdgeCases:
         context = mock_context_edge_case
 
         result = await get_products(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             brief="",
             context=context,
         )
 
         # Manual filter for video formats
         filtered = []
-        for p in result.products:
+        for p in result.product_id:
             if p.formats:  # Only filter if formats exist
                 format_types = {fmt.type for fmt in p.formats}
                 if FormatType.VIDEO.value in format_types:

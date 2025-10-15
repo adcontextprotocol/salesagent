@@ -171,11 +171,11 @@ class TestIntegration:
     """Test integration with get_products endpoint."""
 
     @pytest.mark.asyncio
-    async def test_promoted_offering_included(self, policy_service):
-        """Test that promoted_offering is included in analysis."""
+    async def test_brand_manifest_included(self, policy_service):
+        """Test that brand_manifest is included in analysis."""
         result = await policy_service.check_brief_compliance(
             brief="Advertisement for wellness products",
-            promoted_offering="Weight loss pills - Lose 30 pounds in 30 days guaranteed!",
+            brand_manifest="Weight loss pills - Lose 30 pounds in 30 days guaranteed!",
         )
 
         # Without AI, should be allowed with warning
@@ -197,9 +197,9 @@ async def test_full_request_flow():
     # This would be an integration test with the actual endpoint
     request = GetProductsRequest(
         brief="Looking to advertise a new smartphone",
-        promoted_offering="TechCorp - Latest 5G smartphone with advanced features",
+        brand_manifest="TechCorp - Latest 5G smartphone with advanced features",
     )
 
     # Verify the request has the new field
-    assert hasattr(request, "promoted_offering")
-    assert request.promoted_offering == "TechCorp - Latest 5G smartphone with advanced features"
+    assert hasattr(request, "brand_manifest")
+    assert request.brand_manifest == "TechCorp - Latest 5G smartphone with advanced features"

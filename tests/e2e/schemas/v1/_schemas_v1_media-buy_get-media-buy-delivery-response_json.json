@@ -79,7 +79,7 @@
           "description": "Total clicks across all media buys (if applicable)",
           "minimum": 0
         },
-        "video_completions": {
+        "completed_views": {
           "type": "number",
           "description": "Total video completions across all media buys (if applicable)",
           "minimum": 0

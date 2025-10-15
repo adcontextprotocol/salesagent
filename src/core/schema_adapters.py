@@ -43,9 +43,6 @@ class GetProductsRequest(BaseModel):
     but complex to use. This adapter hides that complexity.
 
     Usage:
-        # Simple construction (just like manual schemas)
-        req = GetProductsRequest(promoted_offering="https://example.com", brief="Video ads")
-
         # With brand_manifest
         req = GetProductsRequest(
             brand_manifest={"name": "Acme", "url": "https://acme.com"},
@@ -53,47 +50,25 @@ class GetProductsRequest(BaseModel):
         )
 
     Under the hood:
-        - Converts to correct generated schema variant (GetProductsRequest1 or GetProductsRequest2)
+        - Converts to correct generated schema variant
         - Validates against AdCP JSON Schema
         - Provides simple field access (no .root needed)
     """
 
     # Fields match both generated variants (union of all fields)
     brief: str = Field("", description="Natural language description of campaign requirements")
-    promoted_offering: str | None = Field(
-        None, description="DEPRECATED: Use brand_manifest instead. What is being promoted."
-    )
-    brand_manifest: dict[str, Any] | str | None = Field(
-        None, description="Brand information manifest (inline object or URL string)"
+    brand_manifest: dict[str, Any] | str = Field(
+        ..., description="Brand information manifest (inline object or URL string) - REQUIRED per AdCP spec"
     )
     filters: dict[str, Any] | None = Field(None, description="Structured filters for product discovery")
     min_exposures: int | None = Field(None, description="Minimum exposures needed for measurement validity")
     strategy_id: str | None = Field(None, description="Optional strategy ID for linking operations")
     webhook_url: str | None = Field(None, description="URL for async task completion notifications")
 
-    @model_validator(mode="before")
-    @classmethod
-    def handle_legacy_promoted_offering(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Convert promoted_offering to brand_manifest for backward compatibility."""
-        if not isinstance(values, dict):
-            return values
-
-        # If only promoted_offering provided, convert to brand_manifest
-        if values.get("promoted_offering") and not values.get("brand_manifest"):
-            # Create minimal brand manifest from promoted_offering
-            offering = values["promoted_offering"]
-            if isinstance(offering, str) and offering.startswith("http"):
-                values["brand_manifest"] = {"url": offering}
-            else:
-                values["brand_manifest"] = {"name": offering}
-
-        return values
-
     def to_generated(self) -> _GeneratedGetProductsRequest:
         """Convert to the generated schema for protocol validation.
 
-        This creates the appropriate generated schema variant (GetProductsRequest1 or
-        GetProductsRequest2) based on which fields are present.
+        This creates the appropriate generated schema variant based on which fields are present.
 
         Returns:
             Generated schema instance that can be validated against AdCP JSON Schema
@@ -115,26 +90,12 @@ class GetProductsRequest(BaseModel):
                     for fmt_id in filters_dict["format_ids"]
                 ]
 
-        # Determine which variant to use
-        variant: _GeneratedGetProductsRequest1 | _GeneratedGetProductsRequest2
-        if self.promoted_offering and not self.brand_manifest:
-            # Use variant 1 (requires promoted_offering)
-            variant = _GeneratedGetProductsRequest1(
-                promoted_offering=self.promoted_offering,
-                brief=self.brief or None,
-                filters=filters_dict,  # type: ignore[arg-type]
-            )
-        elif self.brand_manifest:
-            # Use variant 2 (requires brand_manifest)
-            variant = _GeneratedGetProductsRequest2(
-                promoted_offering=self.promoted_offering,
-                brand_manifest=self.brand_manifest,  # type: ignore[arg-type]
-                brief=self.brief or None,
-                filters=filters_dict,  # type: ignore[arg-type]
-            )
-        else:
-            # Fallback - shouldn't happen due to validator
-            raise ValueError("Either promoted_offering or brand_manifest must be provided")
+        # Use variant 2 (requires brand_manifest)
+        variant = _GeneratedGetProductsRequest2(
+            brand_manifest=self.brand_manifest,  # type: ignore[arg-type]
+            brief=self.brief or None,
+            filters=filters_dict,  # type: ignore[arg-type]
+        )
 
         # Wrap in RootModel
         return _GeneratedGetProductsRequest(root=variant)  # type: ignore[arg-type]
@@ -307,7 +268,6 @@ class CreateMediaBuyRequest(BaseModel):
     budget: dict[str, Any] = Field(..., description="Budget configuration")
 
     # Optional fields
-    promoted_offering: str | None = Field(None, description="DEPRECATED: Use brand_manifest")
     brand_manifest: dict[str, Any] | str | None = Field(None, description="Brand information")
     brief: str | None = Field(None, description="Campaign brief")
 

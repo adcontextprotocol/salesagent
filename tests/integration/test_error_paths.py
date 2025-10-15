@@ -148,7 +148,7 @@ class TestCreateMediaBuyErrorPaths:
         # This should return error response, not raise NameError
         response = create_media_buy_raw(
             po_number="error_test_po",
-            promoted_offering="Test campaign",
+            brand_manifest="Test campaign",
             buyer_ref="test_buyer",
             packages=[
                 {
@@ -194,7 +194,7 @@ class TestCreateMediaBuyErrorPaths:
         # This should return error response for past start time
         response = create_media_buy_raw(
             po_number="error_test_po",
-            promoted_offering="Test campaign",
+            brand_manifest="Test campaign",
             buyer_ref="test_buyer",
             packages=[
                 {
@@ -235,7 +235,7 @@ class TestCreateMediaBuyErrorPaths:
 
         response = create_media_buy_raw(
             po_number="error_test_po",
-            promoted_offering="Test campaign",
+            brand_manifest="Test campaign",
             buyer_ref="test_buyer",
             packages=[
                 {
@@ -274,7 +274,7 @@ class TestCreateMediaBuyErrorPaths:
 
         response = create_media_buy_raw(
             po_number="error_test_po",
-            promoted_offering="Test campaign",
+            brand_manifest="Test campaign",
             buyer_ref="test_buyer",
             packages=[
                 {
@@ -313,7 +313,7 @@ class TestCreateMediaBuyErrorPaths:
 
         response = create_media_buy_raw(
             po_number="error_test_po",
-            promoted_offering="Test campaign",
+            brand_manifest="Test campaign",
             buyer_ref="test_buyer",
             packages=[],  # Empty packages!
             start_time=future_start.isoformat(),

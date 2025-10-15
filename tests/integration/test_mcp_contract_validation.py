@@ -29,27 +29,27 @@ class TestMCPContractValidation:
     """Test MCP tools can be called with minimal required parameters."""
 
     def test_get_products_minimal_call(self):
-        """Test get_products can be called with just promoted_offering."""
+        """Test get_products can be called with just brand_manifest."""
         # This was the original failing case
-        request = GetProductsRequest(promoted_offering="purina cat food")
+        request = GetProductsRequest(brand_manifest="purina cat food")
 
         assert request.brief == ""  # Should default to empty string
-        assert request.promoted_offering == "purina cat food"
+        assert request.brand_manifest == "purina cat food"
         assert request.strategy_id is None
 
     def test_get_products_with_brief(self):
-        """Test get_products works with both brief and promoted_offering."""
-        request = GetProductsRequest(brief="pet supplies campaign", promoted_offering="purina cat food")
+        """Test get_products works with both brief and brand_manifest."""
+        request = GetProductsRequest(brief="pet supplies campaign", brand_manifest="purina cat food")
 
         assert request.brief == "pet supplies campaign"
-        assert request.promoted_offering == "purina cat food"
+        assert request.brand_manifest == "purina cat food"
 
     def test_get_products_validation_still_enforced(self):
-        """Test that GetProductsRequest allows anonymous queries (no promoted_offering/brand_manifest)."""
+        """Test that GetProductsRequest allows anonymous queries (no brand_manifest/brand_manifest)."""
         # This now works - anonymous queries are supported
         request = GetProductsRequest(brief="just a brief")
         assert request.brief == "just a brief"
-        assert request.promoted_offering is None
+        assert request.brand_manifest is None
         assert request.brand_manifest is None
 
     def test_list_authorized_properties_minimal(self):
@@ -70,7 +70,7 @@ class TestMCPContractValidation:
     def test_create_media_buy_minimal(self):
         """Test create_media_buy with just po_number."""
         request = CreateMediaBuyRequest(
-            buyer_ref="test_ref", promoted_offering="Nike Air Jordan 2025 basketball shoes", po_number="PO-12345"
+            buyer_ref="test_ref", brand_manifest="Nike Air Jordan 2025 basketball shoes", po_number="PO-12345"
         )
 
         assert request.po_number == "PO-12345"
@@ -88,7 +88,7 @@ class TestMCPContractValidation:
         # Test 1: Package with product_id=None
         request = CreateMediaBuyRequest(
             buyer_ref="test_ref_1",
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest="Nike Air Jordan 2025 basketball shoes",
             po_number="PO-12345",
             packages=[Package(buyer_ref="pkg1", product_id=None)],
         )
@@ -97,7 +97,7 @@ class TestMCPContractValidation:
         # Test 2: Package without product_id
         request = CreateMediaBuyRequest(
             buyer_ref="test_ref_2",
-            promoted_offering="Adidas UltraBoost 2025 running shoes",
+            brand_manifest="Adidas UltraBoost 2025 running shoes",
             po_number="PO-12346",
             packages=[Package(buyer_ref="pkg2")],
         )
@@ -106,7 +106,7 @@ class TestMCPContractValidation:
         # Test 3: Mixed packages (some None, some with product_id)
         request = CreateMediaBuyRequest(
             buyer_ref="test_ref_3",
-            promoted_offering="Puma RS-X 2025 training shoes",
+            brand_manifest="Puma RS-X 2025 training shoes",
             po_number="PO-12347",
             packages=[
                 Package(buyer_ref="pkg_none", product_id=None),
@@ -215,12 +215,12 @@ class TestSchemaDefaultValues:
         """Test that optional fields have defaults that make sense."""
 
         # GetProductsRequest
-        req = GetProductsRequest(promoted_offering="test")
+        req = GetProductsRequest(brand_manifest="test")
         assert req.brief == ""  # Empty string, not None
 
         # CreateMediaBuyRequest
         req = CreateMediaBuyRequest(
-            buyer_ref="test_ref", promoted_offering="Nike Air Jordan 2025 basketball shoes", po_number="test"
+            buyer_ref="test_ref", brand_manifest="Nike Air Jordan 2025 basketball shoes", po_number="test"
         )
         assert req.pacing == "even"  # Sensible default
         assert req.enable_creative_macro is False  # Explicit boolean default
@@ -234,7 +234,7 @@ class TestSchemaDefaultValues:
 
         # This test documents which fields are required and why
         required_field_justifications = {
-            "GetProductsRequest.promoted_offering": "Required per AdCP spec for product discovery",
+            "GetProductsRequest.brand_manifest": "Required per AdCP spec for product discovery",
             "ActivateSignalRequest.signal_id": "Must specify which signal to activate",
             "CreateMediaBuyRequest.po_number": "Required for financial tracking and billing",
         }
@@ -251,11 +251,11 @@ class TestMCPToolMinimalCalls:
         """Test that our fixes prevent the original 'brief is required' issue."""
         # This is what was failing before our fix
 
-        # 1. Test that GetProductsRequest can be created with just promoted_offering
+        # 1. Test that GetProductsRequest can be created with just brand_manifest
         try:
-            request = GetProductsRequest(promoted_offering="purina cat food")
+            request = GetProductsRequest(brand_manifest="purina cat food")
             assert request.brief == ""  # Should default to empty string
-            assert request.promoted_offering == "purina cat food"
+            assert request.brand_manifest == "purina cat food"
         except Exception as e:
             pytest.fail(f"GetProductsRequest creation failed: {e}")
 

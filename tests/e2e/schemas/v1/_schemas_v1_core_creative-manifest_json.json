@@ -9,9 +9,9 @@
       "$ref": "/schemas/v1/core/format-id.json",
       "description": "Format identifier this manifest is for"
     },
-    "promoted_offering": {
+    "brand_manifest": {
       "type": "string",
-      "description": "Product name or offering being advertised. Maps to promoted_offerings in create_media_buy request to associate creative with the product being promoted."
+      "description": "Product name or offering being advertised. Maps to brand_manifests in create_media_buy request to associate creative with the product being promoted."
     },
     "assets": {
       "type": "object",

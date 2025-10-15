@@ -62,7 +62,7 @@ class TestA2AMessageFieldValidation:
             end_date = start_date + timedelta(days=30)
 
             params = {
-                "promoted_offering": "Test Campaign",
+                "brand_manifest": "Test Campaign",
                 "packages": [
                     {
                         "buyer_ref": f"pkg_{sample_products[0]}",
@@ -114,7 +114,7 @@ class TestA2AMessageFieldValidation:
         """
         with mock_auth_context(handler):
             params = {
-                "promoted_offering": "Test product search",
+                "brand_manifest": "Test product search",
                 "brief": "Looking for display ads",
             }
 
@@ -220,7 +220,7 @@ class TestA2AResponseDictConstruction:
 
         # ✅ Uses __str__ method to generate message
         a2a_dict = {
-            "products": [p.model_dump() if hasattr(p, "model_dump") else p for p in response.products],
+            "products": [p.model_dump() if hasattr(p, "model_dump") else p for p in response.product_id],
             "message": str(response),  # Uses __str__ method
         }
 

@@ -84,9 +84,8 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
 
 async def get_products_raw(
-    brief: str,
-    promoted_offering: str | None = None,
-    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
+    brand_manifest: Any,  # BrandManifest | str | dict - validated by Pydantic - REQUIRED per AdCP spec
+    brief: str = "",
     adcp_version: str = "1.0.0",
     min_exposures: int | None = None,
     filters: dict | None = None,
@@ -98,9 +97,8 @@ async def get_products_raw(
     Raw function without @mcp.tool decorator for A2A server use.
 
     Args:
-        brief: Brief description of the advertising campaign or requirements
-        promoted_offering: DEPRECATED: Use brand_manifest instead (still supported for backward compatibility)
-        brand_manifest: Brand information manifest (inline object or URL string)
+        brand_manifest: Brand information manifest (inline object or URL string) - REQUIRED per AdCP spec
+        brief: Brief description of the advertising campaign or requirements (optional)
         adcp_version: AdCP schema version for this request (default: 1.0.0)
         min_exposures: Minimum impressions needed for measurement validity (optional)
         filters: Structured filters for product discovery (optional)
@@ -117,7 +115,6 @@ async def get_products_raw(
     # Create request object using helper (handles generated schema variants)
     req = create_get_products_request(
         brief=brief or "",
-        promoted_offering=promoted_offering,
         brand_manifest=brand_manifest,
         filters=filters,
     )
@@ -214,7 +211,6 @@ async def create_media_buy_raw(
     start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
     end_time: Any | None = None,  # datetime | str - validated by Pydantic
     budget: Any | None = None,  # Budget | float | dict - validated by Pydantic
-    promoted_offering: str | None = None,
     product_ids: list[str] | None = None,
     total_budget: float | None = None,
     start_date: Any | None = None,  # date | str - validated by Pydantic
@@ -237,9 +233,8 @@ async def create_media_buy_raw(
 
     Args:
         buyer_ref: Buyer reference identifier (required per AdCP spec)
-        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
+        brand_manifest: Brand information manifest - inline object or URL string
         po_number: Purchase order number (optional)
-        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
         packages: List of media packages (optional)
         start_time: Start time (legacy parameter)
         end_time: End time (legacy parameter)
@@ -270,7 +265,6 @@ async def create_media_buy_raw(
         buyer_ref=buyer_ref,
         brand_manifest=brand_manifest,
         po_number=po_number,
-        promoted_offering=promoted_offering,
         packages=packages,
         start_time=start_time,
         end_time=end_time,

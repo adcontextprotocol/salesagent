@@ -76,7 +76,7 @@ class TestBudgetFormatCompatibility:
     def test_request_budget_as_number_with_currency_field(self):
         """Test CreateMediaBuyRequest with budget as number (v1.8.0 format)."""
         request = CreateMediaBuyRequest(
-            promoted_offering="Test Campaign",
+            brand_manifest="Test Campaign",
             buyer_ref="test-123",
             budget=5000.0,  # Number format
             currency="USD",  # Separate currency field
@@ -103,7 +103,7 @@ class TestBudgetFormatCompatibility:
     def test_request_budget_as_budget_object(self):
         """Test CreateMediaBuyRequest with Budget object (legacy format)."""
         request = CreateMediaBuyRequest(
-            promoted_offering="Test Campaign",
+            brand_manifest="Test Campaign",
             buyer_ref="test-123",
             budget=Budget(total=3000.0, currency="EUR"),
             packages=[Package(product_id="prod_1")],
@@ -133,7 +133,7 @@ class TestBudgetFormatCompatibility:
         so we verify that dict input is accepted and properly converted.
         """
         request = CreateMediaBuyRequest(
-            promoted_offering="Test Campaign",
+            brand_manifest="Test Campaign",
             buyer_ref="test-123",
             budget={"total": 7500.0, "currency": "GBP"},
             packages=[Package(product_id="prod_1")],
@@ -160,7 +160,7 @@ class TestBudgetFormatCompatibility:
     def test_request_with_number_budget_falls_back_to_currency_field(self):
         """Test that number format uses currency field for currency."""
         request = CreateMediaBuyRequest(
-            promoted_offering="Test Campaign",
+            brand_manifest="Test Campaign",
             buyer_ref="test-123",
             budget=5000.0,
             currency="JPY",
@@ -178,7 +178,7 @@ class TestBudgetFormatCompatibility:
     def test_request_with_number_budget_defaults_to_usd_if_no_currency(self):
         """Test that number format defaults to USD if no currency field."""
         request = CreateMediaBuyRequest(
-            promoted_offering="Test Campaign",
+            brand_manifest="Test Campaign",
             buyer_ref="test-123",
             budget=5000.0,
             packages=[Package(product_id="prod_1")],
@@ -195,7 +195,7 @@ class TestBudgetFormatCompatibility:
     def test_multiple_packages_mixed_budget_formats(self):
         """Test request with packages using different budget formats."""
         request = CreateMediaBuyRequest(
-            promoted_offering="Test Campaign",
+            brand_manifest="Test Campaign",
             buyer_ref="test-123",
             budget=10000.0,
             currency="USD",

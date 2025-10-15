@@ -363,10 +363,16 @@ class MockAdServer(AdServerAdapter):
                     f"({pricing['currency']}, {'fixed' if pricing['is_fixed'] else 'auction'})"
                 )
 
-        # AI-powered test orchestration (check promoted_offering/brief for test instructions)
-        # For mock adapter, buyers put test directives in the brief (promoted_offering field)
+        # AI-powered test orchestration (check brand_manifest/brief for test instructions)
+        # For mock adapter, buyers put test directives in the brief or brand_manifest
         scenario = None
-        test_message = request.promoted_offering
+        test_message = None
+        if request.brand_manifest:
+            if isinstance(request.brand_manifest, str):
+                test_message = request.brand_manifest
+            elif isinstance(request.brand_manifest, dict):
+                test_message = request.brand_manifest.get("name", "")
+
         if test_message and isinstance(test_message, str) and test_message.strip():
             try:
                 orchestrator = AITestOrchestrator()
@@ -383,12 +389,12 @@ class MockAdServer(AdServerAdapter):
             # Handle error simulation - ONLY if explicitly requested
             if scenario.error_message:
                 # Double-check this looks like an intentional test directive
-                # If the promoted_offering is just a normal business name, ignore error_message
+                # If the brand_manifest is just a normal business name, ignore error_message
                 if any(keyword in test_message.lower() for keyword in ["error", "fail", "reject", "throw", "raise"]):
                     raise Exception(scenario.error_message)
                 else:
                     # This is likely a false positive from AI - log and ignore
-                    self.log(f"⚠️ Ignoring AI error_message for non-test promoted_offering: {test_message}")
+                    self.log(f"⚠️ Ignoring AI error_message for non-test brand_manifest: {test_message}")
                     scenario.error_message = None
 
             # Handle rejection
@@ -575,7 +581,7 @@ class MockAdServer(AdServerAdapter):
         from src.core.database.models import Tenant
         from src.core.utils.naming import apply_naming_template, build_order_name_context
 
-        order_name_template = "{campaign_name|promoted_offering} - {date_range}"  # Default
+        order_name_template = "{campaign_name|brand_name} - {date_range}"  # Default
         tenant_gemini_key = None
         try:
             with get_db_session() as db_session:

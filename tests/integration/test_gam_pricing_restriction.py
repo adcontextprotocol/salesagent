@@ -163,11 +163,11 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
 def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPCV pricing model with clear error."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_gam_cpcv"],
+                product_id="prod_gam_cpcv",
                 pricing_model=PricingModel.CPCV,  # Not supported by GAM
                 budget=10000.0,
             )
@@ -206,11 +206,11 @@ def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
 def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM pricing model."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_gam_cpm"],
+                product_id="prod_gam_cpm",
                 pricing_model=PricingModel.CPM,  # Supported by GAM
                 budget=10000.0,
             )
@@ -246,11 +246,11 @@ def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
 def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPP when buyer chooses it from multi-pricing product."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_gam_multi"],
+                product_id="prod_gam_multi",
                 pricing_model=PricingModel.CPP,  # Not supported by GAM
                 budget=15000.0,
             )
@@ -287,11 +287,11 @@ def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cp
 def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM when buyer chooses it from multi-pricing product."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_gam_multi"],
+                product_id="prod_gam_multi",
                 pricing_model=PricingModel.CPM,  # Supported by GAM
                 budget=10000.0,
             )

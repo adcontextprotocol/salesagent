@@ -306,7 +306,7 @@ class TestA2AAdCPCompliance:
         """Test explicit get_products skill invocation."""
         response = await compliance_client.send_explicit_skill_message(
             "get_products",
-            {"brief": "Video advertising for sports content", "promoted_offering": "Athletic apparel brand"},
+            {"brief": "Video advertising for sports content", "brand_manifest": "Athletic apparel brand"},
         )
 
         validation_result = await compliance_client.validate_skill_response("get_products", response)
@@ -350,7 +350,7 @@ class TestA2AAdCPCompliance:
 
         # Define skill tests
         skill_tests = [
-            ("get_products", {"brief": "Display ads", "promoted_offering": "Test brand"}),
+            ("get_products", {"brief": "Display ads", "brand_manifest": "Test brand"}),
             (
                 "create_media_buy",
                 {

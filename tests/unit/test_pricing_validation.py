@@ -23,7 +23,7 @@ class TestPricingValidation:
         # Package doesn't specify pricing_model
         package = Package(
             package_id="pkg_1",
-            products=["legacy_product"],
+            product_id="legacy_product",
             budget=5000.0,
         )
 
@@ -43,7 +43,7 @@ class TestPricingValidation:
 
         package = Package(
             package_id="pkg_1",
-            products=["legacy_product"],
+            product_id="legacy_product",
             pricing_model=PricingModel.CPCV,
             budget=5000.0,
         )
@@ -71,7 +71,7 @@ class TestPricingValidation:
 
         package = Package(
             package_id="pkg_1",
-            products=["video_product"],
+            product_id="video_product",
             pricing_model=PricingModel.CPCV,
             budget=10000.0,
         )
@@ -95,7 +95,7 @@ class TestPricingValidation:
 
         package = Package(
             package_id="pkg_1",
-            products=["display_product"],
+            product_id="display_product",
             pricing_model=PricingModel.CPP,  # Not offered
             budget=5000.0,
         )
@@ -118,7 +118,7 @@ class TestPricingValidation:
 
         package = Package(
             package_id="pkg_1",
-            products=["product_1"],
+            product_id="product_1",
             pricing_model=PricingModel.CPM,
             budget=5000.0,
         )
@@ -143,7 +143,7 @@ class TestPricingValidation:
 
         package = Package(
             package_id="pkg_1",
-            products=["product_1"],
+            product_id="product_1",
             pricing_model=PricingModel.CPM,
             budget=5000.0,
             # Missing bid_price
@@ -170,7 +170,7 @@ class TestPricingValidation:
 
         package = Package(
             package_id="pkg_1",
-            products=["product_1"],
+            product_id="product_1",
             pricing_model=PricingModel.CPM,
             bid_price=10.0,  # Below floor of 15.0
             budget=5000.0,
@@ -195,7 +195,7 @@ class TestPricingValidation:
 
         package = Package(
             package_id="pkg_1",
-            products=["product_1"],
+            product_id="product_1",
             pricing_model=PricingModel.CPM,
             budget=5000.0,
         )
@@ -220,7 +220,7 @@ class TestPricingValidation:
 
         package = Package(
             package_id="pkg_1",
-            products=["product_1"],
+            product_id="product_1",
             pricing_model=PricingModel.CPCV,
             budget=5000.0,  # Below minimum of 10000
         )
@@ -246,7 +246,7 @@ class TestPricingValidation:
 
         package = Package(
             package_id="pkg_1",
-            products=["product_1"],
+            product_id="product_1",
             pricing_model=PricingModel.CPM,
             bid_price=18.0,  # Above floor
             budget=5000.0,
@@ -267,7 +267,7 @@ class TestPricingValidation:
 
         package = Package(
             package_id="pkg_1",
-            products=["broken_product"],
+            product_id="broken_product",
             budget=5000.0,
         )
 

@@ -917,13 +917,9 @@ class GetProductsRequest(AdCPBaseModel):
         "",
         description="Brief description of the advertising campaign or requirements (optional)",
     )
-    promoted_offering: str | None = Field(
-        None,
-        description="DEPRECATED: Use brand_manifest instead. Description of the advertiser and product (still supported for backward compatibility)",
-    )
-    brand_manifest: "BrandManifest | str | None" = Field(
-        None,
-        description="Brand information manifest (inline object or URL string). Auto-generated from promoted_offering if not provided for backward compatibility.",
+    brand_manifest: "BrandManifest | dict[str, Any] | str" = Field(
+        ...,
+        description="Brand information manifest (inline object or URL string) providing brand context, assets, and product catalog (REQUIRED per AdCP spec)",
     )
     adcp_version: str = Field(
         "1.0.0",
@@ -934,32 +930,6 @@ class GetProductsRequest(AdCPBaseModel):
         None,
         description="Structured filters for product discovery",
     )
-    brand_manifest: dict[str, Any] | None = Field(
-        None,
-        description="Brand information manifest providing brand context, assets, and product catalog",
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def handle_legacy_promoted_offering(cls, values):
-        """Convert legacy promoted_offering to brand_manifest for backward compatibility."""
-        if not isinstance(values, dict):
-            return values
-
-        # Backward compatibility: if promoted_offering provided but no brand_manifest, create simple manifest
-        if values.get("promoted_offering") and not values.get("brand_manifest"):
-            promoted = values["promoted_offering"]
-            if promoted:
-                values["brand_manifest"] = {"name": promoted}
-
-        # Validate that at least one of brand_manifest or promoted_offering is provided
-        if not values.get("brand_manifest") and not values.get("promoted_offering"):
-            raise ValueError(
-                "Either 'brand_manifest' or 'promoted_offering' must be provided. "
-                "'promoted_offering' is deprecated but still supported for backward compatibility."
-            )
-
-        return values
 
 
 class Error(BaseModel):
@@ -1969,7 +1939,6 @@ class Package(BaseModel):
     # AdCP optional fields
     buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this package")
     product_id: str | None = Field(None, description="ID of the product this package is based on (single product)")
-    products: list[str] | None = Field(None, description="Array of product IDs to include in this package")
     budget: Budget | float | None = Field(None, description="Package-specific budget (Budget object or number)")
     impressions: float | None = Field(None, description="Impression goal for this package", gt=-1)
     targeting_overlay: Targeting | None = Field(None, description="Package-specific targeting")
@@ -2073,10 +2042,6 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         pattern="^[A-Z]{3}$",
         description="DEPRECATED: Use Package.currency instead. Currency code that will be copied to all packages for backward compatibility.",
     )
-    promoted_offering: str | None = Field(
-        None,
-        description="DEPRECATED: Use brand_manifest instead. Legacy field for describing what is being promoted.",
-    )
 
     # Legacy fields (for backward compatibility)
     product_ids: list[str] | None = Field(None, description="Legacy: Product IDs (converted to packages)")
@@ -2129,19 +2094,6 @@ class CreateMediaBuyRequest(AdCPBaseModel):
             # If it's a string (URL), leave as-is - Pydantic will handle it
             # If it's a dict (inline manifest), Pydantic will parse it as BrandManifest
             pass  # No conversion needed, Pydantic union type handles both
-
-        # Backward compatibility: if promoted_offering provided but no brand_manifest, create simple manifest
-        if "promoted_offering" in values and not values.get("brand_manifest"):
-            promoted = values["promoted_offering"]
-            if promoted:
-                values["brand_manifest"] = {"name": promoted}
-
-        # Validate that at least one of brand_manifest or promoted_offering is provided
-        if not values.get("brand_manifest") and not values.get("promoted_offering"):
-            raise ValueError(
-                "Either 'brand_manifest' or 'promoted_offering' must be provided. "
-                "'promoted_offering' is deprecated but still supported for backward compatibility."
-            )
 
         # If using legacy format, convert to new format
         if "product_ids" in values and not values.get("packages"):
@@ -2265,15 +2217,13 @@ class CreateMediaBuyRequest(AdCPBaseModel):
     def get_product_ids(self) -> list[str]:
         """Extract all product IDs from packages for backward compatibility.
 
-        Supports both singular product_id and plural products fields per AdCP spec.
+        Uses singular product_id field per AdCP spec (products array removed in v2.5).
         """
         if self.packages:
             product_ids = []
             for package in self.packages:
-                # Check both products (array) and product_id (single) fields
-                if package.products:
-                    product_ids.extend(package.products)
-                elif package.product_id:
+                # Use singular product_id field (products array was removed)
+                if package.product_id:
                     product_ids.append(package.product_id)
             return product_ids
         return self.product_ids or []
@@ -2396,9 +2346,9 @@ class DeliveryTotals(BaseModel):
     spend: float = Field(ge=0, description="Total amount spent")
     clicks: float | None = Field(None, ge=0, description="Total clicks (if applicable)")
     ctr: float | None = Field(None, ge=0, le=1, description="Click-through rate (clicks/impressions)")
-    video_completions: float | None = Field(None, ge=0, description="Total video completions (if applicable)")
+    completed_views: float | None = Field(None, ge=0, description="Total completed views (if applicable)")
     completion_rate: float | None = Field(
-        None, ge=0, le=1, description="Video completion rate (completions/impressions)"
+        None, ge=0, le=1, description="Video completion rate (completed_views/impressions)"
     )
 
 
@@ -2410,7 +2360,7 @@ class PackageDelivery(BaseModel):
     impressions: float = Field(ge=0, description="Package impressions")
     spend: float = Field(ge=0, description="Package spend")
     clicks: float | None = Field(None, ge=0, description="Package clicks")
-    video_completions: float | None = Field(None, ge=0, description="Package video completions")
+    completed_views: float | None = Field(None, ge=0, description="Package completed views")
     pacing_index: float | None = Field(
         None, ge=0, description="Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)"
     )
@@ -2450,8 +2400,8 @@ class AggregatedTotals(BaseModel):
     impressions: float = Field(ge=0, description="Total impressions delivered across all media buys")
     spend: float = Field(ge=0, description="Total amount spent across all media buys")
     clicks: float | None = Field(None, ge=0, description="Total clicks across all media buys (if applicable)")
-    video_completions: float | None = Field(
-        None, ge=0, description="Total video completions across all media buys (if applicable)"
+    completed_views: float | None = Field(
+        None, ge=0, description="Total completed views across all media buys (if applicable)"
     )
     media_buy_count: int = Field(ge=0, description="Number of media buys included in the response")
 

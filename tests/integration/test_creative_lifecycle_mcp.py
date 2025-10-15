@@ -830,7 +830,7 @@ class TestCreativeLifecycleMCP:
             packages = [
                 Package(
                     buyer_ref="pkg_1",
-                    products=["prod_1"],
+                    product_id="prod_1",
                     creative_ids=creative_ids,  # NEW: Provide creative_ids
                 )
             ]
@@ -838,7 +838,7 @@ class TestCreativeLifecycleMCP:
             # Call create_media_buy with packages containing creative_ids
             response = create_media_buy_raw(
                 po_number="PO-TEST-123",
-                promoted_offering="Test Campaign",
+                brand_manifest="Test Campaign",
                 packages=packages,
                 start_time=datetime.now(UTC) + timedelta(days=1),
                 end_time=datetime.now(UTC) + timedelta(days=30),

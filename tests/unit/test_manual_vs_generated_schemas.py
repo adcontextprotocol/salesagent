@@ -145,7 +145,7 @@ class TestGetProductsRequestComparison:
     """Compare manual GetProductsRequest vs generated variants."""
 
     def test_compare_with_variant1(self):
-        """Compare manual GetProductsRequest with GetProductsRequest1 (promoted_offering variant)."""
+        """Compare manual GetProductsRequest with GetProductsRequest1 (brand_manifest variant)."""
         result = compare_fields(
             ManualGetProductsRequest,
             GeneratedGetProductsRequest1,
@@ -154,7 +154,7 @@ class TestGetProductsRequestComparison:
         )
 
         print("\n" + "=" * 80)
-        print("GetProductsRequest: Manual vs Generated Variant 1 (promoted_offering)")
+        print("GetProductsRequest: Manual vs Generated Variant 1 (brand_manifest)")
         print("=" * 80)
 
         if result["manual_only"]:

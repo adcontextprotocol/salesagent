@@ -188,11 +188,11 @@ def test_get_products_returns_pricing_options(setup_tenant_with_pricing_products
 
     response = _get_products_impl(request, MockContext(), tenant, principal)
 
-    assert response.products is not None
-    assert len(response.products) > 0
+    assert response.product_id is not None
+    assert len(response.product_id) > 0
 
     # Find the CPM fixed product
-    cpm_product = next((p for p in response.products if p.product_id == "prod_cpm_fixed"), None)
+    cpm_product = next((p for p in response.product_id if p.product_id == "prod_cpm_fixed"), None)
     assert cpm_product is not None
     assert cpm_product.pricing_options is not None
     assert len(cpm_product.pricing_options) == 1
@@ -201,7 +201,7 @@ def test_get_products_returns_pricing_options(setup_tenant_with_pricing_products
     assert cpm_product.pricing_options[0].rate == 12.50
 
     # Find the multi-pricing product
-    multi_product = next((p for p in response.products if p.product_id == "prod_multi"), None)
+    multi_product = next((p for p in response.product_id if p.product_id == "prod_multi"), None)
     assert multi_product is not None
     assert multi_product.pricing_options is not None
     assert len(multi_product.pricing_options) == 3
@@ -215,11 +215,11 @@ def test_get_products_returns_pricing_options(setup_tenant_with_pricing_products
 def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing_products):
     """Test creating media buy with fixed CPM pricing."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_cpm_fixed"],
+                product_id="prod_cpm_fixed",
                 pricing_model=PricingModel.CPM,
                 budget=10000.0,
             )
@@ -254,11 +254,11 @@ def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing_produ
 def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_pricing_products):
     """Test creating media buy with auction CPM pricing."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_cpm_auction"],
+                product_id="prod_cpm_auction",
                 pricing_model=PricingModel.CPM,
                 bid_price=15.0,  # Above floor of 8.0
                 budget=10000.0,
@@ -294,11 +294,11 @@ def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_pricing_pro
 def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_pricing_products):
     """Test that auction bid below floor price fails."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_cpm_auction"],
+                product_id="prod_cpm_auction",
                 pricing_model=PricingModel.CPM,
                 bid_price=5.0,  # Below floor of 8.0
                 budget=10000.0,
@@ -334,11 +334,11 @@ def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_pricin
 def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_products):
     """Test creating media buy with CPCV pricing."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_cpcv"],
+                product_id="prod_cpcv",
                 pricing_model=PricingModel.CPCV,
                 budget=8000.0,  # Above min spend of 5000
             )
@@ -373,11 +373,11 @@ def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_products):
 def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_products):
     """Test that budget below min_spend_per_package fails."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_cpcv"],
+                product_id="prod_cpcv",
                 pricing_model=PricingModel.CPCV,
                 budget=3000.0,  # Below min spend of 5000
             )
@@ -412,11 +412,11 @@ def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_produc
 def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_pricing_products):
     """Test creating media buy choosing CPP from multi-pricing product."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_multi"],
+                product_id="prod_multi",
                 pricing_model=PricingModel.CPP,
                 budget=15000.0,  # Above min spend of 10000
             )
@@ -451,11 +451,11 @@ def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_pricing_pro
 def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pricing_products):
     """Test that requesting unavailable pricing model fails."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest="https://example.com/product",
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_cpm_fixed"],  # Only offers CPM
+                product_id="prod_cpm_fixed",  # Only offers CPM
                 pricing_model=PricingModel.CPCV,  # Requesting CPCV
                 budget=10000.0,
             )

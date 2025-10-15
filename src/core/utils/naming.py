@@ -4,10 +4,10 @@ Adapter-agnostic utilities that work across all ad servers (GAM, Mock, Kevel, et
 
 Supports variable substitution with fallback syntax:
 - {campaign_name} - Direct substitution
-- {campaign_name|promoted_offering} - Use campaign_name, fall back to promoted_offering
+- {campaign_name|brand_name} - Use campaign_name, fall back to brand_name
 - {date_range} - Formatted date range (e.g., "Oct 7-14, 2025")
 - {month_year} - Month and year (e.g., "Oct 2025")
-- {promoted_offering} - What's being advertised
+- {brand_name} - Brand name from brand_manifest
 - {buyer_ref} - Buyer's reference ID
 - {auto_name} - AI-generated name from full context (requires Gemini API key)
 - {product_name} - Product name (for line items)
@@ -64,16 +64,26 @@ def generate_auto_name(
         max_length: Maximum length for generated name
 
     Returns:
-        AI-generated name, or falls back to promoted_offering if Gemini unavailable
+        AI-generated name, or falls back to brand_name/campaign_name if Gemini unavailable
 
     Example output:
         "Nike Air Max Campaign - Q4 Holiday Push"
         "Acme Corp Brand Awareness - Premium Video"
     """
+    # Extract brand name from brand_manifest
+    brand_name = None
+    if request.brand_manifest:
+        if isinstance(request.brand_manifest, str):
+            brand_name = request.brand_manifest
+        elif isinstance(request.brand_manifest, dict):
+            brand_name = request.brand_manifest.get("name", "")
+        elif hasattr(request.brand_manifest, "name"):
+            brand_name = request.brand_manifest.name
+
     # Fallback if Gemini not configured
     if not tenant_gemini_key:
-        logger.debug("No Gemini API key configured, falling back to promoted_offering")
-        return request.promoted_offering or request.campaign_name or "Campaign"
+        logger.debug("No Gemini API key configured, falling back to brand_name")
+        return brand_name or request.campaign_name or "Campaign"
 
     try:
         import google.generativeai as genai
@@ -90,7 +100,7 @@ def generate_auto_name(
         context_parts = [
             f"Buyer Reference: {request.buyer_ref}",
             f"Campaign: {request.campaign_name or 'N/A'}",
-            f"Promoted Offering: {request.promoted_offering or 'N/A'}",
+            f"Brand: {brand_name or 'N/A'}",
         ]
 
         # Add budget info (v1.8.0 compatible)
@@ -152,8 +162,8 @@ Return ONLY the order name, nothing else."""
 
     except Exception as e:
         logger.warning(f"Failed to generate auto_name with Gemini: {e}, falling back")
-        # Fallback to promoted_offering or campaign_name
-        return request.promoted_offering or request.campaign_name or "Campaign"
+        # Fallback to brand_name or campaign_name
+        return brand_name or request.campaign_name or "Campaign"
 
 
 def apply_naming_template(
@@ -176,9 +186,9 @@ def apply_naming_template(
         ... })
         "Q1 Launch - Oct 7-14, 2025"
 
-        >>> apply_naming_template("{campaign_name|promoted_offering}", {
+        >>> apply_naming_template("{campaign_name|brand_name}", {
         ...     "campaign_name": None,
-        ...     "promoted_offering": "Nike Shoes"
+        ...     "brand_name": "Nike Shoes"
         ... })
         "Nike Shoes"
     """
@@ -194,8 +204,8 @@ def apply_naming_template(
     pattern = r"\{([^}]+)\}"
 
     for match in re.finditer(pattern, result):
-        full_match = match.group(0)  # e.g., "{campaign_name|promoted_offering}"
-        variables = match.group(1).split("|")  # e.g., ["campaign_name", "promoted_offering"]
+        full_match = match.group(0)  # e.g., "{campaign_name|brand_name}"
+        variables = match.group(1).split("|")  # e.g., ["campaign_name", "brand_name"]
 
         # Try each variable in order until we find a non-None, non-empty value
         value = None
@@ -245,9 +255,19 @@ def build_order_name_context(
         tenant_gemini_key=tenant_gemini_key,
     )
 
+    # Extract brand name from brand_manifest
+    brand_name = None
+    if request.brand_manifest:
+        if isinstance(request.brand_manifest, str):
+            brand_name = request.brand_manifest
+        elif isinstance(request.brand_manifest, dict):
+            brand_name = request.brand_manifest.get("name", "")
+        elif hasattr(request.brand_manifest, "name"):
+            brand_name = request.brand_manifest.name
+
     return {
         "campaign_name": request.campaign_name,
-        "promoted_offering": request.promoted_offering,
+        "brand_name": brand_name,
         "buyer_ref": request.buyer_ref,
         "auto_name": auto_name,
         "date_range": format_date_range(start_time, end_time),

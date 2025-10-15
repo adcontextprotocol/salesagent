@@ -7,7 +7,7 @@
   "properties": {
     "asset_type": {
       "type": "string",
-      "const": "promoted_offerings"
+      "const": "brand_manifests"
     },
     "url": {
       "type": "string",

@@ -32,7 +32,7 @@ class TestMCPProtocol:
                 {
                     "req": {
                         "brief": "Looking for display ads on news sites",
-                        "promoted_offering": "AI analytics platform for businesses",
+                        "brand_manifest": "AI analytics platform for businesses",
                     }
                 },
             )
@@ -55,8 +55,8 @@ class TestMCPProtocol:
                 assert "formats" in product or hasattr(product, "formats")
 
     @pytest.mark.requires_server
-    async def test_get_products_missing_promoted_offering(self, mcp_client):
-        """Test that get_products fails without promoted_offering."""
+    async def test_get_products_missing_brand_manifest(self, mcp_client):
+        """Test that get_products fails without brand_manifest."""
         async with mcp_client as client:
             with pytest.raises(Exception) as exc_info:
                 await client.call_tool(
@@ -64,13 +64,13 @@ class TestMCPProtocol:
                     {
                         "req": {
                             "brief": "Looking for display ads"
-                            # Missing promoted_offering
+                            # Missing brand_manifest
                         }
                     },
                 )
 
             # Should get validation error
-            assert "promoted_offering" in str(exc_info.value).lower() or "required" in str(exc_info.value).lower()
+            assert "brand_manifest" in str(exc_info.value).lower() or "required" in str(exc_info.value).lower()
 
     @pytest.mark.requires_server
     async def test_full_media_buy_lifecycle(self, mcp_client):
@@ -82,7 +82,7 @@ class TestMCPProtocol:
                 {
                     "req": {
                         "brief": "video ads for sports content",
-                        "promoted_offering": "Sports betting app targeting NFL fans",
+                        "brand_manifest": "Sports betting app targeting NFL fans",
                     }
                 },
             )
@@ -227,7 +227,7 @@ class TestMCPProtocol:
             with pytest.raises(Exception) as exc_info:
                 await client.call_tool(
                     "get_products",
-                    {"req": {"brief": "test", "promoted_offering": "test"}},
+                    {"req": {"brief": "test", "brand_manifest": "test"}},
                 )
 
             # Should get auth error
@@ -240,7 +240,7 @@ class TestMCPProtocol:
             # Get a product first
             products_result = await client.call_tool(
                 "get_products",
-                {"req": {"brief": "display ads", "promoted_offering": "test product"}},
+                {"req": {"brief": "display ads", "brand_manifest": "test product"}},
             )
 
             content = (
@@ -368,7 +368,7 @@ class TestMCPTestPage:
                 json={
                     "server_url": "http://localhost:8080/mcp/",
                     "tool": "get_products",
-                    "params": {"brief": "test", "promoted_offering": "test offering"},
+                    "params": {"brief": "test", "brand_manifest": "test offering"},
                     "access_token": sample_principal["access_token"],
                 },
                 headers={"Content-Type": "application/json"},

@@ -35,7 +35,7 @@ class TestSignalsAgentWorkflow:
             "upstream_token": "test-token",
             "auth_header": "x-adcp-auth",
             "timeout": 30,
-            "forward_promoted_offering": True,
+            "forward_brand_manifest": True,
             "fallback_to_database": True,
         }
 
@@ -96,7 +96,7 @@ class TestSignalsAgentWorkflow:
         await self._add_test_products(tenant_id)
 
         request = GetProductsRequest(
-            brief="sports car advertising campaign", promoted_offering="BMW M3 2025 sports sedan"
+            brief="sports car advertising campaign", brand_manifest="BMW M3 2025 sports sedan"
         )
         context = test_context_factory()
 
@@ -105,10 +105,10 @@ class TestSignalsAgentWorkflow:
             response = await get_products(request, context)
 
             # Should return database products only
-            assert len(response.products) > 0
+            assert len(response.product_id) > 0
 
             # Verify no signals products
-            for product in response.products:
+            for product in response.product_id:
                 assert product.metadata.get("created_by") != "signals_discovery"
 
     async def test_get_products_with_signals_success(
@@ -122,7 +122,7 @@ class TestSignalsAgentWorkflow:
 
         request = GetProductsRequest(
             brief="luxury sports car advertising for wealthy professionals",
-            promoted_offering="Porsche 911 Turbo S 2025",
+            brand_manifest="Porsche 911 Turbo S 2025",
         )
         context = test_context_factory()
 
@@ -139,10 +139,10 @@ class TestSignalsAgentWorkflow:
                 response = await get_products(request, context)
 
                 # Should return both signals and database products
-                assert len(response.products) > 0
+                assert len(response.product_id) > 0
 
                 # Verify signals products are included
-                signals_products = [p for p in response.products if p.metadata.get("created_by") == "signals_discovery"]
+                signals_products = [p for p in response.product_id if p.metadata.get("created_by") == "signals_discovery"]
                 assert len(signals_products) > 0
 
                 # Verify signals call was made
@@ -157,7 +157,7 @@ class TestSignalsAgentWorkflow:
 
         await self._add_test_products(tenant_id)
 
-        request = GetProductsRequest(brief="test brief for failure scenario", promoted_offering="Test Product 2025")
+        request = GetProductsRequest(brief="test brief for failure scenario", brand_manifest="Test Product 2025")
         context = test_context_factory()
 
         # Mock upstream failure
@@ -171,10 +171,10 @@ class TestSignalsAgentWorkflow:
                 response = await get_products(request, context)
 
                 # Should still return database products due to fallback
-                assert len(response.products) > 0
+                assert len(response.product_id) > 0
 
                 # All products should be from database (no signals products)
-                signals_products = [p for p in response.products if p.metadata.get("created_by") == "signals_discovery"]
+                signals_products = [p for p in response.product_id if p.metadata.get("created_by") == "signals_discovery"]
                 assert len(signals_products) == 0
 
     async def test_get_products_no_brief_optimization(self, tenant_with_signals_config, test_context_factory):
@@ -184,7 +184,7 @@ class TestSignalsAgentWorkflow:
 
         await self._add_test_products(tenant_id)
 
-        request = GetProductsRequest(brief="", promoted_offering="Generic Product 2025")
+        request = GetProductsRequest(brief="", brand_manifest="Generic Product 2025")
         context = test_context_factory()
 
         # Mock signals client to verify it's not called
@@ -198,7 +198,7 @@ class TestSignalsAgentWorkflow:
                 response = await get_products(request, context)
 
                 # Should return products but no signals call
-                assert len(response.products) > 0
+                assert len(response.product_id) > 0
 
                 # Verify upstream was NOT called (optimization)
                 mock_client.call_tool.assert_not_called()

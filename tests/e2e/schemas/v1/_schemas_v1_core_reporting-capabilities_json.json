@@ -53,7 +53,7 @@
           "spend",
           "clicks",
           "ctr",
-          "video_completions",
+          "completed_views",
           "completion_rate",
           "conversions",
           "viewability",
@@ -66,7 +66,7 @@
           "impressions",
           "spend",
           "clicks",
-          "video_completions"
+          "completed_views"
         ],
         [
           "impressions",
