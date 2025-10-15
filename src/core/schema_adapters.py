@@ -510,9 +510,12 @@ class ListAuthorizedPropertiesRequest(BaseModel):
 class CreateMediaBuyResponse(AdCPBaseModel):
     """Adapter for CreateMediaBuyResponse - adds __str__() and internal field handling.
 
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+
     Example:
         resp = CreateMediaBuyResponse(
-            status="completed",
             buyer_ref="buy_123",
             media_buy_id="mb_456",
             workflow_step_id="ws_789"  # Internal field
@@ -524,12 +527,10 @@ class CreateMediaBuyResponse(AdCPBaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    # Required AdCP fields
-    status: str = Field(..., description="Task status")
+    # Required AdCP domain fields
     buyer_ref: str = Field(..., description="Buyer's reference identifier")
 
-    # Optional AdCP fields
-    task_id: str | None = None
+    # Optional AdCP domain fields
     media_buy_id: str | None = None
     creative_deadline: Any | None = None
     packages: list[Any] | None = Field(default_factory=list)
@@ -553,15 +554,9 @@ class CreateMediaBuyResponse(AdCPBaseModel):
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer."""
-        if self.status == "completed":
-            return f"Media buy {self.media_buy_id or self.buyer_ref} created successfully."
-        elif self.status == "working":
-            return f"Media buy {self.buyer_ref} is being created..."
-        elif self.status == "submitted":
-            return f"Media buy {self.buyer_ref} submitted for approval."
-        elif self.status == "input-required":
-            return f"Media buy {self.buyer_ref} requires additional input."
-        return f"Media buy {self.buyer_ref}: {self.status}"
+        if self.media_buy_id:
+            return f"Media buy {self.media_buy_id} created successfully."
+        return f"Media buy {self.buyer_ref} created."
 
 
 # ============================================================================
@@ -570,24 +565,23 @@ class CreateMediaBuyResponse(AdCPBaseModel):
 
 
 class UpdateMediaBuyResponse(AdCPBaseModel):
-    """Adapter for UpdateMediaBuyResponse - adds __str__() for protocol abstraction."""
+    """Adapter for UpdateMediaBuyResponse - adds __str__() for protocol abstraction.
+
+    Per AdCP PR #113, protocol fields excluded from domain response.
+    """
 
     model_config = {"arbitrary_types_allowed": True}
 
-    status: str = Field(..., description="Task status")
     buyer_ref: str = Field(..., description="Buyer's reference identifier")
-    task_id: str | None = None
     media_buy_id: str | None = None
-    packages: list[Any] | None = None
+    affected_packages: list[Any] | None = Field(default_factory=list)
     errors: list[Any] | None = None
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer."""
-        if self.status == "completed":
-            return f"Media buy {self.media_buy_id or self.buyer_ref} updated successfully."
-        elif self.status == "working":
-            return f"Media buy {self.buyer_ref} is being updated..."
-        return f"Media buy {self.buyer_ref}: {self.status}"
+        if self.media_buy_id:
+            return f"Media buy {self.media_buy_id} updated successfully."
+        return f"Media buy {self.buyer_ref} updated."
 
 
 # ============================================================================
