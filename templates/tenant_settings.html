@@ -4,6 +4,12 @@
 
 {% block content %}
 <style>
+    /* Spinning animation for sync button */
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
     .settings-layout {
         display: grid;
         grid-template-columns: 250px 1fr;

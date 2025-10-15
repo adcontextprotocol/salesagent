@@ -579,18 +579,9 @@ function testGAMConnection() {
 function syncGAMInventory() {
     const button = document.querySelector('button[onclick="syncGAMInventory()"]');
     const originalText = button.innerHTML;
-    const syncIcon = document.getElementById('sync-icon');
 
     button.disabled = true;
     button.innerHTML = '<span style="display: inline-block; animation: spin 1s linear infinite;">🔄</span> Syncing...';
-
-    // Add CSS animation if not already present
-    if (!document.getElementById('spin-animation')) {
-        const style = document.createElement('style');
-        style.id = 'spin-animation';
-        style.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
-        document.head.appendChild(style);
-    }
 
     fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/sync-inventory`, {
         method: 'POST',
