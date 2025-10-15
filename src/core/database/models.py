@@ -128,12 +128,12 @@ class Tenant(Base, JSONValidatorMixin):
     def gemini_api_key(self, value: str | None) -> None:
         """Set encrypted Gemini API key."""
         if not value:
-            self._gemini_api_key = None
+            self._gemini_api_key = None  # type: ignore[assignment]
             return
 
         from src.core.utils.encryption import encrypt_api_key
 
-        self._gemini_api_key = encrypt_api_key(value)
+        self._gemini_api_key = encrypt_api_key(value)  # type: ignore[assignment]
 
 
 # CreativeFormat model removed - table dropped in migration f2addf453200 (Oct 13, 2025)
