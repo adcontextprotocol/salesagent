@@ -104,7 +104,6 @@ class TestGeneratedSchemaCompatibility:
         )
 
         custom_response = ListCreativesResponse(
-            message="Successfully retrieved 0 creatives",
             query_summary=QuerySummary(
                 total_matching=0,
                 returned=0,
@@ -117,7 +116,7 @@ class TestGeneratedSchemaCompatibility:
             creatives=[],
         )
 
-        adcp_dict = custom_response.model_dump(exclude={"adcp_version", "status", "task_id", "context_id"})
+        adcp_dict = custom_response.model_dump(exclude={"adcp_version", "status", "task_id", "context_id", "message"})
 
         try:
             generated = GeneratedListCreativesResponse(**adcp_dict)

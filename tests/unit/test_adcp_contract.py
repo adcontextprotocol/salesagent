@@ -1239,14 +1239,13 @@ class TestAdCPContract:
                 total_pages=1,
                 current_page=1,
             ),
-            message="Found 2 creatives",
         )
 
         # Test model_dump
         adcp_response = response.model_dump()
 
-        # Verify required AdCP fields are present
-        adcp_required_fields = ["creatives", "query_summary", "pagination", "message"]
+        # Verify required AdCP fields are present (message is not in AdCP spec)
+        adcp_required_fields = ["creatives", "query_summary", "pagination"]
         for field in adcp_required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"

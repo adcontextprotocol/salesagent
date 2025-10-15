@@ -1011,19 +1011,25 @@ class GetProductsResponse(AdCPBaseModel):
         # Get basic structure
         data = {}
 
+        # Respect exclude parameter from kwargs
+        exclude = kwargs.get("exclude", set())
+        if not isinstance(exclude, set):
+            exclude = set(exclude) if exclude else set()
+
         # NOTE: adcp_version NOT in official spec - excluded for spec compliance
         # data["adcp_version"] = self.adcp_version
 
         # Serialize products using their custom model_dump method
-        if self.products:
-            data["products"] = [product.model_dump(**kwargs) for product in self.products]
-        else:
-            data["products"] = []
+        if "products" not in exclude:
+            if self.products:
+                data["products"] = [product.model_dump(**kwargs) for product in self.products]
+            else:
+                data["products"] = []
 
         # Add other fields, excluding None values for AdCP compliance
-        if self.errors is not None:
+        if "errors" not in exclude and self.errors is not None:
             data["errors"] = self.errors
-        if self.status is not None:
+        if "status" not in exclude and self.status is not None:
             data["status"] = self.status
 
         return data
@@ -1734,7 +1740,6 @@ class ListCreativesResponse(AdCPBaseModel):
 
     # Required AdCP fields
     adcp_version: str = Field("2.3.0", pattern=r"^\d+\.\d+\.\d+$")
-    message: str = Field(...)
     query_summary: QuerySummary = Field(...)
     pagination: Pagination = Field(...)
     creatives: list[Creative] = Field(..., description="Array of creative assets")
@@ -1746,7 +1751,14 @@ class ListCreativesResponse(AdCPBaseModel):
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
-        return self.message
+        total = self.query_summary.total_matching
+        returned = self.query_summary.returned
+        if total == 0:
+            return "No creatives found."
+        elif returned == total:
+            return f"Found {total} creative{'s' if total != 1 else ''}."
+        else:
+            return f"Found {total} creatives, showing {returned}."
 
 
 class CheckCreativeStatusRequest(AdCPBaseModel):
