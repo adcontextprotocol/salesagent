@@ -13,7 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from src.admin.app import create_app
+# NOTE: create_app import moved to fixture to avoid database connection at module import time
+# from src.admin.app import create_app
 
 
 class TestNotificationUrlsExist:
@@ -22,6 +23,9 @@ class TestNotificationUrlsExist:
     @pytest.fixture
     def app(self):
         """Create Flask app for route inspection."""
+        # Lazy import to avoid database connection at module import time
+        from src.admin.app import create_app
+
         app, _ = create_app()
         return app
 

@@ -9,8 +9,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.admin.app import create_app
-
+# NOTE: create_app import moved to fixture to avoid database connection at module import time
+# from src.admin.app import create_app
 # Import modules to test
 from src.services.ai_product_service import AdServerInventory, AIProductConfigurationService, ProductDescription
 from src.services.default_products import (
@@ -217,6 +217,8 @@ class TestProductAPIs:
     @pytest.fixture
     def auth_client(self, integration_db):
         """Create authenticated test client using test mode."""
+        # Lazy import to avoid database connection at module import time
+        from src.admin.app import create_app
 
         app, _ = create_app()
         app.config["TESTING"] = True
