@@ -29,7 +29,16 @@ from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 
+
 # CreativeFormat removed - table dropped in migration f2addf453200
+# Stub class to prevent import errors in dead code below
+# TODO: Remove all CreativeFormat-related routes and code (lines 270-560)
+class CreativeFormat:
+    """Dead code stub - creative_formats table was dropped in migration f2addf453200."""
+
+    def __init__(self, **kwargs):
+        raise RuntimeError("CreativeFormat table no longer exists - see migration f2addf453200")
+
 
 logger = logging.getLogger(__name__)
 
