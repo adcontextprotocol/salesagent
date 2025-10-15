@@ -1381,8 +1381,9 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
     # Filter pricing data for anonymous users
     if principal_id is None:  # Anonymous user
         # Remove pricing data from products for anonymous users
+        # Set to empty list to hide pricing (will be excluded during serialization)
         for product in modified_products:
-            product.pricing_options = None
+            product.pricing_options = []
 
     # Log activity
     log_tool_activity(context, "get_products", start_time)

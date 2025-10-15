@@ -623,11 +623,11 @@ class Product(BaseModel):
 
     # NEW: Pricing options (AdCP PR #88)
     # Note: This is populated from database relationship, not a column
-    # REQUIRED: All products must have at least one pricing option
+    # REQUIRED: All products must have at least one pricing option in database
+    # Can be empty list for anonymous users (hidden for privacy)
     pricing_options: list[PricingOption] = Field(
-        ...,
-        min_length=1,
-        description="Available pricing models for this product (AdCP PR #88). At least one pricing option is required.",
+        default_factory=list,
+        description="Available pricing models for this product (AdCP PR #88). May be empty for unauthenticated requests.",
     )
 
     # Pricing fields (AdCP PR #88)
@@ -669,13 +669,12 @@ class Product(BaseModel):
     def validate_pricing_fields(self) -> "Product":
         """Validate pricing_options per AdCP spec.
 
-        Per AdCP PR #88: All products must use pricing_options.
-        Note: Pydantic already validates that pricing_options is present and non-empty
-        (via required field with min_length=1). This validator can be used for
-        additional business logic validation if needed in the future.
+        Per AdCP PR #88: All products must use pricing_options in the database.
+        However, pricing_options may be empty in API responses for anonymous/unauthenticated
+        users to hide pricing information.
         """
-        # Pydantic handles the basic validation via Field(..., min_length=1)
-        # This validator is kept for future pricing-related validation logic
+        # pricing_options defaults to empty list if not provided
+        # This allows filtering pricing info for anonymous users
         return self
 
     @model_validator(mode="after")
@@ -783,6 +782,9 @@ class Product(BaseModel):
         adcp_data = {}
         for key, value in data.items():
             # Include core fields always, and non-null optional fields
+            # Exclude empty pricing_options (for anonymous users)
+            if key == "pricing_options" and value == []:
+                continue
             if key in core_fields or value is not None:
                 adcp_data[key] = value
 
