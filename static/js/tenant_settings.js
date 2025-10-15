@@ -176,6 +176,11 @@ function checkOAuthStatus() {
             const statusBadge = document.getElementById('oauth-status-badge');
             const statusText = document.getElementById('oauth-status-text');
 
+            // Only update if elements exist (they may not be on all pages)
+            if (!statusBadge || !statusText) {
+                return;
+            }
+
             if (data.authenticated) {
                 statusBadge.textContent = 'Connected';
                 statusBadge.className = 'badge badge-success';
