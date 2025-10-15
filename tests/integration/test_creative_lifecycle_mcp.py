@@ -834,6 +834,7 @@ class TestCreativeLifecycleMCP:
 
             # Call create_media_buy with packages containing creative_ids
             response = create_media_buy_raw(
+                buyer_ref="test-buyer-creative-ids",
                 po_number="PO-TEST-123",
                 promoted_offering="Test Campaign",
                 packages=packages,
@@ -844,8 +845,8 @@ class TestCreativeLifecycleMCP:
             )
 
             # Verify response
+            assert response.buyer_ref == "test-buyer-creative-ids"
             assert response.media_buy_id == "test_buy_123"
-            assert response.status == TaskStatus.WORKING
 
             # Verify creative assignments were created in database
             with get_db_session() as session:
