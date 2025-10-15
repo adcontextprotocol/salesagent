@@ -90,6 +90,7 @@ def detect_gam_network(tenant_id):
     try:
         data = request.get_json()
         refresh_token = data.get("refresh_token")
+        network_code_provided = data.get("network_code")  # For multi-network selection
 
         if not refresh_token:
             return jsonify({"success": False, "error": "Refresh token required"}), 400
@@ -135,6 +136,26 @@ def detect_gam_network(tenant_id):
         # Create GAM client
         client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent")
 
+        # If network_code provided (user selected from multiple networks),
+        # just get trafficker ID for that network
+        if network_code_provided:
+            try:
+                client.network_code = network_code_provided
+                user_service = client.GetService("UserService", version=GAM_API_VERSION)
+                current_user = user_service.getCurrentUser()
+
+                trafficker_id = None
+                if current_user:
+                    is_valid, error_msg = validate_gam_user_response(current_user)
+                    if is_valid:
+                        trafficker_id = str(current_user["id"])
+                    else:
+                        logger.warning(f"Invalid user response: {error_msg}")
+
+                return jsonify({"success": True, "network_code": network_code_provided, "trafficker_id": trafficker_id})
+            except Exception as e:
+                return jsonify({"success": False, "error": f"Error getting trafficker ID: {str(e)}"}), 500
+
         # Get network service and retrieve network info
         network_service = client.GetService("NetworkService", version=GAM_API_VERSION)
 
@@ -143,24 +164,40 @@ def detect_gam_network(tenant_id):
             try:
                 all_networks = network_service.getAllNetworks()
                 if all_networks and len(all_networks) > 0:
-                    # Use the first network (most users have access to only one)
-                    network = all_networks[0]
-
-                    # Validate network response structure
-                    is_valid, error_msg = validate_gam_network_response(network)
-                    if not is_valid:
-                        logger.error(f"Invalid GAM network response: {error_msg}")
-                        return (
-                            jsonify(
+                    # Validate all networks
+                    validated_networks = []
+                    for network in all_networks:
+                        is_valid, error_msg = validate_gam_network_response(network)
+                        if is_valid:
+                            validated_networks.append(
                                 {
-                                    "success": False,
-                                    "error": f"Invalid network response from GAM: {error_msg}",
+                                    "network_code": str(network["networkCode"]),
+                                    "network_name": network["displayName"],
+                                    "network_id": str(network["id"]),
                                 }
-                            ),
+                            )
+                        else:
+                            logger.warning(f"Invalid network in list: {error_msg}")
+
+                    if not validated_networks:
+                        return (
+                            jsonify({"success": False, "error": "No valid networks found in GAM account"}),
                             500,
                         )
 
-                    # Also get the current user ID to use as trafficker_id
+                    # If multiple networks, return list for user to choose
+                    if len(validated_networks) > 1:
+                        return jsonify(
+                            {
+                                "success": True,
+                                "multiple_networks": True,
+                                "networks": validated_networks,
+                                "network_count": len(validated_networks),
+                            }
+                        )
+
+                    # Single network - auto-select and get trafficker ID
+                    network = all_networks[0]
                     trafficker_id = None
                     try:
                         # Set the network code in the client so we can get user info
@@ -185,7 +222,7 @@ def detect_gam_network(tenant_id):
                             "network_code": str(network["networkCode"]),
                             "network_name": network["displayName"],
                             "network_id": str(network["id"]),
-                            "network_count": len(all_networks),
+                            "network_count": 1,
                             "trafficker_id": trafficker_id,
                         }
                     )

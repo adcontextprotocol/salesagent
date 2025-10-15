@@ -251,14 +251,20 @@ function detectGAMNetwork() {
         button.textContent = originalText;
 
         if (data.success) {
-            document.getElementById('gam_network_code').value = data.network_code;
+            // Handle multiple networks - show dropdown for selection
+            if (data.multiple_networks && data.networks) {
+                showNetworkSelector(data.networks, refreshToken);
+            } else {
+                // Single network - auto-select
+                document.getElementById('gam_network_code').value = data.network_code;
 
-            // Update trafficker ID if provided
-            if (data.trafficker_id) {
-                document.getElementById('gam_trafficker_id').value = data.trafficker_id;
+                // Update trafficker ID if provided
+                if (data.trafficker_id) {
+                    document.getElementById('gam_trafficker_id').value = data.trafficker_id;
+                }
+
+                alert(`✅ Network code detected: ${data.network_code}`);
             }
-
-            alert(`✅ Network code detected: ${data.network_code}`);
         } else {
             alert('❌ ' + (data.error || data.message || 'Unknown error'));
         }
@@ -266,6 +272,91 @@ function detectGAMNetwork() {
     .catch(error => {
         button.disabled = false;
         button.textContent = originalText;
+        alert('❌ Error: ' + error.message);
+    });
+}
+
+// Show network selector when multiple networks found
+function showNetworkSelector(networks, refreshToken) {
+    const container = document.createElement('div');
+    container.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background: white; padding: 2rem; border-radius: 8px; max-width: 500px; width: 90%;';
+
+    modal.innerHTML = `
+        <h3 style="margin-top: 0;">Select GAM Network</h3>
+        <p style="color: #666;">You have access to multiple GAM networks. Please select which one to use:</p>
+        <select id="network-selector" class="form-control" style="margin: 1rem 0; padding: 0.5rem; font-size: 1rem;">
+            ${networks.map(net => `
+                <option value="${net.network_code}">
+                    ${net.network_name} (${net.network_code})
+                </option>
+            `).join('')}
+        </select>
+        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+            <button onclick="cancelNetworkSelection()" class="btn btn-secondary">Cancel</button>
+            <button onclick="confirmNetworkSelection('${refreshToken}')" class="btn btn-primary">Confirm Selection</button>
+        </div>
+    `;
+
+    container.appendChild(modal);
+    document.body.appendChild(container);
+
+    // Store networks data for later use
+    window.gamNetworks = networks;
+    window.networkSelectorContainer = container;
+}
+
+// Cancel network selection
+function cancelNetworkSelection() {
+    if (window.networkSelectorContainer) {
+        window.networkSelectorContainer.remove();
+        window.networkSelectorContainer = null;
+        window.gamNetworks = null;
+    }
+}
+
+// Confirm network selection and get trafficker ID
+function confirmNetworkSelection(refreshToken) {
+    const selector = document.getElementById('network-selector');
+    const selectedNetworkCode = selector.value;
+    const selectedNetwork = window.gamNetworks.find(n => n.network_code === selectedNetworkCode);
+
+    if (!selectedNetwork) {
+        alert('Error: Network not found');
+        return;
+    }
+
+    // Close modal
+    cancelNetworkSelection();
+
+    // Get trafficker ID for selected network
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/detect-network`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            refresh_token: refreshToken,
+            network_code: selectedNetworkCode
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('gam_network_code').value = selectedNetworkCode;
+
+            if (data.trafficker_id) {
+                document.getElementById('gam_trafficker_id').value = data.trafficker_id;
+            }
+
+            alert(`✅ Network selected: ${selectedNetwork.network_name} (${selectedNetworkCode})`);
+        } else {
+            alert('❌ Error getting trafficker ID: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
         alert('❌ Error: ' + error.message);
     });
 }
