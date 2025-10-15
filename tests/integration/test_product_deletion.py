@@ -10,7 +10,7 @@ from src.admin.app import create_app
 
 app, _ = create_app()
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Product, Tenant, TenantManagementConfig
+from src.core.database.models import MediaBuy, Principal, Product, Tenant, TenantManagementConfig
 
 
 @pytest.fixture
@@ -47,6 +47,16 @@ def test_tenant_and_products(integration_db):
             is_active=True,
         )
         session.add(tenant)
+
+        # Create test principal for media buys
+        principal = Principal(
+            tenant_id="test_delete",
+            principal_id="test_principal",
+            name="Test Principal",
+            access_token="test_token",
+            platform_mappings={"mock": {"account_id": "test_account"}},
+        )
+        session.add(principal)
 
         # Create test products
         product1 = Product(

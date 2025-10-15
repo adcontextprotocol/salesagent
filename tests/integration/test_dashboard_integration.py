@@ -71,8 +71,8 @@ def test_db(integration_db):
         conn.execute(
             text(
                 """
-            INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, enable_axe_signals, created_at, updated_at)
-            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :enable_axe_signals, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, enable_axe_signals, human_review_required, created_at, updated_at)
+            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :enable_axe_signals, :human_review_required, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT (tenant_id) DO NOTHING
         """
             ),
@@ -83,6 +83,7 @@ def test_db(integration_db):
                 "is_active": True,
                 "ad_server": "mock",
                 "enable_axe_signals": True,
+                "human_review_required": False,
             },
         )
 
@@ -537,8 +538,8 @@ class TestDashboardErrorCases:
             test_db.execute(
                 text(
                     """
-                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, enable_axe_signals, created_at, updated_at)
-                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :enable_axe_signals, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, enable_axe_signals, human_review_required, created_at, updated_at)
+                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :enable_axe_signals, :human_review_required, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (tenant_id) DO NOTHING
             """
                 ),
@@ -549,6 +550,7 @@ class TestDashboardErrorCases:
                     "is_active": True,
                     "ad_server": "mock",
                     "enable_axe_signals": True,
+                    "human_review_required": False,
                 },
             )
         test_db.commit()
