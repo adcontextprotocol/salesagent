@@ -173,8 +173,10 @@ if [ "$MODE" == "ci" ]; then
     # Run ALL integration tests (including requires_db) - exactly like CI
     # Keep DATABASE_URL set so integration tests can access the PostgreSQL container
     # Note: We don't filter by markers here - we want ALL integration tests to run
-    if ! DATABASE_URL="$DATABASE_URL" ADCP_TEST_DB_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/integration/ -x --tb=short -q; then
+    # Note: No -x flag - we want to see ALL failures, not stop at first one (matches GitHub Actions)
+    if ! DATABASE_URL="$DATABASE_URL" ADCP_TEST_DB_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/integration/ --tb=line -q; then
         echo -e "${RED}❌ Integration tests failed!${NC}"
+        echo -e "${YELLOW}ℹ️  Some tests failed, but we ran ALL tests to see the full picture${NC}"
         exit 1
     fi
     echo -e "${GREEN}✅ Integration tests passed${NC}"
