@@ -578,9 +578,19 @@ function testGAMConnection() {
 // Sync GAM inventory
 function syncGAMInventory() {
     const button = document.querySelector('button[onclick="syncGAMInventory()"]');
-    const originalText = button.textContent;
+    const originalText = button.innerHTML;
+    const syncIcon = document.getElementById('sync-icon');
+
     button.disabled = true;
-    button.textContent = 'Syncing...';
+    button.innerHTML = '<span style="display: inline-block; animation: spin 1s linear infinite;">🔄</span> Syncing...';
+
+    // Add CSS animation if not already present
+    if (!document.getElementById('spin-animation')) {
+        const style = document.createElement('style');
+        style.id = 'spin-animation';
+        style.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+        document.head.appendChild(style);
+    }
 
     fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/sync-inventory`, {
         method: 'POST',
@@ -591,26 +601,35 @@ function syncGAMInventory() {
     .then(response => response.json())
     .then(data => {
         button.disabled = false;
-        button.textContent = originalText;
+        button.innerHTML = originalText;
 
         if (data.success) {
-            // Calculate total items synced
-            const adUnitCount = Object.keys(data.ad_units || {}).length;
-            const placementCount = Object.keys(data.placements || {}).length;
-            const labelCount = Object.keys(data.labels || {}).length;
-            const targetingCount = Object.keys(data.custom_targeting || {}).length;
-            const audienceCount = Object.keys(data.audience_segments || {}).length;
+            // Extract actual counts from response (not dict keys!)
+            const adUnitCount = (data.ad_units || {}).total || 0;
+            const placementCount = (data.placements || {}).total || 0;
+            const labelCount = (data.labels || {}).total || 0;
+            const targetingKeyCount = (data.custom_targeting || {}).total_keys || 0;
+            const targetingValueCount = (data.custom_targeting || {}).total_values || 0;
+            const audienceCount = (data.audience_segments || {}).total || 0;
 
-            const totalCount = adUnitCount + placementCount + labelCount + targetingCount + audienceCount;
+            const totalCount = adUnitCount + placementCount + labelCount + targetingKeyCount + audienceCount;
 
             let message = `✅ Inventory synced successfully!\n\n`;
             if (adUnitCount > 0) message += `• ${adUnitCount} ad units\n`;
             if (placementCount > 0) message += `• ${placementCount} placements\n`;
             if (labelCount > 0) message += `• ${labelCount} labels\n`;
-            if (targetingCount > 0) message += `• ${targetingCount} custom targeting keys\n`;
+            if (targetingKeyCount > 0) {
+                message += `• ${targetingKeyCount} custom targeting keys`;
+                if (targetingValueCount > 0) message += ` (${targetingValueCount} values)`;
+                message += `\n`;
+            }
             if (audienceCount > 0) message += `• ${audienceCount} audience segments\n`;
 
-            alert(message || '✅ Inventory synced successfully!');
+            if (totalCount === 0) {
+                message = '✅ Inventory synced successfully!\n\nNo inventory items found in GAM.';
+            }
+
+            alert(message);
             location.reload();
         } else {
             alert('❌ Sync failed: ' + (data.error || data.message || 'Unknown error'));
@@ -618,7 +637,7 @@ function syncGAMInventory() {
     })
     .catch(error => {
         button.disabled = false;
-        button.textContent = originalText;
+        button.innerHTML = originalText;
         alert('❌ Error: ' + error.message);
     });
 }
