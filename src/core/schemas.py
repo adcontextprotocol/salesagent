@@ -1048,8 +1048,10 @@ class GetProductsResponse(AdCPBaseModel):
         else:
             base_msg = f"Found {count} products that match your requirements."
 
-        # Check if this looks like an anonymous response (all pricing is None)
-        if count > 0 and all(p.cpm is None and p.min_spend is None for p in self.products):
+        # Check if this looks like an anonymous response (all pricing options have no rates)
+        if count > 0 and all(
+            all(po.rate is None for po in p.pricing_options) for p in self.products if p.pricing_options
+        ):
             return f"{base_msg} Please connect through an authorized buying agent for pricing data."
 
         return base_msg

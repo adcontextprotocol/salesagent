@@ -272,7 +272,8 @@ class TestAdCPContract:
         )
 
         adcp_response = non_guaranteed_product.model_dump()
-        assert adcp_response["currency"] == "EUR"
+        # Currency is now in pricing_options, not at product level
+        assert adcp_response["pricing_options"][0]["currency"] == "EUR"
 
         # Verify GetProductsRequest validates oneOf constraint (brand_manifest OR promoted_offering)
         # Should succeed with promoted_offering
@@ -302,6 +303,15 @@ class TestAdCPContract:
             delivery_type="guaranteed",
             cpm=10.0,
             property_tags=["premium_sports", "local_news"],
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         )
 
         adcp_response = product_with_tags.model_dump()
@@ -327,6 +337,15 @@ class TestAdCPContract:
             formats=["video_15s"],
             delivery_type="non_guaranteed",
             properties=[property_obj],
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_auction",
+                    pricing_model="cpm",
+                    currency="USD",
+                    is_fixed=False,
+                    price_guidance={"floor": 1.0, "suggested_rate": 5.0},
+                )
+            ],
         )
 
         adcp_response = product_with_properties.model_dump()
@@ -344,6 +363,15 @@ class TestAdCPContract:
                 formats=["display_300x250"],
                 delivery_type="guaranteed",
                 cpm=10.0,
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
                 # Missing both properties and property_tags
             )
 
@@ -448,6 +476,15 @@ class TestAdCPContract:
                 delivery_type=delivery_type,
                 cpm=10.0,
                 property_tags=["all_inventory"],  # Required per AdCP spec
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             )
             assert product.delivery_type in valid_delivery_types
 
@@ -461,6 +498,15 @@ class TestAdCPContract:
                 delivery_type="programmatic",  # Not AdCP compliant
                 cpm=10.0,
                 property_tags=["all_inventory"],  # Required per AdCP spec
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             )
 
     def test_adcp_response_excludes_internal_fields(self):
@@ -475,6 +521,15 @@ class TestAdCPContract:
                 cpm=10.0,
                 implementation_config={"internal": "data"},  # Should be excluded
                 property_tags=["all_inventory"],  # Required per AdCP spec
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             )
         ]
 
@@ -1375,6 +1430,15 @@ class TestAdCPContract:
             creative_policy=None,
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         )
 
         # Create response with products
@@ -2317,6 +2381,15 @@ class TestAdCPContract:
             property_tags=["sports", "premium"],
             delivery_type="guaranteed",
             cpm=10.0,
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         )
         assert product_with_tags.property_tags == ["sports", "premium"]
         assert product_with_tags.properties is None
@@ -2337,6 +2410,15 @@ class TestAdCPContract:
             ],
             delivery_type="guaranteed",
             cpm=10.0,
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         )
         assert len(product_with_properties.properties) == 1
         assert product_with_properties.property_tags is None
@@ -2359,6 +2441,15 @@ class TestAdCPContract:
                 property_tags=["sports"],  # This violates oneOf constraint
                 delivery_type="guaranteed",
                 cpm=10.0,
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             )
 
     def test_create_media_buy_with_brand_manifest_inline(self):
