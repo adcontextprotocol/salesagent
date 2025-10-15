@@ -118,7 +118,7 @@ class TestAuthRemovalChanges:
 
     def test_authenticated_users_keep_pricing_data(self):
         """Test that authenticated users still get full pricing data."""
-        from src.core.schemas import Product
+        from src.core.schemas import PricingOption, Product
 
         # Create a product with pricing data
         product = Product(
@@ -127,21 +127,28 @@ class TestAuthRemovalChanges:
             description="Test description",
             formats=["display_300x250"],
             delivery_type="non_guaranteed",
-            is_fixed_price=True,
-            cpm=2.50,
-            min_spend=1000.0,
             property_tags=["all_inventory"],  # Required per AdCP spec
+            pricing_options=[
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=2.50,
+                    currency="USD",
+                    is_fixed=True,
+                    min_spend_per_package=1000.0,
+                )
+            ],
         )
 
         # Simulate authenticated user logic
         principal_id = "authenticated_user"
         if principal_id is None:  # This should NOT trigger for authenticated users
-            product.cpm = None
-            product.min_spend = None
+            for po in product.pricing_options:
+                po.rate = None
 
-        # Verify pricing data is preserved
-        assert product.cpm == 2.50
-        assert product.min_spend == 1000.0
+        # Verify pricing data is preserved (not removed for authenticated users)
+        assert product.pricing_options[0].rate == 2.50
+        assert product.pricing_options[0].min_spend_per_package == 1000.0
 
         # No pricing message for authenticated users
         pricing_message = None
