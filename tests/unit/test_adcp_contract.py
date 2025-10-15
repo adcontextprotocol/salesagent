@@ -1077,19 +1077,12 @@ class TestAdCPContract:
 
     def test_sync_creatives_response_adcp_compliance(self):
         """Test that SyncCreativesResponse model complies with AdCP sync-creatives response schema."""
-        from src.core.schemas import SyncCreativeResult, SyncSummary
+        from src.core.schemas import SyncCreativeResult
 
         # Build AdCP-compliant response with domain fields only (per AdCP PR #113)
         # Protocol fields (message, status, task_id, context_id) added by transport layer
         response = SyncCreativesResponse(
-            summary=SyncSummary(
-                total_processed=3,
-                created=1,
-                updated=1,
-                unchanged=0,
-                failed=1,
-            ),
-            results=[
+            creatives=[
                 SyncCreativeResult(
                     creative_id="creative_123",
                     action="created",
@@ -1112,26 +1105,22 @@ class TestAdCPContract:
         # Test model_dump
         adcp_response = response.model_dump()
 
-        # Verify AdCP domain fields are present (per AdCP PR #113)
+        # Verify AdCP domain fields are present (per AdCP PR #113 and official spec)
         # Protocol fields (adcp_version, message, status, task_id, context_id) added by transport layer
-        adcp_domain_fields = ["summary", "results", "dry_run"]
-        for field in adcp_domain_fields:
-            if field in adcp_response and adcp_response[field] is not None:
-                # Field is present and not None, verify its structure
-                if field == "summary":
-                    assert isinstance(adcp_response["summary"], dict), "Summary must be object"
-                    assert "total_processed" in adcp_response["summary"], "Summary must have total_processed"
-                elif field == "results":
-                    assert isinstance(adcp_response["results"], list), "Results must be array"
-                    if adcp_response["results"]:
-                        result = adcp_response["results"][0]
-                        assert "creative_id" in result, "Result must have creative_id"
-                        assert "action" in result, "Result must have action"
 
-        # Verify field count (flexible due to optional fields)
-        assert (
-            len(adcp_response) >= 3
-        ), f"SyncCreativesResponse should have at least 3 required fields, got {len(adcp_response)}"
+        # Required field per official spec
+        assert "creatives" in adcp_response, "SyncCreativesResponse must have 'creatives' field"
+        assert isinstance(adcp_response["creatives"], list), "'creatives' must be a list"
+
+        # Verify creatives structure
+        if adcp_response["creatives"]:
+            result = adcp_response["creatives"][0]
+            assert "creative_id" in result, "Result must have creative_id"
+            assert "action" in result, "Result must have action"
+
+        # Optional fields per official spec
+        if "dry_run" in adcp_response and adcp_response["dry_run"] is not None:
+            assert isinstance(adcp_response["dry_run"], bool), "dry_run must be boolean"
 
     def test_list_creatives_request_adcp_compliance(self):
         """Test that ListCreativesRequest model complies with AdCP list-creatives schema."""

@@ -1626,39 +1626,43 @@ class SyncCreativesResponse(AdCPBaseModel):
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+
+    Official spec: /schemas/v1/media-buy/sync-creatives-response.json
     """
 
-    # Domain fields
-    dry_run: bool = Field(False, description="Whether this was a dry run (no actual changes made)")
-    summary: SyncSummary | None = Field(None, description="High-level summary of sync operation results")
-    results: list[SyncCreativeResult] | None = Field(None, description="Detailed results for each creative processed")
-    assignments_summary: AssignmentsSummary | None = Field(
-        None, description="Summary of assignment operations (when assignments were included)"
-    )
-    assignment_results: list[AssignmentResult] | None = Field(
-        None, description="Detailed assignment results (when assignments were included)"
-    )
+    # Required fields (per official spec)
+    creatives: list[SyncCreativeResult] = Field(..., description="Results for each creative processed")
+
+    # Optional fields (per official spec)
+    dry_run: bool | None = Field(None, description="Whether this was a dry run (no actual changes made)")
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
-        if self.summary:
-            parts = []
-            if self.summary.created:
-                parts.append(f"{self.summary.created} created")
-            if self.summary.updated:
-                parts.append(f"{self.summary.updated} updated")
-            if self.summary.deleted:
-                parts.append(f"{self.summary.deleted} deleted")
-            if self.summary.failed:
-                parts.append(f"{self.summary.failed} failed")
-            if parts:
-                msg = f"Creative sync completed: {', '.join(parts)}"
-            else:
-                msg = "Creative sync completed: no changes"
-            if self.dry_run:
-                msg += " (dry run)"
-            return msg
-        return "Creative sync completed" + (" (dry run)" if self.dry_run else "")
+        # Count actions from creatives list
+        created = sum(1 for c in self.creatives if c.action == "created")
+        updated = sum(1 for c in self.creatives if c.action == "updated")
+        deleted = sum(1 for c in self.creatives if c.action == "deleted")
+        failed = sum(1 for c in self.creatives if c.action == "failed")
+
+        parts = []
+        if created:
+            parts.append(f"{created} created")
+        if updated:
+            parts.append(f"{updated} updated")
+        if deleted:
+            parts.append(f"{deleted} deleted")
+        if failed:
+            parts.append(f"{failed} failed")
+
+        if parts:
+            msg = f"Creative sync completed: {', '.join(parts)}"
+        else:
+            msg = "Creative sync completed: no changes"
+
+        if self.dry_run:
+            msg += " (dry run)"
+
+        return msg
 
 
 class ListCreativesRequest(AdCPBaseModel):

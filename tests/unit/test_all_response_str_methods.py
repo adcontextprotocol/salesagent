@@ -106,11 +106,15 @@ class TestResponseStrMethods:
         assert str(resp) == "No creative formats are currently supported."
 
     def test_sync_creatives_response(self):
-        """SyncCreativesResponse generates message from summary data."""
-        from src.core.schemas import SyncSummary
+        """SyncCreativesResponse generates message from creatives list."""
+        from src.core.schemas import SyncCreativeResult
 
         resp = SyncCreativesResponse(
-            summary=SyncSummary(total_processed=3, created=2, updated=1, unchanged=0, deleted=0, failed=0),
+            creatives=[
+                SyncCreativeResult(buyer_ref="test-001", creative_id="cr-001", status="approved", action="created"),
+                SyncCreativeResult(buyer_ref="test-002", creative_id="cr-002", status="approved", action="created"),
+                SyncCreativeResult(buyer_ref="test-003", creative_id="cr-003", status="approved", action="updated"),
+            ],
             dry_run=False,
         )
         assert str(resp) == "Creative sync completed: 2 created, 1 updated"
@@ -202,14 +206,12 @@ class TestResponseStrMethods:
 
     def test_all_responses_avoid_json_in_content(self):
         """Verify no response __str__ contains JSON-like content."""
-        from src.core.schemas import SyncSummary
-
         # Test a few responses to ensure they don't leak JSON
         responses = [
             GetProductsResponse(products=[]),
             ListCreativeFormatsResponse(formats=[]),
             SyncCreativesResponse(
-                summary=SyncSummary(total_processed=0, created=0, updated=0, unchanged=0, deleted=0, failed=0),
+                creatives=[],
                 dry_run=False,
             ),
             CreateMediaBuyResponse(buyer_ref="ref", packages=[]),

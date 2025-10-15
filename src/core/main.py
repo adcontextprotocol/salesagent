@@ -2463,21 +2463,9 @@ def _sync_creatives_impl(
     if creatives_needing_approval:
         message += f", {len(creatives_needing_approval)} require approval"
 
-    # Build AdCP-compliant response
-    from src.core.schemas import SyncSummary
-
-    total_processed = created_count + updated_count + unchanged_count + failed_count
-
+    # Build AdCP-compliant response (per official spec)
     return SyncCreativesResponse(
-        summary=SyncSummary(
-            total_processed=total_processed,
-            created=created_count,
-            updated=updated_count,
-            unchanged=unchanged_count,
-            failed=failed_count,
-            deleted=0,
-        ),
-        results=results,
+        creatives=results,
         dry_run=dry_run,
     )
 

@@ -590,23 +590,50 @@ class UpdateMediaBuyResponse(AdCPBaseModel):
 
 
 class SyncCreativesResponse(AdCPBaseModel):
-    """Adapter for SyncCreativesResponse - keeps message field (it's in spec!)."""
+    """Adapter for SyncCreativesResponse - adds __str__() for protocol abstraction.
+
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+
+    Official spec: /schemas/v1/media-buy/sync-creatives-response.json
+    """
 
     model_config = {"arbitrary_types_allowed": True}
 
-    message: str = Field(..., description="Human-readable result message")
-    status: str = Field("completed", description="Task status")
-    context_id: str | None = None
-    task_id: str | None = None
-    dry_run: bool = Field(False, description="Whether this was a dry run")
-    summary: Any | None = None
-    results: list[Any] | None = None
-    assignments_summary: Any | None = None
-    assignment_results: list[Any] | None = None
+    # Required fields (per official spec)
+    creatives: list[Any] = Field(..., description="Results for each creative processed")
+
+    # Optional fields (per official spec)
+    dry_run: bool | None = Field(None, description="Whether this was a dry run (no actual changes made)")
 
     def __str__(self) -> str:
-        """Return message field (spec-compliant in this case)."""
-        return self.message
+        """Return human-readable summary message for protocol envelope."""
+        # Count actions from creatives list
+        created = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "created")
+        updated = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "updated")
+        deleted = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "deleted")
+        failed = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "failed")
+
+        parts = []
+        if created:
+            parts.append(f"{created} created")
+        if updated:
+            parts.append(f"{updated} updated")
+        if deleted:
+            parts.append(f"{deleted} deleted")
+        if failed:
+            parts.append(f"{failed} failed")
+
+        if parts:
+            msg = f"Creative sync completed: {', '.join(parts)}"
+        else:
+            msg = "Creative sync completed: no changes"
+
+        if self.dry_run:
+            msg += " (dry run)"
+
+        return msg
 
 
 # ============================================================================

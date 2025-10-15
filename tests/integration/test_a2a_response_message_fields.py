@@ -189,12 +189,11 @@ class TestA2AResponseDictConstruction:
         Protocol fields (status, message) are added by A2A wrapper.
         Domain response uses __str__() to generate message.
         """
-        from src.core.schemas import SyncCreativeResult, SyncCreativesResponse, SyncSummary
+        from src.core.schemas import SyncCreativeResult, SyncCreativesResponse
 
         response = SyncCreativesResponse(
-            summary=SyncSummary(total_processed=1, created=1, updated=0, unchanged=0, deleted=0, failed=0),
             dry_run=False,
-            results=[
+            creatives=[
                 SyncCreativeResult(
                     buyer_ref="test-001",
                     creative_id="cr-001",
