@@ -46,12 +46,15 @@ def integration_db():
     # Create the test database
     import psycopg2
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+    from urllib.parse import urlparse
 
+    # Parse connection params from DATABASE_URL
+    parsed = urlparse(postgres_url)
     conn_params = {
-        "host": "localhost",
-        "port": 5433,  # Default from run_all_tests.sh
-        "user": "adcp_user",
-        "password": "test_password",
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or 5432,  # Use port from URL, default 5432
+        "user": parsed.username or "adcp_user",
+        "password": parsed.password or "test_password",
         "database": "postgres",  # Connect to default db first
     }
 
