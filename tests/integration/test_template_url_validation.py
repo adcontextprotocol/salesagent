@@ -11,9 +11,15 @@ import pytest
 from flask import url_for
 from werkzeug.routing.exceptions import BuildError
 
-from src.admin.app import create_app
 
-admin_app, _ = create_app()
+@pytest.fixture
+def admin_app(integration_db):
+    """Create admin app for test request context."""
+    from src.admin.app import create_app
+
+    # Create app AFTER integration_db sets up test database
+    app, _ = create_app()
+    return app
 
 
 @pytest.mark.integration
@@ -45,7 +51,7 @@ class TestTemplateUrlValidation:
 
         return url_for_calls
 
-    def test_all_template_url_for_calls_resolve(self, authenticated_admin_session, test_tenant_with_data):
+    def test_all_template_url_for_calls_resolve(self, admin_app, authenticated_admin_session, test_tenant_with_data):
         """Test that every url_for call in templates can be resolved."""
         url_for_calls = self.get_all_template_url_for_calls()
         errors = []
@@ -94,7 +100,7 @@ class TestTemplateUrlValidation:
 
             pytest.fail(error_msg)
 
-    def test_critical_admin_routes_exist(self):
+    def test_critical_admin_routes_exist(self, admin_app):
         """Test that critical admin routes exist and are registered."""
         critical_routes = [
             ("tenant_management_settings.tenant_management_settings", "/settings"),  # Tenant management settings
@@ -123,7 +129,7 @@ class TestTemplateUrlValidation:
                     error_msg += f"  {endpoint} -> {path}\n"
                 pytest.fail(error_msg)
 
-    def test_form_actions_point_to_valid_endpoints(self):
+    def test_form_actions_point_to_valid_endpoints(self, admin_app):
         """Test that all form actions in templates point to valid endpoints."""
         template_dir = Path(__file__).parent.parent.parent / "templates"
         form_errors = []
@@ -181,7 +187,7 @@ class TestTemplateUrlValidation:
                 error_msg += f"  Error: {error['error']}\n\n"
             pytest.fail(error_msg)
 
-    def test_navigation_links_are_valid(self):
+    def test_navigation_links_are_valid(self, admin_app):
         """Test that navigation links in base templates are valid."""
         base_templates = ["base.html", "index.html", "tenant_dashboard.html"]
         template_dir = Path(__file__).parent.parent.parent / "templates"
@@ -213,7 +219,7 @@ class TestTemplateUrlValidation:
                                 f"  Error: {e}"
                             )
 
-    def test_ajax_urls_are_valid(self):
+    def test_ajax_urls_are_valid(self, admin_app):
         """Test that AJAX/JavaScript URLs in templates are valid."""
         template_dir = Path(__file__).parent.parent.parent / "templates"
         ajax_errors = []

@@ -3,17 +3,18 @@
 import pytest
 from sqlalchemy import delete, select
 
-from src.admin.app import create_app
-
-app, _ = create_app()
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product, Tenant
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
 @pytest.fixture
-def client():
+def client(integration_db):
     """Flask test client with test configuration."""
+    from src.admin.app import create_app
+
+    # Create app AFTER integration_db sets up test database
+    app, _ = create_app()
     app.config["TESTING"] = True
     app.config["WTF_CSRF_ENABLED"] = False
     app.config["SESSION_COOKIE_PATH"] = "/"
