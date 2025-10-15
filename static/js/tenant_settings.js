@@ -213,11 +213,11 @@ function initiateGAMAuth() {
         `width=${width},height=${height},left=${left},top=${top}`
     );
 
-    // Poll for completion
+    // Poll for completion and reload to show updated config
     const pollTimer = setInterval(() => {
         if (popup.closed) {
             clearInterval(pollTimer);
-            checkOAuthStatus();
+            location.reload();
         }
     }, 1000);
 }
@@ -721,11 +721,6 @@ function updateAdvertisingPolicyUI() {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
-    // Check OAuth status if GAM adapter is active
-    if (config.activeAdapter === 'google_ad_manager') {
-        checkOAuthStatus();
-    }
-
     // Generate A2A code if section exists
     if (document.getElementById('a2a-code-output')) {
         generateA2ACode();
