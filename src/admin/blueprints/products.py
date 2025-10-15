@@ -21,6 +21,54 @@ logger = logging.getLogger(__name__)
 products_bp = Blueprint("products", __name__)
 
 
+def resolve_format_names(formats: list[dict | str], tenant_id: str | None = None) -> list[dict]:
+    """Resolve format IDs to their display names from creative agents.
+
+    Args:
+        formats: List of format dicts ({"format_id": "...", "agent_url": "..."}) or strings
+        tenant_id: Optional tenant ID for tenant-specific creative agents
+
+    Returns:
+        List of dicts with format_id, name, agent_url fields
+    """
+    from src.core.format_resolver import get_format
+
+    resolved = []
+    for fmt in formats:
+        # Handle both dict and string formats (legacy)
+        if isinstance(fmt, dict):
+            format_id = fmt.get("format_id", "")
+            agent_url = fmt.get("agent_url")
+        else:
+            format_id = fmt
+            agent_url = None
+
+        # Try to resolve format from creative agent
+        try:
+            format_obj = get_format(format_id=format_id, agent_url=agent_url, tenant_id=tenant_id)
+            resolved.append(
+                {
+                    "format_id": format_id,
+                    "name": format_obj.name,
+                    "agent_url": agent_url or "https://creative.adcontextprotocol.org",
+                }
+            )
+        except (ValueError, Exception) as e:
+            # Fallback: If we can't resolve, use format_id as display name
+            logger.warning(f"Could not resolve format {format_id}: {e}")
+            # Convert format_id to readable name as fallback
+            display_name = format_id.replace("_", " ").title()
+            resolved.append(
+                {
+                    "format_id": format_id,
+                    "name": display_name,
+                    "agent_url": agent_url or "https://creative.adcontextprotocol.org",
+                }
+            )
+
+    return resolved
+
+
 def get_creative_formats(
     tenant_id: str | None = None,
     max_width: int | None = None,
@@ -236,12 +284,16 @@ def list_products(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            products = db_session.scalars(
-                select(Product)
-                .options(joinedload(Product.pricing_options))
-                .filter_by(tenant_id=tenant_id)
-                .order_by(Product.name)
-            ).all()
+            products = (
+                db_session.scalars(
+                    select(Product)
+                    .options(joinedload(Product.pricing_options))
+                    .filter_by(tenant_id=tenant_id)
+                    .order_by(Product.name)
+                )
+                .unique()
+                .all()
+            )
 
             # Convert products to dict format for template
             products_list = []
@@ -249,16 +301,20 @@ def list_products(tenant_id):
                 # Use helper function to get pricing options (handles legacy fallback)
                 pricing_options_list = get_product_pricing_options(product)
 
+                # Parse formats and resolve names from creative agents
+                raw_formats = (
+                    product.formats
+                    if isinstance(product.formats, list)
+                    else json.loads(product.formats) if product.formats else []
+                )
+                resolved_formats = resolve_format_names(raw_formats, tenant_id=tenant_id)
+
                 product_dict = {
                     "product_id": product.product_id,
                     "name": product.name,
                     "description": product.description,
                     "pricing_options": pricing_options_list,
-                    "formats": (
-                        product.formats
-                        if isinstance(product.formats, list)
-                        else json.loads(product.formats) if product.formats else []
-                    ),
+                    "formats": resolved_formats,
                     "countries": (
                         product.countries
                         if isinstance(product.countries, list)
@@ -353,7 +409,7 @@ def add_product(tenant_id):
                         delivery_type = "guaranteed"
                         cpm = first_option.get("rate")
                     else:
-                        delivery_type = "non-guaranteed"
+                        delivery_type = "non_guaranteed"
                         pg = first_option.get("price_guidance")
                         if pg and "floor" in pg:
                             price_guidance = {"min": pg["floor"], "max": pg.get("p90", pg["floor"])}
@@ -679,14 +735,14 @@ def edit_product(tenant_id, product_id):
                         product.cpm = float(form_data.get("cpm", 0)) if form_data.get("cpm") else None
                         product.price_guidance = None
                     elif line_item_type == "PRICE_PRIORITY":
-                        product.delivery_type = "non-guaranteed"
+                        product.delivery_type = "non_guaranteed"
                         product.is_fixed_price = False
                         product.cpm = None
                         floor_cpm = float(form_data.get("floor_cpm", 0)) if form_data.get("floor_cpm") else None
                         if floor_cpm:
                             product.price_guidance = {"min": floor_cpm, "max": floor_cpm}
                     elif line_item_type == "HOUSE":
-                        product.delivery_type = "non-guaranteed"
+                        product.delivery_type = "non_guaranteed"
                         product.is_fixed_price = False
                         product.cpm = None
                         product.price_guidance = None
@@ -739,7 +795,9 @@ def edit_product(tenant_id, product_id):
 
                 # Update pricing options (AdCP PR #88)
                 # Delete existing pricing options and recreate from form
-                db_session.query(PricingOption).filter_by(tenant_id=tenant_id, product_id=product_id).delete()
+                db_session.query(PricingOption).filter_by(  # legacy-ok
+                    tenant_id=tenant_id, product_id=product_id
+                ).delete()
 
                 pricing_options_data = parse_pricing_options_from_form(form_data)
                 if pricing_options_data:

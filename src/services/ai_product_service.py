@@ -370,41 +370,11 @@ class AIProductConfigurationService:
         )
 
     def _get_available_formats(self, tenant_id: str) -> list[dict[str, Any]]:
-        """Get all available creative formats (standard + custom for tenant)."""
-        from src.core.database.models import CreativeFormat
+        """Creative formats no longer stored in DB (table dropped in migration f2addf453200).
 
-        with get_db_session() as db_session:
-            from sqlalchemy import or_
-
-            stmt = (
-                select(CreativeFormat)
-                .where(or_(CreativeFormat.tenant_id.is_(None), CreativeFormat.tenant_id == tenant_id))
-                .order_by(CreativeFormat.is_standard.desc(), CreativeFormat.type, CreativeFormat.name)
-            )
-
-            formats = []
-            for format_obj in db_session.scalars(stmt):
-                format_dict = {
-                    "format_id": format_obj.format_id,
-                    "name": format_obj.name,
-                    "type": format_obj.type,
-                    "description": format_obj.description,
-                }
-
-                # Add dimensions for display formats
-                if format_obj.width and format_obj.height:
-                    format_dict["dimensions"] = f"{format_obj.width}x{format_obj.height}"
-                    format_dict["width"] = format_obj.width
-                    format_dict["height"] = format_obj.height
-
-                # Add duration for video/audio formats
-                if format_obj.duration_seconds:
-                    format_dict["duration"] = f"{format_obj.duration_seconds}s"
-                    format_dict["duration_seconds"] = format_obj.duration_seconds
-
-                formats.append(format_dict)
-
-            return formats
+        Returns empty list. Use AdCP list_creative_formats tool instead.
+        """
+        return []
 
     def _analyze_inventory_for_product(
         self, description: ProductDescription, inventory: AdServerInventory

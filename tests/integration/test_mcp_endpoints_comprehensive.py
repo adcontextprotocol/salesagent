@@ -237,15 +237,15 @@ class TestMCPEndpointsComprehensive:
         # Should have packages created
         assert len(legacy_request.packages) == 2
 
-        # Test 2: New v2.4 format should work
+        # Test 2: New v2.4 format should work (per AdCP spec: product_id singular)
         new_request = CreateMediaBuyRequest(
             promoted_offering="Adidas UltraBoost 2025 running shoes",
             buyer_ref="custom_ref_123",
             po_number="PO-V24-67890",  # Required per AdCP spec
             budget=Budget(total=10000.0, currency="EUR", pacing="asap"),
             packages=[
-                Package(buyer_ref="pkg_1", products=["prod_1", "prod_3"], budget=Budget(total=6000.0, currency="EUR")),
-                Package(buyer_ref="pkg_2", products=["prod_2"], budget=Budget(total=4000.0, currency="EUR")),
+                Package(buyer_ref="pkg_1", product_id="prod_1", budget=Budget(total=6000.0, currency="EUR")),
+                Package(buyer_ref="pkg_2", product_id="prod_2", budget=Budget(total=4000.0, currency="EUR")),
             ],
             start_time=datetime.now(UTC),
             end_time=datetime.now(UTC) + timedelta(days=30),

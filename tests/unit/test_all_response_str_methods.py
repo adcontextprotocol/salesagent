@@ -2,15 +2,17 @@
 
 from datetime import UTC, datetime
 
-from src.core.schemas import (
+from src.core.schema_adapters import (
     ActivateSignalResponse,
+    GetProductsResponse,
+    ListCreativeFormatsResponse,
+    ListCreativesResponse,
+)
+from src.core.schemas import (
     CreateHumanTaskResponse,
     CreateMediaBuyResponse,
     Creative,
     Format,
-    GetProductsResponse,
-    ListCreativeFormatsResponse,
-    ListCreativesResponse,
     Pagination,
     Product,
     QuerySummary,
@@ -114,7 +116,7 @@ class TestResponseStrMethods:
         assert str(resp) == "Creative sync completed: 2 created, 1 updated"
 
     def test_list_creatives_response(self):
-        """ListCreativesResponse generates message from creatives count."""
+        """ListCreativesResponse generates message dynamically from query_summary."""
         creative = Creative(
             creative_id="cr1",
             name="Test Creative",
@@ -131,20 +133,33 @@ class TestResponseStrMethods:
         )
         assert str(resp) == "Found 1 creative."
 
-    def test_activate_signal_response_success(self):
-        """ActivateSignalResponse shows success message."""
-        resp = ActivateSignalResponse(signal_id="sig_123", activation_details={"platform_id": "seg_456"})
-        assert str(resp) == "Signal sig_123 activated successfully."
-
-    def test_activate_signal_response_with_errors(self):
-        """ActivateSignalResponse with errors shows error count."""
-        from src.core.schemas import Error
-
+    def test_activate_signal_response_deployed(self):
+        """ActivateSignalResponse with deployed status shows platform ID."""
         resp = ActivateSignalResponse(
-            signal_id="sig_123",
-            errors=[Error(code="ACTIVATION_FAILED", message="Failed to activate")],
+            task_id="task_123",
+            status="deployed",
+            decisioning_platform_segment_id="seg_456",
         )
-        assert str(resp) == "Signal sig_123 activation encountered 1 error(s)."
+        assert str(resp) == "Signal activated successfully (platform ID: seg_456)."
+
+    def test_activate_signal_response_processing(self):
+        """ActivateSignalResponse with processing status shows ETA."""
+        resp = ActivateSignalResponse(
+            task_id="task_123",
+            status="processing",
+            estimated_activation_duration_minutes=5.0,
+        )
+        assert str(resp) == "Signal activation in progress (ETA: 5.0 min)."
+
+    def test_activate_signal_response_pending(self):
+        """ActivateSignalResponse with pending status shows task ID."""
+        resp = ActivateSignalResponse(task_id="task_123", status="pending")
+        assert str(resp) == "Signal activation pending (task ID: task_123)."
+
+    def test_activate_signal_response_failed(self):
+        """ActivateSignalResponse with failed status shows task ID."""
+        resp = ActivateSignalResponse(task_id="task_123", status="failed")
+        assert str(resp) == "Signal activation failed (task ID: task_123)."
 
     def test_simulation_control_response_with_message(self):
         """SimulationControlResponse with message returns the message."""

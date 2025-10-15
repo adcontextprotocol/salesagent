@@ -64,6 +64,43 @@ class TestAdminUIPages:
         response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/products", follow_redirects=True)
         assert response.status_code == 200
 
+    def test_list_products_with_pricing_options(self, authenticated_session, test_tenant, integration_db):
+        """Test that the list products page renders when products have pricing_options (joined eager load)."""
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import PricingOption, Product
+
+        # Create a product with pricing options to trigger the joinedload() path
+        with get_db_session() as session:
+            product = Product(
+                tenant_id=test_tenant["tenant_id"],
+                product_id="test_product",
+                name="Test Product",
+                description="Test product with pricing options",
+                formats=["leaderboard_728x90"],
+                property_tags=["all_inventory"],
+            )
+            session.add(product)
+            session.flush()
+
+            # Add pricing option (this triggers the joinedload relationship)
+            pricing_option = PricingOption(
+                tenant_id=test_tenant["tenant_id"],
+                product_id=product.product_id,
+                pricing_model="cpm",
+                pricing_type="fixed",
+                price=10.0,
+                currency="USD",
+            )
+            session.add(pricing_option)
+            session.commit()
+
+        # This would fail before the .unique() fix with:
+        # "The unique() method must be invoked on this Result, as it contains
+        # results that include joined eager loads against collections"
+        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/products", follow_redirects=True)
+        assert response.status_code == 200
+        assert b"Test Product" in response.data
+
     def test_create_product_page_renders(self, authenticated_session, test_tenant):
         """Test that the create product page renders successfully."""
         response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/products/add", follow_redirects=True)

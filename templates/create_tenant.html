@@ -3,6 +3,18 @@
 {% block title %}Create Account - Sales Agent Admin{% endblock %}
 
 {% block content %}
+<script>
+function validateAccessControl() {
+    const emails = document.getElementById('authorized_emails').value.trim();
+    const domains = document.getElementById('authorized_domains').value.trim();
+
+    if (!emails && !domains) {
+        alert('⚠️ Access Control Required\n\nYou must specify at least one authorized email or domain.\nWithout this, nobody will be able to access the tenant.');
+        return false;
+    }
+    return true;
+}
+</script>
 <div class="card" style="max-width: 600px; margin: 0 auto;">
     <h2>Create New Account</h2>
     <p style="color: #666; margin-bottom: 2rem;">
@@ -13,7 +25,7 @@
     <div class="alert alert-error">{{ error }}</div>
     {% endif %}
 
-    <form method="POST">
+    <form method="POST" onsubmit="return validateAccessControl()">
         <h3>Basic Information</h3>
 
         <div class="form-group">
@@ -38,7 +50,7 @@
         <h3 style="margin-top: 2rem;">Access Control</h3>
 
         <div class="form-group">
-            <label for="authorized_emails">Authorized Email Addresses</label>
+            <label for="authorized_emails">Authorized Email Addresses *</label>
             <input type="text" id="authorized_emails" name="authorized_emails"
                    placeholder="admin@publisher.com, editor@publisher.com">
             <small>Comma-separated list of email addresses that can access this tenant</small>
@@ -49,6 +61,11 @@
             <input type="text" id="authorized_domains" name="authorized_domains"
                    placeholder="publisher.com, agency.com">
             <small>Comma-separated list of email domains (anyone @domain can access)</small>
+        </div>
+
+        <div class="alert" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 1rem; margin-bottom: 1rem;">
+            <strong>⚠️ Access Control Required:</strong> You must specify at least one authorized email or domain.
+            Without this, nobody will be able to access the tenant.
         </div>
 
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">

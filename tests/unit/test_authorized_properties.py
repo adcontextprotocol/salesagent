@@ -158,7 +158,6 @@ class TestListAuthorizedPropertiesResponse:
         """Test response with only required fields."""
         response = ListAuthorizedPropertiesResponse(properties=[])
 
-        # adcp_version removed from AdCP spec
         assert response.properties == []
         assert response.tags == {}
         assert response.errors is None
@@ -181,7 +180,6 @@ class TestListAuthorizedPropertiesResponse:
             errors=[{"code": "WARNING", "message": "Test warning"}],
         )
 
-        # adcp_version removed from AdCP spec
         assert len(response.properties) == 1
         assert "premium_content" in response.tags
         assert len(response.errors) == 1
@@ -231,8 +229,8 @@ class TestListAuthorizedPropertiesResponse:
         for field in optional_fields:
             assert field in adcp_response
 
-        # Verify field count expectations (adcp_version removed from spec)
-        assert len(adcp_response) == 7  # 1 required + 6 optional
+        # Verify field count expectations (1 required + 6 optional = 7 total)
+        assert len(adcp_response) == 7
 
 
 class TestPropertyTagMetadata:
