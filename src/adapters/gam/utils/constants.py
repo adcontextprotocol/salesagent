@@ -118,7 +118,7 @@ class GAMCompanyType(Enum):
 
 
 # API Configuration
-GAM_API_VERSION = "v202505"
+GAM_API_VERSION = "v202508"
 GAM_SCOPES = ["https://www.googleapis.com/auth/dfp"]
 
 # Creative size limits (in bytes)

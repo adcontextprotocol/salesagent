@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, render_template, request, session
 from googleads import ad_manager
 from sqlalchemy import select
 
+from src.adapters.gam.utils.constants import GAM_API_VERSION
 from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
 from src.adapters.gam_reporting_service import GAMReportingService
 from src.admin.utils import require_tenant_access
@@ -135,7 +136,7 @@ def detect_gam_network(tenant_id):
         client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent")
 
         # Get network service and retrieve network info
-        network_service = client.GetService("NetworkService", version="v202505")
+        network_service = client.GetService("NetworkService", version=GAM_API_VERSION)
 
         try:
             # Try getAllNetworks first (doesn't require network_code)
@@ -164,7 +165,7 @@ def detect_gam_network(tenant_id):
                     try:
                         # Set the network code in the client so we can get user info
                         client.network_code = str(network["networkCode"])
-                        user_service = client.GetService("UserService", version="v202505")
+                        user_service = client.GetService("UserService", version=GAM_API_VERSION)
                         current_user = user_service.getCurrentUser()
 
                         if current_user:
