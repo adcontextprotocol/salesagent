@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Literal, Union
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, RootModel
 
@@ -35,10 +35,10 @@ class Assets(BaseModel):
     )
     asset_type: Literal["image"]
     url: Annotated[AnyUrl, Field(description="URL to the image asset")]
-    width: Annotated[Optional[int], Field(description="Image width in pixels", ge=1)] = None
-    height: Annotated[Optional[int], Field(description="Image height in pixels", ge=1)] = None
-    format: Annotated[Optional[str], Field(description="Image file format (jpg, png, gif, webp, etc.)")] = None
-    alt_text: Annotated[Optional[str], Field(description="Alternative text for accessibility")] = None
+    width: Annotated[int | None, Field(description="Image width in pixels", ge=1)] = None
+    height: Annotated[int | None, Field(description="Image height in pixels", ge=1)] = None
+    format: Annotated[str | None, Field(description="Image file format (jpg, png, gif, webp, etc.)")] = None
+    alt_text: Annotated[str | None, Field(description="Alternative text for accessibility")] = None
 
 
 class Assets12(BaseModel):
@@ -47,11 +47,11 @@ class Assets12(BaseModel):
     )
     asset_type: Literal["video"]
     url: Annotated[AnyUrl, Field(description="URL to the video asset")]
-    width: Annotated[Optional[int], Field(description="Video width in pixels", ge=1)] = None
-    height: Annotated[Optional[int], Field(description="Video height in pixels", ge=1)] = None
-    duration_ms: Annotated[Optional[int], Field(description="Video duration in milliseconds", ge=0)] = None
-    format: Annotated[Optional[str], Field(description="Video file format (mp4, webm, mov, etc.)")] = None
-    bitrate_kbps: Annotated[Optional[int], Field(description="Video bitrate in kilobits per second", ge=1)] = None
+    width: Annotated[int | None, Field(description="Video width in pixels", ge=1)] = None
+    height: Annotated[int | None, Field(description="Video height in pixels", ge=1)] = None
+    duration_ms: Annotated[int | None, Field(description="Video duration in milliseconds", ge=0)] = None
+    format: Annotated[str | None, Field(description="Video file format (mp4, webm, mov, etc.)")] = None
+    bitrate_kbps: Annotated[int | None, Field(description="Video bitrate in kilobits per second", ge=1)] = None
 
 
 class Assets13(BaseModel):
@@ -60,9 +60,9 @@ class Assets13(BaseModel):
     )
     asset_type: Literal["audio"]
     url: Annotated[AnyUrl, Field(description="URL to the audio asset")]
-    duration_ms: Annotated[Optional[int], Field(description="Audio duration in milliseconds", ge=0)] = None
-    format: Annotated[Optional[str], Field(description="Audio file format (mp3, wav, aac, etc.)")] = None
-    bitrate_kbps: Annotated[Optional[int], Field(description="Audio bitrate in kilobits per second", ge=1)] = None
+    duration_ms: Annotated[int | None, Field(description="Audio duration in milliseconds", ge=0)] = None
+    format: Annotated[str | None, Field(description="Audio file format (mp3, wav, aac, etc.)")] = None
+    bitrate_kbps: Annotated[int | None, Field(description="Audio bitrate in kilobits per second", ge=1)] = None
 
 
 class Assets14(BaseModel):
@@ -71,8 +71,8 @@ class Assets14(BaseModel):
     )
     asset_type: Literal["text"]
     content: Annotated[str, Field(description="Text content")]
-    max_length: Annotated[Optional[int], Field(description="Maximum character length constraint", ge=1)] = None
-    language: Annotated[Optional[str], Field(description="Language code (e.g., 'en', 'es', 'fr')")] = None
+    max_length: Annotated[int | None, Field(description="Maximum character length constraint", ge=1)] = None
+    language: Annotated[str | None, Field(description="Language code (e.g., 'en', 'es', 'fr')")] = None
 
 
 class Assets15(BaseModel):
@@ -81,7 +81,7 @@ class Assets15(BaseModel):
     )
     asset_type: Literal["html"]
     content: Annotated[str, Field(description="HTML content")]
-    version: Annotated[Optional[str], Field(description="HTML version (e.g., 'HTML5')")] = None
+    version: Annotated[str | None, Field(description="HTML version (e.g., 'HTML5')")] = None
 
 
 class Assets16(BaseModel):
@@ -90,7 +90,7 @@ class Assets16(BaseModel):
     )
     asset_type: Literal["css"]
     content: Annotated[str, Field(description="CSS content")]
-    media: Annotated[Optional[str], Field(description="CSS media query context (e.g., 'screen', 'print')")] = None
+    media: Annotated[str | None, Field(description="CSS media query context (e.g., 'screen', 'print')")] = None
 
 
 class ModuleType(Enum):
@@ -105,13 +105,13 @@ class Assets17(BaseModel):
     )
     asset_type: Literal["javascript"]
     content: Annotated[str, Field(description="JavaScript content")]
-    module_type: Annotated[Optional[ModuleType], Field(description="JavaScript module type")] = None
+    module_type: Annotated[ModuleType | None, Field(description="JavaScript module type")] = None
 
 
 class Colors(BaseModel):
-    primary: Optional[str] = None
-    secondary: Optional[str] = None
-    accent: Optional[str] = None
+    primary: str | None = None
+    secondary: str | None = None
+    accent: str | None = None
 
 
 class Assets18(BaseModel):
@@ -120,11 +120,11 @@ class Assets18(BaseModel):
     )
     asset_type: Literal["promoted_offerings"]
     url: Annotated[
-        Optional[AnyUrl], Field(description="URL of the advertiser's brand or offering (e.g., https://retailer.com)")
+        AnyUrl | None, Field(description="URL of the advertiser's brand or offering (e.g., https://retailer.com)")
     ] = None
-    colors: Annotated[Optional[Colors], Field(description="Brand colors")] = None
-    fonts: Annotated[Optional[list[str]], Field(description="Brand fonts")] = None
-    tone: Annotated[Optional[str], Field(description="Brand tone/voice")] = None
+    colors: Annotated[Colors | None, Field(description="Brand colors")] = None
+    fonts: Annotated[list[str] | None, Field(description="Brand fonts")] = None
+    tone: Annotated[str | None, Field(description="Brand tone/voice")] = None
 
 
 class Assets19(BaseModel):
@@ -133,7 +133,7 @@ class Assets19(BaseModel):
     )
     asset_type: Literal["url"]
     url: Annotated[AnyUrl, Field(description="URL reference")]
-    description: Annotated[Optional[str], Field(description="Description of what this URL points to")] = None
+    description: Annotated[str | None, Field(description="Description of what this URL points to")] = None
 
 
 class Input(BaseModel):
@@ -141,9 +141,9 @@ class Input(BaseModel):
         extra="forbid",
     )
     name: Annotated[str, Field(description="Human-readable name for this preview variant")]
-    macros: Annotated[Optional[dict[str, str]], Field(description="Macro values to apply for this preview")] = None
+    macros: Annotated[dict[str, str] | None, Field(description="Macro values to apply for this preview")] = None
     context_description: Annotated[
-        Optional[str], Field(description="Natural language description of the context for AI-generated content")
+        str | None, Field(description="Natural language description of the context for AI-generated content")
     ] = None
 
 
@@ -157,18 +157,18 @@ class Asset(BaseModel):
         FormatId, Field(description="Structured format identifier with agent URL and format name", title="Format ID")
     ]
     assets: Annotated[
-        dict[str, Union[Assets, Assets12, Assets13, Assets14, Assets15, Assets16, Assets17, Assets18, Assets19]],
+        dict[str, Assets | Assets12 | Assets13 | Assets14 | Assets15 | Assets16 | Assets17 | Assets18 | Assets19],
         Field(description="Assets required by the format, keyed by asset_role"),
     ]
     inputs: Annotated[
-        Optional[list[Input]],
+        list[Input] | None,
         Field(description="Preview contexts for generative formats - defines what scenarios to generate previews for"),
     ] = None
-    tags: Annotated[Optional[list[str]], Field(description="User-defined tags for organization and searchability")] = (
+    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = (
         None
     )
     approved: Annotated[
-        Optional[bool],
+        bool | None,
         Field(
             description="For generative creatives: set to true to approve and finalize, false to request regeneration with updated assets/message. Omit for non-generative creatives."
         ),
@@ -180,7 +180,7 @@ class AddCreativeAssetsRequest1(BaseModel):
         extra="forbid",
     )
     media_buy_id: Annotated[str, Field(description="Publisher's ID of the media buy to add creatives to")]
-    buyer_ref: Annotated[Optional[str], Field(description="Buyer's reference for the media buy")] = None
+    buyer_ref: Annotated[str | None, Field(description="Buyer's reference for the media buy")] = None
     assets: Annotated[list[Asset], Field(description="Array of creative assets to upload")]
 
 
@@ -190,10 +190,10 @@ class Assets20(BaseModel):
     )
     asset_type: Literal["image"]
     url: Annotated[AnyUrl, Field(description="URL to the image asset")]
-    width: Annotated[Optional[int], Field(description="Image width in pixels", ge=1)] = None
-    height: Annotated[Optional[int], Field(description="Image height in pixels", ge=1)] = None
-    format: Annotated[Optional[str], Field(description="Image file format (jpg, png, gif, webp, etc.)")] = None
-    alt_text: Annotated[Optional[str], Field(description="Alternative text for accessibility")] = None
+    width: Annotated[int | None, Field(description="Image width in pixels", ge=1)] = None
+    height: Annotated[int | None, Field(description="Image height in pixels", ge=1)] = None
+    format: Annotated[str | None, Field(description="Image file format (jpg, png, gif, webp, etc.)")] = None
+    alt_text: Annotated[str | None, Field(description="Alternative text for accessibility")] = None
 
 
 class Assets21(BaseModel):
@@ -202,11 +202,11 @@ class Assets21(BaseModel):
     )
     asset_type: Literal["video"]
     url: Annotated[AnyUrl, Field(description="URL to the video asset")]
-    width: Annotated[Optional[int], Field(description="Video width in pixels", ge=1)] = None
-    height: Annotated[Optional[int], Field(description="Video height in pixels", ge=1)] = None
-    duration_ms: Annotated[Optional[int], Field(description="Video duration in milliseconds", ge=0)] = None
-    format: Annotated[Optional[str], Field(description="Video file format (mp4, webm, mov, etc.)")] = None
-    bitrate_kbps: Annotated[Optional[int], Field(description="Video bitrate in kilobits per second", ge=1)] = None
+    width: Annotated[int | None, Field(description="Video width in pixels", ge=1)] = None
+    height: Annotated[int | None, Field(description="Video height in pixels", ge=1)] = None
+    duration_ms: Annotated[int | None, Field(description="Video duration in milliseconds", ge=0)] = None
+    format: Annotated[str | None, Field(description="Video file format (mp4, webm, mov, etc.)")] = None
+    bitrate_kbps: Annotated[int | None, Field(description="Video bitrate in kilobits per second", ge=1)] = None
 
 
 class Assets22(BaseModel):
@@ -215,9 +215,9 @@ class Assets22(BaseModel):
     )
     asset_type: Literal["audio"]
     url: Annotated[AnyUrl, Field(description="URL to the audio asset")]
-    duration_ms: Annotated[Optional[int], Field(description="Audio duration in milliseconds", ge=0)] = None
-    format: Annotated[Optional[str], Field(description="Audio file format (mp3, wav, aac, etc.)")] = None
-    bitrate_kbps: Annotated[Optional[int], Field(description="Audio bitrate in kilobits per second", ge=1)] = None
+    duration_ms: Annotated[int | None, Field(description="Audio duration in milliseconds", ge=0)] = None
+    format: Annotated[str | None, Field(description="Audio file format (mp3, wav, aac, etc.)")] = None
+    bitrate_kbps: Annotated[int | None, Field(description="Audio bitrate in kilobits per second", ge=1)] = None
 
 
 class Assets23(BaseModel):
@@ -226,8 +226,8 @@ class Assets23(BaseModel):
     )
     asset_type: Literal["text"]
     content: Annotated[str, Field(description="Text content")]
-    max_length: Annotated[Optional[int], Field(description="Maximum character length constraint", ge=1)] = None
-    language: Annotated[Optional[str], Field(description="Language code (e.g., 'en', 'es', 'fr')")] = None
+    max_length: Annotated[int | None, Field(description="Maximum character length constraint", ge=1)] = None
+    language: Annotated[str | None, Field(description="Language code (e.g., 'en', 'es', 'fr')")] = None
 
 
 class Assets24(BaseModel):
@@ -236,7 +236,7 @@ class Assets24(BaseModel):
     )
     asset_type: Literal["html"]
     content: Annotated[str, Field(description="HTML content")]
-    version: Annotated[Optional[str], Field(description="HTML version (e.g., 'HTML5')")] = None
+    version: Annotated[str | None, Field(description="HTML version (e.g., 'HTML5')")] = None
 
 
 class Assets25(BaseModel):
@@ -245,7 +245,7 @@ class Assets25(BaseModel):
     )
     asset_type: Literal["css"]
     content: Annotated[str, Field(description="CSS content")]
-    media: Annotated[Optional[str], Field(description="CSS media query context (e.g., 'screen', 'print')")] = None
+    media: Annotated[str | None, Field(description="CSS media query context (e.g., 'screen', 'print')")] = None
 
 
 class Assets26(BaseModel):
@@ -254,7 +254,7 @@ class Assets26(BaseModel):
     )
     asset_type: Literal["javascript"]
     content: Annotated[str, Field(description="JavaScript content")]
-    module_type: Annotated[Optional[ModuleType], Field(description="JavaScript module type")] = None
+    module_type: Annotated[ModuleType | None, Field(description="JavaScript module type")] = None
 
 
 class Assets27(BaseModel):
@@ -263,11 +263,11 @@ class Assets27(BaseModel):
     )
     asset_type: Literal["promoted_offerings"]
     url: Annotated[
-        Optional[AnyUrl], Field(description="URL of the advertiser's brand or offering (e.g., https://retailer.com)")
+        AnyUrl | None, Field(description="URL of the advertiser's brand or offering (e.g., https://retailer.com)")
     ] = None
-    colors: Annotated[Optional[Colors], Field(description="Brand colors")] = None
-    fonts: Annotated[Optional[list[str]], Field(description="Brand fonts")] = None
-    tone: Annotated[Optional[str], Field(description="Brand tone/voice")] = None
+    colors: Annotated[Colors | None, Field(description="Brand colors")] = None
+    fonts: Annotated[list[str] | None, Field(description="Brand fonts")] = None
+    tone: Annotated[str | None, Field(description="Brand tone/voice")] = None
 
 
 class Assets28(BaseModel):
@@ -276,7 +276,7 @@ class Assets28(BaseModel):
     )
     asset_type: Literal["url"]
     url: Annotated[AnyUrl, Field(description="URL reference")]
-    description: Annotated[Optional[str], Field(description="Description of what this URL points to")] = None
+    description: Annotated[str | None, Field(description="Description of what this URL points to")] = None
 
 
 class Asset6(BaseModel):
@@ -289,18 +289,18 @@ class Asset6(BaseModel):
         FormatId, Field(description="Structured format identifier with agent URL and format name", title="Format ID")
     ]
     assets: Annotated[
-        dict[str, Union[Assets20, Assets21, Assets22, Assets23, Assets24, Assets25, Assets26, Assets27, Assets28]],
+        dict[str, Assets20 | Assets21 | Assets22 | Assets23 | Assets24 | Assets25 | Assets26 | Assets27 | Assets28],
         Field(description="Assets required by the format, keyed by asset_role"),
     ]
     inputs: Annotated[
-        Optional[list[Input]],
+        list[Input] | None,
         Field(description="Preview contexts for generative formats - defines what scenarios to generate previews for"),
     ] = None
-    tags: Annotated[Optional[list[str]], Field(description="User-defined tags for organization and searchability")] = (
+    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = (
         None
     )
     approved: Annotated[
-        Optional[bool],
+        bool | None,
         Field(
             description="For generative creatives: set to true to approve and finalize, false to request regeneration with updated assets/message. Omit for non-generative creatives."
         ),
@@ -311,7 +311,7 @@ class AddCreativeAssetsRequest2(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    media_buy_id: Annotated[Optional[str], Field(description="Publisher's ID of the media buy to add creatives to")] = (
+    media_buy_id: Annotated[str | None, Field(description="Publisher's ID of the media buy to add creatives to")] = (
         None
     )
     buyer_ref: Annotated[str, Field(description="Buyer's reference for the media buy")]
@@ -320,6 +320,6 @@ class AddCreativeAssetsRequest2(BaseModel):
 
 class AddCreativeAssetsRequest(RootModel[Union[AddCreativeAssetsRequest1, AddCreativeAssetsRequest2]]):
     root: Annotated[
-        Union[AddCreativeAssetsRequest1, AddCreativeAssetsRequest2],
+        AddCreativeAssetsRequest1 | AddCreativeAssetsRequest2,
         Field(description="Request parameters for uploading creative assets", title="Add Creative Assets Request"),
     ]
