@@ -3470,7 +3470,109 @@ def _validate_pricing_model_selection(
     }
 
 
-def _create_media_buy_impl(
+async def _validate_and_convert_format_ids(
+    format_ids: list[Any], tenant_id: str, package_idx: int
+) -> list[dict[str, str]]:
+    """Validate and convert format_ids to FormatId objects with strict enforcement.
+
+    Per AdCP spec, format_ids must be FormatId objects with {agent_url, id}.
+    This function enforces:
+    1. Only FormatId objects are accepted (no plain strings)
+    2. agent_url must be a registered creative agent (default or tenant-specific)
+    3. format_id must exist on the specified agent
+    4. Format must pass validation (dimensions, asset requirements, etc.)
+
+    Args:
+        format_ids: List of format ID objects from request
+        tenant_id: Tenant ID for looking up registered agents
+        package_idx: Package index for error messages (0-based)
+
+    Returns:
+        List of validated FormatId dicts with {agent_url, id}
+
+    Raises:
+        ToolError: If any format_id is invalid, unregistered, or doesn't exist
+    """
+    from src.core.creative_agent_registry import CreativeAgentRegistry
+
+    if not format_ids:
+        return []
+
+    registry = CreativeAgentRegistry()
+    validated_format_ids = []
+
+    # Get registered agents for this tenant
+    registered_agents = registry._get_tenant_agents(tenant_id)
+    registered_agent_urls = {agent.agent_url for agent in registered_agents}
+
+    for idx, fmt_id in enumerate(format_ids):
+        # STRICT ENFORCEMENT: Reject plain strings
+        if isinstance(fmt_id, str):
+            raise ToolError(
+                "FORMAT_VALIDATION_ERROR",
+                f"Package {package_idx + 1}, format_ids[{idx}]: Plain string format IDs are not supported. "
+                f"Per AdCP spec, format_ids must be FormatId objects with {{agent_url, id}}. "
+                f"Example: {{\"agent_url\": \"https://creative.adcontextprotocol.org\", \"id\": \"{fmt_id}\"}}. "
+                f"Use list_creative_formats to discover available formats.",
+            )
+
+        # Extract agent_url and id from dict/object
+        if isinstance(fmt_id, dict):
+            agent_url = fmt_id.get("agent_url")
+            format_id = fmt_id.get("id")
+        elif hasattr(fmt_id, "agent_url") and hasattr(fmt_id, "id"):
+            agent_url = fmt_id.agent_url
+            format_id = fmt_id.id
+        else:
+            raise ToolError(
+                "FORMAT_VALIDATION_ERROR",
+                f"Package {package_idx + 1}, format_ids[{idx}]: Invalid format_id structure. "
+                f"Expected FormatId object with {{agent_url, id}}, got: {type(fmt_id).__name__}",
+            )
+
+        if not agent_url or not format_id:
+            raise ToolError(
+                "FORMAT_VALIDATION_ERROR",
+                f"Package {package_idx + 1}, format_ids[{idx}]: FormatId object missing required fields. "
+                f"Both agent_url and id are required. Got: agent_url={agent_url!r}, id={format_id!r}",
+            )
+
+        # VALIDATION: Check agent is registered
+        if agent_url not in registered_agent_urls:
+            raise ToolError(
+                "FORMAT_VALIDATION_ERROR",
+                f"Package {package_idx + 1}, format_ids[{idx}]: Creative agent not registered: {agent_url}. "
+                f"Registered agents: {', '.join(sorted(registered_agent_urls))}. "
+                f"Contact your administrator to register this creative agent.",
+            )
+
+        # VALIDATION: Verify format exists on agent
+        try:
+            format_obj = await registry.get_format(agent_url, format_id)
+            if not format_obj:
+                raise ToolError(
+                    "FORMAT_VALIDATION_ERROR",
+                    f"Package {package_idx + 1}, format_ids[{idx}]: Format not found on agent. "
+                    f"agent_url={agent_url}, format_id={format_id!r}. "
+                    f"Use list_creative_formats to discover available formats.",
+                )
+        except Exception as e:
+            if isinstance(e, ToolError):
+                raise
+            logger.exception(f"Error fetching format {format_id} from {agent_url}: {e}")
+            raise ToolError(
+                "FORMAT_VALIDATION_ERROR",
+                f"Package {package_idx + 1}, format_ids[{idx}]: Failed to verify format on agent. "
+                f"agent_url={agent_url}, format_id={format_id!r}. Error: {e}",
+            )
+
+        # Format validated - add to results
+        validated_format_ids.append({"agent_url": agent_url, "id": format_id})
+
+    return validated_format_ids
+
+
+async def _create_media_buy_impl(
     buyer_ref: str,
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     po_number: str | None = None,
@@ -4381,21 +4483,14 @@ def _create_media_buy_impl(
             else:
                 package_dict = package
 
-            # Convert format_ids (request field) to format_ids_to_provide (response field)
-            # Per AdCP spec: request has format_ids, response has format_ids_to_provide (both use FormatId objects)
-            # Supports backward compatibility with string format IDs from older clients
+            # Validate and convert format_ids (request field) to format_ids_to_provide (response field)
+            # Per AdCP spec: request has format_ids (array of FormatId), response has format_ids_to_provide (same)
+            # STRICT ENFORCEMENT: Only FormatId objects accepted, must be registered agents, formats must exist
             if "format_ids" in package_dict and package_dict["format_ids"]:
-                format_ids_to_provide = []
-                for fmt_id in package_dict["format_ids"]:
-                    if isinstance(fmt_id, str):
-                        # Convert string format ID to FormatId object
-                        format_ids_to_provide.append(
-                            {"agent_url": "https://creative.adcontextprotocol.org", "id": fmt_id}
-                        )
-                    elif isinstance(fmt_id, dict) and "agent_url" in fmt_id and "id" in fmt_id:
-                        # Already a FormatId object
-                        format_ids_to_provide.append(fmt_id)
-                package_dict["format_ids_to_provide"] = format_ids_to_provide
+                validated_format_ids = await _validate_and_convert_format_ids(
+                    package_dict["format_ids"], tenant["tenant_id"], i
+                )
+                package_dict["format_ids_to_provide"] = validated_format_ids
                 # Remove format_ids from response (only format_ids_to_provide should be in response)
                 del package_dict["format_ids"]
 
@@ -4652,7 +4747,7 @@ def _create_media_buy_impl(
 
 
 @mcp.tool()
-def create_media_buy(
+async def create_media_buy(
     buyer_ref: str,
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     po_number: str | None = None,
@@ -4708,7 +4803,7 @@ def create_media_buy(
     Returns:
         CreateMediaBuyResponse with media buy details
     """
-    return _create_media_buy_impl(
+    return await _create_media_buy_impl(
         buyer_ref=buyer_ref,
         brand_manifest=brand_manifest,
         po_number=po_number,
