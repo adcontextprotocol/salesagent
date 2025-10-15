@@ -139,7 +139,8 @@ class TestGAMPackageTypes:
             name="Network Package",
             delivery_type="non_guaranteed",
             impressions=10000,
-format_ids=["display_300x250"],
+            format_ids=["display_300x250"],
+            cpm=10.0,
         )
 
         assert non_guaranteed_pkg.delivery_type == "non_guaranteed"
@@ -150,7 +151,8 @@ format_ids=["display_300x250"],
             name="Standard Package",
             delivery_type="guaranteed",
             impressions=50000,
-format_ids=["display_300x250"],
+            format_ids=["display_300x250"],
+            cpm=15.0,
         )
 
         assert guaranteed_pkg.delivery_type == "guaranteed"
