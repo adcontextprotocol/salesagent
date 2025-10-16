@@ -25,7 +25,7 @@ def diagnose_product_formats(product_id: str = None):
                 return
         else:
             # Check all products
-            stmt = select(Product).order_by(Product.created_at.desc()).limit(5)
+            stmt = select(Product).order_by(Product.name).limit(5)
             products = session.scalars(stmt).all()
 
         print(f"\n{'='*80}")
