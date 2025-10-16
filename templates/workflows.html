@@ -138,23 +138,23 @@
                     <tr>
                         <th>ID</th>
                         <th>Type</th>
-                        <th>Title</th>
-                        <th>Media Buy</th>
+                        <th>Step Name</th>
+                        <th>Workflow</th>
                         <th>Status</th>
-                        <th>Due Date</th>
                         <th>Assigned To</th>
                         <th>Created</th>
+                        <th>Completed</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for task in tasks %}
-                    <tr data-status="{{ task.status }}" data-overdue="{{ 'yes' if task.is_overdue else 'no' }}">
-                        <td><code>{{ task.task_id }}</code></td>
-                        <td>{{ task.task_type }}</td>
-                        <td>{{ task.title }}</td>
+                    <tr data-status="{{ task.status }}">
+                        <td><code>{{ task.step_id }}</code></td>
+                        <td>{{ task.step_type or 'workflow' }}</td>
+                        <td>{{ task.step_name or task.step_id }}</td>
                         <td>
-                            {% if task.media_buy_id %}
-                            <code>{{ task.media_buy_id }}</code>
+                            {% if task.workflow_id %}
+                            <code>{{ task.workflow_id }}</code>
                             {% else %}
                             -
                             {% endif %}
@@ -162,21 +162,19 @@
                         <td>
                             {% if task.status == 'completed' %}
                             <span class="status status-completed">Completed</span>
-                            {% elif task.is_overdue %}
-                            <span class="status status-error">Overdue</span>
+                            {% elif task.status == 'failed' %}
+                            <span class="status status-error">Failed</span>
+                            {% elif task.status == 'pending_approval' %}
+                            <span class="status status-pending">Pending Approval</span>
+                            {% elif task.status == 'in_progress' %}
+                            <span class="status status-pending">In Progress</span>
                             {% else %}
-                            <span class="status status-pending">Pending</span>
+                            <span class="status status-pending">{{ task.status }}</span>
                             {% endif %}
                         </td>
-                        <td>
-                            {% if task.due_date %}
-                            {{ task.due_date.strftime('%Y-%m-%d %H:%M') }}
-                            {% else %}
-                            -
-                            {% endif %}
-                        </td>
-                        <td>{{ task.assigned_to or 'Unassigned' }}</td>
+                        <td>{{ task.assigned_to or task.principal_name or 'Unassigned' }}</td>
                         <td>{{ task.created_at.strftime('%Y-%m-%d %H:%M') if task.created_at else 'N/A' }}</td>
+                        <td>{{ task.completed_at.strftime('%Y-%m-%d %H:%M') if task.completed_at else '-' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -375,11 +373,16 @@ function filterTasks() {
 
     rows.forEach(row => {
         let show = false;
+        const status = row.dataset.status;
+
         if (filter === 'all') {
             show = true;
-        } else if (filter === 'overdue' && row.dataset.overdue === 'yes') {
+        } else if (filter === 'pending' && (status === 'pending' || status === 'pending_approval' || status === 'in_progress')) {
             show = true;
-        } else if (filter === row.dataset.status) {
+        } else if (filter === 'completed' && status === 'completed') {
+            show = true;
+        } else if (filter === 'overdue' && status === 'failed') {
+            // Map failed tasks to "overdue" filter for now
             show = true;
         }
         row.style.display = show ? '' : 'none';
