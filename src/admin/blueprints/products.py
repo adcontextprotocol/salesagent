@@ -584,7 +584,7 @@ def add_product(tenant_id):
 
         except Exception as e:
             logger.error(f"Error creating product: {e}", exc_info=True)
-            flash("Error creating product", "error")
+            flash(f"Error creating product: {str(e)}", "error")
             return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
     # GET request - show adapter-specific form
@@ -883,7 +883,7 @@ def edit_product(tenant_id, product_id):
 
     except Exception as e:
         logger.error(f"Error editing product: {e}", exc_info=True)
-        flash("Error editing product", "error")
+        flash(f"Error editing product: {str(e)}", "error")
         return redirect(url_for("products.list_products", tenant_id=tenant_id))
 
 
