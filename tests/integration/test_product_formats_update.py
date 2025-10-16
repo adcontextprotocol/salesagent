@@ -46,6 +46,7 @@ def sample_product(integration_db):
         return product.product_id
 
 
+@pytest.mark.requires_db
 def test_product_formats_update_with_flag_modified(integration_db, sample_product):
     """Test that updating product.formats with flag_modified saves changes."""
     from src.core.database.database_session import get_db_session
@@ -79,6 +80,7 @@ def test_product_formats_update_with_flag_modified(integration_db, sample_produc
         assert product.formats[2]["id"] == "new_format_3"
 
 
+@pytest.mark.requires_db
 def test_product_formats_update_without_flag_modified_fails(integration_db, sample_product):
     """Test that updating product.formats WITHOUT flag_modified does NOT save changes.
 
@@ -114,6 +116,7 @@ def test_product_formats_update_without_flag_modified_fails(integration_db, samp
         assert product.formats[1]["id"] == "old_format_2"
 
 
+@pytest.mark.requires_db
 def test_product_countries_update_with_flag_modified(integration_db, sample_product):
     """Test that updating product.countries with flag_modified saves changes."""
     from src.core.database.database_session import get_db_session
