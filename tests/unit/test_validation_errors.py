@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from src.core.main import format_validation_error
 from src.core.schemas import BrandManifest, CreateMediaBuyRequest
 
 
@@ -53,7 +54,7 @@ def test_create_media_buy_request_invalid_brand_manifest():
 
 def test_validation_error_formatting():
     """Test that our validation error formatting provides helpful messages."""
-    # Simulate the error formatting logic from main.py
+    # Test the format_validation_error helper function
     try:
         raise ValidationError.from_exception_data(
             "CreateMediaBuyRequest",
@@ -67,21 +68,53 @@ def test_validation_error_formatting():
             ],
         )
     except ValidationError as e:
-        # Format error details (same logic as in main.py)
-        error_details = []
-        for error in e.errors():
-            field_path = ".".join(str(loc) for loc in error["loc"])
-            error_type = error["type"]
-            input_val = error.get("input")
-
-            if "string_type" in error_type and isinstance(input_val, dict):
-                error_details.append(
-                    f"  • {field_path}: Expected string, got object. "
-                    f"AdCP spec requires this field to be a simple string, not a structured object."
-                )
+        # Use the shared helper function
+        error_msg = format_validation_error(e, context="test request")
 
         # Check that we got a helpful error message
-        assert len(error_details) == 1
-        assert "brand_manifest.BrandManifest.target_audience" in error_details[0]
-        assert "Expected string, got object" in error_details[0]
-        assert "AdCP spec requires" in error_details[0]
+        assert "Invalid test request:" in error_msg
+        assert "brand_manifest.BrandManifest.target_audience" in error_msg
+        assert "Expected string, got object" in error_msg
+        assert "AdCP spec requires this field to be a simple string" in error_msg
+        assert "https://adcontextprotocol.org/schemas/v1/" in error_msg
+
+
+def test_validation_error_formatting_missing_field():
+    """Test formatting for missing required fields."""
+    try:
+        raise ValidationError.from_exception_data(
+            "CreateMediaBuyRequest",
+            [
+                {
+                    "type": "missing",
+                    "loc": ("buyer_ref",),
+                    "msg": "Field required",
+                    "input": {},
+                }
+            ],
+        )
+    except ValidationError as e:
+        error_msg = format_validation_error(e)
+
+        assert "buyer_ref: Required field is missing" in error_msg
+        assert "Invalid request:" in error_msg
+
+
+def test_validation_error_formatting_extra_field():
+    """Test formatting for extra forbidden fields."""
+    try:
+        raise ValidationError.from_exception_data(
+            "CreateMediaBuyRequest",
+            [
+                {
+                    "type": "extra_forbidden",
+                    "loc": ("unknown_field",),
+                    "msg": "Extra inputs are not permitted",
+                    "input": "some_value",
+                }
+            ],
+        )
+    except ValidationError as e:
+        error_msg = format_validation_error(e)
+
+        assert "unknown_field: Extra field not allowed by AdCP spec" in error_msg

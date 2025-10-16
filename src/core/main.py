@@ -171,6 +171,59 @@ def safe_parse_json_field(field_value, field_name="field", default=None):
         return default if default is not None else {}
 
 
+def format_validation_error(validation_error: ValidationError, context: str = "request") -> str:
+    """Format Pydantic ValidationError with helpful context for clients.
+
+    Provides clear, actionable error messages that reference the AdCP spec
+    and explain what went wrong with field types.
+
+    Args:
+        validation_error: The Pydantic ValidationError to format
+        context: Context string for the error message (e.g., "request", "creative")
+
+    Returns:
+        Formatted error message string suitable for client consumption
+
+    Example:
+        >>> try:
+        ...     req = CreateMediaBuyRequest(brand_manifest={"target_audience": {}})
+        ... except ValidationError as e:
+        ...     raise ToolError(format_validation_error(e))
+    """
+    error_details = []
+    for error in validation_error.errors():
+        field_path = ".".join(str(loc) for loc in error["loc"])
+        error_type = error["type"]
+        msg = error["msg"]
+        input_val = error.get("input")
+
+        # Add helpful context for common validation errors
+        if "string_type" in error_type and isinstance(input_val, dict):
+            error_details.append(
+                f"  • {field_path}: Expected string, got object. "
+                f"AdCP spec requires this field to be a simple string, not a structured object."
+            )
+        elif "string_type" in error_type:
+            error_details.append(
+                f"  • {field_path}: Expected string, got {type(input_val).__name__}. "
+                f"Please provide a string value."
+            )
+        elif "missing" in error_type:
+            error_details.append(f"  • {field_path}: Required field is missing")
+        elif "extra_forbidden" in error_type:
+            error_details.append(f"  • {field_path}: Extra field not allowed by AdCP spec")
+        else:
+            error_details.append(f"  • {field_path}: {msg}")
+
+    error_msg = (
+        f"Invalid {context}: The following fields do not match the AdCP specification:\n\n"
+        + "\n".join(error_details)
+        + "\n\nPlease check the AdCP spec at https://adcontextprotocol.org/schemas/v1/ for correct field types."
+    )
+
+    return error_msg
+
+
 # --- Authentication ---
 
 
@@ -1768,7 +1821,11 @@ def _sync_creatives_impl(
                 except (ValidationError, ValueError) as validation_error:
                     # Creative failed validation - add to failed list
                     creative_id = creative.get("creative_id", "unknown")
-                    error_msg = str(validation_error)
+                    # Format ValidationError nicely for clients, pass through ValueError as-is
+                    if isinstance(validation_error, ValidationError):
+                        error_msg = format_validation_error(validation_error, context=f"creative {creative_id}")
+                    else:
+                        error_msg = str(validation_error)
                     failed_creatives.append({"creative_id": creative_id, "error": error_msg})
                     failed_count += 1
                     results.append(
@@ -2974,27 +3031,30 @@ def _list_creatives_impl(
             raise ToolError(f"Invalid created_before date format: {created_before}")
 
     # Create request object from individual parameters (MCP-compliant)
-    req = ListCreativesRequest(
-        media_buy_id=media_buy_id,
-        buyer_ref=buyer_ref,
-        status=status,
-        format=format,
-        tags=tags or [],
-        created_after=created_after_dt,
-        created_before=created_before_dt,
-        search=search,
-        filters=filters,
-        sort=sort,
-        pagination=pagination,
-        fields=fields,
-        include_performance=include_performance,
-        include_assignments=include_assignments,
-        include_sub_assets=include_sub_assets,
+    try:
+        req = ListCreativesRequest(
+            media_buy_id=media_buy_id,
+            buyer_ref=buyer_ref,
+            status=status,
+            format=format,
+            tags=tags or [],
+            created_after=created_after_dt,
+            created_before=created_before_dt,
+            search=search,
+            filters=filters,
+            sort=sort,
+            pagination=pagination,
+            fields=fields,
+            include_performance=include_performance,
+            include_assignments=include_assignments,
+            include_sub_assets=include_sub_assets,
         page=page,
         limit=min(limit, 1000),  # Enforce max limit
-        sort_by=sort_by,
-        sort_order=sort_order,
-    )
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="list_creatives request")) from e
 
     start_time = time.time()
 
@@ -4037,35 +4097,8 @@ async def _create_media_buy_impl(
             push_notification_config=push_notification_config,
         )
     except ValidationError as e:
-        # Format validation errors with helpful context
-        error_details = []
-        for error in e.errors():
-            field_path = ".".join(str(loc) for loc in error["loc"])
-            error_type = error["type"]
-            msg = error["msg"]
-            input_val = error.get("input")
-
-            # Add helpful context for common validation errors
-            if "string_type" in error_type and isinstance(input_val, dict):
-                error_details.append(
-                    f"  • {field_path}: Expected string, got object. "
-                    f"AdCP spec requires this field to be a simple string, not a structured object."
-                )
-            elif "string_type" in error_type:
-                error_details.append(
-                    f"  • {field_path}: Expected string, got {type(input_val).__name__}. "
-                    f"Please provide a string value."
-                )
-            else:
-                error_details.append(f"  • {field_path}: {msg}")
-
-        error_msg = (
-            "Invalid request: The following fields do not match the AdCP specification:\n\n"
-            + "\n".join(error_details)
-            + "\n\nPlease check the AdCP spec at https://adcontextprotocol.org/schemas/v1/ for correct field types."
-        )
-
-        raise ToolError(error_msg) from e
+        # Format validation errors with helpful context using shared helper
+        raise ToolError(format_validation_error(e, context="request")) from e
 
     # Extract testing context first
     testing_ctx = get_testing_context(context)
