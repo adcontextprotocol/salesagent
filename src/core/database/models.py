@@ -8,7 +8,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
-    Column,
     Date,
     DateTime,
     Float,
@@ -146,19 +145,19 @@ class Tenant(Base, JSONValidatorMixin):
 class Product(Base, JSONValidatorMixin):
     __tablename__ = "products"
 
-    tenant_id = Column(
+    tenant_id: Mapped[str] = mapped_column(
         String(50),
         ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
         primary_key=True,
     )
-    product_id = Column(String(100), primary_key=True)
-    name = Column(String(200), nullable=False)
-    description = Column(Text)
+    product_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Type hint: list of FormatId dicts with {agent_url: str, id: str}
     formats: Mapped[list[dict[str, str]]] = mapped_column(JSONType, nullable=False)
     # Type hint: targeting template dict structure
     targeting_template: Mapped[dict] = mapped_column(JSONType, nullable=False)
-    delivery_type = Column(String(50), nullable=False)
+    delivery_type: Mapped[str] = mapped_column(String(50), nullable=False)
 
     # Other fields
     # Type hint: measurement dict (AdCP measurement object)
@@ -167,8 +166,8 @@ class Product(Base, JSONValidatorMixin):
     creative_policy: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     # Type hint: price guidance dict (legacy field)
     price_guidance: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
-    is_custom = Column(Boolean, default=False)
-    expires_at = Column(DateTime)
+    is_custom: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
     # Type hint: countries list
     countries: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
     # Type hint: implementation config dict
@@ -1002,16 +1001,16 @@ class ObjectWorkflowMapping(Base):
 
     __tablename__ = "object_workflow_mapping"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    object_type = Column(String(50), nullable=False)  # media_buy, creative, product, etc.
-    object_id = Column(String(100), nullable=False)  # The actual object's ID
-    step_id = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    object_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    object_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    step_id: Mapped[str] = mapped_column(
         String(100),
         ForeignKey("workflow_steps.step_id", ondelete="CASCADE"),
         nullable=False,
     )
-    action = Column(String(50), nullable=False)  # create, update, approve, reject, etc.
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     # Relationships
     workflow_step = relationship("WorkflowStep", back_populates="object_mappings")
@@ -1033,15 +1032,19 @@ class Strategy(Base, JSONValidatorMixin):
 
     __tablename__ = "strategies"
 
-    strategy_id = Column(String(255), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=True)
-    principal_id = Column(String(100), nullable=True)
-    name = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-    config = Column(JSONType, nullable=False, default=dict)
-    is_simulation = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    strategy_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=True
+    )
+    principal_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    is_simulation: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     # Relationships
     tenant = relationship("Tenant", back_populates="strategies", overlaps="strategies,tenant")
@@ -1077,10 +1080,12 @@ class StrategyState(Base, JSONValidatorMixin):
 
     __tablename__ = "strategy_states"
 
-    strategy_id = Column(String(255), nullable=False, primary_key=True)
-    state_key = Column(String(255), nullable=False, primary_key=True)
-    state_value = Column(JSONType, nullable=False)
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    strategy_id: Mapped[str] = mapped_column(String(255), nullable=False, primary_key=True)
+    state_key: Mapped[str] = mapped_column(String(255), nullable=False, primary_key=True)
+    state_value: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     # Relationships
     strategy = relationship("Strategy", back_populates="states")
@@ -1100,20 +1105,20 @@ class AuthorizedProperty(Base, JSONValidatorMixin):
 
     __tablename__ = "authorized_properties"
 
-    property_id = Column(String(100), nullable=False, primary_key=True)
-    tenant_id = Column(String(50), nullable=False, primary_key=True)
-    property_type = Column(
-        String(20), nullable=False
-    )  # website, mobile_app, ctv_app, dooh, podcast, radio, streaming_audio
-    name = Column(String(255), nullable=False)
-    identifiers = Column(JSONType, nullable=False)  # Array of {type, value} objects
-    tags = Column(JSONType, nullable=True)  # Array of tag strings
-    publisher_domain = Column(String(255), nullable=False)  # Domain for adagents.json verification
-    verification_status = Column(String(20), nullable=False, default="pending")  # pending, verified, failed
-    verification_checked_at = Column(DateTime, nullable=True)
-    verification_error = Column(Text, nullable=True)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    property_id: Mapped[str] = mapped_column(String(100), nullable=False, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(50), nullable=False, primary_key=True)
+    property_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    identifiers: Mapped[list[dict]] = mapped_column(JSONType, nullable=False)
+    tags: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
+    publisher_domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    verification_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    verification_checked_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    verification_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     # Relationships
     tenant = relationship("Tenant", backref="authorized_properties")
@@ -1141,12 +1146,14 @@ class PropertyTag(Base, JSONValidatorMixin):
 
     __tablename__ = "property_tags"
 
-    tag_id = Column(String(50), nullable=False, primary_key=True)
-    tenant_id = Column(String(50), nullable=False, primary_key=True)
-    name = Column(String(255), nullable=False)
-    description = Column(Text, nullable=False)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    tag_id: Mapped[str] = mapped_column(String(50), nullable=False, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(50), nullable=False, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     # Relationships
     tenant = relationship("Tenant", backref="property_tags")
@@ -1167,18 +1174,20 @@ class PushNotificationConfig(Base, JSONValidatorMixin):
 
     __tablename__ = "push_notification_configs"
 
-    id = Column(String(50), primary_key=True)
-    tenant_id = Column(String(50), nullable=False)
-    principal_id = Column(String(50), nullable=False)
-    session_id = Column(String(100), nullable=True)  # Optional A2A session tracking
-    url = Column(Text, nullable=False)
-    authentication_type = Column(String(50), nullable=True)  # bearer, basic, none
-    authentication_token = Column(Text, nullable=True)
-    validation_token = Column(Text, nullable=True)  # For validating webhook ownership
-    webhook_secret = Column(String(500), nullable=True)  # HMAC-SHA256 secret (min 32 chars)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
-    is_active = Column(Boolean, default=True)
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    principal_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    session_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    authentication_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    authentication_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    validation_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    webhook_secret: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Relationships
     tenant = relationship("Tenant", backref="push_notification_configs")
@@ -1205,25 +1214,27 @@ class WebhookDeliveryRecord(Base):
 
     __tablename__ = "webhook_deliveries"
 
-    delivery_id = Column(String(100), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    webhook_url = Column(String(500), nullable=False)
-    payload = Column(JSONType, nullable=False)  # Full JSON payload sent
-    event_type = Column(String(100), nullable=False)  # "creative.status_changed", "media_buy.approved", etc.
-    object_id = Column(String(100), nullable=True)  # Related object ID (creative_id, media_buy_id, etc.)
+    delivery_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    webhook_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    object_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Delivery tracking
-    status = Column(String(20), nullable=False, default="pending")  # pending, delivered, failed
-    attempts = Column(Integer, nullable=False, default=0)
-    last_attempt_at = Column(DateTime, nullable=True)
-    delivered_at = Column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_attempt_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    delivered_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
 
     # Error tracking
-    last_error = Column(Text, nullable=True)
-    response_code = Column(Integer, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     # Relationships
     tenant = relationship("Tenant")
