@@ -958,10 +958,6 @@ class GetProductsRequest(AdCPBaseModel):
         None,
         description="Structured filters for product discovery",
     )
-    brand_manifest: dict[str, Any] | None = Field(
-        None,
-        description="Brand information manifest providing brand context, assets, and product catalog",
-    )
 
     @model_validator(mode="before")
     @classmethod
