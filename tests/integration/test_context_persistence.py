@@ -38,8 +38,8 @@ def test_simplified_context(integration_db):
             tenant_id="test_tenant",
             principal_id="test_principal",
             name="Test Principal",
-            auth_token="test_token",
-            is_active=True,
+            access_token="test_token_12345",
+            platform_mappings={},
         )
         session.add(principal)
         session.commit()

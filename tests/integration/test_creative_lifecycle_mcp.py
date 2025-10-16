@@ -6,7 +6,7 @@ without mocking the core business logic or database operations.
 """
 
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -223,6 +223,7 @@ class TestCreativeLifecycleMCP:
                 name="Old Creative Name",
                 format="display_300x250",
                 status="pending",
+                agent_url="https://creative.adcontextprotocol.org",
                 data={
                     "url": "https://example.com/old.jpg",
                     "width": 300,
@@ -398,6 +399,7 @@ class TestCreativeLifecycleMCP:
                     name=f"Test Creative {i}",
                     format="display_300x250",
                     status="approved" if i % 2 == 0 else "pending",
+                    agent_url="https://creative.adcontextprotocol.org",
                     data={
                         "url": f"https://example.com/creative_{i}.jpg",
                         "width": 300,
@@ -442,6 +444,7 @@ class TestCreativeLifecycleMCP:
                     name=f"Approved Creative {i}",
                     format="display_300x250",
                     status="approved",
+                    agent_url="https://creative.adcontextprotocol.org",
                 )
                 for i in range(3)
             ] + [
@@ -452,6 +455,7 @@ class TestCreativeLifecycleMCP:
                     name=f"Pending Creative {i}",
                     format="display_728x90",
                     status="pending",
+                    agent_url="https://creative.adcontextprotocol.org",
                 )
                 for i in range(2)
             ]
@@ -487,6 +491,7 @@ class TestCreativeLifecycleMCP:
                     name=f"Banner {i}",
                     format="display_300x250",
                     status="approved",
+                    agent_url="https://creative.adcontextprotocol.org",
                 )
                 for i in range(2)
             ] + [
@@ -497,6 +502,7 @@ class TestCreativeLifecycleMCP:
                     name=f"Video {i}",
                     format="video_pre_roll",
                     status="approved",
+                    agent_url="https://creative.adcontextprotocol.org",
                     data={"duration": 15.0},
                 )
                 for i in range(3)
@@ -535,6 +541,7 @@ class TestCreativeLifecycleMCP:
                     name=f"Old Creative {i}",
                     format="display_300x250",
                     status="approved",
+                    agent_url="https://creative.adcontextprotocol.org",
                     created_at=now - timedelta(days=10 + i),  # 10+ days ago
                 )
                 for i in range(2)
@@ -546,6 +553,7 @@ class TestCreativeLifecycleMCP:
                     name=f"Recent Creative {i}",
                     format="display_300x250",
                     status="approved",
+                    agent_url="https://creative.adcontextprotocol.org",
                     created_at=now - timedelta(days=2 + i),  # 2-3 days ago
                 )
                 for i in range(2)
@@ -582,6 +590,7 @@ class TestCreativeLifecycleMCP:
                     name="Holiday Banner Ad",
                     format="display_300x250",
                     status="approved",
+                    agent_url="https://creative.adcontextprotocol.org",
                 ),
                 DBCreative(
                     tenant_id=self.test_tenant_id,
@@ -590,6 +599,7 @@ class TestCreativeLifecycleMCP:
                     name="Holiday Video Ad",
                     format="video_pre_roll",
                     status="approved",
+                    agent_url="https://creative.adcontextprotocol.org",
                 ),
                 DBCreative(
                     tenant_id=self.test_tenant_id,
@@ -598,6 +608,7 @@ class TestCreativeLifecycleMCP:
                     name="Summer Sale Banner",
                     format="display_728x90",
                     status="approved",
+                    agent_url="https://creative.adcontextprotocol.org",
                 ),
             ]
             session.add_all(creatives)
@@ -632,6 +643,7 @@ class TestCreativeLifecycleMCP:
                     name=f"Creative {i:02d}",
                     format="display_300x250",
                     status="approved",
+                    agent_url="https://creative.adcontextprotocol.org",
                 )
                 for i in range(25)  # Create 25 creatives
             ]
@@ -684,6 +696,7 @@ class TestCreativeLifecycleMCP:
                 name="Assigned Creative 1",
                 format="display_300x250",
                 status="approved",
+                agent_url="https://creative.adcontextprotocol.org",
             )
             creative_2 = DBCreative(
                 tenant_id=self.test_tenant_id,
@@ -692,6 +705,7 @@ class TestCreativeLifecycleMCP:
                 name="Unassigned Creative",
                 format="display_300x250",
                 status="approved",
+                agent_url="https://creative.adcontextprotocol.org",
             )
             session.add_all([creative_1, creative_2])
 
