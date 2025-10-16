@@ -181,9 +181,19 @@ def list_available_formats(
     Returns:
         List of all available Format objects from all registered agents
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     from src.core.creative_agent_registry import get_creative_agent_registry
 
-    registry = get_creative_agent_registry()
+    logger.info(f"[list_available_formats] Starting format fetch for tenant_id={tenant_id}")
+
+    try:
+        registry = get_creative_agent_registry()
+    except Exception as e:
+        logger.error(f"[list_available_formats] Failed to get creative agent registry: {e}", exc_info=True)
+        return []
 
     # Get formats from all agents (default + tenant-specific)
     # Check if we're already in an async context
@@ -193,6 +203,7 @@ def list_available_formats(
         # Return a coroutine that needs to be awaited
         import warnings
 
+        logger.debug("[list_available_formats] Running in async context, using thread pool")
         warnings.warn(
             "list_available_formats() called from async context. "
             "Use await registry.list_all_formats() directly instead.",
@@ -218,9 +229,10 @@ def list_available_formats(
                     )
                 )
             )
-            formats = future.result()
+            formats = future.result(timeout=30)  # 30 second timeout
     except RuntimeError:
         # No running loop, we can safely create one
+        logger.debug("[list_available_formats] No async context, creating new event loop")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -237,7 +249,17 @@ def list_available_formats(
                     type_filter=type_filter,
                 )
             )
+        except TimeoutError:
+            logger.error("[list_available_formats] Timeout fetching formats from creative agents")
+            return []
+        except Exception as e:
+            logger.error(f"[list_available_formats] Error in async format fetch: {e}", exc_info=True)
+            return []
         finally:
             loop.close()
+    except Exception as e:
+        logger.error(f"[list_available_formats] Unexpected error fetching formats: {e}", exc_info=True)
+        return []
 
+    logger.info(f"[list_available_formats] Successfully fetched {len(formats)} formats")
     return formats

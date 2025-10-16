@@ -90,6 +90,33 @@
                 const response = await fetch('/api/formats/list?tenant_id={{ tenant_id }}');
                 const data = await response.json();
 
+                // Check for errors from API
+                if (data.error) {
+                    console.error('API returned error:', data);
+                    document.getElementById('format-loading').innerHTML = `
+                        <div style="color: #e74c3c; padding: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px;">
+                            <strong>⚠️ Error loading formats:</strong> ${data.message || data.error}<br>
+                            <small style="display: block; margin-top: 0.5rem;">Error type: ${data.error_type || 'Unknown'}</small>
+                            <small style="display: block; margin-top: 0.5rem;">Check server logs for details or contact support.</small>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Check for warnings (empty results)
+                if (data.warning) {
+                    console.warn('API returned warning:', data.warning);
+                    document.getElementById('format-loading').innerHTML = `
+                        <div style="color: #856404; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                            <strong>⚠️ No formats available:</strong> ${data.warning}<br>
+                            <small style="display: block; margin-top: 0.5rem;">
+                                Creative agents may be unreachable. Check your network connection or creative agent configuration.
+                            </small>
+                        </div>
+                    `;
+                    return;
+                }
+
                 // Flatten formats from all agents
                 allFormats = [];
                 for (const [agentUrl, formats] of Object.entries(data.agents || {})) {
@@ -98,11 +125,20 @@
                     });
                 }
 
+                console.log(`✅ Loaded ${allFormats.length} formats from ${Object.keys(data.agents || {}).length} agent(s)`);
+
                 document.getElementById('format-loading').style.display = 'none';
                 displayFormats(allFormats);
             } catch (error) {
                 console.error('Error loading formats:', error);
-                document.getElementById('format-loading').innerHTML = '<span style="color: #e74c3c;">Error loading formats. Please refresh the page.</span>';
+                document.getElementById('format-loading').innerHTML = `
+                    <div style="color: #e74c3c; padding: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px;">
+                        <strong>⚠️ Network error loading formats:</strong> ${error.message}<br>
+                        <small style="display: block; margin-top: 0.5rem;">
+                            Cannot reach the formats API. Please check your connection and try refreshing the page.
+                        </small>
+                    </div>
+                `;
             }
         }
 
@@ -465,6 +501,13 @@
                         {% endfor %}
                     </div>
                     <small style="color: #666; display: block; margin-top: 0.5rem;">Click a tag to add it, or type your own.</small>
+                </div>
+                {% else %}
+                <div style="margin-top: 0.5rem; padding: 0.75rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                    <strong style="color: #856404;">⚠️ No property tags found</strong><br>
+                    <small style="color: #856404; display: block; margin-top: 0.5rem;">
+                        Property tags like "all_inventory" should be created automatically. If missing, check database migrations or contact support.
+                    </small>
                 </div>
                 {% endif %}
             </div>
