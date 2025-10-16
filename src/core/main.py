@@ -1944,7 +1944,9 @@ def _sync_creatives_impl(
                                             if creative.get("assets"):
                                                 assets = creative.get("assets", {})
                                                 for role, asset in assets.items():
-                                                    if role in ["message", "brief", "prompt"] and isinstance(asset, dict):
+                                                    if role in ["message", "brief", "prompt"] and isinstance(
+                                                        asset, dict
+                                                    ):
                                                         message = asset.get("content") or asset.get("text")
                                                         break
 
@@ -1965,7 +1967,9 @@ def _sync_creatives_impl(
                                             # Get existing context_id for refinement
                                             existing_context_id = None
                                             if existing_creative.data:
-                                                existing_context_id = existing_creative.data.get("generative_context_id")
+                                                existing_context_id = existing_creative.data.get(
+                                                    "generative_context_id"
+                                                )
 
                                             # Use provided context_id or existing one
                                             context_id = creative.get("context_id") or existing_context_id
@@ -2012,7 +2016,9 @@ def _sync_creatives_impl(
                                                             data["output_format"] = output_format
                                                             changes.append("output_format")
 
-                                                            if isinstance(output_format, dict) and output_format.get("url"):
+                                                            if isinstance(output_format, dict) and output_format.get(
+                                                                "url"
+                                                            ):
                                                                 data["url"] = output_format["url"]
                                                                 changes.append("url")
                                                                 logger.info(
@@ -2027,8 +2033,8 @@ def _sync_creatives_impl(
                                                     )
                                             else:
                                                 logger.info(
-                                                    f"[sync_creatives] No message for generative update, "
-                                                    f"keeping existing creative data"
+                                                    "[sync_creatives] No message for generative update, "
+                                                    "keeping existing creative data"
                                                 )
 
                                             # Skip preview_creative call since we already have the output
@@ -2243,8 +2249,8 @@ def _sync_creatives_impl(
                                         if not message:
                                             message = f"Create a creative for: {creative.get('name')}"
                                             logger.warning(
-                                                f"[sync_creatives] No message found in assets/inputs, "
-                                                f"using creative name as fallback"
+                                                "[sync_creatives] No message found in assets/inputs, "
+                                                "using creative name as fallback"
                                             )
 
                                         # Extract promoted_offerings from assets if available
@@ -4496,11 +4502,36 @@ async def _create_media_buy_impl(
         # which will be applied separately to its corresponding line item in GAM.
         # The adapter (google_ad_manager.py) handles this per-product targeting at line 491-494
 
-        # Convert products to MediaPackages (simplified for now)
+        # Convert products to MediaPackages
+        # If req.packages provided, use format_ids from request; otherwise use product.formats
         packages = []
         for product in products_in_buy:
-            # Use the first format for now
-            first_format_id = product.formats[0] if product.formats else None
+            # Determine format_ids to use
+            format_ids_to_use = []
+
+            # Check if this product has a corresponding package in the request with format_ids
+            if req.packages:
+                # Find the package for this product
+                matching_package = None
+                for pkg in req.packages:
+                    if pkg.product_id == product.product_id:
+                        matching_package = pkg
+                        break
+
+                # If found and has format_ids, use those
+                if matching_package and hasattr(matching_package, "format_ids") and matching_package.format_ids:
+                    # Extract format IDs from FormatId objects
+                    for fmt in matching_package.format_ids:
+                        if isinstance(fmt, dict):
+                            format_ids_to_use.append(fmt.get("id"))
+                        elif hasattr(fmt, "id"):
+                            format_ids_to_use.append(fmt.id)
+                        elif isinstance(fmt, str):
+                            format_ids_to_use.append(fmt)
+
+            # Fallback to product's formats if no request format_ids
+            if not format_ids_to_use:
+                format_ids_to_use = [product.formats[0]] if product.formats else []
 
             # Get CPM from pricing_options
             cpm = 10.0  # Default
@@ -4516,7 +4547,7 @@ async def _create_media_buy_impl(
                     delivery_type=product.delivery_type,
                     cpm=cpm,
                     impressions=int(total_budget / cpm * 1000),
-                    format_ids=[first_format_id] if first_format_id else [],
+                    format_ids=format_ids_to_use,
                 )
             )
 
