@@ -19,7 +19,7 @@ import pytest
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires_db]
 
 
 @pytest.mark.integration

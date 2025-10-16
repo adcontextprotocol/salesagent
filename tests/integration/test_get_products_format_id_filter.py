@@ -15,7 +15,7 @@ from src.core.database.models import Principal, Product
 from src.core.schemas import FormatId, GetProductsRequest, ProductFilters
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 @pytest.fixture

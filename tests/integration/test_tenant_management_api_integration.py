@@ -9,7 +9,7 @@ from sqlalchemy import delete
 from src.admin.tenant_management_api import tenant_management_api
 from src.core.database.models import Tenant
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 # temp_db fixture removed - using integration_db from conftest instead
