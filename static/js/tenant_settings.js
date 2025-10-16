@@ -700,18 +700,25 @@ function generateA2ACode() {
 }
 
 // Delete principal
-function deletePrincipal(principalId) {
-    if (!confirm('Are you sure you want to delete this principal? This action cannot be undone.')) {
+function deletePrincipal(principalId, principalName) {
+    if (!confirm(`Are you sure you want to delete ${principalName}? This action cannot be undone.`)) {
         return;
     }
 
     fetch(`${config.scriptName}/tenant/${config.tenantId}/principals/${principalId}/delete`, {
-        method: 'POST',
+        method: 'DELETE',
         headers: {
             'Content-Type': 'application/json',
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => {
+                throw new Error(data.error || `HTTP error ${response.status}`);
+            });
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             alert('Principal deleted successfully');
@@ -950,6 +957,13 @@ function selectGAMAdapter() {
 
 // Copy A2A configuration to clipboard
 function copyA2AConfig(principalId, principalName, accessToken) {
+    // Capture the button element before async operations
+    const button = event.target.closest('button');
+    if (!button) {
+        alert('Failed to copy to clipboard: Button element not found');
+        return;
+    }
+
     // Determine the A2A server URL
     let a2aUrl;
     if (config.isProduction) {
@@ -966,25 +980,79 @@ function copyA2AConfig(principalId, principalName, accessToken) {
         a2aUrl = `http://localhost:${config.a2aPort}/a2a`;
     }
 
-    // Create the configuration text
-    const configText = `# API Configuration for ${principalName}
+    // Create the A2A configuration JSON
+    const a2aConfig = {
+        agent_uri: a2aUrl,
+        protocol: "a2a",
+        version: "1.0",
+        auth: {
+            type: "bearer",
+            token: accessToken
+        }
+    };
 
-API Endpoint: ${a2aUrl}
-API Token: ${accessToken}
-Principal ID: ${principalId}
-
-# Use this token in your API requests:
-# Example curl command:
-curl -X POST ${a2aUrl}/some-endpoint \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer ${accessToken}" \\
-  -d '{"your": "data"}'`;
+    // Store original button state
+    const originalText = button.textContent;
 
     // Copy to clipboard
-    navigator.clipboard.writeText(configText).then(() => {
+    navigator.clipboard.writeText(JSON.stringify(a2aConfig, null, 2)).then(() => {
         // Show success feedback
-        const button = event.target;
-        const originalText = button.textContent;
+        button.textContent = '✓ Copied!';
+        button.classList.add('btn-success');
+        button.classList.remove('btn-outline-primary');
+
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.classList.remove('btn-success');
+            button.classList.add('btn-outline-primary');
+        }, 2000);
+    }).catch(err => {
+        alert('Failed to copy to clipboard: ' + err.message);
+    });
+}
+
+// Copy MCP configuration to clipboard
+function copyMCPConfig(principalId, principalName, accessToken) {
+    // Capture the button element before async operations
+    const button = event.target.closest('button');
+    if (!button) {
+        alert('Failed to copy to clipboard: Button element not found');
+        return;
+    }
+
+    // Determine the MCP server URL
+    let mcpUrl;
+    if (config.isProduction) {
+        // Production: Use subdomain or virtual host
+        if (config.subdomain) {
+            mcpUrl = `https://${config.subdomain}.sales-agent.scope3.com/mcp`;
+        } else if (config.virtualHost) {
+            mcpUrl = `https://${config.virtualHost}/mcp`;
+        } else {
+            mcpUrl = `https://sales-agent.scope3.com/mcp`;
+        }
+    } else {
+        // Development: Use localhost with MCP port (8080)
+        mcpUrl = `http://localhost:8080/mcp`;
+    }
+
+    // Create the MCP configuration JSON
+    const mcpConfig = {
+        agent_uri: mcpUrl,
+        protocol: "mcp",
+        version: "1.0",
+        auth: {
+            type: "bearer",
+            token: accessToken
+        }
+    };
+
+    // Store original button state
+    const originalText = button.textContent;
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(JSON.stringify(mcpConfig, null, 2)).then(() => {
+        // Show success feedback
         button.textContent = '✓ Copied!';
         button.classList.add('btn-success');
         button.classList.remove('btn-outline-primary');
