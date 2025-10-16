@@ -873,8 +873,15 @@ function filterGAMFormats() {
     // Set creative formats
     if (product.formats && product.formats.length > 0) {
         product.formats.forEach(format => {
-            const checkbox = document.querySelector(`input[name="formats"][value="${format}"]`);
-            if (checkbox) checkbox.checked = true;
+            // Handle both FormatReference objects and legacy string format
+            const formatId = typeof format === 'object' ? (format.format_id || format.id) : format;
+            const checkbox = document.querySelector(`input[name="formats"][value="${formatId}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+                console.log('Checked format:', formatId);
+            } else {
+                console.warn('Format checkbox not found for:', formatId);
+            }
         });
     }
 })();

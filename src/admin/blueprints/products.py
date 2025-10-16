@@ -736,8 +736,47 @@ def edit_product(tenant_id, product_id):
                 product.name = form_data.get("name", product.name)
                 product.description = form_data.get("description", product.description)
 
-                # Parse formats - expecting multiple checkbox values
-                formats = request.form.getlist("formats")
+                # Parse formats - handle both JSON (with FormatReference) and checkbox values (legacy)
+                formats_json = form_data.get("formats", "")
+                try:
+                    # Try parsing as JSON first (preferred format with agent_url)
+                    formats = json.loads(formats_json) if formats_json else []
+                    if not isinstance(formats, list):
+                        formats = []
+                except json.JSONDecodeError:
+                    # Fallback: checkbox values (list of format_id strings)
+                    # Need to convert to FormatReference format for consistency
+                    format_ids = request.form.getlist("formats")
+                    if format_ids:
+                        # Get format details to build FormatReference objects
+
+                        formats = []
+                        for format_id in format_ids:
+                            # Try to resolve format to get agent_url
+                            # For GAM template, checkboxes contain format_id from creative agents
+                            # We need to find which agent provides this format
+                            try:
+                                # Search through available formats to find agent_url
+                                available_formats = get_creative_formats(tenant_id=tenant_id)
+                                matching_format = next(
+                                    (f for f in available_formats if f.get("format_id") == format_id), None
+                                )
+                                if matching_format and matching_format.get("agent_url"):
+                                    formats.append({"format_id": format_id, "agent_url": matching_format["agent_url"]})
+                                else:
+                                    # Fallback: assume default creative agent
+                                    formats.append(
+                                        {"format_id": format_id, "agent_url": "https://creative.adcontextprotocol.org"}
+                                    )
+                            except Exception as e:
+                                logger.warning(f"Could not resolve agent_url for format {format_id}: {e}")
+                                # Fallback: use default agent
+                                formats.append(
+                                    {"format_id": format_id, "agent_url": "https://creative.adcontextprotocol.org"}
+                                )
+                    else:
+                        formats = []
+
                 if formats:
                     product.formats = formats
 
