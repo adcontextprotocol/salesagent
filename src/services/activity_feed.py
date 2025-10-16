@@ -6,6 +6,7 @@ import logging
 import weakref
 from collections import deque
 from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -88,10 +89,20 @@ class ActivityFeed:
                 self.connections[tenant_id].discard(ref)
 
     def log_api_call(
-        self, tenant_id: str, principal_name: str, method: str, status_code: int = None, response_time_ms: int = None
+        self,
+        tenant_id: str,
+        principal_name: str,
+        method: str,
+        status_code: int | None = None,
+        response_time_ms: int | None = None,
     ):
         """Log an API call activity."""
-        activity = {"type": "api-call", "principal_name": principal_name, "action": f"Called {method}", "details": {}}
+        activity: dict[str, Any] = {
+            "type": "api-call",
+            "principal_name": principal_name,
+            "action": f"Called {method}",
+            "details": {},
+        }
 
         if status_code:
             activity["details"]["primary"] = f"{status_code} {'OK' if status_code == 200 else 'ERROR'}"
@@ -105,12 +116,12 @@ class ActivityFeed:
         tenant_id: str,
         principal_name: str,
         media_buy_id: str,
-        budget: float = None,
-        duration_days: int = None,
+        budget: float | None = None,
+        duration_days: int | None = None,
         action: str = "created",
     ):
         """Log a media buy activity."""
-        activity = {
+        activity: dict[str, Any] = {
             "type": "media-buy",
             "principal_name": principal_name,
             "action": f"{action.capitalize()} media buy {media_buy_id}",
@@ -125,10 +136,15 @@ class ActivityFeed:
         asyncio.create_task(self.broadcast_activity(tenant_id, activity))
 
     def log_creative(
-        self, tenant_id: str, principal_name: str, creative_id: str, format_name: str = None, status: str = None
+        self,
+        tenant_id: str,
+        principal_name: str,
+        creative_id: str,
+        format_name: str | None = None,
+        status: str | None = None,
     ):
         """Log a creative activity."""
-        activity = {
+        activity: dict[str, Any] = {
             "type": "creative",
             "principal_name": principal_name,
             "action": f"Uploaded creative {creative_id}",
@@ -142,9 +158,14 @@ class ActivityFeed:
 
         asyncio.create_task(self.broadcast_activity(tenant_id, activity))
 
-    def log_error(self, tenant_id: str, principal_name: str, error_message: str, error_code: str = None):
+    def log_error(self, tenant_id: str, principal_name: str, error_message: str, error_code: str | None = None):
         """Log an error activity."""
-        activity = {"type": "error", "principal_name": principal_name, "action": error_message, "details": {}}
+        activity: dict[str, Any] = {
+            "type": "error",
+            "principal_name": principal_name,
+            "action": error_message,
+            "details": {},
+        }
 
         if error_code:
             activity["details"]["primary"] = f"Error {error_code}"
