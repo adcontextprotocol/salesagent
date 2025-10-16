@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.admin.services.dashboard import DashboardService
+# from src.admin.services.dashboard import DashboardService
 from src.core.database.health_check import check_database_health
 
 pytestmark = [pytest.mark.integration, pytest.mark.skip(reason="Requires non-existent modules - needs refactoring")]

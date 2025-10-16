@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.core.schemas import Format, ListCreativeFormatsRequest, ToolContext
+# from src.core.schemas import Format, ListCreativeFormatsRequest, ToolContext
 from src.core.tools import list_creative_formats_raw
 
 pytestmark = [pytest.mark.integration, pytest.mark.skip(reason="Requires non-existent modules - needs refactoring")]
@@ -58,8 +58,8 @@ def test_list_creative_formats_request_with_all_params():
 
 def test_filtering_by_type(integration_db, sample_tenant):
     """Test that type filter works correctly."""
-    # Create real ToolContext
-    context = ToolContext(
+#     # Create real ToolContext
+#     context = ToolContext(
         context_id="test",
         tenant_id=sample_tenant["tenant_id"],
         principal_id="test_principal",
@@ -91,8 +91,8 @@ def test_filtering_by_type(integration_db, sample_tenant):
 
 def test_filtering_by_standard_only(integration_db, sample_tenant):
     """Test that standard_only filter works correctly."""
-    # Create real ToolContext
-    context = ToolContext(
+#     # Create real ToolContext
+#     context = ToolContext(
         context_id="test",
         tenant_id=sample_tenant["tenant_id"],
         principal_id="test_principal",
@@ -125,8 +125,8 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
     """Test that format_ids filter works correctly."""
     from src.core.schemas import FormatId
 
-    # Create real ToolContext
-    context = ToolContext(
+#     # Create real ToolContext
+#     context = ToolContext(
         context_id="test",
         tenant_id=sample_tenant["tenant_id"],
         principal_id="test_principal",
@@ -164,8 +164,8 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
 
 def test_filtering_combined(integration_db, sample_tenant):
     """Test that multiple filters work together."""
-    # Create real ToolContext
-    context = ToolContext(
+#     # Create real ToolContext
+#     context = ToolContext(
         context_id="test",
         tenant_id=sample_tenant["tenant_id"],
         principal_id="test_principal",

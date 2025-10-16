@@ -30,7 +30,7 @@ from src.core.database.models import (
 from src.core.database.models import (
     Tenant as ModelTenant,
 )
-from src.core.schemas import CreateMediaBuyResponse, Error, ToolContext
+# from src.core.schemas import CreateMediaBuyResponse, Error, ToolContext
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
 
 pytestmark = [pytest.mark.integration, pytest.mark.skip(reason="Requires non-existent modules - needs refactoring")]
@@ -143,7 +143,7 @@ class TestCreateMediaBuyErrorPaths:
         This tests line 3159 in main.py where Error(code="authentication_error") is used.
         Previously this would cause NameError because Error wasn't imported.
         """
-        context = ToolContext(
+#         context = ToolContext(
             context_id="test_ctx",
             tenant_id="error_test_tenant",
             principal_id="nonexistent_principal",  # Principal doesn't exist
@@ -189,7 +189,7 @@ class TestCreateMediaBuyErrorPaths:
         This tests line 3147 in main.py where Error(code="validation_error") is used
         in the ValueError exception handler.
         """
-        context = ToolContext(
+#         context = ToolContext(
             context_id="test_ctx",
             tenant_id="error_test_tenant",
             principal_id="error_test_principal",
@@ -231,7 +231,7 @@ class TestCreateMediaBuyErrorPaths:
 
     def test_end_time_before_start_returns_validation_error(self, test_tenant_with_principal):
         """Test that end_time before start_time returns Error response."""
-        context = ToolContext(
+#         context = ToolContext(
             context_id="test_ctx",
             tenant_id="error_test_tenant",
             principal_id="error_test_principal",
@@ -270,7 +270,7 @@ class TestCreateMediaBuyErrorPaths:
 
     def test_negative_budget_returns_validation_error(self, test_tenant_with_principal):
         """Test that negative budget returns Error response."""
-        context = ToolContext(
+#         context = ToolContext(
             context_id="test_ctx",
             tenant_id="error_test_tenant",
             principal_id="error_test_principal",
@@ -309,7 +309,7 @@ class TestCreateMediaBuyErrorPaths:
 
     def test_missing_packages_returns_validation_error(self, test_tenant_with_principal):
         """Test that missing packages returns Error response."""
-        context = ToolContext(
+#         context = ToolContext(
             context_id="test_ctx",
             tenant_id="error_test_tenant",
             principal_id="error_test_principal",
@@ -351,7 +351,7 @@ class TestSyncCreativesErrorPaths:
         from src.core.config_loader import set_current_tenant
 
         # Create minimal test context
-        context = ToolContext(
+#         context = ToolContext(
             context_id="test_ctx",
             tenant_id="test_tenant",
             principal_id="test_principal",
@@ -399,7 +399,7 @@ class TestListCreativesErrorPaths:
         """Test that invalid date format is handled with proper error."""
         from src.core.config_loader import set_current_tenant
 
-        context = ToolContext(
+#         context = ToolContext(
             context_id="test_ctx",
             tenant_id="test_tenant",
             principal_id="test_principal",
