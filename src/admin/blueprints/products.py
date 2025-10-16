@@ -282,16 +282,41 @@ def list_products(tenant_id):
                 # Use helper function to get pricing options (handles legacy fallback)
                 pricing_options_list = get_product_pricing_options(product)
 
+                # Parse formats and resolve names from creative agents
+                formats_data = (
+                    product.formats
+                    if isinstance(product.formats, list)
+                    else json.loads(product.formats) if product.formats else []
+                )
+
+                # Resolve format names from creative agent registry
+                resolved_formats = []
+                from src.core.format_resolver import get_format
+
+                for fmt in formats_data:
+                    if isinstance(fmt, dict):
+                        format_id = fmt.get("format_id") or fmt.get("id")
+                        agent_url = fmt.get("agent_url")
+                        if format_id and agent_url:
+                            try:
+                                # Resolve format to get name
+                                format_obj = get_format(format_id, agent_url, tenant_id)
+                                resolved_formats.append(
+                                    {"format_id": format_id, "agent_url": agent_url, "name": format_obj.name}
+                                )
+                            except Exception as e:
+                                logger.warning(f"Could not resolve format {format_id} from {agent_url}: {e}")
+                                # Fallback to format_id if resolution fails
+                                resolved_formats.append(
+                                    {"format_id": format_id, "agent_url": agent_url, "name": format_id}
+                                )
+
                 product_dict = {
                     "product_id": product.product_id,
                     "name": product.name,
                     "description": product.description,
                     "pricing_options": pricing_options_list,
-                    "formats": (
-                        product.formats
-                        if isinstance(product.formats, list)
-                        else json.loads(product.formats) if product.formats else []
-                    ),
+                    "formats": resolved_formats,
                     "countries": (
                         product.countries
                         if isinstance(product.countries, list)
