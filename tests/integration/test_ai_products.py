@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
 """Automated tests for AI product features and APIs."""
 
+import asyncio
+import json
+import sqlite3
+import tempfile
+from unittest.mock import Mock, patch
+
 import pytest
 
+from src.admin.app_factory import create_app
+from src.core.schemas import AdServerInventory, ProductDescription
+from src.services.ai_product_service import AIProductConfigurationService
+from src.services.default_products import (
+    create_default_products_for_tenant,
+    get_default_products,
+    get_industry_specific_products,
+)
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 pytestmark = pytest.mark.integration

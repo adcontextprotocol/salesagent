@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Test script for simplified context persistence."""
 
+from datetime import UTC, datetime
+
 import pytest
 from rich.console import Console
 

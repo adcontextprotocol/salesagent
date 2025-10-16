@@ -10,9 +10,13 @@ This addresses the pattern identified in issue #161 of reducing mocking at data 
 to improve test coverage and catch real bugs.
 """
 
+from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import func, select, text
 
+from src.core.database.database_session import get_db_session
+from src.core.database.health import check_database_health, print_health_report
 from src.core.database.models import Base, Product, Tenant
 
 pytestmark = pytest.mark.integration
@@ -187,7 +191,6 @@ class TestDatabaseHealthIntegration:
         import time
 
         # Add some test data to make it more realistic
-        from datetime import UTC, datetime
 
         with get_db_session() as session:
             now = datetime.now(UTC)
