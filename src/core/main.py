@@ -1515,12 +1515,19 @@ async def get_products(
     print("=" * 80, file=sys.stderr, flush=True)
 
     # Build request object for shared implementation using helper
-    req = create_get_products_request(
-        promoted_offering=promoted_offering,
-        brief=brief,
-        brand_manifest=brand_manifest,
-        filters=filters,
-    )
+    try:
+        req = create_get_products_request(
+            promoted_offering=promoted_offering,
+            brief=brief,
+            brand_manifest=brand_manifest,
+            filters=filters,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="get_products request")) from e
+    except ValueError as e:
+        # Convert ValueError from helper to ToolError with clear message
+        raise ToolError(f"Invalid get_products request: {e}") from e
+
     # Call shared implementation with unwrapped variant
     # GetProductsRequest is a RootModel, so we pass req.root (the actual variant)
     return await _get_products_impl(req.root, context)  # type: ignore[arg-type]
@@ -1665,12 +1672,16 @@ def list_creative_formats(
     Returns:
         ListCreativeFormatsResponse with all available formats
     """
-    req = ListCreativeFormatsRequest(
-        type=type,
-        standard_only=standard_only,
-        category=category,
-        format_ids=format_ids,
-    )
+    try:
+        req = ListCreativeFormatsRequest(
+            type=type,
+            standard_only=standard_only,
+            category=category,
+            format_ids=format_ids,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="list_creative_formats request")) from e
+
     return _list_creative_formats_impl(req, context)
 
 
@@ -5431,7 +5442,11 @@ def _update_media_buy_impl(
     }
     # Remove None values to avoid validation errors in strict mode
     request_params = {k: v for k, v in request_params.items() if v is not None}
-    req = UpdateMediaBuyRequest(**request_params)  # type: ignore[arg-type]
+
+    try:
+        req = UpdateMediaBuyRequest(**request_params)  # type: ignore[arg-type]
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="update_media_buy request")) from e
 
     if context is None:
         raise ValueError("Context is required for update_media_buy")
@@ -6062,13 +6077,16 @@ def get_media_buy_delivery(
         GetMediaBuyDeliveryResponse with AdCP-compliant delivery data for the requested media buys
     """
     # Create AdCP-compliant request object
-    req = GetMediaBuyDeliveryRequest(
-        media_buy_ids=media_buy_ids,
-        buyer_refs=buyer_refs,
-        status_filter=status_filter,
-        start_date=start_date,
-        end_date=end_date,
-    )
+    try:
+        req = GetMediaBuyDeliveryRequest(
+            media_buy_ids=media_buy_ids,
+            buyer_refs=buyer_refs,
+            status_filter=status_filter,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="get_media_buy_delivery request")) from e
 
     return _get_media_buy_delivery_impl(req, context)
 
@@ -6102,8 +6120,11 @@ def update_performance_index(
     # Convert dict performance_data to ProductPerformance objects
     from src.core.schemas import ProductPerformance
 
-    performance_objects = [ProductPerformance(**perf) for perf in performance_data]
-    req = UpdatePerformanceIndexRequest(media_buy_id=media_buy_id, performance_data=performance_objects)
+    try:
+        performance_objects = [ProductPerformance(**perf) for perf in performance_data]
+        req = UpdatePerformanceIndexRequest(media_buy_id=media_buy_id, performance_data=performance_objects)
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="update_performance_index request")) from e
 
     if context is None:
         raise ValueError("Context is required for update_performance_index")
