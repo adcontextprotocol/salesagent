@@ -1270,16 +1270,30 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
 
             # Filter by format_ids
             if req.filters.format_ids:
-                # Product.formats is list[str] (format IDs)
+                # Product.formats is list[str] or list[dict] (format IDs)
                 product_format_ids = set()
                 for format_id in product.formats:
                     if isinstance(format_id, str):
                         product_format_ids.add(format_id)
-                    elif hasattr(format_id, "format_id"):
-                        # Already a Format object
-                        product_format_ids.add(format_id.format_id)
+                    elif isinstance(format_id, dict):
+                        # Dict with 'id' key (from database)
+                        product_format_ids.add(format_id.get("id"))
+                    elif hasattr(format_id, "id"):
+                        # FormatId object (has .id attribute, not .format_id)
+                        product_format_ids.add(format_id.id)
 
-                if not any(fmt_id in product_format_ids for fmt_id in req.filters.format_ids):
+                # req.filters.format_ids contains FormatId objects, extract .id from them
+                request_format_ids = set()
+                for fmt_id in req.filters.format_ids:
+                    if isinstance(fmt_id, str):
+                        request_format_ids.add(fmt_id)
+                    elif hasattr(fmt_id, "id"):
+                        # FormatId object
+                        request_format_ids.add(fmt_id.id)
+                    elif isinstance(fmt_id, dict):
+                        request_format_ids.add(fmt_id.get("id"))
+
+                if not any(fmt_id in product_format_ids for fmt_id in request_format_ids):
                     continue
 
             # Filter by standard_formats_only
@@ -1288,14 +1302,18 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
                 # IAB standard formats typically follow patterns like "display_", "video_", "audio_", "native_"
                 has_only_standard = True
                 for format_id in product.formats:
+                    format_id_str = None
                     if isinstance(format_id, str):
-                        if not format_id.startswith(("display_", "video_", "audio_", "native_")):
-                            has_only_standard = False
-                            break
-                    elif hasattr(format_id, "format_id"):
-                        if not format_id.format_id.startswith(("display_", "video_", "audio_", "native_")):
-                            has_only_standard = False
-                            break
+                        format_id_str = format_id
+                    elif isinstance(format_id, dict):
+                        format_id_str = format_id.get("id")
+                    elif hasattr(format_id, "id"):
+                        # FormatId object (has .id attribute, not .format_id)
+                        format_id_str = format_id.id
+
+                    if format_id_str and not format_id_str.startswith(("display_", "video_", "audio_", "native_")):
+                        has_only_standard = False
+                        break
 
                 if not has_only_standard:
                     continue
