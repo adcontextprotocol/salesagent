@@ -5,6 +5,7 @@ identify missing tables, and validate that migrations have been applied correctl
 """
 
 import logging
+from typing import Any
 
 from sqlalchemy import inspect, text
 
@@ -13,7 +14,7 @@ from src.core.database.database_session import get_db_session
 logger = logging.getLogger(__name__)
 
 
-def check_database_health() -> dict[str, any]:
+def check_database_health() -> dict[str, Any]:
     """Perform comprehensive database health check.
 
     Returns:
@@ -23,7 +24,7 @@ def check_database_health() -> dict[str, any]:
         - migration_status: Current migration status
         - schema_issues: List of detected schema problems
     """
-    health_report = {
+    health_report: dict[str, Any] = {
         "status": "unknown",
         "missing_tables": [],
         "extra_tables": [],
@@ -149,7 +150,7 @@ def check_database_health() -> dict[str, any]:
     return health_report
 
 
-def print_health_report(health_report: dict[str, any]) -> None:
+def print_health_report(health_report: dict[str, Any]) -> None:
     """Print a formatted health report."""
     status = health_report["status"]
     status_emoji = {"healthy": "✅", "unhealthy": "❌", "error": "💥", "unknown": "❓"}
@@ -194,7 +195,7 @@ def check_table_exists(table_name: str) -> bool:
         return False
 
 
-def get_table_info(table_name: str) -> dict[str, any]:
+def get_table_info(table_name: str) -> dict[str, Any]:
     """Get detailed information about a table."""
     try:
         with get_db_session() as db_session:

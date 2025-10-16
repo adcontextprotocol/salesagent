@@ -240,7 +240,7 @@ def get_or_404(session: Session, model, **kwargs):
     return instance
 
 
-def get_or_create(session: Session, model, defaults: dict = None, **kwargs):
+def get_or_create(session: Session, model, defaults: dict | None = None, **kwargs):
     """
     Get an existing instance or create a new one.
 
