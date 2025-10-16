@@ -996,7 +996,7 @@ def delete_product(tenant_id, product_id):
                     )
 
             # Delete the product and related pricing options
-            # Cascade will handle pricing_options deletion
+            # Foreign key CASCADE automatically handles pricing_options deletion
             db_session.delete(product)
             db_session.commit()
 
