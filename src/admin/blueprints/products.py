@@ -301,53 +301,52 @@ def list_products(tenant_id):
                 from src.core.format_resolver import get_format
 
                 for fmt in formats_data:
+                    agent_url = None
+                    format_id = None
+
                     if isinstance(fmt, dict):
-                        # Extract format_id - could be string or nested dict (FormatId object)
-                        format_id_raw = fmt.get("format_id") or fmt.get("id")
+                        # Database JSONB: uses "id" per AdCP spec
                         agent_url = fmt.get("agent_url")
-
-                        # Handle FormatId object (nested dict with agent_url and id)
-                        if isinstance(format_id_raw, dict):
-                            format_id = format_id_raw.get("id")
-                            # Use agent_url from FormatId if not at top level
-                            if not agent_url:
-                                agent_url = format_id_raw.get("agent_url")
-                        else:
-                            format_id = format_id_raw
-
-                        logger.info(f"[DEBUG] Processing format dict: format_id={format_id}, agent_url={agent_url}")
-                        if format_id and agent_url:
-                            try:
-                                # Resolve format to get name
-                                format_obj = get_format(format_id, agent_url, tenant_id)
-                                resolved_formats.append(
-                                    {"format_id": format_id, "agent_url": agent_url, "name": format_obj.name}
-                                )
-                                logger.info(f"[DEBUG] Resolved format {format_id} to name: {format_obj.name}")
-                            except Exception as e:
-                                logger.warning(f"Could not resolve format {format_id} from {agent_url}: {e}")
-                                # Fallback to format_id if resolution fails
-                                resolved_formats.append(
-                                    {"format_id": format_id, "agent_url": agent_url, "name": format_id}
-                                )
+                        format_id = fmt.get("id") or fmt.get("format_id")  # "id" is AdCP spec, "format_id" is legacy
+                    elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
+                        # Pydantic object: uses "format_id" attribute (serializes to "id" in JSON)
+                        agent_url = fmt.agent_url
+                        format_id = getattr(fmt, "format_id", None) or getattr(fmt, "id", None)
                     elif isinstance(fmt, str):
-                        # Legacy: plain string format_id (no agent_url)
-                        # Try to resolve from default creative agent
-                        default_agent_url = "https://creative.adcontextprotocol.org"
-                        try:
-                            format_obj = get_format(fmt, default_agent_url, tenant_id)
-                            resolved_formats.append(
-                                {"format_id": fmt, "agent_url": default_agent_url, "name": format_obj.name}
-                            )
-                        except Exception as e:
-                            logger.warning(f"Could not resolve legacy format {fmt}: {e}")
-                            # Fallback to format_id as name
-                            resolved_formats.append({"format_id": fmt, "agent_url": default_agent_url, "name": fmt})
+                        # Legacy: plain string format ID (no agent_url) - should be deprecated
+                        # This data needs to be migrated to proper FormatId structure
+                        logger.error(
+                            f"Product {product.product_id} has DEPRECATED string format: {fmt}. "
+                            "Please edit and re-save this product to migrate to FormatId structure."
+                        )
+                        format_id = fmt
+                        agent_url = None  # Will fail validation below
                     else:
-                        # Unknown format type
-                        logger.warning(f"Unknown format type for product {product.product_id}: {type(fmt)} - {fmt}")
-                        # Try to salvage it
-                        resolved_formats.append({"format_id": str(fmt), "agent_url": "", "name": str(fmt)})
+                        logger.error(
+                            f"Product {product.product_id} has INVALID format type {type(fmt)}: {fmt}. "
+                            "This data is corrupted and needs manual repair."
+                        )
+                        continue
+
+                    # Validate we have required fields
+                    if not format_id or not agent_url:
+                        logger.error(
+                            f"Product {product.product_id} format missing required fields: "
+                            f"format_id={format_id}, agent_url={agent_url}. "
+                            "This product needs to be edited and re-saved to fix the data."
+                        )
+                        continue
+
+                    # Resolve format name from creative agent registry
+                    try:
+                        format_obj = get_format(format_id, agent_url, tenant_id)
+                        resolved_formats.append(
+                            {"format_id": format_id, "agent_url": agent_url, "name": format_obj.name}
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not resolve format {format_id} from {agent_url}: {e}")
+                        # Use format_id as name if resolution fails
+                        resolved_formats.append({"format_id": format_id, "agent_url": agent_url, "name": format_id})
 
                 logger.info(f"[DEBUG] Product {product.product_id} resolved {len(resolved_formats)} formats")
 
@@ -430,12 +429,14 @@ def add_product(tenant_id):
                     formats_raw = request.form.getlist("formats")
                     formats = []
                     for fmt_str in formats_raw:
-                        if "|" in fmt_str:
-                            agent_url, format_id = fmt_str.split("|", 1)
-                            formats.append({"agent_url": agent_url, "id": format_id})
-                        else:
-                            # Legacy fallback: plain format_id string (backward compatibility)
-                            formats.append(fmt_str)
+                        if "|" not in fmt_str:
+                            # Missing agent_url - data format error
+                            logger.error(f"Invalid format value (missing agent_url): {fmt_str}")
+                            flash(f"Invalid format data: {fmt_str}. Please contact support.", "error")
+                            continue
+
+                        agent_url, format_id = fmt_str.split("|", 1)
+                        formats.append({"agent_url": agent_url, "id": format_id})
 
                 # Parse countries - from multi-select
                 countries_list = request.form.getlist("countries")
@@ -787,12 +788,19 @@ def edit_product(tenant_id, product_id):
                     # Convert from "agent_url|format_id" to FormatId dict structure
                     formats = []
                     for fmt_str in formats_raw:
-                        if "|" in fmt_str:
-                            agent_url, format_id = fmt_str.split("|", 1)
-                            formats.append({"agent_url": agent_url, "id": format_id})
-                        else:
-                            # Legacy fallback: plain format_id string (backward compatibility)
-                            formats.append(fmt_str)
+                        if "|" not in fmt_str:
+                            # Missing agent_url - data format error
+                            logger.error(f"Invalid format value (missing agent_url): {fmt_str}")
+                            flash(f"Invalid format data: {fmt_str}. Please contact support.", "error")
+                            continue
+
+                        agent_url, format_id = fmt_str.split("|", 1)
+                        formats.append({"agent_url": agent_url, "id": format_id})
+
+                    if not formats:
+                        flash("No valid formats selected", "error")
+                        return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
+
                     product.formats = formats
 
                 # Parse countries - from multi-select
@@ -1001,12 +1009,27 @@ def edit_product(tenant_id, product_id):
                 inventory_synced = inventory_count > 0
 
                 # Build set of selected format IDs for template checking
+                # Use composite key (agent_url, format_id) tuples per AdCP spec (same as main.py)
                 selected_format_ids = set()
                 for fmt in product_dict["formats"]:
+                    agent_url = None
+                    format_id = None
+
                     if isinstance(fmt, dict):
-                        selected_format_ids.add(fmt.get("id") or fmt.get("format_id"))
+                        # Database JSONB: uses "id" per AdCP spec
+                        agent_url = fmt.get("agent_url")
+                        format_id = fmt.get("id") or fmt.get("format_id")  # "id" is AdCP spec, "format_id" is legacy
+                    elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
+                        # Pydantic object: uses "format_id" attribute (serializes to "id" in JSON)
+                        agent_url = fmt.agent_url
+                        format_id = getattr(fmt, "format_id", None) or getattr(fmt, "id", None)
                     elif isinstance(fmt, str):
-                        selected_format_ids.add(fmt)
+                        # Legacy: plain string format ID (no agent_url) - should be deprecated
+                        format_id = fmt
+                        logger.warning(f"Product {product_dict['product_id']} has legacy string format: {fmt}")
+
+                    if format_id:
+                        selected_format_ids.add((agent_url, format_id))
 
                 return render_template(
                     "add_product_gam.html",
