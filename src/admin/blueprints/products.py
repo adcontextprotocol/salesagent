@@ -81,7 +81,7 @@ def get_creative_formats(
             )
 
         format_dict = {
-            "format_id": fmt.format_id,
+            "id": fmt.format_id,  # Use "id" to match database schema (AdCP spec)
             "agent_url": fmt.agent_url,
             "name": fmt.name,
             "type": fmt.type,
@@ -814,13 +814,23 @@ def edit_product(tenant_id, product_id):
 
                     product.formats = formats
                     logger.info(f"[DEBUG] Updated product.formats to: {formats}")
+                    # Flag JSONB column as modified so SQLAlchemy generates UPDATE
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "formats")
 
                 # Parse countries - from multi-select
                 countries_list = request.form.getlist("countries")
                 if countries_list and "ALL" not in countries_list:
                     product.countries = countries_list
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "countries")
                 else:
                     product.countries = None
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "countries")
 
                 # Get pricing based on line item type (GAM form) or delivery type (other adapters)
                 line_item_type = form_data.get("line_item_type")
