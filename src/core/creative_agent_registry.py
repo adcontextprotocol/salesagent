@@ -21,7 +21,7 @@ from typing import Any
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
-from src.core.schemas import Format
+from src.core.schemas import Format, FormatId
 
 
 @dataclass
@@ -397,8 +397,10 @@ class CreativeAgentRegistry:
         results = []
         for fmt in all_formats:
             # Match query against format_id, name, or description
+            # format_id is a FormatId object, so we need to access .id
+            format_id_str = fmt.format_id.id if isinstance(fmt.format_id, FormatId) else str(fmt.format_id)
             if (
-                query_lower in fmt.format_id.lower()
+                query_lower in format_id_str.lower()
                 or query_lower in fmt.name.lower()
                 or (fmt.description and query_lower in fmt.description.lower())
             ):

@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from src.core.database.database_session import get_db_session
-from src.core.schemas import Format
+from src.core.schemas import Format, FormatId
 
 
 def _parse_format_from_db_row(row: Sequence[Any]) -> Format:
@@ -50,7 +50,7 @@ def _parse_format_from_db_row(row: Sequence[Any]) -> Format:
         requirements.update(specs)
 
     return Format(
-        format_id=row[0],
+        format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id=row[0]),
         name=row[1],
         type=row[2],
         is_standard=bool(row[9]),

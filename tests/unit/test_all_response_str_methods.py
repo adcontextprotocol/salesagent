@@ -13,6 +13,7 @@ from src.core.schemas import (
     CreateMediaBuyResponse,
     Creative,
     Format,
+    FormatId,
     Pagination,
     Product,
     QuerySummary,
@@ -24,6 +25,13 @@ from src.core.schemas import (
 from src.core.schemas import (
     PricingOption as PricingOptionSchema,
 )
+
+DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"
+
+
+def make_format_id(format_id: str) -> FormatId:
+    """Helper to create FormatId objects."""
+    return FormatId(agent_url=DEFAULT_AGENT_URL, id=format_id)
 
 
 class TestResponseStrMethods:
@@ -110,13 +118,13 @@ class TestResponseStrMethods:
 
     def test_list_creative_formats_response_single_format(self):
         """ListCreativeFormatsResponse with single format generates appropriate message."""
-        fmt = Format(format_id="banner_300x250", name="Banner", type="display")
+        fmt = Format(format_id=make_format_id("banner_300x250"), name="Banner", type="display")
         resp = ListCreativeFormatsResponse(formats=[fmt])
         assert str(resp) == "Found 1 creative format."
 
     def test_list_creative_formats_response_multiple_formats(self):
         """ListCreativeFormatsResponse with multiple formats generates count."""
-        formats = [Format(format_id=f"fmt{i}", name=f"Format {i}", type="display") for i in range(5)]
+        formats = [Format(format_id=make_format_id(f"fmt{i}"), name=f"Format {i}", type="display") for i in range(5)]
         resp = ListCreativeFormatsResponse(formats=formats)
         assert str(resp) == "Found 5 creative formats."
 

@@ -265,9 +265,7 @@ class Format(BaseModel):
     creative agent at https://creative.adcontextprotocol.org).
     """
 
-    format_id: "FormatId | str" = Field(
-        ..., description="Format identifier (FormatId object per AdCP spec, or string for legacy)"
-    )
+    format_id: "FormatId" = Field(..., description="Format identifier (FormatId object per AdCP spec)")
     agent_url: str | None = Field(
         None,
         description="Base URL of the agent that provides this format (authoritative source). "
@@ -299,10 +297,9 @@ class Format(BaseModel):
     platform_config: dict[str, Any] | None = Field(
         None, description="Platform-specific configuration (e.g., gam, kevel) for creative mapping"
     )
-    output_format_ids: list["FormatId | str"] | None = Field(
+    output_format_ids: list["FormatId"] | None = Field(
         None,
-        description="For generative formats: array of FormatId objects this format can generate per AdCP spec. "
-        "Strings accepted for legacy compatibility.",
+        description="For generative formats: array of FormatId objects this format can generate per AdCP spec",
     )
 
 
@@ -359,10 +356,12 @@ def convert_format_ids_to_formats(format_ids: list[str], tenant_id: str | None =
         if format_obj:
             formats.append(format_obj)
         else:
-            # For unknown format IDs, create a minimal Format object
+            # For unknown format IDs, create a minimal Format object with FormatId
             formats.append(
                 Format(
-                    format_id=format_id, name=format_id.replace("_", " ").title(), type="display"  # Default to display
+                    format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id=format_id),
+                    name=format_id.replace("_", " ").title(),
+                    type="display",  # Default to display
                 )
             )
     return formats
@@ -2578,7 +2577,7 @@ class MediaPackage(BaseModel):
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     cpm: float
     impressions: int
-    format_ids: list[FormatId | str]  # FormatId objects per AdCP spec, or strings for legacy compatibility
+    format_ids: list[FormatId]  # FormatId objects per AdCP spec
     targeting_overlay: Optional["Targeting"] = None
 
 
