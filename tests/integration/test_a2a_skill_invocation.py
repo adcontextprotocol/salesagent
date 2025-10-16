@@ -6,7 +6,12 @@ Tests both natural language and explicit skill invocation patterns
 to ensure our A2A server properly handles the evolving AdCP spec.
 """
 
+import pytest
+
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
+
+# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
+pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
 
 # Import schema validation components
 try:
@@ -21,9 +26,6 @@ except ImportError:
 # Configure logging for tests
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
 
 
 class A2AAdCPValidator:

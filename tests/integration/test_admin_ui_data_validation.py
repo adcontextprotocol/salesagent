@@ -7,12 +7,14 @@ Smoke tests: "Does it render?" (status code checks)
 Data tests: "Does it show the right data?" (content validation)
 """
 
-from src.core.database.models import PricingOption, Product
+import pytest
 
-pytestmark = pytest.mark.integration
+from src.core.database.models import PricingOption, Product
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+
+pytestmark = pytest.mark.integration
 
 
 class TestProductsDataValidation:

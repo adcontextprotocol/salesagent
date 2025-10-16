@@ -4,6 +4,8 @@ Tests the flow where sync_creatives detects generative formats (those with outpu
 and calls build_creative instead of preview_creative, using the Gemini API key.
 """
 
+import pytest
+
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)

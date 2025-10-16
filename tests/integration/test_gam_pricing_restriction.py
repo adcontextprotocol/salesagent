@@ -3,12 +3,14 @@
 Tests that GAM adapter properly enforces CPM-only restriction.
 """
 
-from tests.utils.database_helpers import create_tenant_with_timestamps
+import pytest
 
-pytestmark = pytest.mark.requires_db
+from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+
+pytestmark = pytest.mark.requires_db
 
 
 @pytest.fixture

@@ -3,6 +3,8 @@
 Tests the critical join logic between MediaBuy and PushNotificationConfig tables.
 """
 
+import pytest
+
 from src.services.delivery_simulator import delivery_simulator
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)

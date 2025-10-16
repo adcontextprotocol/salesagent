@@ -14,6 +14,8 @@ The fix: Filter out non-schema fields before reconstruction (main.py:3747-3760).
 This test ensures the fix works and prevents regression.
 """
 
+import pytest
+
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)

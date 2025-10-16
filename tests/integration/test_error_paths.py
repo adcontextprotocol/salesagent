@@ -12,6 +12,8 @@ used in error responses. These tests prevent regression by actually executing
 those error paths.
 """
 
+import pytest
+
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)

@@ -4,6 +4,8 @@ Replaces over-mocked unit tests with integration tests that use real database
 connections and actual ORM objects to catch schema and field access bugs.
 """
 
+import pytest
+
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)

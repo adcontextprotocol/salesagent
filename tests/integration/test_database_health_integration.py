@@ -11,6 +11,8 @@ to improve test coverage and catch real bugs.
 """
 
 
+import pytest
+
 from src.core.database.models import Base, Product, Tenant
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)

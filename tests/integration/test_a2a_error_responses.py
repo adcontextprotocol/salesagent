@@ -9,14 +9,16 @@ through the A2A wrapper layer, including:
 3. All AdCP response fields are preserved
 """
 
+import pytest
+
 from src.core.database.models import Tenant as ModelTenant
+
+# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
+pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
 
 # Configure logging for tests
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
 
 
 @pytest.mark.integration

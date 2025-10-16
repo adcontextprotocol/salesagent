@@ -10,6 +10,8 @@ methods, not just the response object structure.
 Regression prevention: https://github.com/adcontextprotocol/salesagent/pull/337
 """
 
+import pytest
+
 from tests.helpers.a2a_response_validator import (
     assert_valid_skill_response,
 )

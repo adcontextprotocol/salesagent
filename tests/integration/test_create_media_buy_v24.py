@@ -16,6 +16,8 @@ NOTE: These tests require a database connection. Run with:
 or with Docker Compose running for PostgreSQL.
 """
 
+import pytest
+
 from src.core.schemas import Budget, Package, Targeting
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)

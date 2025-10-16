@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Automated tests for AI product features and APIs."""
 
-from tests.utils.database_helpers import create_tenant_with_timestamps
+import pytest
 
-pytestmark = pytest.mark.integration
+from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+
+pytestmark = pytest.mark.integration
 
 
 class TestDefaultProducts:

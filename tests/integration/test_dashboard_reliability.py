@@ -4,6 +4,8 @@ These tests verify that the dashboard works reliably after the architectural
 fixes, using single data source pattern and proper error handling.
 """
 
+import pytest
+
 from src.core.database.health_check import check_database_health
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)

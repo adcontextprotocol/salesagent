@@ -5,6 +5,8 @@ These tests verify the integration between FastMCP tool definitions and database
 without mocking the core business logic or database operations.
 """
 
+import pytest
+
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)

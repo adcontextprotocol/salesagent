@@ -4,12 +4,14 @@ Tests that AdCP filters parameter correctly filters products from database.
 This tests the actual filter logic implementation in main.py, not just schema validation.
 """
 
-from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
+import pytest
 
-pytestmark = pytest.mark.integration
+from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

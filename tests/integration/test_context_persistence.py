@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Test script for simplified context persistence."""
 
-from src.core.context_manager import ContextManager
+import pytest
 
-console = Console()
+from src.core.context_manager import ContextManager
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+
+console = Console()
 
 
 def test_simplified_context(integration_db):
