@@ -1252,3 +1252,49 @@ def delete_product(tenant_id, product_id):
         # Generic error
         logger.error(f"Product deletion failed for {product_id}: {error_message}")
         return jsonify({"error": f"Failed to delete product: {error_message}"}), 500
+
+
+@products_bp.route("/<product_id>/debug", methods=["GET"])
+@require_tenant_access()
+def debug_product_formats(tenant_id, product_id):
+    """Debug endpoint to inspect product format data (admin only)."""
+    try:
+        with get_db_session() as db_session:
+            product = db_session.scalars(select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)).first()
+
+            if not product:
+                return jsonify({"error": "Product not found"}), 404
+
+            # Gather diagnostic information
+            debug_info = {
+                "product_id": product.product_id,
+                "product_name": product.name,
+                "tenant_id": product.tenant_id,
+                "formats_type": str(type(product.formats)),
+                "formats_value": product.formats,
+                "formats_count": len(product.formats) if product.formats else 0,
+                "formats_is_list": isinstance(product.formats, list),
+                "formats_is_none": product.formats is None,
+            }
+
+            # If formats exist, show details
+            if product.formats:
+                debug_info["formats_details"] = []
+                formats_list = product.formats if isinstance(product.formats, list) else []
+                for i, fmt in enumerate(formats_list[:10]):  # Show first 10
+                    fmt_info = {
+                        "index": i,
+                        "type": str(type(fmt)),
+                        "value": fmt,
+                    }
+                    if isinstance(fmt, dict):
+                        fmt_info["has_agent_url"] = "agent_url" in fmt
+                        fmt_info["has_id"] = "id" in fmt
+                        fmt_info["has_format_id"] = "format_id" in fmt
+                    debug_info["formats_details"].append(fmt_info)
+
+            return jsonify(debug_info)
+
+    except Exception as e:
+        logger.error(f"Error debugging product {product_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
