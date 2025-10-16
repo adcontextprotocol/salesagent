@@ -31,7 +31,7 @@ def targeting_browser(tenant_id):
     tenant = {"tenant_id": row[0], "name": row[1]}
 
     return render_template(
-        "targeting_browser_simple.html",
+        "targeting_browser.html",
         tenant=tenant,
         tenant_id=tenant_id,
         tenant_name=row[1],

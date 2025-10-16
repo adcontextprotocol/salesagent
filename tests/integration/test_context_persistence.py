@@ -7,6 +7,8 @@ import pytest
 from rich.console import Console
 
 from src.core.context_manager import ContextManager
+from src.core.database.database_session import get_db_session
+from src.core.database.models import Principal, Tenant
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -18,6 +20,29 @@ def test_simplified_context(integration_db):
 
     console.print("[bold blue]Testing Simplified Context Persistence[/bold blue]")
     console.print("=" * 50)
+
+    # Create test tenant and principal first
+    with get_db_session() as session:
+        tenant = Tenant(
+            tenant_id="test_tenant",
+            name="Test Tenant",
+            subdomain="test",
+            ad_server="mock",
+            is_active=True,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        session.add(tenant)
+
+        principal = Principal(
+            tenant_id="test_tenant",
+            principal_id="test_principal",
+            name="Test Principal",
+            auth_token="test_token",
+            is_active=True,
+        )
+        session.add(principal)
+        session.commit()
 
     # Initialize context manager (will use the integration_db fixture)
     ctx_manager = ContextManager()
