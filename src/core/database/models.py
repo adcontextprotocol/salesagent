@@ -204,15 +204,15 @@ class PricingOption(Base):
 
     __tablename__ = "pricing_options"
 
-    id = Column(Integer, primary_key=True)
-    tenant_id = Column(String(50), nullable=False)
-    product_id = Column(String(100), nullable=False)
-    pricing_model = Column(String(20), nullable=False)  # cpm, cpcv, cpp, cpc, cpv, flat_rate
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    product_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    pricing_model: Mapped[str] = mapped_column(String(20), nullable=False)
     rate: Mapped[Decimal | None] = mapped_column(DECIMAL(10, 2), nullable=True)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False)  # ISO 4217 code
-    is_fixed = Column(Boolean, nullable=False)
-    price_guidance = Column(JSONType, nullable=True)  # JSONB: {floor, p25, p50, p75, p90}
-    parameters = Column(JSONType, nullable=True)  # JSONB: model-specific parameters
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    is_fixed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    price_guidance: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    parameters: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     min_spend_per_package: Mapped[Decimal | None] = mapped_column(DECIMAL(10, 2), nullable=True)
 
     # Relationships
@@ -240,12 +240,12 @@ class CurrencyLimit(Base):
 
     __tablename__ = "currency_limits"
 
-    tenant_id = Column(
+    tenant_id: Mapped[str] = mapped_column(
         String(50),
         ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
         primary_key=True,
     )
-    currency_code = Column(String(3), primary_key=True)  # ISO 4217: USD, EUR, GBP, etc.
+    currency_code: Mapped[str] = mapped_column(String(3), primary_key=True)
 
     # Minimum total budget per package/line item in this currency
     min_package_budget: Mapped[Decimal | None] = mapped_column(DECIMAL(15, 2), nullable=True)
@@ -254,8 +254,10 @@ class CurrencyLimit(Base):
     # Prevents buyers from creating many small line items to bypass limits
     max_daily_package_spend: Mapped[Decimal | None] = mapped_column(DECIMAL(15, 2), nullable=True)
 
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     # Relationships
     tenant = relationship("Tenant", back_populates="currency_limits")
@@ -323,24 +325,28 @@ class Creative(Base):
 
     __tablename__ = "creatives"
 
-    creative_id = Column(String(100), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    principal_id = Column(String(100), nullable=False)
-    name = Column(String(255), nullable=False)
-    agent_url = Column(String(500), nullable=False)  # Agent URL for format_id namespacing (AdCP v2.4)
-    format = Column(String(100), nullable=False)  # Format ID (combined with agent_url for full namespace)
-    status = Column(String(50), nullable=False, default="pending")
+    creative_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    principal_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    agent_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    format: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
 
     # Data field stores creative content and metadata as JSON
-    data = Column(JSONType, nullable=False, default=dict)
+    data: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
 
     # Relationships and metadata
-    group_id = Column(String(100), nullable=True)
-    created_at = Column(DateTime, nullable=True, server_default=func.current_timestamp())
-    updated_at = Column(DateTime, nullable=True)
-    approved_at = Column(DateTime, nullable=True)
-    approved_by = Column(String(255), nullable=True)
-    strategy_id = Column(String(255), nullable=True)  # Missing field from database
+    group_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[DateTime | None] = mapped_column(
+        DateTime, nullable=True, server_default=func.current_timestamp()
+    )
+    updated_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    strategy_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Relationships
     tenant = relationship("Tenant", backref="creatives")
@@ -368,27 +374,31 @@ class CreativeReview(Base):
 
     __tablename__ = "creative_reviews"
 
-    review_id = Column(String(100), primary_key=True)
-    creative_id = Column(String(100), ForeignKey("creatives.creative_id", ondelete="CASCADE"), nullable=False)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    review_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    creative_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("creatives.creative_id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
 
     # Review metadata
-    reviewed_at = Column(DateTime, nullable=False, server_default=func.now())
-    review_type = Column(String(20), nullable=False)  # "ai" or "human"
-    reviewer_email = Column(String(255), nullable=True)  # For human reviews
+    reviewed_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    review_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    reviewer_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # AI decision
-    ai_decision = Column(String(20), nullable=True)  # "approve" or "reject" or null for human-only
-    confidence_score = Column(Float, nullable=True)  # 0.0-1.0
-    policy_triggered = Column(String(100), nullable=True)  # "auto_approve", "low_confidence_approval", etc.
+    ai_decision: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    policy_triggered: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Review details
-    reason = Column(Text, nullable=True)
-    recommendations = Column(JSONType, nullable=True)  # Suggestions for improvement
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recommendations: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
     # Learning system
-    human_override = Column(Boolean, nullable=False, default=False)  # Did human disagree with AI?
-    final_decision = Column(String(20), nullable=False)  # "approved" or "rejected" or "pending"
+    human_override: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    final_decision: Mapped[str] = mapped_column(String(20), nullable=False)
 
     # Relationships
     creative = relationship("Creative", back_populates="reviews")
@@ -408,13 +418,15 @@ class CreativeAssignment(Base):
 
     __tablename__ = "creative_assignments"
 
-    assignment_id = Column(String(100), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    creative_id = Column(String(100), nullable=False)
-    media_buy_id = Column(String(100), nullable=False)
-    package_id = Column(String(100), nullable=False)
-    weight = Column(Integer, nullable=False, default=100)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    assignment_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    creative_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    media_buy_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    package_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    weight: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     # Relationships
     tenant = relationship("Tenant")
@@ -499,17 +511,19 @@ class MediaBuy(Base):
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
-    log_id = Column(Integer, primary_key=True, autoincrement=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    timestamp = Column(DateTime, server_default=func.now())
-    operation = Column(String(100), nullable=False)
-    principal_name = Column(String(255))
-    principal_id = Column(String(50))
-    adapter_id = Column(String(50))
-    success = Column(Boolean, nullable=False)
-    error_message = Column(Text)
-    details = Column(JSONType)  # JSONB in PostgreSQL
-    strategy_id = Column(String(255), nullable=True)  # Strategy reference for linking operations
+    log_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    timestamp: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    operation: Mapped[str] = mapped_column(String(100), nullable=False)
+    principal_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    principal_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    adapter_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    strategy_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="audit_logs")
@@ -529,11 +543,11 @@ class AuditLog(Base):
 class TenantManagementConfig(Base):
     __tablename__ = "superadmin_config"
 
-    config_key = Column(String(100), primary_key=True)
-    config_value = Column(Text)
-    description = Column(Text)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    updated_by = Column(String(255))
+    config_key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    config_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 # Backwards compatibility alias
@@ -543,36 +557,36 @@ SuperadminConfig = TenantManagementConfig
 class AdapterConfig(Base):
     __tablename__ = "adapter_config"
 
-    tenant_id = Column(
+    tenant_id: Mapped[str] = mapped_column(
         String(50),
         ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
         primary_key=True,
     )
-    adapter_type = Column(String(50), nullable=False)
+    adapter_type: Mapped[str] = mapped_column(String(50), nullable=False)
 
     # Mock adapter
-    mock_dry_run = Column(Boolean)
+    mock_dry_run: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # Google Ad Manager
-    gam_network_code = Column(String(50))
-    gam_refresh_token = Column(Text)
-    gam_trafficker_id = Column(String(50))  # Tenant-level: publisher's trafficker (defaults to authenticated user)
-    gam_manual_approval_required = Column(Boolean, default=False)
-    gam_order_name_template = Column(String(500))  # Template for order names, e.g., "{campaign_name} - {date_range}"
-    gam_line_item_name_template = Column(String(500))  # Template for line item names, e.g., "{product_name}"
+    gam_network_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    gam_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gam_trafficker_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    gam_manual_approval_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    gam_order_name_template: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    gam_line_item_name_template: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # NOTE: gam_company_id (advertiser_id) is per-principal, stored in Principal.platform_mappings
 
     # Kevel
-    kevel_network_id = Column(String(50))
-    kevel_api_key = Column(String(100))
-    kevel_manual_approval_required = Column(Boolean, default=False)
+    kevel_network_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    kevel_api_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    kevel_manual_approval_required: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Triton
-    triton_station_id = Column(String(50))
-    triton_api_key = Column(String(100))
+    triton_station_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    triton_api_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     # Relationships
     tenant = relationship("Tenant", back_populates="adapter_config")
@@ -589,20 +603,20 @@ class CreativeAgent(Base):
 
     __tablename__ = "creative_agents"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    tenant_id = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
         String(50),
         ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
         nullable=False,
     )
-    agent_url = Column(String(500), nullable=False)
-    name = Column(String(200), nullable=False)
-    enabled = Column(Boolean, nullable=False, default=True)
-    priority = Column(Integer, nullable=False, default=10)  # Lower = higher priority
-    auth_type = Column(String(50), nullable=True)  # e.g., "bearer", "api_key", None
-    auth_credentials = Column(Text, nullable=True)  # Encrypted credentials
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    agent_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    auth_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    auth_credentials: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     # Relationships
     tenant = relationship("Tenant", back_populates="creative_agents")
@@ -616,19 +630,19 @@ class CreativeAgent(Base):
 class GAMInventory(Base):
     __tablename__ = "gam_inventory"
 
-    id = Column(Integer, primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    inventory_type = Column(
-        String(30), nullable=False
-    )  # 'ad_unit', 'placement', 'label', 'custom_targeting_key', 'custom_targeting_value'
-    inventory_id = Column(String(50), nullable=False)  # GAM ID
-    name = Column(String(200), nullable=False)
-    path = Column(JSONType)  # Array of path components for ad units
-    status = Column(String(20), nullable=False)
-    inventory_metadata = Column(JSONType)  # Full inventory details
-    last_synced = Column(DateTime, nullable=False, default=func.now())
-    created_at = Column(DateTime, nullable=False, default=func.now())
-    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    inventory_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    inventory_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    path: Mapped[list | None] = mapped_column(JSONType, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    inventory_metadata: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    last_synced: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now())
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     # Relationships
     tenant = relationship("Tenant")
@@ -644,13 +658,15 @@ class GAMInventory(Base):
 class ProductInventoryMapping(Base):
     __tablename__ = "product_inventory_mappings"
 
-    id = Column(Integer, primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    product_id = Column(String(50), nullable=False)
-    inventory_type = Column(String(30), nullable=False)  # 'ad_unit' or 'placement'
-    inventory_id = Column(String(50), nullable=False)  # GAM inventory ID
-    is_primary = Column(Boolean, default=False)  # Primary targeting for the product
-    created_at = Column(DateTime, nullable=False, default=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    inventory_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    inventory_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now())
 
     # Add foreign key constraint for product
     __table_args__ = (
