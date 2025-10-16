@@ -899,6 +899,8 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
         audit_logger.log_operation(
             operation=tool_name,
             principal_name=principal_name,
+            principal_id=principal_id or "anonymous",
+            adapter_id="mcp_server",
             success=True,
             details=details,
         )
