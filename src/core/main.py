@@ -123,7 +123,7 @@ Task = WorkflowStep
 
 # Temporary placeholder classes for missing schemas
 # TODO: These should be properly defined in schemas.py
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 
 class ApproveAdaptationRequest(BaseModel):
@@ -4007,33 +4007,65 @@ async def _create_media_buy_impl(
         logger.info(f"🐛 push_notification_config contents: {push_notification_config}")
 
     # Create request object from individual parameters (MCP-compliant)
-    req = CreateMediaBuyRequest(
-        buyer_ref=buyer_ref,
-        brand_manifest=brand_manifest,
-        campaign_name=None,  # Optional display name
-        po_number=po_number,
-        promoted_offering=promoted_offering,
-        packages=packages,
-        start_time=start_time,
-        end_time=end_time,
-        budget=budget,
-        currency=None,  # Derived from product pricing_options
-        product_ids=product_ids,
-        start_date=start_date,
-        end_date=end_date,
-        total_budget=total_budget,
-        targeting_overlay=targeting_overlay,
-        pacing=pacing,
-        daily_budget=daily_budget,
-        creatives=creatives,
-        reporting_webhook=reporting_webhook,
-        required_axe_signals=required_axe_signals,
-        enable_creative_macro=enable_creative_macro,
-        strategy_id=strategy_id,
-        webhook_url=None,  # Internal field, not in AdCP spec
-        webhook_auth_token=None,  # Internal field, not in AdCP spec
-        push_notification_config=push_notification_config,
-    )
+    # Validate early with helpful error messages
+    try:
+        req = CreateMediaBuyRequest(
+            buyer_ref=buyer_ref,
+            brand_manifest=brand_manifest,
+            campaign_name=None,  # Optional display name
+            po_number=po_number,
+            promoted_offering=promoted_offering,
+            packages=packages,
+            start_time=start_time,
+            end_time=end_time,
+            budget=budget,
+            currency=None,  # Derived from product pricing_options
+            product_ids=product_ids,
+            start_date=start_date,
+            end_date=end_date,
+            total_budget=total_budget,
+            targeting_overlay=targeting_overlay,
+            pacing=pacing,
+            daily_budget=daily_budget,
+            creatives=creatives,
+            reporting_webhook=reporting_webhook,
+            required_axe_signals=required_axe_signals,
+            enable_creative_macro=enable_creative_macro,
+            strategy_id=strategy_id,
+            webhook_url=None,  # Internal field, not in AdCP spec
+            webhook_auth_token=None,  # Internal field, not in AdCP spec
+            push_notification_config=push_notification_config,
+        )
+    except ValidationError as e:
+        # Format validation errors with helpful context
+        error_details = []
+        for error in e.errors():
+            field_path = ".".join(str(loc) for loc in error["loc"])
+            error_type = error["type"]
+            msg = error["msg"]
+            input_val = error.get("input")
+
+            # Add helpful context for common validation errors
+            if "string_type" in error_type and isinstance(input_val, dict):
+                error_details.append(
+                    f"  • {field_path}: Expected string, got object. "
+                    f"AdCP spec requires this field to be a simple string, not a structured object."
+                )
+            elif "string_type" in error_type:
+                error_details.append(
+                    f"  • {field_path}: Expected string, got {type(input_val).__name__}. "
+                    f"Please provide a string value."
+                )
+            else:
+                error_details.append(f"  • {field_path}: {msg}")
+
+        error_msg = (
+            "Invalid request: The following fields do not match the AdCP specification:\n\n"
+            + "\n".join(error_details)
+            + "\n\nPlease check the AdCP spec at https://adcontextprotocol.org/schemas/v1/ for correct field types."
+        )
+
+        raise ToolError(error_msg) from e
 
     # Extract testing context first
     testing_ctx = get_testing_context(context)
