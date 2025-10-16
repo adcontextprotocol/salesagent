@@ -55,9 +55,12 @@ def search_formats():
         # Convert to dict format for JSON response
         results = []
         for fmt in formats:
+            # Handle FormatId object - extract string value
+            format_id_str = fmt.format_id.id if hasattr(fmt.format_id, "id") else str(fmt.format_id)
+
             result = {
                 "agent_url": fmt.agent_url,
-                "format_id": fmt.format_id,
+                "format_id": format_id_str,
                 "name": fmt.name,
                 "type": fmt.type,
                 "category": fmt.category,
@@ -121,9 +124,12 @@ def list_all_formats():
             if agent_url not in by_agent:
                 by_agent[agent_url] = []
 
+            # Handle FormatId object - extract string value
+            format_id_str = fmt.format_id.id if hasattr(fmt.format_id, "id") else str(fmt.format_id)
+
             by_agent[agent_url].append(
                 {
-                    "format_id": fmt.format_id,
+                    "format_id": format_id_str,
                     "name": fmt.name,
                     "type": fmt.type,
                     "category": fmt.category,

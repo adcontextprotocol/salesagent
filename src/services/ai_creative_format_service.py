@@ -783,8 +783,11 @@ async def discover_creative_format(
         fmt = await service.analyze_format_description(name, description or "", type_hint)
 
     # Convert to dict for storage
+    # Handle FormatId object - extract string value
+    format_id_str = fmt.format_id.id if hasattr(fmt.format_id, "id") else str(fmt.format_id)
+
     return {
-        "format_id": fmt.format_id,
+        "format_id": format_id_str,
         "tenant_id": tenant_id,
         "name": fmt.name,
         "type": fmt.type,

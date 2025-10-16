@@ -190,11 +190,13 @@ class FoundationalFormatsManager:
 
     def export_all_formats(self) -> dict[str, Any]:
         """Export all formats (foundational and extended) as a single structure."""
-        return {
-            "version": "1.0",
-            "foundational_formats": [
+        foundational_list = []
+        for fmt in self.foundational_formats.values():
+            # Handle FormatId object - extract string value
+            format_id_str = fmt.format_id.id if hasattr(fmt.format_id, "id") else str(fmt.format_id)
+            foundational_list.append(
                 {
-                    "format_id": fmt.format_id,
+                    "format_id": format_id_str,
                     "name": fmt.name,
                     "type": fmt.type,
                     "description": fmt.description,
@@ -202,19 +204,27 @@ class FoundationalFormatsManager:
                     "is_foundational": fmt.is_foundational,
                     "assets": fmt.assets,
                 }
-                for fmt in self.foundational_formats.values()
-            ],
-            "extended_formats": [
-                {
-                    "format_id": ext.format_id,
-                    "extends": ext.extends,
-                    "name": ext.name,
-                    "modifications": ext.modifications,
-                    "resolved": ext.apply_to_base(self.foundational_formats[ext.extends]),
-                }
-                for ext in self.extended_formats.values()
-                if ext.extends in self.foundational_formats
-            ],
+            )
+
+        extended_list = []
+        for ext in self.extended_formats.values():
+            if ext.extends in self.foundational_formats:
+                # Handle FormatId object - extract string value
+                format_id_str = ext.format_id.id if hasattr(ext.format_id, "id") else str(ext.format_id)
+                extended_list.append(
+                    {
+                        "format_id": format_id_str,
+                        "extends": ext.extends,
+                        "name": ext.name,
+                        "modifications": ext.modifications,
+                        "resolved": ext.apply_to_base(self.foundational_formats[ext.extends]),
+                    }
+                )
+
+        return {
+            "version": "1.0",
+            "foundational_formats": foundational_list,
+            "extended_formats": extended_list,
         }
 
 
@@ -226,7 +236,9 @@ if __name__ == "__main__":
     # List foundational formats
     print("Foundational Formats:")
     for fmt in manager.list_foundational_formats():
-        print(f"  - {fmt.format_id}: {fmt.name}")
+        # Handle FormatId object - extract string value
+        format_id_str = fmt.format_id.id if hasattr(fmt.format_id, "id") else str(fmt.format_id)
+        print(f"  - {format_id_str}: {fmt.name}")
 
     # Create NYTimes extension
     nyt_extension = manager.create_extension(
