@@ -182,7 +182,10 @@ class Product(Base, JSONValidatorMixin):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="products")
-    pricing_options = relationship("PricingOption", back_populates="product", cascade="all, delete-orphan")
+    # No SQLAlchemy cascade - let database CASCADE handle pricing_options deletion
+    # This avoids triggering the prevent_empty_pricing_options constraint
+    # Use passive_deletes=True to tell SQLAlchemy to rely on database CASCADE
+    pricing_options = relationship("PricingOption", back_populates="product", passive_deletes=True)
 
     __table_args__ = (
         Index("idx_products_tenant", "tenant_id"),
@@ -569,6 +572,8 @@ class AdapterConfig(Base):
     # Google Ad Manager
     gam_network_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     gam_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    _gam_service_account_json: Mapped[str | None] = mapped_column("gam_service_account_json", Text, nullable=True)
+    gam_auth_method: Mapped[str] = mapped_column(String(50), nullable=False, server_default="oauth")
     gam_trafficker_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     gam_manual_approval_required: Mapped[bool] = mapped_column(Boolean, default=False)
     gam_order_name_template: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -591,6 +596,30 @@ class AdapterConfig(Base):
     tenant = relationship("Tenant", back_populates="adapter_config")
 
     __table_args__ = (Index("idx_adapter_config_type", "adapter_type"),)
+
+    @property
+    def gam_service_account_json(self) -> str | None:
+        """Get decrypted GAM service account JSON."""
+        if not self._gam_service_account_json:
+            return None
+        from src.core.utils.encryption import decrypt_api_key
+
+        try:
+            return decrypt_api_key(self._gam_service_account_json)
+        except ValueError:
+            logger.warning(f"Failed to decrypt GAM service account JSON for tenant {self.tenant_id}")
+            return None
+
+    @gam_service_account_json.setter
+    def gam_service_account_json(self, value: str | None) -> None:
+        """Set encrypted GAM service account JSON."""
+        if not value:
+            self._gam_service_account_json = None
+            return
+
+        from src.core.utils.encryption import encrypt_api_key
+
+        self._gam_service_account_json = encrypt_api_key(value)
 
 
 class CreativeAgent(Base):

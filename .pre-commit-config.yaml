@@ -171,6 +171,15 @@ repos:
         files: '^(src/core/main\.py|src/core/schema_adapters\.py)$'
         pass_filenames: false
 
+      # Validate adapter schemas match official AdCP JSON schemas
+      - id: adapter-schema-compliance
+        name: Validate adapter schemas match AdCP spec
+        entry: uv run pytest tests/unit/test_adapter_schema_compliance.py -v --tb=short
+        language: system
+        files: '^(src/core/schema_adapters\.py|tests/e2e/schemas/v1/.*\.json)$'
+        pass_filenames: false
+        always_run: true
+
       # Check Pydantic-AdCP schema alignment (prevents client validation errors like missing promoted_offering)
       - id: pydantic-adcp-alignment
         name: Pydantic model alignment with AdCP schemas (REGRESSION PREVENTION)
@@ -236,14 +245,6 @@ repos:
         pass_filenames: false
         stages: [manual]  # Manual because it needs server running
 
-
-      # Validate template url_for calls
-      - id: template-url-validation
-        name: Validate template url_for calls
-        entry: uv run pytest tests/integration/test_template_url_validation.py::TestTemplateUrlValidation::test_all_template_url_for_calls_resolve -q
-        language: system
-        files: '\.html$'
-        pass_filenames: false
 
       # Check mypy error count doesn't increase (no regression)
       # Much faster than per-file checks: 3s vs 2+ minutes

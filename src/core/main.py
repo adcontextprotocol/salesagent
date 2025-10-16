@@ -37,6 +37,7 @@ from product_catalog_providers.factory import get_product_catalog_provider
 # Other imports
 from src.core.config_loader import (
     get_current_tenant,
+    get_tenant_by_id,
     get_tenant_by_subdomain,
     get_tenant_by_virtual_host,
     load_config,
@@ -123,7 +124,7 @@ Task = WorkflowStep
 
 # Temporary placeholder classes for missing schemas
 # TODO: These should be properly defined in schemas.py
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 
 class ApproveAdaptationRequest(BaseModel):
@@ -169,6 +170,59 @@ def safe_parse_json_field(field_value, field_name="field", default=None):
     else:
         logger.warning(f"Unexpected type for {field_name}: {type(field_value)}")
         return default if default is not None else {}
+
+
+def format_validation_error(validation_error: ValidationError, context: str = "request") -> str:
+    """Format Pydantic ValidationError with helpful context for clients.
+
+    Provides clear, actionable error messages that reference the AdCP spec
+    and explain what went wrong with field types.
+
+    Args:
+        validation_error: The Pydantic ValidationError to format
+        context: Context string for the error message (e.g., "request", "creative")
+
+    Returns:
+        Formatted error message string suitable for client consumption
+
+    Example:
+        >>> try:
+        ...     req = CreateMediaBuyRequest(brand_manifest={"target_audience": {}})
+        ... except ValidationError as e:
+        ...     raise ToolError(format_validation_error(e))
+    """
+    error_details = []
+    for error in validation_error.errors():
+        field_path = ".".join(str(loc) for loc in error["loc"])
+        error_type = error["type"]
+        msg = error["msg"]
+        input_val = error.get("input")
+
+        # Add helpful context for common validation errors
+        if "string_type" in error_type and isinstance(input_val, dict):
+            error_details.append(
+                f"  • {field_path}: Expected string, got object. "
+                f"AdCP spec requires this field to be a simple string, not a structured object."
+            )
+        elif "string_type" in error_type:
+            error_details.append(
+                f"  • {field_path}: Expected string, got {type(input_val).__name__}. "
+                f"Please provide a string value."
+            )
+        elif "missing" in error_type:
+            error_details.append(f"  • {field_path}: Required field is missing")
+        elif "extra_forbidden" in error_type:
+            error_details.append(f"  • {field_path}: Extra field not allowed by AdCP spec")
+        else:
+            error_details.append(f"  • {field_path}: {msg}")
+
+    error_msg = (
+        f"Invalid {context}: The following fields do not match the AdCP specification:\n\n"
+        + "\n".join(error_details)
+        + "\n\nPlease check the AdCP spec at https://adcontextprotocol.org/schemas/v1/ for correct field types."
+    )
+
+    return error_msg
 
 
 # --- Authentication ---
@@ -233,19 +287,31 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                     # Tenant is disabled or deleted - fail securely
                     return None
 
-            # Get the tenant for this principal and set it as current context
-            stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
-            tenant = session.scalars(stmt).first()
-            if tenant:
-                from src.core.utils.tenant_utils import serialize_tenant_to_dict
+            # Only set tenant context if we didn't have one specified (global lookup case)
+            # If tenant_id was provided, context was already set by the caller
+            if not tenant_id:
+                # Get the tenant for this principal and set it as current context
+                stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
+                tenant = session.scalars(stmt).first()
+                if tenant:
+                    from src.core.utils.tenant_utils import serialize_tenant_to_dict
 
-                tenant_dict = serialize_tenant_to_dict(tenant)
-                set_current_tenant(tenant_dict)
-                console.print(f"[bold green]Set tenant context to '{tenant.tenant_id}'[/bold green]")
+                    tenant_dict = serialize_tenant_to_dict(tenant)
+                    set_current_tenant(tenant_dict)
+                    console.print(
+                        f"[bold green]Set tenant context to '{tenant.tenant_id}' (from principal)[/bold green]"
+                    )
 
-                # Check if this is the admin token for the tenant
-                if token == tenant.admin_token:
-                    return f"{tenant.tenant_id}_admin"
+                    # Check if this is the admin token for the tenant
+                    if token == tenant.admin_token:
+                        return f"{tenant.tenant_id}_admin"
+            else:
+                # Tenant was already set by caller - just check admin token
+                stmt = select(Tenant).filter_by(tenant_id=tenant_id, is_active=True)
+                tenant = session.scalars(stmt).first()
+                if tenant and token == tenant.admin_token:
+                    console.print(f"[green]Token is admin token for tenant '{tenant_id}'[/green]")
+                    return f"{tenant_id}_admin"
 
             return principal.principal_id
 
@@ -393,7 +459,13 @@ def get_principal_from_context(context: Context | None) -> str | None:
                 # Fallback: assume it's already a tenant_id
                 requested_tenant_id = tenant_hint
                 detection_method = "x-adcp-tenant header (direct)"
-                console.print(f"[yellow]Using x-adcp-tenant as tenant_id directly: {requested_tenant_id}[/yellow]")
+                # Need to look up and set tenant context
+                tenant_context = get_tenant_by_id(tenant_hint)
+                if tenant_context:
+                    set_current_tenant(tenant_context)
+                    console.print(f"[green]Tenant context set for tenant_id: {requested_tenant_id}[/green]")
+                else:
+                    console.print(f"[yellow]Using x-adcp-tenant as tenant_id directly: {requested_tenant_id}[/yellow]")
 
     # 3. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
     if not requested_tenant_id:
@@ -1450,12 +1522,19 @@ async def get_products(
     print("=" * 80, file=sys.stderr, flush=True)
 
     # Build request object for shared implementation using helper
-    req = create_get_products_request(
-        promoted_offering=promoted_offering,
-        brief=brief,
-        brand_manifest=brand_manifest,
-        filters=filters,
-    )
+    try:
+        req = create_get_products_request(
+            promoted_offering=promoted_offering,
+            brief=brief,
+            brand_manifest=brand_manifest,
+            filters=filters,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="get_products request")) from e
+    except ValueError as e:
+        # Convert ValueError from helper to ToolError with clear message
+        raise ToolError(f"Invalid get_products request: {e}") from e
+
     # Call shared implementation with unwrapped variant
     # GetProductsRequest is a RootModel, so we pass req.root (the actual variant)
     return await _get_products_impl(req.root, context)  # type: ignore[arg-type]
@@ -1600,12 +1679,16 @@ def list_creative_formats(
     Returns:
         ListCreativeFormatsResponse with all available formats
     """
-    req = ListCreativeFormatsRequest(
-        type=type,
-        standard_only=standard_only,
-        category=category,
-        format_ids=format_ids,
-    )
+    try:
+        req = ListCreativeFormatsRequest(
+            type=type,
+            standard_only=standard_only,
+            category=category,
+            format_ids=format_ids,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="list_creative_formats request")) from e
+
     return _list_creative_formats_impl(req, context)
 
 
@@ -1756,7 +1839,11 @@ def _sync_creatives_impl(
                 except (ValidationError, ValueError) as validation_error:
                     # Creative failed validation - add to failed list
                     creative_id = creative.get("creative_id", "unknown")
-                    error_msg = str(validation_error)
+                    # Format ValidationError nicely for clients, pass through ValueError as-is
+                    if isinstance(validation_error, ValidationError):
+                        error_msg = format_validation_error(validation_error, context=f"creative {creative_id}")
+                    else:
+                        error_msg = str(validation_error)
                     failed_creatives.append({"creative_id": creative_id, "error": error_msg})
                     failed_count += 1
                     results.append(
@@ -2126,19 +2213,56 @@ def _sync_creatives_impl(
                                             f"url={bool(data.get('url'))}, "
                                             f"width={data.get('width')}, "
                                             f"height={data.get('height')}, "
-                                            f"variants={len(preview_result.get('previews', [])) if preview_result else 0}"
+                                            f"variants={len(preview_result.get('previews', []))}"
                                         )
+                                    else:
+                                        # Preview generation failed for update - creative is invalid
+                                        error_msg = f"Creative validation failed: preview_creative returned no previews for update of {existing_creative.creative_id}"
+                                        logger.error(f"[sync_creatives] {error_msg}")
+                                        failed_creatives.append(
+                                            {
+                                                "creative_id": existing_creative.creative_id,
+                                                "error": error_msg,
+                                                "format": creative_format,
+                                            }
+                                        )
+                                        failed_count += 1
+                                        results.append(
+                                            SyncCreativeResult(
+                                                creative_id=existing_creative.creative_id,
+                                                action="failed",
+                                                errors=[error_msg],
+                                            )
+                                        )
+                                        continue  # Skip this creative update
 
                                 except Exception as validation_error:
-                                    # Creative agent validation failed for update - log warning but continue
-                                    # This allows updates even if creative agent is down
-                                    error_msg = f"Creative agent validation failed: {str(validation_error)}"
-                                    logger.warning(
-                                        f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id} - continuing with update",
+                                    # Creative agent validation failed for update (network error, agent down, etc.)
+                                    # Do NOT update the creative - it needs validation before acceptance
+                                    error_msg = (
+                                        f"Creative agent unreachable or validation error: {str(validation_error)}. "
+                                        f"Retry recommended - creative agent may be temporarily unavailable."
+                                    )
+                                    logger.error(
+                                        f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id}",
                                         exc_info=True,
                                     )
-                                    # Note: We continue instead of failing to allow graceful degradation
-                                    # when creative agent is unavailable
+                                    failed_creatives.append(
+                                        {
+                                            "creative_id": existing_creative.creative_id,
+                                            "error": error_msg,
+                                            "format": creative_format,
+                                        }
+                                    )
+                                    failed_count += 1
+                                    results.append(
+                                        SyncCreativeResult(
+                                            creative_id=existing_creative.creative_id,
+                                            action="failed",
+                                            errors=[error_msg],
+                                        )
+                                    )
+                                    continue  # Skip this creative update
 
                             # In full upsert, consider all fields as changed
                             changes.extend(["url", "click_url", "width", "height", "duration"])
@@ -2389,24 +2513,61 @@ def _sync_creatives_impl(
                                             if dimensions.get("duration"):
                                                 data["duration"] = dimensions["duration"]
 
-                                    logger.info(
-                                        f"[sync_creatives] Preview data populated: "
-                                        f"url={bool(data.get('url'))}, "
-                                        f"width={data.get('width')}, "
-                                        f"height={data.get('height')}, "
-                                        f"variants={len(preview_result.get('previews', [])) if preview_result else 0}"
-                                    )
+                                        logger.info(
+                                            f"[sync_creatives] Preview data populated: "
+                                            f"url={bool(data.get('url'))}, "
+                                            f"width={data.get('width')}, "
+                                            f"height={data.get('height')}, "
+                                            f"variants={len(preview_result.get('previews', []))}"
+                                        )
+                                    else:
+                                        # Preview generation failed - creative is invalid
+                                        error_msg = f"Creative validation failed: preview_creative returned no previews for {creative_id}"
+                                        logger.error(f"[sync_creatives] {error_msg}")
+                                        failed_creatives.append(
+                                            {
+                                                "creative_id": creative_id,
+                                                "error": error_msg,
+                                                "format": creative_format,
+                                            }
+                                        )
+                                        failed_count += 1
+                                        results.append(
+                                            SyncCreativeResult(
+                                                creative_id=creative_id,
+                                                action="failed",
+                                                errors=[error_msg],
+                                            )
+                                        )
+                                        continue  # Skip this creative
 
                             except Exception as validation_error:
-                                # Creative agent validation failed - log warning but continue
-                                # This allows creatives to be stored even if creative agent is down
-                                error_msg = f"Creative agent validation failed: {str(validation_error)}"
-                                logger.warning(
-                                    f"[sync_creatives] {error_msg} - continuing with creative storage",
+                                # Creative agent validation failed (network error, agent down, etc.)
+                                # Do NOT store the creative - it needs validation before acceptance
+                                error_msg = (
+                                    f"Creative agent unreachable or validation error: {str(validation_error)}. "
+                                    f"Retry recommended - creative agent may be temporarily unavailable."
+                                )
+                                logger.error(
+                                    f"[sync_creatives] {error_msg} - rejecting creative {creative_id}",
                                     exc_info=True,
                                 )
-                                # Note: We continue instead of failing to allow graceful degradation
-                                # when creative agent is unavailable
+                                failed_creatives.append(
+                                    {
+                                        "creative_id": creative_id,
+                                        "error": error_msg,
+                                        "format": creative_format,
+                                    }
+                                )
+                                failed_count += 1
+                                results.append(
+                                    SyncCreativeResult(
+                                        creative_id=creative_id,
+                                        action="failed",
+                                        errors=[error_msg],
+                                    )
+                                )
+                                continue  # Skip storing this creative
 
                         # Determine creative status based on approval mode
 
@@ -2888,27 +3049,30 @@ def _list_creatives_impl(
             raise ToolError(f"Invalid created_before date format: {created_before}")
 
     # Create request object from individual parameters (MCP-compliant)
-    req = ListCreativesRequest(
-        media_buy_id=media_buy_id,
-        buyer_ref=buyer_ref,
-        status=status,
-        format=format,
-        tags=tags or [],
-        created_after=created_after_dt,
-        created_before=created_before_dt,
-        search=search,
-        filters=filters,
-        sort=sort,
-        pagination=pagination,
-        fields=fields,
-        include_performance=include_performance,
-        include_assignments=include_assignments,
-        include_sub_assets=include_sub_assets,
+    try:
+        req = ListCreativesRequest(
+            media_buy_id=media_buy_id,
+            buyer_ref=buyer_ref,
+            status=status,
+            format=format,
+            tags=tags or [],
+            created_after=created_after_dt,
+            created_before=created_before_dt,
+            search=search,
+            filters=filters,
+            sort=sort,
+            pagination=pagination,
+            fields=fields,
+            include_performance=include_performance,
+            include_assignments=include_assignments,
+            include_sub_assets=include_sub_assets,
         page=page,
         limit=min(limit, 1000),  # Enforce max limit
-        sort_by=sort_by,
-        sort_order=sort_order,
-    )
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="list_creatives request")) from e
 
     start_time = time.time()
 
@@ -3098,7 +3262,6 @@ def _list_creatives_impl(
     from src.core.schemas import Pagination, QuerySummary
 
     return ListCreativesResponse(
-        message=message,
         query_summary=QuerySummary(
             total_matching=total_count,
             returned=len(creatives),
@@ -3334,7 +3497,7 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
     # Generate context_id (required field)
     context_id = f"signals_{uuid.uuid4().hex[:12]}"
 
-    return GetSignalsResponse(signals=signals)
+    return GetSignalsResponse(message=message, context_id=context_id, signals=signals)
 
 
 @mcp.tool()
@@ -3406,31 +3569,28 @@ async def activate_signal(
         # Log activity
         log_tool_activity(context, "activate_signal", start_time)
 
-        # Build response with domain data only (protocol fields added by transport layer)
-        activation_details = {}
-        if estimated_activation_duration_minutes:
-            activation_details["estimated_duration_minutes"] = estimated_activation_duration_minutes
-        if decisioning_platform_segment_id:
-            activation_details["platform_segment_id"] = decisioning_platform_segment_id
-        if requires_approval:
-            activation_details["requires_approval"] = True
-
+        # Build response with adapter schema fields
         if requires_approval or not activation_success:
             return ActivateSignalResponse(
-                signal_id=signal_id,
-                activation_details=activation_details if activation_details else None,
+                task_id=task_id,
+                status=status,
                 errors=errors,
             )
         else:
             return ActivateSignalResponse(
-                signal_id=signal_id,
-                activation_details=activation_details if activation_details else None,
+                task_id=task_id,
+                status=status,
+                decisioning_platform_segment_id=decisioning_platform_segment_id if activation_success else None,
+                estimated_activation_duration_minutes=(
+                    estimated_activation_duration_minutes if activation_success else None
+                ),
             )
 
     except Exception as e:
         logger.error(f"Error activating signal {signal_id}: {e}")
         return ActivateSignalResponse(
-            signal_id=signal_id,
+            task_id=f"task_{uuid.uuid4().hex[:12]}",
+            status="failed",
             errors=[{"code": "ACTIVATION_ERROR", "message": str(e)}],
         )
 
@@ -3921,33 +4081,38 @@ async def _create_media_buy_impl(
         logger.info(f"🐛 push_notification_config contents: {push_notification_config}")
 
     # Create request object from individual parameters (MCP-compliant)
-    req = CreateMediaBuyRequest(
-        buyer_ref=buyer_ref,
-        brand_manifest=brand_manifest,
-        campaign_name=None,  # Optional display name
-        po_number=po_number,
-        promoted_offering=promoted_offering,
-        packages=packages,
-        start_time=start_time,
-        end_time=end_time,
-        budget=budget,
-        currency=None,  # Derived from product pricing_options
-        product_ids=product_ids,
-        start_date=start_date,
-        end_date=end_date,
-        total_budget=total_budget,
-        targeting_overlay=targeting_overlay,
-        pacing=pacing,
-        daily_budget=daily_budget,
-        creatives=creatives,
-        reporting_webhook=reporting_webhook,
-        required_axe_signals=required_axe_signals,
-        enable_creative_macro=enable_creative_macro,
-        strategy_id=strategy_id,
-        webhook_url=None,  # Internal field, not in AdCP spec
-        webhook_auth_token=None,  # Internal field, not in AdCP spec
-        push_notification_config=push_notification_config,
-    )
+    # Validate early with helpful error messages
+    try:
+        req = CreateMediaBuyRequest(
+            buyer_ref=buyer_ref,
+            brand_manifest=brand_manifest,
+            campaign_name=None,  # Optional display name
+            po_number=po_number,
+            promoted_offering=promoted_offering,
+            packages=packages,
+            start_time=start_time,
+            end_time=end_time,
+            budget=budget,
+            currency=None,  # Derived from product pricing_options
+            product_ids=product_ids,
+            start_date=start_date,
+            end_date=end_date,
+            total_budget=total_budget,
+            targeting_overlay=targeting_overlay,
+            pacing=pacing,
+            daily_budget=daily_budget,
+            creatives=creatives,
+            reporting_webhook=reporting_webhook,
+            required_axe_signals=required_axe_signals,
+            enable_creative_macro=enable_creative_macro,
+            strategy_id=strategy_id,
+            webhook_url=None,  # Internal field, not in AdCP spec
+            webhook_auth_token=None,  # Internal field, not in AdCP spec
+            push_notification_config=push_notification_config,
+        )
+    except ValidationError as e:
+        # Format validation errors with helpful context using shared helper
+        raise ToolError(format_validation_error(e, context="request")) from e
 
     # Extract testing context first
     testing_ctx = get_testing_context(context)
@@ -4585,7 +4750,9 @@ async def _create_media_buy_impl(
                             if isinstance(fmt, dict):
                                 # Database JSONB: uses "id" per AdCP spec
                                 agent_url = fmt.get("agent_url")
-                                format_id = fmt.get("id") or fmt.get("format_id")  # "id" is AdCP spec, "format_id" is legacy
+                                format_id = fmt.get("id") or fmt.get(
+                                    "format_id"
+                                )  # "id" is AdCP spec, "format_id" is legacy
                             elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
                                 # Pydantic object: uses "format_id" attribute (serializes to "id" in JSON)
                                 agent_url = fmt.agent_url
@@ -4606,7 +4773,9 @@ async def _create_media_buy_impl(
                         if isinstance(fmt, dict):
                             # JSON from request: uses "id" per AdCP spec
                             agent_url = fmt.get("agent_url")
-                            format_id = fmt.get("id") or fmt.get("format_id")  # "id" is AdCP spec, "format_id" is legacy
+                            format_id = fmt.get("id") or fmt.get(
+                                "format_id"
+                            )  # "id" is AdCP spec, "format_id" is legacy
                         elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
                             # Pydantic object: uses "format_id" attribute
                             agent_url = fmt.agent_url
@@ -4618,13 +4787,23 @@ async def _create_media_buy_impl(
                         if format_id:
                             requested_format_keys.add((agent_url, format_id))
 
+                    def format_display(url: str | None, fid: str) -> str:
+                        """Format a (url, id) pair for display, handling trailing slashes."""
+                        if not url:
+                            return fid
+                        # Remove trailing slash from URL to avoid double slashes
+                        clean_url = url.rstrip("/")
+                        return f"{clean_url}/{fid}"
+
                     unsupported_formats = [
-                        f"{url}/{fid}" if url else fid for url, fid in requested_format_keys if (url, fid) not in product_format_keys
+                        format_display(url, fid)
+                        for url, fid in requested_format_keys
+                        if (url, fid) not in product_format_keys
                     ]
 
                     if unsupported_formats:
                         supported_formats_str = ", ".join(
-                            [f"{url}/{fid}" if url else fid for url, fid in product_format_keys]
+                            [format_display(url, fid) for url, fid in product_format_keys]
                         )
                         error_msg = (
                             f"Product '{product.name}' ({product.product_id}) does not support requested format(s): "
@@ -5274,7 +5453,11 @@ def _update_media_buy_impl(
     }
     # Remove None values to avoid validation errors in strict mode
     request_params = {k: v for k, v in request_params.items() if v is not None}
-    req = UpdateMediaBuyRequest(**request_params)  # type: ignore[arg-type]
+
+    try:
+        req = UpdateMediaBuyRequest(**request_params)  # type: ignore[arg-type]
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="update_media_buy request")) from e
 
     if context is None:
         raise ValueError("Context is required for update_media_buy")
@@ -5312,7 +5495,6 @@ def _update_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return UpdateMediaBuyResponse(
-            status="completed",
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
             errors=[{"code": "principal_not_found", "message": error_msg}],
@@ -5338,10 +5520,8 @@ def _update_media_buy_impl(
         )
 
         return UpdateMediaBuyResponse(
-            status="submitted",
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
-            task_id=step.step_id,
         )
 
     # Validate currency limits if flight dates or budget changes
@@ -5379,7 +5559,6 @@ def _update_media_buy_impl(
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
                     ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
                     return UpdateMediaBuyResponse(
-                        status="completed",
                         media_buy_id=req.media_buy_id or "",
                         buyer_ref=req.buyer_ref or "",
                         errors=[{"code": "currency_not_supported", "message": error_msg}],
@@ -5419,7 +5598,6 @@ def _update_media_buy_impl(
                                 )
                                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
                                 return UpdateMediaBuyResponse(
-                                    status="completed",
                                     media_buy_id=req.media_buy_id or "",
                                     buyer_ref=req.buyer_ref or "",
                                     errors=[{"code": "budget_limit_exceeded", "message": error_msg}],
@@ -5503,7 +5681,6 @@ def _update_media_buy_impl(
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return UpdateMediaBuyResponse(
-                status="completed",
                 media_buy_id=req.media_buy_id or "",
                 buyer_ref=req.buyer_ref or "",
                 errors=[{"code": "invalid_budget", "message": error_msg}],
@@ -5561,7 +5738,6 @@ def _update_media_buy_impl(
     )
 
     return UpdateMediaBuyResponse(
-        status="completed",
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
     )
@@ -5905,13 +6081,16 @@ def get_media_buy_delivery(
         GetMediaBuyDeliveryResponse with AdCP-compliant delivery data for the requested media buys
     """
     # Create AdCP-compliant request object
-    req = GetMediaBuyDeliveryRequest(
-        media_buy_ids=media_buy_ids,
-        buyer_refs=buyer_refs,
-        status_filter=status_filter,
-        start_date=start_date,
-        end_date=end_date,
-    )
+    try:
+        req = GetMediaBuyDeliveryRequest(
+            media_buy_ids=media_buy_ids,
+            buyer_refs=buyer_refs,
+            status_filter=status_filter,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="get_media_buy_delivery request")) from e
 
     return _get_media_buy_delivery_impl(req, context)
 
@@ -5945,8 +6124,11 @@ def update_performance_index(
     # Convert dict performance_data to ProductPerformance objects
     from src.core.schemas import ProductPerformance
 
-    performance_objects = [ProductPerformance(**perf) for perf in performance_data]
-    req = UpdatePerformanceIndexRequest(media_buy_id=media_buy_id, performance_data=performance_objects)
+    try:
+        performance_objects = [ProductPerformance(**perf) for perf in performance_data]
+        req = UpdatePerformanceIndexRequest(media_buy_id=media_buy_id, performance_data=performance_objects)
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="update_performance_index request")) from e
 
     if context is None:
         raise ValueError("Context is required for update_performance_index")

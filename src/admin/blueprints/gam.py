@@ -53,6 +53,8 @@ def validate_gam_config(data: dict) -> list | None:
     """Validate GAM configuration data."""
     errors = []
 
+    auth_method = data.get("auth_method", "oauth")
+
     # Network code validation
     network_code = data.get("network_code")
     if network_code:
@@ -62,12 +64,33 @@ def validate_gam_config(data: dict) -> list | None:
         elif len(network_code_str) > 20:
             errors.append("Network code is too long")
 
-    # Refresh token validation
-    refresh_token = data.get("refresh_token", "").strip()
-    if not refresh_token:
-        errors.append("Refresh token is required")
-    elif len(refresh_token) > 1000:
-        errors.append("Refresh token is too long")
+    # Authentication method specific validation
+    if auth_method == "oauth":
+        # Refresh token validation
+        refresh_token = data.get("refresh_token", "").strip()
+        if not refresh_token:
+            errors.append("Refresh token is required for OAuth authentication")
+        elif len(refresh_token) > 1000:
+            errors.append("Refresh token is too long")
+    elif auth_method == "service_account":
+        # Service account JSON validation
+        service_account_json = data.get("service_account_json", "").strip()
+        if not service_account_json:
+            errors.append("Service account JSON is required for service account authentication")
+        else:
+            # Validate JSON structure
+            try:
+                import json
+
+                key_data = json.loads(service_account_json)
+                required_fields = ["type", "project_id", "private_key_id", "private_key", "client_email"]
+                missing_fields = [field for field in required_fields if field not in key_data]
+                if missing_fields:
+                    errors.append(f"Service account JSON missing required fields: {', '.join(missing_fields)}")
+                elif key_data.get("type") != "service_account":
+                    errors.append("Service account JSON must be of type 'service_account'")
+            except json.JSONDecodeError as e:
+                errors.append(f"Invalid JSON format: {str(e)}")
 
     # Trafficker ID validation
     trafficker_id = data.get("trafficker_id")
@@ -280,15 +303,19 @@ def configure_gam(tenant_id):
             return jsonify({"success": False, "errors": validation_errors}), 400
 
         # Sanitize input data
+        auth_method = data.get("auth_method", "oauth")
         network_code = str(data.get("network_code", "")).strip() if data.get("network_code") else None
-        refresh_token = data.get("refresh_token", "").strip()
+        refresh_token = data.get("refresh_token", "").strip() if auth_method == "oauth" else None
+        service_account_json = (
+            data.get("service_account_json", "").strip() if auth_method == "service_account" else None
+        )
         trafficker_id = str(data.get("trafficker_id", "")).strip() if data.get("trafficker_id") else None
         order_name_template = data.get("order_name_template", "").strip() or None
         line_item_name_template = data.get("line_item_name_template", "").strip() or None
 
-        # Log what we received (without exposing sensitive token)
+        # Log what we received (without exposing sensitive credentials)
         logger.info(
-            f"GAM config save - network_code: {network_code}, trafficker_id: {trafficker_id}, token_length: {len(refresh_token)}"
+            f"GAM config save - auth_method: {auth_method}, network_code: {network_code}, trafficker_id: {trafficker_id}"
         )
 
         # If network code or trafficker_id not provided, try to auto-detect them
@@ -313,10 +340,18 @@ def configure_gam(tenant_id):
 
             # Update GAM configuration in adapter_config
             adapter_config.gam_network_code = network_code
-            adapter_config.gam_refresh_token = refresh_token
+            adapter_config.gam_auth_method = auth_method
             adapter_config.gam_trafficker_id = trafficker_id
             adapter_config.gam_order_name_template = order_name_template
             adapter_config.gam_line_item_name_template = line_item_name_template
+
+            # Update authentication credentials based on method
+            if auth_method == "oauth":
+                adapter_config.gam_refresh_token = refresh_token
+                adapter_config.gam_service_account_json = None
+            elif auth_method == "service_account":
+                adapter_config.gam_service_account_json = service_account_json
+                adapter_config.gam_refresh_token = None
 
             # Also update tenant's ad_server field
             tenant.ad_server = "google_ad_manager"

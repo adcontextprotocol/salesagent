@@ -6,12 +6,13 @@ FormatId objects with .id attribute (not .format_id).
 Regression test for: "unhashable type: 'FormatReference'" bug.
 """
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Product
-from src.core.schemas import FormatId, ProductFilters, GetProductsRequest
+from src.core.schemas import FormatId, GetProductsRequest, ProductFilters
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 pytestmark = pytest.mark.integration
@@ -89,6 +90,7 @@ def setup_products_with_formatid_objects(integration_db):
 def _import_get_products_impl():
     """Import the actual implementation function."""
     from src.core.main import _get_products_impl
+
     return _get_products_impl
 
 
@@ -111,9 +113,7 @@ async def test_filter_by_format_ids_with_formatid_objects(mock_context):
     request = GetProductsRequest(
         promoted_offering="Test campaign",
         filters=ProductFilters(
-            format_ids=[
-                FormatId(agent_url="https://creatives.adcontextprotocol.org", id="display_300x250")
-            ]
+            format_ids=[FormatId(agent_url="https://creatives.adcontextprotocol.org", id="display_300x250")]
         ),
     )
 
@@ -146,9 +146,7 @@ async def test_filter_by_format_ids_no_matches(mock_context):
     request = GetProductsRequest(
         promoted_offering="Test campaign",
         filters=ProductFilters(
-            format_ids=[
-                FormatId(agent_url="https://creatives.adcontextprotocol.org", id="audio_30s")
-            ]
+            format_ids=[FormatId(agent_url="https://creatives.adcontextprotocol.org", id="audio_30s")]
         ),
     )
 
@@ -166,9 +164,7 @@ async def test_filter_by_format_ids_video_format(mock_context):
     request = GetProductsRequest(
         promoted_offering="Test campaign",
         filters=ProductFilters(
-            format_ids=[
-                FormatId(agent_url="https://creatives.adcontextprotocol.org", id="video_1280x720")
-            ]
+            format_ids=[FormatId(agent_url="https://creatives.adcontextprotocol.org", id="video_1280x720")]
         ),
     )
 

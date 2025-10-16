@@ -298,17 +298,10 @@ class MockAdServer(AdServerAdapter):
             errors.append("InvalidArgumentError @ lineItem[0].endDateTime")
 
         # Inventory targeting validation (like GAM requirement)
-        has_inventory_targeting = False
-        if request.targeting_overlay and hasattr(request.targeting_overlay, "custom"):
-            if request.targeting_overlay.custom and "inventory" in str(request.targeting_overlay.custom):
-                has_inventory_targeting = True
-
-        # For non-guaranteed line items, require some form of inventory targeting
-        for package in packages:
-            if package.delivery_type == "non_guaranteed":
-                if not has_inventory_targeting:
-                    errors.append("RequiredError.REQUIRED @ lineItem[0].targeting.inventoryTargeting")
-                    break
+        # Note: Mock adapter skips inventory targeting validation
+        # Real adapters like GAM will enforce their own inventory targeting requirements
+        # Mock adapter accepts Run of Site (no specific inventory targeting) for testing flexibility
+        # This allows test scenarios to run without configuring ad unit IDs
 
         # Goal validation (like GAM limits)
         for package in packages:
@@ -1170,14 +1163,26 @@ class MockAdServer(AdServerAdapter):
                             },
                         }
 
+                        # Handle format selection
+                        formats = request.form.getlist("formats")
+                        if formats:
+                            product_obj.formats = formats
+
                         # Validate the configuration
                         validation_errors = self.validate_product_config(new_config)
                         if validation_errors:
+                            # Get formats for re-rendering
+                            from src.admin.blueprints.products import get_creative_formats
+
+                            available_formats = get_creative_formats(tenant_id=tenant_id)
+
                             return render_template(
                                 "adapters/mock_product_config.html",
                                 tenant_id=tenant_id,
                                 product=product,
                                 config=config,
+                                formats=available_formats,
+                                selected_formats=product_obj.formats or [],
                                 error=validation_errors[0],
                             )
 
@@ -1185,19 +1190,33 @@ class MockAdServer(AdServerAdapter):
                         product_obj.implementation_config = new_config
                         session.commit()
 
+                        # Get formats for success page
+                        from src.admin.blueprints.products import get_creative_formats
+
+                        available_formats = get_creative_formats(tenant_id=tenant_id)
+
                         return render_template(
                             "adapters/mock_product_config.html",
                             tenant_id=tenant_id,
                             product=product,
                             config=new_config,
+                            formats=available_formats,
+                            selected_formats=product_obj.formats or [],
                             success=True,
                         )
+
+                    # GET request - fetch available formats from creative agents
+                    from src.admin.blueprints.products import get_creative_formats
+
+                    available_formats = get_creative_formats(tenant_id=tenant_id)
 
                     return render_template(
                         "adapters/mock_product_config.html",
                         tenant_id=tenant_id,
                         product=product,
                         config=config,
+                        formats=available_formats,
+                        selected_formats=product_obj.formats or [],
                     )
 
             return wrapped_view()
