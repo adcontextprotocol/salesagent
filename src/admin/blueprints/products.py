@@ -951,7 +951,7 @@ def edit_product(tenant_id, product_id):
                     tenant_id=tenant_id,
                     product=product_dict,
                     inventory_synced=inventory_synced,
-                    formats=get_creative_formats(),
+                    formats=get_creative_formats(tenant_id=tenant_id),
                     currencies=currencies,
                 )
             else:
@@ -1022,7 +1022,7 @@ def delete_product(tenant_id, product_id):
                     )
 
             # Delete the product and related pricing options
-            # Cascade will handle pricing_options deletion
+            # Foreign key CASCADE automatically handles pricing_options deletion
             db_session.delete(product)
             db_session.commit()
 

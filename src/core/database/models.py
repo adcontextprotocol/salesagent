@@ -182,7 +182,10 @@ class Product(Base, JSONValidatorMixin):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="products")
-    pricing_options = relationship("PricingOption", back_populates="product", cascade="all, delete-orphan")
+    # No SQLAlchemy cascade - let database CASCADE handle pricing_options deletion
+    # This avoids triggering the prevent_empty_pricing_options constraint
+    # Use passive_deletes=True to tell SQLAlchemy to rely on database CASCADE
+    pricing_options = relationship("PricingOption", back_populates="product", passive_deletes=True)
 
     __table_args__ = (
         Index("idx_products_tenant", "tenant_id"),
