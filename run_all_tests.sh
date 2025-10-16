@@ -107,8 +107,9 @@ print(' '.join(map(str, ports)))
     export ADCP_SALES_PORT=$MCP_PORT
     export A2A_PORT
     export ADMIN_UI_PORT=$ADMIN_PORT
-    export DATABASE_URL="postgresql://adcp_user:test_password@postgres:5432/adcp?sslmode=disable"
-    export ADCP_TEST_DB_URL="postgresql://adcp_user:test_password@localhost:${POSTGRES_PORT}/adcp_test"
+    # DATABASE_URL is used by both app code AND integration tests
+    # Integration tests ignore the database name and create unique databases per test
+    export DATABASE_URL="postgresql://adcp_user:test_password@localhost:${POSTGRES_PORT}/adcp_test"
     export ADCP_TESTING=true
     export CREATE_SAMPLE_DATA=true
     export GEMINI_API_KEY="${GEMINI_API_KEY:-test_key}"
