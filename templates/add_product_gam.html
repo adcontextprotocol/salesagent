@@ -84,7 +84,7 @@
 
         <!-- Section 3: Creative Formats -->
         <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Creative Formats</h3>
-        <p style="color: #666; margin-bottom: 1.5rem;">Select ad units first, then choose matching creative formats</p>
+        <p style="color: #666; margin-bottom: 1.5rem;">Select ad units first, then choose matching creative formats. Click the ⓘ icon on each format to learn more.</p>
 
         <!-- Message shown before ad units are selected -->
         <div id="formats-placeholder" style="{% if product and product.formats %}display: none;{% else %}padding: 2rem; background: #f8f9fa; border: 2px dashed #ddd; border-radius: 4px; text-align: center; color: #666;{% endif %}">
@@ -111,10 +111,15 @@
                    data-format-id="{{ format.format_id }}"
                    data-dimensions="{{ format.dimensions or '' }}"
                    data-type="{{ format.type }}"
+                   data-description="{{ format.description or '' }}"
+                   data-preview-url="{{ format.preview_url or '' }}"
+                   data-agent-url="{{ format.agent_url or '' }}"
                    data-search="{{ format.name|lower }} {{ format.type|lower }} {{ format.dimensions or '' }}"
-                   style="border: 2px solid #ddd; border-radius: 4px; padding: 1rem; cursor: pointer; transition: all 0.2s; background: white;">
+                   style="border: 2px solid #ddd; border-radius: 4px; padding: 1rem; cursor: pointer; transition: all 0.2s; background: white; position: relative;">
                 <input type="checkbox" name="formats" value="{{ format.format_id }}" style="margin-right: 0.5rem;">
-                <strong>{{ format.name }}</strong><br>
+                <strong>{{ format.name }}</strong>
+                <span class="format-info-icon" onclick="event.preventDefault(); event.stopPropagation(); showFormatInfo('{{ format.name }}', '{{ format.description or 'No description available' }}', '{{ format.preview_url or '' }}', '{{ format.agent_url or '' }}', '{{ format.format_id }}');" style="cursor: help; color: #007bff; font-size: 0.9rem; margin-left: 0.3rem; float: right;">ⓘ</span>
+                <br>
                 <small style="color: #666;">
                     {{ format.type }}
                     {% if format.dimensions %} - {{ format.dimensions }}{% endif %}
@@ -890,7 +895,85 @@ if (existingOptions.length > 0) {
 // Create mode: Add one empty option
 addPricingOption();
 {% endif %}
+
+// Format info modal functionality
+function showFormatInfo(name, description, previewUrl, agentUrl, formatId) {
+    const modal = document.getElementById('format-info-modal');
+    document.getElementById('format-info-name').textContent = name;
+    document.getElementById('format-info-description').textContent = description;
+
+    // Handle preview image
+    const previewContainer = document.getElementById('format-preview-container');
+    const previewImg = document.getElementById('format-preview-img');
+    const noPreview = document.getElementById('format-no-preview');
+
+    if (previewUrl) {
+        previewImg.src = previewUrl;
+        previewImg.style.display = 'block';
+        noPreview.style.display = 'none';
+    } else {
+        previewImg.style.display = 'none';
+        noPreview.style.display = 'block';
+    }
+
+    // Handle more info link
+    const moreInfoLink = document.getElementById('format-more-info-link');
+    if (agentUrl && formatId) {
+        // Construct URL to format details on agent (most agents follow this pattern)
+        const detailsUrl = `${agentUrl}/formats/${formatId}`;
+        moreInfoLink.href = detailsUrl;
+        moreInfoLink.style.display = 'inline-block';
+    } else {
+        moreInfoLink.style.display = 'none';
+    }
+
+    modal.style.display = 'block';
+}
+
+function closeFormatInfo() {
+    document.getElementById('format-info-modal').style.display = 'none';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('format-info-modal');
+    if (event.target == modal) {
+        modal.style.display = 'none';
+    }
+}
 </script>
+
+<!-- Format Info Modal -->
+<div id="format-info-modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
+    <div style="background-color: #fefefe; margin: 5% auto; padding: 2rem; border: 1px solid #888; border-radius: 8px; width: 90%; max-width: 500px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <h2 style="margin: 0; color: #333; font-size: 1.5rem;" id="format-info-name"></h2>
+            <span onclick="closeFormatInfo()" style="color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1;">&times;</span>
+        </div>
+
+        <!-- Preview Image -->
+        <div id="format-preview-container" style="margin-bottom: 1.5rem; text-align: center; background: #f8f9fa; border-radius: 4px; padding: 1rem; min-height: 200px; display: flex; align-items: center; justify-content: center;">
+            <img id="format-preview-img" src="" alt="Format preview" style="max-width: 100%; max-height: 300px; border-radius: 4px; display: none;">
+            <div id="format-no-preview" style="color: #999; display: none;">
+                <div style="font-size: 3rem; margin-bottom: 0.5rem;">🖼️</div>
+                <div>No preview available</div>
+            </div>
+        </div>
+
+        <!-- Description -->
+        <div style="margin-bottom: 1.5rem;">
+            <p id="format-info-description" style="color: #666; line-height: 1.6; margin: 0;"></p>
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; gap: 0.5rem;">
+            <a id="format-more-info-link" href="#" target="_blank" class="btn btn-secondary" style="flex: 1; text-align: center; text-decoration: none; display: none;">
+                Learn More →
+            </a>
+            <button onclick="closeFormatInfo()" class="btn btn-primary" style="flex: 1;">Close</button>
+        </div>
+    </div>
+</div>
 {% endif %}
 
 {% endblock %}
