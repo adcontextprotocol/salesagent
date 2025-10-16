@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 adapters_bp = Blueprint("adapters", __name__)
 
 
-@adapters_bp.route("/adapters/mock/config/<product_id>", methods=["GET", "POST"])
+@adapters_bp.route("/adapters/mock/config/<tenant_id>/<product_id>", methods=["GET", "POST"])
 @require_tenant_access()
 def mock_config(tenant_id, product_id, **kwargs):
     """Configure mock adapter settings for a product."""
