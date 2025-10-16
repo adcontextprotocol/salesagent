@@ -303,7 +303,7 @@ class JSONValidatorMixin:
 # Utility functions for JSON handling
 
 
-def ensure_json_array(value: str | list | None, default: list = None) -> list:
+def ensure_json_array(value: str | list | None, default: list | None = None) -> list:
     """
     Ensure a value is a JSON array (list).
 
@@ -329,7 +329,7 @@ def ensure_json_array(value: str | list | None, default: list = None) -> list:
     return value
 
 
-def ensure_json_object(value: str | dict | None, default: dict = None) -> dict:
+def ensure_json_object(value: str | dict | None, default: dict | None = None) -> dict:
     """
     Ensure a value is a JSON object (dict).
 
