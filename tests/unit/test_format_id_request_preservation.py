@@ -2,20 +2,21 @@
 
 
 def test_format_ids_from_request_preserved():
-    """Test that buyer-specified format_ids override product formats."""
+    """Test that buyer-specified format_ids override product formats when buyer picks subset."""
 
-    # Create mock product with leaderboard format
+    # Create mock product with MULTIPLE formats
     class MockProduct:
         def __init__(self):
-            self.product_id = "display_leaderboard_cpm"
-            self.formats = ["leaderboard_728x90"]  # Product has leaderboard
+            self.product_id = "display_multi_cpm"
+            self.name = "Display Multi Format CPM"
+            self.formats = ["leaderboard_728x90", "display_300x250"]  # Supports both
 
     product = MockProduct()
 
-    # Simulate request package with display_300x250 format
+    # Simulate request package choosing display_300x250 (buyer's preference)
     class MockPackage:
         def __init__(self):
-            self.product_id = "display_leaderboard_cpm"
+            self.product_id = "display_multi_cpm"
             self.format_ids = [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250"}]
 
     req_package = MockPackage()
@@ -26,21 +27,30 @@ def test_format_ids_from_request_preserved():
     # Find matching package
     if req_package.product_id == product.product_id:
         # Extract format IDs from FormatId objects
+        requested_format_ids = []
         for fmt in req_package.format_ids:
             if isinstance(fmt, dict):
-                format_ids_to_use.append(fmt.get("id"))
+                requested_format_ids.append(fmt.get("id"))
             elif hasattr(fmt, "id"):
-                format_ids_to_use.append(fmt.id)
+                requested_format_ids.append(fmt.id)
             elif isinstance(fmt, str):
-                format_ids_to_use.append(fmt)
+                requested_format_ids.append(fmt)
+
+        # Validate that requested formats are supported by product
+        product_format_ids = set(product.formats) if product.formats else set()
+        unsupported_formats = [f for f in requested_format_ids if f not in product_format_ids]
+
+        # Should pass validation since display_300x250 is supported
+        assert not unsupported_formats, f"Unexpected unsupported formats: {unsupported_formats}"
+        format_ids_to_use = requested_format_ids
 
     # Fallback to product's formats if no request format_ids
     if not format_ids_to_use:
         format_ids_to_use = [product.formats[0]] if product.formats else []
 
-    # Verify that request format_ids take precedence
+    # Verify that request format_ids take precedence (buyer chose display_300x250, not leaderboard)
     assert format_ids_to_use == ["display_300x250"], f"Expected ['display_300x250'], got {format_ids_to_use}"
-    assert "leaderboard_728x90" not in format_ids_to_use, "Product format should not override request format"
+    assert "leaderboard_728x90" not in format_ids_to_use, "Buyer chose display_300x250, should not include leaderboard"
 
 
 def test_format_ids_fallback_to_product():
@@ -92,18 +102,19 @@ def test_format_ids_handles_format_id_objects():
             self.agent_url = agent_url
             self.id = format_id
 
-    # Create mock product
+    # Create mock product with multiple formats
     class MockProduct:
         def __init__(self):
-            self.product_id = "display_leaderboard_cpm"
-            self.formats = ["leaderboard_728x90"]
+            self.product_id = "display_multi_cpm"
+            self.name = "Display Multi Format CPM"
+            self.formats = ["leaderboard_728x90", "display_300x250"]
 
     product = MockProduct()
 
     # Simulate request package with FormatId objects
     class MockPackage:
         def __init__(self):
-            self.product_id = "display_leaderboard_cpm"
+            self.product_id = "display_multi_cpm"
             self.format_ids = [FormatId("https://creatives.adcontextprotocol.org", "display_300x250")]
 
     req_package = MockPackage()
@@ -114,13 +125,22 @@ def test_format_ids_handles_format_id_objects():
     # Find matching package
     if req_package.product_id == product.product_id:
         # Extract format IDs from FormatId objects
+        requested_format_ids = []
         for fmt in req_package.format_ids:
             if isinstance(fmt, dict):
-                format_ids_to_use.append(fmt.get("id"))
+                requested_format_ids.append(fmt.get("id"))
             elif hasattr(fmt, "id"):
-                format_ids_to_use.append(fmt.id)
+                requested_format_ids.append(fmt.id)
             elif isinstance(fmt, str):
-                format_ids_to_use.append(fmt)
+                requested_format_ids.append(fmt)
+
+        # Validate that requested formats are supported by product
+        product_format_ids = set(product.formats) if product.formats else set()
+        unsupported_formats = [f for f in requested_format_ids if f not in product_format_ids]
+
+        # Should pass validation since display_300x250 is supported
+        assert not unsupported_formats, f"Unexpected unsupported formats: {unsupported_formats}"
+        format_ids_to_use = requested_format_ids
 
     # Fallback to product's formats if no request format_ids
     if not format_ids_to_use:
