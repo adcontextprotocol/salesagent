@@ -9,6 +9,8 @@ This addresses the gap identified in issue #161 where a 'Product' object has no 
 error reached production because tests over-mocked the database layer.
 """
 
+from typing import Any
+
 import pytest
 from sqlalchemy import delete
 
