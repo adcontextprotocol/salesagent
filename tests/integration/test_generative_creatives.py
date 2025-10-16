@@ -4,6 +4,8 @@ Tests the flow where sync_creatives detects generative formats (those with outpu
 and calls build_creative instead of preview_creative, using the Gemini API key.
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from tests.utils.database_helpers import create_tenant_with_timestamps

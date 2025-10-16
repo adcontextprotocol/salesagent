@@ -2,6 +2,7 @@
 """Test script for simplified context persistence."""
 
 import pytest
+from rich.console import Console
 
 from src.core.context_manager import ContextManager
 

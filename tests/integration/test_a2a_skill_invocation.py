@@ -6,6 +6,8 @@ Tests both natural language and explicit skill invocation patterns
 to ensure our A2A server properly handles the evolving AdCP spec.
 """
 
+import logging
+
 import pytest
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler

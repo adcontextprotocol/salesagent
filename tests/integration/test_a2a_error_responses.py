@@ -17,6 +17,7 @@ from python_a2a import Message
 from python_a2a.server.http import MessageSendParams
 from sqlalchemy import delete
 
+from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from src.core.database.database_session import get_db_session
 from src.core.database.models import (
     CurrencyLimit,
