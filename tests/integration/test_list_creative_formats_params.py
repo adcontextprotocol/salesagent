@@ -60,7 +60,7 @@ def test_filtering_by_type(integration_db, sample_tenant):
     """Test that type filter works correctly."""
 #     # Create real ToolContext
 #     context = ToolContext(
-        pass  # Skipped test - ToolContext not available
+    pass  # Skipped test - ToolContext not available
 
     # Mock tenant resolution to return our test tenant
     with patch("src.core.main.get_current_tenant", return_value=sample_tenant):
@@ -86,7 +86,7 @@ def test_filtering_by_standard_only(integration_db, sample_tenant):
     """Test that standard_only filter works correctly."""
 #     # Create real ToolContext
 #     context = ToolContext(
-        pass  # Skipped test - ToolContext not available
+    pass  # Skipped test - ToolContext not available
 
     # Mock tenant resolution to return our test tenant
     with patch("src.core.main.get_current_tenant", return_value=sample_tenant):
@@ -113,7 +113,7 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
 
 #     # Create real ToolContext
 #     context = ToolContext(
-        pass  # Skipped test - ToolContext not available
+    pass  # Skipped test - ToolContext not available
 
     # Mock tenant resolution to return our test tenant
     with patch("src.core.main.get_current_tenant", return_value=sample_tenant):
@@ -145,7 +145,7 @@ def test_filtering_combined(integration_db, sample_tenant):
     """Test that multiple filters work together."""
 #     # Create real ToolContext
 #     context = ToolContext(
-        pass  # Skipped test - ToolContext not available
+    pass  # Skipped test - ToolContext not available
 
     # Mock tenant resolution to return our test tenant
     with patch("src.core.main.get_current_tenant", return_value=sample_tenant):
