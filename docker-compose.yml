@@ -15,6 +15,19 @@ services:
       timeout: 5s
       retries: 5
 
+  creative-agent:
+    image: ghcr.io/adcontextprotocol/creative-agent:latest
+    environment:
+      PORT: 8080
+      # Add any required environment variables for the creative agent
+    ports:
+      - "${CREATIVE_AGENT_PORT:-8095}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   adcp-server:
     build: .
     environment:
