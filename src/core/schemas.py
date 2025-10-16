@@ -915,25 +915,20 @@ class ProductFilters(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def upgrade_legacy_format_ids(cls, values: dict) -> dict:
-        """Upgrade legacy string format_ids to FormatId objects for backward compatibility."""
+        """Convert dict format_ids to FormatId objects (AdCP v2.4 compliance)."""
         if not isinstance(values, dict):
             return values
 
         format_ids = values.get("format_ids")
         if format_ids and isinstance(format_ids, list):
-            from src.core.format_cache import upgrade_legacy_format_id
-
-            # Upgrade any string format_ids to FormatId objects
+            # Convert any dict format_ids to FormatId objects
             upgraded = []
             for fmt_id in format_ids:
-                if isinstance(fmt_id, str):
-                    # Legacy string format_id - upgrade to FormatId object
-                    upgraded.append(upgrade_legacy_format_id(fmt_id))
-                elif isinstance(fmt_id, dict) and "agent_url" in fmt_id and "id" in fmt_id:
+                if isinstance(fmt_id, dict) and "agent_url" in fmt_id and "id" in fmt_id:
                     # Dict with FormatId structure - convert to FormatId object
                     upgraded.append(FormatId(**fmt_id))
                 else:
-                    # Already a FormatId object or other type - pass through
+                    # Already a FormatId object - pass through
                     upgraded.append(fmt_id)
             values["format_ids"] = upgraded
 
@@ -1110,25 +1105,20 @@ class ListCreativeFormatsRequest(AdCPBaseModel):
     @model_validator(mode="before")
     @classmethod
     def upgrade_legacy_format_ids(cls, values: dict) -> dict:
-        """Upgrade legacy string format_ids to FormatId objects for backward compatibility."""
+        """Convert dict format_ids to FormatId objects (AdCP v2.4 compliance)."""
         if not isinstance(values, dict):
             return values
 
         format_ids = values.get("format_ids")
         if format_ids and isinstance(format_ids, list):
-            from src.core.format_cache import upgrade_legacy_format_id
-
-            # Upgrade any string format_ids to FormatId objects
+            # Convert any dict format_ids to FormatId objects
             upgraded = []
             for fmt_id in format_ids:
-                if isinstance(fmt_id, str):
-                    # Legacy string format_id - upgrade to FormatId object
-                    upgraded.append(upgrade_legacy_format_id(fmt_id))
-                elif isinstance(fmt_id, dict) and "agent_url" in fmt_id and "id" in fmt_id:
+                if isinstance(fmt_id, dict) and "agent_url" in fmt_id and "id" in fmt_id:
                     # Dict with FormatId structure - convert to FormatId object
                     upgraded.append(FormatId(**fmt_id))
                 else:
-                    # Already a FormatId object or other type - pass through
+                    # Already a FormatId object - pass through
                     upgraded.append(fmt_id)
             values["format_ids"] = upgraded
 
@@ -2034,10 +2024,10 @@ class Package(BaseModel):
     creative_assignments: list[dict[str, Any]] | None = Field(
         None, description="Creative assets assigned to this package"
     )
-    # AdCP v2.4 request field (input) - array of FormatId objects (or legacy strings)
-    format_ids: list[FormatId | str] | None = Field(
+    # AdCP v2.4 request field (input) - array of FormatId objects
+    format_ids: list[FormatId] | None = Field(
         None,
-        description="Format IDs for this package (array of FormatId objects with agent_url and id, or legacy string format_ids)",
+        description="Format IDs for this package (array of FormatId objects with agent_url and id per AdCP v2.4)",
     )
 
     # AdCP v2.4 response field (output) - array of FormatId objects
@@ -2068,25 +2058,20 @@ class Package(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def upgrade_legacy_format_ids(cls, values: dict) -> dict:
-        """Upgrade legacy string format_ids to FormatId objects for backward compatibility."""
+        """Convert dict format_ids to FormatId objects (AdCP v2.4 compliance)."""
         if not isinstance(values, dict):
             return values
 
         format_ids = values.get("format_ids")
         if format_ids and isinstance(format_ids, list):
-            from src.core.format_cache import upgrade_legacy_format_id
-
-            # Upgrade any string format_ids to FormatId objects
+            # Convert any dict format_ids to FormatId objects
             upgraded = []
             for fmt_id in format_ids:
-                if isinstance(fmt_id, str):
-                    # Legacy string format_id - upgrade to FormatId object
-                    upgraded.append(upgrade_legacy_format_id(fmt_id))
-                elif isinstance(fmt_id, dict) and "agent_url" in fmt_id and "id" in fmt_id:
+                if isinstance(fmt_id, dict) and "agent_url" in fmt_id and "id" in fmt_id:
                     # Dict with FormatId structure - convert to FormatId object
                     upgraded.append(FormatId(**fmt_id))
                 else:
-                    # Already a FormatId object or other type - pass through
+                    # Already a FormatId object - pass through
                     upgraded.append(fmt_id)
             values["format_ids"] = upgraded
 
