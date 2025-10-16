@@ -9,7 +9,7 @@ import pytest
 from tests.fixtures import TenantFactory
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 class TestAdminUIPages:

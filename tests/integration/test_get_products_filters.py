@@ -10,7 +10,7 @@ from src.core.database.database_session import get_db_session
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires_db]
 
 
 @pytest.fixture
