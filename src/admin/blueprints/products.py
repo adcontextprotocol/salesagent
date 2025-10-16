@@ -302,8 +302,19 @@ def list_products(tenant_id):
 
                 for fmt in formats_data:
                     if isinstance(fmt, dict):
-                        format_id = fmt.get("format_id") or fmt.get("id")
+                        # Extract format_id - could be string or nested dict (FormatId object)
+                        format_id_raw = fmt.get("format_id") or fmt.get("id")
                         agent_url = fmt.get("agent_url")
+
+                        # Handle FormatId object (nested dict with agent_url and id)
+                        if isinstance(format_id_raw, dict):
+                            format_id = format_id_raw.get("id")
+                            # Use agent_url from FormatId if not at top level
+                            if not agent_url:
+                                agent_url = format_id_raw.get("agent_url")
+                        else:
+                            format_id = format_id_raw
+
                         logger.info(f"[DEBUG] Processing format dict: format_id={format_id}, agent_url={agent_url}")
                         if format_id and agent_url:
                             try:
