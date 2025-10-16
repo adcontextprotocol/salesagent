@@ -1474,7 +1474,7 @@ class CreativeAdaptation(BaseModel):
     """Suggested adaptation or variant of a creative."""
 
     adaptation_id: str
-    format_id: str
+    format_id: FormatId
     name: str
     description: str
     preview_url: str | None = None

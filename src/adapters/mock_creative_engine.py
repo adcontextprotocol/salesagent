@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from src.adapters.creative_engine import CreativeEngineAdapter
-from src.core.schemas import Creative, CreativeAdaptation, CreativeStatus
+from src.core.schemas import Creative, CreativeAdaptation, CreativeStatus, FormatId
 
 
 class MockCreativeEngine(CreativeEngineAdapter):
@@ -46,7 +46,10 @@ class MockCreativeEngine(CreativeEngineAdapter):
                     suggested_adaptations.append(
                         CreativeAdaptation(
                             adaptation_id=f"adapt_{creative.creative_id}_vertical",
-                            format_id="video_vertical_9x16",
+                            format_id=FormatId(
+                                agent_url="https://creative.adcontextprotocol.org",
+                                id="video_vertical_9x16",
+                            ),
                             name="Mobile Vertical Version",
                             description="9:16 vertical version optimized for mobile feeds",
                             changes_summary=[
@@ -63,7 +66,10 @@ class MockCreativeEngine(CreativeEngineAdapter):
                     suggested_adaptations.append(
                         CreativeAdaptation(
                             adaptation_id=f"adapt_{creative.creative_id}_6s",
-                            format_id="video_6s_bumper",
+                            format_id=FormatId(
+                                agent_url="https://creative.adcontextprotocol.org",
+                                id="video_6s_bumper",
+                            ),
                             name="6-Second Bumper Version",
                             description="Short-form version for bumper inventory",
                             changes_summary=[
