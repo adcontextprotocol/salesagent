@@ -569,9 +569,7 @@ class AdapterConfig(Base):
     # Google Ad Manager
     gam_network_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     gam_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    _gam_service_account_json: Mapped[str | None] = mapped_column(
-        "gam_service_account_json", Text, nullable=True
-    )
+    _gam_service_account_json: Mapped[str | None] = mapped_column("gam_service_account_json", Text, nullable=True)
     gam_auth_method: Mapped[str] = mapped_column(String(50), nullable=False, server_default="oauth")
     gam_trafficker_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     gam_manual_approval_required: Mapped[bool] = mapped_column(Boolean, default=False)

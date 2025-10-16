@@ -4585,7 +4585,9 @@ async def _create_media_buy_impl(
                             if isinstance(fmt, dict):
                                 # Database JSONB: uses "id" per AdCP spec
                                 agent_url = fmt.get("agent_url")
-                                format_id = fmt.get("id") or fmt.get("format_id")  # "id" is AdCP spec, "format_id" is legacy
+                                format_id = fmt.get("id") or fmt.get(
+                                    "format_id"
+                                )  # "id" is AdCP spec, "format_id" is legacy
                             elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
                                 # Pydantic object: uses "format_id" attribute (serializes to "id" in JSON)
                                 agent_url = fmt.agent_url
@@ -4606,7 +4608,9 @@ async def _create_media_buy_impl(
                         if isinstance(fmt, dict):
                             # JSON from request: uses "id" per AdCP spec
                             agent_url = fmt.get("agent_url")
-                            format_id = fmt.get("id") or fmt.get("format_id")  # "id" is AdCP spec, "format_id" is legacy
+                            format_id = fmt.get("id") or fmt.get(
+                                "format_id"
+                            )  # "id" is AdCP spec, "format_id" is legacy
                         elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
                             # Pydantic object: uses "format_id" attribute
                             agent_url = fmt.agent_url
@@ -4619,7 +4623,9 @@ async def _create_media_buy_impl(
                             requested_format_keys.add((agent_url, format_id))
 
                     unsupported_formats = [
-                        f"{url}/{fid}" if url else fid for url, fid in requested_format_keys if (url, fid) not in product_format_keys
+                        f"{url}/{fid}" if url else fid
+                        for url, fid in requested_format_keys
+                        if (url, fid) not in product_format_keys
                     ]
 
                     if unsupported_formats:
