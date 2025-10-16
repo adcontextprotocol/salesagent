@@ -311,6 +311,19 @@ def list_products(tenant_id):
                                 resolved_formats.append(
                                     {"format_id": format_id, "agent_url": agent_url, "name": format_id}
                                 )
+                    elif isinstance(fmt, str):
+                        # Legacy: plain string format_id (no agent_url)
+                        # Try to resolve from default creative agent
+                        default_agent_url = "https://creative.adcontextprotocol.org"
+                        try:
+                            format_obj = get_format(fmt, default_agent_url, tenant_id)
+                            resolved_formats.append(
+                                {"format_id": fmt, "agent_url": default_agent_url, "name": format_obj.name}
+                            )
+                        except Exception as e:
+                            logger.warning(f"Could not resolve legacy format {fmt}: {e}")
+                            # Fallback to format_id as name
+                            resolved_formats.append({"format_id": fmt, "agent_url": default_agent_url, "name": fmt})
 
                 product_dict = {
                     "product_id": product.product_id,
@@ -379,7 +392,7 @@ def add_product(tenant_id):
                 return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
             with get_db_session() as db_session:
-                # Parse formats - expecting JSON string with FormatReference objects
+                # Parse formats - expecting JSON string with FormatReference objects or checkbox values
                 formats_json = form_data.get("formats", "[]")
                 try:
                     formats = json.loads(formats_json) if formats_json else []
@@ -387,10 +400,16 @@ def add_product(tenant_id):
                     if not isinstance(formats, list):
                         formats = []
                 except json.JSONDecodeError:
-                    # Fallback to legacy format (list of strings)
-                    formats = request.form.getlist("formats")
-                    if not formats:
-                        formats = []
+                    # Fallback to checkbox format: "agent_url|format_id"
+                    formats_raw = request.form.getlist("formats")
+                    formats = []
+                    for fmt_str in formats_raw:
+                        if "|" in fmt_str:
+                            agent_url, format_id = fmt_str.split("|", 1)
+                            formats.append({"agent_url": agent_url, "id": format_id})
+                        else:
+                            # Legacy fallback: plain format_id string (backward compatibility)
+                            formats.append(fmt_str)
 
                 # Parse countries - from multi-select
                 countries_list = request.form.getlist("countries")
@@ -736,9 +755,18 @@ def edit_product(tenant_id, product_id):
                 product.name = form_data.get("name", product.name)
                 product.description = form_data.get("description", product.description)
 
-                # Parse formats - expecting multiple checkbox values
-                formats = request.form.getlist("formats")
-                if formats:
+                # Parse formats - expecting multiple checkbox values in format "agent_url|format_id"
+                formats_raw = request.form.getlist("formats")
+                if formats_raw:
+                    # Convert from "agent_url|format_id" to FormatId dict structure
+                    formats = []
+                    for fmt_str in formats_raw:
+                        if "|" in fmt_str:
+                            agent_url, format_id = fmt_str.split("|", 1)
+                            formats.append({"agent_url": agent_url, "id": format_id})
+                        else:
+                            # Legacy fallback: plain format_id string (backward compatibility)
+                            formats.append(fmt_str)
                     product.formats = formats
 
                 # Parse countries - from multi-select
@@ -946,10 +974,19 @@ def edit_product(tenant_id, product_id):
                 )
                 inventory_synced = inventory_count > 0
 
+                # Build set of selected format IDs for template checking
+                selected_format_ids = set()
+                for fmt in product_dict["formats"]:
+                    if isinstance(fmt, dict):
+                        selected_format_ids.add(fmt.get("id") or fmt.get("format_id"))
+                    elif isinstance(fmt, str):
+                        selected_format_ids.add(fmt)
+
                 return render_template(
                     "add_product_gam.html",
                     tenant_id=tenant_id,
                     product=product_dict,
+                    selected_format_ids=selected_format_ids,
                     inventory_synced=inventory_synced,
                     formats=get_creative_formats(tenant_id=tenant_id),
                     currencies=currencies,
