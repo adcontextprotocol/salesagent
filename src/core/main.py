@@ -233,19 +233,31 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                     # Tenant is disabled or deleted - fail securely
                     return None
 
-            # Get the tenant for this principal and set it as current context
-            stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
-            tenant = session.scalars(stmt).first()
-            if tenant:
-                from src.core.utils.tenant_utils import serialize_tenant_to_dict
+            # Only set tenant context if we didn't have one specified (global lookup case)
+            # If tenant_id was provided, context was already set by the caller
+            if not tenant_id:
+                # Get the tenant for this principal and set it as current context
+                stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
+                tenant = session.scalars(stmt).first()
+                if tenant:
+                    from src.core.utils.tenant_utils import serialize_tenant_to_dict
 
-                tenant_dict = serialize_tenant_to_dict(tenant)
-                set_current_tenant(tenant_dict)
-                console.print(f"[bold green]Set tenant context to '{tenant.tenant_id}'[/bold green]")
+                    tenant_dict = serialize_tenant_to_dict(tenant)
+                    set_current_tenant(tenant_dict)
+                    console.print(
+                        f"[bold green]Set tenant context to '{tenant.tenant_id}' (from principal)[/bold green]"
+                    )
 
-                # Check if this is the admin token for the tenant
-                if token == tenant.admin_token:
-                    return f"{tenant.tenant_id}_admin"
+                    # Check if this is the admin token for the tenant
+                    if token == tenant.admin_token:
+                        return f"{tenant.tenant_id}_admin"
+            else:
+                # Tenant was already set by caller - just check admin token
+                stmt = select(Tenant).filter_by(tenant_id=tenant_id, is_active=True)
+                tenant = session.scalars(stmt).first()
+                if tenant and token == tenant.admin_token:
+                    console.print(f"[green]Token is admin token for tenant '{tenant_id}'[/green]")
+                    return f"{tenant_id}_admin"
 
             return principal.principal_id
 
