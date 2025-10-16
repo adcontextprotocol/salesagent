@@ -2,7 +2,7 @@
 
 ## Overview
 
-This codebase includes two types of creative validation tests:
+This codebase includes three types of creative validation tests:
 
 1. **Mocked Tests** (`test_creative_validation_failures.py`)
    - Mock the creative agent responses
@@ -15,6 +15,12 @@ This codebase includes two types of creative validation tests:
    - Test full integration path
    - Require creative agent service running
    - More comprehensive, slower
+
+3. **Manual Tests** (`tests/manual/`)
+   - Direct testing of creative agent MCP endpoints
+   - Bypasses integration test schema issues
+   - Verifies creative agent works correctly
+   - Use when troubleshooting or verifying creative agent behavior
 
 ## Setup
 
@@ -180,6 +186,43 @@ docker pull ghcr.io/adcontextprotocol/creative-agent:latest
 docker-compose down creative-agent
 docker-compose up -d creative-agent
 ```
+
+## Manual Testing (Recommended for Troubleshooting)
+
+When you need to verify the creative agent works correctly, use the manual tests:
+
+### Quick Test (curl-based)
+```bash
+# Start creative agent
+docker-compose up -d creative-agent
+
+# Run curl-based test
+./tests/manual/test_creative_agent_curl.sh
+```
+
+This tests:
+- Health endpoint
+- MCP protocol communication
+- list_formats tool
+- preview_creative tool
+
+See `tests/manual/README.md` for details and expected output.
+
+### Comprehensive Test (Python-based)
+```bash
+# Start creative agent
+docker-compose up -d creative-agent
+
+# Run Python test
+uv run python tests/manual/test_creative_agent_mcp.py
+```
+
+This tests:
+- All standard IAB formats are present
+- Preview generation works
+- Error handling for invalid formats
+
+See `tests/manual/EXPECTED_OUTPUT.md` for what success looks like.
 
 ## CI/CD Integration
 
