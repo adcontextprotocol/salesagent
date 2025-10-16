@@ -697,30 +697,32 @@ class FormatPerformanceMetrics(Base):
 
     __tablename__ = "format_performance_metrics"
 
-    id = Column(Integer, primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    country_code = Column(String(3), nullable=True)  # ISO-3166-1 alpha-3, NULL = all countries
-    creative_size = Column(String(20), nullable=False)  # "300x250", "728x90", "1920x1080", etc.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    country_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    creative_size: Mapped[str] = mapped_column(String(20), nullable=False)
 
     # Time period for these metrics
-    period_start = Column(Date, nullable=False)
-    period_end = Column(Date, nullable=False)
+    period_start: Mapped[Date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[Date] = mapped_column(Date, nullable=False)
 
     # Volume metrics from GAM reporting (COUNTRY_CODE + CREATIVE_SIZE dimensions)
-    total_impressions = Column(BigInteger, nullable=False, default=0)
-    total_clicks = Column(BigInteger, nullable=False, default=0)
-    total_revenue_micros = Column(BigInteger, nullable=False, default=0)
+    total_impressions: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    total_clicks: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    total_revenue_micros: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     # Calculated pricing metrics (in USD)
     average_cpm: Mapped[Decimal | None] = mapped_column(DECIMAL(10, 2), nullable=True)
     median_cpm: Mapped[Decimal | None] = mapped_column(DECIMAL(10, 2), nullable=True)
-    p75_cpm: Mapped[Decimal | None] = mapped_column(DECIMAL(10, 2), nullable=True)  # 75th percentile
-    p90_cpm: Mapped[Decimal | None] = mapped_column(DECIMAL(10, 2), nullable=True)  # 90th percentile
+    p75_cpm: Mapped[Decimal | None] = mapped_column(DECIMAL(10, 2), nullable=True)
+    p90_cpm: Mapped[Decimal | None] = mapped_column(DECIMAL(10, 2), nullable=True)
 
     # Metadata
-    line_item_count = Column(Integer, nullable=False, default=0)  # Number of line items in aggregate
-    last_updated = Column(DateTime, nullable=False, default=func.now())
-    created_at = Column(DateTime, nullable=False, default=func.now())
+    line_item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_updated: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now())
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now())
 
     # Relationships
     tenant = relationship("Tenant")
@@ -743,36 +745,38 @@ class FormatPerformanceMetrics(Base):
 class GAMOrder(Base):
     __tablename__ = "gam_orders"
 
-    id = Column(Integer, primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    order_id = Column(String(50), nullable=False)  # GAM Order ID
-    name = Column(String(200), nullable=False)
-    advertiser_id = Column(String(50), nullable=True)
-    advertiser_name = Column(String(255), nullable=True)
-    agency_id = Column(String(50), nullable=True)
-    agency_name = Column(String(255), nullable=True)
-    trafficker_id = Column(String(50), nullable=True)
-    trafficker_name = Column(String(255), nullable=True)
-    salesperson_id = Column(String(50), nullable=True)
-    salesperson_name = Column(String(255), nullable=True)
-    status = Column(String(20), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, CANCELED, DELETED
-    start_date = Column(DateTime, nullable=True)
-    end_date = Column(DateTime, nullable=True)
-    unlimited_end_date = Column(Boolean, nullable=False, default=False)
-    total_budget = Column(Float, nullable=True)
-    currency_code = Column(String(10), nullable=True)
-    external_order_id = Column(String(100), nullable=True)  # PO number
-    po_number = Column(String(100), nullable=True)
-    notes = Column(Text, nullable=True)
-    last_modified_date = Column(DateTime, nullable=True)
-    is_programmatic = Column(Boolean, nullable=False, default=False)
-    applied_labels = Column(JSONType, nullable=True)  # List of label IDs
-    effective_applied_labels = Column(JSONType, nullable=True)  # List of label IDs
-    custom_field_values = Column(JSONType, nullable=True)
-    order_metadata = Column(JSONType, nullable=True)  # Additional GAM fields
-    last_synced = Column(DateTime, nullable=False, default=func.now())
-    created_at = Column(DateTime, nullable=False, default=func.now())
-    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    order_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    advertiser_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    advertiser_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    agency_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    agency_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    trafficker_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    trafficker_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    salesperson_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    salesperson_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    start_date: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    end_date: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    unlimited_end_date: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    total_budget: Mapped[float | None] = mapped_column(Float, nullable=True)
+    currency_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    external_order_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    po_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_modified_date: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    is_programmatic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    applied_labels: Mapped[list | None] = mapped_column(JSONType, nullable=True)
+    effective_applied_labels: Mapped[list | None] = mapped_column(JSONType, nullable=True)
+    custom_field_values: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    order_metadata: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    last_synced: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now())
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     # Relationships
     tenant = relationship("Tenant")
@@ -795,59 +799,59 @@ class GAMOrder(Base):
 class GAMLineItem(Base):
     __tablename__ = "gam_line_items"
 
-    id = Column(Integer, primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    line_item_id = Column(String(50), nullable=False)  # GAM Line Item ID
-    order_id = Column(String(50), nullable=False)  # GAM Order ID
-    name = Column(String(200), nullable=False)
-    status = Column(String(20), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, ARCHIVED, CANCELED
-    line_item_type = Column(String(30), nullable=False)  # STANDARD, SPONSORSHIP, NETWORK, HOUSE, etc.
-    priority = Column(Integer, nullable=True)
-    start_date = Column(DateTime, nullable=True)
-    end_date = Column(DateTime, nullable=True)
-    unlimited_end_date = Column(Boolean, nullable=False, default=False)
-    auto_extension_days = Column(Integer, nullable=True)
-    cost_type = Column(String(20), nullable=True)  # CPM, CPC, CPD, CPA
-    cost_per_unit = Column(Float, nullable=True)
-    discount_type = Column(String(20), nullable=True)  # PERCENTAGE, ABSOLUTE_VALUE
-    discount = Column(Float, nullable=True)
-    contracted_units_bought = Column(BigInteger, nullable=True)
-    delivery_rate_type = Column(String(30), nullable=True)  # EVENLY, FRONTLOADED, AS_FAST_AS_POSSIBLE
-    goal_type = Column(String(20), nullable=True)  # LIFETIME, DAILY, NONE
-    primary_goal_type = Column(String(20), nullable=True)  # IMPRESSIONS, CLICKS, etc.
-    primary_goal_units = Column(BigInteger, nullable=True)
-    impression_limit = Column(BigInteger, nullable=True)
-    click_limit = Column(BigInteger, nullable=True)
-    target_platform = Column(String(20), nullable=True)  # WEB, MOBILE, ANY
-    environment_type = Column(String(20), nullable=True)  # BROWSER, VIDEO_PLAYER
-    allow_overbook = Column(Boolean, nullable=False, default=False)
-    skip_inventory_check = Column(Boolean, nullable=False, default=False)
-    reserve_at_creation = Column(Boolean, nullable=False, default=False)
-    stats_impressions = Column(BigInteger, nullable=True)
-    stats_clicks = Column(BigInteger, nullable=True)
-    stats_ctr = Column(Float, nullable=True)
-    stats_video_completions = Column(BigInteger, nullable=True)
-    stats_video_starts = Column(BigInteger, nullable=True)
-    stats_viewable_impressions = Column(BigInteger, nullable=True)
-    delivery_indicator_type = Column(
-        String(30), nullable=True
-    )  # UNDER_DELIVERY, EXPECTED_DELIVERY, OVER_DELIVERY, etc.
-    delivery_data = Column(JSONType, nullable=True)  # Detailed delivery stats
-    targeting = Column(JSONType, nullable=True)  # Full targeting criteria
-    creative_placeholders = Column(JSONType, nullable=True)  # Creative sizes and companions
-    frequency_caps = Column(JSONType, nullable=True)
-    applied_labels = Column(JSONType, nullable=True)
-    effective_applied_labels = Column(JSONType, nullable=True)
-    custom_field_values = Column(JSONType, nullable=True)
-    third_party_measurement_settings = Column(JSONType, nullable=True)
-    video_max_duration = Column(BigInteger, nullable=True)
-    line_item_metadata = Column(JSONType, nullable=True)  # Additional GAM fields
-    last_modified_date = Column(DateTime, nullable=True)
-    creation_date = Column(DateTime, nullable=True)
-    external_id = Column(String(255), nullable=True)
-    last_synced = Column(DateTime, nullable=False, default=func.now())
-    created_at = Column(DateTime, nullable=False, default=func.now())
-    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    line_item_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    order_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    line_item_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    priority: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    start_date: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    end_date: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    unlimited_end_date: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    auto_extension_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    cost_per_unit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    discount_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    discount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    contracted_units_bought: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    delivery_rate_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    goal_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    primary_goal_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    primary_goal_units: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    impression_limit: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    click_limit: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    target_platform: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    environment_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    allow_overbook: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    skip_inventory_check: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reserve_at_creation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    stats_impressions: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    stats_clicks: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    stats_ctr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stats_video_completions: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    stats_video_starts: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    stats_viewable_impressions: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    delivery_indicator_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    delivery_data: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    targeting: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    creative_placeholders: Mapped[list | None] = mapped_column(JSONType, nullable=True)
+    frequency_caps: Mapped[list | None] = mapped_column(JSONType, nullable=True)
+    applied_labels: Mapped[list | None] = mapped_column(JSONType, nullable=True)
+    effective_applied_labels: Mapped[list | None] = mapped_column(JSONType, nullable=True)
+    custom_field_values: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    third_party_measurement_settings: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    video_max_duration: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    line_item_metadata: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    last_modified_date: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    creation_date: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_synced: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now())
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     # Relationships
     tenant = relationship("Tenant")
@@ -872,17 +876,19 @@ class GAMLineItem(Base):
 class SyncJob(Base):
     __tablename__ = "sync_jobs"
 
-    sync_id = Column(String(50), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    adapter_type = Column(String(50), nullable=False)
-    sync_type = Column(String(20), nullable=False)  # inventory, targeting, full, orders
-    status = Column(String(20), nullable=False)  # pending, running, completed, failed
-    started_at = Column(DateTime, nullable=False)
-    completed_at = Column(DateTime)
-    summary = Column(Text)  # JSON with counts, details
-    error_message = Column(Text)
-    triggered_by = Column(String(50), nullable=False)  # user, cron, system
-    triggered_by_id = Column(String(255))  # user email or system identifier
+    sync_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    adapter_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    sync_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    started_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False)
+    completed_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    triggered_by: Mapped[str] = mapped_column(String(50), nullable=False)
+    triggered_by_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Relationships
     tenant = relationship("Tenant")
@@ -904,14 +910,16 @@ class Context(Base):
 
     __tablename__ = "contexts"
 
-    context_id = Column(String(100), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    principal_id = Column(String(50), nullable=False)
+    context_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    principal_id: Mapped[str] = mapped_column(String(50), nullable=False)
 
     # Simple conversation tracking
-    conversation_history = Column(JSONType, nullable=False, default=list)  # Clarifications and refinements only
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    last_activity_at = Column(DateTime, nullable=False, server_default=func.now())
+    conversation_history: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    last_activity_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     # Relationships
     tenant = relationship("Tenant")
