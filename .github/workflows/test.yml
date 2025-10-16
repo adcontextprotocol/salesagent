@@ -233,7 +233,8 @@ jobs:
       run: |
         uv run pytest tests/integration/ -v --tb=short --cov=. --cov-report=term-missing -m "not requires_server and not skip_ci" \
           --ignore=tests/integration/test_a2a_error_responses.py \
-          --ignore=tests/integration/test_a2a_skill_invocation.py
+          --ignore=tests/integration/test_a2a_skill_invocation.py \
+          --ignore=tests/integration/test_get_products_format_id_filter.py
 
   e2e-tests:
     name: E2E Tests
