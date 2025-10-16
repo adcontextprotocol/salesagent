@@ -1027,13 +1027,20 @@ def edit_product(tenant_id, product_id):
                         db_session.delete(po)
 
                 # Debug: Log final state before commit
+                from sqlalchemy import inspect as sa_inspect
+
                 logger.info(f"[DEBUG] About to commit product {product_id}")
                 logger.info(f"[DEBUG] product.formats = {product.formats}")
                 logger.info(f"[DEBUG] product.formats type = {type(product.formats)}")
                 logger.info(f"[DEBUG] SQLAlchemy dirty objects: {db_session.dirty}")
-                logger.info(
-                    f"[DEBUG] SQLAlchemy modified attributes: {[attr for obj in db_session.dirty for attr in db_session.get_attribute_history(obj, 'formats').added]}"
-                )
+
+                # Check if product is in dirty set and formats was modified
+                if product in db_session.dirty:
+                    insp = sa_inspect(product)
+                    if insp.attrs.formats.history.has_changes():
+                        logger.info("[DEBUG] formats attribute was modified")
+                    else:
+                        logger.info("[DEBUG] formats attribute NOT modified (flag_modified may be needed)")
 
                 db_session.commit()
 
