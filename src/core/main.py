@@ -2126,8 +2126,20 @@ def _sync_creatives_impl(
                                             f"url={bool(data.get('url'))}, "
                                             f"width={data.get('width')}, "
                                             f"height={data.get('height')}, "
-                                            f"variants={len(preview_result.get('previews', [])) if preview_result else 0}"
+                                            f"variants={len(preview_result.get('previews', []))}"
                                         )
+                                    else:
+                                        # Preview generation failed for update - creative is invalid
+                                        error_msg = f"Creative validation failed: preview_creative returned no previews for update of {existing_creative.creative_id}"
+                                        logger.error(f"[sync_creatives] {error_msg}")
+                                        failed_creatives.append(
+                                            {
+                                                "creative_id": existing_creative.creative_id,
+                                                "error": error_msg,
+                                                "format": creative_format,
+                                            }
+                                        )
+                                        continue  # Skip this creative update
 
                                 except Exception as validation_error:
                                     # Creative agent validation failed for update - log warning but continue
@@ -2389,13 +2401,25 @@ def _sync_creatives_impl(
                                             if dimensions.get("duration"):
                                                 data["duration"] = dimensions["duration"]
 
-                                    logger.info(
-                                        f"[sync_creatives] Preview data populated: "
-                                        f"url={bool(data.get('url'))}, "
-                                        f"width={data.get('width')}, "
-                                        f"height={data.get('height')}, "
-                                        f"variants={len(preview_result.get('previews', [])) if preview_result else 0}"
-                                    )
+                                        logger.info(
+                                            f"[sync_creatives] Preview data populated: "
+                                            f"url={bool(data.get('url'))}, "
+                                            f"width={data.get('width')}, "
+                                            f"height={data.get('height')}, "
+                                            f"variants={len(preview_result.get('previews', []))}"
+                                        )
+                                    else:
+                                        # Preview generation failed - creative is invalid
+                                        error_msg = f"Creative validation failed: preview_creative returned no previews for {creative_id}"
+                                        logger.error(f"[sync_creatives] {error_msg}")
+                                        failed_creatives.append(
+                                            {
+                                                "creative_id": creative_id,
+                                                "error": error_msg,
+                                                "format": creative_format,
+                                            }
+                                        )
+                                        continue  # Skip this creative
 
                             except Exception as validation_error:
                                 # Creative agent validation failed - log warning but continue
