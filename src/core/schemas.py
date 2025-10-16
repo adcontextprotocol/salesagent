@@ -2576,7 +2576,7 @@ class MediaPackage(BaseModel):
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     cpm: float
     impressions: int
-    format_ids: list[str]
+    format_ids: list[FormatId | str]  # FormatId objects per AdCP spec, or strings for legacy compatibility
     targeting_overlay: Optional["Targeting"] = None
 
 
