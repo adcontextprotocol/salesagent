@@ -154,21 +154,30 @@ class Product(Base, JSONValidatorMixin):
     product_id = Column(String(100), primary_key=True)
     name = Column(String(200), nullable=False)
     description = Column(Text)
-    formats = Column(JSONType, nullable=False)  # JSONB in PostgreSQL
-    targeting_template = Column(JSONType, nullable=False)  # JSONB in PostgreSQL
+    # Type hint: list of FormatId dicts with {agent_url: str, id: str}
+    formats: Mapped[list[dict[str, str]]] = mapped_column(JSONType, nullable=False)
+    # Type hint: targeting template dict structure
+    targeting_template: Mapped[dict] = mapped_column(JSONType, nullable=False)
     delivery_type = Column(String(50), nullable=False)
 
     # Other fields
-    measurement = Column(JSONType, nullable=True)  # JSONB in PostgreSQL - AdCP measurement object
-    creative_policy = Column(JSONType, nullable=True)  # JSONB in PostgreSQL - AdCP creative policy object
-    price_guidance = Column(JSONType)  # JSONB in PostgreSQL - Legacy field
+    # Type hint: measurement dict (AdCP measurement object)
+    measurement: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    # Type hint: creative policy dict (AdCP creative policy object)
+    creative_policy: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    # Type hint: price guidance dict (legacy field)
+    price_guidance: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     is_custom = Column(Boolean, default=False)
     expires_at = Column(DateTime)
-    countries = Column(JSONType)  # JSONB in PostgreSQL
-    implementation_config = Column(JSONType)  # JSONB in PostgreSQL
+    # Type hint: countries list
+    countries: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
+    # Type hint: implementation config dict
+    implementation_config: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     # AdCP property authorization fields (at least one required per spec)
-    properties = Column(JSONType, nullable=True)  # JSONB - Full Property objects for validation
-    property_tags = Column(JSONType, nullable=True)  # JSONB - Tag strings array
+    # Type hint: list of Property dicts for validation
+    properties: Mapped[list[dict] | None] = mapped_column(JSONType, nullable=True)
+    # Type hint: list of tag strings
+    property_tags: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
     # Note: PR #79 fields (estimated_exposures, floor_cpm, recommended_cpm) are NOT stored in database
     # They are calculated dynamically from product_performance_metrics table
 
