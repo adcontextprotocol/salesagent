@@ -61,8 +61,11 @@ def list_formats():
 
             # Convert to dict for JSON serialization
             try:
+                # Handle FormatId object - extract string value
+                format_id_str = fmt.format_id.id if hasattr(fmt.format_id, "id") else str(fmt.format_id)
+
                 format_dict = {
-                    "format_id": fmt.format_id,
+                    "format_id": format_id_str,
                     "name": fmt.name,
                     "type": fmt.type,
                     "category": fmt.category,
@@ -79,7 +82,8 @@ def list_formats():
                 agents[agent_url].append(format_dict)
             except Exception as fmt_error:
                 logger.error(
-                    f"[/api/formats/list] Error serializing format {fmt.format_id}: {fmt_error}", exc_info=True
+                    f"[/api/formats/list] Error serializing format {getattr(fmt, 'format_id', 'unknown')}: {fmt_error}",
+                    exc_info=True,
                 )
                 # Continue with other formats
 
