@@ -107,7 +107,11 @@ def get_creative_formats(
             )
 
         format_dict = {
-            "id": fmt.format_id,  # Use "id" to match database schema (AdCP spec)
+            "id": (
+                fmt.format_id.id
+                if isinstance(fmt.format_id, object) and hasattr(fmt.format_id, "id")
+                else str(fmt.format_id)
+            ),  # Extract string ID from FormatId object
             "agent_url": fmt.agent_url,
             "name": fmt.name,
             "type": fmt.type,
@@ -552,13 +556,8 @@ def add_product(tenant_id):
                                 f"Use 'Browse Ad Units' to select valid ad units.",
                                 "error",
                             )
-                            return render_template(
-                                "add_product_gam.html",
-                                tenant_id=tenant_id,
-                                tenant_name=tenant.name,
-                                form_data=form_data,
-                                error="Invalid ad unit IDs",
-                            )
+                            # Redirect to form instead of re-rendering to avoid missing context
+                            return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
                         base_config["targeted_ad_unit_ids"] = id_list
 
@@ -787,6 +786,7 @@ def add_product(tenant_id):
         return render_template(
             "add_product_gam.html",
             tenant_id=tenant_id,
+            tenant_name=tenant.name,
             inventory_synced=inventory_synced,
             formats=get_creative_formats(tenant_id=tenant_id),
             authorized_properties=properties_list,
