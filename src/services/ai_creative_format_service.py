@@ -54,15 +54,6 @@ class AICreativeFormatService:
         # Using latest Gemini Flash model for better performance
         self.model = genai.GenerativeModel("gemini-flash-latest")
 
-        # Initialize foundational formats manager if available
-        try:
-            from foundational_formats import FoundationalFormatsManager
-
-            self.formats_manager = FoundationalFormatsManager()
-        except ImportError:
-            logger.info("Foundational formats not available")
-            self.formats_manager = None
-
         # Load parsing examples for few-shot learning
         self.parsing_examples = self._load_parsing_examples()
 
