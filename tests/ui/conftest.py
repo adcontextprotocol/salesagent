@@ -178,20 +178,6 @@ def page_validator():
 
 
 @pytest.fixture
-def mock_creative_parser():
-    """Mock creative parsing service."""
-    with patch("ai_creative_format_service.AICreativeFormatService") as mock_service:
-        instance = MagicMock()
-        instance.parse_creative.return_value = {
-            "format": "display_300x250",
-            "content": {"headline": "Test Ad", "body": "Test content", "image_url": "https://example.com/image.jpg"},
-        }
-        mock_service.return_value = instance
-
-        yield instance
-
-
-@pytest.fixture
 def mock_file_upload():
     """Mock file upload handling."""
 
