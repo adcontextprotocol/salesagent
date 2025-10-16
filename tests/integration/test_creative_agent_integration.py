@@ -13,6 +13,7 @@ these tests use the actual creative agent implementation.
 """
 
 import os
+from datetime import UTC, datetime
 
 import pytest
 
@@ -22,6 +23,7 @@ from src.core.database.models import Principal
 from src.core.main import _sync_creatives_impl
 from src.core.schemas import Creative as SchemaCreative
 from src.core.schemas import SyncCreativesRequest
+from src.core.tool_context import ToolContext
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # Get creative agent URL from environment (docker-compose sets this)
@@ -73,28 +75,40 @@ class TestCreativeAgentIntegration:
         """
         # Create sync request with valid creative data
         # NOTE: These values depend on what formats the creative agent supports
+        now = datetime.now(UTC)
         request = SyncCreativesRequest(
             creatives=[
                 SchemaCreative(
                     creative_id="test_valid_creative",
                     name="Test Display Creative",
                     content_uri="https://example.com/ad-300x250.jpg",
+                    principal_id="test_advertiser",
+                    created_at=now,
+                    updated_at=now,
                     agent_url=CREATIVE_AGENT_URL,
                     format_id="display_300x250",  # Standard IAB format
-                    assets={
-                        "image_url": "https://example.com/ad-300x250.jpg",
-                        "click_url": "https://example.com/click",
-                    },
+                    assets=[
+                        {
+                            "type": "image",
+                            "url": "https://example.com/ad-300x250.jpg",
+                        }
+                    ],
+                    click_url="https://example.com/click",
                 )
             ]
         )
 
         # Execute - this will call the REAL creative agent
+        # NOTE: context=None means it will look up tenant/principal from database using auth
+        # For integration tests, we just pass None and it will use test data
         response = _sync_creatives_impl(
-            tenant_id="creative_agent_test",
-            principal_id="test_advertiser",
-            creatives=request.creatives,
-            operation="create",
+            creatives=[c.model_dump() for c in request.creatives],
+            patch=request.patch,
+            assignments=request.assignments,
+            delete_missing=request.delete_missing,
+            dry_run=request.dry_run,
+            validation_mode=request.validation_mode,
+            context=None,  # Tests don't have auth context
         )
 
         # Verify: Creative accepted and preview URL populated
@@ -116,25 +130,33 @@ class TestCreativeAgentIntegration:
         This tests validation failures that come FROM the creative agent.
         """
         # Create sync request with INVALID creative data (missing required assets)
+        now = datetime.now(UTC)
         request = SyncCreativesRequest(
             creatives=[
                 SchemaCreative(
                     creative_id="test_invalid_creative",
                     name="Test Invalid Creative",
                     content_uri="https://example.com/placeholder.jpg",
+                    principal_id="test_advertiser",
+                    created_at=now,
+                    updated_at=now,
                     agent_url=CREATIVE_AGENT_URL,
                     format_id="display_300x250",
-                    assets={},  # Missing image_url - should fail validation
+                    assets=[],  # Empty assets - should fail validation
                 )
             ]
         )
 
         # Execute - creative agent should reject this
+        context = ToolContext(tenant_id="creative_agent_test", principal_id="test_advertiser")
         response = _sync_creatives_impl(
-            tenant_id="creative_agent_test",
-            principal_id="test_advertiser",
-            creatives=request.creatives,
-            operation="create",
+            creatives=[c.model_dump() for c in request.creatives],
+            patch=request.patch,
+            assignments=request.assignments,
+            delete_missing=request.delete_missing,
+            dry_run=request.dry_run,
+            validation_mode=request.validation_mode,
+            context=context,
         )
 
         # Verify: Creative rejected
@@ -158,25 +180,33 @@ class TestCreativeAgentIntegration:
 
         Then run this test to verify network error handling.
         """
+        now = datetime.now(UTC)
         request = SyncCreativesRequest(
             creatives=[
                 SchemaCreative(
                     creative_id="test_agent_down",
                     name="Test Agent Down Creative",
                     content_uri="https://example.com/ad.jpg",
+                    principal_id="test_advertiser",
+                    created_at=now,
+                    updated_at=now,
                     agent_url=CREATIVE_AGENT_URL,
                     format_id="display_300x250",
-                    assets={"image_url": "https://example.com/ad.jpg"},
+                    assets=[{"type": "image", "url": "https://example.com/ad.jpg"}],
                 )
             ]
         )
 
         # Execute - should fail with network error
+        context = ToolContext(tenant_id="creative_agent_test", principal_id="test_advertiser")
         response = _sync_creatives_impl(
-            tenant_id="creative_agent_test",
-            principal_id="test_advertiser",
-            creatives=request.creatives,
-            operation="create",
+            creatives=[c.model_dump() for c in request.creatives],
+            patch=request.patch,
+            assignments=request.assignments,
+            delete_missing=request.delete_missing,
+            dry_run=request.dry_run,
+            validation_mode=request.validation_mode,
+            context=context,
         )
 
         # Verify: Creative rejected with retry recommendation
