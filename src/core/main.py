@@ -124,7 +124,7 @@ Task = WorkflowStep
 
 # Temporary placeholder classes for missing schemas
 # TODO: These should be properly defined in schemas.py
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 
 class ApproveAdaptationRequest(BaseModel):
@@ -170,6 +170,59 @@ def safe_parse_json_field(field_value, field_name="field", default=None):
     else:
         logger.warning(f"Unexpected type for {field_name}: {type(field_value)}")
         return default if default is not None else {}
+
+
+def format_validation_error(validation_error: ValidationError, context: str = "request") -> str:
+    """Format Pydantic ValidationError with helpful context for clients.
+
+    Provides clear, actionable error messages that reference the AdCP spec
+    and explain what went wrong with field types.
+
+    Args:
+        validation_error: The Pydantic ValidationError to format
+        context: Context string for the error message (e.g., "request", "creative")
+
+    Returns:
+        Formatted error message string suitable for client consumption
+
+    Example:
+        >>> try:
+        ...     req = CreateMediaBuyRequest(brand_manifest={"target_audience": {}})
+        ... except ValidationError as e:
+        ...     raise ToolError(format_validation_error(e))
+    """
+    error_details = []
+    for error in validation_error.errors():
+        field_path = ".".join(str(loc) for loc in error["loc"])
+        error_type = error["type"]
+        msg = error["msg"]
+        input_val = error.get("input")
+
+        # Add helpful context for common validation errors
+        if "string_type" in error_type and isinstance(input_val, dict):
+            error_details.append(
+                f"  • {field_path}: Expected string, got object. "
+                f"AdCP spec requires this field to be a simple string, not a structured object."
+            )
+        elif "string_type" in error_type:
+            error_details.append(
+                f"  • {field_path}: Expected string, got {type(input_val).__name__}. "
+                f"Please provide a string value."
+            )
+        elif "missing" in error_type:
+            error_details.append(f"  • {field_path}: Required field is missing")
+        elif "extra_forbidden" in error_type:
+            error_details.append(f"  • {field_path}: Extra field not allowed by AdCP spec")
+        else:
+            error_details.append(f"  • {field_path}: {msg}")
+
+    error_msg = (
+        f"Invalid {context}: The following fields do not match the AdCP specification:\n\n"
+        + "\n".join(error_details)
+        + "\n\nPlease check the AdCP spec at https://adcontextprotocol.org/schemas/v1/ for correct field types."
+    )
+
+    return error_msg
 
 
 # --- Authentication ---
@@ -1469,12 +1522,19 @@ async def get_products(
     print("=" * 80, file=sys.stderr, flush=True)
 
     # Build request object for shared implementation using helper
-    req = create_get_products_request(
-        promoted_offering=promoted_offering,
-        brief=brief,
-        brand_manifest=brand_manifest,
-        filters=filters,
-    )
+    try:
+        req = create_get_products_request(
+            promoted_offering=promoted_offering,
+            brief=brief,
+            brand_manifest=brand_manifest,
+            filters=filters,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="get_products request")) from e
+    except ValueError as e:
+        # Convert ValueError from helper to ToolError with clear message
+        raise ToolError(f"Invalid get_products request: {e}") from e
+
     # Call shared implementation with unwrapped variant
     # GetProductsRequest is a RootModel, so we pass req.root (the actual variant)
     return await _get_products_impl(req.root, context)  # type: ignore[arg-type]
@@ -1619,12 +1679,16 @@ def list_creative_formats(
     Returns:
         ListCreativeFormatsResponse with all available formats
     """
-    req = ListCreativeFormatsRequest(
-        type=type,
-        standard_only=standard_only,
-        category=category,
-        format_ids=format_ids,
-    )
+    try:
+        req = ListCreativeFormatsRequest(
+            type=type,
+            standard_only=standard_only,
+            category=category,
+            format_ids=format_ids,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="list_creative_formats request")) from e
+
     return _list_creative_formats_impl(req, context)
 
 
@@ -1775,7 +1839,11 @@ def _sync_creatives_impl(
                 except (ValidationError, ValueError) as validation_error:
                     # Creative failed validation - add to failed list
                     creative_id = creative.get("creative_id", "unknown")
-                    error_msg = str(validation_error)
+                    # Format ValidationError nicely for clients, pass through ValueError as-is
+                    if isinstance(validation_error, ValidationError):
+                        error_msg = format_validation_error(validation_error, context=f"creative {creative_id}")
+                    else:
+                        error_msg = str(validation_error)
                     failed_creatives.append({"creative_id": creative_id, "error": error_msg})
                     failed_count += 1
                     results.append(
@@ -2981,27 +3049,30 @@ def _list_creatives_impl(
             raise ToolError(f"Invalid created_before date format: {created_before}")
 
     # Create request object from individual parameters (MCP-compliant)
-    req = ListCreativesRequest(
-        media_buy_id=media_buy_id,
-        buyer_ref=buyer_ref,
-        status=status,
-        format=format,
-        tags=tags or [],
-        created_after=created_after_dt,
-        created_before=created_before_dt,
-        search=search,
-        filters=filters,
-        sort=sort,
-        pagination=pagination,
-        fields=fields,
-        include_performance=include_performance,
-        include_assignments=include_assignments,
-        include_sub_assets=include_sub_assets,
+    try:
+        req = ListCreativesRequest(
+            media_buy_id=media_buy_id,
+            buyer_ref=buyer_ref,
+            status=status,
+            format=format,
+            tags=tags or [],
+            created_after=created_after_dt,
+            created_before=created_before_dt,
+            search=search,
+            filters=filters,
+            sort=sort,
+            pagination=pagination,
+            fields=fields,
+            include_performance=include_performance,
+            include_assignments=include_assignments,
+            include_sub_assets=include_sub_assets,
         page=page,
         limit=min(limit, 1000),  # Enforce max limit
-        sort_by=sort_by,
-        sort_order=sort_order,
-    )
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="list_creatives request")) from e
 
     start_time = time.time()
 
@@ -4010,33 +4081,38 @@ async def _create_media_buy_impl(
         logger.info(f"🐛 push_notification_config contents: {push_notification_config}")
 
     # Create request object from individual parameters (MCP-compliant)
-    req = CreateMediaBuyRequest(
-        buyer_ref=buyer_ref,
-        brand_manifest=brand_manifest,
-        campaign_name=None,  # Optional display name
-        po_number=po_number,
-        promoted_offering=promoted_offering,
-        packages=packages,
-        start_time=start_time,
-        end_time=end_time,
-        budget=budget,
-        currency=None,  # Derived from product pricing_options
-        product_ids=product_ids,
-        start_date=start_date,
-        end_date=end_date,
-        total_budget=total_budget,
-        targeting_overlay=targeting_overlay,
-        pacing=pacing,
-        daily_budget=daily_budget,
-        creatives=creatives,
-        reporting_webhook=reporting_webhook,
-        required_axe_signals=required_axe_signals,
-        enable_creative_macro=enable_creative_macro,
-        strategy_id=strategy_id,
-        webhook_url=None,  # Internal field, not in AdCP spec
-        webhook_auth_token=None,  # Internal field, not in AdCP spec
-        push_notification_config=push_notification_config,
-    )
+    # Validate early with helpful error messages
+    try:
+        req = CreateMediaBuyRequest(
+            buyer_ref=buyer_ref,
+            brand_manifest=brand_manifest,
+            campaign_name=None,  # Optional display name
+            po_number=po_number,
+            promoted_offering=promoted_offering,
+            packages=packages,
+            start_time=start_time,
+            end_time=end_time,
+            budget=budget,
+            currency=None,  # Derived from product pricing_options
+            product_ids=product_ids,
+            start_date=start_date,
+            end_date=end_date,
+            total_budget=total_budget,
+            targeting_overlay=targeting_overlay,
+            pacing=pacing,
+            daily_budget=daily_budget,
+            creatives=creatives,
+            reporting_webhook=reporting_webhook,
+            required_axe_signals=required_axe_signals,
+            enable_creative_macro=enable_creative_macro,
+            strategy_id=strategy_id,
+            webhook_url=None,  # Internal field, not in AdCP spec
+            webhook_auth_token=None,  # Internal field, not in AdCP spec
+            push_notification_config=push_notification_config,
+        )
+    except ValidationError as e:
+        # Format validation errors with helpful context using shared helper
+        raise ToolError(format_validation_error(e, context="request")) from e
 
     # Extract testing context first
     testing_ctx = get_testing_context(context)
@@ -5377,7 +5453,11 @@ def _update_media_buy_impl(
     }
     # Remove None values to avoid validation errors in strict mode
     request_params = {k: v for k, v in request_params.items() if v is not None}
-    req = UpdateMediaBuyRequest(**request_params)  # type: ignore[arg-type]
+
+    try:
+        req = UpdateMediaBuyRequest(**request_params)  # type: ignore[arg-type]
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="update_media_buy request")) from e
 
     if context is None:
         raise ValueError("Context is required for update_media_buy")
@@ -6001,13 +6081,16 @@ def get_media_buy_delivery(
         GetMediaBuyDeliveryResponse with AdCP-compliant delivery data for the requested media buys
     """
     # Create AdCP-compliant request object
-    req = GetMediaBuyDeliveryRequest(
-        media_buy_ids=media_buy_ids,
-        buyer_refs=buyer_refs,
-        status_filter=status_filter,
-        start_date=start_date,
-        end_date=end_date,
-    )
+    try:
+        req = GetMediaBuyDeliveryRequest(
+            media_buy_ids=media_buy_ids,
+            buyer_refs=buyer_refs,
+            status_filter=status_filter,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="get_media_buy_delivery request")) from e
 
     return _get_media_buy_delivery_impl(req, context)
 
@@ -6041,8 +6124,11 @@ def update_performance_index(
     # Convert dict performance_data to ProductPerformance objects
     from src.core.schemas import ProductPerformance
 
-    performance_objects = [ProductPerformance(**perf) for perf in performance_data]
-    req = UpdatePerformanceIndexRequest(media_buy_id=media_buy_id, performance_data=performance_objects)
+    try:
+        performance_objects = [ProductPerformance(**perf) for perf in performance_data]
+        req = UpdatePerformanceIndexRequest(media_buy_id=media_buy_id, performance_data=performance_objects)
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="update_performance_index request")) from e
 
     if context is None:
         raise ValueError("Context is required for update_performance_index")
