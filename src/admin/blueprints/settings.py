@@ -15,6 +15,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from sqlalchemy import select
 
 from src.admin.utils import require_auth, require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 
@@ -128,6 +129,7 @@ def update_admin_settings():
 
 @settings_bp.route("/general", methods=["POST"])
 @require_tenant_access()
+@log_admin_action("update_general_settings")
 def update_general(tenant_id):
     """Update general tenant settings."""
     try:
@@ -259,6 +261,12 @@ def update_general(tenant_id):
 
 @settings_bp.route("/adapter", methods=["POST"])
 @require_tenant_access()
+@log_admin_action(
+    "update_adapter",
+    extract_details=lambda r, **kw: {
+        "adapter": request.json.get("adapter") if request.is_json else request.form.get("adapter")
+    },
+)
 def update_adapter(tenant_id):
     """Update the active adapter for a tenant."""
     try:

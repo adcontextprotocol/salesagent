@@ -7,6 +7,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from sqlalchemy import select
 
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant, User
 
@@ -52,6 +53,9 @@ def list_users(tenant_id):
 
 @users_bp.route("/add", methods=["POST"])
 @require_tenant_access()
+@log_admin_action(
+    "add_user", extract_details=lambda r, **kw: {"email": request.form.get("email"), "role": request.form.get("role")}
+)
 def add_user(tenant_id):
     """Add a new user to the tenant."""
     try:

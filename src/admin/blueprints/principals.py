@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 
 from src.admin.services import DashboardService
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal, PushNotificationConfig, Tenant
 
@@ -110,6 +111,10 @@ def list_principals(tenant_id):
 
 @principals_bp.route("/principals/create", methods=["GET", "POST"])
 @require_tenant_access()
+@log_admin_action(
+    "create_principal",
+    extract_details=lambda r, **kw: {"name": request.form.get("name")} if request.method == "POST" else {},
+)
 def create_principal(tenant_id):
     """Create a new principal (advertiser) for a tenant."""
     if request.method == "GET":
