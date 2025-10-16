@@ -141,7 +141,7 @@ def _get_or_create_audit_logger(tenant_id: str):
 
 def log_admin_action(
     operation_name: str,
-    extract_details: Callable[[Any, ...], dict[str, Any]] | None = None,
+    extract_details: Callable[..., dict[str, Any]] | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator to log admin UI actions to audit_logs table.
 
@@ -196,11 +196,15 @@ def log_admin_action(
                         audit_logger = _get_or_create_audit_logger(tenant_id)
 
                         # Extract additional details if provided
-                        details = {"user": user_email, "action": operation_name, "method": request.method}
+                        details: dict[str, Any] = {
+                            "user": user_email,
+                            "action": operation_name,
+                            "method": request.method,
+                        }
 
                         if extract_details and callable(extract_details):
                             try:
-                                extracted = extract_details(result, **kwargs)
+                                extracted = extract_details(result, **kwargs)  # type: ignore[call-arg]
                                 if isinstance(extracted, dict):
                                     details.update(extracted)
                             except Exception as e:
