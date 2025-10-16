@@ -16,10 +16,20 @@ services:
       retries: 5
 
   creative-agent:
-    image: ghcr.io/adcontextprotocol/creative-agent:latest
+    build:
+      context: ../../creative-agent
+      dockerfile: Dockerfile.fly
     environment:
       PORT: 8080
-      # Add any required environment variables for the creative agent
+      PRODUCTION: "true"  # Enable HTTP mode instead of stdio
+      PYTHONUNBUFFERED: 1
+      # Optional: Gemini API key for AI-powered creative generation
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # Optional: Tigris/S3 credentials for preview storage
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3:-}
+      BUCKET_NAME: ${BUCKET_NAME:-}
     ports:
       - "${CREATIVE_AGENT_PORT:-8095}:8080"
     healthcheck:

@@ -78,7 +78,7 @@ class TestCreativeAgentIntegration:
                 SchemaCreative(
                     creative_id="test_valid_creative",
                     agent_url=CREATIVE_AGENT_URL,
-                    format_id="display_300x250_image",  # Standard IAB format
+                    format_id="display_300x250",  # Standard IAB format
                     assets={
                         "image_url": "https://example.com/ad-300x250.jpg",
                         "click_url": "https://example.com/click",
@@ -119,7 +119,7 @@ class TestCreativeAgentIntegration:
                 SchemaCreative(
                     creative_id="test_invalid_creative",
                     agent_url=CREATIVE_AGENT_URL,
-                    format_id="display_300x250_image",
+                    format_id="display_300x250",
                     assets={},  # Missing image_url - should fail validation
                 )
             ]
@@ -159,7 +159,7 @@ class TestCreativeAgentIntegration:
                 SchemaCreative(
                     creative_id="test_agent_down",
                     agent_url=CREATIVE_AGENT_URL,
-                    format_id="display_300x250_image",
+                    format_id="display_300x250",
                     assets={"image_url": "https://example.com/ad.jpg"},
                 )
             ]
@@ -226,7 +226,7 @@ class TestCreativeAgentFormats:
 
         result = asyncio.run(
             registry.preview_creative(
-                agent_url=CREATIVE_AGENT_URL, format_id="display_300x250_image", creative_manifest=manifest
+                agent_url=CREATIVE_AGENT_URL, format_id="display_300x250", creative_manifest=manifest
             )
         )
 
