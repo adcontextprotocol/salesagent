@@ -53,27 +53,34 @@ def docker_services_e2e(request):
     # Check if we should skip Docker setup
     if request.config.getoption("--skip-docker"):
         print("Skipping Docker setup (--skip-docker flag provided)")
-        # Just verify services are accessible
+        # Use centralized port configuration
         try:
+            from scripts.test_ports import get_ports
+
+            ports = get_ports(mode="e2e")
+            mcp_port = ports["mcp"]
+            a2a_port = ports["a2a"]
+            admin_port = ports["admin"]
+            postgres_port = ports["postgres"]
+        except ImportError:
+            # Fallback to environment variables or defaults
             mcp_port = int(os.getenv("ADCP_SALES_PORT", "8092"))
             a2a_port = int(os.getenv("A2A_PORT", "8094"))
             admin_port = int(os.getenv("ADMIN_UI_PORT", "8093"))
             postgres_port = int(os.getenv("POSTGRES_PORT", "5435"))
 
-            # Quick health check
+        # Quick health check
+        try:
             response = requests.get(f"http://localhost:{a2a_port}/.well-known/agent.json", timeout=2)
             if response.status_code == 200:
                 print(f"✓ A2A server is accessible on port {a2a_port}")
-
             print(f"✓ Assuming MCP server is on port {mcp_port}")
-            yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
-            return
         except Exception as e:
             print(f"Warning: Could not verify services are running: {e}")
             print("Proceeding anyway since --skip-docker was specified")
-            # Use default ports if services couldn't be verified
-            yield {"mcp_port": 8092, "a2a_port": 8094, "admin_port": 8093, "postgres_port": 5435}
-            return
+
+        yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
+        return
 
     # Check if Docker is available
     try:
@@ -89,17 +96,25 @@ def docker_services_e2e(request):
     print("Explicitly removing Docker volumes...")
     subprocess.run(["docker", "volume", "prune", "-f"], capture_output=True, check=False)
 
-    # Use environment variable ports if set (CI), otherwise allocate dynamic ports (local)
-    mcp_port = int(os.getenv("ADCP_SALES_PORT")) if os.getenv("ADCP_SALES_PORT") else find_free_port(10000, 20000)
-    a2a_port = int(os.getenv("A2A_PORT")) if os.getenv("A2A_PORT") else find_free_port(20000, 30000)
-    admin_port = int(os.getenv("ADMIN_UI_PORT")) if os.getenv("ADMIN_UI_PORT") else find_free_port(30000, 40000)
-    postgres_port = int(os.getenv("POSTGRES_PORT")) if os.getenv("POSTGRES_PORT") else find_free_port(40000, 50000)
+    # Use centralized port configuration
+    try:
+        from scripts.test_ports import get_ports
+
+        ports = get_ports(mode="e2e")
+        mcp_port = ports["mcp"]
+        a2a_port = ports["a2a"]
+        admin_port = ports["admin"]
+        postgres_port = ports["postgres"]
+        print("(Ports from centralized configuration)")
+    except ImportError:
+        # Fallback: Use environment variable ports if set (CI), otherwise allocate dynamic ports
+        mcp_port = int(os.getenv("ADCP_SALES_PORT")) if os.getenv("ADCP_SALES_PORT") else find_free_port(10000, 20000)
+        a2a_port = int(os.getenv("A2A_PORT")) if os.getenv("A2A_PORT") else find_free_port(20000, 30000)
+        admin_port = int(os.getenv("ADMIN_UI_PORT")) if os.getenv("ADMIN_UI_PORT") else find_free_port(30000, 40000)
+        postgres_port = int(os.getenv("POSTGRES_PORT")) if os.getenv("POSTGRES_PORT") else find_free_port(40000, 50000)
+        print("(Ports from environment variables or dynamic allocation)")
 
     print(f"Using ports: MCP={mcp_port}, A2A={a2a_port}, Admin={admin_port}, Postgres={postgres_port}")
-    if os.getenv("ADCP_SALES_PORT"):
-        print("(Ports from environment variables)")
-    else:
-        print("(Dynamically allocated ports)")
 
     # Set environment variables for docker-compose
     env = os.environ.copy()

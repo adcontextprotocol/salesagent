@@ -25,6 +25,23 @@ MODE=${1:-ci}  # Default to ci if no argument
 echo "🧪 Running tests in '$MODE' mode..."
 echo ""
 
+# Get ports from centralized configuration
+echo "🔍 Getting port configuration..."
+if ! uv run python scripts/test_ports.py "$MODE" > /tmp/port_config.txt 2>&1; then
+    echo -e "${RED}❌ Port configuration failed:${NC}"
+    cat /tmp/port_config.txt
+    exit 1
+fi
+
+# Parse ports from test_ports.py output
+POSTGRES_PORT=$(uv run python -c "from scripts.test_ports import get_ports; print(get_ports(mode='$MODE')['postgres'])")
+MCP_PORT=$(uv run python -c "from scripts.test_ports import get_ports; print(get_ports(mode='$MODE')['mcp'])")
+A2A_PORT=$(uv run python -c "from scripts.test_ports import get_ports; print(get_ports(mode='$MODE')['a2a'])")
+ADMIN_PORT=$(uv run python -c "from scripts.test_ports import get_ports; print(get_ports(mode='$MODE')['admin'])")
+
+echo -e "${GREEN}✓ Using ports: PostgreSQL=$POSTGRES_PORT, MCP=$MCP_PORT, A2A=$A2A_PORT, Admin=$ADMIN_PORT${NC}"
+echo ""
+
 # Docker setup function (like CI does)
 setup_postgres_container() {
     CONTAINER_NAME="adcp-test-postgres-$$"
@@ -43,7 +60,7 @@ setup_postgres_container() {
         -e POSTGRES_USER=adcp_user \
         -e POSTGRES_PASSWORD=test_password \
         -e POSTGRES_DB=adcp_test \
-        -p 5433:5432 \
+        -p ${POSTGRES_PORT}:5432 \
         --health-cmd="pg_isready -U adcp_user" \
         --health-interval=10s \
         --health-timeout=5s \
@@ -66,8 +83,8 @@ setup_postgres_container() {
     done
 
     # Export database URL for integration tests
-    export DATABASE_URL="postgresql://adcp_user:test_password@localhost:5433/adcp_test"
-    export ADCP_TEST_DB_URL="postgresql://adcp_user:test_password@localhost:5433/adcp_test"
+    export DATABASE_URL="postgresql://adcp_user:test_password@localhost:${POSTGRES_PORT}/adcp_test"
+    export ADCP_TEST_DB_URL="postgresql://adcp_user:test_password@localhost:${POSTGRES_PORT}/adcp_test"
     export ADCP_TESTING=true
 
     # Run migrations (like CI does)
@@ -183,7 +200,7 @@ if [ "$MODE" == "ci" ]; then
     # E2E tests manage their own Docker Compose stack (matches GitHub Actions exactly)
     # conftest.py will start/stop services with --build flag to ensure fresh images
     # Explicitly set standard ports (overrides any workspace-specific CONDUCTOR_* vars)
-    if ! ADCP_SALES_PORT=8092 A2A_PORT=8094 ADMIN_UI_PORT=8093 POSTGRES_PORT=5435 ADCP_TESTING=true GEMINI_API_KEY="${GEMINI_API_KEY:-test_key}" uv run pytest tests/e2e/ -x --tb=short -q; then
+    if ! ADCP_SALES_PORT=$MCP_PORT A2A_PORT=$A2A_PORT ADMIN_UI_PORT=$ADMIN_PORT POSTGRES_PORT=$POSTGRES_PORT ADCP_TESTING=true GEMINI_API_KEY="${GEMINI_API_KEY:-test_key}" uv run pytest tests/e2e/ -x --tb=short -q; then
         echo -e "${RED}❌ E2E tests failed!${NC}"
         exit 1
     fi
