@@ -813,6 +813,7 @@ def edit_product(tenant_id, product_id):
                         return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
 
                     product.formats = formats
+                    logger.info(f"[DEBUG] Updated product.formats to: {formats}")
 
                 # Parse countries - from multi-select
                 countries_list = request.form.getlist("countries")
@@ -945,6 +946,11 @@ def edit_product(tenant_id, product_id):
                     for po in existing_options[len(pricing_options_data) :]:
                         db_session.delete(po)
 
+                # Debug: Log final state before commit
+                logger.info(f"[DEBUG] About to commit product {product_id}")
+                logger.info(f"[DEBUG] product.formats = {product.formats}")
+                logger.info(f"[DEBUG] product.formats type = {type(product.formats)}")
+
                 db_session.commit()
 
                 flash(f"Product '{product.name}' updated successfully", "success")
@@ -1022,7 +1028,9 @@ def edit_product(tenant_id, product_id):
                 # Build set of selected format IDs for template checking
                 # Use composite key (agent_url, format_id) tuples per AdCP spec (same as main.py)
                 selected_format_ids = set()
-                logger.info(f"[DEBUG] Building selected_format_ids from product_dict['formats']: {product_dict['formats']}")
+                logger.info(
+                    f"[DEBUG] Building selected_format_ids from product_dict['formats']: {product_dict['formats']}"
+                )
                 for fmt in product_dict["formats"]:
                     agent_url = None
                     format_id = None
