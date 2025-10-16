@@ -873,8 +873,30 @@ function filterGAMFormats() {
     // Set creative formats
     if (product.formats && product.formats.length > 0) {
         product.formats.forEach(format => {
-            const checkbox = document.querySelector(`input[name="formats"][value="${format}"]`);
-            if (checkbox) checkbox.checked = true;
+            // Handle both FormatReference objects and legacy string format
+            let formatId, agentUrl;
+            if (typeof format === 'object') {
+                formatId = format.format_id || format.id;
+                agentUrl = format.agent_url;
+            } else {
+                formatId = format;
+                agentUrl = 'https://creative.adcontextprotocol.org'; // default
+            }
+
+            // Try to match against pipe-delimited format first (current format)
+            let checkbox = agentUrl ? document.querySelector(`input[name="formats"][value="${agentUrl}|${formatId}"]`) : null;
+
+            // Fallback: try to match by data-format-id attribute
+            if (!checkbox) {
+                checkbox = document.querySelector(`input[name="formats"][data-format-id="${formatId}"]`);
+            }
+
+            if (checkbox) {
+                checkbox.checked = true;
+                console.log('Checked format:', formatId);
+            } else {
+                console.warn('Format checkbox not found for:', formatId);
+            }
         });
     }
 })();
