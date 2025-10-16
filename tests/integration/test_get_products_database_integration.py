@@ -26,6 +26,7 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ProductModel
 from src.core.database.models import Tenant
 from src.core.schemas import Product as ProductSchema
+
 # from src.providers.database_provider import DatabaseProductCatalog
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
