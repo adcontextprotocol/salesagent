@@ -7,14 +7,15 @@ to ensure our A2A server properly handles the evolving AdCP spec.
 """
 
 import logging
+from unittest.mock import MagicMock, patch
 
 import pytest
-from python_a2a import Task
+from python_a2a import DataPart, Message, Part, Role, ServerError, Task
+from python_a2a.server.http import MessageSendParams
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 # Import schema validation components
 try:
