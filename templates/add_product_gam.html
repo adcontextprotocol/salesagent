@@ -118,7 +118,7 @@
                    style="border: 2px solid #ddd; border-radius: 4px; padding: 1rem; cursor: pointer; transition: all 0.2s; background: white; position: relative;">
                 <input type="checkbox" name="formats" value="{{ format.agent_url }}|{{ format.id }}" data-format-id="{{ format.id }}" data-agent-url="{{ format.agent_url }}" {% if selected_format_ids and (format.agent_url, format.id) in selected_format_ids %}checked{% endif %} style="margin-right: 0.5rem;">
                 <strong>{{ format.name }}</strong>
-                <span class="format-info-icon" onclick="event.preventDefault(); event.stopPropagation(); showFormatInfo('{{ format.name }}', '{{ format.description or 'No description available' }}', '{{ format.preview_url or '' }}', '{{ format.agent_url or '' }}', '{{ format.id }}');" style="cursor: help; color: #007bff; font-size: 0.9rem; margin-left: 0.3rem; float: right;">ⓘ</span>
+                <span class="format-info-icon" onclick="event.preventDefault(); event.stopPropagation(); showFormatInfo({{ format.name | tojson }}, {{ (format.description or 'No description available') | tojson }}, {{ (format.preview_url or '') | tojson }}, {{ (format.agent_url or '') | tojson }}, {{ format.id | tojson }});" style="cursor: help; color: #007bff; font-size: 0.9rem; margin-left: 0.3rem; float: right;">ⓘ</span>
                 <br>
                 <small style="color: #666;">
                     {{ format.type }}

@@ -871,6 +871,7 @@ def edit_product(tenant_id, product_id):
                         return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
 
                     product.formats = formats
+                    logger.info(f"[DEBUG] Updated product.formats to: {formats}")
                     # Flag JSONB column as modified so SQLAlchemy generates UPDATE
                     from sqlalchemy.orm import attributes
 
@@ -1012,6 +1013,11 @@ def edit_product(tenant_id, product_id):
                 if len(existing_options) > len(pricing_options_data):
                     for po in existing_options[len(pricing_options_data) :]:
                         db_session.delete(po)
+
+                # Debug: Log final state before commit
+                logger.info(f"[DEBUG] About to commit product {product_id}")
+                logger.info(f"[DEBUG] product.formats = {product.formats}")
+                logger.info(f"[DEBUG] product.formats type = {type(product.formats)}")
 
                 db_session.commit()
 
