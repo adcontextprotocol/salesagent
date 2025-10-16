@@ -237,14 +237,6 @@ repos:
         stages: [manual]  # Manual because it needs server running
 
 
-      # Validate template url_for calls
-      - id: template-url-validation
-        name: Validate template url_for calls
-        entry: uv run pytest tests/integration/test_template_url_validation.py::TestTemplateUrlValidation::test_all_template_url_for_calls_resolve -q
-        language: system
-        files: '\.html$'
-        pass_filenames: false
-
       # Check mypy error count doesn't increase (no regression)
       # Much faster than per-file checks: 3s vs 2+ minutes
       - id: mypy-no-regression
