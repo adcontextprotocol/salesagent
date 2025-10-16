@@ -77,6 +77,8 @@ class TestCreativeAgentIntegration:
             creatives=[
                 SchemaCreative(
                     creative_id="test_valid_creative",
+                    name="Test Display Creative",
+                    content_uri="https://example.com/ad-300x250.jpg",
                     agent_url=CREATIVE_AGENT_URL,
                     format_id="display_300x250",  # Standard IAB format
                     assets={
@@ -118,6 +120,8 @@ class TestCreativeAgentIntegration:
             creatives=[
                 SchemaCreative(
                     creative_id="test_invalid_creative",
+                    name="Test Invalid Creative",
+                    content_uri="https://example.com/placeholder.jpg",
                     agent_url=CREATIVE_AGENT_URL,
                     format_id="display_300x250",
                     assets={},  # Missing image_url - should fail validation
@@ -158,6 +162,8 @@ class TestCreativeAgentIntegration:
             creatives=[
                 SchemaCreative(
                     creative_id="test_agent_down",
+                    name="Test Agent Down Creative",
+                    content_uri="https://example.com/ad.jpg",
                     agent_url=CREATIVE_AGENT_URL,
                     format_id="display_300x250",
                     assets={"image_url": "https://example.com/ad.jpg"},
