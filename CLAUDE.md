@@ -972,55 +972,59 @@ uv run pytest tests/ -x
 # CI caught it after 2 failed runs
 ```
 
-#### Pre-Push Validation
+#### Pre-Push Hook
 
-**✅ AUTOMATIC QUICK MODE:**
-The pre-push hook automatically runs quick tests (no PostgreSQL) before every push.
-This provides fast validation without requiring database containers.
+**✅ MIGRATION CHECKS ONLY:**
+The pre-push hook performs a fast migration head check. No tests run in the hook - tests run in CI.
 
 ```bash
-# Pre-push hook automatically runs:
-./run_all_tests.sh quick     # ~1 min, unit + integration tests (no database)
+# Pre-push hook checks:
+🔍 Checking for multiple migration heads...
+✅ Migration heads OK
+✅ Pre-push checks passed!
 
-# To skip (not recommended):
-git push --no-verify
+💡 To run tests locally before pushing:
+   ./run_all_tests.sh quick   # Fast (~1 min, no database)
+   ./run_all_tests.sh ci      # Full (~3-5 min, with PostgreSQL)
 ```
 
 **🔧 Setup Pre-Push Hook:**
-If the hook isn't installed or you want to update it:
 ```bash
 ./scripts/setup/setup_hooks.sh
 ```
 
-**Test Modes:**
+**Philosophy:**
+- **Pre-commit**: Code quality (formatting, linting) - fast, automatic
+- **Pre-push**: Migration checks - fast, automatic
+- **CI**: Full test suite - runs on GitHub Actions
+- **Manual**: Developers can run tests locally when needed
 
-**Quick Mode (DEFAULT - runs automatically on push):**
+**Test Modes (Manual):**
+
+**Quick Mode:**
 - Fast validation: unit tests + integration tests (no database)
 - Skips database-dependent tests (marked with `@pytest.mark.requires_db`)
 - No PostgreSQL container required
-- Good for rapid feedback loop
 - ~1 minute
 
-**CI Mode (for full validation before creating PR):**
+**CI Mode:**
 - Starts PostgreSQL container automatically (postgres:15)
 - Runs ALL tests including database-dependent tests
-- Exactly matches GitHub Actions and production environment
-- Catches database issues before CI does
-- Automatically cleans up container
+- Exactly matches GitHub Actions
 - ~3-5 minutes
 
 **Command Reference:**
 ```bash
-./run_all_tests.sh quick   # Quick mode (default) - fast, no PostgreSQL
+./run_all_tests.sh quick   # Quick mode - fast, no PostgreSQL
 ./run_all_tests.sh ci      # CI mode - full test suite with PostgreSQL
 ```
 
-**Why Quick Mode for Pre-Push?**
-- Fast feedback (1 min vs 3-5 min)
-- No PostgreSQL container setup required
-- Catches most issues (unit + integration tests)
-- Full CI tests run automatically in GitHub Actions
-- Pre-push hooks should be fast to not disrupt workflow
+**Why No Tests in Pre-Push?**
+- Developers should be able to push quickly
+- CI catches all test failures automatically
+- Pre-commit already handles code quality
+- Developers can manually run tests when they want
+- Keeps workflow fast and uninterrupted
 
 See `docs/testing/` for detailed patterns and case studies.
 

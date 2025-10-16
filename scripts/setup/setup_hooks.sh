@@ -9,16 +9,17 @@ GIT_DIR=$(git rev-parse --git-dir)
 # Create hooks directory if it doesn't exist
 mkdir -p "$GIT_DIR/hooks"
 
-# Create pre-push hook
+# Create pre-push hook (only checks migrations, no tests)
 cat > "$GIT_DIR/hooks/pre-push" << 'EOF'
 #!/bin/bash
-# Pre-push hook to check migrations and run tests before pushing to remote
+# Pre-push hook to check migrations before pushing to remote
+# Tests run in CI - this hook keeps pushes fast
 
 # Get the directory of the git repository
 GIT_DIR=$(git rev-parse --show-toplevel)
 cd "$GIT_DIR"
 
-# Check for multiple Alembic migration heads first (fast check)
+# Check for multiple Alembic migration heads (fast check)
 echo "🔍 Checking for multiple migration heads..."
 if command -v uv &> /dev/null; then
     uv run python scripts/ops/check_migration_heads.py --quiet
@@ -41,37 +42,11 @@ if command -v uv &> /dev/null; then
     echo ""
 fi
 
-echo "🔍 Running quick tests before push (no PostgreSQL required)..."
-echo "   Unit tests + integration tests (mocked database)"
+echo "✅ Pre-push checks passed!"
 echo ""
-
-# Check if test runner exists
-if [ -f "./run_all_tests.sh" ]; then
-    # Run QUICK mode tests (unit + integration without database)
-    # Fast validation that doesn't require PostgreSQL containers
-    ./run_all_tests.sh quick
-    TEST_RESULT=$?
-
-    if [ $TEST_RESULT -ne 0 ]; then
-        echo ""
-        echo "❌ Quick tests failed! Push aborted."
-        echo ""
-        echo "To run full CI tests locally (with PostgreSQL):"
-        echo "  ./run_all_tests.sh ci"
-        echo ""
-        echo "To push anyway (not recommended):"
-        echo "  git push --no-verify"
-        echo ""
-        exit 1
-    else
-        echo ""
-        echo "✅ Quick tests passed! Proceeding with push..."
-        echo "   Full CI tests (with PostgreSQL) will run in GitHub Actions."
-    fi
-else
-    echo "⚠️  Test runner not found. Skipping tests."
-    echo "   Consider running: ./run_all_tests.sh quick"
-fi
+echo "💡 To run tests locally before pushing:"
+echo "   ./run_all_tests.sh quick   # Fast (~1 min, no database)"
+echo "   ./run_all_tests.sh ci      # Full (~3-5 min, with PostgreSQL)"
 
 exit 0
 EOF
@@ -81,6 +56,6 @@ chmod +x "$GIT_DIR/hooks/pre-push"
 
 echo "✅ Git hooks installed successfully!"
 echo ""
-echo "The pre-push hook will run quick tests (no PostgreSQL) before each push."
-echo "Full CI tests will run in GitHub Actions."
-echo "To skip tests temporarily, use: git push --no-verify"
+echo "Pre-push hook: Migration head checks only (fast)"
+echo "Pre-commit hook: Code quality checks (formatting, linting)"
+echo "CI: Full test suite runs automatically on GitHub"
