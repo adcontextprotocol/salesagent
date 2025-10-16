@@ -9,8 +9,12 @@ These are integration tests because they:
 Per architecture guidelines: "Integration over Mocking - Use real DB, mock only external services"
 """
 
+from datetime import UTC, datetime
+from unittest.mock import patch
+
 import pytest
 
+from src.core.schemas import Format, ListCreativeFormatsRequest, ToolContext
 from src.core.tools import list_creative_formats_raw
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
