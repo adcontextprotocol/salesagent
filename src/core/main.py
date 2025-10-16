@@ -1944,7 +1944,9 @@ def _sync_creatives_impl(
                                             if creative.get("assets"):
                                                 assets = creative.get("assets", {})
                                                 for role, asset in assets.items():
-                                                    if role in ["message", "brief", "prompt"] and isinstance(asset, dict):
+                                                    if role in ["message", "brief", "prompt"] and isinstance(
+                                                        asset, dict
+                                                    ):
                                                         message = asset.get("content") or asset.get("text")
                                                         break
 
@@ -1965,7 +1967,9 @@ def _sync_creatives_impl(
                                             # Get existing context_id for refinement
                                             existing_context_id = None
                                             if existing_creative.data:
-                                                existing_context_id = existing_creative.data.get("generative_context_id")
+                                                existing_context_id = existing_creative.data.get(
+                                                    "generative_context_id"
+                                                )
 
                                             # Use provided context_id or existing one
                                             context_id = creative.get("context_id") or existing_context_id
@@ -2012,7 +2016,9 @@ def _sync_creatives_impl(
                                                             data["output_format"] = output_format
                                                             changes.append("output_format")
 
-                                                            if isinstance(output_format, dict) and output_format.get("url"):
+                                                            if isinstance(output_format, dict) and output_format.get(
+                                                                "url"
+                                                            ):
                                                                 data["url"] = output_format["url"]
                                                                 changes.append("url")
                                                                 logger.info(
@@ -2027,8 +2033,8 @@ def _sync_creatives_impl(
                                                     )
                                             else:
                                                 logger.info(
-                                                    f"[sync_creatives] No message for generative update, "
-                                                    f"keeping existing creative data"
+                                                    "[sync_creatives] No message for generative update, "
+                                                    "keeping existing creative data"
                                                 )
 
                                             # Skip preview_creative call since we already have the output
@@ -2243,8 +2249,8 @@ def _sync_creatives_impl(
                                         if not message:
                                             message = f"Create a creative for: {creative.get('name')}"
                                             logger.warning(
-                                                f"[sync_creatives] No message found in assets/inputs, "
-                                                f"using creative name as fallback"
+                                                "[sync_creatives] No message found in assets/inputs, "
+                                                "using creative name as fallback"
                                             )
 
                                         # Extract promoted_offerings from assets if available
@@ -2713,6 +2719,40 @@ def _sync_creatives_impl(
         message += f", {len(assignment_list)} assignments created"
     if creatives_needing_approval:
         message += f", {len(creatives_needing_approval)} require approval"
+
+    # Log audit trail for sync_creatives operation
+    try:
+        with get_db_session() as audit_session:
+            from src.core.database.models import Principal as DBPrincipal
+
+            # Get principal info for audit log
+            stmt = select(DBPrincipal).filter_by(tenant_id=tenant["tenant_id"], principal_id=principal_id)
+            principal = audit_session.scalars(stmt).first()
+
+            if principal:
+                # Create audit logger and log the operation
+                audit_logger = get_audit_logger("sync_creatives", tenant["tenant_id"])
+                audit_logger.log_operation(
+                    operation="sync_creatives",
+                    principal_name=principal.name,
+                    principal_id=principal_id,
+                    adapter_id=principal_id,  # Use principal_id as adapter_id for consistency
+                    success=(failed_count == 0),
+                    details={
+                        "created_count": created_count,
+                        "updated_count": updated_count,
+                        "unchanged_count": unchanged_count,
+                        "failed_count": failed_count,
+                        "assignment_count": len(assignment_list) if assignment_list else 0,
+                        "approval_required_count": len(creatives_needing_approval),
+                        "dry_run": dry_run,
+                        "patch_mode": patch,
+                    },
+                    tenant_id=tenant["tenant_id"],
+                )
+    except Exception as e:
+        # Don't fail the operation if audit logging fails
+        logger.warning(f"Failed to write audit log for sync_creatives: {e}")
 
     # Build AdCP-compliant response (per official spec)
     return SyncCreativesResponse(
