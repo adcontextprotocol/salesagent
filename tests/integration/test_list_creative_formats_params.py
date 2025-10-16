@@ -13,8 +13,7 @@ import pytest
 
 from src.core.tools import list_creative_formats_raw
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 def test_list_creative_formats_request_minimal():

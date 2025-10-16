@@ -4,8 +4,7 @@ import pytest
 
 from src.core.database.database_session import DatabaseConfig
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = pytest.mark.integration
 
 
 def get_placeholder():
@@ -24,6 +23,7 @@ def get_interval_syntax(days):
 
 
 @pytest.fixture
+@pytest.mark.requires_db
 def test_db(integration_db):
     """Create a test database with sample data."""
     # Tables are already created by integration_db fixture

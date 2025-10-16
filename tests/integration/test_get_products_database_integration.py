@@ -19,8 +19,7 @@ from src.core.database.models import Product as ProductModel
 from src.core.database.models import Tenant
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.requires_db]
 
 
 class TestDatabaseProductsIntegration:

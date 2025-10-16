@@ -4,6 +4,7 @@ Test complete lifecycle of workflows in the system.
 """
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import delete, func, select
@@ -14,7 +15,7 @@ from src.core.database.models import Context, Principal, Tenant, WorkflowStep
 
 
 @pytest.mark.integration
-@pytest.mark.skip_ci
+@pytest.mark.requires_db
 class TestWorkflowLifecycle:
     """Test complete workflow lifecycle scenarios."""
 
@@ -41,7 +42,13 @@ class TestWorkflowLifecycle:
 
             # Create test tenant and principal for the tests
             tenant = Tenant(
-                tenant_id=self.tenant_id, name="Test Tenant", subdomain="test", is_active=True, ad_server="mock"
+                tenant_id=self.tenant_id,
+                name="Test Tenant",
+                subdomain="test",
+                is_active=True,
+                ad_server="mock",
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             session.add(tenant)
 

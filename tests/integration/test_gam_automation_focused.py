@@ -5,14 +5,14 @@ Tests the implementation of Issue #116: automatic activation for non-guaranteed 
 Focused integration tests using real database connections and minimal mocking.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import delete, select
 
 from src.adapters.google_ad_manager import GUARANTEED_LINE_ITEM_TYPES, NON_GUARANTEED_LINE_ITEM_TYPES
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Product, Tenant
+from src.core.database.models import PricingOption, Product, Tenant
 from src.core.schemas import FormatId, MediaPackage, Principal
 
 # Default agent URL for creating FormatId objects
@@ -43,7 +43,7 @@ class TestGAMAutomationBasics:
         assert not (GUARANTEED_LINE_ITEM_TYPES & NON_GUARANTEED_LINE_ITEM_TYPES)
 
 
-@pytest.mark.skip_ci
+@pytest.mark.requires_db
 @pytest.mark.requires_db
 class TestGAMProductConfiguration:
     """Test database-backed product configuration for automation."""
@@ -59,8 +59,8 @@ class TestGAMProductConfiguration:
                 tenant_id=tenant_id,
                 name="Test Automation Tenant",
                 subdomain="test-auto",
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             db_session.add(test_tenant)
 
@@ -72,8 +72,7 @@ class TestGAMProductConfiguration:
                 formats=[{"format_id": "display_300x250", "name": "Display 300x250", "type": "display"}],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=True,
-                cpm=2.50,
+                property_tags=["all_inventory"],
                 # JSONType expects dict, not json.dumps() string
                 implementation_config={
                     "line_item_type": "NETWORK",
@@ -90,8 +89,7 @@ class TestGAMProductConfiguration:
                 formats=[{"format_id": "display_728x90", "name": "Leaderboard 728x90", "type": "display"}],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=True,
-                cpm=1.00,
+                property_tags=["all_inventory"],
                 # JSONType expects dict, not json.dumps() string
                 implementation_config={
                     "line_item_type": "HOUSE",
@@ -101,6 +99,26 @@ class TestGAMProductConfiguration:
             )
 
             db_session.add_all([product_auto, product_conf])
+            db_session.flush()
+
+            # Add pricing options
+            pricing_auto = PricingOption(
+                tenant_id=tenant_id,
+                product_id=product_auto.product_id,
+                pricing_model="cpm",
+                rate=2.50,
+                currency="USD",
+                is_fixed=True,
+            )
+            pricing_conf = PricingOption(
+                tenant_id=tenant_id,
+                product_id=product_conf.product_id,
+                pricing_model="cpm",
+                rate=1.00,
+                currency="USD",
+                is_fixed=True,
+            )
+            db_session.add_all([pricing_auto, pricing_conf])
             db_session.commit()
 
             # Get IDs before session closes to avoid DetachedInstanceError

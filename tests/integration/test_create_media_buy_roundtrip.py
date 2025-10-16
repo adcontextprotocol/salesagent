@@ -18,8 +18,7 @@ import pytest
 
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = pytest.mark.integration
 
 
 @pytest.mark.integration
@@ -93,6 +92,7 @@ class TestCreateMediaBuyRoundtrip:
             session.execute(delete(ModelTenant).where(ModelTenant.tenant_id == "test_roundtrip_tenant"))
             session.commit()
 
+    @pytest.mark.requires_db
     def test_create_media_buy_response_survives_testing_hooks_roundtrip(self, setup_test_tenant):
         """
         Test that CreateMediaBuyResponse can be reconstructed after apply_testing_hooks.
@@ -184,6 +184,7 @@ class TestCreateMediaBuyRoundtrip:
         assert reconstructed_response.status == "working"
         assert len(reconstructed_response.packages) == 1
 
+    @pytest.mark.requires_db
     def test_create_media_buy_response_roundtrip_without_hooks(self, setup_test_tenant):
         """
         Test baseline: CreateMediaBuyResponse roundtrip WITHOUT testing hooks works.
@@ -208,6 +209,7 @@ class TestCreateMediaBuyRoundtrip:
         assert reconstructed.media_buy_id == "mb_baseline"
         assert reconstructed.status == "completed"
 
+    @pytest.mark.requires_db
     def test_testing_hooks_fields_are_excluded_from_reconstruction(self, setup_test_tenant):
         """
         Test that testing hook fields don't leak into reconstructed response.

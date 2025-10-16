@@ -15,8 +15,7 @@ import pytest
 
 from src.core.database.models import Base, Product, Tenant
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = pytest.mark.integration
 
 
 class TestDatabaseHealthIntegration:
@@ -25,6 +24,7 @@ class TestDatabaseHealthIntegration:
     # Note: Using conftest_db fixtures instead of custom temp_database
     # This ensures proper test isolation and database setup
 
+    @pytest.mark.requires_db
     def test_health_check_with_complete_database(self, integration_db, test_tenant):
         """Test health check against a complete, properly migrated database."""
         # test_tenant fixture provides a functional database with test data
@@ -51,6 +51,7 @@ class TestDatabaseHealthIntegration:
         assert isinstance(health["schema_issues"], list)
         assert isinstance(health["recommendations"], list)
 
+    @pytest.mark.requires_db
     def test_health_check_with_missing_tables(self, integration_db):
         """Test health check detects missing tables correctly."""
         # Use a mock to simulate missing tables without actually dropping them
@@ -81,6 +82,7 @@ class TestDatabaseHealthIntegration:
                 assert health["status"] == "unhealthy", "Should report unhealthy status"
                 assert len(health["schema_issues"]) > 0, "Should report schema issues"
 
+    @pytest.mark.requires_db
     def test_health_check_with_extra_tables(self, integration_db, clean_db):
         """Test health check detects extra/deprecated tables."""
         # Add an extra table that shouldn't exist
@@ -98,6 +100,7 @@ class TestDatabaseHealthIntegration:
         # Should detect extra table
         assert "deprecated_old_table" in health["extra_tables"], "Should detect extra table"
 
+    @pytest.mark.requires_db
     def test_health_check_database_access_errors(self, integration_db):
         """Test health check handles database access errors gracefully."""
         # Mock the database session to raise a connection error
@@ -124,6 +127,7 @@ class TestDatabaseHealthIntegration:
             error_found = any("health check failed" in issue.lower() for issue in health["schema_issues"])
             assert error_found, f"Should include database connection error in issues: {health['schema_issues']}"
 
+    @pytest.mark.requires_db
     def test_health_check_migration_status_detection(self, integration_db, clean_db):
         """Test that health check correctly detects migration status."""
         # The health check should detect current migration version
@@ -137,6 +141,7 @@ class TestDatabaseHealthIntegration:
         if health["migration_status"]:
             assert len(health["migration_status"]) > 0, "Migration status should not be empty string"
 
+    @pytest.mark.requires_db
     def test_print_health_report_integration(self, integration_db, clean_db, capsys):
         """Test health report printing with real health check data."""
         # Run real health check
@@ -156,6 +161,7 @@ class TestDatabaseHealthIntegration:
         # Should be properly formatted
         assert "Database Health Status:" in captured.out, "Should have header"
 
+    @pytest.mark.requires_db
     def test_health_check_with_real_schema_validation(self, integration_db, test_tenant, test_product):
         """Test health check validates actual database schema against expected schema."""
         # test_tenant and test_product fixtures provide test data
@@ -208,6 +214,7 @@ class TestDatabaseHealthIntegration:
         # Should still return valid results
         assert "status" in health, "Should return valid health report even with larger dataset"
 
+    @pytest.mark.requires_db
     def test_health_check_table_existence_validation(self, integration_db, test_tenant):
         """Test that health check validates existence of all required tables."""
         # Get list of tables that should exist

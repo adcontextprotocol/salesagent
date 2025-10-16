@@ -7,8 +7,7 @@ import pytest
 
 from src.services.delivery_simulator import delivery_simulator
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 @pytest.mark.requires_db

@@ -16,8 +16,7 @@ import pytest
 
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 @pytest.mark.integration

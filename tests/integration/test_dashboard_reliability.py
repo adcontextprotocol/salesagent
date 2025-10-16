@@ -8,8 +8,7 @@ import pytest
 
 from src.core.database.health_check import check_database_health
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = pytest.mark.integration
 
 
 class TestDashboardReliability:
@@ -84,6 +83,7 @@ class TestDashboardReliability:
             response = authenticated_admin_client.get(f"/tenant/{test_tenant.tenant_id}")
             assert response.status_code == 200
 
+    @pytest.mark.requires_db
     def test_health_check_identifies_missing_critical_tables(self):
         """Test that health check correctly identifies missing critical tables."""
         with patch("src.core.database.health_check.get_db_session") as mock_get_db:

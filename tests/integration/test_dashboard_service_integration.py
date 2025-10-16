@@ -8,8 +8,7 @@ import pytest
 
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = pytest.mark.integration
 
 
 @pytest.mark.requires_db
@@ -17,6 +16,7 @@ class TestDashboardServiceIntegration:
     """Integration tests for DashboardService with real database data."""
 
     @pytest.fixture
+    @pytest.mark.requires_db
     def test_tenant_data(self, integration_db):
         """Create test tenant with real database connection."""
         tenant_id = "dashboard_test_tenant"
@@ -92,6 +92,7 @@ class TestDashboardServiceIntegration:
             session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
             session.commit()
 
+    @pytest.mark.requires_db
     def test_dashboard_service_init_validation(self):
         """Test DashboardService initialization validation."""
         # Invalid tenant IDs should be rejected
@@ -147,6 +148,7 @@ class TestDashboardServiceIntegration:
             value = getattr(tenant, field)
             assert value is not None, f"Field {field} should not be None"
 
+    @pytest.mark.requires_db
     def test_dashboard_service_with_nonexistent_tenant(self, integration_db):
         """Test dashboard service behavior with nonexistent tenant."""
         service = DashboardService("nonexistent_tenant_id")
@@ -156,6 +158,7 @@ class TestDashboardServiceIntegration:
         assert tenant is None
         assert service._tenant is None
 
+    @pytest.mark.requires_db
     def test_dashboard_service_database_session_handling(self, test_tenant_data):
         """Test that dashboard service properly handles database sessions."""
         tenant_id = test_tenant_data["tenant_id"]
@@ -174,6 +177,7 @@ class TestDashboardServiceIntegration:
         # But different instances (no shared state)
         assert service1._tenant is not service2._tenant or service1._tenant is None
 
+    @pytest.mark.requires_db
     def test_dashboard_service_real_data_types(self, test_tenant_data):
         """Test that dashboard service handles real database data types correctly."""
         tenant_id = test_tenant_data["tenant_id"]

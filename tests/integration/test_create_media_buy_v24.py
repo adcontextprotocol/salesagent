@@ -20,8 +20,7 @@ import pytest
 
 from src.core.schemas import Budget, Package, Targeting
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = pytest.mark.integration
 
 
 @pytest.mark.integration
@@ -124,6 +123,7 @@ class TestCreateMediaBuyV24Format:
             # Clear global tenant context to avoid polluting other tests
             set_current_tenant(None)
 
+    @pytest.mark.requires_db
     def test_create_media_buy_with_package_budget_mcp(self, setup_test_tenant):
         """Test MCP path with packages containing Budget objects.
 
@@ -175,6 +175,7 @@ class TestCreateMediaBuyV24Format:
         # Verify nested budget was serialized correctly
         assert "budget" in package or "products" in package  # Either field structure is fine
 
+    @pytest.mark.requires_db
     def test_create_media_buy_with_targeting_overlay_mcp(self, setup_test_tenant):
         """Test MCP path with packages containing Targeting objects.
 
@@ -225,6 +226,7 @@ class TestCreateMediaBuyV24Format:
         # Verify nested targeting was serialized (if present in response)
         # Note: targeting_overlay may or may not be included in response depending on impl
 
+    @pytest.mark.requires_db
     def test_create_media_buy_multiple_packages_with_budgets_mcp(self, setup_test_tenant):
         """Test MCP path with multiple packages, each with different budgets.
 
@@ -277,6 +279,7 @@ class TestCreateMediaBuyV24Format:
         assert "pkg_eur" in buyer_refs
         assert "pkg_gbp" in buyer_refs
 
+    @pytest.mark.requires_db
     def test_create_media_buy_with_package_budget_a2a(self, setup_test_tenant):
         """Test A2A path with packages containing Budget objects.
 
@@ -321,6 +324,7 @@ class TestCreateMediaBuyV24Format:
         assert isinstance(package, dict), "Package must be serialized to dict"
         assert package["buyer_ref"] == "pkg_a2a_test"
 
+    @pytest.mark.requires_db
     def test_create_media_buy_legacy_format_still_works(self, setup_test_tenant):
         """Verify legacy format (product_ids + total_budget) still works.
 

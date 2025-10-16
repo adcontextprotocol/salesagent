@@ -9,8 +9,7 @@ import pytest
 
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = pytest.mark.integration
 
 
 class MockContext:
@@ -147,6 +146,7 @@ class TestCreativeLifecycleMCP:
             },
         ]
 
+    @pytest.mark.requires_db
     def test_sync_creatives_create_new_creatives(self, mock_context, sample_creatives):
         """Test sync_creatives creates new creatives successfully."""
         core_sync_creatives_tool, _ = self._import_mcp_tools()
@@ -200,6 +200,7 @@ class TestCreativeLifecycleMCP:
                     "cta": "Learn More",
                 }
 
+    @pytest.mark.requires_db
     def test_sync_creatives_upsert_existing_creative(self, mock_context):
         """Test sync_creatives updates existing creative (default patch=False behavior)."""
         core_sync_creatives_tool, _ = self._import_mcp_tools()
@@ -260,6 +261,7 @@ class TestCreativeLifecycleMCP:
                 assert updated_creative.data.get("click_url") == "https://advertiser.com/updated-landing"
                 assert updated_creative.updated_at is not None
 
+    @pytest.mark.requires_db
     def test_sync_creatives_with_package_assignments(self, mock_context, sample_creatives):
         """Test sync_creatives assigns creatives to packages using spec-compliant assignments dict."""
         core_sync_creatives_tool, _ = self._import_mcp_tools()
@@ -296,6 +298,7 @@ class TestCreativeLifecycleMCP:
                 assert "package_1" in package_ids
                 assert "package_2" in package_ids
 
+    @pytest.mark.requires_db
     def test_sync_creatives_with_assignments_lookup(self, mock_context, sample_creatives):
         """Test sync_creatives with assignments dict (spec-compliant approach)."""
         core_sync_creatives_tool, _ = self._import_mcp_tools()
@@ -329,6 +332,7 @@ class TestCreativeLifecycleMCP:
                 assert assignment is not None
                 assert assignment.media_buy_id == self.test_media_buy_id
 
+    @pytest.mark.requires_db
     def test_sync_creatives_validation_failures(self, mock_context):
         """Test sync_creatives handles validation failures gracefully."""
         core_sync_creatives_tool, _ = self._import_mcp_tools()
@@ -369,6 +373,7 @@ class TestCreativeLifecycleMCP:
                 assert "valid_creative" in creative_ids
                 assert "invalid_creative" not in creative_ids
 
+    @pytest.mark.requires_db
     def test_list_creatives_no_filters(self, mock_context):
         """Test list_creatives returns all creatives when no filters applied."""
         _, core_list_creatives_tool = self._import_mcp_tools()
@@ -413,6 +418,7 @@ class TestCreativeLifecycleMCP:
             assert creative_names[0] == "Test Creative 0"  # Most recent
             assert creative_names[-1] == "Test Creative 4"  # Oldest
 
+    @pytest.mark.requires_db
     def test_list_creatives_with_status_filter(self, mock_context):
         """Test list_creatives filters by status correctly."""
         _, core_list_creatives_tool = self._import_mcp_tools()
@@ -457,6 +463,7 @@ class TestCreativeLifecycleMCP:
             assert len(response.creatives) == 2
             assert all(c.status == "pending" for c in response.creatives)
 
+    @pytest.mark.requires_db
     def test_list_creatives_with_format_filter(self, mock_context):
         """Test list_creatives filters by format correctly."""
         _, core_list_creatives_tool = self._import_mcp_tools()
@@ -502,6 +509,7 @@ class TestCreativeLifecycleMCP:
             assert len(response.creatives) == 3
             assert all(c.format == "video_pre_roll" for c in response.creatives)
 
+    @pytest.mark.requires_db
     def test_list_creatives_with_date_filters(self, mock_context):
         """Test list_creatives filters by creation date range."""
         _, core_list_creatives_tool = self._import_mcp_tools()
@@ -550,6 +558,7 @@ class TestCreativeLifecycleMCP:
             response = core_list_creatives_tool(created_before=created_before, context=mock_context)
             assert len(response.creatives) == 2  # Only old creatives
 
+    @pytest.mark.requires_db
     def test_list_creatives_with_search(self, mock_context):
         """Test list_creatives search functionality."""
         _, core_list_creatives_tool = self._import_mcp_tools()
@@ -599,6 +608,7 @@ class TestCreativeLifecycleMCP:
             assert len(response.creatives) == 2
             assert all("Banner" in c.name for c in response.creatives)
 
+    @pytest.mark.requires_db
     def test_list_creatives_pagination_and_sorting(self, mock_context):
         """Test list_creatives pagination and sorting options."""
         _, core_list_creatives_tool = self._import_mcp_tools()
@@ -650,6 +660,7 @@ class TestCreativeLifecycleMCP:
             creative_names = [c.name for c in response.creatives]
             assert creative_names == sorted(creative_names)
 
+    @pytest.mark.requires_db
     def test_list_creatives_with_media_buy_assignments(self, mock_context):
         """Test list_creatives filters by media buy assignments."""
         _, core_list_creatives_tool = self._import_mcp_tools()
@@ -701,6 +712,7 @@ class TestCreativeLifecycleMCP:
             assert len(response.creatives) == 1
             assert response.creatives[0].creative_id == "assignment_test_1"
 
+    @pytest.mark.requires_db
     def test_sync_creatives_authentication_required(self, sample_creatives):
         """Test sync_creatives requires proper authentication."""
         core_sync_creatives_tool, _ = self._import_mcp_tools()
@@ -713,6 +725,7 @@ class TestCreativeLifecycleMCP:
 
             assert "Invalid auth token" in str(exc_info.value)
 
+    @pytest.mark.requires_db
     def test_list_creatives_authentication_optional(self, mock_context):
         """Test list_creatives allows optional authentication (for discovery) but rejects invalid tokens."""
         from fastmcp.exceptions import ToolError
@@ -731,6 +744,7 @@ class TestCreativeLifecycleMCP:
         assert isinstance(result, ListCreativesResponse)
         assert result.creatives == []  # Empty list since no auth context
 
+    @pytest.mark.requires_db
     def test_sync_creatives_missing_tenant(self, mock_context, sample_creatives):
         """Test sync_creatives handles missing tenant gracefully."""
         core_sync_creatives_tool, _ = self._import_mcp_tools()
@@ -744,6 +758,7 @@ class TestCreativeLifecycleMCP:
 
             assert "No tenant context available" in str(exc_info.value)
 
+    @pytest.mark.requires_db
     def test_list_creatives_empty_results(self, mock_context):
         """Test list_creatives handles empty results gracefully."""
         _, core_list_creatives_tool = self._import_mcp_tools()
@@ -760,6 +775,7 @@ class TestCreativeLifecycleMCP:
             assert response.query_summary.returned == 0
             assert response.pagination.has_more is False
 
+    @pytest.mark.requires_db
     def test_create_media_buy_with_creative_ids(self, mock_context, sample_creatives):
         """Test create_media_buy accepts creative_ids in packages."""
         # First, sync creatives to have IDs to reference

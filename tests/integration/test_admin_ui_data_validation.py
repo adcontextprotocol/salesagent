@@ -11,13 +11,13 @@ import pytest
 
 from src.core.database.models import PricingOption, Product
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = pytest.mark.integration
 
 
 class TestProductsDataValidation:
     """Validate that products list shows correct data without duplicates."""
 
+    @pytest.mark.requires_db
     def test_products_list_no_duplicates_with_pricing_options(
         self, authenticated_admin_session, test_tenant_with_data, integration_db
     ):
@@ -90,6 +90,7 @@ class TestProductsDataValidation:
             f"Fix: Add .unique() before .all() in products list query."
         )
 
+    @pytest.mark.requires_db
     def test_products_list_shows_all_products(self, authenticated_admin_session, test_tenant_with_data, integration_db):
         """Test that products list shows all tenant's products exactly once."""
         from src.core.database.database_session import get_db_session
@@ -133,6 +134,7 @@ class TestProductsDataValidation:
         # Should have exactly 5 rows (one per product)
         assert row_count == 5, f"Product table has {row_count} rows (expected 5)"
 
+    @pytest.mark.requires_db
     def test_products_list_with_no_pricing_options(
         self, authenticated_admin_session, test_tenant_with_data, integration_db
     ):
@@ -147,15 +149,12 @@ class TestProductsDataValidation:
                 tenant_id=tenant_id,
                 product_id="test_product_no_pricing",
                 name="Product Without Pricing Options",
-                description="Legacy product with old pricing fields only",
+                description="Product with no pricing options",
                 delivery_type="guaranteed",
                 countries=["US"],
                 formats=[],
                 targeting_template={},
                 property_tags=["all_inventory"],  # Required per AdCP spec
-                # Legacy pricing fields (no pricing_options relationship)
-                is_fixed_price=True,
-                cpm=15.0,
             )
             db_session.add(product)
             db_session.commit()
@@ -182,6 +181,7 @@ class TestProductsDataValidation:
 class TestPrincipalsDataValidation:
     """Validate that principals/advertisers list shows correct data."""
 
+    @pytest.mark.requires_db
     def test_principals_list_no_duplicates_with_relationships(
         self, authenticated_admin_session, test_tenant_with_data, integration_db
     ):
@@ -225,6 +225,7 @@ class TestPrincipalsDataValidation:
 class TestInventoryDataValidation:
     """Validate that inventory pages show correct ad units."""
 
+    @pytest.mark.requires_db
     def test_inventory_browser_no_duplicate_ad_units(
         self, authenticated_admin_session, test_tenant_with_data, integration_db
     ):
@@ -269,6 +270,7 @@ class TestInventoryDataValidation:
 class TestDashboardDataValidation:
     """Validate that dashboard shows correct metrics."""
 
+    @pytest.mark.requires_db
     def test_dashboard_media_buy_count_accurate(
         self, authenticated_admin_session, test_tenant_with_data, integration_db
     ):
@@ -325,6 +327,7 @@ class TestDashboardDataValidation:
 class TestMediaBuysDataValidation:
     """Validate that media buys list shows correct data."""
 
+    @pytest.mark.requires_db
     def test_media_buys_list_no_duplicates_with_packages(
         self, authenticated_admin_session, test_tenant_with_data, integration_db
     ):
@@ -389,6 +392,7 @@ class TestMediaBuysDataValidation:
             f"Media buy appears {count} times in HTML (expected 1). " f"Check for joinedload() without .unique() bug."
         )
 
+    @pytest.mark.requires_db
     def test_media_buys_list_shows_all_statuses(
         self, authenticated_admin_session, test_tenant_with_data, integration_db
     ):
@@ -446,6 +450,7 @@ class TestMediaBuysDataValidation:
 class TestWorkflowsDataValidation:
     """Validate that workflows list shows correct data."""
 
+    @pytest.mark.requires_db
     def test_workflows_list_no_duplicate_steps(
         self, authenticated_admin_session, test_tenant_with_data, integration_db
     ):
@@ -511,6 +516,7 @@ class TestWorkflowsDataValidation:
 class TestAuthorizedPropertiesDataValidation:
     """Validate that authorized properties list shows correct data."""
 
+    @pytest.mark.requires_db
     def test_authorized_properties_no_duplicates_with_tags(
         self, authenticated_admin_session, test_tenant_with_data, integration_db
     ):
@@ -550,6 +556,7 @@ class TestAuthorizedPropertiesDataValidation:
             f"Property appears {count} times (expected 1). " f"Check for joinedload() without .unique() bug."
         )
 
+    @pytest.mark.requires_db
     def test_authorized_properties_shows_all_properties(
         self, authenticated_admin_session, test_tenant_with_data, integration_db
     ):

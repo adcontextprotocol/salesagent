@@ -5,13 +5,13 @@ import pytest
 
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = pytest.mark.integration
 
 
 class TestDefaultProducts:
     """Test default product functionality."""
 
+    @pytest.mark.requires_db
     def test_get_default_products(self):
         """Test that default products are returned correctly."""
         products = get_default_products()
@@ -27,6 +27,7 @@ class TestDefaultProducts:
         assert "homepage_takeover" in product_ids
         assert "mobile_interstitial" in product_ids
 
+    @pytest.mark.requires_db
     def test_industry_specific_products(self):
         """Test industry-specific product templates."""
         # Test each industry
@@ -41,6 +42,7 @@ class TestDefaultProducts:
             # Should have at least one industry-specific product
             assert len(industry_ids - standard_ids) > 0
 
+    @pytest.mark.requires_db
     def test_create_default_products_for_tenant(self):
         """Test creating default products in database."""
         # Create temporary database
@@ -114,6 +116,7 @@ class TestAIProductService:
             yield mock
 
     @pytest.mark.asyncio
+    @pytest.mark.requires_db
     async def test_create_product_from_description(self, mock_genai):
         """Test AI product creation from description."""
         # Mock environment variable
@@ -153,6 +156,7 @@ class TestAIProductService:
                 # assert config['delivery_type'] == 'guaranteed'
                 # assert config['cpm'] == 10.0
 
+    @pytest.mark.requires_db
     def test_analyze_inventory_for_product(self):
         """Test inventory analysis for product matching."""
         with patch.dict("os.environ", {"GEMINI_API_KEY": "test_key"}):
@@ -225,6 +229,7 @@ class TestProductAPIs:
 
         return client
 
+    @pytest.mark.requires_db
     def test_product_suggestions_api(self, auth_client, integration_db):
         """Test product suggestions API endpoint."""
         # Debug auth test mode
@@ -276,6 +281,7 @@ class TestProductAPIs:
             assert data["total_count"] > 0
             assert data["criteria"]["industry"] == "news"
 
+    @pytest.mark.requires_db
     def test_quick_create_products_api(self, authenticated_admin_client, integration_db):
         """Test quick create API."""
         # Create tenant first with unique ID
@@ -318,6 +324,7 @@ class TestProductAPIs:
             assert "run_of_site_display" in data["created"]
 
 
+@pytest.mark.requires_db
 def test_ai_integration():
     """Manual test for AI integration - requires GEMINI_API_KEY."""
     import os
