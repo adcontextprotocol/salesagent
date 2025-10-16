@@ -206,8 +206,7 @@ def format_validation_error(validation_error: ValidationError, context: str = "r
             )
         elif "string_type" in error_type:
             error_details.append(
-                f"  • {field_path}: Expected string, got {type(input_val).__name__}. "
-                f"Please provide a string value."
+                f"  • {field_path}: Expected string, got {type(input_val).__name__}. " f"Please provide a string value."
             )
         elif "missing" in error_type:
             error_details.append(f"  • {field_path}: Required field is missing")
@@ -3066,8 +3065,8 @@ def _list_creatives_impl(
             include_performance=include_performance,
             include_assignments=include_assignments,
             include_sub_assets=include_sub_assets,
-        page=page,
-        limit=min(limit, 1000),  # Enforce max limit
+            page=page,
+            limit=min(limit, 1000),  # Enforce max limit
             sort_by=sort_by,
             sort_order=sort_order,
         )
@@ -4762,7 +4761,9 @@ async def _create_media_buy_impl(
                                 format_id = fmt
 
                             if format_id:
-                                product_format_keys.add((agent_url, format_id))
+                                # Normalize agent_url by removing trailing slash for consistent comparison
+                                normalized_url = agent_url.rstrip("/") if agent_url else None
+                                product_format_keys.add((normalized_url, format_id))
 
                     # Build set of requested format keys for comparison
                     requested_format_keys = set()
@@ -4785,7 +4786,9 @@ async def _create_media_buy_impl(
                             format_id = fmt
 
                         if format_id:
-                            requested_format_keys.add((agent_url, format_id))
+                            # Normalize agent_url by removing trailing slash for consistent comparison
+                            normalized_url = agent_url.rstrip("/") if agent_url else None
+                            requested_format_keys.add((normalized_url, format_id))
 
                     def format_display(url: str | None, fid: str) -> str:
                         """Format a (url, id) pair for display, handling trailing slashes."""
