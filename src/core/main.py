@@ -3491,7 +3491,9 @@ async def activate_signal(
                 task_id=task_id,
                 status=status,
                 decisioning_platform_segment_id=decisioning_platform_segment_id if activation_success else None,
-                estimated_activation_duration_minutes=estimated_activation_duration_minutes if activation_success else None,
+                estimated_activation_duration_minutes=(
+                    estimated_activation_duration_minutes if activation_success else None
+                ),
             )
 
     except Exception as e:
@@ -3650,6 +3652,7 @@ def _list_authorized_properties_impl(
             response = ListAuthorizedPropertiesResponse(
                 properties=properties,
                 tags=tag_metadata,
+                advertising_policies=advertising_policies_text,
                 errors=[],
             )
 

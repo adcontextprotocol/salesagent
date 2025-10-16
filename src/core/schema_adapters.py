@@ -457,6 +457,16 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     primary_channels: list[str] | None = Field(None, description="Primary advertising channels")
     primary_countries: list[str] | None = Field(None, description="Primary countries (ISO 3166-1 alpha-2)")
     portfolio_description: str | None = Field(None, description="Markdown portfolio description", max_length=5000)
+    advertising_policies: str | None = Field(
+        None,
+        description=(
+            "Publisher's advertising content policies, restrictions, and guidelines in natural language. "
+            "May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, "
+            "or links to full policy documentation."
+        ),
+        min_length=1,
+        max_length=10000,
+    )
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
 
     def __str__(self) -> str:
@@ -593,7 +603,8 @@ class UpdateMediaBuyResponse(AdCPBaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     buyer_ref: str = Field(..., description="Buyer's reference identifier")
-    media_buy_id: str | None = None
+    media_buy_id: str = Field(..., description="Publisher's identifier for the media buy")
+    implementation_date: str | None = Field(None, description="ISO 8601 date when changes will take effect")
     affected_packages: list[Any] | None = Field(default_factory=list)
     errors: list[Any] | None = None
 
@@ -671,7 +682,12 @@ class GetMediaBuyDeliveryResponse(AdCPBaseModel):
     currency: str = Field(..., pattern=r"^[A-Z]{3}$", description="ISO 4217 currency code")
     media_buy_deliveries: list[Any] = Field(..., description="Array of delivery data for each media buy")
 
-    # Optional AdCP fields (webhook-specific)
+    # Optional AdCP fields
+    aggregated_totals: dict[str, Any] | None = Field(
+        None, description="Combined metrics across all media buys (API responses only, not webhooks)"
+    )
+
+    # Optional webhook-specific fields
     notification_type: str | None = None
     partial_data: bool | None = None
     unavailable_count: int | None = None
