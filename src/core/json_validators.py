@@ -239,16 +239,18 @@ class JSONValidatorMixin:
         for fmt in value:
             try:
                 if isinstance(fmt, dict):
-                    # Legacy: Extract format_id from Format object for backward compatibility
-                    format_id = fmt.get("format_id", "unknown")
-                    if not format_id or format_id == "unknown":
+                    # AdCP spec uses "id" field, but we store full format objects
+                    # Accept both "id" (AdCP spec) and "format_id" (legacy)
+                    format_id = fmt.get("id") or fmt.get("format_id")
+                    if not format_id:
                         # Skip invalid format objects instead of failing
                         import logging
 
                         logger = logging.getLogger(__name__)
-                        logger.warning(f"Skipping format object without valid format_id: {fmt}")
+                        logger.warning(f"Skipping format object without id or format_id: {fmt}")
                         continue
-                    validated_formats.append(format_id)
+                    # Store the full format object (with agent_url and id)
+                    validated_formats.append(fmt)
                 elif isinstance(fmt, str):
                     # Current approach: Store format IDs as strings
                     if not fmt.strip():
