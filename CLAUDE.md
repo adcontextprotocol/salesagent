@@ -44,6 +44,7 @@ pytest tests/unit/test_adcp_contract.py -v
 
 ---
 
+
 ### PostgreSQL-Only Architecture
 **🚨 DECISION**: This codebase uses **PostgreSQL exclusively**. We do NOT support SQLite.
 
