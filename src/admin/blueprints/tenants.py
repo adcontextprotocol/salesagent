@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 
 from src.admin.services import DashboardService
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Tenant, User
 from src.core.validation import sanitize_form_data, validate_form_data
@@ -368,6 +369,7 @@ def tenant_settings(tenant_id, section=None):
 
 
 @tenants_bp.route("/<tenant_id>/update", methods=["POST"])
+@log_admin_action("update")
 @require_tenant_access()
 def update(tenant_id):
     """Update tenant settings."""
@@ -405,6 +407,7 @@ def update(tenant_id):
 
 
 @tenants_bp.route("/<tenant_id>/update_slack", methods=["POST"])
+@log_admin_action("update_slack")
 @require_tenant_access()
 def update_slack(tenant_id):
     """Update tenant Slack settings."""
@@ -443,6 +446,7 @@ def update_slack(tenant_id):
 
 
 @tenants_bp.route("/<tenant_id>/test_slack", methods=["POST"])
+@log_admin_action("test_slack")
 @require_tenant_access()
 def test_slack(tenant_id):
     """Test Slack webhook."""
@@ -568,6 +572,7 @@ def list_users(tenant_id):
 
 
 @tenants_bp.route("/<tenant_id>/users/add", methods=["POST"])
+@log_admin_action("add_user")
 @require_tenant_access()
 def add_user(tenant_id):
     """Add a new user to tenant."""
@@ -614,6 +619,7 @@ def add_user(tenant_id):
 
 
 @tenants_bp.route("/<tenant_id>/users/<user_id>/toggle", methods=["POST"])
+@log_admin_action("toggle_user")
 @require_tenant_access()
 def toggle_user(tenant_id, user_id):
     """Toggle user active status."""
@@ -639,6 +645,7 @@ def toggle_user(tenant_id, user_id):
 
 
 @tenants_bp.route("/<tenant_id>/users/<user_id>/update_role", methods=["POST"])
+@log_admin_action("update_user_role")
 @require_tenant_access()
 def update_user_role(tenant_id, user_id):
     """Update user admin role."""
@@ -664,6 +671,7 @@ def update_user_role(tenant_id, user_id):
 
 
 @tenants_bp.route("/<tenant_id>/principals/create", methods=["GET", "POST"])
+@log_admin_action("create_principal")
 @require_tenant_access()
 def create_principal(tenant_id):
     """Create a new principal (advertiser) for the tenant."""
@@ -771,6 +779,7 @@ def create_principal(tenant_id):
 
 
 @tenants_bp.route("/<tenant_id>/principal/<principal_id>/update_mappings", methods=["POST"])
+@log_admin_action("update_principal_mappings")
 @require_tenant_access()
 def update_principal_mappings(tenant_id, principal_id):
     """Update principal platform mappings."""
@@ -816,6 +825,7 @@ def update_principal_mappings(tenant_id, principal_id):
 
 
 @tenants_bp.route("/<tenant_id>/deactivate", methods=["POST"])
+@log_admin_action("deactivate_tenant")
 @require_tenant_access()
 def deactivate_tenant(tenant_id):
     """Deactivate (soft delete) a tenant."""

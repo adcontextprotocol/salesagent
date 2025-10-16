@@ -11,6 +11,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from sqlalchemy import select, text
 
 from src.admin.utils import require_auth
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Tenant
 
@@ -204,6 +205,7 @@ def metrics():
 
 @core_bp.route("/create_tenant", methods=["GET", "POST"])
 @require_auth(admin_only=True)
+@log_admin_action("create_tenant")
 def create_tenant():
     """Create a new tenant."""
     if request.method == "GET":
@@ -373,6 +375,7 @@ def mcp_test():
 
 @core_bp.route("/admin/tenant/<tenant_id>/reactivate", methods=["POST"])
 @require_auth(admin_only=True)
+@log_admin_action("reactivate_tenant")
 def reactivate_tenant(tenant_id):
     """Reactivate a deactivated tenant (super admin only)."""
     try:

@@ -2738,6 +2738,40 @@ def _sync_creatives_impl(
     if creatives_needing_approval:
         message += f", {len(creatives_needing_approval)} require approval"
 
+    # Log audit trail for sync_creatives operation
+    try:
+        with get_db_session() as audit_session:
+            from src.core.database.models import Principal as DBPrincipal
+
+            # Get principal info for audit log
+            stmt = select(DBPrincipal).filter_by(tenant_id=tenant["tenant_id"], principal_id=principal_id)
+            principal = audit_session.scalars(stmt).first()
+
+            if principal:
+                # Create audit logger and log the operation
+                audit_logger = get_audit_logger("sync_creatives", tenant["tenant_id"])
+                audit_logger.log_operation(
+                    operation="sync_creatives",
+                    principal_name=principal.name,
+                    principal_id=principal_id,
+                    adapter_id=principal_id,  # Use principal_id as adapter_id for consistency
+                    success=(failed_count == 0),
+                    details={
+                        "created_count": created_count,
+                        "updated_count": updated_count,
+                        "unchanged_count": unchanged_count,
+                        "failed_count": failed_count,
+                        "assignment_count": len(assignment_list) if assignment_list else 0,
+                        "approval_required_count": len(creatives_needing_approval),
+                        "dry_run": dry_run,
+                        "patch_mode": patch,
+                    },
+                    tenant_id=tenant["tenant_id"],
+                )
+    except Exception as e:
+        # Don't fail the operation if audit logging fails
+        logger.warning(f"Failed to write audit log for sync_creatives: {e}")
+
     # Build AdCP-compliant response (per official spec)
     return SyncCreativesResponse(
         creatives=results,

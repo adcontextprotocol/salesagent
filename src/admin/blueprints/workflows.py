@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import attributes
 
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Context, WorkflowStep
 from src.core.database.models import Principal as ModelPrincipal
@@ -161,6 +162,7 @@ def review_workflow_step(tenant_id, workflow_id, step_id):
 
 @workflows_bp.route("/<tenant_id>/workflows/<workflow_id>/steps/<step_id>/approve", methods=["POST"])
 @require_tenant_access()
+@log_admin_action("approve_workflow_step")
 def approve_workflow_step(tenant_id, workflow_id, step_id):
     """Approve a workflow step."""
     try:
@@ -203,6 +205,7 @@ def approve_workflow_step(tenant_id, workflow_id, step_id):
 
 @workflows_bp.route("/<tenant_id>/workflows/<workflow_id>/steps/<step_id>/reject", methods=["POST"])
 @require_tenant_access()
+@log_admin_action("reject_workflow_step")
 def reject_workflow_step(tenant_id, workflow_id, step_id):
     """Reject a workflow step with a reason."""
     try:

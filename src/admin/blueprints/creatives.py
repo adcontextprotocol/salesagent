@@ -26,6 +26,7 @@ from flask import Blueprint, jsonify, redirect, render_template, request, url_fo
 from sqlalchemy import select
 
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 
@@ -247,6 +248,7 @@ def add_ai(tenant_id, **kwargs):
 
 
 @creatives_bp.route("/analyze", methods=["POST"])
+@log_admin_action("analyze")
 @require_tenant_access()
 def analyze(tenant_id, **kwargs):
     """Analyze creative format with AI."""
@@ -269,6 +271,7 @@ def analyze(tenant_id, **kwargs):
 
 
 @creatives_bp.route("/review/<creative_id>/approve", methods=["POST"])
+@log_admin_action("approve_creative")
 @require_tenant_access()
 def approve_creative(tenant_id, creative_id, **kwargs):
     """Approve a creative."""
@@ -398,6 +401,7 @@ def approve_creative(tenant_id, creative_id, **kwargs):
 
 
 @creatives_bp.route("/review/<creative_id>/reject", methods=["POST"])
+@log_admin_action("reject_creative")
 @require_tenant_access()
 def reject_creative(tenant_id, creative_id, **kwargs):
     """Reject a creative with comments."""
@@ -1059,6 +1063,7 @@ Respond with a JSON object containing:
 
 
 @creatives_bp.route("/review/<creative_id>/ai-review", methods=["POST"])
+@log_admin_action("ai_review_creative")
 @require_tenant_access()
 def ai_review_creative(tenant_id, creative_id, **kwargs):
     """Flask endpoint wrapper for AI review."""

@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, render_template, request, session
 from sqlalchemy import String, func, or_, select
 
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import GAMInventory, GAMOrder, MediaBuy, Principal, Tenant
 
@@ -99,6 +100,7 @@ def orders_browser(tenant_id):
 
 
 @inventory_bp.route("/api/tenant/<tenant_id>/sync/orders", methods=["POST"])
+@log_admin_action("sync_orders")
 @require_tenant_access(api_mode=True)
 def sync_orders(tenant_id):
     """Sync GAM orders for a tenant."""
@@ -386,6 +388,7 @@ def analyze_ad_server_inventory(tenant_id):
 
 
 @inventory_bp.route("/api/tenant/<tenant_id>/inventory/sync", methods=["POST"])
+@log_admin_action("sync_inventory")
 @require_tenant_access(api_mode=True)
 def sync_inventory(tenant_id):
     """Sync GAM inventory for a tenant with optional selective sync.

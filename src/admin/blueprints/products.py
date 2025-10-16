@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import PricingOption, Product, Tenant
 from src.core.database.product_pricing import get_product_pricing_options
@@ -301,6 +302,7 @@ def list_products(tenant_id):
 
 
 @products_bp.route("/add", methods=["GET", "POST"])
+@log_admin_action("add_product")
 @require_tenant_access()
 def add_product(tenant_id):
     """Add a new product - adapter-specific form."""
@@ -629,6 +631,7 @@ def add_product(tenant_id):
 
 
 @products_bp.route("/<product_id>/edit", methods=["GET", "POST"])
+@log_admin_action("edit_product")
 @require_tenant_access()
 def edit_product(tenant_id, product_id):
     """Edit an existing product."""

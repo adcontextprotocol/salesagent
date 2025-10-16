@@ -7,6 +7,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from sqlalchemy import select
 
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant, User
 
@@ -52,6 +53,9 @@ def list_users(tenant_id):
 
 @users_bp.route("/add", methods=["POST"])
 @require_tenant_access()
+@log_admin_action(
+    "add_user", extract_details=lambda r, **kw: {"email": request.form.get("email"), "role": request.form.get("role")}
+)
 def add_user(tenant_id):
     """Add a new user to the tenant."""
     try:
@@ -101,6 +105,7 @@ def add_user(tenant_id):
 
 
 @users_bp.route("/<user_id>/toggle", methods=["POST"])
+@log_admin_action("toggle_user")
 @require_tenant_access()
 def toggle_user(tenant_id, user_id):
     """Toggle user active status."""
@@ -125,6 +130,7 @@ def toggle_user(tenant_id, user_id):
 
 
 @users_bp.route("/<user_id>/update_role", methods=["POST"])
+@log_admin_action("update_role")
 @require_tenant_access()
 def update_role(tenant_id, user_id):
     """Update user role."""
