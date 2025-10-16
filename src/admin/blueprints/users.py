@@ -105,6 +105,7 @@ def add_user(tenant_id):
 
 
 @users_bp.route("/<user_id>/toggle", methods=["POST"])
+@log_admin_action("toggle_user")
 @require_tenant_access()
 def toggle_user(tenant_id, user_id):
     """Toggle user active status."""
@@ -129,6 +130,7 @@ def toggle_user(tenant_id, user_id):
 
 
 @users_bp.route("/<user_id>/update_role", methods=["POST"])
+@log_admin_action("update_role")
 @require_tenant_access()
 def update_role(tenant_id, user_id):
     """Update user role."""

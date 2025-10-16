@@ -13,6 +13,7 @@ from src.adapters.gam.utils.constants import GAM_API_VERSION
 from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
 from src.adapters.gam_reporting_service import GAMReportingService
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import GAMLineItem, GAMOrder, Tenant
 
@@ -81,6 +82,7 @@ def validate_gam_config(data: dict) -> list | None:
 
 
 @gam_bp.route("/detect-network", methods=["POST"])
+@log_admin_action("detect_gam_network")
 @require_tenant_access()
 def detect_gam_network(tenant_id):
     """Auto-detect GAM network code from refresh token."""
@@ -262,6 +264,7 @@ def detect_gam_network(tenant_id):
 
 
 @gam_bp.route("/configure", methods=["POST"])
+@log_admin_action("configure_gam")
 @require_tenant_access()
 def configure_gam(tenant_id):
     """Save GAM configuration for a tenant."""
@@ -494,6 +497,7 @@ def get_gam_custom_targeting_keys(tenant_id):
 
 
 @gam_bp.route("/sync-inventory", methods=["POST"])
+@log_admin_action("sync_gam_inventory")
 @require_tenant_access()
 def sync_gam_inventory(tenant_id):
     """Trigger GAM inventory sync for a tenant."""

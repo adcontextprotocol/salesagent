@@ -378,6 +378,7 @@ def update_adapter(tenant_id):
 
 
 @settings_bp.route("/slack", methods=["POST"])
+@log_admin_action("update_slack")
 @require_tenant_access()
 def update_slack(tenant_id):
     """Update Slack integration settings."""
@@ -425,6 +426,7 @@ def update_slack(tenant_id):
 
 
 @settings_bp.route("/ai", methods=["POST"])
+@log_admin_action("update_ai")
 @require_tenant_access()
 def update_ai(tenant_id):
     """Update AI services settings (Gemini API key)."""
@@ -456,6 +458,7 @@ def update_ai(tenant_id):
 
 
 @settings_bp.route("/signals", methods=["POST"])
+@log_admin_action("update_signals")
 @require_tenant_access()
 def update_signals(tenant_id):
     """Update signals discovery agent settings."""
@@ -519,6 +522,7 @@ def update_signals(tenant_id):
 
 
 @settings_bp.route("/test_signals", methods=["POST"])
+@log_admin_action("test_signals")
 @require_tenant_access()
 def test_signals(tenant_id):
     """Test connection to signals discovery agent."""
@@ -602,6 +606,7 @@ def test_signals(tenant_id):
 
 # Domain and Email Management Routes
 @settings_bp.route("/domains/add", methods=["POST"])
+@log_admin_action("add_authorized_domain")
 @require_tenant_access()
 def add_authorized_domain(tenant_id):
     """Add domain to tenant's authorized domains list."""
@@ -632,6 +637,7 @@ def add_authorized_domain(tenant_id):
 
 
 @settings_bp.route("/domains/remove", methods=["POST"])
+@log_admin_action("remove_authorized_domain")
 @require_tenant_access()
 def remove_authorized_domain(tenant_id):
     """Remove domain from tenant's authorized domains list."""
@@ -657,6 +663,7 @@ def remove_authorized_domain(tenant_id):
 
 
 @settings_bp.route("/emails/add", methods=["POST"])
+@log_admin_action("add_authorized_email")
 @require_tenant_access()
 def add_authorized_email(tenant_id):
     """Add email to tenant's authorized emails list."""
@@ -687,6 +694,7 @@ def add_authorized_email(tenant_id):
 
 
 @settings_bp.route("/emails/remove", methods=["POST"])
+@log_admin_action("remove_authorized_email")
 @require_tenant_access()
 def remove_authorized_email(tenant_id):
     """Remove email from tenant's authorized emails list."""
@@ -713,6 +721,7 @@ def remove_authorized_email(tenant_id):
 
 # Test route for domain access functionality
 @settings_bp.route("/access/test", methods=["POST"])
+@log_admin_action("test_domain_access")
 @require_tenant_access()
 def test_domain_access(tenant_id):
     """Test email access for this tenant."""
@@ -755,6 +764,7 @@ def test_domain_access(tenant_id):
 
 
 @settings_bp.route("/business-rules", methods=["POST"])
+@log_admin_action("update_business_rules")
 @require_tenant_access()
 def update_business_rules(tenant_id):
     """Update business rules (budget, naming, approvals, features)."""

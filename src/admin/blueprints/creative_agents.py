@@ -6,6 +6,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from sqlalchemy import select
 
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import CreativeAgent, Tenant
 
@@ -62,6 +63,7 @@ def list_creative_agents(tenant_id):
 
 
 @creative_agents_bp.route("/add", methods=["GET", "POST"])
+@log_admin_action("add_creative_agent")
 @require_tenant_access()
 def add_creative_agent(tenant_id):
     """Add a new creative agent."""
@@ -127,6 +129,7 @@ def add_creative_agent(tenant_id):
 
 
 @creative_agents_bp.route("/<int:agent_id>/edit", methods=["GET", "POST"])
+@log_admin_action("edit_creative_agent")
 @require_tenant_access()
 def edit_creative_agent(tenant_id, agent_id):
     """Edit an existing creative agent."""
@@ -224,6 +227,7 @@ def delete_creative_agent(tenant_id, agent_id):
 
 
 @creative_agents_bp.route("/<int:agent_id>/test", methods=["POST"])
+@log_admin_action("test_creative_agent")
 @require_tenant_access()
 def test_creative_agent(tenant_id, agent_id):
     """Test connection to a creative agent."""

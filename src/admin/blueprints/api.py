@@ -10,6 +10,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import func, select, text
 
 from src.admin.utils import require_auth
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal, Product
 
@@ -241,6 +242,7 @@ def get_product_suggestions(tenant_id):
 
 @api_bp.route("/tenant/<tenant_id>/products/quick-create", methods=["POST"])
 @require_auth()
+@log_admin_action("quick_create_products")
 def quick_create_products(tenant_id):
     """Quick create multiple products from suggestions."""
     from flask import session
@@ -424,6 +426,7 @@ def quick_create_products(tenant_id):
 
 @api_bp.route("/gam/get-advertisers", methods=["POST"])
 @require_auth()
+@log_admin_action("gam_get_advertisers")
 def gam_get_advertisers():
     """TODO: Extract implementation from admin_ui.py lines 3580-3653.
     GAM advertiser fetching - implement in phase 2."""
@@ -433,6 +436,7 @@ def gam_get_advertisers():
 
 @api_bp.route("/mcp-test/call", methods=["POST"])
 @require_auth(admin_only=True)
+@log_admin_action("mcp_test_call")
 def mcp_test_call():
     """Execute MCP protocol test call.
 
@@ -508,6 +512,7 @@ def mcp_test_call():
 
 @api_bp.route("/gam/test-connection", methods=["POST"])
 @require_auth()
+@log_admin_action("test_gam_connection")
 def test_gam_connection():
     """Test GAM connection with refresh token and fetch available resources."""
     try:

@@ -5,6 +5,7 @@ import logging
 from flask import Blueprint, jsonify
 
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ def adapter_adapter_name_inventory_schema(tenant_id, **kwargs):
 
 
 @adapters_bp.route("/setup_adapter", methods=["POST"])
+@log_admin_action("setup_adapter")
 @require_tenant_access()
 def setup_adapter(tenant_id, **kwargs):
     """TODO: Extract implementation from admin_ui.py."""
