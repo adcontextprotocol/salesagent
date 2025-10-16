@@ -302,14 +302,20 @@ def list_products(tenant_id):
                             try:
                                 # Resolve format to get name
                                 format_obj = get_format(format_id, agent_url, tenant_id)
+                                logger.info(
+                                    f"Resolved format {format_id}: type={type(format_obj)}, name={getattr(format_obj, 'name', 'NO_NAME')}"
+                                )
+                                format_name = format_obj.name if hasattr(format_obj, "name") else format_id
                                 resolved_formats.append(
-                                    {"format_id": format_id, "agent_url": agent_url, "name": format_obj.name}
+                                    {"format_id": format_id, "agent_url": agent_url, "name": format_name}
                                 )
                             except Exception as e:
                                 logger.warning(f"Could not resolve format {format_id} from {agent_url}: {e}")
-                                # Fallback to format_id if resolution fails
+                                # Fallback to a clean format name from format_id
+                                # Extract readable name from format_id (e.g., "display_970x250_generative" -> "Display 970x250 Generative")
+                                clean_name = format_id.replace("_", " ").title()
                                 resolved_formats.append(
-                                    {"format_id": format_id, "agent_url": agent_url, "name": format_id}
+                                    {"format_id": format_id, "agent_url": agent_url, "name": clean_name}
                                 )
                     elif isinstance(fmt, str):
                         # Legacy: plain string format_id (no agent_url)
@@ -317,13 +323,17 @@ def list_products(tenant_id):
                         default_agent_url = "https://creative.adcontextprotocol.org"
                         try:
                             format_obj = get_format(fmt, default_agent_url, tenant_id)
+                            format_name = format_obj.name if hasattr(format_obj, "name") else fmt
                             resolved_formats.append(
-                                {"format_id": fmt, "agent_url": default_agent_url, "name": format_obj.name}
+                                {"format_id": fmt, "agent_url": default_agent_url, "name": format_name}
                             )
                         except Exception as e:
                             logger.warning(f"Could not resolve legacy format {fmt}: {e}")
-                            # Fallback to format_id as name
-                            resolved_formats.append({"format_id": fmt, "agent_url": default_agent_url, "name": fmt})
+                            # Fallback to clean format name
+                            clean_name = fmt.replace("_", " ").title()
+                            resolved_formats.append(
+                                {"format_id": fmt, "agent_url": default_agent_url, "name": clean_name}
+                            )
 
                 product_dict = {
                     "product_id": product.product_id,
