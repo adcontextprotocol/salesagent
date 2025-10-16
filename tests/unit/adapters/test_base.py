@@ -3,9 +3,17 @@ from datetime import datetime, timedelta
 import pytest
 
 from src.adapters.mock_ad_server import MockAdServer
-from src.core.schemas import CreateMediaBuyRequest, MediaPackage, Principal
+from src.core.schemas import CreateMediaBuyRequest, FormatId, MediaPackage, Principal
 
 pytestmark = pytest.mark.unit
+
+# Default agent URL for creating FormatId objects
+DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"
+
+
+def make_format_id(format_id: str) -> FormatId:
+    """Helper to create FormatId objects with default agent URL."""
+    return FormatId(agent_url=DEFAULT_AGENT_URL, id=format_id)
 
 
 @pytest.fixture
@@ -18,7 +26,10 @@ def sample_packages():
             delivery_type="guaranteed",
             cpm=15.0,
             impressions=333333,  # 5000 budget / 15 CPM * 1000
-            format_ids=["display_300x250", "display_728x90"],
+            format_ids=[
+                make_format_id("display_300x250"),
+                make_format_id("display_728x90"),
+            ],
         )
     ]
 

@@ -11,9 +11,17 @@ from src.core.async_patterns import (
 from src.core.schemas import (
     CreateMediaBuyResponse,
     Error,
+    FormatId,
     GetProductsResponse,
     ListCreativeFormatsResponse,
 )
+
+DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"
+
+
+def make_format_id(format_id: str) -> FormatId:
+    """Helper to create FormatId objects."""
+    return FormatId(agent_url=DEFAULT_AGENT_URL, id=format_id)
 
 
 class TestResponseSchemas:
@@ -52,8 +60,8 @@ class TestResponseSchemas:
         from src.core.schemas import Format
 
         test_formats = [
-            Format(format_id="display_300x250", name="Medium Rectangle", type="display"),
-            Format(format_id="video_16x9", name="16:9 Video", type="video"),
+            Format(format_id=make_format_id("display_300x250"), name="Medium Rectangle", type="display"),
+            Format(format_id=make_format_id("video_16x9"), name="16:9 Video", type="video"),
         ]
         response = ListCreativeFormatsResponse(formats=test_formats)
 
@@ -62,8 +70,8 @@ class TestResponseSchemas:
 
         # Verify AdCP-compliant fields
         assert len(response.formats) == 2
-        assert response.formats[0].format_id == "display_300x250"
-        assert response.formats[1].format_id == "video_16x9"
+        assert response.formats[0].format_id.id == "display_300x250"
+        assert response.formats[1].format_id.id == "video_16x9"
 
         # Verify message is provided via __str__() not as schema field
         assert not hasattr(response, "message")

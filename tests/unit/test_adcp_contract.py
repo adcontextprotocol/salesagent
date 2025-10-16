@@ -27,6 +27,7 @@ from src.core.schemas import (
     CreativeStatus,
     Error,
     Format,
+    FormatId,
     GetMediaBuyDeliveryRequest,
     GetMediaBuyDeliveryResponse,
     GetProductsRequest,
@@ -409,7 +410,7 @@ class TestAdCPContract:
     def test_format_schema_compliance(self):
         """Test that Format schema matches AdCP specifications."""
         format_data = {
-            "format_id": "native_feed",
+            "format_id": FormatId(agent_url="https://creative.adcontextprotocol.org", id="native_feed"),
             "name": "Native Feed Ad",
             "type": "native",
             "is_standard": True,
@@ -1477,7 +1478,7 @@ class TestAdCPContract:
         response = ListCreativeFormatsResponse(
             formats=[
                 Format(
-                    format_id="display_300x250",
+                    format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
                     name="Medium Rectangle",
                     type="display",
                     is_standard=True,
