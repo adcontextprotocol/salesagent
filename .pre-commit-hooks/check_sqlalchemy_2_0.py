@@ -2,7 +2,10 @@
 """
 Pre-commit hook to enforce SQLAlchemy 2.0 patterns.
 
-Prevents new code from using legacy session.query() pattern.
+Checks for:
+1. Legacy session.query() pattern (use select() + scalars() instead)
+2. Legacy Column() in models.py (use Mapped[] type hints instead)
+
 Existing legacy patterns are documented and allowed with # legacy-ok comment.
 
 Usage:
@@ -28,9 +31,14 @@ def check_file(filepath: str) -> list[str]:
         return [f"Error reading {filepath}: {e}"]
 
     # Pattern to detect legacy session.query()
-    legacy_pattern = re.compile(
+    legacy_query_pattern = re.compile(
         r"(session|db_session|Session)\.query\(",
         re.IGNORECASE,
+    )
+
+    # Pattern to detect legacy Column() in models.py (2.0 uses Mapped[])
+    legacy_column_pattern = re.compile(
+        r"^\s+\w+\s*=\s*Column\(",  # Matches: field_name = Column(
     )
 
     for line_num, line in enumerate(lines, start=1):
@@ -42,14 +50,26 @@ def check_file(filepath: str) -> list[str]:
         if "test_" in filepath:
             continue
 
-        # Check for legacy pattern
-        if legacy_pattern.search(line):
+        # Check for legacy session.query() pattern
+        if legacy_query_pattern.search(line):
             errors.append(
                 f"{filepath}:{line_num}: Found legacy session.query() pattern\n"
                 f"  Line: {line.strip()}\n"
                 f"  Use SQLAlchemy 2.0 pattern instead:\n"
                 f"    stmt = select(Model).filter_by(...)\n"
                 f"    result = session.scalars(stmt).first()  # or .all()\n"
+            )
+
+        # Check for legacy Column() in models.py (2.0 uses Mapped[])
+        if "models.py" in filepath and legacy_column_pattern.search(line):
+            errors.append(
+                f"{filepath}:{line_num}: Found legacy Column() pattern in models.py\n"
+                f"  Line: {line.strip()}\n"
+                f"  Use SQLAlchemy 2.0 Mapped[] type hints instead:\n"
+                f"    field_name: Mapped[type] = mapped_column(...)\n"
+                f"  Example:\n"
+                f"    name: Mapped[str] = mapped_column(String(200), nullable=False)\n"
+                f"    optional_field: Mapped[str | None] = mapped_column(Text, nullable=True)\n"
             )
 
     return errors
@@ -76,12 +96,13 @@ def main():
 
     if all_errors:
         print("❌ SQLAlchemy 2.0 Pattern Enforcement Failed\n")
-        print("Found legacy session.query() patterns in changed files:\n")
+        print("Found legacy SQLAlchemy patterns in changed files:\n")
         for error in all_errors:
             print(error)
 
         print("\n📖 See CLAUDE.md for SQLAlchemy 2.0 migration guide")
         print("💡 To mark existing legacy code, add: # legacy-ok")
+        print("⚠️  All 30 models in models.py now use Mapped[] - keep it that way!")
         sys.exit(1)
 
     # Success
