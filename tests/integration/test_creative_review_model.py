@@ -39,6 +39,7 @@ def test_creative_review_model_creation(integration_db):
             format="display_300x250",
             status="pending",
             data={},
+            agent_url="https://example.com/agent",  # Required field
         )
         db_session.add(creative)
         db_session.commit()
@@ -97,6 +98,7 @@ def test_creative_review_relationship(integration_db):
             format="display_300x250",
             status="pending",
             data={},
+            agent_url="https://example.com/agent",  # Required field
         )
         db_session.add(creative)
         db_session.commit()
@@ -155,6 +157,7 @@ def test_get_creative_reviews_query(integration_db):
             format="display_300x250",
             status="pending",
             data={},
+            agent_url="https://example.com/agent",  # Required field
         )
         db_session.add(creative)
         db_session.commit()
@@ -226,6 +229,7 @@ def test_human_override_detection(integration_db):
             format="display_300x250",
             status="pending",
             data={},
+            agent_url="https://example.com/agent",  # Required field
         )
         db_session.add(creative)
         db_session.commit()
