@@ -22,8 +22,9 @@ from tests.fixtures import TenantFactory
 def integration_db():
     """Provide an isolated PostgreSQL database for each integration test.
 
-    REQUIRES: PostgreSQL container running (via run_all_tests.sh ci)
-    - ADCP_TEST_DB_URL must be set (e.g., postgresql://adcp_user:test_password@localhost:5433/adcp_test)
+    REQUIRES: PostgreSQL container running (via run_all_tests.sh ci or GitHub Actions)
+    - Uses DATABASE_URL to get PostgreSQL connection info (host, port, user, password)
+    - Database name in URL is ignored - creates a unique database per test (e.g., test_a3f8d92c)
     - Matches production environment exactly
     - Better multi-process support (fixes mcp_server tests)
     - Consistent JSONB behavior
@@ -35,9 +36,9 @@ def integration_db():
     original_db_type = os.environ.get("DB_TYPE")
 
     # Require PostgreSQL - no SQLite fallback
-    postgres_url = os.environ.get("ADCP_TEST_DB_URL")
-    if not postgres_url:
-        pytest.skip("Integration tests require PostgreSQL. Run: ./run_all_tests.sh ci")
+    postgres_url = os.environ.get("DATABASE_URL")
+    if not postgres_url or not postgres_url.startswith("postgresql://"):
+        pytest.skip("Integration tests require PostgreSQL DATABASE_URL (e.g., postgresql://user:pass@localhost:5432/any_db)")
 
     # PostgreSQL mode - create unique database per test
     unique_db_name = f"test_{uuid.uuid4().hex[:8]}"

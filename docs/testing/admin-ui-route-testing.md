@@ -54,7 +54,7 @@ docker run -d \
   postgres:15
 
 # Run tests
-export ADCP_TEST_DB_URL="postgresql://adcp_user:test_password@localhost:5433/adcp_test"
+export DATABASE_URL="postgresql://adcp_user:test_password@localhost:5433/adcp_test"
 uv run pytest tests/integration/test_admin_ui_routes_comprehensive.py -v
 
 # Or use the test script
