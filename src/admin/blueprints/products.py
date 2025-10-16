@@ -81,7 +81,7 @@ def get_creative_formats(
             )
 
         format_dict = {
-            "format_id": fmt.format_id,
+            "id": fmt.format_id,  # Use "id" to match database schema (AdCP spec)
             "agent_url": fmt.agent_url,
             "name": fmt.name,
             "type": fmt.type,
