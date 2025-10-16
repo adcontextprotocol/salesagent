@@ -87,6 +87,7 @@ def get_creative_formats(
             "type": fmt.type,
             "category": fmt.category,
             "description": fmt.description or f"{fmt.name} - {fmt.iab_specification or 'Standard format'}",
+            "preview_url": getattr(fmt, "preview_url", None),
             "dimensions": None,
             "duration": None,
         }

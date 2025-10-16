@@ -100,10 +100,10 @@
         <!-- Formats container (hidden until ad units selected) -->
         <div id="formats-container" style="display: none; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
             {% for format in formats %}
-            <label class="format-card" data-format-id="{{ format.format_id }}" data-dimensions="{{ format.dimensions or '' }}" data-type="{{ format.type }}" data-description="{{ format.description or '' }}" data-category="{{ format.category or '' }}" style="border: 2px solid #ddd; border-radius: 4px; padding: 1rem; cursor: pointer; transition: all 0.2s; position: relative;">
+            <label class="format-card" data-format-id="{{ format.format_id }}" data-dimensions="{{ format.dimensions or '' }}" data-type="{{ format.type }}" data-description="{{ format.description or '' }}" data-preview-url="{{ format.preview_url or '' }}" data-agent-url="{{ format.agent_url or '' }}" style="border: 2px solid #ddd; border-radius: 4px; padding: 1rem; cursor: pointer; transition: all 0.2s; position: relative;">
                 <input type="checkbox" name="formats" value="{{ format.format_id }}" style="margin-right: 0.5rem;">
                 <strong>{{ format.name }}</strong>
-                <span class="format-info-icon" onclick="event.preventDefault(); event.stopPropagation(); showFormatInfo('{{ format.format_id }}', '{{ format.name }}', '{{ format.type }}', '{{ format.dimensions or '' }}', '{{ format.description or '' }}', '{{ format.category or '' }}');" style="cursor: help; color: #007bff; font-size: 0.9rem; margin-left: 0.3rem; float: right;">ⓘ</span>
+                <span class="format-info-icon" onclick="event.preventDefault(); event.stopPropagation(); showFormatInfo('{{ format.name }}', '{{ format.description or 'No description available' }}', '{{ format.preview_url or '' }}', '{{ format.agent_url or '' }}', '{{ format.format_id }}');" style="cursor: help; color: #007bff; font-size: 0.9rem; margin-left: 0.3rem; float: right;">ⓘ</span>
                 <br>
                 <small style="color: #666;">
                     {{ format.type }}
@@ -848,14 +848,36 @@ addPricingOption();
 {% endif %}
 
 // Format info modal functionality
-function showFormatInfo(formatId, name, type, dimensions, description, category) {
+function showFormatInfo(name, description, previewUrl, agentUrl, formatId) {
     const modal = document.getElementById('format-info-modal');
     document.getElementById('format-info-name').textContent = name;
-    document.getElementById('format-info-type').textContent = type;
-    document.getElementById('format-info-dimensions').textContent = dimensions || 'N/A';
-    document.getElementById('format-info-category').textContent = category || 'N/A';
-    document.getElementById('format-info-description').textContent = description || 'No description available';
-    document.getElementById('format-info-id').textContent = formatId;
+    document.getElementById('format-info-description').textContent = description;
+
+    // Handle preview image
+    const previewContainer = document.getElementById('format-preview-container');
+    const previewImg = document.getElementById('format-preview-img');
+    const noPreview = document.getElementById('format-no-preview');
+
+    if (previewUrl) {
+        previewImg.src = previewUrl;
+        previewImg.style.display = 'block';
+        noPreview.style.display = 'none';
+    } else {
+        previewImg.style.display = 'none';
+        noPreview.style.display = 'block';
+    }
+
+    // Handle more info link
+    const moreInfoLink = document.getElementById('format-more-info-link');
+    if (agentUrl && formatId) {
+        // Construct URL to format details on agent (most agents follow this pattern)
+        const detailsUrl = `${agentUrl}/formats/${formatId}`;
+        moreInfoLink.href = detailsUrl;
+        moreInfoLink.style.display = 'inline-block';
+    } else {
+        moreInfoLink.style.display = 'none';
+    }
+
     modal.style.display = 'block';
 }
 
@@ -874,44 +896,33 @@ window.onclick = function(event) {
 
 <!-- Format Info Modal -->
 <div id="format-info-modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
-    <div style="background-color: #fefefe; margin: 5% auto; padding: 2rem; border: 1px solid #888; border-radius: 8px; width: 90%; max-width: 600px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 2px solid #007bff; padding-bottom: 1rem;">
-            <h2 style="margin: 0; color: #007bff;">Format Details</h2>
+    <div style="background-color: #fefefe; margin: 5% auto; padding: 2rem; border: 1px solid #888; border-radius: 8px; width: 90%; max-width: 500px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <h2 style="margin: 0; color: #333; font-size: 1.5rem;" id="format-info-name"></h2>
             <span onclick="closeFormatInfo()" style="color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1;">&times;</span>
         </div>
 
-        <div style="margin-bottom: 1rem;">
-            <strong style="color: #333; display: block; margin-bottom: 0.5rem;">Name:</strong>
-            <div id="format-info-name" style="color: #666; padding: 0.5rem; background: #f8f9fa; border-radius: 4px;"></div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-            <div>
-                <strong style="color: #333; display: block; margin-bottom: 0.5rem;">Type:</strong>
-                <div id="format-info-type" style="color: #666; padding: 0.5rem; background: #f8f9fa; border-radius: 4px;"></div>
-            </div>
-            <div>
-                <strong style="color: #333; display: block; margin-bottom: 0.5rem;">Dimensions:</strong>
-                <div id="format-info-dimensions" style="color: #666; padding: 0.5rem; background: #f8f9fa; border-radius: 4px;"></div>
+        <!-- Preview Image -->
+        <div id="format-preview-container" style="margin-bottom: 1.5rem; text-align: center; background: #f8f9fa; border-radius: 4px; padding: 1rem; min-height: 200px; display: flex; align-items: center; justify-content: center;">
+            <img id="format-preview-img" src="" alt="Format preview" style="max-width: 100%; max-height: 300px; border-radius: 4px; display: none;">
+            <div id="format-no-preview" style="color: #999; display: none;">
+                <div style="font-size: 3rem; margin-bottom: 0.5rem;">🖼️</div>
+                <div>No preview available</div>
             </div>
         </div>
 
-        <div style="margin-bottom: 1rem;">
-            <strong style="color: #333; display: block; margin-bottom: 0.5rem;">Category:</strong>
-            <div id="format-info-category" style="color: #666; padding: 0.5rem; background: #f8f9fa; border-radius: 4px;"></div>
+        <!-- Description -->
+        <div style="margin-bottom: 1.5rem;">
+            <p id="format-info-description" style="color: #666; line-height: 1.6; margin: 0;"></p>
         </div>
 
-        <div style="margin-bottom: 1rem;">
-            <strong style="color: #333; display: block; margin-bottom: 0.5rem;">Description:</strong>
-            <div id="format-info-description" style="color: #666; padding: 0.5rem; background: #f8f9fa; border-radius: 4px;"></div>
+        <!-- Actions -->
+        <div style="display: flex; gap: 0.5rem;">
+            <a id="format-more-info-link" href="#" target="_blank" class="btn btn-secondary" style="flex: 1; text-align: center; text-decoration: none; display: none;">
+                Learn More →
+            </a>
+            <button onclick="closeFormatInfo()" class="btn btn-primary" style="flex: 1;">Close</button>
         </div>
-
-        <div style="margin-bottom: 1rem;">
-            <strong style="color: #333; display: block; margin-bottom: 0.5rem;">Format ID:</strong>
-            <code id="format-info-id" style="display: block; color: #666; padding: 0.5rem; background: #f8f9fa; border-radius: 4px; font-family: monospace; font-size: 0.9rem;"></code>
-        </div>
-
-        <button onclick="closeFormatInfo()" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Close</button>
     </div>
 </div>
 {% endif %}
