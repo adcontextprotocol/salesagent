@@ -9,6 +9,8 @@ through the A2A wrapper layer, including:
 3. All AdCP response fields are preserved
 """
 
+import logging
+
 import pytest
 
 from src.core.database.models import Tenant as ModelTenant
