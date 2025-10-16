@@ -12,7 +12,7 @@ import os
 import sys
 
 # This is the STANDARD python-a2a library - no modifications
-from python_a2a import A2AClient, create_text_message, pretty_print_message
+from a2a import A2AClient, create_text_message, pretty_print_message
 
 
 def main():

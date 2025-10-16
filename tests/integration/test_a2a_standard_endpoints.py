@@ -22,7 +22,7 @@ pytest.skip("Skipping A2A standard endpoints test - requires python_a2a library"
 # Add parent directories to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from python_a2a.server.http import create_flask_app
+from a2a.server.http import create_flask_app
 
 from src.a2a_server.adcp_a2a_server import AdCPSalesAgent
 

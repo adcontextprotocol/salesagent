@@ -668,6 +668,8 @@ def add_product(tenant_id):
 @require_tenant_access()
 def edit_product(tenant_id, product_id):
     """Edit an existing product."""
+    from sqlalchemy import select
+
     # Get tenant's adapter type and currencies
     with get_db_session() as db_session:
         tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
@@ -789,16 +791,36 @@ def edit_product(tenant_id, product_id):
                     flash("Product must have at least one pricing option", "error")
                     return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
 
-                # Only delete existing pricing options after validating new ones exist
-                db_session.query(PricingOption).filter_by(  # legacy-ok
-                    tenant_id=tenant_id, product_id=product_id
-                ).delete()
+                # Fetch existing pricing options
+                existing_options = list(
+                    db_session.scalars(
+                        select(PricingOption).filter_by(tenant_id=tenant_id, product_id=product_id)
+                    ).all()
+                )
 
-                if pricing_options_data:
-                    logger.info(
-                        f"Updating {len(pricing_options_data)} pricing options for product {product.product_id}"
-                    )
-                    for option_data in pricing_options_data:
+                logger.info(
+                    f"Updating pricing options for product {product.product_id}: "
+                    f"{len(existing_options)} existing, {len(pricing_options_data)} new"
+                )
+
+                # Update existing options or create new ones
+                for idx, option_data in enumerate(pricing_options_data):
+                    if idx < len(existing_options):
+                        # Update existing pricing option
+                        po = existing_options[idx]
+                        po.pricing_model = option_data["pricing_model"]
+                        po.rate = Decimal(str(option_data["rate"])) if option_data["rate"] is not None else None
+                        po.currency = option_data["currency"]
+                        po.is_fixed = option_data["is_fixed"]
+                        po.price_guidance = option_data["price_guidance"]
+                        po.parameters = option_data["parameters"]
+                        po.min_spend_per_package = (
+                            Decimal(str(option_data["min_spend_per_package"]))
+                            if option_data["min_spend_per_package"] is not None
+                            else None
+                        )
+                    else:
+                        # Create new pricing option
                         pricing_option = PricingOption(
                             tenant_id=tenant_id,
                             product_id=product.product_id,
@@ -815,6 +837,11 @@ def edit_product(tenant_id, product_id):
                             ),
                         )
                         db_session.add(pricing_option)
+
+                # Delete excess existing options (if new list is shorter)
+                if len(existing_options) > len(pricing_options_data):
+                    for po in existing_options[len(pricing_options_data) :]:
+                        db_session.delete(po)
 
                 db_session.commit()
 

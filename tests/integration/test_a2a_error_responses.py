@@ -13,8 +13,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from python_a2a import Message
-from python_a2a.server.http import MessageSendParams
+from a2a import Message
+from a2a.server.http import MessageSendParams
 from sqlalchemy import delete
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
