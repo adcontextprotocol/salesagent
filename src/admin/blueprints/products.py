@@ -290,6 +290,12 @@ def list_products(tenant_id):
                     else json.loads(product.formats) if product.formats else []
                 )
 
+                # Debug: Log raw formats data
+                if formats_data:
+                    logger.info(
+                        f"[DEBUG] Product {product.product_id} formats_data: {formats_data[:2]}"
+                    )  # First 2 for brevity
+
                 # Resolve format names from creative agent registry
                 resolved_formats = []
                 from src.core.format_resolver import get_format
@@ -298,6 +304,7 @@ def list_products(tenant_id):
                     if isinstance(fmt, dict):
                         format_id = fmt.get("format_id") or fmt.get("id")
                         agent_url = fmt.get("agent_url")
+                        logger.info(f"[DEBUG] Processing format dict: format_id={format_id}, agent_url={agent_url}")
                         if format_id and agent_url:
                             try:
                                 # Resolve format to get name
@@ -305,6 +312,7 @@ def list_products(tenant_id):
                                 resolved_formats.append(
                                     {"format_id": format_id, "agent_url": agent_url, "name": format_obj.name}
                                 )
+                                logger.info(f"[DEBUG] Resolved format {format_id} to name: {format_obj.name}")
                             except Exception as e:
                                 logger.warning(f"Could not resolve format {format_id} from {agent_url}: {e}")
                                 # Fallback to format_id if resolution fails
@@ -324,6 +332,13 @@ def list_products(tenant_id):
                             logger.warning(f"Could not resolve legacy format {fmt}: {e}")
                             # Fallback to format_id as name
                             resolved_formats.append({"format_id": fmt, "agent_url": default_agent_url, "name": fmt})
+                    else:
+                        # Unknown format type
+                        logger.warning(f"Unknown format type for product {product.product_id}: {type(fmt)} - {fmt}")
+                        # Try to salvage it
+                        resolved_formats.append({"format_id": str(fmt), "agent_url": "", "name": str(fmt)})
+
+                logger.info(f"[DEBUG] Product {product.product_id} resolved {len(resolved_formats)} formats")
 
                 product_dict = {
                     "product_id": product.product_id,
