@@ -4711,15 +4711,23 @@ async def _create_media_buy_impl(
                         if format_id:
                             requested_format_keys.add((agent_url, format_id))
 
+                    def format_display(url: str | None, fid: str) -> str:
+                        """Format a (url, id) pair for display, handling trailing slashes."""
+                        if not url:
+                            return fid
+                        # Remove trailing slash from URL to avoid double slashes
+                        clean_url = url.rstrip("/")
+                        return f"{clean_url}/{fid}"
+
                     unsupported_formats = [
-                        f"{url}/{fid}" if url else fid
+                        format_display(url, fid)
                         for url, fid in requested_format_keys
                         if (url, fid) not in product_format_keys
                     ]
 
                     if unsupported_formats:
                         supported_formats_str = ", ".join(
-                            [f"{url}/{fid}" if url else fid for url, fid in product_format_keys]
+                            [format_display(url, fid) for url, fid in product_format_keys]
                         )
                         error_msg = (
                             f"Product '{product.name}' ({product.product_id}) does not support requested format(s): "
