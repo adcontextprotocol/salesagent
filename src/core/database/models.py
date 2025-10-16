@@ -38,51 +38,51 @@ class Base(DeclarativeBase):
 class Tenant(Base, JSONValidatorMixin):
     __tablename__ = "tenants"
 
-    tenant_id = Column(String(50), primary_key=True)
-    name = Column(String(200), nullable=False)
-    subdomain = Column(String(100), unique=True, nullable=False)
-    virtual_host = Column(Text, nullable=True)  # For Approximated.app virtual hosts
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
-    is_active = Column(Boolean, default=True)
-    billing_plan = Column(String(50), default="standard")
-    billing_contact = Column(String(255))
+    tenant_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    subdomain: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    virtual_host: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    billing_plan: Mapped[str] = mapped_column(String(50), default="standard")
+    billing_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # New columns from migration
-    ad_server = Column(String(50))
+    ad_server: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # NOTE: currency_code, max_daily_budget, min_product_spend moved to currency_limits table
-    enable_axe_signals = Column(Boolean, nullable=False, default=True)
-    authorized_emails = Column(JSONType)  # JSON array
-    authorized_domains = Column(JSONType)  # JSON array
-    slack_webhook_url = Column(String(500))
-    slack_audit_webhook_url = Column(String(500))
-    hitl_webhook_url = Column(String(500))
-    admin_token = Column(String(100))
-    auto_approve_formats = Column(JSONType)  # JSON array
-    human_review_required = Column(Boolean, nullable=False, default=True)
-    policy_settings = Column(JSONType)  # JSON object
-    signals_agent_config = Column(JSONType)  # JSON object for upstream signals discovery agent configuration
-    creative_review_criteria = Column(Text, nullable=True)  # AI review prompt for creative approval
-    _gemini_api_key: Mapped[str | None] = mapped_column(
-        "gemini_api_key", String(500), nullable=True
-    )  # Encrypted Gemini API key
-    approval_mode = Column(
-        String(50), nullable=False, default="require-human"
-    )  # auto-approve, require-human, ai-powered
-    ai_policy = Column(
+    enable_axe_signals: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    authorized_emails: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
+    authorized_domains: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
+    slack_webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    slack_audit_webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    hitl_webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    admin_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    auto_approve_formats: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
+    human_review_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    policy_settings: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    signals_agent_config: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    creative_review_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
+    _gemini_api_key: Mapped[str | None] = mapped_column("gemini_api_key", String(500), nullable=True)
+    approval_mode: Mapped[str] = mapped_column(String(50), nullable=False, default="require-human")
+    ai_policy: Mapped[dict | None] = mapped_column(
         JSONType, nullable=True, comment="AI review policy configuration with confidence thresholds"
-    )  # Stores AIReviewPolicy as JSON
-    advertising_policy = Column(
+    )
+    advertising_policy: Mapped[dict | None] = mapped_column(
         JSONType,
         nullable=True,
         comment="Advertising policy configuration with prohibited categories, tactics, and advertisers",
-    )  # Stores advertising policy rules as JSON
+    )
 
     # Naming templates (business rules - shared across all adapters)
-    order_name_template = Column(
+    order_name_template: Mapped[str | None] = mapped_column(
         String(500), nullable=True, server_default="{campaign_name|promoted_offering} - {buyer_ref} - {date_range}"
     )
-    line_item_name_template = Column(String(500), nullable=True, server_default="{order_name} - {product_name}")
+    line_item_name_template: Mapped[str | None] = mapped_column(
+        String(500), nullable=True, server_default="{order_name} - {product_name}"
+    )
 
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
@@ -269,16 +269,16 @@ class CurrencyLimit(Base):
 class Principal(Base, JSONValidatorMixin):
     __tablename__ = "principals"
 
-    tenant_id = Column(
+    tenant_id: Mapped[str] = mapped_column(
         String(50),
         ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
         primary_key=True,
     )
-    principal_id = Column(String(50), primary_key=True)
-    name = Column(String(200), nullable=False)
-    platform_mappings = Column(JSONType, nullable=False)  # JSONB in PostgreSQL
-    access_token = Column(String(255), unique=True, nullable=False)
-    created_at = Column(DateTime, server_default=func.now())
+    principal_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    platform_mappings: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    access_token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 
     # Relationships
     tenant = relationship("Tenant", back_populates="principals")
@@ -294,15 +294,17 @@ class Principal(Base, JSONValidatorMixin):
 class User(Base):
     __tablename__ = "users"
 
-    user_id = Column(String(50), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    email = Column(String(255), nullable=False)  # Removed unique=True to allow multi-tenant access
-    name = Column(String(200), nullable=False)
-    role = Column(String(20), nullable=False)
-    google_id = Column(String(255))
-    created_at = Column(DateTime, server_default=func.now())
-    last_login = Column(DateTime)
-    is_active = Column(Boolean, default=True)
+    user_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    google_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    last_login: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users")
@@ -430,27 +432,29 @@ class CreativeAssignment(Base):
 class MediaBuy(Base):
     __tablename__ = "media_buys"
 
-    media_buy_id = Column(String(100), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    principal_id = Column(String(50), nullable=False)
-    buyer_ref = Column(String(100), nullable=True, index=True)  # AdCP v2.4 buyer reference
-    order_name = Column(String(255), nullable=False)
-    advertiser_name = Column(String(255), nullable=False)
-    campaign_objective = Column(String(100))
-    kpi_goal = Column(String(255))
+    media_buy_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+    principal_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    buyer_ref: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    order_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    advertiser_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    campaign_objective: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    kpi_goal: Mapped[str | None] = mapped_column(String(255), nullable=True)
     budget: Mapped[Decimal | None] = mapped_column(DECIMAL(15, 2))
-    currency = Column(String(3), nullable=True, default="USD")  # ISO 4217 currency code
-    start_date = Column(Date, nullable=False)  # Legacy field, keep for compatibility
-    end_date = Column(Date, nullable=False)  # Legacy field, keep for compatibility
-    start_time = Column(DateTime, nullable=True)  # AdCP v2.4 datetime scheduling
-    end_time = Column(DateTime, nullable=True)  # AdCP v2.4 datetime scheduling
-    status = Column(String(20), nullable=False, default="draft")
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    approved_at = Column(DateTime)
-    approved_by = Column(String(255))
-    raw_request = Column(JSONType, nullable=False)  # JSONB in PostgreSQL
-    strategy_id = Column(String(255), nullable=True)  # Strategy reference for linking operations
+    currency: Mapped[str] = mapped_column(String(3), nullable=True, default="USD")
+    start_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    start_time: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    end_time: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    approved_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    raw_request: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    strategy_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="media_buys", overlaps="media_buys")
