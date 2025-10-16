@@ -43,24 +43,26 @@ def integration_db():
     unique_db_name = f"test_{uuid.uuid4().hex[:8]}"
 
     # Create the test database
+    # Parse port from postgres_url (set by run_all_tests.sh or environment)
+    import re
+
     import psycopg2
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
-    # Get port from centralized configuration
-    try:
-        from scripts.test_ports import get_ports
-
-        ports = get_ports(mode="auto")
-        postgres_port = ports["postgres"]
-    except ImportError:
-        # Fallback to environment variable if test_ports not available
-        postgres_port = 5433
+    pattern = r"postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)"
+    match = re.match(pattern, postgres_url)
+    if match:
+        user, password, host, port_str, _ = match.groups()
+        postgres_port = int(port_str)
+    else:
+        # Fallback to defaults if URL parsing fails
+        user, password, host, postgres_port = "adcp_user", "test_password", "localhost", 5432
 
     conn_params = {
-        "host": "localhost",
-        "port": postgres_port,  # Use centralized port configuration
-        "user": "adcp_user",
-        "password": "test_password",
+        "host": host,
+        "port": postgres_port,
+        "user": user,
+        "password": password,
         "database": "postgres",  # Connect to default db first
     }
 
@@ -74,7 +76,7 @@ def integration_db():
         cur.close()
         conn.close()
 
-    os.environ["DATABASE_URL"] = f"postgresql://adcp_user:test_password@localhost:{postgres_port}/{unique_db_name}"
+    os.environ["DATABASE_URL"] = f"postgresql://{user}:{password}@{host}:{postgres_port}/{unique_db_name}"
     os.environ["DB_TYPE"] = "postgresql"
     db_path = unique_db_name  # For cleanup reference
 
@@ -92,7 +94,7 @@ def integration_db():
     # (in case the module import doesn't trigger class definition)
     _ = (Context, WorkflowStep, ObjectWorkflowMapping)
 
-    engine = create_engine(f"postgresql://adcp_user:test_password@localhost:{postgres_port}/{unique_db_name}", echo=False)
+    engine = create_engine(f"postgresql://{user}:{password}@{host}:{postgres_port}/{unique_db_name}", echo=False)
 
     # Ensure all model classes are imported and registered with Base.metadata
     # Import order matters - some models may not be registered if imported too early

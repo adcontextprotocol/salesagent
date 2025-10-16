@@ -25,90 +25,158 @@ MODE=${1:-ci}  # Default to ci if no argument
 echo "🧪 Running tests in '$MODE' mode..."
 echo ""
 
-# Get ports from centralized configuration
-echo "🔍 Getting port configuration..."
-if ! uv run python scripts/test_ports.py "$MODE" > /tmp/port_config.txt 2>&1; then
-    echo -e "${RED}❌ Port configuration failed:${NC}"
-    cat /tmp/port_config.txt
-    exit 1
-fi
+# Find available ports dynamically using a helper script that avoids race conditions
+echo "🔍 Finding available ports..."
 
-# Parse ports from test_ports.py output
-POSTGRES_PORT=$(uv run python -c "from scripts.test_ports import get_ports; print(get_ports(mode='$MODE')['postgres'])")
-MCP_PORT=$(uv run python -c "from scripts.test_ports import get_ports; print(get_ports(mode='$MODE')['mcp'])")
-A2A_PORT=$(uv run python -c "from scripts.test_ports import get_ports; print(get_ports(mode='$MODE')['a2a'])")
-ADMIN_PORT=$(uv run python -c "from scripts.test_ports import get_ports; print(get_ports(mode='$MODE')['admin'])")
+# Use Python to find a block of 4 available ports (reduces race conditions)
+read POSTGRES_PORT MCP_PORT A2A_PORT ADMIN_PORT <<< $(uv run python -c "
+import socket
+import random
 
-echo -e "${GREEN}✓ Using ports: PostgreSQL=$POSTGRES_PORT, MCP=$MCP_PORT, A2A=$A2A_PORT, Admin=$ADMIN_PORT${NC}"
+def find_free_port_block(count=4, start=50000, end=60000):
+    '''Find a block of consecutive free ports'''
+    for base_port in range(start, end - count):
+        sockets = []
+        try:
+            # Try to bind all ports in the block
+            for i in range(count):
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.bind(('127.0.0.1', base_port + i))
+                sockets.append(s)
+
+            # Success! Return the ports
+            ports = [base_port + i for i in range(count)]
+            for s in sockets:
+                s.close()
+            return ports
+        except OSError:
+            # One of the ports was in use, close what we opened and try next block
+            for s in sockets:
+                s.close()
+            continue
+    raise RuntimeError('Could not find available port block')
+
+ports = find_free_port_block()
+print(' '.join(map(str, ports)))
+")
+
+echo -e "${GREEN}✓ Using dynamic ports: PostgreSQL=$POSTGRES_PORT, MCP=$MCP_PORT, A2A=$A2A_PORT, Admin=$ADMIN_PORT${NC}"
 echo ""
 
-# Docker setup function (like CI does)
-setup_postgres_container() {
-    CONTAINER_NAME="adcp-test-postgres-$$"
+# Docker compose setup function - starts entire stack once
+setup_docker_stack() {
+    echo -e "${BLUE}🐳 Starting complete Docker stack (PostgreSQL + servers)...${NC}"
 
-    echo -e "${BLUE}🐳 Starting PostgreSQL container...${NC}"
+    # Clean up any existing containers/volumes
+    echo "Cleaning up any existing Docker services and volumes..."
+    docker-compose down -v 2>/dev/null || true
+    docker volume prune -f 2>/dev/null || true
 
-    # Check if container already exists
-    if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-        echo "Removing existing container..."
-        docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    # If ports are still in use, find new ones
+    if lsof -i :${POSTGRES_PORT} >/dev/null 2>&1; then
+        echo "Port conflict detected, finding new port block..."
+        read POSTGRES_PORT MCP_PORT A2A_PORT ADMIN_PORT <<< $(uv run python -c "
+import socket
+
+def find_free_port_block(count=4, start=50000, end=60000):
+    for base_port in range(start, end - count):
+        sockets = []
+        try:
+            for i in range(count):
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.bind(('127.0.0.1', base_port + i))
+                sockets.append(s)
+            ports = [base_port + i for i in range(count)]
+            for s in sockets:
+                s.close()
+            return ports
+        except OSError:
+            for s in sockets:
+                s.close()
+            continue
+    raise RuntimeError('Could not find available port block')
+
+ports = find_free_port_block()
+print(' '.join(map(str, ports)))
+")
+        echo "Using new ports: PostgreSQL=${POSTGRES_PORT}, MCP=${MCP_PORT}, A2A=${A2A_PORT}, Admin=${ADMIN_PORT}"
     fi
 
-    # Start PostgreSQL container (exactly like CI)
-    docker run -d \
-        --name "$CONTAINER_NAME" \
-        -e POSTGRES_USER=adcp_user \
-        -e POSTGRES_PASSWORD=test_password \
-        -e POSTGRES_DB=adcp_test \
-        -p ${POSTGRES_PORT}:5432 \
-        --health-cmd="pg_isready -U adcp_user" \
-        --health-interval=10s \
-        --health-timeout=5s \
-        --health-retries=5 \
-        postgres:15 >/dev/null
-
-    # Wait for PostgreSQL to be ready (like CI does)
-    echo "Waiting for PostgreSQL to be ready..."
-    for i in {1..30}; do
-        if docker exec "$CONTAINER_NAME" pg_isready -U adcp_user >/dev/null 2>&1; then
-            echo -e "${GREEN}✓ PostgreSQL is ready${NC}"
-            break
-        fi
-        if [ $i -eq 30 ]; then
-            echo -e "${RED}❌ PostgreSQL failed to start${NC}"
-            docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-            exit 1
-        fi
-        sleep 1
-    done
-
-    # Export database URL for integration tests
-    export DATABASE_URL="postgresql://adcp_user:test_password@localhost:${POSTGRES_PORT}/adcp_test"
+    # Export environment for docker-compose
+    export POSTGRES_PORT
+    export ADCP_SALES_PORT=$MCP_PORT
+    export A2A_PORT
+    export ADMIN_UI_PORT=$ADMIN_PORT
+    export DATABASE_URL="postgresql://adcp_user:test_password@postgres:5432/adcp?sslmode=disable"
     export ADCP_TEST_DB_URL="postgresql://adcp_user:test_password@localhost:${POSTGRES_PORT}/adcp_test"
     export ADCP_TESTING=true
+    export CREATE_SAMPLE_DATA=true
+    export GEMINI_API_KEY="${GEMINI_API_KEY:-test_key}"
 
-    # Run migrations (like CI does)
-    echo "Running database migrations..."
-    if ! uv run python scripts/ops/migrate.py 2>/dev/null; then
-        echo -e "${YELLOW}⚠️  Migration warning (continuing)${NC}"
+    # Build and start services
+    echo "Building Docker images (this may take 2-3 minutes on first run)..."
+    if ! docker-compose build --progress=plain 2>&1 | grep -E "(Step|#|Building|exporting)" | tail -20; then
+        echo -e "${RED}❌ Docker build failed${NC}"
+        exit 1
     fi
 
-    echo "$CONTAINER_NAME"
+    echo "Starting Docker services..."
+    if ! docker-compose up -d; then
+        echo -e "${RED}❌ Docker services failed to start${NC}"
+        docker-compose logs
+        exit 1
+    fi
+
+    # Wait for services to be ready
+    echo "Waiting for services to be ready..."
+    local max_wait=120
+    local start_time=$(date +%s)
+
+    while true; do
+        local elapsed=$(($(date +%s) - start_time))
+
+        if [ $elapsed -gt $max_wait ]; then
+            echo -e "${RED}❌ Services failed to start within ${max_wait}s${NC}"
+            docker-compose logs
+            exit 1
+        fi
+
+        # Check PostgreSQL
+        if docker-compose exec -T postgres pg_isready -U adcp_user >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ PostgreSQL is ready (${elapsed}s)${NC}"
+            break
+        fi
+
+        sleep 2
+    done
+
+    # Run migrations
+    echo "Running database migrations..."
+    # Use docker-compose exec to run migrations inside the container
+    if ! docker-compose exec -T postgres psql -U adcp_user -d postgres -c "CREATE DATABASE adcp_test" 2>/dev/null; then
+        echo "Database adcp_test already exists, continuing..."
+    fi
+
+    # Export for tests
+    export DATABASE_URL="postgresql://adcp_user:test_password@localhost:${POSTGRES_PORT}/adcp_test"
+
+    echo -e "${GREEN}✓ Docker stack is ready${NC}"
+    echo "  PostgreSQL: localhost:${POSTGRES_PORT}"
+    echo "  MCP Server: localhost:${MCP_PORT}"
+    echo "  A2A Server: localhost:${A2A_PORT}"
+    echo "  Admin UI: localhost:${ADMIN_PORT}"
 }
 
 # Docker teardown function
-teardown_postgres_container() {
-    local container_name=$1
-    if [ ! -z "$container_name" ]; then
-        echo -e "${BLUE}🐳 Stopping PostgreSQL container...${NC}"
-        docker rm -f "$container_name" >/dev/null 2>&1 || true
-    fi
+teardown_docker_stack() {
+    echo -e "${BLUE}🐳 Stopping Docker stack...${NC}"
+    docker-compose down -v 2>/dev/null || true
 }
 
 # Trap to ensure cleanup on exit
 cleanup() {
-    if [ ! -z "$POSTGRES_CONTAINER" ]; then
-        teardown_postgres_container "$POSTGRES_CONTAINER"
+    if [ "$MODE" == "ci" ]; then
+        teardown_docker_stack
     fi
 }
 trap cleanup EXIT
@@ -156,10 +224,10 @@ if [ "$MODE" == "quick" ]; then
     exit 0
 fi
 
-# CI mode: Like GitHub Actions - with PostgreSQL container
+# CI mode: Like GitHub Actions - with full Docker stack
 if [ "$MODE" == "ci" ]; then
-    # Setup PostgreSQL container
-    POSTGRES_CONTAINER=$(setup_postgres_container)
+    # Setup complete Docker stack once
+    setup_docker_stack
 
     echo "📦 Step 1/4: Validating imports..."
 
@@ -197,7 +265,8 @@ if [ "$MODE" == "ci" ]; then
     echo ""
 
     echo "�� Step 4/4: Running e2e tests..."
-    # E2E tests manage their own Docker Compose stack (matches GitHub Actions exactly)
+    # E2E tests now use the ALREADY RUNNING Docker stack (no duplicate setup!)
+    # Pass flag to tell E2E tests to use existing services
     # conftest.py will start/stop services with --build flag to ensure fresh images
     # Explicitly set standard ports (overrides any workspace-specific CONDUCTOR_* vars)
     if ! ADCP_SALES_PORT=$MCP_PORT A2A_PORT=$A2A_PORT ADMIN_UI_PORT=$ADMIN_PORT POSTGRES_PORT=$POSTGRES_PORT ADCP_TESTING=true GEMINI_API_KEY="${GEMINI_API_KEY:-test_key}" uv run pytest tests/e2e/ -x --tb=short -q; then
@@ -209,7 +278,7 @@ if [ "$MODE" == "ci" ]; then
 
     echo -e "${GREEN}✅ All CI tests passed!${NC}"
     echo ""
-    echo -e "${BLUE}ℹ️  CI mode ran with PostgreSQL container (like GitHub Actions)${NC}"
+    echo -e "${BLUE}ℹ️  CI mode used single Docker stack for all tests (efficient!)${NC}"
     exit 0
 fi
 
