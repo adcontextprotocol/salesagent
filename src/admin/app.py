@@ -262,7 +262,9 @@ def create_app(config=None):
     app.register_blueprint(creatives_bp, url_prefix="/tenant/<tenant_id>/creatives")
     app.register_blueprint(policy_bp, url_prefix="/tenant/<tenant_id>/policy")
     app.register_blueprint(settings_bp, url_prefix="/tenant/<tenant_id>/settings")
-    app.register_blueprint(adapters_bp, url_prefix="/tenant/<tenant_id>")
+    app.register_blueprint(
+        adapters_bp
+    )  # No url_prefix - routes define their own paths like /adapters/{adapter}/config/{tenant_id}/{product_id}
     app.register_blueprint(authorized_properties_bp, url_prefix="/tenant")  # Tenant-specific routes
     app.register_blueprint(creative_agents_bp, url_prefix="/tenant/<tenant_id>/creative-agents")
     app.register_blueprint(inventory_bp)  # Has its own internal routing
