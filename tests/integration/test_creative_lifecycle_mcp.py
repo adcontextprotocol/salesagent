@@ -14,8 +14,7 @@ from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative as DBCreative
-from src.core.database.models import CreativeAssignment, MediaBuy
-from src.core.database.models import Principal
+from src.core.database.models import CreativeAssignment, MediaBuy, Principal
 from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
@@ -841,7 +840,7 @@ class TestCreativeLifecycleMCP:
             mock_adapter_instance.create_media_buy.return_value = CreateMediaBuyResponse(
                 media_buy_id="test_buy_123",
                 status=TaskStatus.WORKING,
-                message="Media buy created",
+                buyer_ref="buyer_ref_123",
             )
             mock_adapter_instance.manual_approval_required = False
 
@@ -855,8 +854,7 @@ class TestCreativeLifecycleMCP:
                     description="Test",
                     formats=[],
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    price_guidance={"floor": 5.0, "p50": 10.0, "p90": 15.0},
+                    property_tags=["all_inventory"],
                 )
             ]
 

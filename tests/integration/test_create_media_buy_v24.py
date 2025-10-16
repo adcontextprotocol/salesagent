@@ -75,10 +75,8 @@ class TestCreateMediaBuyV24Format:
                 description="Test product for v2.4 format",
                 formats=["display_300x250"],
                 delivery_type="guaranteed",
-                cpm=10.0,
-                min_spend=1000.0,
                 targeting_template={},  # Required field
-                is_fixed_price=True,  # Required field
+                property_tags=["all_inventory"],  # Required field
             )
             session.add(product)
 

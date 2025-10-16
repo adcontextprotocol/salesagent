@@ -3,8 +3,13 @@
 Tests the critical join logic between MediaBuy and PushNotificationConfig tables.
 """
 
-import pytest
+from datetime import UTC, datetime, timedelta
 
+import pytest
+from sqlalchemy import select
+
+from src.core.database.database_session import get_db_session
+from src.core.database.models import MediaBuy, Principal, PushNotificationConfig, Tenant
 from src.services.delivery_simulator import delivery_simulator
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
