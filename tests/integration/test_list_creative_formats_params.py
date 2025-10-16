@@ -120,6 +120,8 @@ def test_filtering_by_standard_only(integration_db, sample_tenant):
 
 def test_filtering_by_format_ids(integration_db, sample_tenant):
     """Test that format_ids filter works correctly."""
+    from src.core.schemas import FormatId
+
     # Create real ToolContext
     context = ToolContext(
         context_id="test",
@@ -133,9 +135,12 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
 
     # Mock tenant resolution to return our test tenant
     with patch("src.core.main.get_current_tenant", return_value=sample_tenant):
-        # Test filtering by specific format IDs
-        target_ids = ["display_300x250", "display_728x90"]
-        req = ListCreativeFormatsRequest(format_ids=target_ids)
+        # Test filtering by specific format IDs (using FormatId objects per AdCP v2.4)
+        target_format_ids = [
+            FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
+            FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
+        ]
+        req = ListCreativeFormatsRequest(format_ids=target_format_ids)
         response = list_creative_formats_raw(req, context)
 
         # Handle both dict and object responses
@@ -147,6 +152,7 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
             formats = response.formats
 
         # Should only return the requested formats (that exist)
+        target_ids = ["display_300x250", "display_728x90"]
         returned_ids = [f.format_id for f in formats]
         assert all(f.format_id in target_ids for f in formats), "All formats should be in target list"
         # At least one of the target formats should exist
