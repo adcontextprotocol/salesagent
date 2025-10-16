@@ -18,8 +18,7 @@ logging.basicConfig(level=logging.INFO)
 
 from product_catalog_providers.ai import AIProductCatalog
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 async def test_ai_provider_bug(integration_db):
@@ -30,28 +29,56 @@ async def test_ai_provider_bug(integration_db):
     # First, let's create a problematic product in the database to test with
     # This simulates what might be causing the issue on the external server
 
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
     from sqlalchemy import select
 
     from src.core.database.database_session import get_db_session
+    from src.core.database.models import PricingOption, Tenant
     from src.core.database.models import Product as ProductModel
 
     with get_db_session() as session:
+        # Create test tenant first
+        now = datetime.now(UTC)
+        tenant = Tenant(
+            tenant_id="test_ai_bug",
+            name="Test AI Bug Tenant",
+            subdomain="test-ai-bug",
+            ad_server="mock",
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(tenant)
+
         # Create a test product with potentially problematic format data
         test_product = ProductModel(
-            tenant_id="default",
+            tenant_id="test_ai_bug",
             product_id="test_audio_bug",
             name="Test Audio Product",
             description="Test product to reproduce bug",
             formats=["audio_15s", "audio_30s"],  # JSONType expects list, not json.dumps()
             targeting_template={},
             delivery_type="guaranteed",
-            is_fixed_price=True,
-            cpm=10.0,
             is_custom=False,
+            property_tags=["all_inventory"],  # Required: products must have properties OR property_tags
         )
-        session.merge(test_product)
+        session.add(test_product)
+
+        # Create pricing option (replaces old is_fixed_price + cpm fields)
+        pricing_option = PricingOption(
+            tenant_id="test_ai_bug",
+            product_id="test_audio_bug",
+            pricing_model="cpm",
+            rate=Decimal("10.0"),
+            currency="USD",
+            is_fixed=True,
+        )
+        session.add(pricing_option)
+
         session.commit()
-        print("   ✅ Created test product with problematic format data")
+        print("   ✅ Created test tenant, product, and pricing option")
 
     try:
         # Test the AI provider
@@ -60,7 +87,7 @@ async def test_ai_provider_bug(integration_db):
 
         products = await provider.get_products(
             brief="test audio campaign",
-            tenant_id="default",
+            tenant_id="test_ai_bug",
             principal_id="test_principal",
             context={"promoted_offering": "test"},
             principal_data={},
@@ -94,15 +121,13 @@ async def test_ai_provider_bug(integration_db):
             return False
 
     finally:
-        # Clean up test product
+        # Clean up test tenant (products and pricing options cascade delete automatically)
         with get_db_session() as session:
-            test_product = session.scalars(
-                select(ProductModel).filter_by(tenant_id="default", product_id="test_audio_bug")
-            ).first()
-            if test_product:
-                session.delete(test_product)
+            test_tenant = session.scalars(select(Tenant).filter_by(tenant_id="test_ai_bug")).first()
+            if test_tenant:
+                session.delete(test_tenant)
                 session.commit()
-                print("   🧹 Cleaned up test product")
+                print("   🧹 Cleaned up test tenant, product, and pricing options")
 
     print("   ✅ AI provider test completed without reproducing the bug")
     return True
