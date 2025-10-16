@@ -4,11 +4,15 @@
 Legacy products are identified by:
 1. String format IDs (instead of proper FormatId dict structure with agent_url)
 2. Missing or invalid agent_url in formats
+3. Using format_id instead of id (AdCP spec requires id)
 
 Usage:
     python scripts/cleanup_legacy_products.py --dry-run  # List legacy products
     python scripts/cleanup_legacy_products.py --delete   # Delete legacy products
     python scripts/cleanup_legacy_products.py --fix      # Convert to proper FormatId structure
+
+Note: The format_id → id migration is handled by Alembic migration 0d4fe6eb03ab.
+      This script identifies other issues (string IDs, missing agent_url, etc.)
 """
 
 import argparse
