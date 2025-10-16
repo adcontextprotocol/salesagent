@@ -3191,7 +3191,6 @@ def _list_creatives_impl(
     from src.core.schemas import Pagination, QuerySummary
 
     return ListCreativesResponse(
-        message=message,
         query_summary=QuerySummary(
             total_matching=total_count,
             returned=len(creatives),
@@ -3427,7 +3426,7 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
     # Generate context_id (required field)
     context_id = f"signals_{uuid.uuid4().hex[:12]}"
 
-    return GetSignalsResponse(signals=signals)
+    return GetSignalsResponse(message=message, context_id=context_id, signals=signals)
 
 
 @mcp.tool()
@@ -3499,31 +3498,28 @@ async def activate_signal(
         # Log activity
         log_tool_activity(context, "activate_signal", start_time)
 
-        # Build response with domain data only (protocol fields added by transport layer)
-        activation_details = {}
-        if estimated_activation_duration_minutes:
-            activation_details["estimated_duration_minutes"] = estimated_activation_duration_minutes
-        if decisioning_platform_segment_id:
-            activation_details["platform_segment_id"] = decisioning_platform_segment_id
-        if requires_approval:
-            activation_details["requires_approval"] = True
-
+        # Build response with adapter schema fields
         if requires_approval or not activation_success:
             return ActivateSignalResponse(
-                signal_id=signal_id,
-                activation_details=activation_details if activation_details else None,
+                task_id=task_id,
+                status=status,
                 errors=errors,
             )
         else:
             return ActivateSignalResponse(
-                signal_id=signal_id,
-                activation_details=activation_details if activation_details else None,
+                task_id=task_id,
+                status=status,
+                decisioning_platform_segment_id=decisioning_platform_segment_id if activation_success else None,
+                estimated_activation_duration_minutes=(
+                    estimated_activation_duration_minutes if activation_success else None
+                ),
             )
 
     except Exception as e:
         logger.error(f"Error activating signal {signal_id}: {e}")
         return ActivateSignalResponse(
-            signal_id=signal_id,
+            task_id=f"task_{uuid.uuid4().hex[:12]}",
+            status="failed",
             errors=[{"code": "ACTIVATION_ERROR", "message": str(e)}],
         )
 
@@ -4715,15 +4711,23 @@ async def _create_media_buy_impl(
                         if format_id:
                             requested_format_keys.add((agent_url, format_id))
 
+                    def format_display(url: str | None, fid: str) -> str:
+                        """Format a (url, id) pair for display, handling trailing slashes."""
+                        if not url:
+                            return fid
+                        # Remove trailing slash from URL to avoid double slashes
+                        clean_url = url.rstrip("/")
+                        return f"{clean_url}/{fid}"
+
                     unsupported_formats = [
-                        f"{url}/{fid}" if url else fid
+                        format_display(url, fid)
                         for url, fid in requested_format_keys
                         if (url, fid) not in product_format_keys
                     ]
 
                     if unsupported_formats:
                         supported_formats_str = ", ".join(
-                            [f"{url}/{fid}" if url else fid for url, fid in product_format_keys]
+                            [format_display(url, fid) for url, fid in product_format_keys]
                         )
                         error_msg = (
                             f"Product '{product.name}' ({product.product_id}) does not support requested format(s): "
@@ -5411,7 +5415,6 @@ def _update_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return UpdateMediaBuyResponse(
-            status="completed",
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
             errors=[{"code": "principal_not_found", "message": error_msg}],
@@ -5437,10 +5440,8 @@ def _update_media_buy_impl(
         )
 
         return UpdateMediaBuyResponse(
-            status="submitted",
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
-            task_id=step.step_id,
         )
 
     # Validate currency limits if flight dates or budget changes
@@ -5478,7 +5479,6 @@ def _update_media_buy_impl(
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
                     ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
                     return UpdateMediaBuyResponse(
-                        status="completed",
                         media_buy_id=req.media_buy_id or "",
                         buyer_ref=req.buyer_ref or "",
                         errors=[{"code": "currency_not_supported", "message": error_msg}],
@@ -5518,7 +5518,6 @@ def _update_media_buy_impl(
                                 )
                                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
                                 return UpdateMediaBuyResponse(
-                                    status="completed",
                                     media_buy_id=req.media_buy_id or "",
                                     buyer_ref=req.buyer_ref or "",
                                     errors=[{"code": "budget_limit_exceeded", "message": error_msg}],
@@ -5602,7 +5601,6 @@ def _update_media_buy_impl(
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return UpdateMediaBuyResponse(
-                status="completed",
                 media_buy_id=req.media_buy_id or "",
                 buyer_ref=req.buyer_ref or "",
                 errors=[{"code": "invalid_budget", "message": error_msg}],
@@ -5660,7 +5658,6 @@ def _update_media_buy_impl(
     )
 
     return UpdateMediaBuyResponse(
-        status="completed",
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
     )
