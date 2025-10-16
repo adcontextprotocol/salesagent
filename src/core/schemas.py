@@ -265,7 +265,9 @@ class Format(BaseModel):
     creative agent at https://creative.adcontextprotocol.org).
     """
 
-    format_id: str = Field(..., description="Unique identifier for the format")
+    format_id: "FormatId | str" = Field(
+        ..., description="Format identifier (FormatId object per AdCP spec, or string for legacy)"
+    )
     agent_url: str | None = Field(
         None,
         description="Base URL of the agent that provides this format (authoritative source). "
@@ -297,10 +299,10 @@ class Format(BaseModel):
     platform_config: dict[str, Any] | None = Field(
         None, description="Platform-specific configuration (e.g., gam, kevel) for creative mapping"
     )
-    output_format_ids: list[str] | None = Field(
+    output_format_ids: list["FormatId | str"] | None = Field(
         None,
-        description="For generative formats: list of format IDs this format can generate. "
-        "Example: ['display_300x250_image', 'display_300x250_html5']",
+        description="For generative formats: array of FormatId objects this format can generate per AdCP spec. "
+        "Strings accepted for legacy compatibility.",
     )
 
 
