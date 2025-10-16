@@ -69,7 +69,16 @@ def get_creative_formats(
     logger.info(f"get_creative_formats: Fetched {len(formats)} formats from registry for tenant {tenant_id}")
 
     formats_list = []
-    for fmt in formats:
+    for idx, fmt in enumerate(formats):
+        # Debug: Log first few formats to diagnose dimension issues
+        if idx < 5:
+            logger.info(
+                f"[DEBUG] Format {idx}: {fmt.name} - "
+                f"format_id={fmt.format_id}, "
+                f"type={fmt.type}, "
+                f"requirements={fmt.requirements}"
+            )
+
         format_dict = {
             "format_id": fmt.format_id,
             "agent_url": fmt.agent_url,
@@ -84,6 +93,8 @@ def get_creative_formats(
         # Add dimensions for display/video formats
         if fmt.requirements and "width" in fmt.requirements and "height" in fmt.requirements:
             format_dict["dimensions"] = f"{fmt.requirements['width']}x{fmt.requirements['height']}"
+            if idx < 5:
+                logger.info(f"[DEBUG] Format {idx}: Got dimensions from requirements: {format_dict['dimensions']}")
         elif "_" in fmt.format_id:
             # Fallback: Parse dimensions from format_id (e.g., "display_300x250_image" → "300x250")
             # This handles creative agents that don't populate requirements field
@@ -92,6 +103,10 @@ def get_creative_formats(
             match = re.search(r"_(\d+)x(\d+)_", fmt.format_id)
             if match:
                 format_dict["dimensions"] = f"{match.group(1)}x{match.group(2)}"
+                if idx < 5:
+                    logger.info(f"[DEBUG] Format {idx}: Parsed dimensions from format_id: {format_dict['dimensions']}")
+            elif idx < 5:
+                logger.info(f"[DEBUG] Format {idx}: No dimensions found - format_id doesn't match pattern")
 
         # Add duration for video/audio formats
         if fmt.requirements and "duration" in fmt.requirements:
