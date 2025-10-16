@@ -38,7 +38,9 @@ def integration_db():
     # Require PostgreSQL - no SQLite fallback
     postgres_url = os.environ.get("DATABASE_URL")
     if not postgres_url or not postgres_url.startswith("postgresql://"):
-        pytest.skip("Integration tests require PostgreSQL DATABASE_URL (e.g., postgresql://user:pass@localhost:5432/any_db)")
+        pytest.skip(
+            "Integration tests require PostgreSQL DATABASE_URL (e.g., postgresql://user:pass@localhost:5432/any_db)"
+        )
 
     # PostgreSQL mode - create unique database per test
     unique_db_name = f"test_{uuid.uuid4().hex[:8]}"

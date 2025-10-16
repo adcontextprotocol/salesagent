@@ -306,7 +306,9 @@ def configure_gam(tenant_id):
         auth_method = data.get("auth_method", "oauth")
         network_code = str(data.get("network_code", "")).strip() if data.get("network_code") else None
         refresh_token = data.get("refresh_token", "").strip() if auth_method == "oauth" else None
-        service_account_json = data.get("service_account_json", "").strip() if auth_method == "service_account" else None
+        service_account_json = (
+            data.get("service_account_json", "").strip() if auth_method == "service_account" else None
+        )
         trafficker_id = str(data.get("trafficker_id", "")).strip() if data.get("trafficker_id") else None
         order_name_template = data.get("order_name_template", "").strip() or None
         line_item_name_template = data.get("line_item_name_template", "").strip() or None
