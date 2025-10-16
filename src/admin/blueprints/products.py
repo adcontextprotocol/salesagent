@@ -70,7 +70,16 @@ def get_creative_formats(
     logger.info(f"get_creative_formats: Fetched {len(formats)} formats from registry for tenant {tenant_id}")
 
     formats_list = []
-    for fmt in formats:
+    for idx, fmt in enumerate(formats):
+        # Debug: Log first few formats to diagnose dimension issues
+        if idx < 5:
+            logger.info(
+                f"[DEBUG] Format {idx}: {fmt.name} - "
+                f"format_id={fmt.format_id}, "
+                f"type={fmt.type}, "
+                f"requirements={fmt.requirements}"
+            )
+
         format_dict = {
             "format_id": fmt.format_id,
             "agent_url": fmt.agent_url,
@@ -85,6 +94,8 @@ def get_creative_formats(
         # Add dimensions for display/video formats
         if fmt.requirements and "width" in fmt.requirements and "height" in fmt.requirements:
             format_dict["dimensions"] = f"{fmt.requirements['width']}x{fmt.requirements['height']}"
+            if idx < 5:
+                logger.info(f"[DEBUG] Format {idx}: Got dimensions from requirements: {format_dict['dimensions']}")
         elif "_" in fmt.format_id:
             # Fallback: Parse dimensions from format_id (e.g., "display_300x250_image" → "300x250")
             # This handles creative agents that don't populate requirements field
@@ -93,6 +104,10 @@ def get_creative_formats(
             match = re.search(r"_(\d+)x(\d+)_", fmt.format_id)
             if match:
                 format_dict["dimensions"] = f"{match.group(1)}x{match.group(2)}"
+                if idx < 5:
+                    logger.info(f"[DEBUG] Format {idx}: Parsed dimensions from format_id: {format_dict['dimensions']}")
+            elif idx < 5:
+                logger.info(f"[DEBUG] Format {idx}: No dimensions found - format_id doesn't match pattern")
 
         # Add duration for video/audio formats
         if fmt.requirements and "duration" in fmt.requirements:
@@ -382,9 +397,27 @@ def add_product(tenant_id):
                     # Add ad unit/placement targeting if provided
                     ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
                     if ad_unit_ids:
-                        base_config["targeted_ad_unit_ids"] = [
-                            id.strip() for id in ad_unit_ids.split(",") if id.strip()
-                        ]
+                        # Parse comma-separated IDs
+                        id_list = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
+
+                        # Validate that all IDs are numeric (GAM requires numeric IDs)
+                        invalid_ids = [id for id in id_list if not id.isdigit()]
+                        if invalid_ids:
+                            flash(
+                                f"Invalid ad unit IDs: {', '.join(invalid_ids)}. "
+                                f"Ad unit IDs must be numeric (e.g., '23312403859'). "
+                                f"Use 'Browse Ad Units' to select valid ad units.",
+                                "error",
+                            )
+                            return render_template(
+                                "add_product_gam.html",
+                                tenant_id=tenant_id,
+                                tenant_name=tenant.name,
+                                form_data=form_data,
+                                error="Invalid ad unit IDs",
+                            )
+
+                        base_config["targeted_ad_unit_ids"] = id_list
 
                     placement_ids = form_data.get("targeted_placement_ids", "").strip()
                     if placement_ids:
@@ -568,7 +601,7 @@ def add_product(tenant_id):
 
         except Exception as e:
             logger.error(f"Error creating product: {e}", exc_info=True)
-            flash("Error creating product", "error")
+            flash(f"Error creating product: {str(e)}", "error")
             return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
     # GET request - show adapter-specific form
@@ -700,9 +733,23 @@ def edit_product(tenant_id, product_id):
                         # Add ad unit/placement targeting if provided
                         ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
                         if ad_unit_ids:
-                            base_config["targeted_ad_unit_ids"] = [
-                                id.strip() for id in ad_unit_ids.split(",") if id.strip()
-                            ]
+                            # Parse comma-separated IDs
+                            id_list = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
+
+                            # Validate that all IDs are numeric (GAM requires numeric IDs)
+                            invalid_ids = [id for id in id_list if not id.isdigit()]
+                            if invalid_ids:
+                                flash(
+                                    f"Invalid ad unit IDs: {', '.join(invalid_ids)}. "
+                                    f"Ad unit IDs must be numeric (e.g., '23312403859'). "
+                                    f"Use 'Browse Ad Units' to select valid ad units.",
+                                    "error",
+                                )
+                                return redirect(
+                                    url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id)
+                                )
+
+                            base_config["targeted_ad_unit_ids"] = id_list
 
                         placement_ids = form_data.get("targeted_placement_ids", "").strip()
                         if placement_ids:
@@ -854,7 +901,7 @@ def edit_product(tenant_id, product_id):
 
     except Exception as e:
         logger.error(f"Error editing product: {e}", exc_info=True)
-        flash("Error editing product", "error")
+        flash(f"Error editing product: {str(e)}", "error")
         return redirect(url_for("products.list_products", tenant_id=tenant_id))
 
 

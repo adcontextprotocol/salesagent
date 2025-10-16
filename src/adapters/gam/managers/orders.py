@@ -321,9 +321,24 @@ class GAMOrdersManager:
             if impl_config.get("targeted_ad_unit_ids"):
                 if "inventoryTargeting" not in line_item_targeting:
                     line_item_targeting["inventoryTargeting"] = {}
+
+                # Validate ad unit IDs are numeric (GAM requires numeric IDs, not codes/names)
+                ad_unit_ids = impl_config["targeted_ad_unit_ids"]
+                invalid_ids = [id for id in ad_unit_ids if not str(id).isdigit()]
+                if invalid_ids:
+                    error_msg = (
+                        f"Product '{package.package_id}' has invalid ad unit IDs: {invalid_ids}. "
+                        f"GAM requires numeric ad unit IDs (e.g., '23312403859'), not ad unit codes or names. "
+                        f"\n\nInvalid values found: {', '.join(str(id) for id in invalid_ids)}"
+                        f"\n\nTo fix: Update the product's targeted_ad_unit_ids to use numeric IDs from GAM."
+                        f"\nFind IDs in GAM Admin UI → Inventory → Ad Units (the numeric ID column)."
+                    )
+                    log(f"[red]Error: {error_msg}[/red]")
+                    raise ValueError(error_msg)
+
                 line_item_targeting["inventoryTargeting"]["targetedAdUnits"] = [
                     {"adUnitId": ad_unit_id, "includeDescendants": impl_config.get("include_descendants", True)}
-                    for ad_unit_id in impl_config["targeted_ad_unit_ids"]
+                    for ad_unit_id in ad_unit_ids
                 ]
 
             if impl_config.get("targeted_placement_ids"):
@@ -336,8 +351,13 @@ class GAMOrdersManager:
             # Require inventory targeting - no fallback
             if "inventoryTargeting" not in line_item_targeting or not line_item_targeting["inventoryTargeting"]:
                 error_msg = (
-                    f"Product {package.package_id} is not configured with inventory targeting. "
-                    f"Please configure 'targeted_ad_unit_ids' or 'targeted_placement_ids' in the product's implementation_config."
+                    f"Product '{package.package_id}' is not configured with inventory targeting. "
+                    f"GAM requires all line items to target specific ad units or placements. "
+                    f"\n\nTo fix this product, add one of the following to implementation_config:"
+                    f"\n  - 'targeted_ad_unit_ids': ['your_ad_unit_id'] (list of GAM ad unit IDs)"
+                    f"\n  - 'targeted_placement_ids': ['your_placement_id'] (list of GAM placement IDs)"
+                    f"\n\nYou can find ad unit IDs in GAM Admin UI → Inventory → Ad Units"
+                    f"\n\nFor testing, you can use Mock adapter instead of GAM (set ad_server='mock' on tenant)."
                 )
                 log(f"[red]Error: {error_msg}[/red]")
                 raise ValueError(error_msg)
