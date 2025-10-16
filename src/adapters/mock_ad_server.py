@@ -298,17 +298,10 @@ class MockAdServer(AdServerAdapter):
             errors.append("InvalidArgumentError @ lineItem[0].endDateTime")
 
         # Inventory targeting validation (like GAM requirement)
-        has_inventory_targeting = False
-        if request.targeting_overlay and hasattr(request.targeting_overlay, "custom"):
-            if request.targeting_overlay.custom and "inventory" in str(request.targeting_overlay.custom):
-                has_inventory_targeting = True
-
-        # For non-guaranteed line items, require some form of inventory targeting
-        for package in packages:
-            if package.delivery_type == "non_guaranteed":
-                if not has_inventory_targeting:
-                    errors.append("RequiredError.REQUIRED @ lineItem[0].targeting.inventoryTargeting")
-                    break
+        # Note: Mock adapter skips inventory targeting validation
+        # Real adapters like GAM will enforce their own inventory targeting requirements
+        # Mock adapter accepts Run of Site (no specific inventory targeting) for testing flexibility
+        # This allows test scenarios to run without configuring ad unit IDs
 
         # Goal validation (like GAM limits)
         for package in packages:
