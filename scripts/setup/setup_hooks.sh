@@ -41,22 +41,23 @@ if command -v uv &> /dev/null; then
     echo ""
 fi
 
-echo "🔍 Running CI-mode tests before push (with PostgreSQL)..."
-echo "   This matches exactly what GitHub Actions will run."
+echo "🔍 Running quick tests before push (no PostgreSQL required)..."
+echo "   Unit tests + integration tests (mocked database)"
 echo ""
 
 # Check if test runner exists
 if [ -f "./run_all_tests.sh" ]; then
-    # Run CI mode tests (with PostgreSQL container, like GitHub Actions)
-    ./run_all_tests.sh ci
+    # Run QUICK mode tests (unit + integration without database)
+    # Fast validation that doesn't require PostgreSQL containers
+    ./run_all_tests.sh quick
     TEST_RESULT=$?
 
     if [ $TEST_RESULT -ne 0 ]; then
         echo ""
-        echo "❌ Tests failed! Push aborted."
+        echo "❌ Quick tests failed! Push aborted."
         echo ""
-        echo "The CI-mode tests (which match GitHub Actions) failed."
-        echo "This catches database-specific issues before they hit CI."
+        echo "To run full CI tests locally (with PostgreSQL):"
+        echo "  ./run_all_tests.sh ci"
         echo ""
         echo "To push anyway (not recommended):"
         echo "  git push --no-verify"
@@ -64,12 +65,12 @@ if [ -f "./run_all_tests.sh" ]; then
         exit 1
     else
         echo ""
-        echo "✅ All CI-mode tests passed! Proceeding with push..."
-        echo "   Your code is ready for GitHub Actions."
+        echo "✅ Quick tests passed! Proceeding with push..."
+        echo "   Full CI tests (with PostgreSQL) will run in GitHub Actions."
     fi
 else
     echo "⚠️  Test runner not found. Skipping tests."
-    echo "   Consider running: ./run_all_tests.sh ci"
+    echo "   Consider running: ./run_all_tests.sh quick"
 fi
 
 exit 0
@@ -80,5 +81,6 @@ chmod +x "$GIT_DIR/hooks/pre-push"
 
 echo "✅ Git hooks installed successfully!"
 echo ""
-echo "The pre-push hook will now run tests before each push."
+echo "The pre-push hook will run quick tests (no PostgreSQL) before each push."
+echo "Full CI tests will run in GitHub Actions."
 echo "To skip tests temporarily, use: git push --no-verify"
