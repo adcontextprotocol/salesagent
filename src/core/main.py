@@ -2139,16 +2139,25 @@ def _sync_creatives_impl(
                                                 "format": creative_format,
                                             }
                                         )
+                                        failed_count += 1
+                                        results.append(
+                                            SyncCreativeResult(
+                                                creative_id=existing_creative.creative_id,
+                                                action="failed",
+                                                errors=[error_msg],
+                                            )
+                                        )
                                         continue  # Skip this creative update
 
                                 except Exception as validation_error:
                                     # Creative agent validation failed for update (network error, agent down, etc.)
                                     # Do NOT update the creative - it needs validation before acceptance
                                     error_msg = (
-                                        f"Creative agent unreachable or validation error: {str(validation_error)}"
+                                        f"Creative agent unreachable or validation error: {str(validation_error)}. "
+                                        f"Retry recommended - creative agent may be temporarily unavailable."
                                     )
                                     logger.error(
-                                        f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id} - rejecting update, buyer should retry",
+                                        f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id}",
                                         exc_info=True,
                                     )
                                     failed_creatives.append(
@@ -2156,8 +2165,15 @@ def _sync_creatives_impl(
                                             "creative_id": existing_creative.creative_id,
                                             "error": error_msg,
                                             "format": creative_format,
-                                            "retry_recommended": True,  # Buyer should retry this update
                                         }
+                                    )
+                                    failed_count += 1
+                                    results.append(
+                                        SyncCreativeResult(
+                                            creative_id=existing_creative.creative_id,
+                                            action="failed",
+                                            errors=[error_msg],
+                                        )
                                     )
                                     continue  # Skip this creative update
 
@@ -2428,14 +2444,25 @@ def _sync_creatives_impl(
                                                 "format": creative_format,
                                             }
                                         )
+                                        failed_count += 1
+                                        results.append(
+                                            SyncCreativeResult(
+                                                creative_id=creative_id,
+                                                action="failed",
+                                                errors=[error_msg],
+                                            )
+                                        )
                                         continue  # Skip this creative
 
                             except Exception as validation_error:
                                 # Creative agent validation failed (network error, agent down, etc.)
                                 # Do NOT store the creative - it needs validation before acceptance
-                                error_msg = f"Creative agent unreachable or validation error: {str(validation_error)}"
+                                error_msg = (
+                                    f"Creative agent unreachable or validation error: {str(validation_error)}. "
+                                    f"Retry recommended - creative agent may be temporarily unavailable."
+                                )
                                 logger.error(
-                                    f"[sync_creatives] {error_msg} - rejecting creative {creative_id}, buyer should retry",
+                                    f"[sync_creatives] {error_msg} - rejecting creative {creative_id}",
                                     exc_info=True,
                                 )
                                 failed_creatives.append(
@@ -2443,8 +2470,15 @@ def _sync_creatives_impl(
                                         "creative_id": creative_id,
                                         "error": error_msg,
                                         "format": creative_format,
-                                        "retry_recommended": True,  # Buyer should retry this creative
                                     }
+                                )
+                                failed_count += 1
+                                results.append(
+                                    SyncCreativeResult(
+                                        creative_id=creative_id,
+                                        action="failed",
+                                        errors=[error_msg],
+                                    )
                                 )
                                 continue  # Skip storing this creative
 
