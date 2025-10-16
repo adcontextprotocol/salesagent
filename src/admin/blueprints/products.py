@@ -703,6 +703,15 @@ def edit_product(tenant_id, product_id):
                 pricing_fields = {k: v for k, v in form_data.items() if "pricing" in k or "rate_" in k or "floor_" in k}
                 logger.info(f"[DEBUG] Pricing form fields for product {product_id}: {pricing_fields}")
 
+                # Debug: Log ad unit and countries fields
+                targeting_fields = {
+                    "targeted_ad_unit_ids": form_data.get("targeted_ad_unit_ids"),
+                    "targeted_placement_ids": form_data.get("targeted_placement_ids"),
+                    "countries": countries_list,
+                    "formats": formats,
+                }
+                logger.info(f"[DEBUG] Targeting/format fields for product {product_id}: {targeting_fields}")
+
                 # Update basic fields
                 product.name = form_data.get("name", product.name)
                 product.description = form_data.get("description", product.description)
