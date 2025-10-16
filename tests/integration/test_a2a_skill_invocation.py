@@ -10,12 +10,16 @@ import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+# Skip if python_a2a is not available (not installed in CI)
+pytest.importorskip("python_a2a")
+
 from python_a2a import DataPart, Message, Part, Role, ServerError, Task
 from python_a2a.server.http import MessageSendParams
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 
-pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
 
 # Import schema validation components
 try:
