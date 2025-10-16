@@ -380,9 +380,27 @@ def add_product(tenant_id):
                     # Add ad unit/placement targeting if provided
                     ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
                     if ad_unit_ids:
-                        base_config["targeted_ad_unit_ids"] = [
-                            id.strip() for id in ad_unit_ids.split(",") if id.strip()
-                        ]
+                        # Parse comma-separated IDs
+                        id_list = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
+
+                        # Validate that all IDs are numeric (GAM requires numeric IDs)
+                        invalid_ids = [id for id in id_list if not id.isdigit()]
+                        if invalid_ids:
+                            flash(
+                                f"Invalid ad unit IDs: {', '.join(invalid_ids)}. "
+                                f"Ad unit IDs must be numeric (e.g., '23312403859'). "
+                                f"Use 'Browse Ad Units' to select valid ad units.",
+                                "error",
+                            )
+                            return render_template(
+                                "add_product_gam.html",
+                                tenant_id=tenant_id,
+                                tenant_name=tenant.name,
+                                form_data=form_data,
+                                error="Invalid ad unit IDs",
+                            )
+
+                        base_config["targeted_ad_unit_ids"] = id_list
 
                     placement_ids = form_data.get("targeted_placement_ids", "").strip()
                     if placement_ids:
@@ -697,9 +715,23 @@ def edit_product(tenant_id, product_id):
                         # Add ad unit/placement targeting if provided
                         ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
                         if ad_unit_ids:
-                            base_config["targeted_ad_unit_ids"] = [
-                                id.strip() for id in ad_unit_ids.split(",") if id.strip()
-                            ]
+                            # Parse comma-separated IDs
+                            id_list = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
+
+                            # Validate that all IDs are numeric (GAM requires numeric IDs)
+                            invalid_ids = [id for id in id_list if not id.isdigit()]
+                            if invalid_ids:
+                                flash(
+                                    f"Invalid ad unit IDs: {', '.join(invalid_ids)}. "
+                                    f"Ad unit IDs must be numeric (e.g., '23312403859'). "
+                                    f"Use 'Browse Ad Units' to select valid ad units.",
+                                    "error",
+                                )
+                                return redirect(
+                                    url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id)
+                                )
+
+                            base_config["targeted_ad_unit_ids"] = id_list
 
                         placement_ids = form_data.get("targeted_placement_ids", "").strip()
                         if placement_ids:
