@@ -4518,16 +4518,30 @@ async def _create_media_buy_impl(
                         matching_package = pkg
                         break
 
-                # If found and has format_ids, use those
+                # If found and has format_ids, validate and use those
                 if matching_package and hasattr(matching_package, "format_ids") and matching_package.format_ids:
                     # Extract format IDs from FormatId objects
+                    requested_format_ids = []
                     for fmt in matching_package.format_ids:
                         if isinstance(fmt, dict):
-                            format_ids_to_use.append(fmt.get("id"))
+                            requested_format_ids.append(fmt.get("id"))
                         elif hasattr(fmt, "id"):
-                            format_ids_to_use.append(fmt.id)
+                            requested_format_ids.append(fmt.id)
                         elif isinstance(fmt, str):
-                            format_ids_to_use.append(fmt)
+                            requested_format_ids.append(fmt)
+
+                    # Validate that requested formats are supported by product
+                    product_format_ids = set(product.formats) if product.formats else set()
+                    unsupported_formats = [f for f in requested_format_ids if f not in product_format_ids]
+
+                    if unsupported_formats:
+                        error_msg = (
+                            f"Product '{product.name}' ({product.product_id}) does not support requested format(s): "
+                            f"{', '.join(unsupported_formats)}. Supported formats: {', '.join(product_format_ids)}"
+                        )
+                        raise ValueError(error_msg)
+
+                    format_ids_to_use = requested_format_ids
 
             # Fallback to product's formats if no request format_ids
             if not format_ids_to_use:

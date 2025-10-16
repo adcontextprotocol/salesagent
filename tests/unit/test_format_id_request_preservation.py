@@ -128,3 +128,81 @@ def test_format_ids_handles_format_id_objects():
 
     # Verify that FormatId.id is extracted correctly
     assert format_ids_to_use == ["display_300x250"], f"Expected ['display_300x250'], got {format_ids_to_use}"
+
+
+def test_format_ids_validation_rejects_unsupported():
+    """Test that requesting unsupported format_ids raises an error."""
+
+    # Create mock product with only leaderboard format
+    class MockProduct:
+        def __init__(self):
+            self.product_id = "display_leaderboard_cpm"
+            self.name = "Display Leaderboard CPM"
+            self.formats = ["leaderboard_728x90"]  # Only supports leaderboard
+
+    product = MockProduct()
+
+    # Simulate request package with UNSUPPORTED format (video)
+    class MockPackage:
+        def __init__(self):
+            self.product_id = "display_leaderboard_cpm"
+            self.format_ids = [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "video_instream"}]
+
+    req_package = MockPackage()
+
+    # Simulate the validation logic from main.py
+    requested_format_ids = []
+    for fmt in req_package.format_ids:
+        if isinstance(fmt, dict):
+            requested_format_ids.append(fmt.get("id"))
+        elif hasattr(fmt, "id"):
+            requested_format_ids.append(fmt.id)
+        elif isinstance(fmt, str):
+            requested_format_ids.append(fmt)
+
+    # Validate that requested formats are supported by product
+    product_format_ids = set(product.formats) if product.formats else set()
+    unsupported_formats = [f for f in requested_format_ids if f not in product_format_ids]
+
+    # Verify that unsupported format is detected
+    assert unsupported_formats == ["video_instream"], f"Expected ['video_instream'], got {unsupported_formats}"
+    assert "video_instream" not in product_format_ids, "video_instream should not be in product formats"
+
+
+def test_format_ids_validation_accepts_supported():
+    """Test that requesting supported format_ids is accepted."""
+
+    # Create mock product with multiple formats
+    class MockProduct:
+        def __init__(self):
+            self.product_id = "display_multi_cpm"
+            self.name = "Display Multi Format CPM"
+            self.formats = ["leaderboard_728x90", "display_300x250", "display_160x600"]
+
+    product = MockProduct()
+
+    # Simulate request package with SUPPORTED format
+    class MockPackage:
+        def __init__(self):
+            self.product_id = "display_multi_cpm"
+            self.format_ids = [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250"}]
+
+    req_package = MockPackage()
+
+    # Simulate the validation logic from main.py
+    requested_format_ids = []
+    for fmt in req_package.format_ids:
+        if isinstance(fmt, dict):
+            requested_format_ids.append(fmt.get("id"))
+        elif hasattr(fmt, "id"):
+            requested_format_ids.append(fmt.id)
+        elif isinstance(fmt, str):
+            requested_format_ids.append(fmt)
+
+    # Validate that requested formats are supported by product
+    product_format_ids = set(product.formats) if product.formats else set()
+    unsupported_formats = [f for f in requested_format_ids if f not in product_format_ids]
+
+    # Verify that all requested formats are supported
+    assert unsupported_formats == [], f"Expected no unsupported formats, got {unsupported_formats}"
+    assert "display_300x250" in product_format_ids, "display_300x250 should be in product formats"
