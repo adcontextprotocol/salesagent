@@ -328,21 +328,31 @@ def list_products(tenant_id):
                         )
                         continue
 
-                    # Validate we have required fields
-                    if not format_id or not agent_url:
+                    # Validate format_id (agent_url is optional for legacy formats)
+                    if not format_id:
                         logger.error(
-                            f"Product {product.product_id} format missing required fields: "
-                            f"format_id={format_id}, agent_url={agent_url}. "
+                            f"Product {product.product_id} format missing format_id. "
                             "This product needs to be edited and re-saved to fix the data."
                         )
                         continue
 
+                    # Warn if agent_url is missing but continue processing
+                    if not agent_url:
+                        logger.warning(
+                            f"Product {product.product_id} format {format_id} missing agent_url. "
+                            "Using format_id as display name. Edit product to fix."
+                        )
+
                     # Resolve format name from creative agent registry
                     try:
-                        format_obj = get_format(format_id, agent_url, tenant_id)
-                        resolved_formats.append(
-                            {"format_id": format_id, "agent_url": agent_url, "name": format_obj.name}
-                        )
+                        if agent_url:
+                            format_obj = get_format(format_id, agent_url, tenant_id)
+                            resolved_formats.append(
+                                {"format_id": format_id, "agent_url": agent_url, "name": format_obj.name}
+                            )
+                        else:
+                            # No agent_url - use format_id as name (legacy format)
+                            resolved_formats.append({"format_id": format_id, "agent_url": None, "name": format_id})
                     except Exception as e:
                         logger.warning(f"Could not resolve format {format_id} from {agent_url}: {e}")
                         # Use format_id as name if resolution fails
@@ -784,6 +794,7 @@ def edit_product(tenant_id, product_id):
 
                 # Parse formats - expecting multiple checkbox values in format "agent_url|format_id"
                 formats_raw = request.form.getlist("formats")
+                logger.info(f"[DEBUG] Edit product {product_id}: formats_raw from form = {formats_raw}")
                 if formats_raw:
                     # Convert from "agent_url|format_id" to FormatId dict structure
                     formats = []
@@ -1011,6 +1022,7 @@ def edit_product(tenant_id, product_id):
                 # Build set of selected format IDs for template checking
                 # Use composite key (agent_url, format_id) tuples per AdCP spec (same as main.py)
                 selected_format_ids = set()
+                logger.info(f"[DEBUG] Building selected_format_ids from product_dict['formats']: {product_dict['formats']}")
                 for fmt in product_dict["formats"]:
                     agent_url = None
                     format_id = None
@@ -1019,10 +1031,12 @@ def edit_product(tenant_id, product_id):
                         # Database JSONB: uses "id" per AdCP spec
                         agent_url = fmt.get("agent_url")
                         format_id = fmt.get("id") or fmt.get("format_id")  # "id" is AdCP spec, "format_id" is legacy
+                        logger.info(f"[DEBUG] Dict format: agent_url={agent_url}, format_id={format_id}")
                     elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
                         # Pydantic object: uses "format_id" attribute (serializes to "id" in JSON)
                         agent_url = fmt.agent_url
                         format_id = getattr(fmt, "format_id", None) or getattr(fmt, "id", None)
+                        logger.info(f"[DEBUG] Pydantic format: agent_url={agent_url}, format_id={format_id}")
                     elif isinstance(fmt, str):
                         # Legacy: plain string format ID (no agent_url) - should be deprecated
                         format_id = fmt
@@ -1030,6 +1044,8 @@ def edit_product(tenant_id, product_id):
 
                     if format_id:
                         selected_format_ids.add((agent_url, format_id))
+
+                logger.info(f"[DEBUG] Final selected_format_ids set: {selected_format_ids}")
 
                 return render_template(
                     "add_product_gam.html",
