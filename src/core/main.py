@@ -37,6 +37,7 @@ from product_catalog_providers.factory import get_product_catalog_provider
 # Other imports
 from src.core.config_loader import (
     get_current_tenant,
+    get_tenant_by_id,
     get_tenant_by_subdomain,
     get_tenant_by_virtual_host,
     load_config,
@@ -405,7 +406,13 @@ def get_principal_from_context(context: Context | None) -> str | None:
                 # Fallback: assume it's already a tenant_id
                 requested_tenant_id = tenant_hint
                 detection_method = "x-adcp-tenant header (direct)"
-                console.print(f"[yellow]Using x-adcp-tenant as tenant_id directly: {requested_tenant_id}[/yellow]")
+                # Need to look up and set tenant context
+                tenant_context = get_tenant_by_id(tenant_hint)
+                if tenant_context:
+                    set_current_tenant(tenant_context)
+                    console.print(f"[green]Tenant context set for tenant_id: {requested_tenant_id}[/green]")
+                else:
+                    console.print(f"[yellow]Using x-adcp-tenant as tenant_id directly: {requested_tenant_id}[/yellow]")
 
     # 3. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
     if not requested_tenant_id:
