@@ -2142,15 +2142,24 @@ def _sync_creatives_impl(
                                         continue  # Skip this creative update
 
                                 except Exception as validation_error:
-                                    # Creative agent validation failed for update - log warning but continue
-                                    # This allows updates even if creative agent is down
-                                    error_msg = f"Creative agent validation failed: {str(validation_error)}"
-                                    logger.warning(
-                                        f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id} - continuing with update",
+                                    # Creative agent validation failed for update (network error, agent down, etc.)
+                                    # Do NOT update the creative - it needs validation before acceptance
+                                    error_msg = (
+                                        f"Creative agent unreachable or validation error: {str(validation_error)}"
+                                    )
+                                    logger.error(
+                                        f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id} - rejecting update, buyer should retry",
                                         exc_info=True,
                                     )
-                                    # Note: We continue instead of failing to allow graceful degradation
-                                    # when creative agent is unavailable
+                                    failed_creatives.append(
+                                        {
+                                            "creative_id": existing_creative.creative_id,
+                                            "error": error_msg,
+                                            "format": creative_format,
+                                            "retry_recommended": True,  # Buyer should retry this update
+                                        }
+                                    )
+                                    continue  # Skip this creative update
 
                             # In full upsert, consider all fields as changed
                             changes.extend(["url", "click_url", "width", "height", "duration"])
@@ -2422,15 +2431,22 @@ def _sync_creatives_impl(
                                         continue  # Skip this creative
 
                             except Exception as validation_error:
-                                # Creative agent validation failed - log warning but continue
-                                # This allows creatives to be stored even if creative agent is down
-                                error_msg = f"Creative agent validation failed: {str(validation_error)}"
-                                logger.warning(
-                                    f"[sync_creatives] {error_msg} - continuing with creative storage",
+                                # Creative agent validation failed (network error, agent down, etc.)
+                                # Do NOT store the creative - it needs validation before acceptance
+                                error_msg = f"Creative agent unreachable or validation error: {str(validation_error)}"
+                                logger.error(
+                                    f"[sync_creatives] {error_msg} - rejecting creative {creative_id}, buyer should retry",
                                     exc_info=True,
                                 )
-                                # Note: We continue instead of failing to allow graceful degradation
-                                # when creative agent is unavailable
+                                failed_creatives.append(
+                                    {
+                                        "creative_id": creative_id,
+                                        "error": error_msg,
+                                        "format": creative_format,
+                                        "retry_recommended": True,  # Buyer should retry this creative
+                                    }
+                                )
+                                continue  # Skip storing this creative
 
                         # Determine creative status based on approval mode
 
