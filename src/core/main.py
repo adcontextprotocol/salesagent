@@ -1857,12 +1857,15 @@ def _sync_creatives_impl(
                 # Use savepoint for individual creative transaction isolation
                 with session.begin_nested():
                     # Check if creative already exists (always check for upsert/patch behavior)
+                    # SECURITY: Must filter by principal_id to prevent cross-principal modification
                     existing_creative = None
                     if creative.get("creative_id"):
                         from src.core.database.models import Creative as DBCreative
 
                         stmt = select(DBCreative).filter_by(
-                            tenant_id=tenant["tenant_id"], creative_id=creative.get("creative_id")
+                            tenant_id=tenant["tenant_id"],
+                            principal_id=principal_id,  # SECURITY: Prevent cross-principal modification
+                            creative_id=creative.get("creative_id"),
                         )
                         existing_creative = session.scalars(stmt).first()
 
