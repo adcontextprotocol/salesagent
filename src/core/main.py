@@ -5652,26 +5652,7 @@ def _update_media_buy_impl(
                     return result
 
             # Handle budget updates
-            if pkg_update.impressions is not None:
-                result = adapter.update_media_buy(
-                    media_buy_id=req.media_buy_id,
-                    buyer_ref=req.buyer_ref or "",
-                    action="update_package_impressions",
-                    package_id=pkg_update.package_id,
-                    budget=pkg_update.impressions,
-                    today=datetime.combine(today, datetime.min.time()),
-                )
-                if result.errors:
-                    error_message = (
-                        result.errors[0].get("message", "Update failed") if result.errors else "Update failed"
-                    )
-                    ctx_manager.update_workflow_step(
-                        step.step_id,
-                        status="failed",
-                        error_message=error_message,
-                    )
-                    return result
-            elif pkg_update.budget is not None:
+            if pkg_update.budget is not None:
                 result = adapter.update_media_buy(
                     media_buy_id=req.media_buy_id,
                     buyer_ref=req.buyer_ref or "",
