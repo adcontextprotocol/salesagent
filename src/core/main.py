@@ -3623,7 +3623,9 @@ def _list_authorized_properties_impl(
         raise ToolError("AUTHENTICATION_ERROR", "Could not resolve tenant from context")
 
     tenant_id = tenant["tenant_id"]
-    principal_id = _get_principal_id_from_context(context)
+
+    # Authentication is OPTIONAL for discovery endpoints (returns public inventory)
+    principal_id = get_principal_from_context(context)  # Returns None if no auth
 
     # Apply testing hooks
     from src.core.testing_hooks import TestingContext
@@ -3751,8 +3753,8 @@ def _list_authorized_properties_impl(
             audit_logger = get_audit_logger("AdCP", tenant_id)
             audit_logger.log_operation(
                 operation="list_authorized_properties",
-                principal_name=principal_id,
-                principal_id=principal_id,
+                principal_name=principal_id or "anonymous",
+                principal_id=principal_id or "anonymous",
                 adapter_id="mcp_server",
                 success=True,
                 details={
