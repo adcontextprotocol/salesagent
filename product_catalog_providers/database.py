@@ -168,8 +168,9 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                                 format_ids.append(format_obj)
                                 logger.debug(f"Using plain string as format_id: {format_obj}")
                         elif isinstance(format_obj, dict):
-                            # It's a format object, extract the format_id
-                            format_id = format_obj.get("format_id")
+                            # It's a format object, extract the format id
+                            # Per AdCP v2.4 spec, FormatId has "id" field, not "format_id"
+                            format_id = format_obj.get("id") or format_obj.get("format_id")
                             if format_id:
                                 format_ids.append(format_id)
                                 logger.debug(f"Extracted format_id from dict: {format_id}")
