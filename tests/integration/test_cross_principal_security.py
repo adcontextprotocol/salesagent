@@ -139,39 +139,37 @@ class TestCrossPrincipalSecurity:
         with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "security_test_tenant"}):
             response = _sync_creatives_impl(creatives=creatives_data, patch=False, context=mock_context_b)
 
-            # Verify Principal B's attempt did NOT modify Principal A's creative
-            with get_db_session() as session:
-                from sqlalchemy import select
+        # Response should show success (it created a NEW creative for Principal B, not modified A's)
+        created_count = sum(1 for c in response.creatives if c.action == "created")
+        failed_count = sum(1 for c in response.creatives if c.action == "failed")
+        assert created_count == 1, "Should have created 1 creative"
+        assert failed_count == 0, "Should have no failures"
 
-                stmt = select(DBCreative).filter_by(tenant_id="security_test_tenant", creative_id="creative_owned_by_a")
-                original_creative = session.scalars(stmt).first()
+        # Verify Principal B's attempt did NOT modify Principal A's creative
+        with get_db_session() as session:
+            from sqlalchemy import select
 
-                # Original creative should be UNCHANGED
-                assert original_creative.principal_id == "advertiser_a", "Creative ownership changed!"
-                assert original_creative.name == "Advertiser A Creative", "Creative name was modified!"
-                assert original_creative.format == "display_300x250", "Creative format was modified!"
-                assert (
-                    original_creative.data["url"] == "https://example.com/creative_a.jpg"
-                ), "Creative URL was modified!"
+            stmt = select(DBCreative).filter_by(tenant_id="security_test_tenant", creative_id="creative_owned_by_a")
+            original_creative = session.scalars(stmt).first()
 
-            # Response should show success (it created a NEW creative for Principal B, not modified A's)
-            created_count = sum(1 for c in response.creatives if c.action == "created")
-            failed_count = sum(1 for c in response.creatives if c.action == "failed")
-            assert created_count == 1, "Should have created 1 creative"
-            assert failed_count == 0, "Should have no failures"
+            # Original creative should be UNCHANGED
+            assert original_creative.principal_id == "advertiser_a", "Creative ownership changed!"
+            assert original_creative.name == "Advertiser A Creative", "Creative name was modified!"
+            assert original_creative.format == "display_300x250", "Creative format was modified!"
+            assert original_creative.data["url"] == "https://example.com/creative_a.jpg", "Creative URL was modified!"
 
-            # Verify a NEW creative was created for Principal B (upsert behavior)
-            with get_db_session() as session:
-                stmt = select(DBCreative).filter_by(
-                    tenant_id="security_test_tenant",
-                    principal_id="advertiser_b",
-                    creative_id="creative_owned_by_a",
-                )
-                new_creative = session.scalars(stmt).first()
+        # Verify a NEW creative was created for Principal B (upsert behavior)
+        with get_db_session() as session:
+            stmt = select(DBCreative).filter_by(
+                tenant_id="security_test_tenant",
+                principal_id="advertiser_b",
+                creative_id="creative_owned_by_a",
+            )
+            new_creative = session.scalars(stmt).first()
 
-                assert new_creative is not None, "Should have created NEW creative for Principal B"
-                assert new_creative.name == "HACKED BY PRINCIPAL B"
-                assert new_creative.principal_id == "advertiser_b"
+            assert new_creative is not None, "Should have created NEW creative for Principal B"
+            assert new_creative.name == "HACKED BY PRINCIPAL B"
+            assert new_creative.principal_id == "advertiser_b"
 
     def test_list_creatives_cannot_see_other_principals_creatives(self):
         """Test that list_creatives only returns the authenticated principal's creatives.
@@ -318,8 +316,9 @@ class TestCrossPrincipalSecurity:
 
         with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "security_test_tenant"}):
             response_a = _sync_creatives_impl(creatives=creatives_a, patch=False, context=mock_context_a)
-            created_count = sum(1 for c in response_a.creatives if c.action == "created")
-            assert created_count == 1
+
+        created_count = sum(1 for c in response_a.creatives if c.action == "created")
+        assert created_count == 1
 
         # Principal B creates creative with SAME creative_id
         mock_context_b = MockContext(auth_token="token-advertiser-b")
@@ -334,8 +333,9 @@ class TestCrossPrincipalSecurity:
 
         with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "security_test_tenant"}):
             response_b = _sync_creatives_impl(creatives=creatives_b, patch=False, context=mock_context_b)
-            created_count = sum(1 for c in response_b.creatives if c.action == "created")
-            assert created_count == 1
+
+        created_count = sum(1 for c in response_b.creatives if c.action == "created")
+        assert created_count == 1
 
         # Verify both creatives exist independently
         with get_db_session() as session:
