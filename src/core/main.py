@@ -1786,13 +1786,6 @@ def _sync_creatives_impl(
     logger.info(f"[sync_creatives] Final approval mode: {approval_mode} (from tenant: {tenant.get('tenant_id')})")
 
     with get_db_session() as session:
-        # CRITICAL: Clear entire identity map to prevent "closed transaction" errors
-        # Test fixtures may have created objects that are cached in SQLAlchemy's identity map.
-        # When we later query inside begin_nested() savepoints, these cached objects are bound
-        # to closed transactions, causing "Can't operate on closed transaction" errors.
-        # expunge_all() completely removes all objects from the identity map (more aggressive than expire_all).
-        session.expunge_all()
-
         # Process each creative with proper transaction isolation
         for creative in raw_creatives:
             try:
@@ -1863,17 +1856,13 @@ def _sync_creatives_impl(
 
                 # Use savepoint for individual creative transaction isolation
                 with session.begin_nested():
-                    # CRITICAL: Clear identity map again inside savepoint
-                    # expunge_all() completely removes all objects, preventing access to stale objects
-                    session.expunge_all()
-
                     # Check if creative already exists (always check for upsert/patch behavior)
                     # SECURITY: Must filter by principal_id to prevent cross-principal modification
                     existing_creative = None
                     if creative.get("creative_id"):
                         from src.core.database.models import Creative as DBCreative
 
-                        # Query for existing creative - identity map is now clear
+                        # Query for existing creative with security filter
                         stmt = select(DBCreative).filter_by(
                             tenant_id=tenant["tenant_id"],
                             principal_id=principal_id,  # SECURITY: Prevent cross-principal modification
