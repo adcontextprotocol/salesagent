@@ -251,7 +251,6 @@ def normalize_agent_url(url: str) -> str:
     Strips common path suffixes that users might include:
     - /mcp
     - /a2a
-    - /.well-known/agent.json
     - /.well-known/adcp/sales
     - Trailing slashes
 
@@ -259,7 +258,7 @@ def normalize_agent_url(url: str) -> str:
         "https://creative.adcontextprotocol.org/" -> "https://creative.adcontextprotocol.org"
         "https://creative.adcontextprotocol.org/mcp" -> "https://creative.adcontextprotocol.org"
         "https://creative.adcontextprotocol.org/a2a" -> "https://creative.adcontextprotocol.org"
-        "https://creative.adcontextprotocol.org/.well-known/agent.json" -> "https://creative.adcontextprotocol.org"
+        "https://publisher.com/.well-known/adcp/sales" -> "https://publisher.com"
 
     Args:
         url: Agent URL to normalize
@@ -276,7 +275,6 @@ def normalize_agent_url(url: str) -> str:
     # Common path suffixes to strip (order matters - longest first)
     suffixes_to_strip = [
         "/.well-known/adcp/sales",
-        "/.well-known/agent.json",
         "/mcp",
         "/a2a",
     ]

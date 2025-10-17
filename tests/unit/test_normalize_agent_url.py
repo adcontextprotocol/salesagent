@@ -25,14 +25,6 @@ def test_normalize_agent_url_a2a_suffix():
     )
 
 
-def test_normalize_agent_url_well_known_agent_json():
-    """Test that /.well-known/agent.json suffix is stripped."""
-    assert (
-        normalize_agent_url("https://creative.adcontextprotocol.org/.well-known/agent.json")
-        == "https://creative.adcontextprotocol.org"
-    )
-
-
 def test_normalize_agent_url_well_known_adcp_sales():
     """Test that /.well-known/adcp/sales suffix is stripped."""
     assert normalize_agent_url("https://publisher.com/.well-known/adcp/sales") == "https://publisher.com"
