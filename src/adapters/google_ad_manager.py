@@ -301,10 +301,8 @@ class GoogleAdManager(AdServerAdapter):
                     )
                     self.log(f"[red]Error: {error_msg}[/red]")
                     return CreateMediaBuyResponse(
-                        buyer_ref=request.buyer_ref if hasattr(request, "buyer_ref") else "",
-                        media_buy_id="",
-                        status="failed",
-                        adcp_version="1.0",
+                        buyer_ref=request.buyer_ref,
+                        media_buy_id=None,
                         errors=[Error(code="unsupported_pricing_model", message=error_msg, details=None)],
                     )
 
@@ -325,9 +323,8 @@ class GoogleAdManager(AdServerAdapter):
 
             self.log(f"[red]Error: {error_msg}[/red]")
             return CreateMediaBuyResponse(
-                media_buy_id="",
-                status="failed",
-                message=error_msg,
+                buyer_ref=request.buyer_ref,
+                media_buy_id=None,
                 errors=[Error(code="configuration_error", message=error_msg)],
             )
 
@@ -359,9 +356,8 @@ class GoogleAdManager(AdServerAdapter):
             error_msg = f"Unsupported targeting features: {', '.join(unsupported_features)}"
             self.log(f"[red]Error: {error_msg}[/red]")
             return CreateMediaBuyResponse(
-                media_buy_id="",
-                status="failed",
-                message=error_msg,
+                buyer_ref=request.buyer_ref,
+                media_buy_id=None,
                 errors=[Error(code="unsupported_targeting", message=error_msg)],
             )
 
@@ -384,17 +380,16 @@ class GoogleAdManager(AdServerAdapter):
 
             if step_id:
                 return CreateMediaBuyResponse(
+                    buyer_ref=request.buyer_ref,
                     media_buy_id=media_buy_id,
-                    status="submitted",
-                    message=f"Manual order creation workflow created. Step ID: {step_id}. "
-                    f"Human intervention required to create GAM order.",
                     workflow_step_id=step_id,
                 )
             else:
+                error_msg = "Failed to create manual order workflow step"
                 return CreateMediaBuyResponse(
+                    buyer_ref=request.buyer_ref,
                     media_buy_id=media_buy_id,
-                    status="failed",
-                    message="Failed to create manual order workflow step",
+                    errors=[Error(code="workflow_creation_failed", message=error_msg)],
                 )
 
         # Automatic mode - create order directly
@@ -468,9 +463,8 @@ class GoogleAdManager(AdServerAdapter):
             error_msg = f"Order created but failed to create line items: {str(e)}"
             self.log(f"[red]Error: {error_msg}[/red]")
             return CreateMediaBuyResponse(
+                buyer_ref=request.buyer_ref,
                 media_buy_id=order_id,
-                status="failed",
-                message=error_msg,
                 errors=[Error(code="line_item_creation_failed", message=error_msg)],
             )
 
@@ -482,10 +476,8 @@ class GoogleAdManager(AdServerAdapter):
             step_id = self.workflow_manager.create_activation_workflow_step(order_id, packages)
 
             return CreateMediaBuyResponse(
+                buyer_ref=request.buyer_ref,
                 media_buy_id=order_id,
-                status="submitted",
-                message=f"GAM order created with guaranteed line items ({', '.join(item_types)}). "
-                f"Activation approval required. Workflow step: {step_id}",
                 workflow_step_id=step_id,
             )
 
@@ -500,9 +492,8 @@ class GoogleAdManager(AdServerAdapter):
             )
 
         return CreateMediaBuyResponse(
+            buyer_ref=request.buyer_ref,
             media_buy_id=order_id,
-            status="draft",
-            message=f"Created GAM order with {len(packages)} line items",
             packages=package_responses,
         )
 
