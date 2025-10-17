@@ -70,7 +70,7 @@ def setup_tenant_with_pricing_products(integration_db):
             name="Display Ads - Auction CPM",
             description="Programmatic display inventory",
             formats=["display_300x250"],
-            delivery_type="non-guaranteed",
+            delivery_type="non_guaranteed",
             targeting_template={},
             implementation_config={},
         )
@@ -95,7 +95,7 @@ def setup_tenant_with_pricing_products(integration_db):
             name="Video Ads - CPCV",
             description="Cost per completed view video inventory",
             formats=["video_instream"],
-            delivery_type="non-guaranteed",
+            delivery_type="non_guaranteed",
             targeting_template={},
             implementation_config={},
         )
@@ -120,7 +120,7 @@ def setup_tenant_with_pricing_products(integration_db):
             name="Premium Package - Multiple Models",
             description="Choose your pricing model",
             formats=["display_300x250", "video_instream"],
-            delivery_type="non-guaranteed",
+            delivery_type="non_guaranteed",
             targeting_template={},
             implementation_config={},
         )

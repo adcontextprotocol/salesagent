@@ -538,7 +538,7 @@ def add_product(tenant_id):
                     if first_option.get("is_fixed", True):
                         delivery_type = "guaranteed"
                     else:
-                        delivery_type = "non-guaranteed"
+                        delivery_type = "non_guaranteed"
 
                 # Build implementation config based on adapter type
                 implementation_config = {}
@@ -910,7 +910,7 @@ def edit_product(tenant_id, product_id):
                     if line_item_type in ["STANDARD", "SPONSORSHIP"]:
                         product.delivery_type = "guaranteed"
                     elif line_item_type in ["PRICE_PRIORITY", "HOUSE"]:
-                        product.delivery_type = "non-guaranteed"
+                        product.delivery_type = "non_guaranteed"
 
                     # Update implementation_config with GAM-specific fields
                     if adapter_type == "google_ad_manager":
