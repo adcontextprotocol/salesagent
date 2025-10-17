@@ -1786,6 +1786,13 @@ def _sync_creatives_impl(
     logger.info(f"[sync_creatives] Final approval mode: {approval_mode} (from tenant: {tenant.get('tenant_id')})")
 
     with get_db_session() as session:
+        # CRITICAL: Expire all objects from identity map to prevent "closed transaction" errors
+        # Test fixtures may have created objects that are cached in SQLAlchemy's identity map.
+        # When we later query inside begin_nested() savepoints, these cached objects are bound
+        # to closed transactions, causing "Can't operate on closed transaction" errors.
+        # Expiring all objects forces SQLAlchemy to reload them fresh from the database.
+        session.expire_all()
+
         # Process each creative with proper transaction isolation
         for creative in raw_creatives:
             try:
