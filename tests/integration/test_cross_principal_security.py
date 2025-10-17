@@ -155,8 +155,10 @@ class TestCrossPrincipalSecurity:
                 ), "Creative URL was modified!"
 
             # Response should show success (it created a NEW creative for Principal B, not modified A's)
-            assert response.synced == 1, "Should have created 1 creative"
-            assert len(response.failed) == 0, "Should have no failures"
+            created_count = sum(1 for c in response.creatives if c.action == "created")
+            failed_count = sum(1 for c in response.creatives if c.action == "failed")
+            assert created_count == 1, "Should have created 1 creative"
+            assert failed_count == 0, "Should have no failures"
 
             # Verify a NEW creative was created for Principal B (upsert behavior)
             with get_db_session() as session:
@@ -176,12 +178,12 @@ class TestCrossPrincipalSecurity:
 
         SECURITY: Principal B should NOT see Principal A's creatives.
         """
-        from src.core.main import list_creatives as core_list_creatives_tool
+        from src.core.main import _list_creatives_impl
 
         mock_context_b = MockContext(auth_token="token-advertiser-b")
 
         with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "security_test_tenant"}):
-            response = core_list_creatives_tool(context=mock_context_b)
+            response = _list_creatives_impl(context=mock_context_b)
 
             assert isinstance(response, ListCreativesResponse)
 
@@ -280,12 +282,12 @@ class TestCrossPrincipalSecurity:
             session.commit()
 
         # Principal A (from first tenant) tries to access creative from second tenant
-        from src.core.main import list_creatives as core_list_creatives_tool
+        from src.core.main import _list_creatives_impl
 
         mock_context_a = MockContext(auth_token="token-advertiser-a")
 
         with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "security_test_tenant"}):
-            response = core_list_creatives_tool(context=mock_context_a)
+            response = _list_creatives_impl(context=mock_context_a)
 
             # Should only see their own creative, not creative_c from other tenant
             creative_ids = [c.creative_id for c in response.creatives]
@@ -316,7 +318,8 @@ class TestCrossPrincipalSecurity:
 
         with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "security_test_tenant"}):
             response_a = _sync_creatives_impl(creatives=creatives_a, patch=False, context=mock_context_a)
-            assert response_a.synced == 1
+            created_count = sum(1 for c in response_a.creatives if c.action == "created")
+            assert created_count == 1
 
         # Principal B creates creative with SAME creative_id
         mock_context_b = MockContext(auth_token="token-advertiser-b")
@@ -331,7 +334,8 @@ class TestCrossPrincipalSecurity:
 
         with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "security_test_tenant"}):
             response_b = _sync_creatives_impl(creatives=creatives_b, patch=False, context=mock_context_b)
-            assert response_b.synced == 1
+            created_count = sum(1 for c in response_b.creatives if c.action == "created")
+            assert created_count == 1
 
         # Verify both creatives exist independently
         with get_db_session() as session:
