@@ -3949,9 +3949,11 @@ async def _validate_and_convert_format_ids(
 
     # Get registered agents for this tenant
     registered_agents = registry._get_tenant_agents(tenant_id)
-    # Normalize agent URLs by removing trailing slashes for consistent comparison
-    # This ensures "https://creative.adcontextprotocol.org/" matches "https://creative.adcontextprotocol.org"
-    registered_agent_urls = {agent.agent_url.rstrip("/") for agent in registered_agents}
+    # Normalize agent URLs for consistent comparison (strips /mcp, /a2a, /.well-known/*, trailing slashes)
+    # This ensures all URL variations match: "https://example.com/mcp/" -> "https://example.com"
+    from src.core.validation import normalize_agent_url
+
+    registered_agent_urls = {normalize_agent_url(agent.agent_url) for agent in registered_agents}
 
     for idx, fmt_id in enumerate(format_ids):
         # STRICT ENFORCEMENT: Reject plain strings
@@ -3986,8 +3988,8 @@ async def _validate_and_convert_format_ids(
             )
 
         # VALIDATION: Check agent is registered
-        # Normalize incoming agent_url for comparison (remove trailing slash)
-        normalized_agent_url = agent_url.rstrip("/")
+        # Normalize incoming agent_url for comparison (strips /mcp, /a2a, /.well-known/*, trailing slashes)
+        normalized_agent_url = normalize_agent_url(agent_url)
         if normalized_agent_url not in registered_agent_urls:
             raise ToolError(
                 "FORMAT_VALIDATION_ERROR",
