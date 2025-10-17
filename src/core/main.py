@@ -1863,23 +1863,21 @@ def _sync_creatives_impl(
 
                 # Use savepoint for individual creative transaction isolation
                 with session.begin_nested():
+                    # CRITICAL: Expire all again inside savepoint to clear any objects from identity map
+                    # This prevents "Can't operate on closed transaction" errors when querying
+                    session.expire_all()
+
                     # Check if creative already exists (always check for upsert/patch behavior)
                     # SECURITY: Must filter by principal_id to prevent cross-principal modification
                     existing_creative = None
                     if creative.get("creative_id"):
                         from src.core.database.models import Creative as DBCreative
 
-                        # Use populate_existing=True to bypass identity map and force fresh database load
-                        # This prevents "closed transaction" errors when test fixtures create objects
-                        # that remain in the identity map with stale transaction bindings
-                        stmt = (
-                            select(DBCreative)
-                            .filter_by(
-                                tenant_id=tenant["tenant_id"],
-                                principal_id=principal_id,  # SECURITY: Prevent cross-principal modification
-                                creative_id=creative.get("creative_id"),
-                            )
-                            .execution_options(populate_existing=True)
+                        # Query for existing creative - identity map is now clear
+                        stmt = select(DBCreative).filter_by(
+                            tenant_id=tenant["tenant_id"],
+                            principal_id=principal_id,  # SECURITY: Prevent cross-principal modification
+                            creative_id=creative.get("creative_id"),
                         )
                         existing_creative = session.scalars(stmt).first()
 
