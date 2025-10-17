@@ -68,6 +68,9 @@ class TestListCreativesAuthentication:
             )
             session.add_all([principal_a, principal_b])
 
+            # Commit tenant and principals before creating creatives (FK constraint requirement)
+            session.commit()
+
             # Create creatives for advertiser A
             for i in range(3):
                 creative_a = DBCreative(
