@@ -3075,8 +3075,10 @@ def _list_creatives_impl(
 
     start_time = time.time()
 
-    # Authentication (optional for discovery, like list_creative_formats)
-    principal_id = get_principal_from_context(context)  # Returns None if no auth
+    # Authentication - REQUIRED (creatives contain sensitive data)
+    # Unlike discovery endpoints (list_creative_formats), this returns actual creative assets
+    # which are principal-specific and must be access-controlled
+    principal_id = _get_principal_id_from_context(context)
 
     # Get tenant information
     tenant = get_current_tenant()
@@ -3091,8 +3093,8 @@ def _list_creatives_impl(
         from src.core.database.models import CreativeAssignment as DBAssignment
         from src.core.database.models import MediaBuy
 
-        # Build query
-        stmt = select(DBCreative).filter_by(tenant_id=tenant["tenant_id"])
+        # Build query - filter by tenant AND principal for security
+        stmt = select(DBCreative).filter_by(tenant_id=tenant["tenant_id"], principal_id=principal_id)
 
         # Apply filters
         if req.media_buy_id:
