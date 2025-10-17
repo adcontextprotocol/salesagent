@@ -201,5 +201,5 @@ class TestListCreativesAuthentication:
             from fastmcp.exceptions import ToolError
 
             # This should raise ToolError due to invalid authentication
-            with pytest.raises(ToolError, match="Invalid x-adcp-auth token"):
+            with pytest.raises(ToolError, match="Authentication token is invalid"):
                 core_list_creatives_tool(context=mock_context)
