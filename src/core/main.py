@@ -1856,21 +1856,23 @@ def _sync_creatives_impl(
 
                 # Use savepoint for individual creative transaction isolation
                 with session.begin_nested():
-                    # Expire all cached objects to prevent "closed transaction" errors
-                    # This is critical for test environments where objects may have been created
-                    # in previous sessions and are still in the identity map with stale transaction bindings
-                    session.expire_all()
-
                     # Check if creative already exists (always check for upsert/patch behavior)
                     # SECURITY: Must filter by principal_id to prevent cross-principal modification
                     existing_creative = None
                     if creative.get("creative_id"):
                         from src.core.database.models import Creative as DBCreative
 
-                        stmt = select(DBCreative).filter_by(
-                            tenant_id=tenant["tenant_id"],
-                            principal_id=principal_id,  # SECURITY: Prevent cross-principal modification
-                            creative_id=creative.get("creative_id"),
+                        # Use populate_existing=True to bypass identity map and force fresh database load
+                        # This prevents "closed transaction" errors when test fixtures create objects
+                        # that remain in the identity map with stale transaction bindings
+                        stmt = (
+                            select(DBCreative)
+                            .filter_by(
+                                tenant_id=tenant["tenant_id"],
+                                principal_id=principal_id,  # SECURITY: Prevent cross-principal modification
+                                creative_id=creative.get("creative_id"),
+                            )
+                            .execution_options(populate_existing=True)
                         )
                         existing_creative = session.scalars(stmt).first()
 
