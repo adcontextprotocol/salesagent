@@ -1222,23 +1222,14 @@ class AdCPRequestHandler(RequestHandler):
             )
 
             # Convert response to A2A format (using AdCP spec field names)
+            # Convert response to A2A format
+            # Note: SyncCreativesResponse only contains domain data (creatives, dry_run)
+            # Protocol fields (status, task_id, etc.) are added by the A2A protocol layer
             return {
-                "success": response.status == "completed",
-                "status": response.status,
-                "message": str(response),  # Use __str__ method for human-readable message
-                "summary": response.summary.model_dump() if response.summary else None,
-                "results": [result.model_dump() for result in response.results] if response.results else [],
-                "assignments_summary": (
-                    response.assignments_summary.model_dump() if response.assignments_summary else None
-                ),
-                "assignment_results": (
-                    [result.model_dump() for result in response.assignment_results]
-                    if response.assignment_results
-                    else []
-                ),
+                "success": True,
+                "creatives": [result.model_dump() for result in response.creatives],
                 "dry_run": response.dry_run,
-                "context_id": response.context_id,
-                "task_id": response.task_id,
+                "message": str(response),  # Use __str__ method for human-readable message
             }
 
         except Exception as e:
