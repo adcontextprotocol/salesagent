@@ -59,7 +59,7 @@ def setup_test_products():
             name="Confirmation Test",
             formats=[{"format_id": "display_728x90", "name": "Display 728x90", "type": "display"}],
             targeting_template={},
-            delivery_type="non-guaranteed",
+            delivery_type="non_guaranteed",
             is_fixed_price=True,
             cpm=1.50,
             implementation_config=json.dumps(
@@ -78,7 +78,7 @@ def setup_test_products():
             name="Manual Test",
             formats=[{"format_id": "display_320x50", "name": "Display 320x50", "type": "display"}],
             targeting_template={},
-            delivery_type="non-guaranteed",
+            delivery_type="non_guaranteed",
             is_fixed_price=True,
             cpm=2.00,
             implementation_config=json.dumps(

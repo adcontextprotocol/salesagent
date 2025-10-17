@@ -104,7 +104,7 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             name="Display Ads - CPC",
             description="Click-based pricing for performance campaigns",
             formats=["display_300x250", "display_728x90"],
-            delivery_type="non-guaranteed",
+            delivery_type="non_guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={

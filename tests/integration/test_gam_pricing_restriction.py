@@ -51,7 +51,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             name="Video Ads - CPCV",
             description="Video inventory with CPCV pricing",
             formats=["video_instream"],
-            delivery_type="non-guaranteed",
+            delivery_type="non_guaranteed",
             targeting_template={},
             implementation_config={},
         )
@@ -107,7 +107,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             name="Premium Package",
             description="Multiple pricing models (some unsupported)",
             formats=["display_300x250", "video_instream"],
-            delivery_type="non-guaranteed",
+            delivery_type="non_guaranteed",
             targeting_template={},
             implementation_config={},
         )
