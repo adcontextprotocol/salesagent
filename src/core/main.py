@@ -3949,7 +3949,9 @@ async def _validate_and_convert_format_ids(
 
     # Get registered agents for this tenant
     registered_agents = registry._get_tenant_agents(tenant_id)
-    registered_agent_urls = {agent.agent_url for agent in registered_agents}
+    # Normalize agent URLs by removing trailing slashes for consistent comparison
+    # This ensures "https://creative.adcontextprotocol.org/" matches "https://creative.adcontextprotocol.org"
+    registered_agent_urls = {agent.agent_url.rstrip("/") for agent in registered_agents}
 
     for idx, fmt_id in enumerate(format_ids):
         # STRICT ENFORCEMENT: Reject plain strings
@@ -3984,7 +3986,9 @@ async def _validate_and_convert_format_ids(
             )
 
         # VALIDATION: Check agent is registered
-        if agent_url not in registered_agent_urls:
+        # Normalize incoming agent_url for comparison (remove trailing slash)
+        normalized_agent_url = agent_url.rstrip("/")
+        if normalized_agent_url not in registered_agent_urls:
             raise ToolError(
                 "FORMAT_VALIDATION_ERROR",
                 f"Package {package_idx + 1}, format_ids[{idx}]: Creative agent not registered: {agent_url}. "
