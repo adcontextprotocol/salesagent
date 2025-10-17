@@ -115,6 +115,8 @@ class TestCrossPrincipalSecurity:
             session.add(media_buy_a)
 
             session.commit()
+            # Ensure all objects are detached from session to avoid conflicts
+            session.expunge_all()
 
     def test_sync_creatives_cannot_modify_other_principals_creative(self):
         """Test that sync_creatives cannot modify another principal's creative.
@@ -278,6 +280,8 @@ class TestCrossPrincipalSecurity:
             )
             session.add(creative_c)
             session.commit()
+            # Ensure all objects are detached from session to avoid conflicts
+            session.expunge_all()
 
         # Principal A (from first tenant) tries to access creative from second tenant
         from src.core.main import _list_creatives_impl
