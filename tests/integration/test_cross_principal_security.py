@@ -115,8 +115,12 @@ class TestCrossPrincipalSecurity:
             session.add(media_buy_a)
 
             session.commit()
-            # Ensure all objects are detached from session to avoid conflicts
-            session.expunge_all()
+
+        # CRITICAL: Remove scoped session to force fresh sessions in tests
+        # This prevents "closed transaction" errors when _sync_creatives_impl queries the database
+        from src.core.database.database_session import Session
+
+        Session.remove()
 
     def test_sync_creatives_cannot_modify_other_principals_creative(self):
         """Test that sync_creatives cannot modify another principal's creative.
@@ -280,8 +284,11 @@ class TestCrossPrincipalSecurity:
             )
             session.add(creative_c)
             session.commit()
-            # Ensure all objects are detached from session to avoid conflicts
-            session.expunge_all()
+
+        # Remove scoped session to prevent transaction conflicts
+        from src.core.database.database_session import Session
+
+        Session.remove()
 
         # Principal A (from first tenant) tries to access creative from second tenant
         from src.core.main import _list_creatives_impl
