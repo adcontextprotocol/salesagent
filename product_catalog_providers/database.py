@@ -142,48 +142,14 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                 if product_data.get("is_custom") is None:
                     product_data["is_custom"] = False
 
-                # 3. Convert formats to format IDs (strings) as expected by Product schema
+                # 3. Keep formats as FormatId objects (dicts with agent_url and id)
+                # Per AdCP v2.4 spec and Product schema: formats should be list[FormatId | FormatReference]
+                # Database stores formats as list[dict] with {agent_url, id} structure
+                # NO CONVERSION NEEDED - just pass through the format objects as-is
                 if product_data.get("formats"):
                     logger.debug(
-                        f"Original formats for {product_data.get('product_id')}: {product_data['formats']} (type: {type(product_data['formats'])})"
+                        f"Formats for {product_data.get('product_id')}: {product_data['formats']} (keeping as FormatId objects)"
                     )
-                    format_ids = []
-                    for i, format_obj in enumerate(product_data["formats"]):
-                        logger.debug(f"Processing format {i}: {format_obj} (type: {type(format_obj)})")
-                        # Handle case where format_obj might be a string instead of dict
-                        if isinstance(format_obj, str):
-                            # Check if it's a JSON string first
-                            try:
-                                parsed = json.loads(format_obj)
-                                if isinstance(parsed, dict) and "format_id" in parsed:
-                                    # It's a format object with format_id
-                                    format_ids.append(parsed["format_id"])
-                                    logger.debug(f"Extracted format_id from JSON string: {parsed['format_id']}")
-                                else:
-                                    # It's just a format identifier string
-                                    format_ids.append(format_obj)
-                                    logger.debug(f"Using string as format_id: {format_obj}")
-                            except (json.JSONDecodeError, TypeError):
-                                # It's a plain string format identifier
-                                format_ids.append(format_obj)
-                                logger.debug(f"Using plain string as format_id: {format_obj}")
-                        elif isinstance(format_obj, dict):
-                            # It's a format object, extract the format_id
-                            format_id = format_obj.get("format_id")
-                            if format_id:
-                                format_ids.append(format_id)
-                                logger.debug(f"Extracted format_id from dict: {format_id}")
-                            else:
-                                # Try to construct format_id from other fields
-                                name = format_obj.get("name", "unknown_format")
-                                format_ids.append(name)
-                                logger.debug(f"Using name as format_id: {name}")
-                        else:
-                            logger.warning(f"Skipping unexpected format type: {type(format_obj)} - {format_obj}")
-                            continue
-
-                    product_data["formats"] = format_ids
-                    logger.debug(f"Final converted formats for {product_data.get('product_id')}: {format_ids}")
 
                 # 4. Convert DECIMAL fields to float for Pydantic validation
                 if product_data.get("min_spend") is not None:
