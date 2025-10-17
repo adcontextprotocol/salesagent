@@ -116,11 +116,21 @@ class TestCrossPrincipalSecurity:
 
             session.commit()
 
-        # CRITICAL: Clear all session and engine state to prevent transaction conflicts
-        # Reset engine to clear connection pool, identity map, and force fresh sessions
-        from src.core.database.database_session import reset_engine
+        # CRITICAL: Clear session identity map to prevent "closed transaction" errors
+        # The fixture created objects that are now in SQLAlchemy's identity map.
+        # When _sync_creatives_impl queries for these objects in a begin_nested() savepoint,
+        # SQLAlchemy returns the cached objects which are bound to the closed fixture transaction.
+        # Solution: Get a fresh session and call expire_all() to mark all cached objects as stale.
+        from src.core.database.database_session import get_scoped_session
 
-        reset_engine()
+        scoped = get_scoped_session()
+        scoped.remove()  # Clear thread-local session registry
+
+        # Now force a new session and expire everything
+        session = scoped()
+        session.expire_all()  # Mark all objects in identity map as stale
+        session.close()
+        scoped.remove()  # Clean up again
 
     def test_sync_creatives_cannot_modify_other_principals_creative(self):
         """Test that sync_creatives cannot modify another principal's creative.
@@ -285,10 +295,15 @@ class TestCrossPrincipalSecurity:
             session.add(creative_c)
             session.commit()
 
-        # Reset engine to clear all session and connection state
-        from src.core.database.database_session import reset_engine
+        # Clear session identity map (same as main fixture)
+        from src.core.database.database_session import get_scoped_session
 
-        reset_engine()
+        scoped = get_scoped_session()
+        scoped.remove()
+        session = scoped()
+        session.expire_all()
+        session.close()
+        scoped.remove()
 
         # Principal A (from first tenant) tries to access creative from second tenant
         from src.core.main import _list_creatives_impl
