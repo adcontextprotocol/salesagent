@@ -245,6 +245,51 @@ def sanitize_url(url: str) -> str:
     return url.rstrip("/")
 
 
+def normalize_agent_url(url: str) -> str:
+    """Normalize agent URL to base form for consistent comparison.
+
+    Strips common path suffixes that users might include:
+    - /mcp
+    - /a2a
+    - /.well-known/adcp/sales
+    - Trailing slashes
+
+    This ensures all variations of an agent URL normalize to the same base URL:
+        "https://creative.adcontextprotocol.org/" -> "https://creative.adcontextprotocol.org"
+        "https://creative.adcontextprotocol.org/mcp" -> "https://creative.adcontextprotocol.org"
+        "https://creative.adcontextprotocol.org/a2a" -> "https://creative.adcontextprotocol.org"
+        "https://publisher.com/.well-known/adcp/sales" -> "https://publisher.com"
+
+    Args:
+        url: Agent URL to normalize
+
+    Returns:
+        Normalized base URL
+    """
+    if not url:
+        return url
+
+    # First, remove trailing slashes
+    normalized = url.rstrip("/")
+
+    # Common path suffixes to strip (order matters - longest first)
+    suffixes_to_strip = [
+        "/.well-known/adcp/sales",
+        "/mcp",
+        "/a2a",
+    ]
+
+    # Strip each suffix (check multiple times in case of multiple trailing slashes)
+    for suffix in suffixes_to_strip:
+        if normalized.endswith(suffix):
+            normalized = normalized[: -len(suffix)]
+            # Remove any trailing slashes that remain
+            normalized = normalized.rstrip("/")
+            break  # Only strip one suffix
+
+    return normalized
+
+
 def sanitize_form_data(data: dict[str, Any]) -> dict[str, Any]:
     """Sanitize form data before saving."""
     sanitized = {}
