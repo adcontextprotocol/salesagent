@@ -416,8 +416,15 @@ class TestAdCPContract:
             "is_standard": True,
             "iab_specification": "IAB Native Ad Specification",
             "requirements": {"width": 300, "height": 250},
-            # assets_required follows new AdCP spec structure
-            "assets_required": [{"asset_type": "image", "quantity": 1, "requirements": {"width": 300, "height": 250}}],
+            # assets_required follows new AdCP spec structure (asset_id is required per Oct 17 schema update)
+            "assets_required": [
+                {
+                    "asset_id": "primary_image",
+                    "asset_type": "image",
+                    "quantity": 1,
+                    "requirements": {"width": 300, "height": 250},
+                }
+            ],
         }
 
         format_obj = Format(**format_data)

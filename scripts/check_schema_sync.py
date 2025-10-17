@@ -295,7 +295,6 @@ class SchemaSyncChecker:
             try:
                 # Fetch live schema
                 live_schema = await self._fetch_live_schema(schema_ref)
-                live_hash = self._get_schema_hash(live_schema)
 
                 # Load cached schema
                 cached_schema = self._load_cached_schema(schema_ref)
@@ -308,10 +307,9 @@ class SchemaSyncChecker:
                     all_synced = False
                     continue
 
-                cached_hash = self._get_schema_hash(cached_schema)
-
-                if live_hash != cached_hash:
-                    self.log_error(f"Schema out of sync: {schema_ref} (live: {live_hash}, cached: {cached_hash})")
+                # Use _schemas_are_equal() to ignore metadata fields (consistent with check_all_schemas_in_index)
+                if not self._schemas_are_equal(live_schema, cached_schema):
+                    self.log_error(f"Schema out of sync: {schema_ref}")
                     if self.auto_update:
                         self._save_cached_schema(schema_ref, live_schema)
                         self.log_update(f"Updated schema: {schema_ref}")

@@ -2146,10 +2146,16 @@ def _sync_creatives_impl(
                                         else:
                                             # Static creative - use preview_creative
                                             # Build creative manifest from available data
+                                            # Extract string ID from FormatId object if needed
+                                            format_id_str = (
+                                                creative_format.id
+                                                if hasattr(creative_format, "id")
+                                                else str(creative_format)
+                                            )
                                             creative_manifest = {
                                                 "creative_id": existing_creative.creative_id,
                                                 "name": creative.get("name") or existing_creative.name,
-                                                "format_id": creative_format,
+                                                "format_id": format_id_str,
                                             }
 
                                             # Add any provided asset data for validation
@@ -2159,9 +2165,15 @@ def _sync_creatives_impl(
                                                 creative_manifest["url"] = data.get("url")
 
                                             # Call creative agent's preview_creative for validation + preview
+                                            # Extract string ID from FormatId object if needed
+                                            format_id_str = (
+                                                creative_format.id
+                                                if hasattr(creative_format, "id")
+                                                else str(creative_format)
+                                            )
                                             logger.info(
                                                 f"[sync_creatives] Calling preview_creative for validation (update): "
-                                                f"{existing_creative.creative_id} format {creative_format} "
+                                                f"{existing_creative.creative_id} format {format_id_str} "
                                                 f"from agent {format_obj.agent_url}, has_assets={bool(creative.get('assets'))}, "
                                                 f"has_url={bool(data.get('url'))}"
                                             )
@@ -2169,7 +2181,7 @@ def _sync_creatives_impl(
                                             preview_result = asyncio.run(
                                                 registry.preview_creative(
                                                     agent_url=format_obj.agent_url,
-                                                    format_id=creative_format,
+                                                    format_id=format_id_str,
                                                     creative_manifest=creative_manifest,
                                                 )
                                             )
@@ -2404,16 +2416,22 @@ def _sync_creatives_impl(
                                                     break
 
                                         # Call build_creative
+                                        # Extract string ID from FormatId object if needed
+                                        format_id_str = (
+                                            creative_format.id
+                                            if hasattr(creative_format, "id")
+                                            else str(creative_format)
+                                        )
                                         logger.info(
                                             f"[sync_creatives] Calling build_creative for generative format: "
-                                            f"{creative_format} from agent {format_obj.agent_url}, "
+                                            f"{format_id_str} from agent {format_obj.agent_url}, "
                                             f"message_length={len(message) if message else 0}"
                                         )
 
                                         build_result = asyncio.run(
                                             registry.build_creative(
                                                 agent_url=format_obj.agent_url,
-                                                format_id=creative_format,
+                                                format_id=format_id_str,
                                                 message=message,
                                                 gemini_api_key=gemini_api_key,
                                                 promoted_offerings=promoted_offerings,
@@ -2457,10 +2475,16 @@ def _sync_creatives_impl(
                                     else:
                                         # Static creative - use preview_creative
                                         # Build creative manifest from available data
+                                        # Extract string ID from FormatId object if needed
+                                        format_id_str = (
+                                            creative_format.id
+                                            if hasattr(creative_format, "id")
+                                            else str(creative_format)
+                                        )
                                         creative_manifest = {
                                             "creative_id": creative.get("creative_id") or str(uuid.uuid4()),
                                             "name": creative.get("name"),
-                                            "format_id": creative_format,
+                                            "format_id": format_id_str,
                                         }
 
                                         # Add any provided asset data for validation
@@ -2470,8 +2494,14 @@ def _sync_creatives_impl(
                                             creative_manifest["url"] = data.get("url")
 
                                         # Call creative agent's preview_creative for validation + preview
+                                        # Extract string ID from FormatId object if needed
+                                        format_id_str = (
+                                            creative_format.id
+                                            if hasattr(creative_format, "id")
+                                            else str(creative_format)
+                                        )
                                         logger.info(
-                                            f"[sync_creatives] Calling preview_creative for validation: {creative_format} "
+                                            f"[sync_creatives] Calling preview_creative for validation: {format_id_str} "
                                             f"from agent {format_obj.agent_url}, has_assets={bool(creative.get('assets'))}, "
                                             f"has_url={bool(data.get('url'))}"
                                         )
@@ -2479,7 +2509,7 @@ def _sync_creatives_impl(
                                         preview_result = asyncio.run(
                                             registry.preview_creative(
                                                 agent_url=format_obj.agent_url,
-                                                format_id=creative_format,
+                                                format_id=format_id_str,
                                                 creative_manifest=creative_manifest,
                                             )
                                         )

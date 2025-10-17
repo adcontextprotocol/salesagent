@@ -401,6 +401,33 @@ fi
 
 echo "✓ Workspace environment activated"
 
+# Check AdCP schema sync
+echo ""
+echo "Checking AdCP schema sync..."
+if command -v uv &> /dev/null && [ -f "scripts/check_schema_sync.py" ]; then
+    # Run schema sync check (but don't fail setup if schemas are out of sync)
+    if uv run python scripts/check_schema_sync.py 2>&1 | tee /tmp/schema_check_output.txt; then
+        echo "✓ AdCP schemas are in sync"
+    else
+        echo ""
+        echo "⚠️  WARNING: AdCP schemas are out of sync!"
+        echo "   This may cause integration issues with creative agent."
+        echo ""
+        echo "   To update schemas, run:"
+        echo "   uv run python scripts/check_schema_sync.py --update"
+        echo "   git add tests/e2e/schemas/"
+        echo "   git commit -m 'Update AdCP schemas to latest from registry'"
+        echo ""
+        echo "   Continuing with setup..."
+    fi
+else
+    if ! command -v uv &> /dev/null; then
+        echo "✗ Warning: uv not found, skipping schema sync check"
+    elif [ ! -f "scripts/check_schema_sync.py" ]; then
+        echo "✗ Warning: schema sync script not found, skipping check"
+    fi
+fi
+
 echo ""
 echo "Setup complete! Next steps:"
 echo "1. Build and start services:"
