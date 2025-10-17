@@ -99,16 +99,18 @@ class TestCrossPrincipalSecurity:
                 media_buy_id="media_buy_a",
                 principal_id="advertiser_a",
                 buyer_ref="buyer_ref_a",
-                flight_start_date=date.today(),
-                flight_end_date=date.today() + timedelta(days=30),
-                total_budget=1000.0,
+                order_name="Security Test Order A",
+                advertiser_name="Advertiser A",
+                start_date=date.today(),
+                end_date=date.today() + timedelta(days=30),
+                budget=1000.0,
                 currency="USD",
+                status="active",
                 raw_request={
                     "buyer_ref": "buyer_ref_a",
                     "packages": [],
                     "budget": {"total": 1000.0, "currency": "USD"},
                 },
-                platform_order_id="order_a",
             )
             session.add(media_buy_a)
 
