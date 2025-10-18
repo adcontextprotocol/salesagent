@@ -91,8 +91,3 @@ test_*.db
 test_*.db-*
 test_*[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]/
 .env.test
-
-# Schema cache metadata (ETag tracking)
-# Don't commit .meta files - they're local cache metadata
-tests/e2e/schemas/**/*.meta
-*.meta
