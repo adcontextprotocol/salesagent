@@ -213,30 +213,37 @@ class TestAdapterPattern:
     def test_why_not_use_generated_directly(self):
         """Explain why we need adapters instead of using generated directly.
 
-        Generated schemas use RootModel[Union[...]] for oneOf:
-        - Spec-compliant: YES
-        - Easy to use: NO
+        Adapters provide several benefits over using generated schemas:
+        1. **Field Transformation**: promoted_offering → brand_manifest conversion
+        2. **Simplified API**: Adapters add convenience methods and __str__()
+        3. **Custom Validation**: Can add business logic not in JSON Schema
+        4. **Backward Compatibility**: Can maintain deprecated fields
 
         Example:
-            generated = GeneratedGetProductsRequest(root=GetProductsRequest1(...))
-            data = generated.root.promoted_offering  # Need .root!
+            # Adapter API (simple)
+            adapter = GetProductsRequest(promoted_offering="https://example.com")
+            data = adapter.promoted_offering  # Deprecated field works!
 
-        Adapter provides flat API:
-            adapter = GetProductsRequest(promoted_offering="...")
-            data = adapter.promoted_offering  # Simple!
-
-        Adapter converts to generated for protocol validation:
+            # Converts to spec-compliant generated
             generated = adapter.to_generated()
-            protocol_data = generated.model_dump()
+            data = generated.brand_manifest  # Transformed to spec field
+
+        Note: After schema regeneration, generated schemas are now flat classes
+        (no more RootModel[Union[...]]). But adapters still provide value!
         """
         req = GetProductsRequest(promoted_offering="https://example.com")
 
-        # Simple flat access (no .root needed)
+        # Simple flat access with deprecated field
         assert req.promoted_offering == "https://example.com"
+        # Automatically converted to brand_manifest
+        assert req.brand_manifest == {"url": "https://example.com"}
 
-        # Converts to complex generated when needed
+        # Converts to spec-compliant generated (no promoted_offering)
         generated = req.to_generated()
-        assert generated.root.promoted_offering == "https://example.com"  # Complex but spec-compliant
+        # Generated schema uses brand_manifest (AdCP spec field)
+        assert str(generated.brand_manifest.url) == "https://example.com/"  # AnyUrl object
+        # promoted_offering doesn't exist in generated (not in AdCP spec)
+        assert not hasattr(generated, "promoted_offering")
 
 
 class TestMigrationStrategy:
