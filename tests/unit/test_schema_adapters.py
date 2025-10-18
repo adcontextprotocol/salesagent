@@ -51,10 +51,20 @@ class TestGetProductsRequestAdapter:
         assert isinstance(data, dict)
 
     def test_roundtrip_through_generated_schema(self):
-        """Adapter survives roundtrip through generated schema."""
-        # Start with adapter
+        """Adapter survives roundtrip through generated schema.
+
+        Note: Only AdCP spec fields survive roundtrip. Adapter-only fields
+        (promoted_offering, min_exposures, strategy_id, webhook_url) are NOT
+        in the AdCP spec and are lost when converting to generated schema.
+
+        promoted_offering is converted to brand_manifest before protocol validation,
+        so we test with brand_manifest to ensure spec-compliant fields survive.
+        """
+        # Start with adapter using spec-compliant fields
         original = GetProductsRequest(
-            promoted_offering="https://example.com", brief="Test brief", filters={"format_ids": ["display_300x250"]}
+            brand_manifest={"url": "https://example.com", "name": "Test Brand"},
+            brief="Test brief",
+            filters={"format_ids": ["display_300x250"]},
         )
 
         # Convert to generated (protocol validation)
@@ -63,13 +73,22 @@ class TestGetProductsRequestAdapter:
         # Convert back to adapter
         reconstructed = GetProductsRequest.from_generated(generated)
 
-        # Verify fields preserved
-        assert reconstructed.promoted_offering == "https://example.com"
+        # Verify AdCP spec fields preserved (NOT adapter-only fields)
+        # Note: brand_manifest becomes full BrandManifest object with all optional fields
+        assert isinstance(reconstructed.brand_manifest, dict)
+        assert str(reconstructed.brand_manifest["url"]) == "https://example.com/"  # AnyUrl adds trailing slash
+        assert reconstructed.brand_manifest["name"] == "Test Brand"
         assert reconstructed.brief == "Test brief"
         # After AdCP PR #123: format_ids are FormatId objects, not strings
         assert len(reconstructed.filters["format_ids"]) == 1
         assert reconstructed.filters["format_ids"][0]["id"] == "display_300x250"
         assert reconstructed.filters["format_ids"][0]["agent_url"]
+
+        # Adapter-only fields don't survive (expected - not in AdCP spec)
+        assert reconstructed.promoted_offering is None
+        assert reconstructed.min_exposures is None
+        assert reconstructed.strategy_id is None
+        assert reconstructed.webhook_url is None
 
     def test_adcp_compliant_dump(self):
         """Adapter can dump as AdCP-compliant dict."""
