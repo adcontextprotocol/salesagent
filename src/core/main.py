@@ -108,8 +108,7 @@ from src.core.schemas import (
     VerifyTaskResponse,
 )
 from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
-    GetProductsRequest1,
-    GetProductsRequest2,
+    GetProductsRequest as GetProductsRequestGenerated,
 )
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
@@ -983,14 +982,14 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 # --- MCP Tools (Full Implementation) ---
 
 
-async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, context: Context) -> GetProductsResponse:
+async def _get_products_impl(req: GetProductsRequestGenerated, context: Context) -> GetProductsResponse:
     """Shared implementation for get_products.
 
     Contains all business logic for product discovery including policy checks,
     product catalog providers, dynamic pricing, and filtering.
 
     Args:
-        req: GetProductsRequest variant (GetProductsRequest1 or GetProductsRequest2)
+        req: GetProductsRequest from generated schemas
         context: FastMCP Context for tenant/principal resolution
 
     Returns:
