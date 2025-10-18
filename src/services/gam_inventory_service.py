@@ -280,9 +280,66 @@ class GAMInventoryService:
         last_sync_result = self.db.scalar(stmt)
         last_sync = last_sync_result.isoformat() if last_sync_result else None
 
+        # Get counts for other inventory types
+        placements_count = (
+            self.db.scalar(
+                select(func.count()).where(
+                    and_(
+                        GAMInventory.tenant_id == tenant_id,
+                        GAMInventory.inventory_type == "placement",
+                        GAMInventory.status != "STALE",
+                    )
+                )
+            )
+            or 0
+        )
+
+        labels_count = (
+            self.db.scalar(
+                select(func.count()).where(
+                    and_(
+                        GAMInventory.tenant_id == tenant_id,
+                        GAMInventory.inventory_type == "label",
+                        GAMInventory.status != "STALE",
+                    )
+                )
+            )
+            or 0
+        )
+
+        custom_targeting_keys_count = (
+            self.db.scalar(
+                select(func.count()).where(
+                    and_(
+                        GAMInventory.tenant_id == tenant_id,
+                        GAMInventory.inventory_type == "custom_targeting_key",
+                        GAMInventory.status != "STALE",
+                    )
+                )
+            )
+            or 0
+        )
+
+        audience_segments_count = (
+            self.db.scalar(
+                select(func.count()).where(
+                    and_(
+                        GAMInventory.tenant_id == tenant_id,
+                        GAMInventory.inventory_type == "audience_segment",
+                        GAMInventory.status != "STALE",
+                    )
+                )
+            )
+            or 0
+        )
+
         return {
             "root_units": root_units,
             "total_units": len(ad_units),
+            "placements": placements_count,
+            "labels": labels_count,
+            "custom_targeting_keys": custom_targeting_keys_count,
+            "audience_segments": audience_segments_count,
             "last_sync": last_sync,
             "needs_refresh": self._needs_refresh(last_sync),
         }
@@ -949,7 +1006,7 @@ def create_inventory_endpoints(app):
                 and_(
                     GAMInventory.tenant_id == tenant_id,
                     GAMInventory.inventory_type == "custom_targeting_key",
-                    GAMInventory.inventory_id == key_id
+                    GAMInventory.inventory_id == key_id,
                 )
             )
             key_item = db_session.scalars(stmt).first()
@@ -1040,21 +1097,23 @@ def create_inventory_endpoints(app):
 
             db_session.commit()
 
-            return jsonify({
-                "key_id": key_id,
-                "values_count": len(values),
-                "max_values": max_values,
-                "values": [
-                    {
-                        "id": v.id,
-                        "name": v.name,
-                        "display_name": v.display_name,
-                        "match_type": v.match_type,
-                        "status": v.status,
-                    }
-                    for v in values
-                ]
-            })
+            return jsonify(
+                {
+                    "key_id": key_id,
+                    "values_count": len(values),
+                    "max_values": max_values,
+                    "values": [
+                        {
+                            "id": v.id,
+                            "name": v.name,
+                            "display_name": v.display_name,
+                            "match_type": v.match_type,
+                            "status": v.status,
+                        }
+                        for v in values
+                    ],
+                }
+            )
 
         except Exception as e:
             logger.error(f"Failed to fetch custom targeting values: {e}", exc_info=True)

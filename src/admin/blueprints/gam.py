@@ -535,7 +535,7 @@ def get_gam_custom_targeting_keys(tenant_id):
 @log_admin_action("sync_gam_inventory")
 @require_tenant_access()
 def sync_gam_inventory(tenant_id):
-    """Trigger GAM inventory sync for a tenant."""
+    """Trigger GAM inventory sync for a tenant (background job)."""
     if session.get("role") == "viewer":
         return jsonify({"success": False, "error": "Access denied"}), 403
 
@@ -546,7 +546,7 @@ def sync_gam_inventory(tenant_id):
             if not tenant:
                 return jsonify({"success": False, "error": "Tenant not found"}), 404
 
-            from src.core.database.models import AdapterConfig
+            from src.core.database.models import AdapterConfig, SyncJob
 
             adapter_config = db_session.scalars(select(AdapterConfig).filter_by(tenant_id=tenant_id)).first()
 
@@ -561,53 +561,151 @@ def sync_gam_inventory(tenant_id):
                     400,
                 )
 
-            # Create OAuth2 client
-            from googleads import oauth2
+            # Check for existing running sync
+            existing_sync = db_session.scalars(
+                select(SyncJob).where(
+                    SyncJob.tenant_id == tenant_id, SyncJob.status == "running", SyncJob.sync_type == "inventory"
+                )
+            ).first()
 
-            oauth2_client = oauth2.GoogleRefreshTokenClient(
-                client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
-                client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
-                refresh_token=adapter_config.gam_refresh_token,
+            if existing_sync:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "in_progress": True,
+                            "sync_id": existing_sync.sync_id,
+                            "message": "Sync already in progress",
+                        }
+                    ),
+                    409,
+                )
+
+            # Create sync job
+            sync_id = f"sync_{tenant_id}_{int(datetime.now(UTC).timestamp())}"
+            sync_job = SyncJob(
+                sync_id=sync_id,
+                tenant_id=tenant_id,
+                adapter_type="google_ad_manager",
+                sync_type="inventory",
+                status="pending",
+                started_at=datetime.now(UTC),
+                triggered_by="admin_ui",
+                triggered_by_id=session.get("user_email", "unknown"),
             )
-
-            # Create GAM client
-            client = ad_manager.AdManagerClient(
-                oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
-            )
-
-            # Initialize GAM inventory discovery
-            discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
-
-            # Perform full inventory sync
-            result = discovery.sync_all()
-
-            # Save to database
-            from src.services.gam_inventory_service import GAMInventoryService
-
-            inventory_service = GAMInventoryService(db_session)
-            inventory_service._save_inventory_to_db(tenant_id, discovery)
-
-            # Update tenant's last sync time
-            tenant.last_inventory_sync = datetime.now(UTC)
+            db_session.add(sync_job)
             db_session.commit()
 
-            logger.info(f"Successfully synced GAM inventory for tenant {tenant_id}")
+            # Start background sync (using threading for now - can upgrade to Celery later)
+            import threading
+
+            def run_sync():
+                try:
+                    with get_db_session() as bg_session:
+                        # Update status to running
+                        bg_sync_job = bg_session.scalars(select(SyncJob).filter_by(sync_id=sync_id)).first()
+                        bg_sync_job.status = "running"
+                        bg_session.commit()
+
+                        # Create OAuth2 client
+                        from googleads import oauth2
+
+                        oauth2_client = oauth2.GoogleRefreshTokenClient(
+                            client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
+                            client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
+                            refresh_token=adapter_config.gam_refresh_token,
+                        )
+
+                        # Create GAM client
+                        client = ad_manager.AdManagerClient(
+                            oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
+                        )
+
+                        # Initialize GAM inventory discovery
+                        discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
+
+                        # Perform full inventory sync
+                        result = discovery.sync_all()
+
+                        # Save to database
+                        from src.services.gam_inventory_service import GAMInventoryService
+
+                        inventory_service = GAMInventoryService(bg_session)
+                        inventory_service._save_inventory_to_db(tenant_id, discovery)
+
+                        # Update sync job with success
+                        bg_sync_job.status = "completed"
+                        bg_sync_job.completed_at = datetime.now(UTC)
+                        bg_sync_job.summary = json.dumps(result)
+                        bg_session.commit()
+
+                        logger.info(f"Successfully synced GAM inventory for tenant {tenant_id}")
+
+                except Exception as e:
+                    logger.error(f"Error syncing GAM inventory for tenant {tenant_id}: {e}", exc_info=True)
+                    try:
+                        with get_db_session() as err_session:
+                            err_sync_job = err_session.scalars(select(SyncJob).filter_by(sync_id=sync_id)).first()
+                            if err_sync_job:
+                                err_sync_job.status = "failed"
+                                err_sync_job.completed_at = datetime.now(UTC)
+                                err_sync_job.error_message = str(e)
+                                err_session.commit()
+                    except:
+                        pass  # Ignore errors in error handling
+
+            # Start background thread
+            sync_thread = threading.Thread(target=run_sync, daemon=True)
+            sync_thread.start()
 
             return jsonify(
                 {
                     "success": True,
-                    "message": "Inventory synced successfully",
-                    "ad_units": result.get("ad_units", {}),
-                    "placements": result.get("placements", {}),
-                    "labels": result.get("labels", {}),
-                    "custom_targeting": result.get("custom_targeting", {}),
-                    "audience_segments": result.get("audience_segments", {}),
+                    "sync_id": sync_id,
+                    "message": "Inventory sync started in background",
+                    "status": "pending",
                 }
             )
 
     except Exception as e:
-        logger.error(f"Error syncing GAM inventory for tenant {tenant_id}: {e}", exc_info=True)
+        logger.error(f"Error starting GAM inventory sync for tenant {tenant_id}: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@gam_bp.route("/sync-status/<sync_id>", methods=["GET"])
+@require_tenant_access()
+def get_sync_status(tenant_id, sync_id):
+    """Get status of a sync job."""
+    try:
+        with get_db_session() as db_session:
+            from src.core.database.models import SyncJob
+
+            sync_job = db_session.scalars(select(SyncJob).filter_by(sync_id=sync_id, tenant_id=tenant_id)).first()
+
+            if not sync_job:
+                return jsonify({"error": "Sync job not found"}), 404
+
+            response = {
+                "sync_id": sync_job.sync_id,
+                "status": sync_job.status,
+                "started_at": sync_job.started_at.isoformat() if sync_job.started_at else None,
+                "completed_at": sync_job.completed_at.isoformat() if sync_job.completed_at else None,
+            }
+
+            if sync_job.summary:
+                try:
+                    response["summary"] = json.loads(sync_job.summary)
+                except:
+                    response["summary"] = sync_job.summary
+
+            if sync_job.error_message:
+                response["error"] = sync_job.error_message
+
+            return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Error getting sync status: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 
 @gam_bp.route("/api/line-item/<line_item_id>", methods=["GET"])
