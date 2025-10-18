@@ -694,6 +694,7 @@ class GAMInventoryService:
                     "metadata": {
                         "reportable_type": key.inventory_metadata.get("reportable_type"),
                         "values_count": len(custom_values.get(key.inventory_id, [])),
+                        "values_loaded": key.inventory_id in custom_values and len(custom_values[key.inventory_id]) > 0,
                     },
                 }
                 for key in custom_keys
@@ -933,5 +934,133 @@ def create_inventory_endpoints(app):
         except Exception as e:
             logger.error(f"Failed to get targeting data: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/tenant/<tenant_id>/targeting/values/<key_id>", methods=["GET", "POST"])
+    def fetch_custom_targeting_values(tenant_id, key_id):
+        """Fetch custom targeting values for a specific key (lazy loading)."""
+        from flask import jsonify, request
+
+        try:
+            # Get optional limit parameter
+            max_values = request.args.get("limit", type=int, default=None)
+
+            # Validate that the key exists in our database
+            stmt = select(GAMInventory).where(
+                and_(
+                    GAMInventory.tenant_id == tenant_id,
+                    GAMInventory.inventory_type == "custom_targeting_key",
+                    GAMInventory.inventory_id == key_id
+                )
+            )
+            key_item = db_session.scalars(stmt).first()
+            if not key_item:
+                db_session.remove()
+                return jsonify({"error": f"Custom targeting key {key_id} not found"}), 404
+
+            # Get key display name for consistent path construction
+            key_display_name = key_item.inventory_metadata.get("display_name", key_item.name)
+
+            # Get GAM client
+            from src.adapters.google_ad_manager import GoogleAdManager
+            from src.core.database.models import AdapterConfig, Tenant
+
+            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = db_session.scalars(stmt).first()
+            if not tenant:
+                db_session.remove()
+                return jsonify({"error": "Tenant not found"}), 404
+
+            # Check if GAM is the active adapter
+            if tenant.ad_server != "google_ad_manager":
+                db_session.remove()
+                return jsonify({"error": "GAM not enabled for tenant"}), 400
+
+            # Get adapter config
+            stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
+            adapter_config = db_session.scalars(stmt).first()
+
+            if not adapter_config:
+                db_session.remove()
+                return jsonify({"error": "GAM configuration not found"}), 400
+
+            # Build GAM config
+            gam_config = {
+                "enabled": True,
+                "refresh_token": adapter_config.gam_refresh_token,
+                "manual_approval_required": adapter_config.gam_manual_approval_required,
+            }
+
+            # Create dummy principal
+            from src.core.schemas import Principal
+
+            principal = Principal(
+                principal_id="system",
+                name="System",
+                access_token="system_token",
+                platform_mappings={},
+            )
+
+            adapter = GoogleAdManager(
+                config=gam_config,
+                principal=principal,
+                network_code=adapter_config.gam_network_code,
+                advertiser_id=None,
+                trafficker_id=None,
+                tenant_id=tenant_id,
+                dry_run=False,
+            )
+
+            # Fetch values using GAM API
+            from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
+
+            discovery = GAMInventoryDiscovery(adapter.client, tenant_id)
+            values = discovery.discover_custom_targeting_values_for_key(key_id, max_values)
+
+            # Save to database
+            service = GAMInventoryService(db_session)
+            sync_time = datetime.now()
+
+            for value in values:
+                service._upsert_inventory_item(
+                    tenant_id=tenant_id,
+                    inventory_type="custom_targeting_value",
+                    inventory_id=value.id,
+                    name=value.name,
+                    path=[key_display_name, value.display_name],  # Use key display name for consistency
+                    status=value.status,
+                    inventory_metadata={
+                        "custom_targeting_key_id": value.custom_targeting_key_id,
+                        "display_name": value.display_name,
+                        "match_type": value.match_type,
+                        "key_name": key_item.name,
+                        "key_display_name": key_display_name,
+                    },
+                    last_synced=sync_time,
+                )
+
+            db_session.commit()
+
+            return jsonify({
+                "key_id": key_id,
+                "values_count": len(values),
+                "max_values": max_values,
+                "values": [
+                    {
+                        "id": v.id,
+                        "name": v.name,
+                        "display_name": v.display_name,
+                        "match_type": v.match_type,
+                        "status": v.status,
+                    }
+                    for v in values
+                ]
+            })
+
+        except Exception as e:
+            logger.error(f"Failed to fetch custom targeting values: {e}", exc_info=True)
+            db_session.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            db_session.remove()
 
     logger.info("GAM inventory endpoints successfully registered")
