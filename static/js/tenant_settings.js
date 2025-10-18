@@ -575,25 +575,18 @@ function testGAMConnection() {
     });
 }
 
-// Sync GAM inventory
+// Sync GAM inventory (with background polling)
 function syncGAMInventory() {
-    console.log('=== syncGAMInventory START ===');
     const button = document.querySelector('button[onclick="syncGAMInventory()"]');
-    console.log('Button:', button);
-    console.log('Button disabled?', button ? button.disabled : 'NO BUTTON FOUND');
     const originalText = button.innerHTML;
-    console.log('Original text:', originalText);
-
     button.disabled = true;
 
     // Simple animated dots loading indicator
     let dots = '';
     button.innerHTML = '⏳ Syncing';
-    console.log('Set button to:', button.innerHTML);
     const loadingInterval = setInterval(() => {
         dots = dots.length >= 3 ? '' : dots + '.';
         button.innerHTML = `⏳ Syncing${dots}`;
-        console.log('Button text now:', button.innerHTML);
     }, 300);
 
     const url = `${config.scriptName}/tenant/${config.tenantId}/gam/sync-inventory`;
@@ -608,39 +601,17 @@ function syncGAMInventory() {
         return response.json();
     })
     .then(data => {
-        clearInterval(loadingInterval);
-        button.disabled = false;
-        button.innerHTML = originalText;
-
-        if (data.success) {
-            // Extract actual counts from response (not dict keys!)
-            const adUnitCount = (data.ad_units || {}).total || 0;
-            const placementCount = (data.placements || {}).total || 0;
-            const labelCount = (data.labels || {}).total || 0;
-            const targetingKeyCount = (data.custom_targeting || {}).total_keys || 0;
-            const targetingValueCount = (data.custom_targeting || {}).total_values || 0;
-            const audienceCount = (data.audience_segments || {}).total || 0;
-
-            const totalCount = adUnitCount + placementCount + labelCount + targetingKeyCount + targetingValueCount + audienceCount;
-
-            let message = `✅ Inventory synced successfully!\n\n`;
-            if (adUnitCount > 0) message += `• ${adUnitCount} ad units\n`;
-            if (placementCount > 0) message += `• ${placementCount} placements\n`;
-            if (labelCount > 0) message += `• ${labelCount} labels\n`;
-            if (targetingKeyCount > 0) {
-                message += `• ${targetingKeyCount} custom targeting keys`;
-                if (targetingValueCount > 0) message += ` (${targetingValueCount} values)`;
-                message += `\n`;
-            }
-            if (audienceCount > 0) message += `• ${audienceCount} audience segments\n`;
-
-            if (totalCount === 0) {
-                message = '✅ Inventory synced successfully!\n\nNo inventory items found in GAM.';
-            }
-
-            alert(message);
-            location.reload();
+        if (data.success && data.sync_id) {
+            // Sync started in background - poll for status
+            pollSyncStatus(data.sync_id, button, originalText, loadingInterval);
+        } else if (data.in_progress) {
+            // Already syncing - poll existing job
+            pollSyncStatus(data.sync_id, button, originalText, loadingInterval);
         } else {
+            // Immediate error
+            clearInterval(loadingInterval);
+            button.disabled = false;
+            button.innerHTML = originalText;
             alert('❌ Sync failed: ' + (data.error || data.message || 'Unknown error'));
         }
     })
@@ -650,6 +621,64 @@ function syncGAMInventory() {
         button.innerHTML = originalText;
         alert('❌ Error: ' + error.message);
     });
+}
+
+// Poll sync status until completion
+function pollSyncStatus(syncId, button, originalText, loadingInterval) {
+    const statusUrl = `${config.scriptName}/tenant/${config.tenantId}/gam/sync-status/${syncId}`;
+
+    const checkStatus = () => {
+        fetch(statusUrl)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'completed') {
+                    clearInterval(loadingInterval);
+                    button.disabled = false;
+                    button.innerHTML = originalText;
+
+                    // Show success message with summary
+                    const summary = data.summary || {};
+                    const adUnitCount = (summary.ad_units || {}).total || 0;
+                    const placementCount = (summary.placements || {}).total || 0;
+                    const labelCount = (summary.labels || {}).total || 0;
+                    const targetingKeyCount = (summary.custom_targeting || {}).total_keys || 0;
+                    const audienceCount = (summary.audience_segments || {}).total || 0;
+
+                    let message = `✅ Inventory synced successfully!\n\n`;
+                    if (adUnitCount > 0) message += `• ${adUnitCount} ad units\n`;
+                    if (placementCount > 0) message += `• ${placementCount} placements\n`;
+                    if (labelCount > 0) message += `• ${labelCount} labels\n`;
+                    if (targetingKeyCount > 0) message += `• ${targetingKeyCount} custom targeting keys\n`;
+                    if (audienceCount > 0) message += `• ${audienceCount} audience segments\n`;
+
+                    alert(message);
+                    location.reload();
+                } else if (data.status === 'failed') {
+                    clearInterval(loadingInterval);
+                    button.disabled = false;
+                    button.innerHTML = originalText;
+                    alert('❌ Sync failed: ' + (data.error || 'Unknown error'));
+                } else if (data.status === 'running' || data.status === 'pending') {
+                    // Still running - continue polling
+                    setTimeout(checkStatus, 2000); // Poll every 2 seconds
+                } else {
+                    // Unknown status
+                    clearInterval(loadingInterval);
+                    button.disabled = false;
+                    button.innerHTML = originalText;
+                    alert('❌ Unknown sync status: ' + data.status);
+                }
+            })
+            .catch(error => {
+                clearInterval(loadingInterval);
+                button.disabled = false;
+                button.innerHTML = originalText;
+                alert('❌ Error checking sync status: ' + error.message);
+            });
+    };
+
+    // Start polling after 1 second
+    setTimeout(checkStatus, 1000);
 }
 
 // Check OAuth token status
@@ -763,9 +792,6 @@ function testSignalsEndpoint() {
 }
 
 // Debug log for adapter detection
-console.log('Backend says active_adapter is:', config.activeAdapter);
-console.log('Backend says tenant.ad_server is:', document.querySelector('[data-tenant-ad-server]')?.dataset.tenantAdServer);
-
 // Update principal
 function updatePrincipal(principalId) {
     const name = document.getElementById(`principal_name_${principalId}`).value;
