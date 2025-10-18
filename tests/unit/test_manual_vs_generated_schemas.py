@@ -31,10 +31,7 @@ from src.core.schemas import (
 
 # Generated schemas
 from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
-    GetProductsRequest1 as GeneratedGetProductsRequest1,
-)
-from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
-    GetProductsRequest2 as GeneratedGetProductsRequest2,
+    GetProductsRequest as GeneratedGetProductsRequest,
 )
 from src.core.schemas_generated._schemas_v1_media_buy_get_products_response_json import (
     GetProductsResponse as GeneratedGetProductsResponse,
@@ -144,17 +141,17 @@ def compare_fields(
 class TestGetProductsRequestComparison:
     """Compare manual GetProductsRequest vs generated variants."""
 
-    def test_compare_with_variant1(self):
-        """Compare manual GetProductsRequest with GetProductsRequest1 (promoted_offering variant)."""
+    def test_compare_with_generated(self):
+        """Compare manual GetProductsRequest with generated GetProductsRequest."""
         result = compare_fields(
             ManualGetProductsRequest,
-            GeneratedGetProductsRequest1,
+            GeneratedGetProductsRequest,
             "Manual GetProductsRequest",
-            "Generated GetProductsRequest1",
+            "Generated GetProductsRequest",
         )
 
         print("\n" + "=" * 80)
-        print("GetProductsRequest: Manual vs Generated Variant 1 (promoted_offering)")
+        print("GetProductsRequest: Manual vs Generated")
         print("=" * 80)
 
         if result["manual_only"]:
@@ -183,49 +180,6 @@ class TestGetProductsRequestComparison:
             print(f"  {', '.join(result['matches'])}")
 
         # Store for analysis but don't fail
-        print(
-            f"\nSummary: {len(result['matches'])} matches, {len(result['manual_only'])} manual-only, "
-            f"{len(result['generated_only'])} generated-only, {len(result['type_mismatches'])} type mismatches"
-        )
-
-    def test_compare_with_variant2(self):
-        """Compare manual GetProductsRequest with GetProductsRequest2 (brand_manifest variant)."""
-        result = compare_fields(
-            ManualGetProductsRequest,
-            GeneratedGetProductsRequest2,
-            "Manual GetProductsRequest",
-            "Generated GetProductsRequest2",
-        )
-
-        print("\n" + "=" * 80)
-        print("GetProductsRequest: Manual vs Generated Variant 2 (brand_manifest)")
-        print("=" * 80)
-
-        if result["manual_only"]:
-            print("\n⚠️  FIELDS ONLY IN MANUAL (potential drift):")
-            for field in result["manual_only"]:
-                print(
-                    f"  - {field['field']}: {field['type']} (required={field['required']}, default={field['default']})"
-                )
-
-        if result["generated_only"]:
-            print("\n⚠️  FIELDS ONLY IN GENERATED (missing from manual):")
-            for field in result["generated_only"]:
-                print(
-                    f"  - {field['field']}: {field['type']} (required={field['required']}, default={field['default']})"
-                )
-
-        if result["type_mismatches"]:
-            print("\n⚠️  TYPE MISMATCHES:")
-            for mismatch in result["type_mismatches"]:
-                print(f"  - {mismatch['field']}:")
-                print(f"      Manual:    {mismatch['manual_type']} (required={mismatch['manual_required']})")
-                print(f"      Generated: {mismatch['generated_type']} (required={mismatch['generated_required']})")
-
-        if result["matches"]:
-            print(f"\n✅ MATCHING FIELDS ({len(result['matches'])}):")
-            print(f"  {', '.join(result['matches'])}")
-
         print(
             f"\nSummary: {len(result['matches'])} matches, {len(result['manual_only'])} manual-only, "
             f"{len(result['generated_only'])} generated-only, {len(result['type_mismatches'])} type mismatches"
