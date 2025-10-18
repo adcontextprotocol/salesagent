@@ -71,7 +71,7 @@ class E2ETestSuite:
                 "get_products",
                 {
                     "brief": "video ads for sports content",
-                    "promoted_offering": "athletic footwear",
+                    "brand_manifest": {"name": "athletic footwear"},
                     "strategy_id": strategy_id,
                 },
             )
@@ -153,7 +153,7 @@ class E2ETestSuite:
                 "get_products",
                 {
                     "brief": "display advertising",
-                    "promoted_offering": "consumer electronics",
+                    "brand_manifest": {"name": "consumer electronics"},
                     "strategy_id": strategy_id,
                 },
             )
@@ -214,7 +214,11 @@ class E2ETestSuite:
             # 1. Create media buy
             products_response = await mcp.call_tool(
                 "get_products",
-                {"brief": "video advertising", "promoted_offering": "streaming service", "strategy_id": strategy_id},
+                {
+                    "brief": "video advertising",
+                    "brand_manifest": {"name": "streaming service"},
+                    "strategy_id": strategy_id,
+                },
             )
 
             create_response = await mcp.call_tool(
@@ -270,7 +274,7 @@ class E2ETestSuite:
                 "get_products",
                 {
                     "brief": "premium display advertising",
-                    "promoted_offering": "luxury goods",
+                    "brand_manifest": {"name": "luxury goods"},
                     "strategy_id": strategy_id,
                 },
             )
@@ -315,7 +319,8 @@ class E2ETestSuite:
         async with await self.setup_mcp_client() as mcp:
             # Create two campaigns with different strategies
             products_response = await mcp.call_tool(
-                "get_products", {"brief": "mobile advertising", "promoted_offering": "mobile app"}
+                "get_products",
+                {"brief": "mobile advertising", "brand_manifest": {"name": "mobile app"}},
             )
 
             # Campaign A: Happy path
