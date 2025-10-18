@@ -106,15 +106,12 @@ class GetProductsRequest(BaseModel):
                     for fmt_id in filters_dict["format_ids"]
                 ]
 
-        # Create generated schema instance (now a single flat class after schema regeneration)
+        # Create generated schema instance (only fields that exist in AdCP spec)
+        # Note: promoted_offering, min_exposures, strategy_id, webhook_url are adapter-only fields
         return _GeneratedGetProductsRequest(
-            promoted_offering=self.promoted_offering,
             brand_manifest=self.brand_manifest,  # type: ignore[arg-type]
             brief=self.brief or None,
             filters=filters_dict,  # type: ignore[arg-type]
-            min_exposures=self.min_exposures,
-            strategy_id=self.strategy_id,
-            webhook_url=self.webhook_url,
         )
 
     @classmethod
