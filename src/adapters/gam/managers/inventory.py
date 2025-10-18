@@ -138,13 +138,21 @@ class GAMInventoryManager:
         discovery = self._get_discovery()
         return discovery.discover_labels()
 
-    def sync_all_inventory(self) -> dict[str, Any]:
+    def sync_all_inventory(self, custom_targeting_limit: int = 1000, fetch_values: bool = False) -> dict[str, Any]:
         """Perform full inventory sync from GAM.
+
+        Args:
+            custom_targeting_limit: Maximum number of values per custom targeting key (only used if fetch_values=True)
+            fetch_values: Whether to fetch custom targeting values during sync (default False for lazy loading)
 
         Returns:
             Summary of synced data
         """
         logger.info(f"Starting full inventory sync for tenant {self.tenant_id}")
+        if not fetch_values:
+            logger.info("Custom targeting: Keys only (values will be lazy loaded on demand)")
+        else:
+            logger.info(f"Custom targeting: Keys + values (limit: {custom_targeting_limit} values per key)")
 
         if self.dry_run:
             logger.info("[DRY RUN] Would perform full inventory sync from GAM")
@@ -160,7 +168,10 @@ class GAMInventoryManager:
             }
 
         discovery = self._get_discovery()
-        return discovery.sync_all()
+        return discovery.sync_all(
+            fetch_custom_targeting_values=fetch_values,
+            max_custom_targeting_values_per_key=custom_targeting_limit
+        )
 
     def build_ad_unit_tree(self) -> dict[str, Any]:
         """Build hierarchical tree structure of ad units.
