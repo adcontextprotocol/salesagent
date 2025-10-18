@@ -360,15 +360,17 @@ class GAMInventoryDiscovery:
         return discovered_labels
 
     @with_retry(operation_name="discover_custom_targeting")
-    def discover_custom_targeting(self, max_values_per_key: int | None = None) -> dict[str, Any]:
-        """Discover all custom targeting keys and their values.
+    def discover_custom_targeting(self, max_values_per_key: int | None = None, fetch_values: bool = True) -> dict[str, Any]:
+        """Discover all custom targeting keys and optionally their values.
 
         Args:
-            max_values_per_key: Optional limit on number of values to fetch per key
+            max_values_per_key: Optional limit on number of values to fetch per key (only if fetch_values=True)
+            fetch_values: Whether to fetch values for each key. Set to False for faster sync (lazy load values later)
         """
         logger.info(
-            "Discovering custom targeting keys and values"
-            + (f" (max {max_values_per_key} values per key)" if max_values_per_key else "")
+            "Discovering custom targeting keys"
+            + (" and values" if fetch_values else " (values will be lazy loaded)")
+            + (f" (max {max_values_per_key} values per key)" if fetch_values and max_values_per_key else "")
         )
 
         custom_targeting_service = self.client.GetService("CustomTargetingService")
@@ -395,21 +397,46 @@ class GAMInventoryDiscovery:
 
         logger.info(f"Discovered {len(discovered_keys)} custom targeting keys")
 
-        # Discover values for each key
+        # Optionally discover values for each key
         total_values = 0
-        for key in discovered_keys:
-            values = self._discover_custom_targeting_values(key.id, max_values=max_values_per_key)
-            self.custom_targeting_values[key.id] = values
-            total_values += len(values)
+        if fetch_values:
+            for key in discovered_keys:
+                values = self._discover_custom_targeting_values(key.id, max_values=max_values_per_key)
+                self.custom_targeting_values[key.id] = values
+                total_values += len(values)
 
-        logger.info(f"Discovered {total_values} total custom targeting values")
+            logger.info(f"Discovered {total_values} total custom targeting values")
+        else:
+            logger.info("Skipping value discovery - values will be lazy loaded on demand")
 
-        return {"keys": discovered_keys, "total_values": total_values}
+        return {"keys": discovered_keys, "total_values": total_values, "values_fetched": fetch_values}
+
+    def discover_custom_targeting_values_for_key(
+        self, key_id: str, max_values: int | None = None
+    ) -> list[CustomTargetingValue]:
+        """Discover values for a specific custom targeting key (public method for lazy loading).
+
+        Args:
+            key_id: The custom targeting key ID
+            max_values: Optional maximum number of values to fetch
+
+        Returns:
+            List of discovered custom targeting values
+        """
+        logger.info(f"Lazy loading custom targeting values for key {key_id}" + (f" (max {max_values})" if max_values else ""))
+
+        values = self._discover_custom_targeting_values(key_id, max_values)
+
+        # Update the internal cache
+        self.custom_targeting_values[key_id] = values
+
+        logger.info(f"Loaded {len(values)} values for key {key_id}")
+        return values
 
     def _discover_custom_targeting_values(
         self, key_id: str, max_values: int | None = None
     ) -> list[CustomTargetingValue]:
-        """Discover values for a specific custom targeting key.
+        """Discover values for a specific custom targeting key (internal method).
 
         Args:
             key_id: The custom targeting key ID
@@ -642,14 +669,25 @@ class GAMInventoryDiscovery:
 
         return suggestions
 
-    def sync_all(self) -> dict[str, Any]:
+    def sync_all(self, fetch_custom_targeting_values: bool = False, max_custom_targeting_values_per_key: int = 1000) -> dict[str, Any]:
         """
         Sync all inventory data from GAM.
+
+        Args:
+            fetch_custom_targeting_values: Whether to fetch custom targeting values during sync.
+                                           Default False (lazy load values on demand).
+                                           Set to True only if you need all values immediately.
+            max_custom_targeting_values_per_key: Maximum number of values to fetch per key (only if fetch_custom_targeting_values=True).
+                                                 Default 1000 to prevent timeouts with large datasets.
 
         Returns:
             Summary of synced data
         """
         logger.info(f"Starting full inventory sync for tenant {self.tenant_id}")
+        if not fetch_custom_targeting_values:
+            logger.info("Custom targeting: Keys only (values will be lazy loaded on demand)")
+        else:
+            logger.info(f"Custom targeting: Keys + values (limit: {max_custom_targeting_values_per_key} values per key)")
 
         start_time = datetime.now()
 
@@ -661,11 +699,14 @@ class GAMInventoryDiscovery:
         self.custom_targeting_values.clear()
         self.audience_segments.clear()
 
-        # Discover all inventory
+        # Discover all inventory - custom targeting values are lazy loaded by default
         ad_units = self.discover_ad_units()
         placements = self.discover_placements()
         labels = self.discover_labels()
-        custom_targeting = self.discover_custom_targeting()
+        custom_targeting = self.discover_custom_targeting(
+            max_values_per_key=max_custom_targeting_values_per_key,
+            fetch_values=fetch_custom_targeting_values
+        )
         audience_segments = self.discover_audience_segments()
 
         self.last_sync = datetime.now()
@@ -686,6 +727,8 @@ class GAMInventoryDiscovery:
                 "total_values": custom_targeting.get("total_values", 0),
                 "predefined_keys": len([k for k in self.custom_targeting_keys.values() if k.type == "PREDEFINED"]),
                 "freeform_keys": len([k for k in self.custom_targeting_keys.values() if k.type == "FREEFORM"]),
+                "values_fetched": custom_targeting.get("values_fetched", False),
+                "note": "Values lazy loaded on demand" if not custom_targeting.get("values_fetched") else f"Values fetched (limit: {max_custom_targeting_values_per_key} per key)",
             },
             "audience_segments": {
                 "total": len(audience_segments),

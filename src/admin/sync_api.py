@@ -68,8 +68,11 @@ def trigger_sync(tenant_id: str):
 
     Request body:
     {
-        "sync_type": "full" | "inventory" | "targeting",
-        "force": true/false  # Force sync even if recent sync exists
+        "sync_type": "full" | "inventory" | "targeting" | "selective",
+        "force": true/false,  # Force sync even if recent sync exists
+        "sync_types": ["ad_units", "placements", "labels", "custom_targeting", "audience_segments"],  # For selective sync
+        "custom_targeting_limit": 1000,  # Max values per custom targeting key (default 1000)
+        "audience_segment_limit": null  # Max audience segments (null = unlimited)
     }
     """
     try:
@@ -94,6 +97,9 @@ def trigger_sync(tenant_id: str):
         data = request.get_json() or {}
         sync_type = data.get("sync_type", "full")
         force = data.get("force", False)
+        custom_targeting_limit = data.get("custom_targeting_limit", 1000)
+        audience_segment_limit = data.get("audience_segment_limit")
+        sync_types = data.get("sync_types", [])
 
         # Check for recent sync if not forcing
         if not force:
@@ -172,12 +178,35 @@ def trigger_sync(tenant_id: str):
 
             # Use the sync manager to perform the sync
             if sync_type == "full":
-                result = adapter.sync_full(db_session, force=force)
+                # Pass custom targeting limit to prevent timeouts
+                result = adapter.sync_full(
+                    db_session,
+                    force=force,
+                    custom_targeting_limit=custom_targeting_limit
+                )
             elif sync_type == "inventory":
-                result = adapter.sync_inventory(db_session, force=force)
+                result = adapter.sync_inventory(
+                    db_session,
+                    force=force,
+                    custom_targeting_limit=custom_targeting_limit
+                )
             elif sync_type == "targeting":
                 # Targeting sync can be mapped to inventory sync for now
-                result = adapter.sync_inventory(db_session, force=force)
+                result = adapter.sync_inventory(
+                    db_session,
+                    force=force,
+                    custom_targeting_limit=custom_targeting_limit
+                )
+            elif sync_type == "selective":
+                # Selective sync - only sync specified inventory types
+                if not sync_types:
+                    raise ValueError("sync_types required for selective sync")
+                result = adapter.sync_selective(
+                    db_session,
+                    sync_types=sync_types,
+                    custom_targeting_limit=custom_targeting_limit,
+                    audience_segment_limit=audience_segment_limit
+                )
             else:
                 raise ValueError(f"Unsupported sync type: {sync_type}")
 

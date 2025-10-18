@@ -75,6 +75,63 @@ The activity feed uses Server-Sent Events (SSE) for real-time updates.
 2. Database audit_logs table is being populated
 3. No browser extensions blocking SSE connections
 
+### Inventory Sync Issues
+
+#### Inventory Sync Timeout (30+ minutes)
+**Symptoms**: Sync job shows "running" status but never completes, or times out after 30 minutes.
+
+**Root Cause**: Large accounts (100+ custom targeting keys with thousands of values each) cause 250+ API calls to GAM.
+
+**Solution**: Inventory sync now uses **lazy loading** by default:
+- Syncs only custom targeting **keys** during inventory sync (~2 minutes)
+- Values are fetched **on-demand** when browsing or creating campaigns
+- Values are cached in database once fetched
+
+**How it works:**
+```bash
+# 1. Run inventory sync (fast - only fetches keys)
+curl -X POST https://adcp-sales-agent.fly.dev/api/v1/sync/trigger/{tenant_id} \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"sync_type": "full", "force": true}'
+
+# 2. Check which keys have values loaded
+curl -X GET https://adcp-sales-agent.fly.dev/api/tenant/{tenant_id}/targeting/all
+
+# 3. Lazy load values for specific key when needed
+curl -X GET "https://adcp-sales-agent.fly.dev/api/tenant/{tenant_id}/targeting/values/{key_id}?limit=1000"
+```
+
+**Check sync status:**
+```bash
+# Get recent sync jobs
+curl -X GET https://adcp-sales-agent.fly.dev/api/v1/sync/history/{tenant_id}?limit=5 \
+  -H "X-API-Key: YOUR_API_KEY"
+
+# Check if custom targeting values are loaded
+SELECT
+  COUNT(*) FILTER (WHERE inventory_type = 'custom_targeting_key') as keys_count,
+  COUNT(*) FILTER (WHERE inventory_type = 'custom_targeting_value') as values_count
+FROM gam_inventory
+WHERE tenant_id = '{tenant_id}';
+```
+
+**Force full sync with values (not recommended for large accounts):**
+```bash
+curl -X POST https://adcp-sales-agent.fly.dev/api/v1/sync/trigger/{tenant_id} \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{
+    "sync_type": "full",
+    "fetch_custom_targeting_values": true,
+    "custom_targeting_limit": 500,
+    "force": true
+  }'
+```
+
+**Performance impact:**
+- Before: 30+ minutes (timeout)
+- After: ~2 minutes (keys only)
+- Lazy load per key: ~5 seconds (only when needed)
+
 ### Authentication Problems
 
 #### "Access Denied" in Admin UI
