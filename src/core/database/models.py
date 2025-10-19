@@ -927,6 +927,7 @@ class SyncJob(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     triggered_by: Mapped[str] = mapped_column(String(50), nullable=False)
     triggered_by_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    progress: Mapped[dict | None] = mapped_column(JSONType, nullable=True)  # Real-time progress tracking
 
     # Relationships
     tenant = relationship("Tenant")
