@@ -160,14 +160,28 @@ class GCPServiceAccountService:
                 # Truncate if too long
                 account_id = account_id[:30]
 
-            # Create service account
-            try:
-                logger.info(f"Creating service account with account_id='{account_id}' for tenant {tenant_id}")
-                service_account = self._create_service_account(
-                    account_id=account_id, display_name=display_name or f"AdCP Sales Agent - {tenant_id}"
-                )
-                service_account_email = service_account.email
-                logger.info(f"Successfully created service account: {service_account_email}")
+            # Expected service account email format
+            expected_email = f"{account_id}@{self.gcp_project_id}.iam.gserviceaccount.com"
+
+            # Check if service account already exists in GCP
+            logger.info(f"Checking if service account {expected_email} already exists in GCP")
+            existing_account = self._get_service_account_if_exists(expected_email)
+
+            if existing_account:
+                logger.info(f"Service account {expected_email} already exists in GCP, will reuse it")
+                service_account_email = existing_account.email
+            else:
+                # Create service account
+                logger.info(f"Creating new service account with account_id='{account_id}' for tenant {tenant_id}")
+                try:
+                    service_account = self._create_service_account(
+                        account_id=account_id, display_name=display_name or f"AdCP Sales Agent - {tenant_id}"
+                    )
+                    service_account_email = service_account.email
+                    logger.info(f"Successfully created service account: {service_account_email}")
+                except Exception as e:
+                    logger.error(f"Failed to create service account for tenant {tenant_id}: {e}", exc_info=True)
+                    raise
 
                 # Verify service account was created (helps catch propagation issues)
                 try:
@@ -175,23 +189,24 @@ class GCPServiceAccountService:
                 except Exception as e:
                     logger.warning(f"Service account verification failed, but continuing: {e}")
 
-                # Create key for service account
+            # Create key for service account (whether new or existing)
+            try:
                 logger.info(f"Creating key for service account: {service_account_email}")
                 service_account_json = self._create_service_account_key(service_account_email)
                 logger.info(f"Successfully created service account key for: {service_account_email}")
 
                 # Store in database
-                adapter_config.gam_service_account_email = service_account.email
+                adapter_config.gam_service_account_email = service_account_email
                 adapter_config.gam_service_account_json = service_account_json
                 adapter_config.gam_auth_method = "service_account"
                 session.commit()
 
                 logger.info(f"Stored service account credentials for tenant {tenant_id}")
 
-                return service_account.email, service_account_json
+                return service_account_email, service_account_json
 
             except Exception as e:
-                logger.error(f"Failed to create service account for tenant {tenant_id}: {e}", exc_info=True)
+                logger.error(f"Failed to create key or store credentials for tenant {tenant_id}: {e}", exc_info=True)
                 raise
 
     def _create_service_account(self, account_id: str, display_name: str) -> types.ServiceAccount:
@@ -225,6 +240,32 @@ class GCPServiceAccountService:
         except Exception as e:
             logger.error(f"Failed to create service account with account_id={account_id}: {e}", exc_info=True)
             raise
+
+    def _get_service_account_if_exists(self, service_account_email: str) -> types.ServiceAccount | None:
+        """Check if a service account exists in GCP.
+
+        Args:
+            service_account_email: Email of the service account to check
+
+        Returns:
+            ServiceAccount object if exists, None if not found
+        """
+        try:
+            request = iam_admin_v1.GetServiceAccountRequest()
+            request.name = f"projects/{self.gcp_project_id}/serviceAccounts/{service_account_email}"
+
+            account = self.iam_client.get_service_account(request=request)
+            logger.info(f"Found existing service account: {account.email}")
+            return account
+        except Exception as e:
+            # 404 means it doesn't exist, which is fine
+            if "404" in str(e) or "NOT_FOUND" in str(e):
+                logger.info(f"Service account {service_account_email} does not exist yet")
+                return None
+            else:
+                # Some other error - log it but don't fail
+                logger.warning(f"Error checking if service account exists: {e}")
+                return None
 
     def _verify_service_account_exists(self, service_account_email: str) -> bool:
         """Verify that a service account exists in GCP.
