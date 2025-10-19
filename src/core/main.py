@@ -762,9 +762,9 @@ def _normalize_format_value(format_value: Any) -> str:
 
 
 def _validate_creative_assets(assets: Any) -> dict[str, dict[str, Any]] | None:
-    """Validate that creative assets are in AdCP v2.4+ dictionary format.
+    """Validate that creative assets are in AdCP v2.1+ dictionary format.
 
-    AdCP v2.4+ requires assets to be a dictionary keyed by asset_id from the format's
+    AdCP v2.1+ requires assets to be a dictionary keyed by asset_id from the format's
     asset_requirements.
 
     Args:
@@ -774,10 +774,10 @@ def _validate_creative_assets(assets: Any) -> dict[str, dict[str, Any]] | None:
         Dictionary of assets keyed by asset_id, or None if no assets provided
 
     Raises:
-        ValueError: If assets are not in the correct dict format
+        ValueError: If assets are not in the correct dict format, or if asset structure is invalid
 
     Example:
-        # Correct format (AdCP v2.4+)
+        # Correct format (AdCP v2.1+)
         assets = {
             "main_image": {"asset_type": "image", "url": "https://..."},
             "logo": {"asset_type": "image", "url": "https://..."}
@@ -789,9 +789,26 @@ def _validate_creative_assets(assets: Any) -> dict[str, dict[str, Any]] | None:
     # Must be a dict
     if not isinstance(assets, dict):
         raise ValueError(
-            f"Invalid assets format: expected dict keyed by asset_id (AdCP v2.4+), got {type(assets).__name__}. "
+            f"Invalid assets format: expected dict keyed by asset_id (AdCP v2.1+), got {type(assets).__name__}. "
             f"Assets must be a dictionary like: {{'main_image': {{'asset_type': 'image', 'url': '...'}}}}"
         )
+
+    # Validate structure of each asset
+    for asset_id, asset_data in assets.items():
+        # Asset ID must be a non-empty string
+        if not isinstance(asset_id, str):
+            raise ValueError(
+                f"Asset key must be a string (asset_id from format), got {type(asset_id).__name__}: {asset_id!r}"
+            )
+        if not asset_id.strip():
+            raise ValueError("Asset key (asset_id) cannot be empty or whitespace-only")
+
+        # Asset data must be a dict
+        if not isinstance(asset_data, dict):
+            raise ValueError(
+                f"Asset '{asset_id}' data must be a dict, got {type(asset_data).__name__}. "
+                f"Expected format: {{'asset_type': '...', 'url': '...', ...}}"
+            )
 
     return assets
 
