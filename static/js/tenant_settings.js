@@ -598,7 +598,11 @@ function syncGAMInventory() {
         }
     })
     .then(response => {
-        return response.json();
+        // Handle both success and 409 (conflict) responses
+        if (response.ok || response.status === 409) {
+            return response.json();
+        }
+        throw new Error(`Server error: ${response.status}`);
     })
     .then(data => {
         if (data.success && data.sync_id) {
