@@ -569,17 +569,36 @@ def sync_gam_inventory(tenant_id):
             ).first()
 
             if existing_sync:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "in_progress": True,
-                            "sync_id": existing_sync.sync_id,
-                            "message": "Sync already in progress",
-                        }
-                    ),
-                    409,
-                )
+                # Check if sync is stale (running for >1 hour with no progress updates)
+                from datetime import timedelta
+
+                time_running = datetime.now(UTC) - existing_sync.started_at
+                is_stale = time_running > timedelta(hours=1) and not existing_sync.progress
+
+                if is_stale:
+                    # Mark stale sync as failed and allow new sync to start
+                    existing_sync.status = "failed"
+                    existing_sync.completed_at = datetime.now(UTC)
+                    existing_sync.error_message = (
+                        "Sync thread died (stale after 1+ hour with no progress) - marked as failed to allow fresh sync"
+                    )
+                    db_session.commit()
+                    logger.warning(
+                        f"Marked stale sync {existing_sync.sync_id} as failed (running since {existing_sync.started_at}, no progress)"
+                    )
+                else:
+                    # Sync is actually running, return 409
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "in_progress": True,
+                                "sync_id": existing_sync.sync_id,
+                                "message": "Sync already in progress",
+                            }
+                        ),
+                        409,
+                    )
 
             # Extract config values before starting background thread (avoid session issues)
             gam_network_code = adapter_config.gam_network_code
