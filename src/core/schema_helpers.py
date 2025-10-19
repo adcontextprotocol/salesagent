@@ -81,9 +81,13 @@ def create_get_products_request(
     else:
         brand_manifest_obj = brand_manifest  # type: ignore[assignment]
 
-    # Create single flat GetProductsRequest
+    # Handle promoted_offering → brand_manifest conversion (backward compat)
+    if promoted_offering and not brand_manifest_obj:
+        # Convert promoted_offering to brand_manifest for AdCP spec compliance
+        brand_manifest_obj = BrandManifest6(name=promoted_offering)
+
+    # Create single flat GetProductsRequest (AdCP spec fields only)
     return GetProductsRequest(
-        promoted_offering=promoted_offering,
         brand_manifest=brand_manifest_obj,  # type: ignore[arg-type]
         brief=brief or None,
         filters=filters_obj,
