@@ -635,6 +635,8 @@ function pollSyncStatus(syncId, button, originalText, loadingInterval) {
     const syncMessage = document.createElement('div');
     syncMessage.id = 'sync-progress-message';
     syncMessage.className = 'alert alert-info mt-2';
+    syncMessage.style.padding = '12px 16px';
+    syncMessage.style.marginTop = '12px';
     syncMessage.innerHTML = '<strong>💡 Tip:</strong> Feel free to navigate away - the sync continues in the background!';
     button.parentElement.appendChild(syncMessage);
 
