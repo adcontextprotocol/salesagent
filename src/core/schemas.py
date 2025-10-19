@@ -230,7 +230,10 @@ class PricingOption(BaseModel):
 class AssetRequirement(BaseModel):
     """Asset requirement specification per AdCP spec."""
 
+    asset_id: str = Field(..., description="Asset identifier used as key in creative manifest assets object")
     asset_type: str = Field(..., description="Type of asset required")
+    asset_role: str | None = Field(None, description="Optional descriptive label (not used for referencing)")
+    required: bool = Field(True, description="Whether this asset is required")
     quantity: int = Field(1, minimum=1, description="Number of assets of this type required")
     requirements: dict[str, Any] | None = Field(None, description="Specific requirements for this asset type")
 

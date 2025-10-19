@@ -51,10 +51,20 @@ class TestGetProductsRequestAdapter:
         assert isinstance(data, dict)
 
     def test_roundtrip_through_generated_schema(self):
-        """Adapter survives roundtrip through generated schema."""
-        # Start with adapter
+        """Adapter survives roundtrip through generated schema.
+
+        Note: Only AdCP spec fields survive roundtrip. Adapter-only fields
+        (promoted_offering, min_exposures, strategy_id, webhook_url) are NOT
+        in the AdCP spec and are lost when converting to generated schema.
+
+        promoted_offering is converted to brand_manifest before protocol validation,
+        so we test with brand_manifest to ensure spec-compliant fields survive.
+        """
+        # Start with adapter using spec-compliant fields
         original = GetProductsRequest(
-            promoted_offering="https://example.com", brief="Test brief", filters={"format_ids": ["display_300x250"]}
+            brand_manifest={"url": "https://example.com", "name": "Test Brand"},
+            brief="Test brief",
+            filters={"format_ids": ["display_300x250"]},
         )
 
         # Convert to generated (protocol validation)
@@ -63,13 +73,22 @@ class TestGetProductsRequestAdapter:
         # Convert back to adapter
         reconstructed = GetProductsRequest.from_generated(generated)
 
-        # Verify fields preserved
-        assert reconstructed.promoted_offering == "https://example.com"
+        # Verify AdCP spec fields preserved (NOT adapter-only fields)
+        # Note: brand_manifest becomes full BrandManifest object with all optional fields
+        assert isinstance(reconstructed.brand_manifest, dict)
+        assert str(reconstructed.brand_manifest["url"]) == "https://example.com/"  # AnyUrl adds trailing slash
+        assert reconstructed.brand_manifest["name"] == "Test Brand"
         assert reconstructed.brief == "Test brief"
         # After AdCP PR #123: format_ids are FormatId objects, not strings
         assert len(reconstructed.filters["format_ids"]) == 1
         assert reconstructed.filters["format_ids"][0]["id"] == "display_300x250"
         assert reconstructed.filters["format_ids"][0]["agent_url"]
+
+        # Adapter-only fields don't survive (expected - not in AdCP spec)
+        assert reconstructed.promoted_offering is None
+        assert reconstructed.min_exposures is None
+        assert reconstructed.strategy_id is None
+        assert reconstructed.webhook_url is None
 
     def test_adcp_compliant_dump(self):
         """Adapter can dump as AdCP-compliant dict."""
@@ -194,30 +213,37 @@ class TestAdapterPattern:
     def test_why_not_use_generated_directly(self):
         """Explain why we need adapters instead of using generated directly.
 
-        Generated schemas use RootModel[Union[...]] for oneOf:
-        - Spec-compliant: YES
-        - Easy to use: NO
+        Adapters provide several benefits over using generated schemas:
+        1. **Field Transformation**: promoted_offering → brand_manifest conversion
+        2. **Simplified API**: Adapters add convenience methods and __str__()
+        3. **Custom Validation**: Can add business logic not in JSON Schema
+        4. **Backward Compatibility**: Can maintain deprecated fields
 
         Example:
-            generated = GeneratedGetProductsRequest(root=GetProductsRequest1(...))
-            data = generated.root.promoted_offering  # Need .root!
+            # Adapter API (simple)
+            adapter = GetProductsRequest(promoted_offering="https://example.com")
+            data = adapter.promoted_offering  # Deprecated field works!
 
-        Adapter provides flat API:
-            adapter = GetProductsRequest(promoted_offering="...")
-            data = adapter.promoted_offering  # Simple!
-
-        Adapter converts to generated for protocol validation:
+            # Converts to spec-compliant generated
             generated = adapter.to_generated()
-            protocol_data = generated.model_dump()
+            data = generated.brand_manifest  # Transformed to spec field
+
+        Note: After schema regeneration, generated schemas are now flat classes
+        (no more RootModel[Union[...]]). But adapters still provide value!
         """
         req = GetProductsRequest(promoted_offering="https://example.com")
 
-        # Simple flat access (no .root needed)
+        # Simple flat access with deprecated field
         assert req.promoted_offering == "https://example.com"
+        # Automatically converted to brand_manifest
+        assert req.brand_manifest == {"url": "https://example.com"}
 
-        # Converts to complex generated when needed
+        # Converts to spec-compliant generated (no promoted_offering)
         generated = req.to_generated()
-        assert generated.root.promoted_offering == "https://example.com"  # Complex but spec-compliant
+        # Generated schema uses brand_manifest (AdCP spec field)
+        assert str(generated.brand_manifest.url) == "https://example.com/"  # AnyUrl object
+        # promoted_offering doesn't exist in generated (not in AdCP spec)
+        assert not hasattr(generated, "promoted_offering")
 
 
 class TestMigrationStrategy:

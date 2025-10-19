@@ -108,8 +108,7 @@ from src.core.schemas import (
     VerifyTaskResponse,
 )
 from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
-    GetProductsRequest1,
-    GetProductsRequest2,
+    GetProductsRequest as GetProductsRequestGenerated,
 )
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
@@ -983,14 +982,14 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 # --- MCP Tools (Full Implementation) ---
 
 
-async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, context: Context) -> GetProductsResponse:
+async def _get_products_impl(req: GetProductsRequestGenerated, context: Context) -> GetProductsResponse:
     """Shared implementation for get_products.
 
     Contains all business logic for product discovery including policy checks,
     product catalog providers, dynamic pricing, and filtering.
 
     Args:
-        req: GetProductsRequest variant (GetProductsRequest1 or GetProductsRequest2)
+        req: GetProductsRequest from generated schemas
         context: FastMCP Context for tenant/principal resolution
 
     Returns:
@@ -1000,7 +999,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
 
     print("=" * 80, file=sys.stderr, flush=True)
     print(
-        f"🔧 _get_products_impl CALLED: req={req.promoted_offering}, brief={req.brief[:50] if req.brief else 'N/A'}",
+        f"🔧 _get_products_impl CALLED: brand_manifest={req.brand_manifest}, brief={req.brief[:50] if req.brief else 'N/A'}",
         file=sys.stderr,
         flush=True,
     )
@@ -1044,8 +1043,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
     principal = get_principal_object(principal_id) if principal_id else None
     principal_data = principal.model_dump() if principal else None
 
-    # Extract offering text from brand_manifest or promoted_offering
-    # The validator ensures at least one is present
+    # Extract offering text from brand_manifest
     offering = None
     if req.brand_manifest:
         if isinstance(req.brand_manifest, str):
@@ -1059,45 +1057,16 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
                 offering = req.brand_manifest.name
             elif isinstance(req.brand_manifest, dict):
                 offering = req.brand_manifest.get("name", "")
-    elif req.promoted_offering:
-        offering = req.promoted_offering.strip()
 
     if not offering:
-        raise ToolError("Either brand_manifest or promoted_offering must provide brand information")
+        raise ToolError("brand_manifest must provide brand information")
 
     # Skip strict validation in test environments (allow simple test values)
     import os
 
     is_test_mode = (testing_ctx and testing_ctx.test_session_id is not None) or os.getenv("ADCP_TESTING") == "true"
 
-    # Only validate promoted_offering format (brand_manifest has its own structure)
-    if req.promoted_offering and not is_test_mode:
-        generic_terms = {
-            "footwear",
-            "shoes",
-            "clothing",
-            "apparel",
-            "electronics",
-            "food",
-            "beverages",
-            "automotive",
-            "athletic",
-        }
-        words = req.promoted_offering.split()
-
-        # Must have at least 2 words (brand + product)
-        if len(words) < 2:
-            raise ToolError(
-                f"Invalid promoted_offering: '{req.promoted_offering}'. Must include both brand and specific product "
-                f"(e.g., 'Nike Air Jordan 2025 basketball shoes', not just 'shoes')"
-            )
-
-        # Check if it's just generic category terms without a brand
-        if all(word.lower() in generic_terms or word.lower() in ["and", "or", "the", "a", "an"] for word in words):
-            raise ToolError(
-                f"Invalid promoted_offering: '{req.promoted_offering}'. Must include brand name and specific product, "
-                f"not just generic category (e.g., 'Nike Air Jordan 2025' not 'athletic footwear')"
-            )
+    # Note: brand_manifest validation is handled by Pydantic schema, no need for runtime validation here
 
     # Check policy compliance first (if enabled)
     advertising_policy = safe_parse_json_field(
@@ -1140,7 +1109,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
             try:
                 policy_result = await policy_service.check_brief_compliance(
                     brief=req.brief,
-                    promoted_offering=req.promoted_offering,
+                    promoted_offering=offering,  # Use extracted offering from brand_manifest
                     brand_manifest=brand_manifest_dict,
                     tenant_policies=tenant_policies if tenant_policies else None,
                 )
@@ -1155,11 +1124,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
                     success=policy_result.status != PolicyStatus.BLOCKED,
                     details={
                         "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
-                        "promoted_offering": (
-                            req.promoted_offering[:100] + "..."
-                            if req.promoted_offering and len(req.promoted_offering) > 100
-                            else req.promoted_offering
-                        ),
+                        "brand_name": offering[:100] + "..." if offering and len(offering) > 100 else offering,
                         "policy_status": policy_result.status,
                         "reason": policy_result.reason,
                         "restrictions": policy_result.restrictions,
@@ -1217,7 +1182,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
                 success=False,
                 details={
                     "brief": req.brief,
-                    "promoted_offering": req.promoted_offering,
+                    "brand_name": offering,
                     "policy_status": policy_result.status,
                     "restrictions": policy_result.restrictions,
                     "reason": policy_result.reason,
@@ -1269,7 +1234,7 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
 
     # Query products using the brief, including context for signals forwarding
     context_data = {
-        "promoted_offering": req.promoted_offering,
+        "brand_name": offering,
         "tenant_id": tenant["tenant_id"],
         "principal_id": principal_id,
     }
@@ -1490,7 +1455,6 @@ async def _get_products_impl(req: GetProductsRequest1 | GetProductsRequest2, con
 
 @mcp.tool
 async def get_products(
-    promoted_offering: str | None = None,
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
     filters: dict | None = None,
@@ -1501,7 +1465,6 @@ async def get_products(
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        promoted_offering: DEPRECATED: Use brand_manifest instead (still supported for backward compatibility)
         brand_manifest: Brand information manifest (inline object or URL string)
         brief: Brief description of the advertising campaign or requirements (optional)
         filters: Structured filters for product discovery (optional)
@@ -1509,12 +1472,16 @@ async def get_products(
 
     Returns:
         GetProductsResponse containing matching products
+
+    Note:
+        promoted_offering is deprecated - use brand_manifest instead.
+        If you need backward compatibility, use the A2A interface which still supports it.
     """
     import sys
 
     print("=" * 80, file=sys.stderr, flush=True)
     print(
-        f"🚀 MCP get_products CALLED: offered={promoted_offering}, brief={brief[:50] if brief else 'N/A'}",
+        f"🚀 MCP get_products CALLED: brand_manifest={brand_manifest}, brief={brief[:50] if brief else 'N/A'}",
         file=sys.stderr,
         flush=True,
     )
@@ -1523,7 +1490,7 @@ async def get_products(
     # Build request object for shared implementation using helper
     try:
         req = create_get_products_request(
-            promoted_offering=promoted_offering,
+            promoted_offering=None,  # Not exposed in MCP tool (use brand_manifest)
             brief=brief,
             brand_manifest=brand_manifest,
             filters=filters,
@@ -1534,9 +1501,9 @@ async def get_products(
         # Convert ValueError from helper to ToolError with clear message
         raise ToolError(f"Invalid get_products request: {e}") from e
 
-    # Call shared implementation with unwrapped variant
-    # GetProductsRequest is a RootModel, so we pass req.root (the actual variant)
-    return await _get_products_impl(req.root, context)  # type: ignore[arg-type]
+    # Call shared implementation
+    # Note: GetProductsRequest is now a flat class (not RootModel), so pass req directly
+    return await _get_products_impl(req, context)
 
 
 def _list_creative_formats_impl(
@@ -2150,10 +2117,16 @@ def _sync_creatives_impl(
                                         else:
                                             # Static creative - use preview_creative
                                             # Build creative manifest from available data
+                                            # Extract string ID from FormatId object if needed
+                                            format_id_str = (
+                                                creative_format.id
+                                                if hasattr(creative_format, "id")
+                                                else str(creative_format)
+                                            )
                                             creative_manifest = {
                                                 "creative_id": existing_creative.creative_id,
                                                 "name": creative.get("name") or existing_creative.name,
-                                                "format_id": creative_format,
+                                                "format_id": format_id_str,
                                             }
 
                                             # Add any provided asset data for validation
@@ -2163,9 +2136,15 @@ def _sync_creatives_impl(
                                                 creative_manifest["url"] = data.get("url")
 
                                             # Call creative agent's preview_creative for validation + preview
+                                            # Extract string ID from FormatId object if needed
+                                            format_id_str = (
+                                                creative_format.id
+                                                if hasattr(creative_format, "id")
+                                                else str(creative_format)
+                                            )
                                             logger.info(
                                                 f"[sync_creatives] Calling preview_creative for validation (update): "
-                                                f"{existing_creative.creative_id} format {creative_format} "
+                                                f"{existing_creative.creative_id} format {format_id_str} "
                                                 f"from agent {format_obj.agent_url}, has_assets={bool(creative.get('assets'))}, "
                                                 f"has_url={bool(data.get('url'))}"
                                             )
@@ -2173,7 +2152,7 @@ def _sync_creatives_impl(
                                             preview_result = asyncio.run(
                                                 registry.preview_creative(
                                                     agent_url=format_obj.agent_url,
-                                                    format_id=creative_format,
+                                                    format_id=format_id_str,
                                                     creative_manifest=creative_manifest,
                                                 )
                                             )
@@ -2408,16 +2387,22 @@ def _sync_creatives_impl(
                                                     break
 
                                         # Call build_creative
+                                        # Extract string ID from FormatId object if needed
+                                        format_id_str = (
+                                            creative_format.id
+                                            if hasattr(creative_format, "id")
+                                            else str(creative_format)
+                                        )
                                         logger.info(
                                             f"[sync_creatives] Calling build_creative for generative format: "
-                                            f"{creative_format} from agent {format_obj.agent_url}, "
+                                            f"{format_id_str} from agent {format_obj.agent_url}, "
                                             f"message_length={len(message) if message else 0}"
                                         )
 
                                         build_result = asyncio.run(
                                             registry.build_creative(
                                                 agent_url=format_obj.agent_url,
-                                                format_id=creative_format,
+                                                format_id=format_id_str,
                                                 message=message,
                                                 gemini_api_key=gemini_api_key,
                                                 promoted_offerings=promoted_offerings,
@@ -2461,10 +2446,16 @@ def _sync_creatives_impl(
                                     else:
                                         # Static creative - use preview_creative
                                         # Build creative manifest from available data
+                                        # Extract string ID from FormatId object if needed
+                                        format_id_str = (
+                                            creative_format.id
+                                            if hasattr(creative_format, "id")
+                                            else str(creative_format)
+                                        )
                                         creative_manifest = {
                                             "creative_id": creative.get("creative_id") or str(uuid.uuid4()),
                                             "name": creative.get("name"),
-                                            "format_id": creative_format,
+                                            "format_id": format_id_str,
                                         }
 
                                         # Add any provided asset data for validation
@@ -2474,8 +2465,14 @@ def _sync_creatives_impl(
                                             creative_manifest["url"] = data.get("url")
 
                                         # Call creative agent's preview_creative for validation + preview
+                                        # Extract string ID from FormatId object if needed
+                                        format_id_str = (
+                                            creative_format.id
+                                            if hasattr(creative_format, "id")
+                                            else str(creative_format)
+                                        )
                                         logger.info(
-                                            f"[sync_creatives] Calling preview_creative for validation: {creative_format} "
+                                            f"[sync_creatives] Calling preview_creative for validation: {format_id_str} "
                                             f"from agent {format_obj.agent_url}, has_assets={bool(creative.get('assets'))}, "
                                             f"has_url={bool(data.get('url'))}"
                                         )
@@ -2483,7 +2480,7 @@ def _sync_creatives_impl(
                                         preview_result = asyncio.run(
                                             registry.preview_creative(
                                                 agent_url=format_obj.agent_url,
-                                                format_id=creative_format,
+                                                format_id=format_id_str,
                                                 creative_manifest=creative_manifest,
                                             )
                                         )

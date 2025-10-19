@@ -200,27 +200,19 @@ class CreativeAgentRegistry:
                     import logging
 
                     logger = logging.getLogger(__name__)
-                    logger.info(
-                        f"_fetch_formats_from_agent: Got result type={type(result)}, content type={type(result.content) if hasattr(result, 'content') else 'no content'}"
-                    )
-                    if hasattr(result, "content") and result.content:
-                        logger.info(
-                            f"_fetch_formats_from_agent: Content length={len(result.content) if isinstance(result.content, list) else 'not a list'}"
-                        )
-                        if isinstance(result.content, list) and result.content:
-                            logger.info(
-                                f"_fetch_formats_from_agent: First content item type={type(result.content[0])}, has text={hasattr(result.content[0], 'text')}"
-                            )
 
-                    formats = []
-                    if isinstance(result.content, list) and result.content:
-                        # Extract formats from MCP response
+                    # Use structured_content field for JSON response (MCP protocol update)
+                    formats_data = None
+                    if hasattr(result, "structured_content") and result.structured_content:
+                        formats_data = result.structured_content
+                        logger.info(f"_fetch_formats_from_agent: Using structured_content, type={type(formats_data)}")
+                    elif isinstance(result.content, list) and result.content:
+                        # Fallback: Parse from content field (legacy)
                         formats_data = (
                             result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
                         )
-
                         logger.info(
-                            f"_fetch_formats_from_agent: formats_data (first 500 chars): {str(formats_data)[:500]}"
+                            f"_fetch_formats_from_agent: Using legacy content field, formats_data (first 500 chars): {str(formats_data)[:500]}"
                         )
 
                         # Parse JSON if needed
@@ -229,8 +221,10 @@ class CreativeAgentRegistry:
                         if isinstance(formats_data, str):
                             formats_data = json.loads(formats_data)
 
+                    formats = []
+                    if formats_data:
                         logger.info(
-                            f"_fetch_formats_from_agent: After JSON parse, type={type(formats_data)}, keys={list(formats_data.keys()) if isinstance(formats_data, dict) else 'not a dict'}"
+                            f"_fetch_formats_from_agent: After parse, type={type(formats_data)}, keys={list(formats_data.keys()) if isinstance(formats_data, dict) else 'not a dict'}"
                         )
 
                         # Convert to Format objects
@@ -500,7 +494,11 @@ class CreativeAgentRegistry:
                 "preview_creative", {"format_id": format_id, "creative_manifest": creative_manifest}
             )
 
-            # Parse result
+            # Use structured_content field for JSON response (MCP protocol update)
+            if hasattr(result, "structured_content") and result.structured_content:
+                return result.structured_content
+
+            # Fallback: Parse result from content field (legacy)
             import json
 
             if isinstance(result.content, list) and result.content:
@@ -562,7 +560,11 @@ class CreativeAgentRegistry:
 
             result = await client.call_tool("build_creative", params)
 
-            # Parse result
+            # Use structured_content field for JSON response (MCP protocol update)
+            if hasattr(result, "structured_content") and result.structured_content:
+                return result.structured_content
+
+            # Fallback: Parse result from content field (legacy)
             import json
 
             if isinstance(result.content, list) and result.content:
