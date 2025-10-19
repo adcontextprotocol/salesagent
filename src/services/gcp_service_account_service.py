@@ -167,8 +167,12 @@ class GCPServiceAccountService:
             logger.info(f"Checking if service account {expected_email} already exists in GCP")
             existing_account = self._get_service_account_if_exists(expected_email)
 
+            service_account_was_created = False  # Track if we created it (for cleanup on failure)
+
             if existing_account:
-                logger.info(f"Service account {expected_email} already exists in GCP, will reuse it")
+                logger.info(
+                    f"Service account {expected_email} already exists in GCP - likely from previous failed attempt. Will reuse it."
+                )
                 service_account_email = existing_account.email
             else:
                 # Create service account
@@ -178,6 +182,7 @@ class GCPServiceAccountService:
                         account_id=account_id, display_name=display_name or f"AdCP Sales Agent - {tenant_id}"
                     )
                     service_account_email = service_account.email
+                    service_account_was_created = True
                     logger.info(f"Successfully created service account: {service_account_email}")
                 except Exception as e:
                     logger.error(f"Failed to create service account for tenant {tenant_id}: {e}", exc_info=True)
@@ -207,6 +212,23 @@ class GCPServiceAccountService:
 
             except Exception as e:
                 logger.error(f"Failed to create key or store credentials for tenant {tenant_id}: {e}", exc_info=True)
+
+                # Cleanup: If we just created the service account and then failed to create the key,
+                # delete the service account from GCP to avoid leaving orphaned accounts
+                if service_account_was_created:
+                    logger.warning(
+                        f"Attempting to clean up newly created service account {service_account_email} after failure"
+                    )
+                    try:
+                        self._delete_service_account_from_gcp(service_account_email)
+                        logger.info(f"Successfully cleaned up service account {service_account_email}")
+                    except Exception as cleanup_error:
+                        logger.error(
+                            f"Failed to cleanup service account {service_account_email}: {cleanup_error}",
+                            exc_info=True,
+                        )
+                        # Don't fail the whole operation because cleanup failed - the original error is more important
+
                 raise
 
     def _create_service_account(self, account_id: str, display_name: str) -> types.ServiceAccount:
@@ -369,6 +391,20 @@ class GCPServiceAccountService:
 
             return adapter_config.gam_service_account_email
 
+    def _delete_service_account_from_gcp(self, service_account_email: str) -> None:
+        """Delete a service account from GCP (helper method).
+
+        Args:
+            service_account_email: Email of the service account to delete
+
+        Raises:
+            Exception: If deletion fails
+        """
+        delete_request = iam_admin_v1.DeleteServiceAccountRequest()
+        delete_request.name = f"projects/{self.gcp_project_id}/serviceAccounts/{service_account_email}"
+        self.iam_client.delete_service_account(request=delete_request)
+        logger.info(f"Deleted service account from GCP: {service_account_email}")
+
     def delete_service_account(self, tenant_id: str) -> bool:
         """Delete a service account for a tenant.
 
@@ -394,10 +430,7 @@ class GCPServiceAccountService:
 
             try:
                 # Delete from GCP
-                delete_request = iam_admin_v1.DeleteServiceAccountRequest()
-                delete_request.name = f"projects/{self.gcp_project_id}/serviceAccounts/{service_account_email}"
-                self.iam_client.delete_service_account(request=delete_request)
-                logger.info(f"Deleted service account from GCP: {service_account_email}")
+                self._delete_service_account_from_gcp(service_account_email)
 
                 # Clear from database
                 adapter_config.gam_service_account_email = None
