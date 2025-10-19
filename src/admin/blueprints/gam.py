@@ -572,7 +572,12 @@ def sync_gam_inventory(tenant_id):
                 # Check if sync is stale (running for >1 hour with no progress updates)
                 from datetime import timedelta
 
-                time_running = datetime.now(UTC) - existing_sync.started_at
+                # Make started_at timezone-aware if it's naive (from database)
+                started_at = existing_sync.started_at
+                if started_at.tzinfo is None:
+                    started_at = started_at.replace(tzinfo=UTC)
+
+                time_running = datetime.now(UTC) - started_at
                 is_stale = time_running > timedelta(hours=1) and not existing_sync.progress
 
                 if is_stale:
