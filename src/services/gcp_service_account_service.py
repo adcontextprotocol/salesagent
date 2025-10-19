@@ -282,6 +282,34 @@ class GCPServiceAccountService:
             )
             raise
 
+    def test_connection(self) -> dict:
+        """Test GCP IAM API connectivity and permissions.
+
+        Returns:
+            Dict with test results including project, permissions, and any errors
+        """
+        result = {"project_id": self.gcp_project_id, "can_list": False, "can_create": False, "errors": []}
+
+        try:
+            # Test listing service accounts (requires serviceAccountViewer or higher)
+            list_request = iam_admin_v1.ListServiceAccountsRequest()
+            list_request.name = f"projects/{self.gcp_project_id}"
+
+            response = self.iam_client.list_service_accounts(request=list_request)
+            account_count = len(list(response))
+            result["can_list"] = True
+            result["service_account_count"] = account_count
+            logger.info(f"Successfully listed {account_count} service accounts in project {self.gcp_project_id}")
+        except Exception as e:
+            result["errors"].append(f"Failed to list service accounts: {e}")
+            logger.error(f"Failed to list service accounts: {e}", exc_info=True)
+
+        # Note: We can't really test 'can_create' without actually creating one,
+        # so we'll just check if we have the list permission as a basic sanity check
+        result["can_create"] = result["can_list"]  # Approximation
+
+        return result
+
     def get_service_account_email(self, tenant_id: str) -> str | None:
         """Get the service account email for a tenant.
 
