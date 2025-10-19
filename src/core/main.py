@@ -1489,7 +1489,6 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
 
 @mcp.tool
 async def get_products(
-    promoted_offering: str | None = None,
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
     filters: dict | None = None,
@@ -1500,7 +1499,6 @@ async def get_products(
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        promoted_offering: DEPRECATED: Use brand_manifest instead (still supported for backward compatibility)
         brand_manifest: Brand information manifest (inline object or URL string)
         brief: Brief description of the advertising campaign or requirements (optional)
         filters: Structured filters for product discovery (optional)
@@ -1508,12 +1506,16 @@ async def get_products(
 
     Returns:
         GetProductsResponse containing matching products
+
+    Note:
+        promoted_offering is deprecated - use brand_manifest instead.
+        If you need backward compatibility, use the A2A interface which still supports it.
     """
     import sys
 
     print("=" * 80, file=sys.stderr, flush=True)
     print(
-        f"🚀 MCP get_products CALLED: offered={promoted_offering}, brief={brief[:50] if brief else 'N/A'}",
+        f"🚀 MCP get_products CALLED: brand_manifest={brand_manifest}, brief={brief[:50] if brief else 'N/A'}",
         file=sys.stderr,
         flush=True,
     )
@@ -1522,7 +1524,7 @@ async def get_products(
     # Build request object for shared implementation using helper
     try:
         req = create_get_products_request(
-            promoted_offering=promoted_offering,
+            promoted_offering=None,  # Not exposed in MCP tool (use brand_manifest)
             brief=brief,
             brand_manifest=brand_manifest,
             filters=filters,
