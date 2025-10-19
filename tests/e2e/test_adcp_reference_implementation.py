@@ -121,7 +121,10 @@ class TestAdCPReferenceImplementation:
 
             products_result = await client.call_tool(
                 "get_products",
-                {"promoted_offering": "Premium Athletic Footwear", "brief": "display advertising"},
+                {
+                    "brand_manifest": {"name": "Premium Athletic Footwear"},
+                    "brief": "display advertising",
+                },
             )
             products_data = json.loads(products_result.content[0].text)
 
