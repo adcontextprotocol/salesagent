@@ -575,6 +575,47 @@ function testGAMConnection() {
     });
 }
 
+// Check for in-progress sync on page load
+function checkForInProgressSync() {
+    // Only check if we're on a page with the sync button
+    const button = document.querySelector('button[onclick="syncGAMInventory()"]');
+    if (!button) return;
+
+    // Check if there's a running sync
+    const checkUrl = `${config.scriptName}/tenant/${config.tenantId}/gam/sync-status/latest`;
+
+    fetch(checkUrl)
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            }
+            // If no in-progress sync, that's fine - button stays as "Sync Now"
+            return null;
+        })
+        .then(data => {
+            if (data && data.status === 'running') {
+                // Resume polling the existing sync
+                const originalText = button.innerHTML;
+                button.disabled = true;
+
+                // Start loading animation
+                let dots = '';
+                button.innerHTML = '⏳ Syncing';
+                const loadingInterval = setInterval(() => {
+                    dots = dots.length >= 3 ? '' : dots + '.';
+                    button.innerHTML = `⏳ Syncing${dots}`;
+                }, 300);
+
+                // Start polling the existing sync
+                pollSyncStatus(data.sync_id, button, originalText, loadingInterval);
+            }
+        })
+        .catch(error => {
+            // Silently fail - user can manually start sync
+            console.log('Could not check for in-progress sync:', error);
+        });
+}
+
 // Sync GAM inventory (with background polling)
 function syncGAMInventory() {
     const button = document.querySelector('button[onclick="syncGAMInventory()"]');
@@ -995,6 +1036,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add event listener for checkbox toggle
         document.getElementById('policy_check_enabled').addEventListener('change', updateAdvertisingPolicyUI);
     }
+
+    // Check for in-progress sync on page load
+    checkForInProgressSync();
 });
 
 // Adapter selection functions (called from template onclick handlers)

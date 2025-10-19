@@ -798,6 +798,41 @@ def get_sync_status(tenant_id, sync_id):
         return jsonify({"error": str(e)}), 500
 
 
+@gam_bp.route("/sync-status/latest", methods=["GET"])
+@require_tenant_access()
+def get_latest_sync_status(tenant_id):
+    """Get the latest running sync job for a tenant."""
+    try:
+        with get_db_session() as db_session:
+            from src.core.database.models import SyncJob
+
+            # Find the most recent running sync
+            sync_job = db_session.scalars(
+                select(SyncJob)
+                .where(SyncJob.tenant_id == tenant_id, SyncJob.status == "running", SyncJob.sync_type == "inventory")
+                .order_by(SyncJob.started_at.desc())
+            ).first()
+
+            if not sync_job:
+                return jsonify({"message": "No running sync found"}), 404
+
+            response = {
+                "sync_id": sync_job.sync_id,
+                "status": sync_job.status,
+                "started_at": sync_job.started_at.isoformat() if sync_job.started_at else None,
+            }
+
+            # Include real-time progress if available
+            if sync_job.progress:
+                response["progress"] = sync_job.progress
+
+            return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Error getting latest sync status: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @gam_bp.route("/create-service-account", methods=["POST"])
 @log_admin_action("create_gam_service_account")
 @require_tenant_access()
