@@ -1535,9 +1535,9 @@ async def get_products(
         # Convert ValueError from helper to ToolError with clear message
         raise ToolError(f"Invalid get_products request: {e}") from e
 
-    # Call shared implementation with unwrapped variant
-    # GetProductsRequest is a RootModel, so we pass req.root (the actual variant)
-    return await _get_products_impl(req.root, context)  # type: ignore[arg-type]
+    # Call shared implementation
+    # Note: GetProductsRequest is now a flat class (not RootModel), so pass req directly
+    return await _get_products_impl(req, context)
 
 
 def _list_creative_formats_impl(
