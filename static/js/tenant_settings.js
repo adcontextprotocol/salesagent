@@ -598,7 +598,11 @@ function syncGAMInventory() {
         }
     })
     .then(response => {
-        return response.json();
+        // Handle both success and 409 (conflict) responses
+        if (response.ok || response.status === 409) {
+            return response.json();
+        }
+        throw new Error(`Server error: ${response.status}`);
     })
     .then(data => {
         if (data.success && data.sync_id) {
@@ -627,14 +631,41 @@ function syncGAMInventory() {
 function pollSyncStatus(syncId, button, originalText, loadingInterval) {
     const statusUrl = `${config.scriptName}/tenant/${config.tenantId}/gam/sync-status/${syncId}`;
 
+    // Show "navigate away" message
+    const syncMessage = document.createElement('div');
+    syncMessage.id = 'sync-progress-message';
+    syncMessage.className = 'alert alert-info mt-2';
+    syncMessage.innerHTML = '<strong>💡 Tip:</strong> Feel free to navigate away - the sync continues in the background!';
+    button.parentElement.appendChild(syncMessage);
+
     const checkStatus = () => {
         fetch(statusUrl)
             .then(response => response.json())
             .then(data => {
+                // Update button text with progress
+                if (data.progress) {
+                    clearInterval(loadingInterval);
+                    const progress = data.progress;
+                    const phaseText = progress.phase || 'Syncing';
+                    const count = progress.count || 0;
+                    const phaseNum = progress.phase_num || 0;
+                    const totalPhases = progress.total_phases || 6;
+
+                    if (count > 0) {
+                        button.innerHTML = `⏳ ${phaseText}: ${count} items (${phaseNum}/${totalPhases})`;
+                    } else {
+                        button.innerHTML = `⏳ ${phaseText} (${phaseNum}/${totalPhases})`;
+                    }
+                }
+
                 if (data.status === 'completed') {
                     clearInterval(loadingInterval);
                     button.disabled = false;
                     button.innerHTML = originalText;
+
+                    // Remove progress message
+                    const msg = document.getElementById('sync-progress-message');
+                    if (msg) msg.remove();
 
                     // Show success message with summary
                     const summary = data.summary || {};
@@ -657,6 +688,11 @@ function pollSyncStatus(syncId, button, originalText, loadingInterval) {
                     clearInterval(loadingInterval);
                     button.disabled = false;
                     button.innerHTML = originalText;
+
+                    // Remove progress message
+                    const msg = document.getElementById('sync-progress-message');
+                    if (msg) msg.remove();
+
                     alert('❌ Sync failed: ' + (data.error || 'Unknown error'));
                 } else if (data.status === 'running' || data.status === 'pending') {
                     // Still running - continue polling
@@ -666,6 +702,11 @@ function pollSyncStatus(syncId, button, originalText, loadingInterval) {
                     clearInterval(loadingInterval);
                     button.disabled = false;
                     button.innerHTML = originalText;
+
+                    // Remove progress message
+                    const msg = document.getElementById('sync-progress-message');
+                    if (msg) msg.remove();
+
                     alert('❌ Unknown sync status: ' + data.status);
                 }
             })
@@ -673,6 +714,11 @@ function pollSyncStatus(syncId, button, originalText, loadingInterval) {
                 clearInterval(loadingInterval);
                 button.disabled = false;
                 button.innerHTML = originalText;
+
+                // Remove progress message
+                const msg = document.getElementById('sync-progress-message');
+                if (msg) msg.remove();
+
                 alert('❌ Error checking sync status: ' + error.message);
             });
     };

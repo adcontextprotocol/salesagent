@@ -569,17 +569,36 @@ def sync_gam_inventory(tenant_id):
             ).first()
 
             if existing_sync:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "in_progress": True,
-                            "sync_id": existing_sync.sync_id,
-                            "message": "Sync already in progress",
-                        }
-                    ),
-                    409,
-                )
+                # Check if sync is stale (running for >1 hour with no progress updates)
+                from datetime import timedelta
+
+                time_running = datetime.now(UTC) - existing_sync.started_at
+                is_stale = time_running > timedelta(hours=1) and not existing_sync.progress
+
+                if is_stale:
+                    # Mark stale sync as failed and allow new sync to start
+                    existing_sync.status = "failed"
+                    existing_sync.completed_at = datetime.now(UTC)
+                    existing_sync.error_message = (
+                        "Sync thread died (stale after 1+ hour with no progress) - marked as failed to allow fresh sync"
+                    )
+                    db_session.commit()
+                    logger.warning(
+                        f"Marked stale sync {existing_sync.sync_id} as failed (running since {existing_sync.started_at}, no progress)"
+                    )
+                else:
+                    # Sync is actually running, return 409
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "in_progress": True,
+                                "sync_id": existing_sync.sync_id,
+                                "message": "Sync already in progress",
+                            }
+                        ),
+                        409,
+                    )
 
             # Extract config values before starting background thread (avoid session issues)
             gam_network_code = adapter_config.gam_network_code
@@ -628,14 +647,72 @@ def sync_gam_inventory(tenant_id):
                         # Initialize GAM inventory discovery
                         discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
 
-                        # Perform full inventory sync
-                        result = discovery.sync_all()
+                        # Helper function to update progress
+                        def update_progress(phase: str, phase_num: int, total_phases: int, count: int = 0):
+                            bg_sync_job.progress = {
+                                "phase": phase,
+                                "phase_num": phase_num,
+                                "total_phases": total_phases,
+                                "count": count,
+                            }
+                            bg_session.commit()
 
-                        # Save to database
+                        # Perform full inventory sync with progress tracking
+                        total_phases = 6
+                        from datetime import datetime as dt
+
+                        start_time = dt.now()
+
+                        # Phase 1: Ad Units
+                        update_progress("Discovering Ad Units", 1, total_phases)
+                        ad_units = discovery.discover_ad_units()
+                        update_progress("Discovering Ad Units", 1, total_phases, len(ad_units))
+
+                        # Phase 2: Placements
+                        update_progress("Discovering Placements", 2, total_phases)
+                        placements = discovery.discover_placements()
+                        update_progress("Discovering Placements", 2, total_phases, len(placements))
+
+                        # Phase 3: Labels
+                        update_progress("Discovering Labels", 3, total_phases)
+                        labels = discovery.discover_labels()
+                        update_progress("Discovering Labels", 3, total_phases, len(labels))
+
+                        # Phase 4: Custom Targeting Keys
+                        update_progress("Discovering Targeting Keys", 4, total_phases)
+                        custom_targeting = discovery.discover_custom_targeting(fetch_values=False)
+                        update_progress(
+                            "Discovering Targeting Keys", 4, total_phases, custom_targeting.get("total_keys", 0)
+                        )
+
+                        # Phase 5: Audience Segments
+                        update_progress("Discovering Audience Segments", 5, total_phases)
+                        audience_segments = discovery.discover_audience_segments()
+                        update_progress("Discovering Audience Segments", 5, total_phases, len(audience_segments))
+
+                        # Phase 6: Saving to database
+                        update_progress("Saving to Database", 6, total_phases)
                         from src.services.gam_inventory_service import GAMInventoryService
 
                         inventory_service = GAMInventoryService(bg_session)
                         inventory_service._save_inventory_to_db(tenant_id, discovery)
+                        update_progress("Saving to Database", 6, total_phases, len(ad_units))
+
+                        # Build result summary
+                        end_time = dt.now()
+                        result = {
+                            "tenant_id": tenant_id,
+                            "sync_time": end_time.isoformat(),
+                            "duration_seconds": (end_time - start_time).total_seconds(),
+                            "ad_units": {"total": len(ad_units)},
+                            "placements": {"total": len(placements)},
+                            "labels": {"total": len(labels)},
+                            "custom_targeting": {
+                                "total_keys": custom_targeting.get("total_keys", 0),
+                                "note": "Values lazy loaded on demand",
+                            },
+                            "audience_segments": {"total": len(audience_segments)},
+                        }
 
                         # Update sync job with success
                         bg_sync_job.status = "completed"
@@ -695,6 +772,10 @@ def get_sync_status(tenant_id, sync_id):
                 "started_at": sync_job.started_at.isoformat() if sync_job.started_at else None,
                 "completed_at": sync_job.completed_at.isoformat() if sync_job.completed_at else None,
             }
+
+            # Include real-time progress if available
+            if sync_job.progress:
+                response["progress"] = sync_job.progress
 
             if sync_job.summary:
                 try:
