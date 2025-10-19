@@ -149,11 +149,15 @@
                   "image",
                   "video",
                   "audio",
+                  "vast",
+                  "daast",
                   "text",
                   "html",
+                  "css",
                   "javascript",
                   "url",
-                  "brand_manifest"
+                  "webhook",
+                  "promoted_offerings"
                 ]
               },
               "asset_role": {
@@ -217,11 +221,15 @@
                         "image",
                         "video",
                         "audio",
+                        "vast",
+                        "daast",
                         "text",
                         "html",
+                        "css",
                         "javascript",
                         "url",
-                        "brand_manifest"
+                        "webhook",
+                        "promoted_offerings"
                       ]
                     },
                     "asset_role": {
