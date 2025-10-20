@@ -4,53 +4,40 @@
 
 {% block content %}
 <style>
-    /* Force tab content to be visible - override Bootstrap */
-    .tab-content {
-        display: block !important;
+    /* Fix Bootstrap tab visibility - allow proper tab switching */
+    .targeting-browser .tab-pane {
+        display: none;
+    }
+
+    .targeting-browser .tab-pane.active.show {
+        display: block;
     }
 
     /* Ensure list items are visible */
-    .list-group-item {
-        display: block !important;
-        padding: 0.75rem 1.25rem !important;
-        margin-bottom: -1px !important;
-        background-color: #fff !important;
-        border: 1px solid rgba(0,0,0,.125) !important;
-        color: #212529 !important;
-        text-decoration: none !important;
-        width: 100% !important;
-        min-height: 50px !important;
+    .targeting-browser .list-group-item {
+        display: block;
+        padding: 0.75rem 1.25rem;
+        margin-bottom: -1px;
+        background-color: #fff;
+        border: 1px solid rgba(0,0,0,.125);
+        color: #212529;
+        text-decoration: none;
+        width: 100%;
+        min-height: 50px;
     }
 
-    .list-group-item:hover {
-        background-color: #f8f9fa !important;
-        cursor: pointer !important;
+    .targeting-browser .list-group-item:hover {
+        background-color: #f8f9fa;
+        cursor: pointer;
     }
 
-    .list-group-item.active {
-        background-color: #007bff !important;
-        border-color: #007bff !important;
-        color: white !important;
-    }
-
-    /* Ensure badges are visible */
-    .badge {
-        display: inline-block !important;
-        padding: 0.25em 0.6em !important;
-        font-size: 0.75rem !important;
-        font-weight: 700 !important;
-        color: #fff !important;
-    }
-
-    .badge.bg-primary {
-        background-color: #0d6efd !important;
-    }
-
-    .badge.bg-secondary {
-        background-color: #6c757d !important;
+    .targeting-browser .list-group-item.active {
+        background-color: #007bff;
+        border-color: #007bff;
+        color: white;
     }
 </style>
-<div class="container-fluid">
+<div class="container-fluid targeting-browser">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Targeting Criteria Browser</h1>
         <div>
@@ -96,9 +83,9 @@
     </ul>
 
     <!-- Tab Content -->
-    <div class="tab-content" style="min-height: 700px; display: block !important;">
+    <div class="tab-content" style="min-height: 700px;">
         <!-- Custom Targeting Tab -->
-        <div class="tab-pane fade show active" id="custom-targeting" role="tabpanel" style="display: block !important; opacity: 1 !important;">
+        <div class="tab-pane fade show active" id="custom-targeting" role="tabpanel">
             <div class="row" style="min-height: 600px;">
                 <div class="col-md-4" style="min-width: 350px;">
                     <h3>Custom Targeting Keys</h3>
