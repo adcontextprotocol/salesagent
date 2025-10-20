@@ -617,17 +617,30 @@ function checkForInProgressSync() {
 }
 
 // Sync GAM inventory (with background polling)
-function syncGAMInventory() {
-    const button = document.querySelector('button[onclick="syncGAMInventory()"]');
+function syncGAMInventory(mode = 'full') {
+    // Find the button that was clicked
+    const button = mode === 'incremental'
+        ? document.querySelector('button[onclick*="incremental"]')
+        : document.querySelector('button[onclick*="full"]');
+
+    if (!button) {
+        alert('❌ Could not find sync button');
+        return;
+    }
+
     const originalText = button.innerHTML;
-    button.disabled = true;
+
+    // Disable both buttons during sync
+    const allButtons = document.querySelectorAll('button[onclick*="syncGAMInventory"]');
+    allButtons.forEach(btn => btn.disabled = true);
 
     // Simple animated dots loading indicator
     let dots = '';
-    button.innerHTML = '⏳ Syncing';
+    const syncLabel = mode === 'incremental' ? 'Syncing (Incremental)' : 'Syncing (Full Reset)';
+    button.innerHTML = `⏳ ${syncLabel}`;
     const loadingInterval = setInterval(() => {
         dots = dots.length >= 3 ? '' : dots + '.';
-        button.innerHTML = `⏳ Syncing${dots}`;
+        button.innerHTML = `⏳ ${syncLabel}${dots}`;
     }, 300);
 
     const url = `${config.scriptName}/tenant/${config.tenantId}/gam/sync-inventory`;
@@ -636,7 +649,8 @@ function syncGAMInventory() {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-        }
+        },
+        body: JSON.stringify({ mode: mode })
     })
     .then(response => {
         // Handle both success and 409 (conflict) responses
@@ -655,14 +669,22 @@ function syncGAMInventory() {
         } else {
             // Immediate error
             clearInterval(loadingInterval);
-            button.disabled = false;
+
+            // Re-enable both buttons
+            const allButtons = document.querySelectorAll('button[onclick*="syncGAMInventory"]');
+            allButtons.forEach(btn => btn.disabled = false);
+
             button.innerHTML = originalText;
             alert('❌ Sync failed: ' + (data.error || data.message || 'Unknown error'));
         }
     })
     .catch(error => {
         clearInterval(loadingInterval);
-        button.disabled = false;
+
+        // Re-enable both buttons
+        const allButtons = document.querySelectorAll('button[onclick*="syncGAMInventory"]');
+        allButtons.forEach(btn => btn.disabled = false);
+
         button.innerHTML = originalText;
         alert('❌ Error: ' + error.message);
     });
@@ -701,7 +723,12 @@ function pollSyncStatus(syncId, button, originalText, loadingInterval) {
 
                 if (data.status === 'completed') {
                     clearInterval(loadingInterval);
-                    button.disabled = false;
+
+                    // Re-enable both sync buttons
+                    const allButtons = document.querySelectorAll('button[onclick*="syncGAMInventory"]');
+                    allButtons.forEach(btn => btn.disabled = false);
+
+                    // Reset the button that was clicked
                     button.innerHTML = originalText;
 
                     // Remove progress message

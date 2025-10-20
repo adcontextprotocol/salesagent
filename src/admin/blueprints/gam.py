@@ -622,6 +622,28 @@ def sync_gam_inventory(tenant_id):
             gam_network_code = adapter_config.gam_network_code
             gam_refresh_token = adapter_config.gam_refresh_token
 
+            # Get last successful sync time for incremental mode
+            last_sync_time = None
+            if sync_mode == "incremental":
+                last_successful_sync = db_session.scalars(
+                    select(SyncJob)
+                    .where(
+                        SyncJob.tenant_id == tenant_id,
+                        SyncJob.sync_type == "inventory",
+                        SyncJob.status == "completed",
+                    )
+                    .order_by(SyncJob.completed_at.desc())
+                ).first()
+
+                if last_successful_sync and last_successful_sync.completed_at:
+                    last_sync_time = last_successful_sync.completed_at
+                    logger.info(f"Incremental sync: using last successful sync time: {last_sync_time}")
+                else:
+                    logger.warning(
+                        "Incremental sync requested but no previous successful sync found - falling back to full sync"
+                    )
+                    sync_mode = "full"
+
             # Create sync job
             sync_id = f"sync_{tenant_id}_{int(datetime.now(UTC).timestamp())}"
             sync_job = SyncJob(
@@ -675,46 +697,67 @@ def sync_gam_inventory(tenant_id):
                             }
                             bg_session.commit()
 
-                        # Perform full inventory sync with progress tracking
-                        total_phases = 6
+                        # Perform inventory sync with progress tracking
+                        # Note: sync_mode and last_sync_time are captured from outer scope
+                        total_phases = 7 if sync_mode == "full" else 6  # Add delete phase for full reset
                         from datetime import datetime as dt
 
                         start_time = dt.now()
 
+                        # Phase 0: Full reset - delete all existing inventory (only for full sync)
+                        if sync_mode == "full":
+                            update_progress("Deleting Existing Inventory", 1, total_phases)
+                            from sqlalchemy import delete
+
+                            from src.core.database.models import GAMInventory
+
+                            stmt = delete(GAMInventory).where(GAMInventory.tenant_id == tenant_id)
+                            bg_session.execute(stmt)
+                            bg_session.commit()
+                            logger.info(f"Full reset: deleted all existing inventory for tenant {tenant_id}")
+
+                        # Adjust phase numbers if we did full reset
+                        phase_offset = 1 if sync_mode == "full" else 0
+
                         # Phase 1: Ad Units
-                        update_progress("Discovering Ad Units", 1, total_phases)
-                        ad_units = discovery.discover_ad_units()
-                        update_progress("Discovering Ad Units", 1, total_phases, len(ad_units))
+                        update_progress("Discovering Ad Units", 1 + phase_offset, total_phases)
+                        ad_units = discovery.discover_ad_units(since=last_sync_time)
+                        update_progress("Discovering Ad Units", 1 + phase_offset, total_phases, len(ad_units))
 
                         # Phase 2: Placements
-                        update_progress("Discovering Placements", 2, total_phases)
-                        placements = discovery.discover_placements()
-                        update_progress("Discovering Placements", 2, total_phases, len(placements))
+                        update_progress("Discovering Placements", 2 + phase_offset, total_phases)
+                        placements = discovery.discover_placements(since=last_sync_time)
+                        update_progress("Discovering Placements", 2 + phase_offset, total_phases, len(placements))
 
                         # Phase 3: Labels
-                        update_progress("Discovering Labels", 3, total_phases)
-                        labels = discovery.discover_labels()
-                        update_progress("Discovering Labels", 3, total_phases, len(labels))
+                        update_progress("Discovering Labels", 3 + phase_offset, total_phases)
+                        labels = discovery.discover_labels(since=last_sync_time)
+                        update_progress("Discovering Labels", 3 + phase_offset, total_phases, len(labels))
 
                         # Phase 4: Custom Targeting Keys
-                        update_progress("Discovering Targeting Keys", 4, total_phases)
-                        custom_targeting = discovery.discover_custom_targeting(fetch_values=False)
+                        update_progress("Discovering Targeting Keys", 4 + phase_offset, total_phases)
+                        custom_targeting = discovery.discover_custom_targeting(fetch_values=False, since=last_sync_time)
                         update_progress(
-                            "Discovering Targeting Keys", 4, total_phases, custom_targeting.get("total_keys", 0)
+                            "Discovering Targeting Keys",
+                            4 + phase_offset,
+                            total_phases,
+                            custom_targeting.get("total_keys", 0),
                         )
 
                         # Phase 5: Audience Segments
-                        update_progress("Discovering Audience Segments", 5, total_phases)
-                        audience_segments = discovery.discover_audience_segments()
-                        update_progress("Discovering Audience Segments", 5, total_phases, len(audience_segments))
+                        update_progress("Discovering Audience Segments", 5 + phase_offset, total_phases)
+                        audience_segments = discovery.discover_audience_segments(since=last_sync_time)
+                        update_progress(
+                            "Discovering Audience Segments", 5 + phase_offset, total_phases, len(audience_segments)
+                        )
 
                         # Phase 6: Saving to database
-                        update_progress("Saving to Database", 6, total_phases)
+                        update_progress("Saving to Database", 6 + phase_offset, total_phases)
                         from src.services.gam_inventory_service import GAMInventoryService
 
                         inventory_service = GAMInventoryService(bg_session)
                         inventory_service._save_inventory_to_db(tenant_id, discovery)
-                        update_progress("Saving to Database", 6, total_phases, len(ad_units))
+                        update_progress("Saving to Database", 6 + phase_offset, total_phases, len(ad_units))
 
                         # Build result summary
                         end_time = dt.now()
