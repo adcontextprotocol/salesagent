@@ -122,9 +122,8 @@ async def get_products_raw(
         filters=filters,
     )
 
-    # Call shared implementation with unwrapped variant
-    # GetProductsRequest is a RootModel, so we pass req.root (the actual variant)
-    return await _get_products_impl(req.root, context)  # type: ignore[arg-type]
+    # Call shared implementation
+    return await _get_products_impl(req, context)  # type: ignore[arg-type]
 
 
 async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:
