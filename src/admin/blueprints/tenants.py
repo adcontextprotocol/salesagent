@@ -236,6 +236,7 @@ def tenant_settings(tenant_id, section=None):
                     "refresh_token": adapter_config_obj.gam_refresh_token or "",
                     "trafficker_id": adapter_config_obj.gam_trafficker_id or "",
                     "application_name": getattr(adapter_config_obj, "gam_application_name", "") or "",
+                    "service_account_email": adapter_config_obj.gam_service_account_email or "",
                 }
 
             # Get environment info for URL generation
