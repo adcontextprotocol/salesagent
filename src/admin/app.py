@@ -247,9 +247,6 @@ def create_app(config=None):
                     tenant = db_session.scalars(stmt).first()
                     if tenant:
                         context["tenant"] = tenant
-                        # Sync session tenant_name with current database value
-                        if session.get("tenant_name") != tenant.name:
-                            session["tenant_name"] = tenant.name
             except Exception as e:
                 logger.warning(f"Could not load tenant {tenant_id} for context: {e}")
 

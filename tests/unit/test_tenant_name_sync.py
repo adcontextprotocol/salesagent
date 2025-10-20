@@ -1,4 +1,4 @@
-"""Test that tenant names are properly synced between session and database."""
+"""Test that tenant names are always loaded fresh from database."""
 
 from unittest.mock import MagicMock, patch
 
@@ -10,12 +10,12 @@ def test_context_processor_loads_fresh_tenant_data():
     app, _ = create_app()
 
     with app.test_request_context():
-        # Mock session with tenant_id
-        with patch("flask.session", {"tenant_id": "tenant_123", "tenant_name": "Old Name"}):
-            # Mock database query to return tenant with updated name
+        # Mock session with tenant_id only (no tenant_name - we don't use it anymore)
+        with patch("flask.session", {"tenant_id": "tenant_123"}):
+            # Mock database query to return tenant
             mock_tenant = MagicMock()
             mock_tenant.tenant_id = "tenant_123"
-            mock_tenant.name = "New Name"  # Changed in database
+            mock_tenant.name = "Current Name"
 
             with patch("src.core.database.database_session.get_db_session") as mock_db:
                 mock_session = MagicMock()
@@ -32,7 +32,7 @@ def test_context_processor_loads_fresh_tenant_data():
                 # Verify tenant is loaded with fresh data
                 assert context is not None
                 assert "tenant" in context
-                assert context["tenant"].name == "New Name"
+                assert context["tenant"].name == "Current Name"
 
 
 def test_context_processor_handles_missing_tenant():
@@ -56,53 +56,20 @@ def test_context_processor_handles_missing_tenant():
             assert "tenant" not in context or context.get("tenant") is None
 
 
-def test_context_processor_syncs_session_tenant_name():
-    """Test that context processor syncs session tenant_name with database."""
-    from src.admin.app import create_app
-
-    app, _ = create_app()
-
-    with app.test_request_context():
-        # Mock session with outdated tenant_name
-        mock_session_dict = {"tenant_id": "tenant_123", "tenant_name": "Old Name"}
-
-        with patch("flask.session", mock_session_dict):
-            # Mock database query to return tenant with updated name
-            mock_tenant = MagicMock()
-            mock_tenant.tenant_id = "tenant_123"
-            mock_tenant.name = "Updated Name"
-
-            with patch("src.core.database.database_session.get_db_session") as mock_db:
-                mock_db_session = MagicMock()
-                mock_db_session.scalars.return_value.first.return_value = mock_tenant
-                mock_db.return_value.__enter__.return_value = mock_db_session
-
-                # Call context processor
-                for processor in app.template_context_processors[None]:
-                    if processor.__name__ == "inject_context":
-                        processor()
-                        break
-
-                # Verify session tenant_name was synced
-                assert mock_session_dict["tenant_name"] == "Updated Name"
-
-
-def test_template_prefers_fresh_tenant_over_session():
-    """Test that base.html template prefers fresh tenant data over session."""
-    # This is verified by the template logic order:
-    # 1. tenant.name (fresh from database via context processor)
-    # 2. session.tenant_name (fallback for compatibility)
+def test_template_uses_only_tenant_from_database():
+    """Test that base.html template uses only tenant.name from database."""
+    # Verify the template logic uses tenant.name directly (no session.tenant_name)
 
     template_logic = """
     {% if tenant and tenant.name and session.role != 'super_admin' %}
         {{ tenant.name }} Sales Agent Dashboard
-    {% elif session.tenant_name and session.role != 'super_admin' %}
-        {{ session.tenant_name }} Sales Agent Dashboard
     {% else %}
         Sales Agent Admin
     {% endif %}
     """
 
-    # The test verifies the logic exists in correct priority order
+    # The test verifies tenant.name is used (from database via context processor)
     assert "tenant and tenant.name" in template_logic
-    assert template_logic.index("tenant and tenant.name") < template_logic.index("session.tenant_name")
+    assert "tenant.name" in template_logic
+    # session.tenant_name should NOT be used anymore
+    assert "session.tenant_name" not in template_logic
