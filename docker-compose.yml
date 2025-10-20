@@ -17,22 +17,18 @@ services:
 
   adcp-server:
     build: .
-    env_file:
-      - path: .env.secrets
-        required: false
     environment:
       # Database configuration
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
 
-      # Optional: Individual DB vars instead of DATABASE_URL
-      # DB_TYPE: postgresql
-      # DB_HOST: postgres
-      # DB_PORT: 5432
-      # DB_NAME: adcp
-      # DB_USER: adcp_user
-      # DB_PASSWORD: secure_password_change_me
-
-      # Note: GEMINI_API_KEY, SUPER_ADMIN_EMAILS, ENCRYPTION_KEY, GAM_OAUTH_* loaded from .env.secrets via env_file
+      # Secrets (loaded from host environment or .env.secrets file via shell)
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      GAM_OAUTH_CLIENT_ID: ${GAM_OAUTH_CLIENT_ID:-}
+      GAM_OAUTH_CLIENT_SECRET: ${GAM_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
 
       # Skip nginx for standalone service
       SKIP_NGINX: "true"
@@ -70,9 +66,6 @@ services:
   admin-ui:
     build: .
     command: python -m src.admin.server
-    env_file:
-      - path: .env.secrets
-        required: false
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8001}
@@ -81,7 +74,15 @@ services:
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-dev-secret-key-change-in-production}
       # Test mode
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-false}
-      # Note: GEMINI_API_KEY, SUPER_ADMIN_EMAILS, ENCRYPTION_KEY, GAM_OAUTH_* loaded from .env.secrets via env_file
+
+      # Secrets (loaded from host environment or .env.secrets file via shell)
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      GAM_OAUTH_CLIENT_ID: ${GAM_OAUTH_CLIENT_ID:-}
+      GAM_OAUTH_CLIENT_SECRET: ${GAM_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
 
       # Server ports - external ports for agent cards
       ADCP_SALES_PORT: ${ADCP_SALES_PORT:-8080}
