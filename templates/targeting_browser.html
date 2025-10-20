@@ -4,6 +4,11 @@
 
 {% block content %}
 <style>
+    /* Force tab content to be visible - override Bootstrap */
+    .tab-content {
+        display: block !important;
+    }
+
     /* Ensure list items are visible */
     .list-group-item {
         display: block !important;
@@ -52,8 +57,8 @@
             <a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant.tenant_id) }}" class="btn btn-primary">
                 <i class="fas fa-sync"></i> Sync Inventory
             </a>
-            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant.tenant_id) }}" class="btn btn-secondary">
-                ← Back to Dashboard
+            <a href="{{ url_for('inventory.get_inventory_list', tenant_id=tenant.tenant_id) }}" class="btn btn-secondary">
+                ← Back to Inventory
             </a>
         </div>
     </div>
@@ -91,7 +96,7 @@
     </ul>
 
     <!-- Tab Content -->
-    <div class="tab-content" style="min-height: 700px;">
+    <div class="tab-content" style="min-height: 700px; display: block !important;">
         <!-- Custom Targeting Tab -->
         <div class="tab-pane fade show active" id="custom-targeting" role="tabpanel" style="display: block !important; opacity: 1 !important;">
             <div class="row" style="min-height: 600px;">
