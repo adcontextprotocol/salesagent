@@ -10,7 +10,7 @@ UTC = UTC
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 
 class AdCPBaseModel(BaseModel):
@@ -754,6 +754,32 @@ class Product(BaseModel):
         # Handle new FormatReference objects
         return [fmt.format_id for fmt in self.formats]  # type: ignore
 
+    @field_serializer("formats", when_used="json")
+    def serialize_formats_for_json(self, formats: list) -> list:
+        """Serialize formats as simple format ID strings for better UI display.
+
+        This makes Claude Desktop and other UIs show clean format IDs like 'display_300x250'
+        instead of '[object Object]' when displaying FormatId objects.
+        """
+        if not formats:
+            return []
+
+        result = []
+        for fmt in formats:
+            if isinstance(fmt, str):
+                result.append(fmt)
+            elif hasattr(fmt, "id"):
+                # FormatId or FormatReference object
+                result.append(fmt.id)
+            elif isinstance(fmt, dict) and "id" in fmt:
+                # Dict representation of FormatId
+                result.append(fmt["id"])
+            else:
+                # Fallback
+                result.append(str(fmt))
+
+        return result
+
     @property
     def pricing_summary(self) -> str | None:
         """Generate human-readable pricing summary for display to buyers (AdCP PR #88).
@@ -1203,6 +1229,14 @@ class FormatId(BaseModel):
     id: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$", description="Format identifier")
 
     model_config = {"extra": "forbid"}
+
+    def __str__(self) -> str:
+        """Return human-readable format identifier for display in UIs."""
+        return self.id
+
+    def __repr__(self) -> str:
+        """Return representation for debugging."""
+        return f"FormatId(id='{self.id}', agent_url='{self.agent_url}')"
 
 
 class Creative(BaseModel):
