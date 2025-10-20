@@ -536,14 +536,17 @@ class GAMInventoryDiscovery:
     def discover_audience_segments(
         self, max_segments: int | None = None, since: datetime | None = None
     ) -> list[AudienceSegment]:
-        """Discover audience segments (first-party and third-party).
+        """Discover audience segments (first-party only - skips 3rd party to reduce sync time).
 
         Args:
             max_segments: Optional maximum number of segments to fetch
             since: Optional datetime to fetch only items modified since this time (incremental sync)
+
+        Returns:
+            List of first-party audience segments only (3rd party segments excluded)
         """
         logger.info(
-            f"Discovering audience segments (incremental={since is not None})"
+            f"Discovering audience segments (first-party only, incremental={since is not None})"
             + (f" (max {max_segments})" if max_segments else "")
         )
 
@@ -552,7 +555,10 @@ class GAMInventoryDiscovery:
         audience_segment_service = self.client.GetService("AudienceSegmentService")
         discovered_segments = []
 
+        # Only fetch FIRST_PARTY segments (skip THIRD_PARTY to massively reduce sync time)
+        # Google makes all 3rd party segments available to everyone, so they're huge and not tenant-specific
         statement_builder = ad_manager.StatementBuilder(version="v202505")
+        statement_builder = statement_builder.Where("type = :type").WithBindVariable("type", "FIRST_PARTY")
 
         if since:
             # Ensure timezone-aware datetime for GAM API
@@ -561,8 +567,10 @@ class GAMInventoryDiscovery:
 
                 since = since.replace(tzinfo=UTC)
 
-            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
-                "since", since
+            statement_builder = (
+                statement_builder.Where("lastModifiedDateTime > :since AND type = :type")
+                .WithBindVariable("since", since)
+                .WithBindVariable("type", "FIRST_PARTY")
             )
 
         # Apply limit if specified
