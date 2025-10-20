@@ -535,11 +535,24 @@ def get_gam_custom_targeting_keys(tenant_id):
 @log_admin_action("sync_gam_inventory")
 @require_tenant_access()
 def sync_gam_inventory(tenant_id):
-    """Trigger GAM inventory sync for a tenant (background job)."""
+    """Trigger GAM inventory sync for a tenant (background job).
+
+    Request body:
+        mode: "full" (default) or "incremental"
+          - full: Complete reset - deletes all inventory and re-syncs everything
+          - incremental: Only fetches items modified since last successful sync
+    """
     if session.get("role") == "viewer":
         return jsonify({"success": False, "error": "Access denied"}), 403
 
     try:
+        # Get sync mode from request body (default to "full")
+        request_data = request.get_json() or {}
+        sync_mode = request_data.get("mode", "full")
+
+        if sync_mode not in ["full", "incremental"]:
+            return jsonify({"success": False, "error": "Invalid sync mode. Must be 'full' or 'incremental'"}), 400
+
         with get_db_session() as db_session:
             # Get tenant and adapter config
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
@@ -609,6 +622,29 @@ def sync_gam_inventory(tenant_id):
             gam_network_code = adapter_config.gam_network_code
             gam_refresh_token = adapter_config.gam_refresh_token
 
+            # Get last successful sync time for incremental mode
+            last_sync_time = None
+            if sync_mode == "incremental":
+                last_successful_sync = db_session.scalars(
+                    select(SyncJob)
+                    .where(
+                        SyncJob.tenant_id == tenant_id,
+                        SyncJob.sync_type == "inventory",
+                        SyncJob.status == "completed",
+                    )
+                    .order_by(SyncJob.completed_at.desc())
+                ).first()
+
+                if last_successful_sync and last_successful_sync.completed_at:
+                    last_sync_time = last_successful_sync.completed_at
+                    logger.info(f"Incremental sync: using last successful sync time: {last_sync_time}")
+                else:
+                    logger.warning(
+                        "Incremental sync requested but no previous successful sync found - falling back to full sync"
+                    )
+                    sync_mode = "full"
+                    last_sync_time = None  # Reset since we're doing full sync
+
             # Create sync job
             sync_id = f"sync_{tenant_id}_{int(datetime.now(UTC).timestamp())}"
             sync_job = SyncJob(
@@ -662,46 +698,67 @@ def sync_gam_inventory(tenant_id):
                             }
                             bg_session.commit()
 
-                        # Perform full inventory sync with progress tracking
-                        total_phases = 6
+                        # Perform inventory sync with progress tracking
+                        # Note: sync_mode and last_sync_time are captured from outer scope
+                        total_phases = 7 if sync_mode == "full" else 6  # Add delete phase for full reset
                         from datetime import datetime as dt
 
                         start_time = dt.now()
 
+                        # Phase 0: Full reset - delete all existing inventory (only for full sync)
+                        if sync_mode == "full":
+                            update_progress("Deleting Existing Inventory", 1, total_phases)
+                            from sqlalchemy import delete
+
+                            from src.core.database.models import GAMInventory
+
+                            stmt = delete(GAMInventory).where(GAMInventory.tenant_id == tenant_id)
+                            bg_session.execute(stmt)
+                            bg_session.commit()
+                            logger.info(f"Full reset: deleted all existing inventory for tenant {tenant_id}")
+
+                        # Adjust phase numbers if we did full reset
+                        phase_offset = 1 if sync_mode == "full" else 0
+
                         # Phase 1: Ad Units
-                        update_progress("Discovering Ad Units", 1, total_phases)
-                        ad_units = discovery.discover_ad_units()
-                        update_progress("Discovering Ad Units", 1, total_phases, len(ad_units))
+                        update_progress("Discovering Ad Units", 1 + phase_offset, total_phases)
+                        ad_units = discovery.discover_ad_units(since=last_sync_time)
+                        update_progress("Discovering Ad Units", 1 + phase_offset, total_phases, len(ad_units))
 
                         # Phase 2: Placements
-                        update_progress("Discovering Placements", 2, total_phases)
-                        placements = discovery.discover_placements()
-                        update_progress("Discovering Placements", 2, total_phases, len(placements))
+                        update_progress("Discovering Placements", 2 + phase_offset, total_phases)
+                        placements = discovery.discover_placements(since=last_sync_time)
+                        update_progress("Discovering Placements", 2 + phase_offset, total_phases, len(placements))
 
                         # Phase 3: Labels
-                        update_progress("Discovering Labels", 3, total_phases)
-                        labels = discovery.discover_labels()
-                        update_progress("Discovering Labels", 3, total_phases, len(labels))
+                        update_progress("Discovering Labels", 3 + phase_offset, total_phases)
+                        labels = discovery.discover_labels(since=last_sync_time)
+                        update_progress("Discovering Labels", 3 + phase_offset, total_phases, len(labels))
 
                         # Phase 4: Custom Targeting Keys
-                        update_progress("Discovering Targeting Keys", 4, total_phases)
-                        custom_targeting = discovery.discover_custom_targeting(fetch_values=False)
+                        update_progress("Discovering Targeting Keys", 4 + phase_offset, total_phases)
+                        custom_targeting = discovery.discover_custom_targeting(fetch_values=False, since=last_sync_time)
                         update_progress(
-                            "Discovering Targeting Keys", 4, total_phases, custom_targeting.get("total_keys", 0)
+                            "Discovering Targeting Keys",
+                            4 + phase_offset,
+                            total_phases,
+                            custom_targeting.get("total_keys", 0),
                         )
 
                         # Phase 5: Audience Segments
-                        update_progress("Discovering Audience Segments", 5, total_phases)
-                        audience_segments = discovery.discover_audience_segments()
-                        update_progress("Discovering Audience Segments", 5, total_phases, len(audience_segments))
+                        update_progress("Discovering Audience Segments", 5 + phase_offset, total_phases)
+                        audience_segments = discovery.discover_audience_segments(since=last_sync_time)
+                        update_progress(
+                            "Discovering Audience Segments", 5 + phase_offset, total_phases, len(audience_segments)
+                        )
 
                         # Phase 6: Saving to database
-                        update_progress("Saving to Database", 6, total_phases)
+                        update_progress("Saving to Database", 6 + phase_offset, total_phases)
                         from src.services.gam_inventory_service import GAMInventoryService
 
                         inventory_service = GAMInventoryService(bg_session)
                         inventory_service._save_inventory_to_db(tenant_id, discovery)
-                        update_progress("Saving to Database", 6, total_phases, len(ad_units))
+                        update_progress("Saving to Database", 6 + phase_offset, total_phases, len(ad_units))
 
                         # Build result summary
                         end_time = dt.now()
@@ -795,6 +852,41 @@ def get_sync_status(tenant_id, sync_id):
 
     except Exception as e:
         logger.error(f"Error getting sync status: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@gam_bp.route("/sync-status/latest", methods=["GET"])
+@require_tenant_access()
+def get_latest_sync_status(tenant_id):
+    """Get the latest running sync job for a tenant."""
+    try:
+        with get_db_session() as db_session:
+            from src.core.database.models import SyncJob
+
+            # Find the most recent running sync
+            sync_job = db_session.scalars(
+                select(SyncJob)
+                .where(SyncJob.tenant_id == tenant_id, SyncJob.status == "running", SyncJob.sync_type == "inventory")
+                .order_by(SyncJob.started_at.desc())
+            ).first()
+
+            if not sync_job:
+                return jsonify({"message": "No running sync found"}), 404
+
+            response = {
+                "sync_id": sync_job.sync_id,
+                "status": sync_job.status,
+                "started_at": sync_job.started_at.isoformat() if sync_job.started_at else None,
+            }
+
+            # Include real-time progress if available
+            if sync_job.progress:
+                response["progress"] = sync_job.progress
+
+            return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Error getting latest sync status: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

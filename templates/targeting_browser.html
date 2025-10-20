@@ -4,58 +4,57 @@
 
 {% block content %}
 <style>
+    /* Fix Bootstrap tab visibility - allow proper tab switching */
+    .targeting-browser .tab-pane {
+        display: none;
+    }
+
+    .targeting-browser .tab-pane.active.show {
+        display: block;
+    }
+
     /* Ensure list items are visible */
-    .list-group-item {
-        display: block !important;
-        padding: 0.75rem 1.25rem !important;
-        margin-bottom: -1px !important;
-        background-color: #fff !important;
-        border: 1px solid rgba(0,0,0,.125) !important;
-        color: #212529 !important;
-        text-decoration: none !important;
-        width: 100% !important;
-        min-height: 50px !important;
+    .targeting-browser .list-group-item {
+        display: block;
+        padding: 0.75rem 1.25rem;
+        margin-bottom: -1px;
+        background-color: #fff;
+        border: 1px solid rgba(0,0,0,.125);
+        color: #212529;
+        text-decoration: none;
+        width: 100%;
+        min-height: 50px;
     }
 
-    .list-group-item:hover {
-        background-color: #f8f9fa !important;
-        cursor: pointer !important;
+    .targeting-browser .list-group-item:hover {
+        background-color: #f8f9fa;
+        cursor: pointer;
     }
 
-    .list-group-item.active {
-        background-color: #007bff !important;
-        border-color: #007bff !important;
-        color: white !important;
-    }
-
-    /* Ensure badges are visible */
-    .badge {
-        display: inline-block !important;
-        padding: 0.25em 0.6em !important;
-        font-size: 0.75rem !important;
-        font-weight: 700 !important;
-        color: #fff !important;
-    }
-
-    .badge.bg-primary {
-        background-color: #0d6efd !important;
-    }
-
-    .badge.bg-secondary {
-        background-color: #6c757d !important;
+    .targeting-browser .list-group-item.active {
+        background-color: #007bff;
+        border-color: #007bff;
+        color: white;
     }
 </style>
-<div class="container-fluid">
+<div class="container-fluid targeting-browser">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Targeting Criteria Browser</h1>
         <div>
-            <button class="btn btn-primary" id="sync-targeting">
-                <i class="fas fa-sync"></i> Sync All Targeting
-            </button>
-            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant.tenant_id) }}" class="btn btn-secondary">
-                ← Back to Dashboard
+            <a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant.tenant_id) }}" class="btn btn-primary">
+                <i class="fas fa-sync"></i> Sync Inventory
+            </a>
+            <a href="{{ url_for('inventory.get_inventory_list', tenant_id=tenant.tenant_id) }}" class="btn btn-secondary">
+                ← Back to Inventory
             </a>
         </div>
+    </div>
+
+    <!-- Sync Info Alert -->
+    <div class="alert alert-warning">
+        <i class="fas fa-info-circle"></i>
+        <strong>Note:</strong> To sync inventory data, use the <a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant.tenant_id) }}" class="alert-link">Inventory Sync</a> button on the Tenant Settings page.
+        This page displays targeting criteria that have been synced from your ad server.
     </div>
 
     <!-- Last Sync Info -->
@@ -86,7 +85,7 @@
     <!-- Tab Content -->
     <div class="tab-content" style="min-height: 700px;">
         <!-- Custom Targeting Tab -->
-        <div class="tab-pane fade show active" id="custom-targeting" role="tabpanel" style="display: block !important; opacity: 1 !important;">
+        <div class="tab-pane fade show active" id="custom-targeting" role="tabpanel">
             <div class="row" style="min-height: 600px;">
                 <div class="col-md-4" style="min-width: 350px;">
                     <h3>Custom Targeting Keys</h3>
@@ -173,24 +172,6 @@
 </div>
 
 <!-- Sync Progress Modal -->
-<div class="modal fade" id="syncModal" tabindex="-1" style="display: none;" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Syncing Targeting Data</h5>
-            </div>
-            <div class="modal-body">
-                <div class="text-center">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-3">Discovering targeting criteria from Google Ad Manager...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script>
 const tenantId = '{{ tenant.tenant_id }}';
 let currentKeyId = null;
@@ -487,44 +468,6 @@ function renderLabels() {
         </tr>
     `).join('');
 }
-
-// Sync targeting data
-document.getElementById('sync-targeting').addEventListener('click', async () => {
-    const modal = new bootstrap.Modal(document.getElementById('syncModal'));
-    modal.show();
-
-    try {
-        const response = await fetch(`{{ script_name }}/api/tenant/${tenantId}/inventory/sync`, {
-            method: 'POST'
-        });
-
-        if (!response.ok) throw new Error('Sync failed');
-
-        const result = await response.json();
-        console.log('Sync result:', result);
-
-        // Reload data
-        await loadTargetingData();
-
-        modal.hide();
-
-        // Show success message
-        const alert = document.createElement('div');
-        alert.className = 'alert alert-success alert-dismissible fade show';
-        alert.innerHTML = `
-            <strong>Sync Complete!</strong>
-            Discovered ${result.custom_targeting.total_keys} custom targeting keys,
-            ${result.audience_segments.total} audience segments, and
-            ${result.labels.total} labels.
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        document.querySelector('.container-fluid').insertBefore(alert, document.querySelector('h1').nextSibling);
-
-    } catch (error) {
-        modal.hide();
-        alert('Sync failed: ' + error.message);
-    }
-});
 
 // Search handlers
 document.getElementById('search-keys').addEventListener('input', renderCustomKeys);

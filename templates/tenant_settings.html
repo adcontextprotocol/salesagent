@@ -1317,9 +1317,19 @@ REJECT - Creative cannot be approved:
                                 Syncing imports ad units, placements, and targeting options from Google Ad Manager.
                             </p>
                         </div>
-                        <button onclick="syncGAMInventory()" class="btn btn-primary" style="white-space: nowrap;">
-                            <span id="sync-icon">🔄</span> Sync Now
-                        </button>
+                        <div style="display: flex; gap: 0.5rem; flex-direction: column;">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button onclick="syncGAMInventory('incremental')" class="btn btn-primary" style="white-space: nowrap;" {% if not last_sync_time %}disabled title="No previous sync - use Full Reset first"{% endif %}>
+                                    <span id="sync-icon-incremental">🔄</span> Incremental Sync
+                                </button>
+                                <button onclick="syncGAMInventory('full')" class="btn btn-warning" style="white-space: nowrap;">
+                                    <span id="sync-icon-full">⚠️</span> Full Reset
+                                </button>
+                            </div>
+                            <p style="margin: 0; font-size: 0.75rem; color: #666;">
+                                <strong>Incremental:</strong> Only changed items (fast). <strong>Full Reset:</strong> Deletes & re-syncs all (slow).
+                            </p>
+                        </div>
                     </div>
                 </div>
 
