@@ -1309,20 +1309,35 @@ REJECT - Creative cannot be approved:
                     </div>
                 </div>
 
-                <div class="status-card {% if last_sync_time %}success{% else %}warning{% endif %}">
+                <div class="status-card {% if running_sync %}info{% elif last_sync_time %}success{% else %}warning{% endif %}">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <strong>{% if last_sync_time %}Last synced: {{ last_sync_time }}{% else %}No sync performed yet{% endif %}</strong>
-                            <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
-                                Syncing imports ad units, placements, and targeting options from Google Ad Manager.
-                            </p>
+                            {% if running_sync %}
+                                <strong>⏳ Sync in progress...</strong>
+                                <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
+                                    Started {{ running_sync.started_at.strftime('%I:%M %p') }}. This may take several minutes for large inventories.
+                                </p>
+                                <p style="margin: 0.5rem 0 0 0; font-size: 0.75rem; color: #666;">
+                                    <em>The sync will continue even if you navigate away from this page.</em>
+                                </p>
+                            {% elif last_sync_time %}
+                                <strong>Last synced: {{ last_sync_time }}</strong>
+                                <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
+                                    Syncing imports ad units, placements, and targeting options from Google Ad Manager.
+                                </p>
+                            {% else %}
+                                <strong>No sync performed yet</strong>
+                                <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
+                                    Syncing imports ad units, placements, and targeting options from Google Ad Manager.
+                                </p>
+                            {% endif %}
                         </div>
                         <div style="display: flex; gap: 0.5rem; flex-direction: column;">
                             <div style="display: flex; gap: 0.5rem;">
-                                <button onclick="syncGAMInventory('incremental')" class="btn btn-primary" style="white-space: nowrap;" {% if not last_sync_time %}disabled title="No previous sync - use Full Reset first"{% endif %}>
+                                <button onclick="syncGAMInventory('incremental')" class="btn btn-primary" style="white-space: nowrap;" {% if not last_sync_time or running_sync %}disabled{% if not last_sync_time %} title="No previous sync - use Full Reset first"{% elif running_sync %} title="Sync already in progress"{% endif %}{% endif %}>
                                     <span id="sync-icon-incremental">🔄</span> Incremental Sync
                                 </button>
-                                <button onclick="syncGAMInventory('full')" class="btn btn-warning" style="white-space: nowrap;">
+                                <button onclick="syncGAMInventory('full')" class="btn btn-warning" style="white-space: nowrap;" {% if running_sync %}disabled title="Sync already in progress"{% endif %}>
                                     <span id="sync-icon-full">⚠️</span> Full Reset
                                 </button>
                             </div>
@@ -1332,6 +1347,22 @@ REJECT - Creative cannot be approved:
                         </div>
                     </div>
                 </div>
+
+                {% if running_sync %}
+                <script>
+                    // Auto-resume polling for running sync
+                    document.addEventListener('DOMContentLoaded', function() {
+                        const syncId = "{{ running_sync.sync_id }}";
+                        const button = document.querySelector('button[onclick*="syncGAMInventory"]');
+                        if (button && syncId) {
+                            // Disable both buttons
+                            document.querySelectorAll('button[onclick*="syncGAMInventory"]').forEach(btn => btn.disabled = true);
+                            // Start polling
+                            pollSyncStatus(syncId, button, button.innerHTML, null);
+                        }
+                    });
+                </script>
+                {% endif %}
 
                 <div class="form-section" style="margin-top: 1.5rem;">
                     <h3>Actions</h3>
