@@ -70,19 +70,30 @@ class GAMInventoryService:
         return sync_summary
 
     def _save_inventory_to_db(self, tenant_id: str, discovery: GAMInventoryDiscovery):
-        """Save discovered inventory to database."""
+        """Save discovered inventory to database using bulk operations (no N+1 queries)."""
         sync_time = datetime.now()
+
+        # Load ALL existing inventory IDs once (1 query instead of N)
+        stmt = select(GAMInventory.inventory_type, GAMInventory.inventory_id, GAMInventory.id).where(
+            GAMInventory.tenant_id == tenant_id
+        )
+        existing_inventory = self.db.execute(stmt).all()
+        existing_ids = {(row.inventory_type, row.inventory_id): row.id for row in existing_inventory}
+
+        # Prepare bulk insert and update lists
+        to_insert = []
+        to_update = []
 
         # Process ad units
         for ad_unit in discovery.ad_units.values():
-            self._upsert_inventory_item(
-                tenant_id=tenant_id,
-                inventory_type="ad_unit",
-                inventory_id=ad_unit.id,
-                name=ad_unit.name,
-                path=ad_unit.path,
-                status=ad_unit.status.value,
-                inventory_metadata={
+            item_data = {
+                "tenant_id": tenant_id,
+                "inventory_type": "ad_unit",
+                "inventory_id": ad_unit.id,
+                "name": ad_unit.name,
+                "path": ad_unit.path,
+                "status": ad_unit.status.value,
+                "inventory_metadata": {
                     "ad_unit_code": ad_unit.ad_unit_code,
                     "parent_id": ad_unit.parent_id,
                     "description": ad_unit.description,
@@ -92,92 +103,128 @@ class GAMInventoryService:
                     "sizes": ad_unit.sizes,
                     "effective_applied_labels": ad_unit.effective_applied_labels,
                 },
-                last_synced=sync_time,
-            )
+                "last_synced": sync_time,
+            }
+
+            key = ("ad_unit", ad_unit.id)
+            if key in existing_ids:
+                # Add database ID for update
+                item_data["id"] = existing_ids[key]
+                to_update.append(item_data)
+            else:
+                to_insert.append(item_data)
 
         # Process placements
         for placement in discovery.placements.values():
-            self._upsert_inventory_item(
-                tenant_id=tenant_id,
-                inventory_type="placement",
-                inventory_id=placement.id,
-                name=placement.name,
-                path=[placement.name],  # Placements don't have hierarchy
-                status=placement.status,
-                inventory_metadata={
+            item_data = {
+                "tenant_id": tenant_id,
+                "inventory_type": "placement",
+                "inventory_id": placement.id,
+                "name": placement.name,
+                "path": [placement.name],  # Placements don't have hierarchy
+                "status": placement.status,
+                "inventory_metadata": {
                     "placement_code": placement.placement_code,
                     "description": placement.description,
                     "is_ad_sense_targeting_enabled": placement.is_ad_sense_targeting_enabled,
                     "ad_unit_ids": placement.ad_unit_ids,
                     "targeting_description": placement.targeting_description,
                 },
-                last_synced=sync_time,
-            )
+                "last_synced": sync_time,
+            }
+
+            key = ("placement", placement.id)
+            if key in existing_ids:
+                item_data["id"] = existing_ids[key]
+                to_update.append(item_data)
+            else:
+                to_insert.append(item_data)
 
         # Process labels
         for label in discovery.labels.values():
-            self._upsert_inventory_item(
-                tenant_id=tenant_id,
-                inventory_type="label",
-                inventory_id=label.id,
-                name=label.name,
-                path=[label.name],
-                status="ACTIVE" if label.is_active else "INACTIVE",
-                inventory_metadata={
+            item_data = {
+                "tenant_id": tenant_id,
+                "inventory_type": "label",
+                "inventory_id": label.id,
+                "name": label.name,
+                "path": [label.name],
+                "status": "ACTIVE" if label.is_active else "INACTIVE",
+                "inventory_metadata": {
                     "description": label.description,
                     "ad_category": label.ad_category,
                     "label_type": label.label_type,
                 },
-                last_synced=sync_time,
-            )
+                "last_synced": sync_time,
+            }
+
+            key = ("label", label.id)
+            if key in existing_ids:
+                item_data["id"] = existing_ids[key]
+                to_update.append(item_data)
+            else:
+                to_insert.append(item_data)
 
         # Process custom targeting keys
         for key in discovery.custom_targeting_keys.values():
-            self._upsert_inventory_item(
-                tenant_id=tenant_id,
-                inventory_type="custom_targeting_key",
-                inventory_id=key.id,
-                name=key.name,
-                path=[key.display_name],
-                status=key.status,
-                inventory_metadata={
+            item_data = {
+                "tenant_id": tenant_id,
+                "inventory_type": "custom_targeting_key",
+                "inventory_id": key.id,
+                "name": key.name,
+                "path": [key.display_name],
+                "status": key.status,
+                "inventory_metadata": {
                     "display_name": key.display_name,
                     "type": key.type,  # PREDEFINED or FREEFORM
                     "reportable_type": key.reportable_type,
                 },
-                last_synced=sync_time,
-            )
+                "last_synced": sync_time,
+            }
+
+            item_key = ("custom_targeting_key", key.id)
+            if item_key in existing_ids:
+                item_data["id"] = existing_ids[item_key]
+                to_update.append(item_data)
+            else:
+                to_insert.append(item_data)
 
             # Process values for this key
             values = discovery.custom_targeting_values.get(key.id, [])
             for value in values:
-                self._upsert_inventory_item(
-                    tenant_id=tenant_id,
-                    inventory_type="custom_targeting_value",
-                    inventory_id=value.id,
-                    name=value.name,
-                    path=[key.display_name, value.display_name],
-                    status=value.status,
-                    inventory_metadata={
+                value_data = {
+                    "tenant_id": tenant_id,
+                    "inventory_type": "custom_targeting_value",
+                    "inventory_id": value.id,
+                    "name": value.name,
+                    "path": [key.display_name, value.display_name],
+                    "status": value.status,
+                    "inventory_metadata": {
                         "custom_targeting_key_id": value.custom_targeting_key_id,
                         "display_name": value.display_name,
                         "match_type": value.match_type,
                         "key_name": key.name,
                         "key_display_name": key.display_name,
                     },
-                    last_synced=sync_time,
-                )
+                    "last_synced": sync_time,
+                }
+
+                value_key = ("custom_targeting_value", value.id)
+                if value_key in existing_ids:
+                    value_data["id"] = existing_ids[value_key]
+                    to_update.append(value_data)
+                else:
+                    to_insert.append(value_data)
 
         # Process audience segments
         for segment in discovery.audience_segments.values():
-            self._upsert_inventory_item(
-                tenant_id=tenant_id,
-                inventory_type="audience_segment",
-                inventory_id=segment.id,
-                name=segment.name,
-                path=[segment.type, segment.name],  # e.g. ["FIRST_PARTY", "Sports Enthusiasts"]
-                status=segment.status,
-                inventory_metadata={
+            item_data = {
+                "tenant_id": tenant_id,
+                "inventory_type": "audience_segment",
+                "inventory_id": segment.id,
+                "name": segment.name,
+                "path": [segment.type, segment.name],  # e.g. ["FIRST_PARTY", "Sports Enthusiasts"]
+                "status": segment.status,
+                "inventory_metadata": {
                     "description": segment.description,
                     "category_ids": segment.category_ids,
                     "type": segment.type,  # FIRST_PARTY or THIRD_PARTY
@@ -185,8 +232,24 @@ class GAMInventoryService:
                     "data_provider_name": segment.data_provider_name,
                     "segment_type": segment.segment_type,  # RULE_BASED, SHARED, etc.
                 },
-                last_synced=sync_time,
-            )
+                "last_synced": sync_time,
+            }
+
+            key = ("audience_segment", segment.id)
+            if key in existing_ids:
+                item_data["id"] = existing_ids[key]
+                to_update.append(item_data)
+            else:
+                to_insert.append(item_data)
+
+        # Perform bulk operations (2 queries instead of N)
+        if to_insert:
+            self.db.bulk_insert_mappings(GAMInventory, to_insert)
+            logger.info(f"Bulk inserted {len(to_insert)} inventory items")
+
+        if to_update:
+            self.db.bulk_update_mappings(GAMInventory, to_update)
+            logger.info(f"Bulk updated {len(to_update)} inventory items")
 
         # Mark old items as potentially stale (but keep ad units active)
         stale_cutoff = sync_time - timedelta(seconds=1)
@@ -208,26 +271,9 @@ class GAMInventoryService:
         self.db.execute(stmt)
 
         self.db.commit()
-
-    def _upsert_inventory_item(self, **kwargs):
-        """Insert or update inventory item."""
-        stmt = select(GAMInventory).where(
-            and_(
-                GAMInventory.tenant_id == kwargs["tenant_id"],
-                GAMInventory.inventory_type == kwargs["inventory_type"],
-                GAMInventory.inventory_id == kwargs["inventory_id"],
-            )
+        logger.info(
+            f"Saved inventory to database: {len(to_insert)} new, {len(to_update)} updated (bulk operations - no N+1 queries)"
         )
-        existing = self.db.scalars(stmt).first()
-
-        if existing:
-            # Update existing
-            for key, value in kwargs.items():
-                setattr(existing, key, value)
-        else:
-            # Create new
-            inventory_item = GAMInventory(**kwargs)
-            self.db.add(inventory_item)
 
     def get_ad_unit_tree(self, tenant_id: str) -> dict[str, Any]:
         """
