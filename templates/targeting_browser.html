@@ -495,7 +495,11 @@ document.getElementById('sync-targeting').addEventListener('click', async () => 
 
     try {
         const response = await fetch(`{{ script_name }}/api/tenant/${tenantId}/inventory/sync`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
         });
 
         if (!response.ok) throw new Error('Sync failed');
