@@ -273,6 +273,12 @@ class GAMInventoryDiscovery:
 
         # Add incremental sync filter if requested
         if since:
+            # Ensure timezone-aware datetime for GAM API
+            if since.tzinfo is None:
+                from datetime import UTC
+
+                since = since.replace(tzinfo=UTC)
+
             statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
                 "since", since
             )
@@ -312,6 +318,12 @@ class GAMInventoryDiscovery:
         statement_builder = ad_manager.StatementBuilder(version="v202505")
 
         if since:
+            # Ensure timezone-aware datetime for GAM API
+            if since.tzinfo is None:
+                from datetime import UTC
+
+                since = since.replace(tzinfo=UTC)
+
             statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
                 "since", since
             )
@@ -349,6 +361,12 @@ class GAMInventoryDiscovery:
         statement_builder = ad_manager.StatementBuilder(version="v202505")
 
         if since:
+            # Ensure timezone-aware datetime for GAM API
+            if since.tzinfo is None:
+                from datetime import UTC
+
+                since = since.replace(tzinfo=UTC)
+
             statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
                 "since", since
             )
@@ -395,6 +413,12 @@ class GAMInventoryDiscovery:
         statement_builder = ad_manager.StatementBuilder(version="v202505")
 
         if since:
+            # Ensure timezone-aware datetime for GAM API
+            if since.tzinfo is None:
+                from datetime import UTC
+
+                since = since.replace(tzinfo=UTC)
+
             statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
                 "since", since
             )
@@ -521,6 +545,12 @@ class GAMInventoryDiscovery:
         statement_builder = ad_manager.StatementBuilder(version="v202505")
 
         if since:
+            # Ensure timezone-aware datetime for GAM API
+            if since.tzinfo is None:
+                from datetime import UTC
+
+                since = since.replace(tzinfo=UTC)
+
             statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
                 "since", since
             )

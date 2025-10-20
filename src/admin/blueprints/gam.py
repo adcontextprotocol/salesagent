@@ -643,6 +643,7 @@ def sync_gam_inventory(tenant_id):
                         "Incremental sync requested but no previous successful sync found - falling back to full sync"
                     )
                     sync_mode = "full"
+                    last_sync_time = None  # Reset since we're doing full sync
 
             # Create sync job
             sync_id = f"sync_{tenant_id}_{int(datetime.now(UTC).timestamp())}"
