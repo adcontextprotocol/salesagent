@@ -535,11 +535,24 @@ def get_gam_custom_targeting_keys(tenant_id):
 @log_admin_action("sync_gam_inventory")
 @require_tenant_access()
 def sync_gam_inventory(tenant_id):
-    """Trigger GAM inventory sync for a tenant (background job)."""
+    """Trigger GAM inventory sync for a tenant (background job).
+
+    Request body:
+        mode: "full" (default) or "incremental"
+          - full: Complete reset - deletes all inventory and re-syncs everything
+          - incremental: Only fetches items modified since last successful sync
+    """
     if session.get("role") == "viewer":
         return jsonify({"success": False, "error": "Access denied"}), 403
 
     try:
+        # Get sync mode from request body (default to "full")
+        request_data = request.get_json() or {}
+        sync_mode = request_data.get("mode", "full")
+
+        if sync_mode not in ["full", "incremental"]:
+            return jsonify({"success": False, "error": "Invalid sync mode. Must be 'full' or 'incremental'"}), 400
+
         with get_db_session() as db_session:
             # Get tenant and adapter config
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()

@@ -253,31 +253,30 @@ class GAMInventoryDiscovery:
         self.last_sync: datetime | None = None
 
     @with_retry(operation_name="discover_ad_units")
-    def discover_ad_units(self, parent_id: str | None = None, max_depth: int = 10) -> list[AdUnit]:
+    def discover_ad_units(self, since: datetime | None = None) -> list[AdUnit]:
         """
-        Discover ad units in the GAM network.
+        Discover ad units in the GAM network using flat pagination (no recursion).
 
         Args:
-            parent_id: Parent ad unit ID to start from (None for root)
-            max_depth: Maximum depth to traverse
+            since: Optional datetime to fetch only items modified since this time (incremental sync)
 
         Returns:
             List of discovered ad units
         """
-        logger.info(f"Discovering ad units (parent_id={parent_id}, max_depth={max_depth})")
+        logger.info(f"Discovering ad units (incremental={since is not None})")
 
         inventory_service = self.client.GetService("InventoryService")
         discovered_units = []
 
-        # Build statement to query ad units
+        # Build statement to query ALL ad units (flat query with pagination - GAM provides full hierarchy)
         statement_builder = ad_manager.StatementBuilder(version="v202505")
 
-        if parent_id:
-            statement_builder = statement_builder.Where("parentId = :parentId").WithBindVariable(
-                "parentId", int(parent_id)
+        # Add incremental sync filter if requested
+        if since:
+            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
+                "since", since
             )
-        else:
-            statement_builder = statement_builder.Where("parentId IS NULL")
+            logger.info(f"Incremental sync: fetching ad units modified since {since}")
 
         # Page through results
         while True:
@@ -291,11 +290,6 @@ class GAMInventoryDiscovery:
                     discovered_units.append(ad_unit)
                     self.ad_units[ad_unit.id] = ad_unit
 
-                    # Recursively discover children if within depth limit
-                    if ad_unit.has_children and max_depth > 1:
-                        child_units = self.discover_ad_units(ad_unit.id, max_depth - 1)
-                        discovered_units.extend(child_units)
-
                 statement_builder.offset += len(response["results"])
             else:
                 break
@@ -304,14 +298,23 @@ class GAMInventoryDiscovery:
         return discovered_units
 
     @with_retry(operation_name="discover_placements")
-    def discover_placements(self) -> list[Placement]:
-        """Discover all placements in the GAM network."""
-        logger.info("Discovering placements")
+    def discover_placements(self, since: datetime | None = None) -> list[Placement]:
+        """Discover placements in the GAM network.
+
+        Args:
+            since: Optional datetime to fetch only items modified since this time (incremental sync)
+        """
+        logger.info(f"Discovering placements (incremental={since is not None})")
 
         placement_service = self.client.GetService("PlacementService")
         discovered_placements = []
 
         statement_builder = ad_manager.StatementBuilder(version="v202505")
+
+        if since:
+            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
+                "since", since
+            )
 
         while True:
             response = placement_service.getPlacementsByStatement(statement_builder.ToStatement())
@@ -332,14 +335,23 @@ class GAMInventoryDiscovery:
         return discovered_placements
 
     @with_retry(operation_name="discover_labels")
-    def discover_labels(self) -> list[Label]:
-        """Discover all labels (for competitive exclusion, etc.)."""
-        logger.info("Discovering labels")
+    def discover_labels(self, since: datetime | None = None) -> list[Label]:
+        """Discover labels (for competitive exclusion, etc.).
+
+        Args:
+            since: Optional datetime to fetch only items modified since this time (incremental sync)
+        """
+        logger.info(f"Discovering labels (incremental={since is not None})")
 
         label_service = self.client.GetService("LabelService")
         discovered_labels = []
 
         statement_builder = ad_manager.StatementBuilder(version="v202505")
+
+        if since:
+            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
+                "since", since
+            )
 
         while True:
             response = label_service.getLabelsByStatement(statement_builder.ToStatement())
@@ -360,12 +372,15 @@ class GAMInventoryDiscovery:
         return discovered_labels
 
     @with_retry(operation_name="discover_custom_targeting")
-    def discover_custom_targeting(self, max_values_per_key: int | None = None, fetch_values: bool = True) -> dict[str, Any]:
-        """Discover all custom targeting keys and optionally their values.
+    def discover_custom_targeting(
+        self, max_values_per_key: int | None = None, fetch_values: bool = True, since: datetime | None = None
+    ) -> dict[str, Any]:
+        """Discover custom targeting keys and optionally their values.
 
         Args:
             max_values_per_key: Optional limit on number of values to fetch per key (only if fetch_values=True)
             fetch_values: Whether to fetch values for each key. Set to False for faster sync (lazy load values later)
+            since: Optional datetime to fetch only items modified since this time (incremental sync)
         """
         logger.info(
             "Discovering custom targeting keys"
@@ -378,6 +393,11 @@ class GAMInventoryDiscovery:
 
         # Discover keys first
         statement_builder = ad_manager.StatementBuilder(version="v202505")
+
+        if since:
+            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
+                "since", since
+            )
 
         while True:
             response = custom_targeting_service.getCustomTargetingKeysByStatement(statement_builder.ToStatement())
@@ -423,7 +443,9 @@ class GAMInventoryDiscovery:
         Returns:
             List of discovered custom targeting values
         """
-        logger.info(f"Lazy loading custom targeting values for key {key_id}" + (f" (max {max_values})" if max_values else ""))
+        logger.info(
+            f"Lazy loading custom targeting values for key {key_id}" + (f" (max {max_values})" if max_values else "")
+        )
 
         values = self._discover_custom_targeting_values(key_id, max_values)
 
@@ -477,13 +499,19 @@ class GAMInventoryDiscovery:
         return discovered_values
 
     @with_retry(operation_name="discover_audience_segments")
-    def discover_audience_segments(self, max_segments: int | None = None) -> list[AudienceSegment]:
+    def discover_audience_segments(
+        self, max_segments: int | None = None, since: datetime | None = None
+    ) -> list[AudienceSegment]:
         """Discover audience segments (first-party and third-party).
 
         Args:
             max_segments: Optional maximum number of segments to fetch
+            since: Optional datetime to fetch only items modified since this time (incremental sync)
         """
-        logger.info("Discovering audience segments" + (f" (max {max_segments})" if max_segments else ""))
+        logger.info(
+            f"Discovering audience segments (incremental={since is not None})"
+            + (f" (max {max_segments})" if max_segments else "")
+        )
 
         # Note: The exact service and method names may vary based on GAM API version
         # This is a representative implementation
@@ -491,6 +519,11 @@ class GAMInventoryDiscovery:
         discovered_segments = []
 
         statement_builder = ad_manager.StatementBuilder(version="v202505")
+
+        if since:
+            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
+                "since", since
+            )
 
         # Apply limit if specified
         if max_segments:
@@ -669,7 +702,9 @@ class GAMInventoryDiscovery:
 
         return suggestions
 
-    def sync_all(self, fetch_custom_targeting_values: bool = False, max_custom_targeting_values_per_key: int = 1000) -> dict[str, Any]:
+    def sync_all(
+        self, fetch_custom_targeting_values: bool = False, max_custom_targeting_values_per_key: int = 1000
+    ) -> dict[str, Any]:
         """
         Sync all inventory data from GAM.
 
@@ -687,7 +722,9 @@ class GAMInventoryDiscovery:
         if not fetch_custom_targeting_values:
             logger.info("Custom targeting: Keys only (values will be lazy loaded on demand)")
         else:
-            logger.info(f"Custom targeting: Keys + values (limit: {max_custom_targeting_values_per_key} values per key)")
+            logger.info(
+                f"Custom targeting: Keys + values (limit: {max_custom_targeting_values_per_key} values per key)"
+            )
 
         start_time = datetime.now()
 
@@ -704,8 +741,7 @@ class GAMInventoryDiscovery:
         placements = self.discover_placements()
         labels = self.discover_labels()
         custom_targeting = self.discover_custom_targeting(
-            max_values_per_key=max_custom_targeting_values_per_key,
-            fetch_values=fetch_custom_targeting_values
+            max_values_per_key=max_custom_targeting_values_per_key, fetch_values=fetch_custom_targeting_values
         )
         audience_segments = self.discover_audience_segments()
 
@@ -728,7 +764,11 @@ class GAMInventoryDiscovery:
                 "predefined_keys": len([k for k in self.custom_targeting_keys.values() if k.type == "PREDEFINED"]),
                 "freeform_keys": len([k for k in self.custom_targeting_keys.values() if k.type == "FREEFORM"]),
                 "values_fetched": custom_targeting.get("values_fetched", False),
-                "note": "Values lazy loaded on demand" if not custom_targeting.get("values_fetched") else f"Values fetched (limit: {max_custom_targeting_values_per_key} per key)",
+                "note": (
+                    "Values lazy loaded on demand"
+                    if not custom_targeting.get("values_fetched")
+                    else f"Values fetched (limit: {max_custom_targeting_values_per_key} per key)"
+                ),
             },
             "audience_segments": {
                 "total": len(audience_segments),
