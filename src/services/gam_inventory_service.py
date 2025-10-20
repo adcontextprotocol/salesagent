@@ -94,19 +94,29 @@ class GAMInventoryService:
         to_update = []
 
         def flush_batch():
-            """Flush current batch to database."""
+            """Flush current batch to database with error handling."""
             nonlocal total_inserted, total_updated
-            if to_insert:
-                self.db.bulk_insert_mappings(GAMInventory, to_insert)
-                total_inserted += len(to_insert)
-                logger.info(f"Batch inserted {len(to_insert)} inventory items (total so far: {total_inserted})")
-                to_insert.clear()
-            if to_update:
-                self.db.bulk_update_mappings(GAMInventory, to_update)
-                total_updated += len(to_update)
-                logger.info(f"Batch updated {len(to_update)} inventory items (total so far: {total_updated})")
-                to_update.clear()
-            self.db.commit()  # Commit each batch
+            try:
+                if to_insert:
+                    self.db.bulk_insert_mappings(GAMInventory, to_insert)
+                    batch_inserted = len(to_insert)
+                    total_inserted += batch_inserted
+                    logger.info(f"Batch inserted {batch_inserted} inventory items")
+                    to_insert.clear()
+                if to_update:
+                    self.db.bulk_update_mappings(GAMInventory, to_update)
+                    batch_updated = len(to_update)
+                    total_updated += batch_updated
+                    logger.info(f"Batch updated {batch_updated} inventory items")
+                    to_update.clear()
+                self.db.commit()  # Commit each batch
+            except Exception as e:
+                logger.error(
+                    f"Batch write failed at {total_inserted + total_updated} items: {e}",
+                    exc_info=True,
+                )
+                self.db.rollback()
+                raise  # Re-raise to fail the sync properly
 
         # Process ad units
         for ad_unit in discovery.ad_units.values():
@@ -144,7 +154,7 @@ class GAMInventoryService:
 
         # Flush remaining ad units
         flush_batch()
-        logger.info(f"Completed saving {total_inserted + total_updated} ad units")
+        logger.info("Completed saving ad units")
 
         # Process placements
         for placement in discovery.placements.values():
@@ -178,7 +188,7 @@ class GAMInventoryService:
 
         # Flush remaining placements
         flush_batch()
-        logger.info(f"Completed saving {total_inserted + total_updated} placements")
+        logger.info("Completed saving placements")
 
         # Process labels
         for label in discovery.labels.values():
@@ -210,7 +220,7 @@ class GAMInventoryService:
 
         # Flush remaining labels
         flush_batch()
-        logger.info(f"Completed saving {total_inserted + total_updated} labels")
+        logger.info("Completed saving labels")
 
         # Process custom targeting keys
         for key in discovery.custom_targeting_keys.values():
@@ -269,7 +279,7 @@ class GAMInventoryService:
 
         # Flush remaining targeting keys/values
         flush_batch()
-        logger.info(f"Completed saving {total_inserted + total_updated} targeting keys and values")
+        logger.info("Completed saving targeting keys and values")
 
         # Process audience segments
         for segment in discovery.audience_segments.values():
@@ -304,7 +314,7 @@ class GAMInventoryService:
 
         # Flush remaining audience segments
         flush_batch()
-        logger.info(f"Completed saving {total_inserted + total_updated} audience segments")
+        logger.info("Completed saving audience segments")
 
         # Mark old items as potentially stale (but keep ad units active)
         stale_cutoff = sync_time - timedelta(seconds=1)
