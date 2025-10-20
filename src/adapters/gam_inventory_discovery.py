@@ -261,15 +261,16 @@ class GAMInventoryDiscovery:
             since: Optional datetime to fetch only items modified since this time (incremental sync)
 
         Returns:
-            List of discovered ad units
+            List of discovered ad units (active only - excludes ARCHIVED)
         """
         logger.info(f"Discovering ad units (incremental={since is not None})")
 
         inventory_service = self.client.GetService("InventoryService")
         discovered_units = []
 
-        # Build statement to query ALL ad units (flat query with pagination - GAM provides full hierarchy)
+        # Build statement to query ACTIVE ad units only (excludes ARCHIVED to reduce sync time)
         statement_builder = ad_manager.StatementBuilder(version="v202505")
+        statement_builder = statement_builder.Where("status != :archived").WithBindVariable("archived", "ARCHIVED")
 
         # Add incremental sync filter if requested
         if since:
@@ -279,10 +280,12 @@ class GAMInventoryDiscovery:
 
                 since = since.replace(tzinfo=UTC)
 
-            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
-                "since", since
+            statement_builder = (
+                statement_builder.Where("lastModifiedDateTime > :since AND status != :archived")
+                .WithBindVariable("since", since)
+                .WithBindVariable("archived", "ARCHIVED")
             )
-            logger.info(f"Incremental sync: fetching ad units modified since {since}")
+            logger.info(f"Incremental sync: fetching ad units modified since {since} (active only)")
 
         # Page through results
         while True:
@@ -309,13 +312,18 @@ class GAMInventoryDiscovery:
 
         Args:
             since: Optional datetime to fetch only items modified since this time (incremental sync)
+
+        Returns:
+            List of placements (active only - excludes ARCHIVED)
         """
         logger.info(f"Discovering placements (incremental={since is not None})")
 
         placement_service = self.client.GetService("PlacementService")
         discovered_placements = []
 
+        # Filter out ARCHIVED placements
         statement_builder = ad_manager.StatementBuilder(version="v202505")
+        statement_builder = statement_builder.Where("status != :archived").WithBindVariable("archived", "ARCHIVED")
 
         if since:
             # Ensure timezone-aware datetime for GAM API
@@ -324,8 +332,10 @@ class GAMInventoryDiscovery:
 
                 since = since.replace(tzinfo=UTC)
 
-            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
-                "since", since
+            statement_builder = (
+                statement_builder.Where("lastModifiedDateTime > :since AND status != :archived")
+                .WithBindVariable("since", since)
+                .WithBindVariable("archived", "ARCHIVED")
             )
 
         while True:
