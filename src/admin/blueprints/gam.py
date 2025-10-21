@@ -1105,6 +1105,18 @@ def test_gam_connection(tenant_id):
                         400,
                     )
 
+                # Check if network code is configured (required for service account)
+                network_code = adapter_config.gam_network_code
+                if not network_code:
+                    return (
+                        jsonify(
+                            {
+                                "error": "Network code is required for service account authentication. Please configure the GAM network code first."
+                            }
+                        ),
+                        400,
+                    )
+
                 # Parse service account JSON
                 try:
                     import json as json_lib
@@ -1130,32 +1142,49 @@ def test_gam_connection(tenant_id):
             return jsonify({"error": f"Invalid auth_method: {auth_method}"}), 400
 
         # Initialize GAM client to get network info
-        # Note: We don't need to specify network_code for getAllNetworks call
-        client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent-Setup")
+        # Note: For service account auth, network_code is required and retrieved from adapter_config
+        # For OAuth, we can call getAllNetworks without a network_code
+        if auth_method == "service_account":
+            client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent-Setup", network_code=network_code)
+        else:
+            client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent-Setup")
 
         # Get network service
         network_service = client.GetService("NetworkService", version=GAM_API_VERSION)
 
         # Get all networks user has access to
+        networks = []
         try:
-            # Try to get all networks first
-            logger.info("Attempting to call getAllNetworks()")
-            all_networks = network_service.getAllNetworks()
-            logger.info(f"getAllNetworks() returned: {all_networks}")
-            networks = []
-            if all_networks:
-                logger.info(f"Processing {len(all_networks)} networks")
-                for network in all_networks:
-                    logger.info(f"Network data: {network}")
-                    networks.append(
-                        {
-                            "id": network["id"],
-                            "displayName": network["displayName"],
-                            "networkCode": network["networkCode"],
-                        }
-                    )
+            # Service account auth with network_code already set - use getCurrentNetwork
+            if auth_method == "service_account":
+                logger.info("Using service account auth - calling getCurrentNetwork()")
+                current_network = network_service.getCurrentNetwork()
+                logger.info(f"getCurrentNetwork() returned: {current_network}")
+                networks = [
+                    {
+                        "id": current_network["id"],
+                        "displayName": current_network["displayName"],
+                        "networkCode": current_network["networkCode"],
+                    }
+                ]
             else:
-                logger.info("getAllNetworks() returned empty/None")
+                # OAuth - try getAllNetworks first
+                logger.info("Using OAuth - attempting to call getAllNetworks()")
+                all_networks = network_service.getAllNetworks()
+                logger.info(f"getAllNetworks() returned: {all_networks}")
+                if all_networks:
+                    logger.info(f"Processing {len(all_networks)} networks")
+                    for network in all_networks:
+                        logger.info(f"Network data: {network}")
+                        networks.append(
+                            {
+                                "id": network["id"],
+                                "displayName": network["displayName"],
+                                "networkCode": network["networkCode"],
+                            }
+                        )
+                else:
+                    logger.info("getAllNetworks() returned empty/None")
         except AttributeError as e:
             # getAllNetworks might not be available, fall back to getCurrentNetwork
             logger.info(f"getAllNetworks not available (AttributeError: {e}), falling back to getCurrentNetwork")
