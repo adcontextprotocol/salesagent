@@ -131,6 +131,12 @@ class PriceGuidance(BaseModel):
     p75: float | None = Field(None, ge=0, description="75th percentile winning price")
     p90: float | None = Field(None, ge=0, description="90th percentile winning price")
 
+    def model_dump(self, **kwargs):
+        """Exclude null percentile values per AdCP spec (only floor is required)."""
+        if "exclude_none" not in kwargs:
+            kwargs["exclude_none"] = True
+        return super().model_dump(**kwargs)
+
 
 class PricingParameters(BaseModel):
     """Additional parameters specific to pricing models per AdCP spec."""
@@ -213,12 +219,21 @@ class PricingOption(BaseModel):
         AdCP uses separate schemas (cpm-fixed-option, cpm-auction-option, etc.)
         instead of a single schema with is_fixed flag. We exclude is_fixed and
         internal fields (supported, unsupported_reason) from external responses.
+
+        Also excludes None values to match AdCP spec where optional fields should
+        be omitted rather than set to null (e.g., rate in auction-based pricing).
         """
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
             # Exclude internal fields that aren't in AdCP spec
             exclude.update({"is_fixed", "supported", "unsupported_reason"})
             kwargs["exclude"] = exclude
+
+        # Set exclude_none=True by default for AdCP compliance
+        # This ensures nested models (PriceGuidance) also exclude None values
+        if "exclude_none" not in kwargs:
+            kwargs["exclude_none"] = True
+
         return super().model_dump(**kwargs)
 
     def model_dump_internal(self, **kwargs):
