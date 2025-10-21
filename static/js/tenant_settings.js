@@ -1401,6 +1401,50 @@ function copyServiceAccountEmail() {
     }
 }
 
+function saveServiceAccountNetworkCode() {
+    const button = event.target;
+    const networkCodeInput = document.getElementById('service_account_network_code');
+    const networkCode = networkCodeInput.value.trim();
+
+    if (!networkCode) {
+        alert('Please enter a network code');
+        return;
+    }
+
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+
+    // Save network code via the GAM configure endpoint
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/configure`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            auth_method: 'service_account',
+            network_code: networkCode
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.disabled = false;
+        button.innerHTML = 'Save Network Code';
+
+        if (data.success) {
+            alert('✅ Network code saved successfully!\n\nYou can now test the connection.');
+            // Reload page to show updated state
+            location.reload();
+        } else {
+            alert('❌ Failed to save network code:\n\n' + (data.error || data.errors?.join('\n') || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.innerHTML = 'Save Network Code';
+        alert('Error: ' + error.message);
+    });
+}
+
 function testGAMServiceAccountConnection() {
     const button = event.target;
     button.disabled = true;
@@ -1420,9 +1464,9 @@ function testGAMServiceAccountConnection() {
         button.innerHTML = 'Test Connection';
 
         if (data.success) {
-            alert('✅ Connection successful!\n\nNetwork: ' + (data.network_name || 'N/A') + '\nNetwork Code: ' + (data.network_code || 'N/A'));
+            alert('✅ Connection successful!\n\nNetwork: ' + (data.networks?.[0]?.displayName || 'N/A') + '\nNetwork Code: ' + (data.networks?.[0]?.networkCode || 'N/A'));
         } else {
-            alert('❌ Connection failed!\n\n' + (data.error || 'Unknown error') + '\n\nPlease make sure:\n1. You added the service account email to your GAM\n2. You assigned the Trafficker role\n3. You clicked Save in GAM');
+            alert('❌ Connection failed!\n\n' + (data.error || 'Unknown error') + '\n\nPlease make sure:\n1. You added the service account email to your GAM\n2. You assigned the Trafficker role\n3. You clicked Save in GAM\n4. You saved the correct network code');
         }
     })
     .catch(error => {
