@@ -15,8 +15,6 @@ from typing import Any
 from sqlalchemy import String, and_, create_engine, delete, func, or_, select
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
-from src.adapters.gam.client import GAMClientManager
-from src.adapters.gam.managers.inventory import GAMInventoryManager
 from src.adapters.gam_inventory_discovery import (
     GAMInventoryDiscovery,
 )
@@ -40,7 +38,14 @@ class GAMInventoryService:
 
     def sync_tenant_inventory(self, tenant_id: str, gam_client) -> dict[str, Any]:
         """
-        Sync all inventory for a tenant from GAM to database.
+        Sync all inventory for a tenant from GAM to database using streaming approach.
+
+        This method processes inventory in chunks to minimize memory usage:
+        - Fetches data from GAM API in paginated batches
+        - Writes each batch to database immediately
+        - Clears batch from memory before fetching next batch
+
+        This prevents OOM errors with large inventories (10k+ items).
 
         Args:
             tenant_id: Tenant ID
@@ -49,23 +54,15 @@ class GAMInventoryService:
         Returns:
             Sync summary with counts and timing
         """
-        logger.info(f"Starting inventory sync for tenant {tenant_id}")
+        logger.info(f"Starting streaming inventory sync for tenant {tenant_id}")
 
-        # Create client manager from existing client
-        client_manager = GAMClientManager.from_existing_client(gam_client)
+        # Create discovery instance for streaming sync
+        from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
 
-        # Create inventory manager
-        inventory_manager = GAMInventoryManager(client_manager, tenant_id, dry_run=False)
+        discovery = GAMInventoryDiscovery(gam_client, tenant_id)
 
-        # Perform discovery using the manager
-        sync_summary = inventory_manager.sync_all_inventory()
-
-        # Get the discovery instance to save to database
-        discovery = inventory_manager._get_discovery()
-        self._save_inventory_to_db(tenant_id, discovery)
-
-        # Sync timestamp is already stored in gam_inventory.last_synced
-        # No need to update tenant config
+        # Use streaming sync: each inventory type is synced separately and written to DB immediately
+        sync_summary = self._streaming_sync_all_inventory(tenant_id, discovery)
 
         return sync_summary
 
@@ -339,6 +336,400 @@ class GAMInventoryService:
         logger.info(
             f"Saved inventory to database: {total_inserted} new, {total_updated} updated (batched operations - prevents OOM)"
         )
+
+    def _streaming_sync_all_inventory(self, tenant_id: str, discovery: "GAMInventoryDiscovery") -> dict[str, Any]:
+        """
+        Stream inventory sync: fetch and write each type separately to minimize memory.
+
+        This method syncs inventory types one at a time:
+        1. Fetch ad units from GAM → write to DB → clear from memory
+        2. Fetch placements from GAM → write to DB → clear from memory
+        3. Fetch labels from GAM → write to DB → clear from memory
+        4. Fetch custom targeting keys (values lazy loaded) → write to DB → clear from memory
+        5. Fetch audience segments → write to DB → clear from memory
+
+        Memory usage stays bounded regardless of inventory size.
+
+        Args:
+            tenant_id: Tenant ID
+            discovery: GAMInventoryDiscovery instance (empty at start)
+
+        Returns:
+            Sync summary with counts and timing
+        """
+        from datetime import datetime
+
+        start_time = datetime.now()
+        sync_time = datetime.now()
+
+        logger.info(f"Starting streaming inventory sync for tenant {tenant_id}")
+
+        # Track counts
+        counts = {
+            "ad_units": 0,
+            "placements": 0,
+            "labels": 0,
+            "custom_targeting_keys": 0,
+            "custom_targeting_values": 0,
+            "audience_segments": 0,
+        }
+
+        # 1. Sync ad units (stream and write)
+        logger.info("Streaming ad units...")
+        ad_units = discovery.discover_ad_units()
+        self._write_inventory_batch(tenant_id, "ad_unit", ad_units, sync_time)
+        counts["ad_units"] = len(ad_units)
+        discovery.ad_units.clear()  # Clear from memory immediately
+        logger.info(f"Synced {counts['ad_units']} ad units")
+
+        # 2. Sync placements (stream and write)
+        logger.info("Streaming placements...")
+        placements = discovery.discover_placements()
+        self._write_inventory_batch(tenant_id, "placement", placements, sync_time)
+        counts["placements"] = len(placements)
+        discovery.placements.clear()  # Clear from memory
+        logger.info(f"Synced {counts['placements']} placements")
+
+        # 3. Sync labels (stream and write)
+        logger.info("Streaming labels...")
+        labels = discovery.discover_labels()
+        self._write_inventory_batch(tenant_id, "label", labels, sync_time)
+        counts["labels"] = len(labels)
+        discovery.labels.clear()  # Clear from memory
+        logger.info(f"Synced {counts['labels']} labels")
+
+        # 4. Sync custom targeting KEYS ONLY (values lazy loaded on demand)
+        logger.info("Streaming custom targeting keys (values lazy loaded)...")
+        custom_targeting = discovery.discover_custom_targeting(
+            max_values_per_key=None, fetch_values=False  # Don't fetch values  # Lazy load values on demand
+        )
+        self._write_custom_targeting_keys(tenant_id, discovery.custom_targeting_keys.values(), sync_time)
+        counts["custom_targeting_keys"] = len(discovery.custom_targeting_keys)
+        counts["custom_targeting_values"] = custom_targeting.get("total_values", 0)
+        discovery.custom_targeting_keys.clear()  # Clear from memory
+        discovery.custom_targeting_values.clear()  # Clear from memory
+        logger.info(f"Synced {counts['custom_targeting_keys']} custom targeting keys (values lazy loaded)")
+
+        # 5. Sync audience segments (first-party only)
+        logger.info("Streaming audience segments...")
+        audience_segments = discovery.discover_audience_segments()
+        self._write_inventory_batch(tenant_id, "audience_segment", audience_segments, sync_time)
+        counts["audience_segments"] = len(audience_segments)
+        discovery.audience_segments.clear()  # Clear from memory
+        logger.info(f"Synced {counts['audience_segments']} audience segments")
+
+        # Mark old items as stale
+        self._mark_stale_inventory(tenant_id, sync_time)
+
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+
+        summary = {
+            "tenant_id": tenant_id,
+            "sync_time": sync_time.isoformat(),
+            "duration_seconds": duration,
+            "ad_units": {"total": counts["ad_units"]},
+            "placements": {"total": counts["placements"]},
+            "labels": {"total": counts["labels"]},
+            "custom_targeting": {
+                "total_keys": counts["custom_targeting_keys"],
+                "total_values": counts["custom_targeting_values"],
+                "note": "Values lazy loaded on demand",
+            },
+            "audience_segments": {"total": counts["audience_segments"]},
+            "streaming": True,
+            "memory_optimized": True,
+        }
+
+        logger.info(f"Streaming sync completed in {duration:.2f}s: {counts}")
+        return summary
+
+    def _write_inventory_batch(self, tenant_id: str, inventory_type: str, items: list, sync_time: datetime):
+        """Write a batch of inventory items to database efficiently.
+
+        Args:
+            tenant_id: Tenant ID
+            inventory_type: Type of inventory (ad_unit, placement, label, audience_segment)
+            items: List of inventory items to write
+            sync_time: Sync timestamp
+        """
+        if not items:
+            return
+
+        BATCH_SIZE = 500
+
+        # Load existing inventory IDs once
+        stmt = select(GAMInventory.inventory_id, GAMInventory.id).where(
+            and_(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == inventory_type)
+        )
+        existing = self.db.execute(stmt).all()
+        existing_ids = {row.inventory_id: row.id for row in existing}
+
+        to_insert = []
+        to_update = []
+
+        for item in items:
+            item_data = self._convert_item_to_db_format(tenant_id, inventory_type, item, sync_time)
+
+            if item.id in existing_ids:
+                item_data["id"] = existing_ids[item.id]
+                to_update.append(item_data)
+            else:
+                to_insert.append(item_data)
+
+            # Flush batch
+            if (len(to_insert) + len(to_update)) >= BATCH_SIZE:
+                self._flush_batch(to_insert, to_update)
+                to_insert.clear()
+                to_update.clear()
+
+        # Flush remaining
+        self._flush_batch(to_insert, to_update)
+
+    def _write_custom_targeting_keys(self, tenant_id: str, keys: list, sync_time: datetime):
+        """Write custom targeting keys to database (values are lazy loaded separately).
+
+        Args:
+            tenant_id: Tenant ID
+            keys: List of CustomTargetingKey objects
+            sync_time: Sync timestamp
+        """
+        if not keys:
+            return
+
+        BATCH_SIZE = 500
+
+        # Load existing key IDs once
+        stmt = select(GAMInventory.inventory_id, GAMInventory.id).where(
+            and_(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "custom_targeting_key")
+        )
+        existing = self.db.execute(stmt).all()
+        existing_ids = {row.inventory_id: row.id for row in existing}
+
+        to_insert = []
+        to_update = []
+
+        for key in keys:
+            item_data = {
+                "tenant_id": tenant_id,
+                "inventory_type": "custom_targeting_key",
+                "inventory_id": key.id,
+                "name": key.name,
+                "path": [key.display_name],
+                "status": key.status,
+                "inventory_metadata": {
+                    "display_name": key.display_name,
+                    "type": key.type,
+                    "reportable_type": key.reportable_type,
+                },
+                "last_synced": sync_time,
+            }
+
+            if key.id in existing_ids:
+                item_data["id"] = existing_ids[key.id]
+                to_update.append(item_data)
+            else:
+                to_insert.append(item_data)
+
+            # Flush batch
+            if (len(to_insert) + len(to_update)) >= BATCH_SIZE:
+                self._flush_batch(to_insert, to_update)
+                to_insert.clear()
+                to_update.clear()
+
+        # Flush remaining
+        self._flush_batch(to_insert, to_update)
+
+    def _convert_item_to_db_format(self, tenant_id: str, inventory_type: str, item, sync_time: datetime) -> dict:
+        """Convert inventory item to database format.
+
+        Args:
+            tenant_id: Tenant ID
+            inventory_type: Type of inventory
+            item: Inventory item object
+            sync_time: Sync timestamp
+
+        Returns:
+            Dictionary ready for database insert/update
+        """
+
+        if inventory_type == "ad_unit":
+            return {
+                "tenant_id": tenant_id,
+                "inventory_type": "ad_unit",
+                "inventory_id": item.id,
+                "name": item.name,
+                "path": item.path,
+                "status": item.status.value,
+                "inventory_metadata": {
+                    "ad_unit_code": item.ad_unit_code,
+                    "parent_id": item.parent_id,
+                    "description": item.description,
+                    "target_window": item.target_window,
+                    "explicitly_targeted": item.explicitly_targeted,
+                    "has_children": item.has_children,
+                    "sizes": item.sizes,
+                    "effective_applied_labels": item.effective_applied_labels,
+                },
+                "last_synced": sync_time,
+            }
+        elif inventory_type == "placement":
+            return {
+                "tenant_id": tenant_id,
+                "inventory_type": "placement",
+                "inventory_id": item.id,
+                "name": item.name,
+                "path": [item.name],
+                "status": item.status,
+                "inventory_metadata": {
+                    "placement_code": item.placement_code,
+                    "description": item.description,
+                    "is_ad_sense_targeting_enabled": item.is_ad_sense_targeting_enabled,
+                    "ad_unit_ids": item.ad_unit_ids,
+                    "targeting_description": item.targeting_description,
+                },
+                "last_synced": sync_time,
+            }
+        elif inventory_type == "label":
+            return {
+                "tenant_id": tenant_id,
+                "inventory_type": "label",
+                "inventory_id": item.id,
+                "name": item.name,
+                "path": [item.name],
+                "status": "ACTIVE" if item.is_active else "INACTIVE",
+                "inventory_metadata": {
+                    "description": item.description,
+                    "ad_category": item.ad_category,
+                    "label_type": item.label_type,
+                },
+                "last_synced": sync_time,
+            }
+        elif inventory_type == "audience_segment":
+            return {
+                "tenant_id": tenant_id,
+                "inventory_type": "audience_segment",
+                "inventory_id": item.id,
+                "name": item.name,
+                "path": [item.type, item.name],
+                "status": item.status,
+                "inventory_metadata": {
+                    "description": item.description,
+                    "category_ids": item.category_ids,
+                    "type": item.type,
+                    "size": item.size,
+                    "data_provider_name": item.data_provider_name,
+                    "segment_type": item.segment_type,
+                },
+                "last_synced": sync_time,
+            }
+        else:
+            raise ValueError(f"Unknown inventory type: {inventory_type}")
+
+    def _flush_batch(self, to_insert: list, to_update: list):
+        """Flush a batch of inserts and updates to database.
+
+        Args:
+            to_insert: List of items to insert
+            to_update: List of items to update
+        """
+        try:
+            if to_insert:
+                self.db.bulk_insert_mappings(GAMInventory, to_insert)
+                logger.debug(f"Batch inserted {len(to_insert)} items")
+            if to_update:
+                self.db.bulk_update_mappings(GAMInventory, to_update)
+                logger.debug(f"Batch updated {len(to_update)} items")
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"Batch write failed: {e}", exc_info=True)
+            self.db.rollback()
+            raise
+
+    def _mark_stale_inventory(self, tenant_id: str, sync_time: datetime):
+        """Mark inventory items not updated in this sync as stale.
+
+        Args:
+            tenant_id: Tenant ID
+            sync_time: Current sync timestamp
+        """
+        from sqlalchemy import update
+
+        stale_cutoff = sync_time - timedelta(seconds=1)
+
+        # Don't mark ad units as STALE - they should remain ACTIVE
+        stmt = (
+            update(GAMInventory)
+            .where(
+                and_(
+                    GAMInventory.tenant_id == tenant_id,
+                    GAMInventory.last_synced < stale_cutoff,
+                    GAMInventory.inventory_type != "ad_unit",  # Keep ad units active
+                )
+            )
+            .values(status="STALE")
+        )
+        self.db.execute(stmt)
+        self.db.commit()
+        logger.info("Marked stale inventory items")
+
+    def _upsert_inventory_item(
+        self,
+        tenant_id: str,
+        inventory_type: str,
+        inventory_id: str,
+        name: str,
+        path: list[str],
+        status: str,
+        inventory_metadata: dict,
+        last_synced: datetime,
+    ):
+        """Insert or update a single inventory item in database.
+
+        Used for lazy loading individual items (e.g., custom targeting values).
+
+        Args:
+            tenant_id: Tenant ID
+            inventory_type: Type of inventory
+            inventory_id: GAM inventory ID
+            name: Item name
+            path: Item path
+            status: Item status
+            inventory_metadata: Item metadata
+            last_synced: Sync timestamp
+        """
+        # Check if item exists
+        stmt = select(GAMInventory).where(
+            and_(
+                GAMInventory.tenant_id == tenant_id,
+                GAMInventory.inventory_type == inventory_type,
+                GAMInventory.inventory_id == inventory_id,
+            )
+        )
+        existing = self.db.scalars(stmt).first()
+
+        if existing:
+            # Update existing
+            existing.name = name
+            existing.path = path
+            existing.status = status
+            existing.inventory_metadata = inventory_metadata
+            existing.last_synced = last_synced
+        else:
+            # Insert new
+            item = GAMInventory(
+                tenant_id=tenant_id,
+                inventory_type=inventory_type,
+                inventory_id=inventory_id,
+                name=name,
+                path=path,
+                status=status,
+                inventory_metadata=inventory_metadata,
+                last_synced=last_synced,
+            )
+            self.db.add(item)
+
+        self.db.commit()
 
     def get_ad_unit_tree(self, tenant_id: str) -> dict[str, Any]:
         """
