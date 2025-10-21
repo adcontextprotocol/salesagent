@@ -890,6 +890,57 @@ def get_latest_sync_status(tenant_id):
         return jsonify({"error": str(e)}), 500
 
 
+@gam_bp.route("/reset-stuck-sync", methods=["POST"])
+@log_admin_action("reset_stuck_gam_sync")
+@require_tenant_access()
+def reset_stuck_sync(tenant_id):
+    """Reset a stuck inventory sync job.
+
+    Marks any running inventory sync as failed and allows a new sync to start.
+    Use this when a sync appears to be hanging or frozen.
+    """
+    if session.get("role") == "viewer":
+        return jsonify({"success": False, "error": "Access denied"}), 403
+
+    try:
+        with get_db_session() as db_session:
+            from src.core.database.models import SyncJob
+
+            # Find running inventory sync
+            running_sync = db_session.scalars(
+                select(SyncJob).where(
+                    SyncJob.tenant_id == tenant_id, SyncJob.status == "running", SyncJob.sync_type == "inventory"
+                )
+            ).first()
+
+            if not running_sync:
+                return jsonify({"success": False, "message": "No running sync found to reset"}), 404
+
+            # Mark as failed
+            running_sync.status = "failed"
+            running_sync.completed_at = datetime.now(UTC)
+            running_sync.error_message = "Manually reset by admin (sync appeared to be stuck)"
+
+            db_session.commit()
+
+            logger.info(
+                f"Admin reset stuck sync {running_sync.sync_id} for tenant {tenant_id} "
+                f"(started at {running_sync.started_at})"
+            )
+
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "Stuck sync has been reset. You can now start a new sync.",
+                    "reset_sync_id": running_sync.sync_id,
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error resetting stuck sync: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @gam_bp.route("/create-service-account", methods=["POST"])
 @log_admin_action("create_gam_service_account")
 @require_tenant_access()
