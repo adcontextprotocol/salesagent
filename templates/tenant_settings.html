@@ -815,11 +815,46 @@
                                     <li>Add the service account email above</li>
                                     <li>Assign the <strong>Trafficker</strong> role</li>
                                     <li>Click <strong>Save</strong></li>
-                                    <li>Come back and click "Test Connection" below</li>
+                                    <li>Enter your GAM Network Code below</li>
+                                    <li>Click "Save Network Code"</li>
+                                    <li>Click "Test Connection" to verify</li>
                                 </ol>
                             </div>
+
+                            <!-- Network Code Configuration -->
+                            <div style="margin-top: 1.5rem;">
+                                <label style="font-weight: 600; font-size: 0.875rem; display: block; margin-bottom: 0.5rem;">
+                                    GAM Network Code <span style="color: #dc2626;">*</span>
+                                </label>
+                                {% if adapter_config.get('network_code') %}
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="text" id="service_account_network_code"
+                                           value="{{ adapter_config.get('network_code') }}"
+                                           style="flex: 1; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace;"
+                                           placeholder="e.g., 12345678">
+                                    <button onclick="saveServiceAccountNetworkCode()" class="btn btn-primary btn-sm">
+                                        Save Network Code
+                                    </button>
+                                </div>
+                                <small style="color: #10b981; display: block; margin-top: 0.25rem;">✅ Network code configured</small>
+                                {% else %}
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="text" id="service_account_network_code"
+                                           style="flex: 1; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace;"
+                                           placeholder="e.g., 12345678">
+                                    <button onclick="saveServiceAccountNetworkCode()" class="btn btn-primary btn-sm">
+                                        Save Network Code
+                                    </button>
+                                </div>
+                                <small style="color: #6b7280; display: block; margin-top: 0.25rem;">
+                                    Find this in GAM under Admin → Global Settings → Network Code
+                                </small>
+                                {% endif %}
+                            </div>
+
                             <div style="margin-top: 1rem;">
-                                <button onclick="testGAMServiceAccountConnection()" class="btn btn-primary btn-sm">
+                                <button onclick="testGAMServiceAccountConnection()" class="btn btn-primary btn-sm"
+                                        {% if not adapter_config.get('network_code') %}disabled title="Save network code first"{% endif %}>
                                     Test Connection
                                 </button>
                                 <button onclick="copyServiceAccountEmail()" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem;">
