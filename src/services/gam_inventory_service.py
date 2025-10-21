@@ -70,8 +70,13 @@ class GAMInventoryService:
         return sync_summary
 
     def _save_inventory_to_db(self, tenant_id: str, discovery: GAMInventoryDiscovery):
-        """Save discovered inventory to database using bulk operations (no N+1 queries)."""
+        """Save discovered inventory to database using batched operations to prevent memory issues.
+
+        Writes to database incrementally in batches rather than loading everything into memory.
+        This prevents OOM errors with large inventories (10k+ items).
+        """
         sync_time = datetime.now()
+        BATCH_SIZE = 500  # Write every 500 items to keep memory usage low
 
         # Load ALL existing inventory IDs once (1 query instead of N)
         stmt = select(GAMInventory.inventory_type, GAMInventory.inventory_id, GAMInventory.id).where(
@@ -80,9 +85,38 @@ class GAMInventoryService:
         existing_inventory = self.db.execute(stmt).all()
         existing_ids = {(row.inventory_type, row.inventory_id): row.id for row in existing_inventory}
 
-        # Prepare bulk insert and update lists
+        # Track totals for logging
+        total_inserted = 0
+        total_updated = 0
+
+        # Prepare batch insert and update lists
         to_insert = []
         to_update = []
+
+        def flush_batch():
+            """Flush current batch to database with error handling."""
+            nonlocal total_inserted, total_updated
+            try:
+                if to_insert:
+                    self.db.bulk_insert_mappings(GAMInventory, to_insert)
+                    batch_inserted = len(to_insert)
+                    total_inserted += batch_inserted
+                    logger.info(f"Batch inserted {batch_inserted} inventory items")
+                    to_insert.clear()
+                if to_update:
+                    self.db.bulk_update_mappings(GAMInventory, to_update)
+                    batch_updated = len(to_update)
+                    total_updated += batch_updated
+                    logger.info(f"Batch updated {batch_updated} inventory items")
+                    to_update.clear()
+                self.db.commit()  # Commit each batch
+            except Exception as e:
+                logger.error(
+                    f"Batch write failed at {total_inserted + total_updated} items: {e}",
+                    exc_info=True,
+                )
+                self.db.rollback()
+                raise  # Re-raise to fail the sync properly
 
         # Process ad units
         for ad_unit in discovery.ad_units.values():
@@ -114,6 +148,14 @@ class GAMInventoryService:
             else:
                 to_insert.append(item_data)
 
+            # Flush batch every BATCH_SIZE items
+            if (len(to_insert) + len(to_update)) >= BATCH_SIZE:
+                flush_batch()
+
+        # Flush remaining ad units
+        flush_batch()
+        logger.info("Completed saving ad units")
+
         # Process placements
         for placement in discovery.placements.values():
             item_data = {
@@ -140,6 +182,14 @@ class GAMInventoryService:
             else:
                 to_insert.append(item_data)
 
+            # Flush batch every BATCH_SIZE items
+            if (len(to_insert) + len(to_update)) >= BATCH_SIZE:
+                flush_batch()
+
+        # Flush remaining placements
+        flush_batch()
+        logger.info("Completed saving placements")
+
         # Process labels
         for label in discovery.labels.values():
             item_data = {
@@ -163,6 +213,14 @@ class GAMInventoryService:
                 to_update.append(item_data)
             else:
                 to_insert.append(item_data)
+
+            # Flush batch every BATCH_SIZE items
+            if (len(to_insert) + len(to_update)) >= BATCH_SIZE:
+                flush_batch()
+
+        # Flush remaining labels
+        flush_batch()
+        logger.info("Completed saving labels")
 
         # Process custom targeting keys
         for key in discovery.custom_targeting_keys.values():
@@ -215,6 +273,14 @@ class GAMInventoryService:
                 else:
                     to_insert.append(value_data)
 
+                # Flush batch every BATCH_SIZE items (values can be huge)
+                if (len(to_insert) + len(to_update)) >= BATCH_SIZE:
+                    flush_batch()
+
+        # Flush remaining targeting keys/values
+        flush_batch()
+        logger.info("Completed saving targeting keys and values")
+
         # Process audience segments
         for segment in discovery.audience_segments.values():
             item_data = {
@@ -242,14 +308,13 @@ class GAMInventoryService:
             else:
                 to_insert.append(item_data)
 
-        # Perform bulk operations (2 queries instead of N)
-        if to_insert:
-            self.db.bulk_insert_mappings(GAMInventory, to_insert)
-            logger.info(f"Bulk inserted {len(to_insert)} inventory items")
+            # Flush batch every BATCH_SIZE items
+            if (len(to_insert) + len(to_update)) >= BATCH_SIZE:
+                flush_batch()
 
-        if to_update:
-            self.db.bulk_update_mappings(GAMInventory, to_update)
-            logger.info(f"Bulk updated {len(to_update)} inventory items")
+        # Flush remaining audience segments
+        flush_batch()
+        logger.info("Completed saving audience segments")
 
         # Mark old items as potentially stale (but keep ad units active)
         stale_cutoff = sync_time - timedelta(seconds=1)
@@ -269,10 +334,10 @@ class GAMInventoryService:
             .values(status="STALE")
         )
         self.db.execute(stmt)
-
         self.db.commit()
+
         logger.info(
-            f"Saved inventory to database: {len(to_insert)} new, {len(to_update)} updated (bulk operations - no N+1 queries)"
+            f"Saved inventory to database: {total_inserted} new, {total_updated} updated (batched operations - prevents OOM)"
         )
 
     def get_ad_unit_tree(self, tenant_id: str) -> dict[str, Any]:
