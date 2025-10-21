@@ -199,6 +199,18 @@ def tenant_settings(tenant_id, section=None):
             advertiser_count = len(principals)
             active_advertisers = len(principals)  # For now, assume all are active
 
+            # Check for running sync jobs
+            from src.core.database.models import SyncJob
+
+            running_sync = None
+            if active_adapter == "google_ad_manager":
+                stmt = (
+                    select(SyncJob)
+                    .filter_by(tenant_id=tenant_id, status="running", sync_type="inventory")
+                    .order_by(SyncJob.started_at.desc())
+                )
+                running_sync = db_session.scalars(stmt).first()
+
             # Get last sync time from most recently updated inventory item
             last_sync_time = None
             print(f"DEBUG: Checking last sync time - active_adapter: {active_adapter}")
@@ -341,6 +353,7 @@ def tenant_settings(tenant_id, section=None):
                 adapter_config=adapter_config_dict,  # Use dict format
                 oauth_configured=oauth_configured,
                 last_sync_time=last_sync_time,
+                running_sync=running_sync,  # Pass running sync info
                 principals=principals,
                 advertiser_count=advertiser_count,
                 active_advertisers=active_advertisers,
