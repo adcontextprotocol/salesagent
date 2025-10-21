@@ -720,45 +720,72 @@ def sync_gam_inventory(tenant_id):
                         # Adjust phase numbers if we did full reset
                         phase_offset = 1 if sync_mode == "full" else 0
 
-                        # Phase 1: Ad Units
+                        # Initialize inventory service for streaming writes
+                        from src.services.gam_inventory_service import GAMInventoryService
+
+                        inventory_service = GAMInventoryService(bg_session)
+                        sync_time = dt.now()
+
+                        # Phase 1: Ad Units (fetch → write → clear memory)
                         update_progress("Discovering Ad Units", 1 + phase_offset, total_phases)
                         ad_units = discovery.discover_ad_units(since=last_sync_time)
-                        update_progress("Discovering Ad Units", 1 + phase_offset, total_phases, len(ad_units))
+                        update_progress("Writing Ad Units to DB", 1 + phase_offset, total_phases, len(ad_units))
+                        inventory_service._write_inventory_batch(tenant_id, "ad_unit", ad_units, sync_time)
+                        ad_units_count = len(ad_units)
+                        discovery.ad_units.clear()  # Clear from memory
+                        logger.info(f"Wrote {ad_units_count} ad units to database")
 
-                        # Phase 2: Placements
+                        # Phase 2: Placements (fetch → write → clear memory)
                         update_progress("Discovering Placements", 2 + phase_offset, total_phases)
                         placements = discovery.discover_placements(since=last_sync_time)
-                        update_progress("Discovering Placements", 2 + phase_offset, total_phases, len(placements))
+                        update_progress("Writing Placements to DB", 2 + phase_offset, total_phases, len(placements))
+                        inventory_service._write_inventory_batch(tenant_id, "placement", placements, sync_time)
+                        placements_count = len(placements)
+                        discovery.placements.clear()  # Clear from memory
+                        logger.info(f"Wrote {placements_count} placements to database")
 
-                        # Phase 3: Labels
+                        # Phase 3: Labels (fetch → write → clear memory)
                         update_progress("Discovering Labels", 3 + phase_offset, total_phases)
                         labels = discovery.discover_labels(since=last_sync_time)
-                        update_progress("Discovering Labels", 3 + phase_offset, total_phases, len(labels))
+                        update_progress("Writing Labels to DB", 3 + phase_offset, total_phases, len(labels))
+                        inventory_service._write_inventory_batch(tenant_id, "label", labels, sync_time)
+                        labels_count = len(labels)
+                        discovery.labels.clear()  # Clear from memory
+                        logger.info(f"Wrote {labels_count} labels to database")
 
-                        # Phase 4: Custom Targeting Keys
+                        # Phase 4: Custom Targeting Keys (fetch → write → clear memory)
                         update_progress("Discovering Targeting Keys", 4 + phase_offset, total_phases)
                         custom_targeting = discovery.discover_custom_targeting(fetch_values=False, since=last_sync_time)
                         update_progress(
-                            "Discovering Targeting Keys",
+                            "Writing Targeting Keys to DB",
                             4 + phase_offset,
                             total_phases,
                             custom_targeting.get("total_keys", 0),
                         )
+                        inventory_service._write_custom_targeting_keys(
+                            tenant_id, list(discovery.custom_targeting_keys.values()), sync_time
+                        )
+                        targeting_count = len(discovery.custom_targeting_keys)
+                        discovery.custom_targeting_keys.clear()  # Clear from memory
+                        discovery.custom_targeting_values.clear()  # Clear from memory
+                        logger.info(f"Wrote {targeting_count} targeting keys to database")
 
-                        # Phase 5: Audience Segments
+                        # Phase 5: Audience Segments (fetch → write → clear memory)
                         update_progress("Discovering Audience Segments", 5 + phase_offset, total_phases)
                         audience_segments = discovery.discover_audience_segments(since=last_sync_time)
                         update_progress(
-                            "Discovering Audience Segments", 5 + phase_offset, total_phases, len(audience_segments)
+                            "Writing Audience Segments to DB", 5 + phase_offset, total_phases, len(audience_segments)
                         )
+                        inventory_service._write_inventory_batch(
+                            tenant_id, "audience_segment", audience_segments, sync_time
+                        )
+                        segments_count = len(audience_segments)
+                        discovery.audience_segments.clear()  # Clear from memory
+                        logger.info(f"Wrote {segments_count} audience segments to database")
 
-                        # Phase 6: Saving to database
-                        update_progress("Saving to Database", 6 + phase_offset, total_phases)
-                        from src.services.gam_inventory_service import GAMInventoryService
-
-                        inventory_service = GAMInventoryService(bg_session)
-                        inventory_service._save_inventory_to_db(tenant_id, discovery)
-                        update_progress("Saving to Database", 6 + phase_offset, total_phases, len(ad_units))
+                        # Phase 6: Mark stale inventory
+                        update_progress("Marking Stale Inventory", 6 + phase_offset, total_phases)
+                        inventory_service._mark_stale_inventory(tenant_id, sync_time)
 
                         # Build result summary
                         end_time = dt.now()
@@ -766,14 +793,16 @@ def sync_gam_inventory(tenant_id):
                             "tenant_id": tenant_id,
                             "sync_time": end_time.isoformat(),
                             "duration_seconds": (end_time - start_time).total_seconds(),
-                            "ad_units": {"total": len(ad_units)},
-                            "placements": {"total": len(placements)},
-                            "labels": {"total": len(labels)},
+                            "ad_units": {"total": ad_units_count},
+                            "placements": {"total": placements_count},
+                            "labels": {"total": labels_count},
                             "custom_targeting": {
-                                "total_keys": custom_targeting.get("total_keys", 0),
+                                "total_keys": targeting_count,
                                 "note": "Values lazy loaded on demand",
                             },
-                            "audience_segments": {"total": len(audience_segments)},
+                            "audience_segments": {"total": segments_count},
+                            "streaming": True,
+                            "memory_optimized": True,
                         }
 
                         # Update sync job with success
