@@ -1272,10 +1272,10 @@ class AdCPRequestHandler(RequestHandler):
                 message = response.get("message", "Creatives retrieved successfully")
             else:
                 creatives_list = [creative.model_dump() for creative in response.creatives]
-                total_count = response.total_count
-                page = response.page
-                limit = response.limit
-                has_more = response.has_more
+                total_count = response.query_summary.total_matching
+                page = response.pagination.current_page
+                limit = response.pagination.limit
+                has_more = response.pagination.has_more
                 message = str(response)  # Use __str__ method for human-readable message
 
             # Convert response to A2A format
