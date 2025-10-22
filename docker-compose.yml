@@ -17,8 +17,6 @@ services:
 
   adcp-server:
     build: .
-    env_file:
-      - .env.secrets
     environment:
       # Database configuration
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
@@ -31,6 +29,7 @@ services:
       GAM_OAUTH_CLIENT_SECRET: ${GAM_OAUTH_CLIENT_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      APPROXIMATED_API_KEY: ${APPROXIMATED_API_KEY:-}
 
       # Skip nginx for standalone service
       SKIP_NGINX: "true"
@@ -68,8 +67,6 @@ services:
   admin-ui:
     build: .
     command: python -m src.admin.server
-    env_file:
-      - .env.secrets
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8001}
@@ -87,6 +84,7 @@ services:
       GAM_OAUTH_CLIENT_SECRET: ${GAM_OAUTH_CLIENT_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      APPROXIMATED_API_KEY: ${APPROXIMATED_API_KEY:-}
 
       # Server ports - external ports for agent cards
       ADCP_SALES_PORT: ${ADCP_SALES_PORT:-8080}
