@@ -1380,6 +1380,9 @@ REJECT - Creative cannot be approved:
                                 <p style="margin: 0.5rem 0 0 0; font-size: 0.75rem; color: #666;">
                                     <em>The sync will continue even if you navigate away from this page.</em>
                                 </p>
+                                <button onclick="resetStuckSync()" class="btn" style="margin-top: 0.5rem; background: #dc2626; color: white; font-size: 0.875rem; padding: 0.375rem 0.75rem;">
+                                    🛑 Reset Stuck Sync
+                                </button>
                             {% elif last_sync_time %}
                                 <strong>Last synced: {{ last_sync_time }}</strong>
                                 <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
