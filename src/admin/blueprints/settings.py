@@ -1063,9 +1063,9 @@ def get_approximated_token(tenant_id):
                 return jsonify({"success": False, "error": "Tenant not found"}), 404
 
             # Request token from Approximated API
-            response = requests.post(
+            response = requests.get(
                 "https://cloud.approximated.app/api/dns/token",
-                headers={"Authorization": f"Bearer {approximated_api_key}", "Content-Type": "application/json"},
+                headers={"api-key": approximated_api_key},
                 timeout=10,
             )
 
