@@ -1191,14 +1191,14 @@ REJECT - Creative cannot be approved:
                                 <div class="form-group" style="margin-top: 1rem;">
                                     <label for="auto_reject_threshold">
                                         Auto-Reject Threshold
-                                        <span style="color: #ef4444; font-weight: 600; margin-left: 0.5rem;" id="reject_threshold_value">10%</span>
+                                        <span style="color: #ef4444; font-weight: 600; margin-left: 0.5rem;" id="reject_threshold_value">90%</span>
                                     </label>
                                     <input type="range" id="auto_reject_threshold" name="auto_reject_threshold"
-                                           min="0.0" max="0.5" step="0.05"
-                                           value="{{ (tenant.ai_policy.auto_reject_threshold if tenant.ai_policy else 0.10) }}"
+                                           min="0.5" max="1.0" step="0.05"
+                                           value="{{ (tenant.ai_policy.auto_reject_threshold if tenant.ai_policy else 0.90) }}"
                                            class="form-control" style="margin-bottom: 0.5rem;"
                                            oninput="document.getElementById('reject_threshold_value').textContent = Math.round(this.value * 100) + '%'">
-                                    <small>AI must be this certain or less to auto-reject (default: 10%)</small>
+                                    <small>AI must be at least this confident to auto-reject (default: 90%)</small>
                                 </div>
                             </div>
 
