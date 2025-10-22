@@ -74,11 +74,11 @@ def validate_gam_config(data: dict) -> list | None:
             errors.append("Refresh token is too long")
     elif auth_method == "service_account":
         # Service account JSON validation
+        # Note: service_account_json is only required on initial setup
+        # For network code updates, it's optional (already stored in DB)
         service_account_json = data.get("service_account_json", "").strip()
-        if not service_account_json:
-            errors.append("Service account JSON is required for service account authentication")
-        else:
-            # Validate JSON structure
+        if service_account_json:
+            # Validate JSON structure only if provided
             try:
                 import json
 
@@ -350,7 +350,9 @@ def configure_gam(tenant_id):
                 adapter_config.gam_refresh_token = refresh_token
                 adapter_config.gam_service_account_json = None
             elif auth_method == "service_account":
-                adapter_config.gam_service_account_json = service_account_json
+                # Only update service_account_json if provided (to allow network code updates without resending JSON)
+                if service_account_json:
+                    adapter_config.gam_service_account_json = service_account_json
                 adapter_config.gam_refresh_token = None
 
             # Also update tenant's ad_server field
