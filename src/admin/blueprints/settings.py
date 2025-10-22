@@ -1071,6 +1071,7 @@ def get_approximated_token(tenant_id):
 
             if response.status_code == 200:
                 token_data = response.json()
+                logger.info(f"Approximated API response: {token_data}")
                 return jsonify({"success": True, "token": token_data.get("token")})
             else:
                 logger.error(f"Approximated API error: {response.status_code} - {response.text}")
