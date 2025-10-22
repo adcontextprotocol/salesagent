@@ -2103,8 +2103,11 @@ document.addEventListener("DOMContentLoaded", function() {
             // Only initialize once
             if (!widgetInitialized) {
                 try {
+                    // Get script name for proper URL routing
+                    const scriptName = document.getElementById('settings-config').dataset.scriptName || '';
+
                     // Get token from our backend
-                    const response = await fetch(`/tenant/${tenantId}/settings/approximated-token`, {
+                    const response = await fetch(`${scriptName}/tenant/${tenantId}/settings/approximated-token`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
