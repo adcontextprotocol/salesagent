@@ -30,13 +30,16 @@ async def test_schema_validator_initialization():
 async def test_valid_get_products_response():
     """Test validation of a valid get-products response."""
     async with AdCPSchemaValidator() as validator:
-        # Create a valid response according to the AdCP spec
+        # Create a valid response according to the AdCP v2.0+ spec
         valid_response = {
             "products": [
                 {
                     "product_id": "test-product-1",
                     "name": "Test Display Product",
                     "description": "Test description",
+                    "publisher_properties": [
+                        {"publisher_domain": "example.com", "property_tags": ["premium_content"]}
+                    ],  # Required: publisher properties covered by this product
                     "format_ids": [
                         {
                             "agent_url": "https://creatives.adcontextprotocol.org",
@@ -57,9 +60,6 @@ async def test_valid_get_products_response():
                             "min_spend_per_package": 1000.0,
                         }
                     ],
-                    "property_tags": [
-                        "premium_content"
-                    ],  # Required by AdCP - must have either properties or property_tags
                 }
             ],
         }

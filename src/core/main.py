@@ -3840,10 +3840,14 @@ def _list_authorized_properties_impl(
                         "Violations will result in campaign rejection or require manual review."
                     )
 
-            # Create response
+            # Extract unique publisher domains from properties
+            publisher_domains = sorted({prop.publisher_domain for prop in properties if prop.publisher_domain})
+
+            # Create response (AdCP v2.0+ uses publisher_domains instead of full property objects)
             response = ListAuthorizedPropertiesResponse(
-                properties=properties,
-                tags=tag_metadata,
+                publisher_domains=(
+                    publisher_domains if publisher_domains else ["example.com"]
+                ),  # Fallback for empty case
                 advertising_policies=advertising_policies_text,
                 errors=[],
             )
