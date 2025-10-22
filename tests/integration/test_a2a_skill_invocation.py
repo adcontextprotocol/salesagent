@@ -38,6 +38,8 @@ class A2AAdCPValidator:
     SKILL_TO_SCHEMA_MAP = {
         "get_products": "get-products",
         "create_media_buy": "create-media-buy",
+        "update_media_buy": "update-media-buy",  # AdCP v2.0+ endpoint
+        "get_media_buy_delivery": "get-media-buy-delivery",  # AdCP delivery metrics
         "sync_creatives": "sync-creatives",  # New AdCP spec endpoint
         "list_creatives": "list-creatives",  # New AdCP spec endpoint
         "approve_creative": "approve-creative",  # When schema becomes available
