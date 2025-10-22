@@ -503,7 +503,7 @@
                 <p>Organization identity, virtual host configuration, and access control</p>
             </div>
 
-            <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/general">
+            <form id="account-settings-form" method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/general">
                 <div class="form-section">
                     <h3>Organization Information</h3>
                     <div class="form-grid">
@@ -522,17 +522,31 @@
                             <label for="virtual_host">Virtual Host (Optional)</label>
                             <input type="text" id="virtual_host" name="virtual_host" value="{{ tenant.virtual_host or '' }}" placeholder="e.g. ad-sales.yourcompany.com">
                             <small>
-                                <p><strong>To use a custom domain:</strong></p>
-                                <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9em;">
-                                    <li>Enter your custom domain above (e.g., ad-sales.yourcompany.com)</li>
-                                    <li>Create a CNAME record pointing your domain to: <code>sales-agent.scope3.com</code></li>
-                                    <li>Save your settings below</li>
-                                    <li>Wait for DNS propagation (5-30 minutes)</li>
-                                </ol>
                                 <p style="margin-top: 0.5rem; color: #666; font-size: 0.85em;">
-                                    💡 Your custom domain will route to this tenant's MCP server and admin interface.
+                                    💡 Your custom domain will route to this tenant's MCP server and admin interface. Enter a domain above to see DNS setup instructions.
                                 </p>
                             </small>
+                        </div>
+
+                        <!-- DNS Configuration Widget -->
+                        <div id="dns-widget-container" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                            <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">📝 Configure DNS Records</h4>
+                            <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                                Follow the steps below to configure your DNS records. The widget will automatically detect your DNS provider and verify your configuration.
+                            </p>
+
+                            <!-- Success message (hidden by default) -->
+                            <div id="dns-success-message" style="display: none; padding: 1rem; background: #d1fae5; border: 2px solid #10b981; border-radius: 8px; margin-bottom: 1rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span style="font-size: 1.5rem;">✅</span>
+                                    <div>
+                                        <div style="font-weight: 600; color: #065f46; font-size: 1rem;">DNS Records Verified!</div>
+                                        <div style="color: #047857; font-size: 0.875rem;">Your custom domain is properly configured and pointing to sales-agent.scope3.com</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="apxdnswidget"></div>
                         </div>
 
                     </div>
@@ -540,6 +554,17 @@
 
                 <!-- Budget & Limits moved to Business Rules section -->
                 <!-- Features moved to Business Rules section -->
+
+                <!-- DNS Verification Warning -->
+                <div id="dns-warning-banner" style="display: none; margin-bottom: 1rem; padding: 1rem; background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 1.5rem;">⚠️</span>
+                        <div>
+                            <div style="font-weight: 600; color: #92400e; font-size: 1rem;">DNS Records Not Verified</div>
+                            <div style="color: #78350f; font-size: 0.875rem;">Your custom domain DNS records have not been verified yet. The domain may not work until DNS is properly configured.</div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="button-group">
                     <button type="submit" class="btn btn-primary">Save Account Settings</button>
@@ -2052,6 +2077,184 @@ result = await client.tools.get_products(brief="video ads")</pre>
 </div>
 
 <script src="{{ url_for('static', filename='js/tenant_settings.js') }}"></script>
+
+<!-- Approximated DNS Widget -->
+<link rel="stylesheet" href="https://cloud.approximated.app/dnswidget/dnswidget.v1.css">
+<script src="https://cloud.approximated.app/dnswidget/dnswidget.v1.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const virtualHostInput = document.getElementById('virtual_host');
+    const dnsWidgetContainer = document.getElementById('dns-widget-container');
+    const tenantId = '{{ tenant.tenant_id }}';
+
+    let widgetInitialized = false;
+    let debounceTimer = null;
+    let dnsVerified = false;
+
+    // Function to initialize the DNS widget
+    async function initializeDNSWidget() {
+        const virtualHost = virtualHostInput.value.trim();
+        console.log('initializeDNSWidget called with domain:', virtualHost);
+
+        // Show/hide widget based on virtual host input
+        if (virtualHost) {
+            dnsWidgetContainer.style.display = 'block';
+
+            // Only initialize once
+            if (!widgetInitialized) {
+                try {
+                    // Get token from our backend
+                    const response = await fetch(`/tenant/${tenantId}/settings/approximated-token`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        console.error('Failed to get Approximated token:', await response.text());
+                        dnsWidgetContainer.innerHTML = '<p style="color: #dc2626; font-size: 0.875rem;">❌ DNS widget unavailable. Please contact support.</p>';
+                        return;
+                    }
+
+                    const data = await response.json();
+                    console.log('Approximated token API response:', data);
+
+                    if (data.success && data.token) {
+                        console.log('Initializing DNS widget with token:', data.token.substring(0, 20) + '...');
+
+                        // Wait for widget library to be ready
+                        if (!window.apxDns) {
+                            console.error('Approximated DNS widget library not loaded');
+                            dnsWidgetContainer.innerHTML = '<p style="color: #dc2626; font-size: 0.875rem;">❌ DNS widget library not loaded.</p>';
+                            return;
+                        }
+
+                        // Initialize Approximated widget
+                        const config = {
+                            token: data.token,
+                            api_url: "https://cloud.approximated.app/api/dns",
+                            dnsRecords: [
+                                {
+                                    type: "CNAME",
+                                    host: "@",
+                                    value: "sales-agent.scope3.com",
+                                    ttl: 3600
+                                }
+                            ],
+                            domain: virtualHost,
+                            prefillDomain: virtualHost,
+                            verifyAutoScroll: true
+                        };
+
+                        window.apxDns.init(config);
+                        widgetInitialized = true;
+
+                        // Listen for widget events
+                        document.addEventListener('apx-dnswidget-records-completely-verified', function(e) {
+                            console.log('DNS records verified successfully!', e.detail);
+                            dnsVerified = true;
+
+                            // Show success message
+                            const successMessage = document.getElementById('dns-success-message');
+                            if (successMessage) {
+                                successMessage.style.display = 'block';
+                            }
+
+                            // Optionally hide the widget details to show clean success state
+                            const widgetDiv = document.getElementById('apxdnswidget');
+                            if (widgetDiv) {
+                                widgetDiv.style.display = 'none';
+                            }
+                        });
+
+                        document.addEventListener('apx-dnswidget-records-failed-verification', function(e) {
+                            console.log('DNS verification failed:', e.detail);
+                            dnsVerified = false;
+
+                            // Hide success message if shown
+                            const successMessage = document.getElementById('dns-success-message');
+                            if (successMessage) {
+                                successMessage.style.display = 'none';
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error initializing DNS widget:', error);
+                    dnsWidgetContainer.innerHTML = '<p style="color: #dc2626; font-size: 0.875rem;">❌ Error initializing DNS widget. Check console for details.</p>';
+                }
+            }
+        } else {
+            dnsWidgetContainer.style.display = 'none';
+        }
+    }
+
+    // Watch for changes to virtual host (debounced)
+    virtualHostInput.addEventListener('input', function() {
+        // Clear existing timer
+        if (debounceTimer) {
+            clearTimeout(debounceTimer);
+        }
+
+        // Set new timer - wait 500ms after user stops typing
+        debounceTimer = setTimeout(function() {
+            // Reset widget on domain change - reinitialize with new domain
+            widgetInitialized = false;
+            dnsVerified = false;
+
+            // Hide success message
+            const successMessage = document.getElementById('dns-success-message');
+            if (successMessage) {
+                successMessage.style.display = 'none';
+            }
+
+            // Clear and show widget div
+            const widgetDiv = document.getElementById('apxdnswidget');
+            if (widgetDiv) {
+                widgetDiv.innerHTML = '';
+                widgetDiv.style.display = 'block';
+            }
+
+            initializeDNSWidget();
+        }, 500);
+    });
+
+    // Initialize on page load if virtual host has a value
+    initializeDNSWidget();
+
+    // Form submission handler - show warning if DNS not verified
+    const accountForm = document.getElementById('account-settings-form');
+    if (accountForm) {
+        accountForm.addEventListener('submit', function(e) {
+            const virtualHost = virtualHostInput.value.trim();
+            const warningBanner = document.getElementById('dns-warning-banner');
+
+            // If virtual host is set but DNS not verified, show warning
+            if (virtualHost && !dnsVerified) {
+                // Show warning banner
+                if (warningBanner) {
+                    warningBanner.style.display = 'block';
+                    // Scroll to warning
+                    warningBanner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+
+                // Prevent submission and ask for confirmation
+                e.preventDefault();
+
+                if (confirm('⚠️ DNS records have not been verified yet.\n\nYour custom domain may not work until DNS is properly configured.\n\nDo you want to save anyway?')) {
+                    // User confirmed, submit the form
+                    accountForm.submit();
+                }
+            } else {
+                // Hide warning banner if shown
+                if (warningBanner) {
+                    warningBanner.style.display = 'none';
+                }
+            }
+        });
+    }
+});
+</script>
 
 <!-- Edit Principal Mappings Modal -->
 <div class="modal fade" id="editPrincipalModal" tabindex="-1" aria-labelledby="editPrincipalModalLabel" aria-hidden="true">
