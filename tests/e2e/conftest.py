@@ -363,6 +363,7 @@ async def e2e_client(live_server, test_auth_token):
     test_session_id = str(uuid.uuid4())
     headers = {
         "x-adcp-auth": test_auth_token,
+        "host": "ci-test.sales-agent.scope3.com",  # Required for tenant detection
         "X-Test-Session-ID": test_session_id,
         "X-Dry-Run": "true",  # Always use dry-run for tests
     }

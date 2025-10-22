@@ -109,8 +109,11 @@ class TestAdCPReferenceImplementation:
         print("REFERENCE E2E TEST: Complete Campaign Lifecycle")
         print("=" * 80)
 
-        # Setup MCP client
-        headers = {"x-adcp-auth": test_auth_token}
+        # Setup MCP client with both auth and tenant detection headers
+        headers = {
+            "x-adcp-auth": test_auth_token,
+            "host": "ci-test.sales-agent.scope3.com",  # Required for tenant detection
+        }
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
 
         async with Client(transport=transport) as client:
