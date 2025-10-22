@@ -427,7 +427,10 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     # Fields from generated schema (flexible - accepts dicts or objects)
-    properties: list[Any] = Field(..., description="Array of authorized properties")
+    publisher_domains: list[str] = Field(
+        ..., description="Publisher domains this agent is authorized to represent", min_length=1
+    )
+    properties: list[Any] | None = Field(None, description="Array of authorized properties")
     tags: dict[str, Any] = Field(default_factory=dict, description="Metadata for tags")
     primary_channels: list[str] | None = Field(None, description="Primary advertising channels")
     primary_countries: list[str] | None = Field(None, description="Primary countries (ISO 3166-1 alpha-2)")
@@ -442,6 +445,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
         min_length=1,
         max_length=10000,
     )
+    last_updated: str | None = Field(None, description="ISO 8601 timestamp of when authorization list was last updated")
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
 
     def __str__(self) -> str:

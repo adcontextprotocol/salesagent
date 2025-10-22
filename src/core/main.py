@@ -3766,6 +3766,7 @@ def _list_authorized_properties_impl(
             # Convert database models to Pydantic models
             properties = []
             all_tags = set()
+            publisher_domains_set = set()
 
             for prop in authorized_properties:
                 # Extract identifiers from JSON
@@ -3776,6 +3777,10 @@ def _list_authorized_properties_impl(
                 # Extract tags
                 prop_tags = prop.tags or []
                 all_tags.update(prop_tags)
+
+                # Collect publisher domains
+                if prop.publisher_domain:
+                    publisher_domains_set.add(prop.publisher_domain)
 
                 property_obj = Property(
                     property_type=prop.property_type,
@@ -3841,7 +3846,11 @@ def _list_authorized_properties_impl(
                     )
 
             # Create response
+            # Per AdCP spec, publisher_domains is required (must have at least one)
+            publisher_domains = list(publisher_domains_set) if publisher_domains_set else ["example.com"]
+
             response = ListAuthorizedPropertiesResponse(
+                publisher_domains=publisher_domains,
                 properties=properties,
                 tags=tag_metadata,
                 advertising_policies=advertising_policies_text,
