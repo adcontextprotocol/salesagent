@@ -175,6 +175,11 @@ def update_general(tenant_id):
 
                 tenant.virtual_host = virtual_host or None
 
+            # Update approximated_api_key if provided
+            if "approximated_api_key" in request.form:
+                approximated_api_key = request.form.get("approximated_api_key", "").strip()
+                tenant.approximated_api_key = approximated_api_key or None
+
             # Update currency limits
             from decimal import Decimal, InvalidOperation
 
@@ -1042,3 +1047,37 @@ def update_business_rules(tenant_id):
 
         flash(f"Error updating business rules: {str(e)}", "error")
         return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
+
+
+@settings_bp.route("/approximated-token", methods=["POST"])
+@require_tenant_access()
+def get_approximated_token(tenant_id):
+    """Generate an Approximated DNS widget token."""
+    try:
+        import requests
+
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
+
+            if not tenant.approximated_api_key:
+                return jsonify({"success": False, "error": "Approximated API key not configured"}), 400
+
+            # Request token from Approximated API
+            response = requests.post(
+                "https://cloud.approximated.app/api/dns/token",
+                headers={"Authorization": f"Bearer {tenant.approximated_api_key}", "Content-Type": "application/json"},
+                timeout=10,
+            )
+
+            if response.status_code == 200:
+                token_data = response.json()
+                return jsonify({"success": True, "token": token_data.get("token")})
+            else:
+                logger.error(f"Approximated API error: {response.status_code} - {response.text}")
+                return jsonify({"success": False, "error": f"API error: {response.status_code}"}), response.status_code
+
+    except Exception as e:
+        logger.error(f"Error generating Approximated token: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500

@@ -519,20 +519,32 @@
                         </div>
 
                         <div class="form-group">
+                            <label for="approximated_api_key">Approximated API Key (Optional)</label>
+                            <input type="text" id="approximated_api_key" name="approximated_api_key" value="{{ tenant.approximated_api_key or '' }}" placeholder="Enter your Approximated API key">
+                            <small>
+                                <p style="margin-top: 0.5rem; color: #666; font-size: 0.85em;">
+                                    🔑 Required for automated DNS configuration widget. Get your API key from <a href="https://approximated.app" target="_blank" style="color: #2563eb;">Approximated</a>.
+                                </p>
+                            </small>
+                        </div>
+
+                        <div class="form-group">
                             <label for="virtual_host">Virtual Host (Optional)</label>
                             <input type="text" id="virtual_host" name="virtual_host" value="{{ tenant.virtual_host or '' }}" placeholder="e.g. ad-sales.yourcompany.com">
                             <small>
-                                <p><strong>To use a custom domain:</strong></p>
-                                <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9em;">
-                                    <li>Enter your custom domain above (e.g., ad-sales.yourcompany.com)</li>
-                                    <li>Create a CNAME record pointing your domain to: <code>sales-agent.scope3.com</code></li>
-                                    <li>Save your settings below</li>
-                                    <li>Wait for DNS propagation (5-30 minutes)</li>
-                                </ol>
                                 <p style="margin-top: 0.5rem; color: #666; font-size: 0.85em;">
                                     💡 Your custom domain will route to this tenant's MCP server and admin interface.
                                 </p>
                             </small>
+                        </div>
+
+                        <!-- DNS Configuration Widget -->
+                        <div id="dns-widget-container" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                            <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">📝 Configure DNS Records</h4>
+                            <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                                Use this widget to automatically configure your DNS records for the custom domain.
+                            </p>
+                            <div id="dns-widget"></div>
                         </div>
 
                     </div>
@@ -2052,6 +2064,106 @@ result = await client.tools.get_products(brief="video ads")</pre>
 </div>
 
 <script src="{{ url_for('static', filename='js/tenant_settings.js') }}"></script>
+
+<!-- Approximated DNS Widget -->
+<link rel="stylesheet" href="https://cloud.approximated.app/dnswidget/dnswidget.v1.css">
+<script src="https://cloud.approximated.app/dnswidget/dnswidget.v1.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const virtualHostInput = document.getElementById('virtual_host');
+    const approximatedApiKeyInput = document.getElementById('approximated_api_key');
+    const dnsWidgetContainer = document.getElementById('dns-widget-container');
+    const tenantId = '{{ tenant.tenant_id }}';
+
+    let widgetInitialized = false;
+
+    // Function to initialize the DNS widget
+    async function initializeDNSWidget() {
+        const virtualHost = virtualHostInput.value.trim();
+        const apiKey = approximatedApiKeyInput.value.trim();
+
+        // Show/hide widget based on inputs
+        if (virtualHost && apiKey) {
+            dnsWidgetContainer.style.display = 'block';
+
+            // Only initialize once
+            if (!widgetInitialized) {
+                try {
+                    // Get token from our backend
+                    const response = await fetch(`/tenant/${tenantId}/settings/approximated-token`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        console.error('Failed to get Approximated token:', await response.text());
+                        dnsWidgetContainer.innerHTML = '<p style="color: #dc2626; font-size: 0.875rem;">❌ Failed to initialize DNS widget. Please check your Approximated API key.</p>';
+                        return;
+                    }
+
+                    const data = await response.json();
+
+                    if (data.success && data.token) {
+                        // Initialize Approximated widget
+                        const config = {
+                            token: data.token,
+                            api_url: "https://cloud.approximated.app/api/dns",
+                            dnsRecords: [
+                                {
+                                    type: "CNAME",
+                                    host: virtualHost,
+                                    value: "sales-agent.scope3.com",
+                                    ttl: 3600
+                                }
+                            ],
+                            domain: virtualHost,
+                            prefillDomain: virtualHost,
+                            verifyAutoScroll: true
+                        };
+
+                        window.apxDns.init(config);
+                        widgetInitialized = true;
+
+                        // Listen for widget events
+                        document.addEventListener('apx-dnswidget-records-completely-verified', function(e) {
+                            console.log('DNS records verified successfully!', e.detail);
+                        });
+
+                        document.addEventListener('apx-dnswidget-records-failed-verification', function(e) {
+                            console.log('DNS verification failed:', e.detail);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error initializing DNS widget:', error);
+                    dnsWidgetContainer.innerHTML = '<p style="color: #dc2626; font-size: 0.875rem;">❌ Error initializing DNS widget. Check console for details.</p>';
+                }
+            }
+        } else {
+            dnsWidgetContainer.style.display = 'none';
+        }
+    }
+
+    // Watch for changes to virtual host and API key
+    virtualHostInput.addEventListener('input', function() {
+        // Reset widget on domain change
+        widgetInitialized = false;
+        dnsWidgetContainer.innerHTML = '<div id="dns-widget"></div>';
+        initializeDNSWidget();
+    });
+
+    approximatedApiKeyInput.addEventListener('input', function() {
+        // Reset widget on API key change
+        widgetInitialized = false;
+        dnsWidgetContainer.innerHTML = '<div id="dns-widget"></div>';
+        initializeDNSWidget();
+    });
+
+    // Initialize on page load if both fields have values
+    initializeDNSWidget();
+});
+</script>
 
 <!-- Edit Principal Mappings Modal -->
 <div class="modal fade" id="editPrincipalModal" tabindex="-1" aria-labelledby="editPrincipalModalLabel" aria-hidden="true">
