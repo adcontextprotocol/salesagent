@@ -1608,27 +1608,31 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="update_media_buy",
             )
 
-            # Validate required parameters
-            if "media_buy_id" not in parameters:
+            # Validate required parameters (per AdCP v2.0+ spec: media_buy_id + optional packages)
+            if "media_buy_id" not in parameters and "buyer_ref" not in parameters:
                 return {
                     "success": False,
-                    "message": "Missing required parameter: 'media_buy_id'",
-                    "required_parameters": ["media_buy_id", "updates"],
+                    "message": "Missing required parameter: one of 'media_buy_id' or 'buyer_ref' is required",
+                    "required_parameters": ["media_buy_id (or buyer_ref)"],
                     "received_parameters": list(parameters.keys()),
                 }
 
-            if "updates" not in parameters:
-                return {
-                    "success": False,
-                    "message": "Missing required parameter: 'updates'",
-                    "required_parameters": ["media_buy_id", "updates"],
-                    "received_parameters": list(parameters.keys()),
-                }
+            # Extract update parameters (AdCP v2.0+ uses individual fields, not 'updates' wrapper)
+            # Support both 'packages' (AdCP v2.0+) and legacy 'updates' field for backward compatibility
+            packages = parameters.get("packages")
+            if packages is None and "updates" in parameters:
+                # Legacy format: extract packages from updates object
+                packages = parameters["updates"].get("packages")
 
-            # Call core function directly
+            # Call core function directly with AdCP v2.0+ parameter names
             response = core_update_media_buy_tool(
-                media_buy_id=parameters["media_buy_id"],
-                updates=parameters["updates"],
+                media_buy_id=parameters.get("media_buy_id"),
+                buyer_ref=parameters.get("buyer_ref"),
+                active=parameters.get("active"),
+                start_time=parameters.get("start_time"),
+                end_time=parameters.get("end_time"),
+                budget=parameters.get("budget"),
+                packages=packages,
                 push_notification_config=parameters.get("push_notification_config"),
                 context=tool_context,
             )
