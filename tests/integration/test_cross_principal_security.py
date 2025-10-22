@@ -31,7 +31,13 @@ class MockContext:
         if auth_token is None:
             self.meta = {"headers": {}}
         else:
-            self.meta = {"headers": {"x-adcp-auth": auth_token}}
+            # Include Host header for tenant detection (security requirement)
+            self.meta = {
+                "headers": {
+                    "x-adcp-auth": auth_token,
+                    "host": "security-test.sales-agent.scope3.com",  # Matches subdomain in setup_test_data
+                }
+            }
 
 
 class TestCrossPrincipalSecurity:
@@ -141,7 +147,13 @@ class TestCrossPrincipalSecurity:
 
         mock_context_b = MockContext(auth_token="token-advertiser-b")
 
-        with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "security_test_tenant"}):
+        with patch(
+            "src.core.main.get_http_headers",
+            return_value={
+                "x-adcp-auth": "token-advertiser-b",
+                "host": "security-test.sales-agent.scope3.com",
+            },
+        ):
             response = _list_creatives_impl(context=mock_context_b)
 
             assert isinstance(response, ListCreativesResponse)
@@ -161,7 +173,13 @@ class TestCrossPrincipalSecurity:
         mock_context_b = MockContext(auth_token="token-advertiser-b")
 
         # Principal B tries to update Principal A's media buy
-        with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "security_test_tenant"}):
+        with patch(
+            "src.core.main.get_http_headers",
+            return_value={
+                "x-adcp-auth": "token-advertiser-b",
+                "host": "security-test.sales-agent.scope3.com",
+            },
+        ):
             # _verify_principal should raise PermissionError
             with pytest.raises(PermissionError, match="does not own media buy"):
                 _update_media_buy_impl(
@@ -194,7 +212,13 @@ class TestCrossPrincipalSecurity:
             media_buy_ids=["media_buy_a"],  # Owned by Principal A!
         )
 
-        with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "security_test_tenant"}):
+        with patch(
+            "src.core.main.get_http_headers",
+            return_value={
+                "x-adcp-auth": "token-advertiser-b",
+                "host": "security-test.sales-agent.scope3.com",
+            },
+        ):
             response = _get_media_buy_delivery_impl(req=request, context=mock_context_b)
 
             # Principal B should NOT see Principal A's media buy
@@ -255,7 +279,13 @@ class TestCrossPrincipalSecurity:
 
         mock_context_a = MockContext(auth_token="token-advertiser-a")
 
-        with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "security_test_tenant"}):
+        with patch(
+            "src.core.main.get_http_headers",
+            return_value={
+                "x-adcp-auth": "token-advertiser-a",
+                "host": "security-test.sales-agent.scope3.com",
+            },
+        ):
             response = _list_creatives_impl(context=mock_context_a)
 
             # Should only see their own creative, not creative_c from other tenant
