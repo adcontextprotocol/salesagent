@@ -99,6 +99,10 @@ def setup_complete_tenant(integration_db, test_tenant_id):
             name="Complete Tenant",
             subdomain="complete",
             ad_server="google_ad_manager",
+            gam_config={
+                "oauth_refresh_token": "test_refresh_token",
+                "network_code": "12345678",
+            },
             max_daily_budget=10000.0,
             human_review_required=True,
             auto_approve_formats=["display_300x250"],
