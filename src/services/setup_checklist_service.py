@@ -100,7 +100,47 @@ class SetupChecklistService:
         """Check critical tasks required before first order."""
         tasks = []
 
-        # 1. Gemini API Key
+        # 1. Ad Server FULLY CONFIGURED - CRITICAL BLOCKER
+        # This is the most important task - nothing else can be done until ad server works
+        ad_server_selected = tenant.ad_server is not None and tenant.ad_server != ""
+
+        # For GAM, check that it's fully configured with OAuth credentials
+        ad_server_fully_configured = False
+        config_details = "No ad server configured"
+
+        if ad_server_selected:
+            if tenant.ad_server == "gam":
+                # Check if GAM has OAuth tokens (indicates successful authentication)
+                gam_config = tenant.gam_config or {}
+                has_credentials = bool(gam_config.get("oauth_refresh_token") or gam_config.get("network_code"))
+                ad_server_fully_configured = has_credentials
+
+                if has_credentials:
+                    network_code = gam_config.get("network_code", "unknown")
+                    config_details = f"GAM configured (Network: {network_code}) - Test connection to verify"
+                else:
+                    config_details = "GAM selected but not authenticated - Complete OAuth flow and test connection"
+            elif tenant.ad_server == "mock":
+                # Mock adapter is always ready once selected
+                ad_server_fully_configured = True
+                config_details = "Mock adapter configured - Ready for testing"
+            else:
+                # Other adapters (Kevel, etc.)
+                ad_server_fully_configured = True
+                config_details = f"{tenant.ad_server} adapter configured"
+
+        tasks.append(
+            SetupTask(
+                key="ad_server_connected",
+                name="⚠️ Ad Server Configuration",
+                description="BLOCKER: Configure and test ad server connection before proceeding with other setup",
+                is_complete=ad_server_fully_configured,
+                action_url=f"/tenant/{self.tenant_id}/settings#adserver",
+                details=config_details,
+            )
+        )
+
+        # 2. Gemini API Key
         gemini_configured = bool(os.getenv("GEMINI_API_KEY"))
         tasks.append(
             SetupTask(
@@ -113,7 +153,7 @@ class SetupChecklistService:
             )
         )
 
-        # 2. Currency Limits
+        # 3. Currency Limits
         stmt = select(func.count()).select_from(CurrencyLimit).where(CurrencyLimit.tenant_id == self.tenant_id)
         currency_count = session.scalar(stmt) or 0
         tasks.append(
@@ -124,19 +164,6 @@ class SetupChecklistService:
                 is_complete=currency_count > 0,
                 action_url=f"/tenant/{self.tenant_id}/settings#business-rules",
                 details=f"{currency_count} currencies configured" if currency_count > 0 else "No currencies configured",
-            )
-        )
-
-        # 3. Ad Server Connected
-        ad_server_connected = tenant.ad_server is not None and tenant.ad_server != ""
-        tasks.append(
-            SetupTask(
-                key="ad_server_connected",
-                name="Ad Server Integration",
-                description="Connect to your ad server (GAM, Kevel, or Mock)",
-                is_complete=ad_server_connected,
-                action_url=f"/tenant/{self.tenant_id}/settings#adserver",
-                details=f"Using {tenant.ad_server}" if ad_server_connected else "No ad server configured",
             )
         )
 
