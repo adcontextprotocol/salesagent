@@ -771,10 +771,10 @@ class Product(BaseModel):
 
     @field_serializer("formats", when_used="json")
     def serialize_formats_for_json(self, formats: list) -> list:
-        """Serialize formats as simple format ID strings for better UI display.
+        """Serialize formats as FormatId objects per AdCP spec.
 
-        This makes Claude Desktop and other UIs show clean format IDs like 'display_300x250'
-        instead of '[object Object]' when displaying FormatId objects.
+        Returns list of FormatId objects with agent_url and id fields.
+        Pydantic will automatically serialize these as dicts with both fields.
         """
         if not formats:
             return []
@@ -782,16 +782,34 @@ class Product(BaseModel):
         result = []
         for fmt in formats:
             if isinstance(fmt, str):
+                # Legacy string format - convert to FormatId object
+                from src.core.format_cache import upgrade_legacy_format_id
+
+                result.append(upgrade_legacy_format_id(fmt))
+            elif isinstance(fmt, FormatId):
+                # Already a FormatId object
                 result.append(fmt)
-            elif hasattr(fmt, "id"):
-                # FormatId or FormatReference object
-                result.append(fmt.id)
-            elif isinstance(fmt, dict) and "id" in fmt:
-                # Dict representation of FormatId
-                result.append(fmt["id"])
+            elif isinstance(fmt, dict):
+                # Dict representation - convert to FormatId
+                if "id" in fmt and "agent_url" in fmt:
+                    result.append(FormatId(agent_url=fmt["agent_url"], id=fmt["id"]))
+                elif "id" in fmt:
+                    # Missing agent_url - use default
+                    from src.core.format_cache import upgrade_legacy_format_id
+
+                    result.append(upgrade_legacy_format_id(fmt["id"]))
+                else:
+                    raise ValueError(f"Invalid format dict: {fmt}")
             else:
-                # Fallback
-                result.append(str(fmt))
+                # Other object types (like FormatReference)
+                if hasattr(fmt, "agent_url") and hasattr(fmt, "id"):
+                    result.append(FormatId(agent_url=fmt.agent_url, id=fmt.id))
+                elif hasattr(fmt, "format_id"):
+                    from src.core.format_cache import upgrade_legacy_format_id
+
+                    result.append(upgrade_legacy_format_id(fmt.format_id))
+                else:
+                    raise ValueError(f"Cannot serialize format: {fmt}")
 
         return result
 
