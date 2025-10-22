@@ -1637,8 +1637,19 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Convert response to A2A format
-            return response  # Raw function already returns dict format
+            # Convert response to A2A format (handle both Pydantic objects and dicts)
+            if hasattr(response, "model_dump"):
+                # Real Pydantic response object
+                result = response.model_dump(exclude_none=False, mode="json")
+                result["success"] = response.errors is None or len(response.errors) == 0
+                result["message"] = str(response)  # Human-readable message via __str__
+            else:
+                # Already a dict (from mock or legacy code)
+                result = response
+                if "success" not in result:
+                    result["success"] = result.get("errors") is None or len(result.get("errors", [])) == 0
+
+            return result
 
         except Exception as e:
             logger.error(f"Error in update_media_buy skill: {e}")
@@ -1714,8 +1725,19 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Convert response to A2A format
-            return response  # Raw function already returns dict format
+            # Convert response to A2A format (handle both Pydantic objects and dicts)
+            if hasattr(response, "model_dump"):
+                # Real Pydantic response object
+                result = response.model_dump(exclude_none=False, mode="json")
+                result["success"] = response.errors is None or len(response.errors) == 0
+                result["message"] = str(response)  # Human-readable message via __str__
+            else:
+                # Already a dict (from mock or legacy code)
+                result = response
+                if "success" not in result:
+                    result["success"] = result.get("errors") is None or len(result.get("errors", [])) == 0
+
+            return result
 
         except Exception as e:
             logger.error(f"Error in update_performance_index skill: {e}")
