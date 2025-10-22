@@ -155,11 +155,12 @@ def workflows(tenant_id, **kwargs):
 @operations_bp.route("/media-buy/<media_buy_id>", methods=["GET"])
 @require_tenant_access()
 def media_buy_detail(tenant_id, media_buy_id):
-    """View media buy details."""
+    """View media buy details with workflow status."""
     from flask import render_template
 
+    from src.core.context_manager import ContextManager
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import MediaBuy, Principal
+    from src.core.database.models import MediaBuy, Principal, WorkflowStep
 
     try:
         with get_db_session() as db_session:
@@ -176,20 +177,129 @@ def media_buy_detail(tenant_id, media_buy_id):
                 stmt = select(Principal).filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id)
                 principal = db_session.scalars(stmt).first()
 
+            # Get workflow steps associated with this media buy
+            ctx_manager = ContextManager()
+            workflow_steps = ctx_manager.get_object_lifecycle("media_buy", media_buy_id)
+
+            # Find if there's a pending approval step
+            pending_approval_step = None
+            for step in workflow_steps:
+                if step.get("status") in ["requires_approval", "pending_approval"]:
+                    # Get the full workflow step for approval actions
+                    stmt = select(WorkflowStep).filter_by(step_id=step["step_id"])
+                    pending_approval_step = db_session.scalars(stmt).first()
+                    break
+
+            # Determine status message
+            status_message = None
+            if pending_approval_step:
+                status_message = {
+                    "type": "approval_required",
+                    "message": "This media buy requires manual approval before it can be activated.",
+                }
+            elif media_buy.status == "pending":
+                # Check for other pending reasons (creatives, etc.)
+                status_message = {
+                    "type": "pending_other",
+                    "message": "This media buy is pending. It may be waiting for creatives or other requirements.",
+                }
+
             return render_template(
-                "media_buy_detail.html", tenant_id=tenant_id, media_buy=media_buy, principal=principal
+                "media_buy_detail.html",
+                tenant_id=tenant_id,
+                media_buy=media_buy,
+                principal=principal,
+                workflow_steps=workflow_steps,
+                pending_approval_step=pending_approval_step,
+                status_message=status_message,
             )
     except Exception as e:
         logger.error(f"Error viewing media buy: {e}", exc_info=True)
         return "Error loading media buy", 500
 
 
-@operations_bp.route("/media-buy/<media_buy_id>/approve", methods=["GET"])
+@operations_bp.route("/media-buy/<media_buy_id>/approve", methods=["POST"])
 @require_tenant_access()
-def media_buy_media_buy_id_approve(tenant_id, **kwargs):
-    """TODO: Extract implementation from admin_ui.py."""
-    # Placeholder implementation
-    return jsonify({"error": "Not yet implemented"}), 501
+def approve_media_buy(tenant_id, media_buy_id, **kwargs):
+    """Approve a media buy by approving its workflow step."""
+    from datetime import UTC, datetime
+
+    from flask import flash, redirect, request, url_for
+    from sqlalchemy.orm import attributes
+
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
+
+    try:
+        action = request.form.get("action")  # "approve" or "reject"
+        reason = request.form.get("reason", "")
+
+        with get_db_session() as db_session:
+            # Find the pending approval workflow step for this media buy
+            stmt = (
+                select(WorkflowStep)
+                .join(ObjectWorkflowMapping, WorkflowStep.step_id == ObjectWorkflowMapping.step_id)
+                .filter(
+                    ObjectWorkflowMapping.object_type == "media_buy",
+                    ObjectWorkflowMapping.object_id == media_buy_id,
+                    WorkflowStep.status.in_(["requires_approval", "pending_approval"]),
+                )
+            )
+            step = db_session.scalars(stmt).first()
+
+            if not step:
+                flash("No pending approval found for this media buy", "warning")
+                return redirect(url_for("operations.media_buy_detail", tenant_id=tenant_id, media_buy_id=media_buy_id))
+
+            # Get user info for audit
+            from flask import session as flask_session
+
+            user_info = flask_session.get("user", {})
+            user_email = user_info.get("email", "system") if isinstance(user_info, dict) else str(user_info)
+
+            if action == "approve":
+                step.status = "approved"
+                step.updated_at = datetime.now(UTC)
+
+                if not step.comments:
+                    step.comments = []
+                step.comments.append(
+                    {
+                        "user": user_email,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "comment": "Approved via media buy detail page",
+                    }
+                )
+                attributes.flag_modified(step, "comments")
+
+                db_session.commit()
+                flash("Media buy approved successfully", "success")
+
+            elif action == "reject":
+                step.status = "rejected"
+                step.error_message = reason or "Rejected by administrator"
+                step.updated_at = datetime.now(UTC)
+
+                if not step.comments:
+                    step.comments = []
+                step.comments.append(
+                    {
+                        "user": user_email,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "comment": f"Rejected: {reason or 'No reason provided'}",
+                    }
+                )
+                attributes.flag_modified(step, "comments")
+
+                db_session.commit()
+                flash("Media buy rejected", "info")
+
+            return redirect(url_for("operations.media_buy_detail", tenant_id=tenant_id, media_buy_id=media_buy_id))
+
+    except Exception as e:
+        logger.error(f"Error approving/rejecting media buy {media_buy_id}: {e}", exc_info=True)
+        flash("Error processing approval", "error")
+        return redirect(url_for("operations.media_buy_detail", tenant_id=tenant_id, media_buy_id=media_buy_id))
 
 
 @operations_bp.route("/webhooks", methods=["GET"])
