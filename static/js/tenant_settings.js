@@ -795,6 +795,46 @@ function pollSyncStatus(syncId, button, originalText, loadingInterval) {
     setTimeout(checkStatus, 1000);
 }
 
+// Reset a stuck sync job
+function resetStuckSync() {
+    if (!confirm('⚠️ This will mark the current sync as failed and allow you to start a new one.\n\nAre you sure you want to reset the stuck sync?')) {
+        return;
+    }
+
+    const button = document.querySelector('button[onclick*="resetStuckSync"]');
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '⏳ Resetting...';
+    }
+
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/reset-stuck-sync`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ ' + data.message);
+                location.reload();
+            } else {
+                alert('❌ Failed to reset sync: ' + (data.error || data.message || 'Unknown error'));
+                if (button) {
+                    button.disabled = false;
+                    button.innerHTML = '🛑 Reset Stuck Sync';
+                }
+            }
+        })
+        .catch(error => {
+            alert('❌ Error resetting sync: ' + error.message);
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = '🛑 Reset Stuck Sync';
+            }
+        });
+}
+
 // Check OAuth token status
 function checkTokenStatus() {
     fetch(`${config.scriptName}/api/oauth/status`)

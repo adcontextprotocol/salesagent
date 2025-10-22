@@ -456,19 +456,25 @@ class GAMInventoryService:
         if not items:
             return
 
+        logger.info(f"📊 Writing {len(items)} {inventory_type} items to database...")
+
         BATCH_SIZE = 500
 
         # Load existing inventory IDs once
+        logger.info(f"🔍 Loading existing {inventory_type} IDs from database...")
         stmt = select(GAMInventory.inventory_id, GAMInventory.id).where(
             and_(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == inventory_type)
         )
         existing = self.db.execute(stmt).all()
         existing_ids = {row.inventory_id: row.id for row in existing}
+        logger.info(f"✅ Found {len(existing_ids)} existing {inventory_type} items")
 
         to_insert = []
         to_update = []
+        batch_num = 0
 
-        for item in items:
+        logger.info(f"🔄 Processing {len(items)} items (batch size: {BATCH_SIZE})...")
+        for idx, item in enumerate(items):
             item_data = self._convert_item_to_db_format(tenant_id, inventory_type, item, sync_time)
 
             if item.id in existing_ids:
@@ -479,12 +485,19 @@ class GAMInventoryService:
 
             # Flush batch
             if (len(to_insert) + len(to_update)) >= BATCH_SIZE:
+                batch_num += 1
+                logger.info(f"💾 Flushing batch {batch_num} (processed {idx + 1}/{len(items)} items)...")
                 self._flush_batch(to_insert, to_update)
                 to_insert.clear()
                 to_update.clear()
 
         # Flush remaining
-        self._flush_batch(to_insert, to_update)
+        if to_insert or to_update:
+            batch_num += 1
+            logger.info(f"💾 Flushing final batch {batch_num} ({len(to_insert)} new, {len(to_update)} updates)...")
+            self._flush_batch(to_insert, to_update)
+
+        logger.info(f"✅ Completed writing {len(items)} {inventory_type} items in {batch_num} batch(es)")
 
     def _write_custom_targeting_keys(self, tenant_id: str, keys: list, sync_time: datetime):
         """Write custom targeting keys to database (values are lazy loaded separately).
@@ -635,14 +648,19 @@ class GAMInventoryService:
         """
         try:
             if to_insert:
+                logger.info(f"📝 Starting bulk insert of {len(to_insert)} items...")
                 self.db.bulk_insert_mappings(GAMInventory, to_insert)
-                logger.debug(f"Batch inserted {len(to_insert)} items")
+                logger.info(f"✅ Batch inserted {len(to_insert)} items")
             if to_update:
+                logger.info(f"📝 Starting bulk update of {len(to_update)} items...")
                 self.db.bulk_update_mappings(GAMInventory, to_update)
-                logger.debug(f"Batch updated {len(to_update)} items")
+                logger.info(f"✅ Batch updated {len(to_update)} items")
+            logger.info("💾 Committing batch transaction...")
             self.db.commit()
+            logger.info("✅ Batch committed successfully")
         except Exception as e:
-            logger.error(f"Batch write failed: {e}", exc_info=True)
+            logger.error(f"❌ Batch write failed: {e}", exc_info=True)
+            logger.error(f"   Insert count: {len(to_insert)}, Update count: {len(to_update)}")
             self.db.rollback()
             raise
 
