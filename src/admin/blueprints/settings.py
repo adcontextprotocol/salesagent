@@ -175,11 +175,6 @@ def update_general(tenant_id):
 
                 tenant.virtual_host = virtual_host or None
 
-            # Update approximated_api_key if provided
-            if "approximated_api_key" in request.form:
-                approximated_api_key = request.form.get("approximated_api_key", "").strip()
-                tenant.approximated_api_key = approximated_api_key or None
-
             # Update currency limits
             from decimal import Decimal, InvalidOperation
 
@@ -1056,18 +1051,21 @@ def get_approximated_token(tenant_id):
     try:
         import requests
 
+        # Get API key from environment
+        approximated_api_key = os.getenv("APPROXIMATED_API_KEY")
+        if not approximated_api_key:
+            logger.error("APPROXIMATED_API_KEY not configured in environment")
+            return jsonify({"success": False, "error": "DNS widget not configured on server"}), 500
+
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 return jsonify({"success": False, "error": "Tenant not found"}), 404
 
-            if not tenant.approximated_api_key:
-                return jsonify({"success": False, "error": "Approximated API key not configured"}), 400
-
             # Request token from Approximated API
             response = requests.post(
                 "https://cloud.approximated.app/api/dns/token",
-                headers={"Authorization": f"Bearer {tenant.approximated_api_key}", "Content-Type": "application/json"},
+                headers={"Authorization": f"Bearer {approximated_api_key}", "Content-Type": "application/json"},
                 timeout=10,
             )
 

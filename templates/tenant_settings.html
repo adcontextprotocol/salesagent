@@ -519,21 +519,11 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="approximated_api_key">Approximated API Key (Optional)</label>
-                            <input type="text" id="approximated_api_key" name="approximated_api_key" value="{{ tenant.approximated_api_key or '' }}" placeholder="Enter your Approximated API key">
-                            <small>
-                                <p style="margin-top: 0.5rem; color: #666; font-size: 0.85em;">
-                                    🔑 Required for automated DNS configuration widget. Get your API key from <a href="https://approximated.app" target="_blank" style="color: #2563eb;">Approximated</a>.
-                                </p>
-                            </small>
-                        </div>
-
-                        <div class="form-group">
                             <label for="virtual_host">Virtual Host (Optional)</label>
                             <input type="text" id="virtual_host" name="virtual_host" value="{{ tenant.virtual_host or '' }}" placeholder="e.g. ad-sales.yourcompany.com">
                             <small>
                                 <p style="margin-top: 0.5rem; color: #666; font-size: 0.85em;">
-                                    💡 Your custom domain will route to this tenant's MCP server and admin interface.
+                                    💡 Your custom domain will route to this tenant's MCP server and admin interface. Enter a domain above to see DNS setup instructions.
                                 </p>
                             </small>
                         </div>
@@ -542,7 +532,7 @@
                         <div id="dns-widget-container" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
                             <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">📝 Configure DNS Records</h4>
                             <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
-                                Use this widget to automatically configure your DNS records for the custom domain.
+                                Follow the steps below to configure your DNS records. The widget will automatically detect your DNS provider and verify your configuration.
                             </p>
                             <div id="dns-widget"></div>
                         </div>
@@ -2071,7 +2061,6 @@ result = await client.tools.get_products(brief="video ads")</pre>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     const virtualHostInput = document.getElementById('virtual_host');
-    const approximatedApiKeyInput = document.getElementById('approximated_api_key');
     const dnsWidgetContainer = document.getElementById('dns-widget-container');
     const tenantId = '{{ tenant.tenant_id }}';
 
@@ -2080,10 +2069,9 @@ document.addEventListener("DOMContentLoaded", function() {
     // Function to initialize the DNS widget
     async function initializeDNSWidget() {
         const virtualHost = virtualHostInput.value.trim();
-        const apiKey = approximatedApiKeyInput.value.trim();
 
-        // Show/hide widget based on inputs
-        if (virtualHost && apiKey) {
+        // Show/hide widget based on virtual host input
+        if (virtualHost) {
             dnsWidgetContainer.style.display = 'block';
 
             // Only initialize once
@@ -2099,7 +2087,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
                     if (!response.ok) {
                         console.error('Failed to get Approximated token:', await response.text());
-                        dnsWidgetContainer.innerHTML = '<p style="color: #dc2626; font-size: 0.875rem;">❌ Failed to initialize DNS widget. Please check your Approximated API key.</p>';
+                        dnsWidgetContainer.innerHTML = '<p style="color: #dc2626; font-size: 0.875rem;">❌ DNS widget unavailable. Please contact support.</p>';
                         return;
                     }
 
@@ -2145,7 +2133,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    // Watch for changes to virtual host and API key
+    // Watch for changes to virtual host
     virtualHostInput.addEventListener('input', function() {
         // Reset widget on domain change
         widgetInitialized = false;
@@ -2153,14 +2141,7 @@ document.addEventListener("DOMContentLoaded", function() {
         initializeDNSWidget();
     });
 
-    approximatedApiKeyInput.addEventListener('input', function() {
-        // Reset widget on API key change
-        widgetInitialized = false;
-        dnsWidgetContainer.innerHTML = '<div id="dns-widget"></div>';
-        initializeDNSWidget();
-    });
-
-    // Initialize on page load if both fields have values
+    // Initialize on page load if virtual host has a value
     initializeDNSWidget();
 });
 </script>
