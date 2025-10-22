@@ -426,12 +426,10 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    # Fields from generated schema (flexible - accepts dicts or objects)
+    # Fields from AdCP spec (v2.0+ uses publisher_domains instead of properties)
     publisher_domains: list[str] = Field(
         ..., description="Publisher domains this agent is authorized to represent", min_length=1
     )
-    properties: list[Any] | None = Field(None, description="Array of authorized properties")
-    tags: dict[str, Any] = Field(default_factory=dict, description="Metadata for tags")
     primary_channels: list[str] | None = Field(None, description="Primary advertising channels")
     primary_countries: list[str] | None = Field(None, description="Primary countries (ISO 3166-1 alpha-2)")
     portfolio_description: str | None = Field(None, description="Markdown portfolio description", max_length=5000)
@@ -448,19 +446,30 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     last_updated: str | None = Field(None, description="ISO 8601 timestamp of when authorization list was last updated")
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
 
+    # Legacy field for backward compatibility
+    @property
+    def properties(self) -> list[dict[str, Any]]:
+        """Legacy property for backward compatibility - returns publisher_domains as property objects."""
+        return [{"domain": domain} for domain in self.publisher_domains]
+
+    @property
+    def tags(self) -> dict[str, Any]:
+        """Legacy property for backward compatibility."""
+        return {}
+
     def __str__(self) -> str:
         """Return human-readable message for protocol layer.
 
         Used by both MCP (for display) and A2A (for task messages).
         Provides conversational text without adding non-spec fields to the schema.
         """
-        count = len(self.properties)
+        count = len(self.publisher_domains)
         if count == 0:
-            return "No authorized properties found."
+            return "No authorized publisher domains found."
         elif count == 1:
-            return "Found 1 authorized property."
+            return f"Found 1 authorized publisher domain: {self.publisher_domains[0]}"
         else:
-            return f"Found {count} authorized properties."
+            return f"Found {count} authorized publisher domains."
 
     def to_generated(self) -> _GeneratedListAuthorizedPropertiesResponse:
         """Convert to generated schema for protocol validation."""
