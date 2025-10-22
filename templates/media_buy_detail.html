@@ -10,6 +10,34 @@
     </div>
 </div>
 
+<!-- Approval Alert -->
+{% if pending_approval_step %}
+<div class="alert alert-warning">
+    <div style="display: flex; justify-content: space-between; align-items: start;">
+        <div>
+            <strong>⚠️ Manual Approval Required</strong>
+            <p style="margin: 0.5rem 0 0 0;">{{ status_message.message if status_message else "This media buy needs approval before it can proceed." }}</p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            <form method="POST" action="{{ url_for('operations.approve_media_buy', tenant_id=tenant_id, media_buy_id=media_buy.media_buy_id) }}" style="display: inline;">
+                <input type="hidden" name="action" value="approve">
+                <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Are you sure you want to approve this media buy?')">
+                    ✅ Approve
+                </button>
+            </form>
+            <button type="button" class="btn btn-danger btn-sm" onclick="showRejectModal()">
+                ❌ Reject
+            </button>
+        </div>
+    </div>
+</div>
+{% elif status_message and status_message.type == 'pending_other' %}
+<div class="alert alert-info">
+    <strong>ℹ️ Pending</strong>
+    <p style="margin: 0.5rem 0 0 0;">{{ status_message.message }}</p>
+</div>
+{% endif %}
+
 <div class="custom-card">
     <h2>Media Buy Information</h2>
     <div class="detail-rows">
@@ -21,6 +49,9 @@
             <span class="label">Status:</span>
             <span class="value">
                 <span class="status status-{{ media_buy.status }}">{{ media_buy.status|upper }}</span>
+                {% if pending_approval_step %}
+                <span class="status-badge">Awaiting Approval</span>
+                {% endif %}
             </span>
         </div>
         <div class="detail-row">
@@ -79,6 +110,65 @@
 </div>
 {% endif %}
 
+<!-- Workflow History -->
+{% if workflow_steps %}
+<div class="custom-card">
+    <h2>Workflow History</h2>
+    <div class="workflow-timeline">
+        {% for step in workflow_steps %}
+        <div class="timeline-item">
+            <div class="timeline-marker status-{{ step.status }}"></div>
+            <div class="timeline-content">
+                <div class="timeline-header">
+                    <strong>{{ step.tool_name or step.action|title }}</strong>
+                    <span class="timeline-status status status-{{ step.status }}">{{ step.status|upper }}</span>
+                </div>
+                <div class="timeline-meta">
+                    <span>{{ step.created_at }}</span>
+                    {% if step.owner %}
+                    <span>Owner: {{ step.owner }}</span>
+                    {% endif %}
+                </div>
+                {% if step.error_message %}
+                <div class="timeline-error">{{ step.error_message }}</div>
+                {% endif %}
+                {% if step.comments %}
+                <div class="timeline-comments">
+                    {% for comment in step.comments %}
+                    <div class="comment">
+                        <strong>{{ comment.user }}:</strong> {{ comment.comment }}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Reject Modal -->
+<div id="rejectModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Reject Media Buy</h2>
+            <button type="button" class="modal-close" onclick="hideRejectModal()">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('operations.approve_media_buy', tenant_id=tenant_id, media_buy_id=media_buy.media_buy_id) }}">
+            <input type="hidden" name="action" value="reject">
+            <div class="modal-body">
+                <label for="reason">Reason for rejection:</label>
+                <textarea id="reason" name="reason" rows="4" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;" required></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="hideRejectModal()">Cancel</button>
+                <button type="submit" class="btn btn-danger">Reject Media Buy</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <style>
 .dashboard-header {
     display: flex;
@@ -131,7 +221,7 @@
     text-transform: uppercase;
 }
 
-.status-pending {
+.status-pending, .status-pending_approval, .status-requires_approval {
     background-color: #fff3cd;
     color: #856404;
 }
@@ -141,14 +231,249 @@
     color: #0c5460;
 }
 
-.status-completed {
+.status-completed, .status-approved {
     background-color: #d4edda;
     color: #155724;
 }
 
-.status-failed {
+.status-failed, .status-rejected {
     background-color: #f8d7da;
     color: #721c24;
 }
+
+.status-badge {
+    margin-left: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    background-color: #ff6b6b;
+    color: white;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* Alerts */
+.alert {
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    border-left: 4px solid;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffc107;
+    color: #856404;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    border-color: #17a2b8;
+    color: #0c5460;
+}
+
+/* Workflow Timeline */
+.workflow-timeline {
+    position: relative;
+    padding-left: 2rem;
+}
+
+.timeline-item {
+    position: relative;
+    padding-bottom: 2rem;
+}
+
+.timeline-item:last-child {
+    padding-bottom: 0;
+}
+
+.timeline-marker {
+    position: absolute;
+    left: -2rem;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    background-color: #6c757d;
+    border: 3px solid white;
+    box-shadow: 0 0 0 2px #6c757d;
+}
+
+.timeline-marker.status-completed, .timeline-marker.status-approved {
+    background-color: #28a745;
+    box-shadow: 0 0 0 2px #28a745;
+}
+
+.timeline-marker.status-requires_approval, .timeline-marker.status-pending_approval {
+    background-color: #ffc107;
+    box-shadow: 0 0 0 2px #ffc107;
+}
+
+.timeline-marker.status-failed, .timeline-marker.status-rejected {
+    background-color: #dc3545;
+    box-shadow: 0 0 0 2px #dc3545;
+}
+
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -1.5rem;
+    top: 1rem;
+    bottom: -1rem;
+    width: 2px;
+    background-color: #dee2e6;
+}
+
+.timeline-item:last-child::before {
+    display: none;
+}
+
+.timeline-content {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 6px;
+}
+
+.timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.timeline-meta {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+}
+
+.timeline-meta span {
+    margin-right: 1rem;
+}
+
+.timeline-error {
+    color: #dc3545;
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+}
+
+.timeline-comments {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #dee2e6;
+}
+
+.comment {
+    font-size: 0.875rem;
+    color: #495057;
+    margin-bottom: 0.25rem;
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    align-items: center;
+    justify-content: center;
+}
+
+.modal.show {
+    display: flex;
+}
+
+.modal-content {
+    background-color: white;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #6c757d;
+}
+
+.modal-close:hover {
+    color: #343a40;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.modal-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #dee2e6;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+/* Button Styles */
+.btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.btn-success {
+    background-color: #28a745;
+    border-color: #28a745;
+    color: white;
+}
+
+.btn-success:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+    border-color: #dc3545;
+    color: white;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+}
 </style>
+
+<script>
+function showRejectModal() {
+    document.getElementById('rejectModal').classList.add('show');
+}
+
+function hideRejectModal() {
+    document.getElementById('rejectModal').classList.remove('show');
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('rejectModal');
+    if (event.target === modal) {
+        hideRejectModal();
+    }
+}
+</script>
 {% endblock %}
