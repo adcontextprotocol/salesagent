@@ -110,9 +110,11 @@ class TestAdCPReferenceImplementation:
         print("=" * 80)
 
         # Setup MCP client with both auth and tenant detection headers
+        # Note: Host header is automatically set by HTTP client based on URL,
+        # so we use x-adcp-tenant header for explicit tenant selection in E2E tests
         headers = {
             "x-adcp-auth": test_auth_token,
-            "host": "ci-test.sales-agent.scope3.com",  # Required for tenant detection
+            "x-adcp-tenant": "ci-test",  # Explicit tenant selection for E2E tests
         }
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
 
