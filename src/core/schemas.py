@@ -775,9 +775,15 @@ class Product(BaseModel):
 
         Returns list of FormatId objects with agent_url and id fields.
         Pydantic will automatically serialize these as dicts with both fields.
+
+        For unknown format IDs, uses a default agent_url to ensure graceful handling
+        of legacy data.
         """
         if not formats:
             return []
+
+        # Default agent_url for unknown formats
+        DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"
 
         result = []
         for fmt in formats:
@@ -785,7 +791,11 @@ class Product(BaseModel):
                 # Legacy string format - convert to FormatId object
                 from src.core.format_cache import upgrade_legacy_format_id
 
-                result.append(upgrade_legacy_format_id(fmt))
+                try:
+                    result.append(upgrade_legacy_format_id(fmt))
+                except ValueError:
+                    # Unknown format - use default agent_url
+                    result.append(FormatId(agent_url=DEFAULT_AGENT_URL, id=fmt))
             elif isinstance(fmt, FormatId):
                 # Already a FormatId object
                 result.append(fmt)
@@ -794,10 +804,13 @@ class Product(BaseModel):
                 if "id" in fmt and "agent_url" in fmt:
                     result.append(FormatId(agent_url=fmt["agent_url"], id=fmt["id"]))
                 elif "id" in fmt:
-                    # Missing agent_url - use default
+                    # Missing agent_url - try upgrade, fallback to default
                     from src.core.format_cache import upgrade_legacy_format_id
 
-                    result.append(upgrade_legacy_format_id(fmt["id"]))
+                    try:
+                        result.append(upgrade_legacy_format_id(fmt["id"]))
+                    except ValueError:
+                        result.append(FormatId(agent_url=DEFAULT_AGENT_URL, id=fmt["id"]))
                 else:
                     raise ValueError(f"Invalid format dict: {fmt}")
             else:
@@ -807,7 +820,10 @@ class Product(BaseModel):
                 elif hasattr(fmt, "format_id"):
                     from src.core.format_cache import upgrade_legacy_format_id
 
-                    result.append(upgrade_legacy_format_id(fmt.format_id))
+                    try:
+                        result.append(upgrade_legacy_format_id(fmt.format_id))
+                    except ValueError:
+                        result.append(FormatId(agent_url=DEFAULT_AGENT_URL, id=fmt.format_id))
                 else:
                     raise ValueError(f"Cannot serialize format: {fmt}")
 
