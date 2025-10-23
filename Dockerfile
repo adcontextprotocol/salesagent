@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.4
 # Multi-stage build for smaller image
+# Cache bust: 2025-10-22-2135
 FROM python:3.12-slim AS builder
 
 # Disable man pages and docs to speed up apt operations
