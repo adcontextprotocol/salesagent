@@ -7,9 +7,10 @@ to ensure our A2A server properly handles the evolving AdCP spec.
 """
 
 import logging
+from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import Message, Part, Role, Task
+from a2a.types import Message, MessageSendParams, Part, Role, Task
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 
@@ -748,9 +749,9 @@ class TestA2ASkillInvocation:
             assert "list_authorized_properties" in result.metadata["skills_requested"]
             assert result.artifacts is not None
 
-            # Extract response
+            # Extract response - per AdCP v2.4 spec, response has publisher_domains
             artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
-            assert "properties" in artifact_data
+            assert "publisher_domains" in artifact_data
 
     @pytest.mark.asyncio
     async def test_sync_creatives_skill(self, handler, sample_tenant, sample_principal, sample_products, validator):

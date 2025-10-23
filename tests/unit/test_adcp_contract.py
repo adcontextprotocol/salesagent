@@ -1891,66 +1891,59 @@ class TestAdCPContract:
         assert len(adcp_response) == 2
 
     def test_list_authorized_properties_response_adcp_compliance(self):
-        """Test that ListAuthorizedPropertiesResponse complies with AdCP list-authorized-properties-response schema."""
-        # Create response with all required + optional fields
-        property_obj = Property(
-            property_type="website",
-            name="Example Site",
-            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
-            tags=["premium_content"],
-            publisher_domain="example.com",
-        )
-
-        tag_metadata = PropertyTagMetadata(name="Premium Content", description="High-quality content properties")
-
+        """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 list-authorized-properties-response schema."""
+        # Create response with all required + optional fields (per official AdCP v2.4 spec)
         response = ListAuthorizedPropertiesResponse(
-            properties=[property_obj], tags={"premium_content": tag_metadata}, errors=[]
+            publisher_domains=["example.com"],
+            primary_channels=["display"],
+            primary_countries=["US"],
+            portfolio_description="Premium content sites",
+            advertising_policies="IAB standard categories only",
+            errors=[],
         )
 
         # Test AdCP-compliant response
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["properties"]
+        required_fields = ["publisher_domains"]
         for field in required_fields:
             assert field in adcp_response
             assert adcp_response[field] is not None
 
         # Verify optional AdCP fields present (can be null)
         optional_fields = [
-            "tags",
             "errors",
             "primary_channels",
             "primary_countries",
             "portfolio_description",
             "advertising_policies",
+            "last_updated",
         ]
         for field in optional_fields:
             assert field in adcp_response
 
-        # Verify properties is array
-        assert isinstance(adcp_response["properties"], list)
-
-        # Verify tags is object when present
-        if adcp_response["tags"] is not None:
-            assert isinstance(adcp_response["tags"], dict)
+        # Verify publisher_domains is array
+        assert isinstance(adcp_response["publisher_domains"], list)
 
         # Verify errors is array when present
         if adcp_response["errors"] is not None:
             assert isinstance(adcp_response["errors"], list)
 
-        # Verify new optional fields types
+        # Verify optional fields types
         if adcp_response["primary_channels"] is not None:
             assert isinstance(adcp_response["primary_channels"], list)
         if adcp_response["primary_countries"] is not None:
             assert isinstance(adcp_response["primary_countries"], list)
         if adcp_response["portfolio_description"] is not None:
             assert isinstance(adcp_response["portfolio_description"], str)
+        if adcp_response["advertising_policies"] is not None:
+            assert isinstance(adcp_response["advertising_policies"], str)
 
         # Verify message is provided via __str__() not as schema field (response already created above)
-        assert str(response) == "Found 1 authorized property."
+        assert str(response) == "Found 1 authorized publisher domain: example.com"
 
-        # Verify field count expectations (7 domain fields: properties, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies)
+        # Verify field count expectations (7 domain fields: publisher_domains, errors, primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated)
         assert len(adcp_response) == 7
 
     def test_get_signals_request_adcp_compliance(self):

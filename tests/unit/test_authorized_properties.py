@@ -155,56 +155,45 @@ class TestListAuthorizedPropertiesResponse:
     """Test ListAuthorizedPropertiesResponse schema validation."""
 
     def test_response_with_minimal_fields(self):
-        """Test response with only required fields."""
-        response = ListAuthorizedPropertiesResponse(properties=[])
+        """Test response with only required fields (per AdCP v2.4 spec)."""
+        response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
 
-        assert response.properties == []
-        assert response.tags == {}
+        assert response.publisher_domains == ["example.com"]
         assert response.errors is None
 
     def test_response_with_all_fields(self):
-        """Test response with all fields."""
-        property_obj = Property(
-            property_type="website",
-            name="Example Site",
-            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
-            tags=["premium_content"],
-            publisher_domain="example.com",
-        )
-
-        tag_metadata = PropertyTagMetadata(name="Premium Content", description="High-quality content properties")
-
+        """Test response with all fields (per AdCP v2.4 spec)."""
         response = ListAuthorizedPropertiesResponse(
-            properties=[property_obj],
-            tags={"premium_content": tag_metadata},
+            publisher_domains=["example.com", "test.com"],
+            primary_channels=["display", "video"],
+            primary_countries=["US", "CA"],
+            portfolio_description="Premium content properties",
+            advertising_policies="No gambling or adult content",
             errors=[{"code": "WARNING", "message": "Test warning"}],
         )
 
-        assert len(response.properties) == 1
-        assert "premium_content" in response.tags
+        assert len(response.publisher_domains) == 2
+        assert response.primary_channels == ["display", "video"]
+        assert response.primary_countries == ["US", "CA"]
         assert len(response.errors) == 1
 
     def test_response_model_dump_includes_empty_errors(self):
         """Test that model_dump ensures errors is always present."""
-        response = ListAuthorizedPropertiesResponse(properties=[])
+        response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
 
         data = response.model_dump()
         assert "errors" in data
         assert data["errors"] == []
 
     def test_response_adcp_compliance(self):
-        """Test that ListAuthorizedPropertiesResponse complies with AdCP schema."""
+        """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 schema."""
         # Create response with all required + optional fields
-        property_obj = Property(
-            property_type="website",
-            name="Example Site",
-            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
-            publisher_domain="example.com",
-        )
-
         response = ListAuthorizedPropertiesResponse(
-            properties=[property_obj],
-            tags={"test": PropertyTagMetadata(name="Test", description="Test tag")},
+            publisher_domains=["example.com", "test.com"],
+            primary_channels=["display"],
+            primary_countries=["US"],
+            portfolio_description="Test portfolio",
+            advertising_policies="Standard IAB policies",
             errors=[],
         )
 
@@ -212,19 +201,19 @@ class TestListAuthorizedPropertiesResponse:
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["properties"]
+        required_fields = ["publisher_domains"]
         for field in required_fields:
             assert field in adcp_response
             assert adcp_response[field] is not None
 
         # Verify optional AdCP fields present (can be null)
         optional_fields = [
-            "tags",
             "errors",
             "primary_channels",
             "primary_countries",
             "portfolio_description",
             "advertising_policies",
+            "last_updated",
         ]
         for field in optional_fields:
             assert field in adcp_response

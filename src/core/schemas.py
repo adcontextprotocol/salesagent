@@ -3349,14 +3349,17 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
 class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     """Response payload for list_authorized_properties task (AdCP v2.4 spec compliant).
 
-    Per AdCP PR #113, this response contains ONLY domain data.
+    Per official AdCP v2.4 spec at https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-response.json,
+    this response lists publisher domains. Buyers fetch property definitions from each publisher's adagents.json file.
+
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    properties: list[Property] = Field(..., description="Array of all properties this agent is authorized to represent")
-    tags: dict[str, PropertyTagMetadata] = Field(
-        default_factory=dict, description="Metadata for each tag referenced by properties"
+    publisher_domains: list[str] = Field(
+        ...,
+        description="Publisher domains this agent is authorized to represent. Buyers should fetch each publisher's adagents.json to see property definitions and verify this agent is in their authorized_agents list with authorization scope.",
+        min_length=1,
     )
     primary_channels: list[str] | None = Field(
         None, description="Primary advertising channels in this portfolio (helps buyers filter relevance)"
@@ -3377,6 +3380,10 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
         min_length=1,
         max_length=10000,
     )
+    last_updated: str | None = Field(
+        None,
+        description="ISO 8601 timestamp of when the agent's publisher authorization list was last updated. Buyers can use this to determine if their cached publisher adagents.json files might be stale.",
+    )
     errors: list[dict[str, Any]] | None = Field(
         None, description="Task-specific errors and warnings (e.g., property availability issues)"
     )
@@ -3387,13 +3394,13 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
         Used by both MCP (for display) and A2A (for task messages).
         Provides conversational text without adding non-spec fields to the schema.
         """
-        count = len(self.properties)
+        count = len(self.publisher_domains)
         if count == 0:
-            return "No authorized properties found."
+            return "No authorized publisher domains found."
         elif count == 1:
-            return "Found 1 authorized property."
+            return f"Found 1 authorized publisher domain: {self.publisher_domains[0]}"
         else:
-            return f"Found {count} authorized properties."
+            return f"Found {count} authorized publisher domains."
 
     def model_dump(self, **kwargs) -> dict[str, Any]:
         """Return AdCP-compliant response."""
