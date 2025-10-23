@@ -77,14 +77,13 @@ class TestA2AResponseAttributeAccess:
         assert isinstance(response.formats, list)
 
     def test_list_authorized_properties_response_attribute_access(self):
-        """Verify ListAuthorizedPropertiesResponse has expected flat structure."""
-        response = ListAuthorizedPropertiesResponse(properties=[], tags={})
+        """Verify ListAuthorizedPropertiesResponse has expected flat structure per AdCP v2.4 spec."""
+        response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
 
-        # Verify expected attributes exist
-        assert hasattr(response, "properties")
-        assert hasattr(response, "tags")
-        assert isinstance(response.properties, list)
-        assert isinstance(response.tags, dict)
+        # Verify expected attributes exist (per AdCP v2.4 spec)
+        assert hasattr(response, "publisher_domains")
+        assert isinstance(response.publisher_domains, list)
+        assert response.publisher_domains == ["example.com"]
 
     def test_a2a_list_creatives_handler_attribute_extraction(self):
         """Verify A2A handler can extract attributes correctly from response.

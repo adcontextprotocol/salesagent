@@ -527,7 +527,15 @@ class Product(BaseModel):
     delivery_type: Annotated[DeliveryType, Field(description="Type of inventory delivery", title="Delivery Type")]
     pricing_options: Annotated[
         list[
-            PricingOptions | PricingOptions10 | PricingOptions11 | PricingOptions12 | PricingOptions13 | PricingOptions14 | PricingOptions15 | PricingOptions16 | PricingOptions17
+            PricingOptions
+            | PricingOptions10
+            | PricingOptions11
+            | PricingOptions12
+            | PricingOptions13
+            | PricingOptions14
+            | PricingOptions15
+            | PricingOptions16
+            | PricingOptions17
         ],
         Field(description="Available pricing models for this product", min_length=1),
     ]
@@ -570,9 +578,9 @@ class Error(BaseModel):
         str | None, Field(description="Field path associated with the error (e.g., 'packages[0].targeting')")
     ] = None
     suggestion: Annotated[str | None, Field(description="Suggested fix for the error")] = None
-    retry_after: Annotated[
-        float | None, Field(description="Seconds to wait before retrying the operation", ge=0.0)
-    ] = None
+    retry_after: Annotated[float | None, Field(description="Seconds to wait before retrying the operation", ge=0.0)] = (
+        None
+    )
     details: Annotated[Any | None, Field(description="Additional task-specific error details")] = None
 
 
