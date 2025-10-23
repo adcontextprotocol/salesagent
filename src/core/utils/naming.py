@@ -87,10 +87,21 @@ def generate_auto_name(
         model = genai.GenerativeModel("gemini-2.0-flash-lite")
 
         # Build context for AI
+        # Extract brand name from brand_manifest
+        brand_name = "N/A"
+        if hasattr(request, "brand_manifest") and request.brand_manifest:
+            manifest = request.brand_manifest
+            if isinstance(manifest, str):
+                brand_name = manifest
+            elif hasattr(manifest, "name"):
+                brand_name = manifest.name
+            elif isinstance(manifest, dict):
+                brand_name = manifest.get("name", "N/A")
+
         context_parts = [
             f"Buyer Reference: {request.buyer_ref}",
             f"Campaign: {request.campaign_name or 'N/A'}",
-            f"Promoted Offering: {request.promoted_offering or 'N/A'}",
+            f"Brand: {brand_name}",
         ]
 
         # Add budget info (v1.8.0 compatible)
@@ -152,8 +163,17 @@ Return ONLY the order name, nothing else."""
 
     except Exception as e:
         logger.warning(f"Failed to generate auto_name with Gemini: {e}, falling back")
-        # Fallback to promoted_offering or campaign_name
-        return request.promoted_offering or request.campaign_name or "Campaign"
+        # Fallback to brand name or campaign_name
+        brand_name = None
+        if hasattr(request, "brand_manifest") and request.brand_manifest:
+            manifest = request.brand_manifest
+            if isinstance(manifest, str):
+                brand_name = manifest
+            elif hasattr(manifest, "name"):
+                brand_name = manifest.name
+            elif isinstance(manifest, dict):
+                brand_name = manifest.get("name")
+        return brand_name or request.campaign_name or "Campaign"
 
 
 def apply_naming_template(
