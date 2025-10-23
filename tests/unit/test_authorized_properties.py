@@ -156,9 +156,9 @@ class TestListAuthorizedPropertiesResponse:
 
     def test_response_with_minimal_fields(self):
         """Test response with only required fields."""
-        response = ListAuthorizedPropertiesResponse(properties=[])
+        response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
 
-        assert response.properties == []
+        assert response.publisher_domains == ["example.com"]
         assert response.tags == {}
         assert response.errors is None
 
@@ -175,18 +175,18 @@ class TestListAuthorizedPropertiesResponse:
         tag_metadata = PropertyTagMetadata(name="Premium Content", description="High-quality content properties")
 
         response = ListAuthorizedPropertiesResponse(
-            properties=[property_obj],
+            publisher_domains=["example.com"],
             tags={"premium_content": tag_metadata},
             errors=[{"code": "WARNING", "message": "Test warning"}],
         )
 
-        assert len(response.properties) == 1
+        assert len(response.publisher_domains) == 1
         assert "premium_content" in response.tags
         assert len(response.errors) == 1
 
     def test_response_model_dump_includes_empty_errors(self):
         """Test that model_dump ensures errors is always present."""
-        response = ListAuthorizedPropertiesResponse(properties=[])
+        response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
 
         data = response.model_dump()
         assert "errors" in data
@@ -203,7 +203,7 @@ class TestListAuthorizedPropertiesResponse:
         )
 
         response = ListAuthorizedPropertiesResponse(
-            properties=[property_obj],
+            publisher_domains=["example.com"],
             tags={"test": PropertyTagMetadata(name="Test", description="Test tag")},
             errors=[],
         )
@@ -212,7 +212,7 @@ class TestListAuthorizedPropertiesResponse:
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["properties"]
+        required_fields = ["publisher_domains"]
         for field in required_fields:
             assert field in adcp_response
             assert adcp_response[field] is not None

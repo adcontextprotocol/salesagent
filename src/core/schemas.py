@@ -2024,7 +2024,7 @@ class BrandAsset(BaseModel):
     """Multimedia brand asset."""
 
     url: str = Field(..., description="URL to brand asset")
-    type: str = Field(..., description="Asset type (image, video, audio, etc.)")
+    asset_type: str = Field(..., description="Asset type (image, video, audio, etc.)")
     tags: list[str] | None = Field(None, description="Asset tags for categorization")
     width: int | None = Field(None, ge=1, description="Asset width in pixels")
     height: int | None = Field(None, ge=1, description="Asset height in pixels")
@@ -3354,7 +3354,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    properties: list[Property] = Field(..., description="Array of all properties this agent is authorized to represent")
+    publisher_domains: list[str] = Field(..., description="Publisher domains this agent is authorized to represent")
     tags: dict[str, PropertyTagMetadata] = Field(
         default_factory=dict, description="Metadata for each tag referenced by properties"
     )
@@ -3387,13 +3387,13 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
         Used by both MCP (for display) and A2A (for task messages).
         Provides conversational text without adding non-spec fields to the schema.
         """
-        count = len(self.properties)
+        count = len(self.publisher_domains)
         if count == 0:
-            return "No authorized properties found."
+            return "No authorized publisher domains found."
         elif count == 1:
-            return "Found 1 authorized property."
+            return "Found 1 authorized publisher domain."
         else:
-            return f"Found {count} authorized properties."
+            return f"Found {count} authorized publisher domains."
 
     def model_dump(self, **kwargs) -> dict[str, Any]:
         """Return AdCP-compliant response."""
