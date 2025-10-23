@@ -113,7 +113,11 @@ def detect_gam_network(tenant_id):
         return jsonify({"success": False, "error": "Access denied"}), 403
 
     try:
-        data = request.get_json()
+        # Use force=True and silent=True to handle empty/malformed requests gracefully
+        data = request.get_json(force=True, silent=True)
+        if data is None:
+            return jsonify({"success": False, "error": "Invalid or empty request body"}), 400
+
         refresh_token = data.get("refresh_token")
         network_code_provided = data.get("network_code")  # For multi-network selection
 
@@ -295,7 +299,26 @@ def configure_gam(tenant_id):
         return jsonify({"success": False, "error": "Access denied"}), 403
 
     try:
-        data = request.get_json()
+        # Try to get JSON - use force=True to handle potential Content-Type issues
+        data = request.get_json(force=True, silent=True)
+
+        # Handle None data (request parsing failed)
+        if data is None:
+            logger.error(
+                f"Failed to parse JSON from request for tenant {tenant_id}. "
+                f"Content-Type: {request.content_type}, "
+                f"Data length: {len(request.data) if request.data else 0}, "
+                f"Data preview: {request.data[:200] if request.data else 'empty'}"
+            )
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Invalid JSON in request body. Please ensure you're sending valid JSON.",
+                    }
+                ),
+                400,
+            )
 
         # Validate GAM configuration data
         validation_errors = validate_gam_config(data)
@@ -549,7 +572,8 @@ def sync_gam_inventory(tenant_id):
 
     try:
         # Get sync mode from request body (default to "incremental" - safer since it doesn't delete data)
-        request_data = request.get_json() or {}
+        # Use force=True and silent=True to handle empty/malformed requests gracefully
+        request_data = request.get_json(force=True, silent=True) or {}
         sync_mode = request_data.get("mode", "incremental")
 
         logger.info(f"Inventory sync request - tenant: {tenant_id}, mode: {sync_mode}, request_data: {request_data}")
@@ -1073,7 +1097,8 @@ def test_gam_connection(tenant_id):
         return jsonify({"success": False, "error": "Access denied"}), 403
 
     try:
-        data = request.get_json() or {}
+        # Use force=True and silent=True to handle empty/malformed requests gracefully
+        data = request.get_json(force=True, silent=True) or {}
         refresh_token = data.get("refresh_token")
         auth_method = data.get("auth_method")
 
