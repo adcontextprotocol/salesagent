@@ -726,14 +726,42 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_list_authorized_properties_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test list_authorized_properties skill invocation."""
+        # Create authorized properties for the tenant
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import AuthorizedProperty
+
+        with get_db_session() as session:
+            prop = AuthorizedProperty(
+                property_id="test_property_1",
+                tenant_id=sample_tenant["tenant_id"],
+                property_type="website",
+                name="Test Site",
+                identifiers=[{"type": "domain", "value": "example.com"}],
+                tags=["test"],
+                publisher_domain="example.com",
+                verification_status="verified",
+            )
+            session.add(prop)
+            session.commit()
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        # Set up tenant context before test
+        from src.core.config_loader import set_current_tenant
+
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+        set_current_tenant(tenant_dict)
 
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.main.get_current_tenant") as mock_get_tenant,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            mock_get_tenant.return_value = tenant_dict
 
             # Create skill invocation
             skill_params = {}
@@ -752,6 +780,7 @@ class TestA2ASkillInvocation:
             # Extract response - per AdCP v2.4 spec, response has publisher_domains
             artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
             assert "publisher_domains" in artifact_data
+            assert len(artifact_data["publisher_domains"]) > 0
 
     @pytest.mark.asyncio
     async def test_sync_creatives_skill(self, handler, sample_tenant, sample_principal, sample_products, validator):

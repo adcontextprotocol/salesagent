@@ -1582,11 +1582,14 @@ class AdCPRequestHandler(RequestHandler):
         """Handle explicit list_authorized_properties skill invocation (CRITICAL AdCP endpoint).
 
         NOTE: Authentication is OPTIONAL for this endpoint since it returns public discovery data.
-        If no auth token provided, still creates ToolContext with headers for tenant detection.
+        If no auth token provided, uses headers for tenant detection.
+
+        Per AdCP v2.4 spec, returns publisher_domains (not properties/tags).
         """
         try:
-            # Create ToolContext from A2A auth info or headers (for tenant detection)
+            # Create ToolContext from A2A auth info (which sets tenant context as side effect)
             tool_context = None
+
             if auth_token:
                 try:
                     tool_context = self._create_tool_context_from_a2a(
@@ -1597,40 +1600,26 @@ class AdCPRequestHandler(RequestHandler):
                     logger.warning(f"Failed to create authenticated context (continuing without auth): {e}")
                     tool_context = None
 
-            # Even without auth, create ToolContext with headers for tenant detection
-            if not tool_context:
-                headers = getattr(_request_context, "request_headers", {})
-                if headers:
-                    tool_context = ToolContext(
-                        principal_id=None,  # No auth
-                        tool_name="list_authorized_properties",
-                        meta={"headers": dict(headers)},  # Pass headers for tenant detection
-                        testing_context={},
-                    )
-
             # Map A2A parameters to ListAuthorizedPropertiesRequest
             request = ListAuthorizedPropertiesRequest(tags=parameters.get("tags", []))
 
-            # Call core function directly (context is optional for public discovery)
+            # Call core function directly
+            # Context can be None for unauthenticated calls - tenant will be detected from headers
             response = core_list_authorized_properties_tool(req=request, context=tool_context)
 
             # Handle both dict and object responses (defensive pattern)
+            # Per AdCP v2.4 spec, response has publisher_domains (not properties/tags)
             if isinstance(response, dict):
-                properties = response.get("properties", [])
-                tags = response.get("tags", {})
-                properties_list = properties
+                publisher_domains = response.get("publisher_domains", [])
             else:
-                properties = response.properties
-                tags = response.tags
-                properties_list = [prop.model_dump() for prop in properties]
+                publisher_domains = response.publisher_domains
 
-            # Convert response to A2A format
+            # Convert response to A2A format (using AdCP v2.4 spec fields)
             return {
                 "success": True,
-                "properties": properties_list,
-                "tags": tags,
-                "message": "Authorized properties retrieved successfully",
-                "total_count": len(properties_list),
+                "publisher_domains": publisher_domains,
+                "message": f"Found {len(publisher_domains)} authorized publisher domains",
+                "total_count": len(publisher_domains),
             }
 
         except Exception as e:
