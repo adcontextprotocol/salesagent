@@ -59,9 +59,9 @@ class Dimensions(BaseModel):
     min_height: Annotated[float | None, Field(description="Minimum height for responsive renders", ge=0.0)] = None
     max_width: Annotated[float | None, Field(description="Maximum width for responsive renders", ge=0.0)] = None
     max_height: Annotated[float | None, Field(description="Maximum height for responsive renders", ge=0.0)] = None
-    responsive: Annotated[Responsive | None, Field(description="Indicates which dimensions are responsive/fluid")] = (
-        None
-    )
+    responsive: Annotated[
+        Responsive | None, Field(description="Indicates which dimensions are responsive/fluid")
+    ] = None
     aspect_ratio: Annotated[
         str | None,
         Field(description="Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1')", pattern="^\\d+:\\d+$"),
@@ -209,9 +209,9 @@ class CreativeAgent(BaseModel):
         ),
     ]
     agent_name: Annotated[str | None, Field(description="Human-readable name for the creative agent")] = None
-    capabilities: Annotated[list[Capability] | None, Field(description="Capabilities this creative agent provides")] = (
-        None
-    )
+    capabilities: Annotated[
+        list[Capability] | None, Field(description="Capabilities this creative agent provides")
+    ] = None
 
 
 class Error(BaseModel):
@@ -224,9 +224,9 @@ class Error(BaseModel):
         str | None, Field(description="Field path associated with the error (e.g., 'packages[0].targeting')")
     ] = None
     suggestion: Annotated[str | None, Field(description="Suggested fix for the error")] = None
-    retry_after: Annotated[float | None, Field(description="Seconds to wait before retrying the operation", ge=0.0)] = (
-        None
-    )
+    retry_after: Annotated[
+        float | None, Field(description="Seconds to wait before retrying the operation", ge=0.0)
+    ] = None
     details: Annotated[Any | None, Field(description="Additional task-specific error details")] = None
 
 

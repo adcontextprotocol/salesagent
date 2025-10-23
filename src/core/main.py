@@ -429,23 +429,36 @@ def get_principal_from_context(
     headers = None
     try:
         headers = get_http_headers(include_all=True)
-    except Exception:
+        console.print(
+            f"[blue]DEBUG: get_http_headers(include_all=True) returned {len(headers) if headers else 0} headers[/blue]"
+        )
+        if headers:
+            console.print(f"[blue]DEBUG: Header keys: {list(headers.keys())}[/blue]")
+    except Exception as e:
+        console.print(f"[yellow]DEBUG: get_http_headers() exception: {type(e).__name__}: {e}[/yellow]")
         pass  # Will try fallback below
 
     # If get_http_headers() returned empty dict or None, try context.meta fallback
     # This is necessary for sync tools where get_http_headers() may not work
     # CRITICAL: get_http_headers() returns {} for sync tools, so we need fallback even for empty dict
     if not headers:  # Handles both None and {}
+        console.print("[yellow]DEBUG: get_http_headers() empty, trying fallback methods[/yellow]")
         if hasattr(context, "meta") and context.meta and "headers" in context.meta:
             headers = context.meta["headers"]
+            console.print(f"[blue]DEBUG: Got {len(headers)} headers from context.meta[/blue]")
         # Try other possible attributes
         elif hasattr(context, "headers"):
             headers = context.headers
+            console.print(f"[blue]DEBUG: Got {len(headers)} headers from context.headers[/blue]")
         elif hasattr(context, "_headers"):
             headers = context._headers
+            console.print(f"[blue]DEBUG: Got {len(headers)} headers from context._headers[/blue]")
+        else:
+            console.print("[yellow]DEBUG: No fallback attributes available[/yellow]")
 
     # If still no headers dict available, return None
     if not headers:
+        console.print("[red]❌ CRITICAL: No headers available - cannot detect tenant[/red]")
         return (None, None)
 
     # Log all relevant headers for debugging

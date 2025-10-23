@@ -22,9 +22,9 @@ class Filters(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    format: Annotated[str | None, Field(description="Filter by creative format type (e.g., video, audio, display)")] = (
-        None
-    )
+    format: Annotated[
+        str | None, Field(description="Filter by creative format type (e.g., video, audio, display)")
+    ] = None
     formats: Annotated[list[str] | None, Field(description="Filter by multiple creative format types")] = None
     status: Annotated[Status | None, Field(description="Status of a creative asset", title="Creative Status")] = None
     statuses: Annotated[list[Any] | None, Field(description="Filter by multiple creative statuses")] = None
@@ -33,9 +33,9 @@ class Filters(BaseModel):
     name_contains: Annotated[
         str | None, Field(description="Filter by creative names containing this text (case-insensitive)")
     ] = None
-    creative_ids: Annotated[list[str] | None, Field(description="Filter by specific creative IDs", max_length=100)] = (
-        None
-    )
+    creative_ids: Annotated[
+        list[str] | None, Field(description="Filter by specific creative IDs", max_length=100)
+    ] = None
     created_after: Annotated[
         AwareDatetime | None, Field(description="Filter creatives created after this date (ISO 8601)")
     ] = None

@@ -5,12 +5,12 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Union
 
 from pydantic import AwareDatetime, Field, RootModel
 
 
-class StartTiming(RootModel[str | AwareDatetime]):
+class StartTiming(RootModel[Union[str, AwareDatetime]]):
     root: Annotated[
         str | AwareDatetime,
         Field(description="Campaign start timing: 'asap' or ISO 8601 date-time", title="Start Timing"),
