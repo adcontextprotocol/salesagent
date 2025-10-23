@@ -85,7 +85,11 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
 
 
 def get_principal_from_context(context: Context | None) -> str | None:
-    """Extract principal ID from the FastMCP context using x-adcp-auth header.
+    """Extract principal ID from the FastMCP context using authentication headers.
+
+    Accepts authentication via either:
+    - x-adcp-auth: <token> (AdCP convention, preferred for MCP)
+    - Authorization: Bearer <token> (standard HTTP, for compatibility with A2A clients)
 
     Args:
         context: FastMCP context object
@@ -99,6 +103,7 @@ def get_principal_from_context(context: Context | None) -> str | None:
     try:
         # Extract token from headers
         token = None
+        auth_source = None
         headers_found = {}
 
         if hasattr(context, "meta") and isinstance(context.meta, dict):
@@ -111,18 +116,26 @@ def get_principal_from_context(context: Context | None) -> str | None:
             logger.warning("[AUTH] No headers found in context!")
             return None
 
-        # Case-insensitive header lookup (HTTP headers are case-insensitive)
-        token = None
+        # Try both authentication headers (prefer x-adcp-auth for MCP)
         for key, value in headers_found.items():
             if key.lower() == "x-adcp-auth":
                 token = value
-                break
+                auth_source = "x-adcp-auth"
+                break  # Prefer x-adcp-auth
+            elif key.lower() == "authorization":
+                auth_header = value.strip()
+                if auth_header.startswith("Bearer "):
+                    token = auth_header[7:]  # Remove "Bearer " prefix
+                    auth_source = "Authorization"
+                    # Don't break - prefer x-adcp-auth if both present
 
         if not token:
-            logger.debug(f"[AUTH] No x-adcp-auth token found. Available headers: {list(headers_found.keys())}")
+            logger.debug(
+                f"[AUTH] No authentication token found (checked x-adcp-auth and Authorization). Available headers: {list(headers_found.keys())}"
+            )
             return None
 
-        logger.debug(f"[AUTH] Found token: {token[:20]}...")
+        logger.debug(f"[AUTH] Found token from {auth_source}: {token[:20]}...")
 
         # Validate token and get principal ID
         return get_principal_from_token(token)

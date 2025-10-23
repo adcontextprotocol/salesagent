@@ -313,7 +313,9 @@ class Colors(BaseModel):
 class Fonts(BaseModel):
     primary: Annotated[str | None, Field(description="Primary font family name")] = None
     secondary: Annotated[str | None, Field(description="Secondary font family name")] = None
-    font_urls: Annotated[list[AnyUrl] | None, Field(description="URLs to web font files if using custom fonts")] = None
+    font_urls: Annotated[list[AnyUrl] | None, Field(description="URLs to web font files if using custom fonts")] = (
+        None
+    )
 
 
 class AssetType(Enum):
@@ -367,7 +369,9 @@ class ProductCatalog(BaseModel):
     categories: Annotated[
         list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = (
+        None
+    )
     update_frequency: Annotated[
         UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
@@ -389,7 +393,9 @@ class Contact(BaseModel):
 
 class Metadata(BaseModel):
     created_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was created")] = None
-    updated_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was last updated")] = None
+    updated_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was last updated")] = (
+        None
+    )
     version: Annotated[str | None, Field(description="Brand card version number")] = None
 
 
@@ -470,7 +476,9 @@ class ProductCatalog15(BaseModel):
     categories: Annotated[
         list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = (
+        None
+    )
     update_frequency: Annotated[
         UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
@@ -673,19 +681,7 @@ class Creative(BaseModel):
     assets: Annotated[
         dict[
             str,
-            Assets
-            | Assets51
-            | Assets52
-            | Assets53
-            | Assets54
-            | Assets55
-            | Assets56
-            | Assets57
-            | Assets58
-            | Assets59
-            | Assets60
-            | Assets61
-            | Assets62,
+            Assets | Assets51 | Assets52 | Assets53 | Assets54 | Assets55 | Assets56 | Assets57 | Assets58 | Assets59 | Assets60 | Assets61 | Assets62,
         ],
         Field(description="Assets required by the format, keyed by asset_role"),
     ]
@@ -693,7 +689,9 @@ class Creative(BaseModel):
         list[Input] | None,
         Field(description="Preview contexts for generative formats - defines what scenarios to generate previews for"),
     ] = None
-    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = None
+    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = (
+        None
+    )
     approved: Annotated[
         bool | None,
         Field(

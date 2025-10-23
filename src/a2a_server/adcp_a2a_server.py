@@ -2391,29 +2391,39 @@ def main():
     # Add authentication middleware for Bearer token extraction
     @app.middleware("http")
     async def auth_middleware(request, call_next):
-        """Extract Bearer token and set authentication context for A2A requests."""
+        """Extract Bearer token and set authentication context for A2A requests.
+
+        Accepts authentication via either:
+        - Authorization: Bearer <token> (standard A2A/HTTP)
+        - x-adcp-auth: <token> (AdCP convention, for compatibility with MCP)
+        """
         # Only process A2A endpoint requests (handle both /a2a and /a2a/)
         if request.url.path in ["/a2a", "/a2a/"] and request.method == "POST":
-            # Extract Bearer token from Authorization header (case-insensitive iteration)
-            # Use same pattern as MCP for robust header extraction
-            auth_header = None
+            # Try Authorization header first (standard)
+            token = None
+            auth_source = None
+
             for key, value in request.headers.items():
                 if key.lower() == "authorization":
                     auth_header = value.strip()
-                    break
+                    if auth_header.startswith("Bearer "):
+                        token = auth_header[7:]  # Remove "Bearer " prefix
+                        auth_source = "Authorization"
+                        break
+                elif key.lower() == "x-adcp-auth":
+                    # Also accept x-adcp-auth for compatibility with MCP clients
+                    token = value.strip()
+                    auth_source = "x-adcp-auth"
+                    # Don't break - prefer Authorization if both present
 
-            logger.info(
-                f"Processing A2A request to {request.url.path} with auth header: {'Bearer...' if auth_header and auth_header.startswith('Bearer ') else repr(auth_header[:20]) + '...' if auth_header else 'missing'}"
-            )
-
-            if auth_header and auth_header.startswith("Bearer "):
-                token = auth_header[7:]  # Remove "Bearer " prefix
-                # Store token and headers in thread-local storage for handler access
+            if token:
                 _request_context.auth_token = token
                 _request_context.request_headers = dict(request.headers)
-                logger.info(f"Extracted Bearer token for A2A request: {token[:10]}...")
+                logger.info(f"Extracted token from {auth_source} header for A2A request: {token[:10]}...")
             else:
-                logger.warning(f"A2A request to {request.url.path} missing Bearer token in Authorization header")
+                logger.warning(
+                    f"A2A request to {request.url.path} missing authentication (checked Authorization and x-adcp-auth headers)"
+                )
                 _request_context.auth_token = None
                 _request_context.request_headers = dict(request.headers)
 
