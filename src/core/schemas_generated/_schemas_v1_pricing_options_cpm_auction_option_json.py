@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -14,10 +14,10 @@ class PriceGuidance(BaseModel):
     floor: Annotated[
         float, Field(description="Minimum bid price - publisher will reject bids under this value", ge=0.0)
     ]
-    p25: Annotated[Optional[float], Field(description="25th percentile winning price", ge=0.0)] = None
-    p50: Annotated[Optional[float], Field(description="Median winning price", ge=0.0)] = None
-    p75: Annotated[Optional[float], Field(description="75th percentile winning price", ge=0.0)] = None
-    p90: Annotated[Optional[float], Field(description="90th percentile winning price", ge=0.0)] = None
+    p25: Annotated[float | None, Field(description="25th percentile winning price", ge=0.0)] = None
+    p50: Annotated[float | None, Field(description="Median winning price", ge=0.0)] = None
+    p75: Annotated[float | None, Field(description="75th percentile winning price", ge=0.0)] = None
+    p90: Annotated[float | None, Field(description="90th percentile winning price", ge=0.0)] = None
 
 
 class CpmAuctionPricingOption(BaseModel):
@@ -33,7 +33,7 @@ class CpmAuctionPricingOption(BaseModel):
     ]
     price_guidance: Annotated[PriceGuidance, Field(description="Pricing guidance for auction-based CPM bidding")]
     min_spend_per_package: Annotated[
-        Optional[float],
+        float | None,
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,
