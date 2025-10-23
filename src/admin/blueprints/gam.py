@@ -295,7 +295,26 @@ def configure_gam(tenant_id):
         return jsonify({"success": False, "error": "Access denied"}), 403
 
     try:
-        data = request.get_json()
+        # Try to get JSON - use force=True to handle potential Content-Type issues
+        data = request.get_json(force=True, silent=True)
+
+        # Handle None data (request parsing failed)
+        if data is None:
+            logger.error(
+                f"Failed to parse JSON from request for tenant {tenant_id}. "
+                f"Content-Type: {request.content_type}, "
+                f"Data length: {len(request.data) if request.data else 0}, "
+                f"Data preview: {request.data[:200] if request.data else 'empty'}"
+            )
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Invalid JSON in request body. Please ensure you're sending valid JSON.",
+                    }
+                ),
+                400,
+            )
 
         # Validate GAM configuration data
         validation_errors = validate_gam_config(data)
