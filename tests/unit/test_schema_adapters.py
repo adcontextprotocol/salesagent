@@ -14,13 +14,14 @@ from src.core.schema_adapters import GetProductsRequest
 class TestGetProductsRequestAdapter:
     """Test the adapter provides simple API on top of generated schemas."""
 
-    def test_simple_construction_with_promoted_offering(self):
-        """Adapter has simple, flat API for construction."""
+    def test_simple_construction_with_brand_manifest_url(self):
+        """Adapter has simple, flat API for construction with brand manifest URL."""
         req = GetProductsRequest(brand_manifest={"name": "https://example.com"}, brief="Video ads")
 
-        assert req.promoted_offering == "https://example.com"
+        # Adapter uses brand_manifest (AdCP v2.2.0 spec field)
         assert req.brief == "Video ads"
-        assert req.brand_manifest is not None  # Auto-converted
+        assert req.brand_manifest is not None
+        assert req.brand_manifest["name"] == "https://example.com"
 
     def test_simple_construction_with_brand_manifest(self):
         """Adapter accepts brand_manifest dict."""
@@ -30,12 +31,18 @@ class TestGetProductsRequestAdapter:
         assert req.brief == "Display ads"
 
     def test_backward_compatibility_promoted_offering(self):
-        """Adapter handles legacy promoted_offering field."""
-        req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
+        """Adapter accepts promoted_offering input and converts to brand_manifest.
 
-        # Auto-converted to brand_manifest
+        Per AdCP v2.2.0, promoted_offering was removed from the spec in favor of
+        brand_manifest. The adapter provides backward compatibility by accepting
+        promoted_offering and converting it to brand_manifest.
+        """
+        # Accept promoted_offering as input (backward compat)
+        req = GetProductsRequest(promoted_offering="https://example.com")
+
+        # Validator converts to brand_manifest
         assert req.brand_manifest is not None
-        assert req.promoted_offering == "https://example.com"
+        assert req.brand_manifest["url"] == "https://example.com"
 
     def test_converts_to_generated_schema(self):
         """Adapter converts to generated schema for protocol validation."""
@@ -113,7 +120,7 @@ class TestAdapterBenefitsForTesting:
         req = GetProductsRequest(brand_manifest={"name": "https://example.com"}, brief="Test campaign")
 
         # Easy assertions
-        assert req.promoted_offering == "https://example.com"
+        assert req.brand_manifest["name"] == "https://example.com"
         assert req.brief == "Test campaign"
 
     def test_no_schema_drift_bugs(self):
@@ -137,7 +144,7 @@ class TestAdapterBenefitsForTesting:
         """
         # This test documents the benefit, doesn't assert behavior
         req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
-        assert req.promoted_offering == "https://example.com"
+        assert req.brand_manifest["name"] == "https://example.com"
 
     def test_custom_validators_still_work(self):
         """Adapters can add custom validators that can't be in JSON Schema."""
@@ -155,17 +162,23 @@ class TestAdapterBenefitsForTesting:
 class TestAdapterVsManualSchema:
     """Compare adapter approach vs manual schemas."""
 
-    def test_adapter_api_same_as_manual(self):
-        """Adapter API is identical to manual schema API."""
+    def test_adapter_api_compatible_with_manual(self):
+        """Adapter API is compatible with manual schema API.
+
+        Both schemas use brand_manifest (per AdCP v2.2.0 spec).
+        The adapter also accepts promoted_offering as input for backward compat.
+        """
         from src.core.schemas import GetProductsRequest as ManualGetProductsRequest
 
-        # Both have same construction API
-        adapter_req = GetProductsRequest(brand_manifest={"name": "https://example.com"}, brief="Test")
-        manual_req = ManualGetProductsRequest(brand_manifest={"name": "https://example.com"}, brief="Test")
+        # Both have same construction API with brand_manifest
+        adapter_req = GetProductsRequest(brand_manifest={"name": "Test Brand"}, brief="Test")
+        manual_req = ManualGetProductsRequest(brand_manifest={"name": "Test Brand"}, brief="Test")
 
-        # Both have same fields
-        assert adapter_req.promoted_offering == manual_req.promoted_offering
+        # Both have brand_manifest and brief (AdCP spec fields)
         assert adapter_req.brief == manual_req.brief
+        # Note: manual schema converts dict to BrandManifest object, adapter keeps as dict
+        assert adapter_req.brand_manifest["name"] == "Test Brand"
+        assert manual_req.brand_manifest.name == "Test Brand"
 
     def test_adapter_validates_against_spec(self):
         """Adapter uses generated schema, so validates against AdCP JSON Schema."""
@@ -202,7 +215,7 @@ class TestAdapterPattern:
         req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
 
         # Application code: simple API
-        assert req.promoted_offering == "https://example.com"
+        assert req.brand_manifest["name"] == "https://example.com"
 
         # Protocol code: generated schema
         generated = req.to_generated()
@@ -214,28 +227,27 @@ class TestAdapterPattern:
         """Explain why we need adapters instead of using generated directly.
 
         Adapters provide several benefits over using generated schemas:
-        1. **Field Transformation**: promoted_offering → brand_manifest conversion
+        1. **Field Transformation**: promoted_offering → brand_manifest conversion (backward compat)
         2. **Simplified API**: Adapters add convenience methods and __str__()
         3. **Custom Validation**: Can add business logic not in JSON Schema
-        4. **Backward Compatibility**: Can maintain deprecated fields
+        4. **Backward Compatibility**: Can accept deprecated fields as input
 
         Example:
-            # Adapter API (simple)
-            adapter = GetProductsRequest(brand_manifest={"name": "https://example.com"})
-            data = adapter.promoted_offering  # Deprecated field works!
+            # Adapter API (simple, backward compat)
+            adapter = GetProductsRequest(promoted_offering="https://example.com")
+            # Automatically converts to brand_manifest
 
             # Converts to spec-compliant generated
             generated = adapter.to_generated()
-            data = generated.brand_manifest  # Transformed to spec field
+            data = generated.brand_manifest  # AdCP spec field
 
         Note: After schema regeneration, generated schemas are now flat classes
         (no more RootModel[Union[...]]). But adapters still provide value!
         """
-        req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
+        # Test backward compatibility: promoted_offering input → brand_manifest
+        req = GetProductsRequest(promoted_offering="https://example.com")
 
-        # Simple flat access with deprecated field
-        assert req.promoted_offering == "https://example.com"
-        # Automatically converted to brand_manifest
+        # Validator automatically converts to brand_manifest
         assert req.brand_manifest == {"url": "https://example.com"}
 
         # Converts to spec-compliant generated (no promoted_offering)
@@ -259,15 +271,17 @@ class TestMigrationStrategy:
         - Find issues early
         """
         # Test code uses adapter
-        req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
+        req = GetProductsRequest(brand_manifest={"name": "Test Brand"})
 
         # Production code still uses manual schema
         from src.core.schemas import GetProductsRequest as ManualReq
 
-        manual = ManualReq(brand_manifest={"name": "https://example.com"})
+        manual = ManualReq(brand_manifest={"name": "Test Brand"})
 
-        # Both work the same
-        assert req.promoted_offering == manual.promoted_offering
+        # Both have compatible APIs (both use brand_manifest)
+        assert req.brief == manual.brief
+        assert req.brand_manifest["name"] == "Test Brand"
+        assert manual.brand_manifest.name == "Test Brand"
 
     def test_step2_gradual_migration(self):
         """Gradually migrate production code file by file.
@@ -285,7 +299,7 @@ class TestMigrationStrategy:
         # OLD: from src.core.schemas import GetProductsRequest
 
         req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
-        assert req.promoted_offering == "https://example.com"
+        assert req.brand_manifest["name"] == "https://example.com"
 
     def test_step3_deprecate_manual_schemas(self):
         """Eventually, manual schemas.py becomes just re-exports.
@@ -302,4 +316,4 @@ class TestMigrationStrategy:
         from src.core.schema_adapters import GetProductsRequest as AdapterReq
 
         req = AdapterReq(brand_manifest={"name": "https://example.com"})
-        assert req.promoted_offering == "https://example.com"
+        assert req.brand_manifest["name"] == "https://example.com"

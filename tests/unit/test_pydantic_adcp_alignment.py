@@ -29,7 +29,7 @@ class TestGetProductsRequestAlignment:
         """Test with only required fields per AdCP spec."""
         req = GetProductsRequest(brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"})
 
-        assert req.promoted_offering == "Nike Air Jordan 2025 basketball shoes"
+        assert req.brand_manifest.name == "Nike Air Jordan 2025 basketball shoes"
         assert req.brief == ""  # Default value
         assert req.adcp_version == "1.0.0"  # Default value
         assert req.filters is None  # Optional field
@@ -52,7 +52,7 @@ class TestGetProductsRequestAlignment:
             ),
         )
 
-        assert req.promoted_offering == "Acme Corp enterprise software"
+        assert req.brand_manifest.name == "Acme Corp enterprise software"
         assert req.brief == "Looking for display advertising on tech sites"
         assert req.adcp_version == "1.6.0"
         assert req.filters is not None
@@ -195,7 +195,7 @@ class TestAdCPSchemaCompatibility:
             brand_manifest={"name": "mobile apps"}, filters={"format_types": ["video"], "is_fixed_price": True}
         )
 
-        assert req.promoted_offering == "mobile apps"
+        assert req.brand_manifest.name == "mobile apps"
         assert req.filters.format_types == ["video"]
         assert req.filters.is_fixed_price is True
 
@@ -203,7 +203,7 @@ class TestAdCPSchemaCompatibility:
         """Test minimal valid request per AdCP spec."""
         req = GetProductsRequest(brand_manifest={"name": "eco-friendly products"})
 
-        assert req.promoted_offering == "eco-friendly products"
+        assert req.brand_manifest.name == "eco-friendly products"
         assert req.brief == ""
         assert req.adcp_version == "1.0.0"
         assert req.filters is None
@@ -213,7 +213,7 @@ class TestAdCPSchemaCompatibility:
         req = GetProductsRequest(brief="display advertising", brand_manifest={"name": "eco-friendly products"})
 
         assert req.brief == "display advertising"
-        assert req.promoted_offering == "eco-friendly products"
+        assert req.brand_manifest.name == "eco-friendly products"
 
     def test_example_multiple_filter_fields(self):
         """Test request with multiple filter fields."""
@@ -269,7 +269,7 @@ class TestRegressionPrevention:
                 },
             )
             # If we get here, the bug is fixed
-            assert req.promoted_offering == "cat food"
+            assert req.brand_manifest.name == "cat food"
             assert req.adcp_version == "1.6.0"
             assert req.filters is not None
         except ValidationError as e:
@@ -298,7 +298,7 @@ class TestRegressionPrevention:
         # This should NOT raise ValidationError
         req = GetProductsRequest(**payload)
 
-        assert req.promoted_offering == "purina cat food"
+        assert req.brand_manifest.name == "purina cat food"
         assert req.brief == "video advertising campaigns"
         assert req.adcp_version == "1.6.0"
         assert req.filters.delivery_type == "guaranteed"
