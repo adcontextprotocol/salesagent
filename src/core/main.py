@@ -425,9 +425,10 @@ def get_principal_from_context(
         return (None, None)
 
     # Get headers using the recommended FastMCP approach
+    # CRITICAL: Use include_all=True to get Host header (excluded by default)
     headers = None
     try:
-        headers = get_http_headers()
+        headers = get_http_headers(include_all=True)
     except Exception:
         pass  # Will try fallback below
 
