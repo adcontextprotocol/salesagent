@@ -341,7 +341,20 @@ class AdCPRequestHandler(RequestHandler):
         try:
             # Get authentication token
             auth_token = self._get_auth_token()
-            if not auth_token:
+
+            # List of skills that don't require authentication (public discovery endpoints)
+            public_skills = {"list_authorized_properties"}
+
+            # Check if any requested skills require authentication
+            requires_auth = True
+            if skill_invocations:
+                # If ALL skills are public, don't require auth
+                requested_skills = {inv["skill"] for inv in skill_invocations}
+                if requested_skills.issubset(public_skills):
+                    requires_auth = False
+
+            # Require authentication for non-public skills
+            if requires_auth and not auth_token:
                 raise ServerError(
                     InvalidRequestError(
                         message="Missing authentication token - Bearer token required in Authorization header"
@@ -1561,19 +1574,29 @@ class AdCPRequestHandler(RequestHandler):
             logger.error(f"Error in list_creative_formats skill: {e}")
             raise ServerError(InternalError(message=f"Unable to retrieve creative formats: {str(e)}"))
 
-    async def _handle_list_authorized_properties_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit list_authorized_properties skill invocation (CRITICAL AdCP endpoint)."""
+    async def _handle_list_authorized_properties_skill(self, parameters: dict, auth_token: str | None) -> dict:
+        """Handle explicit list_authorized_properties skill invocation (CRITICAL AdCP endpoint).
+
+        NOTE: Authentication is OPTIONAL for this endpoint since it returns public discovery data.
+        If no auth token provided, uses default tenant context.
+        """
         try:
-            # Create ToolContext from A2A auth info
-            tool_context = self._create_tool_context_from_a2a(
-                auth_token=auth_token,
-                tool_name="list_authorized_properties",
-            )
+            # Create ToolContext from A2A auth info (optional for public discovery)
+            tool_context = None
+            if auth_token:
+                try:
+                    tool_context = self._create_tool_context_from_a2a(
+                        auth_token=auth_token,
+                        tool_name="list_authorized_properties",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to create authenticated context (continuing without auth): {e}")
+                    tool_context = None
 
             # Map A2A parameters to ListAuthorizedPropertiesRequest
             request = ListAuthorizedPropertiesRequest(tags=parameters.get("tags", []))
 
-            # Call core function directly
+            # Call core function directly (context is optional for public discovery)
             response = core_list_authorized_properties_tool(req=request, context=tool_context)
 
             # Handle both dict and object responses (defensive pattern)
