@@ -250,7 +250,10 @@ class TestA2ASkillInvocation:
             mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
             # Create explicit skill invocation message
-            skill_params = {"brief": "Display advertising for news content", "promoted_offering": "News media company"}
+            skill_params = {
+                "brief": "Display advertising for news content",
+                "brand_manifest": {"name": "News media company"},
+            }
             message = self.create_message_with_skill("get_products", skill_params)
             params = MessageSendParams(message=message)
 
@@ -300,7 +303,10 @@ class TestA2ASkillInvocation:
             mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
             # Create explicit skill invocation message using A2A spec 'input' field
-            skill_params = {"brief": "Premium coffee brands", "promoted_offering": "Wonderstruck Premium Video Ads"}
+            skill_params = {
+                "brief": "Premium coffee brands",
+                "brand_manifest": {"name": "Wonderstruck Premium Video Ads"},
+            }
             message = self.create_message_with_skill_a2a_spec("get_products", skill_params)
             params = MessageSendParams(message=message)
 
@@ -360,7 +366,7 @@ class TestA2ASkillInvocation:
             end_date = start_date + timedelta(days=30)
 
             skill_params = {
-                "promoted_offering": "Test Campaign",
+                "brand_manifest": {"name": "Test Campaign"},
                 "packages": [
                     {
                         "buyer_ref": f"pkg_{sample_products[0]}",
@@ -411,7 +417,7 @@ class TestA2ASkillInvocation:
             mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
             # Create hybrid message (text + explicit skill)
-            skill_params = {"brief": "Sports video advertising", "promoted_offering": "Sports brand"}
+            skill_params = {"brief": "Sports video advertising", "brand_manifest": {"name": "Sports brand"}}
             message = self.create_message_hybrid(
                 "I need video products for sports content", "get_products", skill_params
             )
@@ -488,7 +494,7 @@ class TestA2ASkillInvocation:
                             kind="data",
                             data={
                                 "skill": "get_products",
-                                "parameters": {"brief": "video ads", "promoted_offering": "Test Brand Product"},
+                                "parameters": {"brief": "video ads", "brand_manifest": {"name": "Test Brand Product"}},
                             },
                         )
                     ),

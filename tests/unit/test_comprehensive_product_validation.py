@@ -26,7 +26,7 @@ async def test_all_providers():
     tenant_id = "default"
     principal_id = "test_principal"
     brief = "Test advertising campaign"
-    context = {"promoted_offering": "test product", "tenant_id": tenant_id, "principal_id": principal_id}
+    context = {"brand_manifest": {"name": "test product"}, "tenant_id": tenant_id, "principal_id": principal_id}
     principal_data = {"principal_id": principal_id, "name": "Test Principal", "platform_mappings": {}}
 
     providers_to_test = [

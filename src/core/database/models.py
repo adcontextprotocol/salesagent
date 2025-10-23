@@ -77,7 +77,7 @@ class Tenant(Base, JSONValidatorMixin):
 
     # Naming templates (business rules - shared across all adapters)
     order_name_template: Mapped[str | None] = mapped_column(
-        String(500), nullable=True, server_default="{campaign_name|promoted_offering} - {buyer_ref} - {date_range}"
+        String(500), nullable=True, server_default="{campaign_name|brand_name} - {buyer_ref} - {date_range}"
     )
     line_item_name_template: Mapped[str | None] = mapped_column(
         String(500), nullable=True, server_default="{order_name} - {product_name}"

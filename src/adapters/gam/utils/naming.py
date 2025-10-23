@@ -2,10 +2,10 @@
 
 Supports variable substitution with fallback syntax:
 - {campaign_name} - Direct substitution
-- {campaign_name|promoted_offering} - Use campaign_name, fall back to promoted_offering
+- {campaign_name|brand_name} - Use campaign_name, fall back to brand_name
 - {date_range} - Formatted date range (e.g., "Oct 7-14, 2025")
 - {month_year} - Month and year (e.g., "Oct 2025")
-- {promoted_offering} - What's being advertised
+- {brand_name} - Brand from brand_manifest
 - {buyer_ref} - Buyer's reference ID
 - {product_name} - Product name from database (for line items)
 - {package_name} - Package name from MediaPackage.name (for line items)
@@ -63,9 +63,9 @@ def apply_naming_template(
         ... })
         "Q1 Launch - Oct 7-14, 2025"
 
-        >>> apply_naming_template("{campaign_name|promoted_offering}", {
+        >>> apply_naming_template("{campaign_name|brand_name}", {
         ...     "campaign_name": None,
-        ...     "promoted_offering": "Nike Shoes"
+        ...     "brand_name": "Nike Shoes"
         ... })
         "Nike Shoes"
     """
@@ -77,8 +77,8 @@ def apply_naming_template(
     pattern = r"\{([^}]+)\}"
 
     for match in re.finditer(pattern, result):
-        full_match = match.group(0)  # e.g., "{campaign_name|promoted_offering}"
-        variables = match.group(1).split("|")  # e.g., ["campaign_name", "promoted_offering"]
+        full_match = match.group(0)  # e.g., "{campaign_name|brand_name}"
+        variables = match.group(1).split("|")  # e.g., ["campaign_name", "brand_name"]
 
         # Try each variable in order until we find a non-None, non-empty value
         value = None
@@ -116,9 +116,21 @@ def build_order_name_context(
     Returns:
         Dictionary of variables available for template substitution
     """
+    # Extract brand name from brand_manifest
+    brand_name = None
+    if hasattr(request, "brand_manifest") and request.brand_manifest:
+        manifest = request.brand_manifest
+        if isinstance(manifest, str):
+            brand_name = manifest
+        elif hasattr(manifest, "name"):
+            brand_name = manifest.name
+        elif isinstance(manifest, dict):
+            brand_name = manifest.get("name")
+
     return {
         "campaign_name": request.campaign_name,
-        "promoted_offering": request.promoted_offering,
+        "brand_name": brand_name or "N/A",
+        "promoted_offering": brand_name or "N/A",  # Backward compatibility alias
         "buyer_ref": request.buyer_ref,
         "date_range": format_date_range(start_time, end_time),
         "month_year": format_month_year(start_time),

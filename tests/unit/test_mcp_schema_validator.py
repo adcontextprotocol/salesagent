@@ -66,7 +66,6 @@ from src.core.schema_adapters import GetProductsRequest
 
 @mcp.tool
 async def get_products(
-    promoted_offering: str | None = None,
     brand_manifest: Any | None = None,
     brief: str = "",
     adcp_version: str = "1.0.0",
@@ -76,7 +75,6 @@ async def get_products(
     """Get products - includes adcp_version, brand_manifest, and filters!"""
     req = GetProductsRequest(
         brief=brief,
-        promoted_offering=promoted_offering,
         brand_manifest=brand_manifest,
         adcp_version=adcp_version,
         filters=filters,
@@ -118,7 +116,7 @@ async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetPr
 
 @mcp.tool
 async def get_products(
-    promoted_offering: str,
+    brand_manifest: Any | None = None,
     brief: str = "",
     adcp_version: str = "1.0.0",
     filters: dict | None = None,
@@ -127,7 +125,7 @@ async def get_products(
     """MCP wrapper - includes all AdCP spec fields!"""
     req = GetProductsRequest(
         brief=brief,
-        promoted_offering=promoted_offering,
+        brand_manifest=brand_manifest,
         adcp_version=adcp_version,
         filters=filters,
     )
@@ -196,5 +194,5 @@ async def get_products(
         tools = validator.parse_main_py_for_tools(main_py)
         tool_params = tools["get_products"]
 
-        # Request object pattern: tool has 'req' param, Pydantic enforces promoted_offering is required
+        # Request object pattern: tool has 'req' param, Pydantic enforces required fields
         assert tool_params == ["req"]

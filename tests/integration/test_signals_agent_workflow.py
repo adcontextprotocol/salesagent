@@ -96,7 +96,7 @@ class TestSignalsAgentWorkflow:
         await self._add_test_products(tenant_id)
 
         request = GetProductsRequest(
-            brief="sports car advertising campaign", promoted_offering="BMW M3 2025 sports sedan"
+            brief="sports car advertising campaign", brand_manifest={"name": "BMW M3 2025 sports sedan"}
         )
         context = test_context_factory()
 
@@ -122,7 +122,7 @@ class TestSignalsAgentWorkflow:
 
         request = GetProductsRequest(
             brief="luxury sports car advertising for wealthy professionals",
-            promoted_offering="Porsche 911 Turbo S 2025",
+            brand_manifest={"name": "Porsche 911 Turbo S 2025"},
         )
         context = test_context_factory()
 
@@ -157,7 +157,9 @@ class TestSignalsAgentWorkflow:
 
         await self._add_test_products(tenant_id)
 
-        request = GetProductsRequest(brief="test brief for failure scenario", promoted_offering="Test Product 2025")
+        request = GetProductsRequest(
+            brief="test brief for failure scenario", brand_manifest={"name": "Test Product 2025"}
+        )
         context = test_context_factory()
 
         # Mock upstream failure
@@ -184,7 +186,7 @@ class TestSignalsAgentWorkflow:
 
         await self._add_test_products(tenant_id)
 
-        request = GetProductsRequest(brief="", promoted_offering="Generic Product 2025")
+        request = GetProductsRequest(brief="", brand_manifest={"name": "Generic Product 2025"})
         context = test_context_factory()
 
         # Mock signals client to verify it's not called
