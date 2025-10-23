@@ -200,9 +200,7 @@ class UpdateMediaBuyRequest1(BaseModel):
             ge=0.0,
         ),
     ] = None
-    packages: Annotated[list[Packages | Packages1] | None, Field(description="Package-specific updates")] = (
-        None
-    )
+    packages: Annotated[list[Packages | Packages1] | None, Field(description="Package-specific updates")] = None
     push_notification_config: Annotated[
         PushNotificationConfig | None,
         Field(
@@ -385,9 +383,7 @@ class UpdateMediaBuyRequest2(BaseModel):
             ge=0.0,
         ),
     ] = None
-    packages: Annotated[list[Packages2 | Packages3] | None, Field(description="Package-specific updates")] = (
-        None
-    )
+    packages: Annotated[list[Packages2 | Packages3] | None, Field(description="Package-specific updates")] = None
     push_notification_config: Annotated[
         PushNotificationConfig3 | None,
         Field(
