@@ -1849,6 +1849,29 @@ REJECT - Creative cannot be approved:
                     </p>
                 </div>
             </div>
+
+            <div class="form-section">
+                <h3>Signals Discovery Agents</h3>
+                <p class="form-section-description">
+                    Manage signals discovery agents that enhance product recommendations with intelligent targeting based on contextual signals and audience insights.
+                </p>
+
+                <div style="margin-bottom: 1rem;">
+                    <a href="{{ url_for('signals_agents.list_signals_agents', tenant_id=tenant.tenant_id) }}"
+                       class="btn btn-primary">
+                        Manage Signals Agents
+                    </a>
+                </div>
+
+                <div style="padding: 1rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;">
+                    <p style="margin: 0; color: #6b7280; font-size: 0.875rem;">
+                        💡 <strong>What are Signals Discovery Agents?</strong><br>
+                        Signals agents are external services that provide contextual targeting signals and audience intelligence
+                        to enhance product recommendations. They can integrate with first-party data platforms, sustainability
+                        metrics (AXE signals), or custom audience intelligence services.
+                    </p>
+                </div>
+            </div>
         </div>
 
         <!-- API Settings -->

@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block title %}{% if agent %}Edit{% else %}Add{% endif %} Signals Agent - {{ tenant_name }} - Sales Agent Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>{% if agent %}Edit{% else %}Add{% endif %} Signals Discovery Agent</h2>
+        <a href="{{ url_for('signals_agents.list_signals_agents', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Signals Agents</a>
+    </div>
+
+    <form method="POST" action="{% if agent %}{{ url_for('signals_agents.edit_signals_agent', tenant_id=tenant_id, agent_id=agent.id) }}{% else %}{{ url_for('signals_agents.add_signals_agent', tenant_id=tenant_id) }}{% endif %}">
+        <div class="form-section">
+            <h3>Basic Information</h3>
+
+            <div class="form-group">
+                <label for="name">Agent Name <span style="color: #ef4444;">*</span></label>
+                <input type="text" id="name" name="name"
+                       value="{{ agent.name if agent else '' }}"
+                       placeholder="e.g., My Signals Discovery Agent"
+                       required>
+                <small>A friendly name to identify this signals discovery agent</small>
+            </div>
+
+            <div class="form-group">
+                <label for="agent_url">Agent URL <span style="color: #ef4444;">*</span></label>
+                <input type="url" id="agent_url" name="agent_url"
+                       value="{{ agent.agent_url if agent else '' }}"
+                       placeholder="https://your-signals-agent.example.com"
+                       required>
+                <small>The base URL of the signals agent (MCP endpoint will be at /mcp/)</small>
+            </div>
+
+            <div class="form-group">
+                <label for="priority">Priority</label>
+                <input type="number" id="priority" name="priority"
+                       value="{{ agent.priority if agent else 10 }}"
+                       min="1" max="100"
+                       placeholder="10">
+                <small>Lower numbers = higher priority when multiple agents provide signals</small>
+            </div>
+
+            <div class="checkbox-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="enabled" name="enabled"
+                           {% if not agent or agent.enabled %}checked{% endif %}>
+                    <span class="checkbox-custom"></span>
+                    <span class="checkbox-text">Enable this signals agent</span>
+                </label>
+                <small>When disabled, signals from this agent will not be used</small>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>Agent Configuration</h3>
+
+            <div class="form-group">
+                <label for="timeout">Request Timeout (seconds)</label>
+                <input type="number" id="timeout" name="timeout"
+                       value="{{ agent.timeout if agent else 30 }}"
+                       min="5" max="120"
+                       placeholder="30">
+                <small>Maximum time to wait for signals agent response (5-120 seconds)</small>
+            </div>
+
+            <div class="form-group">
+                <label for="max_signal_products">Maximum Signal Products</label>
+                <input type="number" id="max_signal_products" name="max_signal_products"
+                       value="{{ agent.max_signal_products if agent else 10 }}"
+                       min="1" max="50"
+                       placeholder="10">
+                <small>Maximum number of signal-enhanced products to create from this agent</small>
+            </div>
+
+            <div class="checkbox-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="forward_promoted_offering" name="forward_promoted_offering"
+                           {% if not agent or agent.forward_promoted_offering %}checked{% endif %}>
+                    <span class="checkbox-custom"></span>
+                    <span class="checkbox-text">Forward Promoted Offering</span>
+                </label>
+                <small>Include promoted offering information when querying signals agent</small>
+            </div>
+
+            <div class="checkbox-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="fallback_to_database" name="fallback_to_database"
+                           {% if not agent or agent.fallback_to_database %}checked{% endif %}>
+                    <span class="checkbox-custom"></span>
+                    <span class="checkbox-text">Fallback to Database Products</span>
+                </label>
+                <small>Use regular database products if signals agent is unavailable or returns no results</small>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>Authentication (Optional)</h3>
+            <p class="form-section-description">
+                If your signals agent requires authentication, configure the credentials below.
+            </p>
+
+            <div class="form-group">
+                <label for="auth_type">Authentication Type</label>
+                <select id="auth_type" name="auth_type">
+                    <option value="">None</option>
+                    <option value="bearer" {% if agent and agent.auth_type == 'bearer' %}selected{% endif %}>Bearer Token</option>
+                    <option value="api_key" {% if agent and agent.auth_type == 'api_key' %}selected{% endif %}>API Key</option>
+                </select>
+                <small>Select the authentication method required by your signals agent</small>
+            </div>
+
+            <div class="form-group">
+                <label for="auth_credentials">Credentials</label>
+                <input type="password" id="auth_credentials" name="auth_credentials"
+                       value="{{ agent.auth_credentials if agent else '' }}"
+                       placeholder="Enter token or API key">
+                <small>
+                    {% if agent %}
+                    Leave blank to keep existing credentials. Enter a new value to update.
+                    {% else %}
+                    The token or API key for authenticating with the signals agent
+                    {% endif %}
+                </small>
+            </div>
+        </div>
+
+        <div class="form-section" style="background: #f9fafb; padding: 1.5rem; border-radius: 6px;">
+            <h3 style="margin-top: 0;">📖 How Signals Agents Work</h3>
+            <ul style="margin: 0.5rem 0; padding-left: 1.5rem; line-height: 1.8; color: #374151;">
+                <li><strong>Signal Discovery:</strong> The sales agent calls your signals agent's <code>get_signals</code> MCP tool with the buyer's brief</li>
+                <li><strong>Signal Transformation:</strong> Retrieved signals are transformed into custom products with enhanced targeting</li>
+                <li><strong>Product Enhancement:</strong> Signal-enhanced products are combined with regular database products</li>
+                <li><strong>Multi-Agent Support:</strong> If multiple agents are configured, signals are aggregated from all enabled agents</li>
+                <li><strong>Priority System:</strong> Agents with lower priority numbers are queried first</li>
+                <li><strong>Testing:</strong> After saving, you can test the connection to ensure your agent is reachable</li>
+            </ul>
+        </div>
+
+        <div class="button-group">
+            <button type="submit" class="btn btn-primary">{% if agent %}Update{% else %}Add{% endif %} Signals Agent</button>
+            <a href="{{ url_for('signals_agents.list_signals_agents', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.form-section {
+    margin-bottom: 2rem;
+}
+
+.form-section h3 {
+    margin-bottom: 0.5rem;
+    color: #1f2937;
+}
+
+.form-section-description {
+    margin-bottom: 1rem;
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #374151;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.form-group input[type="number"] {
+    width: 150px;
+}
+
+.form-group small {
+    display: block;
+    margin-top: 0.25rem;
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+.checkbox-group {
+    margin-bottom: 1rem;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: start;
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+    margin-right: 0.5rem;
+    margin-top: 0.25rem;
+}
+
+.checkbox-text {
+    font-weight: 500;
+    color: #374151;
+}
+
+.checkbox-group small {
+    display: block;
+    margin-left: 1.5rem;
+    margin-top: 0.25rem;
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+.button-group {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 2rem;
+}
+</style>
+{% endblock %}

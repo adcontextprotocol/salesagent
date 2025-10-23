@@ -1,16 +1,13 @@
 """Signals-based product catalog provider for upstream signals discovery integration."""
 
-import asyncio
 import logging
 from typing import Any
-
-from fastmcp.client import Client
-from fastmcp.client.transports import StreamableHttpTransport
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ModelProduct
 from src.core.database.product_pricing import get_product_pricing_options
 from src.core.schemas import Product
+from src.core.signals_agent_registry import get_signals_agent_registry
 
 from .base import ProductCatalogProvider
 
@@ -19,64 +16,32 @@ logger = logging.getLogger(__name__)
 
 class SignalsDiscoveryProvider(ProductCatalogProvider):
     """
-    Product catalog provider that integrates with an upstream AdCP signals discovery agent.
+    Product catalog provider that integrates with upstream AdCP signals discovery agents.
 
     This provider:
-    1. Calls upstream signals agent to get relevant signals for a brief
+    1. Uses the signals agent registry to query all configured agents
     2. Transforms signals into custom products with appropriate targeting
     3. Falls back to database products if signals agent is unavailable
     4. Only forwards requests when a brief is provided (optimization per issue #106)
 
     Configuration:
-        enabled: Whether signals discovery is enabled (default: False)
-        upstream_url: URL of the upstream signals discovery agent
-        upstream_token: Authentication token for the signals agent
-        auth_header: Header name for authentication (default: "x-adcp-auth")
-        forward_promoted_offering: Include promoted_offering in signals request (default: True)
-        timeout: Request timeout in seconds (default: 30)
+        tenant_id: Required - tenant identifier for agent lookup
         fallback_to_database: Use database products if signals unavailable (default: True)
-        max_signal_products: Maximum number of products to create from signals (default: 10)
     """
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
-        self.enabled = config.get("enabled", False)
-        self.upstream_url = config.get("upstream_url", "")
-        self.upstream_token = config.get("upstream_token", "")
-        self.auth_header = config.get("auth_header", "x-adcp-auth")
-        self.forward_promoted_offering = config.get("forward_promoted_offering", True)
-        self.timeout = config.get("timeout", 30)
+        self.tenant_id = config.get("tenant_id")
         self.fallback_to_database = config.get("fallback_to_database", True)
-        self.max_signal_products = config.get("max_signal_products", 10)
-        self.client = None
+        self.registry = get_signals_agent_registry()
 
     async def initialize(self) -> None:
-        """Initialize the MCP client connection if enabled."""
-        if not self.enabled or not self.upstream_url:
-            logger.info("Signals discovery disabled or no upstream URL configured")
-            return
-
-        try:
-            headers = {}
-            if self.upstream_token:
-                headers[self.auth_header] = self.upstream_token
-
-            transport = StreamableHttpTransport(url=self.upstream_url, headers=headers)
-            self.client = Client(transport=transport)
-            await self.client.__aenter__()
-            logger.info(f"Initialized signals discovery connection to {self.upstream_url}")
-        except Exception as e:
-            logger.error(f"Failed to initialize signals discovery client: {e}")
-            self.client = None
+        """Initialize - no-op since registry handles connections."""
+        pass
 
     async def shutdown(self) -> None:
-        """Clean up the MCP client connection."""
-        if self.client:
-            try:
-                await self.client.__aexit__(None, None, None)
-                logger.info("Shut down signals discovery connection")
-            except Exception as e:
-                logger.error(f"Error shutting down signals client: {e}")
+        """Clean up - no-op since registry manages connections."""
+        pass
 
     async def get_products(
         self,
@@ -87,34 +52,35 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         principal_data: dict[str, Any] | None = None,
     ) -> list[Product]:
         """
-        Get products enhanced with signals from upstream discovery agent.
+        Get products enhanced with signals from upstream discovery agents.
 
         Implementation follows the requirements from issue #106:
         - Only forward to signals agent if brief is provided
-        - Include promoted_offering when configured
+        - Include promoted_offering when configured via agent settings
         - Transform signals into custom products
         - Fall back to database products on error
         """
         products = []
-
-        # If signals discovery is disabled, fall back to database immediately
-        if not self.enabled:
-            logger.debug("Signals discovery disabled, falling back to database")
-            return await self._get_database_products(brief, tenant_id, principal_id)
 
         # Optimization per issue #106: "if there is no brief don't forward"
         if not brief or not brief.strip():
             logger.debug("No brief provided, skipping signals discovery")
             return await self._get_database_products(brief, tenant_id, principal_id)
 
-        # Try to get signals from upstream agent
+        # Try to get signals from all configured agents via registry
         try:
-            signals = await self._get_signals_from_upstream(brief, tenant_id, principal_id, context, principal_data)
+            signals = await self.registry.get_signals(
+                brief=brief,
+                tenant_id=tenant_id or self.tenant_id,
+                principal_id=principal_id,
+                context=context,
+                principal_data=principal_data,
+            )
             if signals:
-                logger.info(f"Retrieved {len(signals)} signals from upstream agent")
+                logger.info(f"Retrieved {len(signals)} signals from agents")
                 products = await self._transform_signals_to_products(signals, brief, tenant_id)
         except Exception as e:
-            logger.error(f"Error calling signals discovery agent: {e}")
+            logger.error(f"Error calling signals discovery agents: {e}")
 
         # If no products from signals or fallback enabled, include database products
         if not products or self.fallback_to_database:
@@ -129,50 +95,6 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
                 products.extend(database_products)
 
         return products
-
-    async def _get_signals_from_upstream(
-        self,
-        brief: str,
-        tenant_id: str,
-        principal_id: str | None,
-        context: dict[str, Any] | None,
-        principal_data: dict[str, Any] | None,
-    ) -> list[dict[str, Any]]:
-        """Call upstream signals discovery agent to get relevant signals."""
-        if not self.client:
-            await self.initialize()
-
-        if not self.client:
-            raise Exception("Signals discovery client not available")
-
-        # Prepare request for signals discovery
-        request_data = {
-            "brief": brief,
-            "tenant_id": tenant_id,
-        }
-
-        if principal_id:
-            request_data["principal_id"] = principal_id
-
-        if principal_data:
-            request_data["principal_data"] = principal_data
-
-        if context:
-            request_data["context"] = context
-
-        # Include promoted_offering if configured and available
-        if self.forward_promoted_offering and context and "promoted_offering" in context:
-            request_data["promoted_offering"] = context["promoted_offering"]
-
-        # Call the upstream signals discovery tool
-        try:
-            result = await asyncio.wait_for(self.client.call_tool("get_signals", request_data), timeout=self.timeout)
-
-            # Return raw signal data (AdCP protocol format)
-            return result.get("signals", [])
-
-        except TimeoutError as err:
-            raise Exception(f"Signals discovery timeout after {self.timeout} seconds") from err
 
     async def _transform_signals_to_products(
         self, signals: list[dict[str, Any]], brief: str, tenant_id: str

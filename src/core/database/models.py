@@ -103,6 +103,11 @@ class Tenant(Base, JSONValidatorMixin):
         back_populates="tenant",
         cascade="all, delete-orphan",
     )
+    signals_agents = relationship(
+        "SignalsAgent",
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         Index("idx_subdomain", "subdomain"),
@@ -662,6 +667,42 @@ class CreativeAgent(Base):
     __table_args__ = (
         Index("idx_creative_agents_tenant", "tenant_id"),
         Index("idx_creative_agents_enabled", "enabled"),
+    )
+
+
+class SignalsAgent(Base):
+    """Tenant-specific signals discovery agent configuration.
+
+    Each tenant can register custom signals agents for product discovery enhancement.
+    """
+
+    __tablename__ = "signals_agents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50),
+        ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    agent_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    auth_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    auth_credentials: Mapped[str | None] = mapped_column(Text, nullable=True)
+    forward_promoted_offering: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    fallback_to_database: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    timeout: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    max_signal_products: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    tenant = relationship("Tenant", back_populates="signals_agents")
+
+    __table_args__ = (
+        Index("idx_signals_agents_tenant", "tenant_id"),
+        Index("idx_signals_agents_enabled", "enabled"),
     )
 
 
