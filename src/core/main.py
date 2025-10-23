@@ -1598,7 +1598,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
     return GetProductsResponse(products=modified_products, status=status)
 
 
-@mcp.tool
+@mcp.tool()
 async def get_products(
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
