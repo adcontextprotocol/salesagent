@@ -11,124 +11,82 @@ from src.core.schemas import PricingOption, Product
 class TestSignalsDiscoveryProvider:
     """Test suite for SignalsDiscoveryProvider."""
 
-    def test_init_disabled_by_default(self):
-        """Test that provider is disabled by default."""
+    def test_init_with_defaults(self):
+        """Test that provider initializes with defaults."""
         provider = SignalsDiscoveryProvider({})
-        assert provider.enabled is False
-        assert provider.upstream_url == ""
-        assert provider.upstream_token == ""
-        assert provider.auth_header == "x-adcp-auth"
-        assert provider.timeout == 30
+        assert provider.tenant_id is None
         assert provider.fallback_to_database is True
+        assert provider.registry is not None
 
     def test_init_with_config(self):
         """Test initialization with custom configuration."""
         config = {
-            "enabled": True,
-            "upstream_url": "http://test-signals:8080/mcp/",
-            "upstream_token": "test-token",
-            "auth_header": "Authorization",
-            "timeout": 60,
-            "forward_promoted_offering": False,
+            "tenant_id": "test_tenant",
             "fallback_to_database": False,
-            "max_signal_products": 5,
         }
 
         provider = SignalsDiscoveryProvider(config)
-        assert provider.enabled is True
-        assert provider.upstream_url == "http://test-signals:8080/mcp/"
-        assert provider.upstream_token == "test-token"
-        assert provider.auth_header == "Authorization"
-        assert provider.timeout == 60
-        assert provider.forward_promoted_offering is False
+        assert provider.tenant_id == "test_tenant"
         assert provider.fallback_to_database is False
-        assert provider.max_signal_products == 5
+        assert provider.registry is not None
 
     @pytest.mark.asyncio
-    async def test_initialize_disabled(self):
-        """Test initialization when provider is disabled."""
-        provider = SignalsDiscoveryProvider({"enabled": False})
+    async def test_initialize(self):
+        """Test initialization is a no-op (registry handles connections)."""
+        provider = SignalsDiscoveryProvider({"tenant_id": "test_tenant"})
         await provider.initialize()
-        assert provider.client is None
+        # Should complete without error - registry handles connections
 
     @pytest.mark.asyncio
-    async def test_initialize_no_url(self):
-        """Test initialization when no upstream URL is provided."""
-        provider = SignalsDiscoveryProvider({"enabled": True, "upstream_url": ""})
-        await provider.initialize()
-        assert provider.client is None
+    async def test_shutdown(self):
+        """Test shutdown is a no-op (registry handles connections)."""
+        provider = SignalsDiscoveryProvider({"tenant_id": "test_tenant"})
+        await provider.shutdown()
+        # Should complete without error - registry handles connections
 
     @pytest.mark.asyncio
-    @patch("product_catalog_providers.signals.Client")
-    @patch("product_catalog_providers.signals.StreamableHttpTransport")
-    async def test_initialize_success(self, mock_transport, mock_client):
-        """Test successful initialization with upstream URL."""
-        config = {
-            "enabled": True,
-            "upstream_url": "http://test-signals:8080/mcp/",
-            "upstream_token": "test-token",
-        }
+    async def test_get_products_no_agents_configured(self):
+        """Test get_products when no signals agents are configured (falls back to database)."""
+        provider = SignalsDiscoveryProvider({"tenant_id": "test_tenant"})
 
-        # Mock the client and transport
-        mock_transport_instance = MagicMock()
-        mock_transport.return_value = mock_transport_instance
+        # Mock the registry to return no signals
+        with patch.object(provider.registry, "get_signals", new_callable=AsyncMock) as mock_registry:
+            mock_registry.return_value = []  # No signals from agents
 
-        mock_client_instance = AsyncMock()
-        mock_client.return_value = mock_client_instance
+            # Mock the database fallback
+            with patch.object(provider, "_get_database_products", new_callable=AsyncMock) as mock_db:
+                mock_products = [
+                    Product(
+                        product_id="db_1",
+                        name="Database Product",
+                        description="From database",
+                        formats=["display_300x250"],
+                        delivery_type="non_guaranteed",
+                        property_tags=["all_inventory"],
+                        pricing_options=[
+                            PricingOption(
+                                pricing_option_id="cpm_usd_auction",
+                                pricing_model="cpm",
+                                currency="USD",
+                                is_fixed=False,
+                                price_guidance={"floor": 5.0, "suggested_rate": 7.5},
+                            )
+                        ],
+                    )
+                ]
+                mock_db.return_value = mock_products
 
-        provider = SignalsDiscoveryProvider(config)
-        await provider.initialize()
-
-        # Verify transport was created with correct parameters
-        mock_transport.assert_called_once_with(
-            url="http://test-signals:8080/mcp/", headers={"x-adcp-auth": "test-token"}
-        )
-
-        # Verify client was created and entered
-        mock_client.assert_called_once_with(transport=mock_transport_instance)
-        mock_client_instance.__aenter__.assert_called_once()
-
-        assert provider.client == mock_client_instance
-
-    @pytest.mark.asyncio
-    async def test_get_products_disabled(self):
-        """Test get_products when signals discovery is disabled."""
-        provider = SignalsDiscoveryProvider({"enabled": False})
-
-        # Mock the database fallback
-        with patch.object(provider, "_get_database_products", new_callable=AsyncMock) as mock_db:
-            mock_products = [
-                Product(
-                    product_id="db_1",
-                    name="Database Product",
-                    description="From database",
-                    formats=["display_300x250"],
-                    delivery_type="non_guaranteed",
-                    property_tags=["all_inventory"],
-                    pricing_options=[
-                        PricingOption(
-                            pricing_option_id="cpm_usd_auction",
-                            pricing_model="cpm",
-                            currency="USD",
-                            is_fixed=False,
-                            price_guidance={"floor": 5.0, "suggested_rate": 7.5},
-                        )
-                    ],
+                products = await provider.get_products(
+                    brief="test brief", tenant_id="test_tenant", principal_id="test_principal"
                 )
-            ]
-            mock_db.return_value = mock_products
 
-            products = await provider.get_products(
-                brief="test brief", tenant_id="test_tenant", principal_id="test_principal"
-            )
-
-            assert products == mock_products
-            mock_db.assert_called_once_with("test brief", "test_tenant", "test_principal")
+                assert products == mock_products
+                mock_db.assert_called_once_with("test brief", "test_tenant", "test_principal")
 
     @pytest.mark.asyncio
     async def test_get_products_no_brief(self):
-        """Test get_products with empty brief (optimization requirement)."""
-        provider = SignalsDiscoveryProvider({"enabled": True})
+        """Test get_products with empty brief (optimization requirement - skips registry)."""
+        provider = SignalsDiscoveryProvider({"tenant_id": "test_tenant"})
 
         # Mock the database fallback
         with patch.object(provider, "_get_database_products", new_callable=AsyncMock) as mock_db:
@@ -153,7 +111,7 @@ class TestSignalsDiscoveryProvider:
             ]
             mock_db.return_value = mock_products
 
-            # Test with empty brief
+            # Test with empty brief - should skip registry and go straight to database
             products = await provider.get_products(brief="", tenant_id="test_tenant", principal_id="test_principal")
 
             assert products == mock_products
@@ -161,15 +119,14 @@ class TestSignalsDiscoveryProvider:
 
     @pytest.mark.asyncio
     async def test_get_products_with_signals_success(self):
-        """Test successful signals discovery and product creation."""
+        """Test successful signals discovery and product creation via registry."""
         config = {
-            "enabled": True,
-            "upstream_url": "http://test-signals:8080/mcp/",
+            "tenant_id": "test_tenant",
             "fallback_to_database": False,  # Only signals products
         }
         provider = SignalsDiscoveryProvider(config)
 
-        # Mock signals from upstream (using AdCP protocol schema as dicts)
+        # Mock signals from registry (using AdCP protocol schema as dicts)
         mock_signals = [
             {
                 "signal_agent_segment_id": "auto_intenders",
@@ -211,8 +168,8 @@ class TestSignalsDiscoveryProvider:
             },
         ]
 
-        with patch.object(provider, "_get_signals_from_upstream", new_callable=AsyncMock) as mock_signals_call:
-            mock_signals_call.return_value = mock_signals
+        with patch.object(provider.registry, "get_signals", new_callable=AsyncMock) as mock_registry:
+            mock_registry.return_value = mock_signals
 
             products = await provider.get_products(
                 brief="sports car advertising",
@@ -224,9 +181,13 @@ class TestSignalsDiscoveryProvider:
             # Should have created products from signals
             assert len(products) > 0
 
-            # Check that signals were called with correct parameters
-            mock_signals_call.assert_called_once_with(
-                "sports car advertising", "test_tenant", "test_principal", {"promoted_offering": "BMW M3 2025"}, None
+            # Check that registry was called with correct parameters
+            mock_registry.assert_called_once_with(
+                brief="sports car advertising",
+                tenant_id="test_tenant",
+                principal_id="test_principal",
+                context={"promoted_offering": "BMW M3 2025"},
+                principal_data=None,
             )
 
             # Check product characteristics
@@ -373,18 +334,17 @@ class TestSignalsDiscoveryProvider:
             assert isinstance(products, list)
 
     @pytest.mark.asyncio
-    async def test_error_handling_upstream_failure(self):
-        """Test error handling when upstream signals agent fails."""
+    async def test_error_handling_registry_failure(self):
+        """Test error handling when registry signals query fails."""
         config = {
-            "enabled": True,
-            "upstream_url": "http://test-signals:8080/mcp/",
+            "tenant_id": "test_tenant",
             "fallback_to_database": True,
         }
         provider = SignalsDiscoveryProvider(config)
 
-        # Mock upstream failure
-        with patch.object(provider, "_get_signals_from_upstream", new_callable=AsyncMock) as mock_signals:
-            mock_signals.side_effect = Exception("Connection failed")
+        # Mock registry failure
+        with patch.object(provider.registry, "get_signals", new_callable=AsyncMock) as mock_registry:
+            mock_registry.side_effect = Exception("Connection failed")
 
             # Mock database fallback
             with patch.object(provider, "_get_database_products", new_callable=AsyncMock) as mock_db:
@@ -415,54 +375,19 @@ class TestSignalsDiscoveryProvider:
                 assert products == mock_db_products
                 mock_db.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_shutdown(self):
-        """Test provider shutdown."""
-        provider = SignalsDiscoveryProvider({})
-
-        # Mock client
-        mock_client = AsyncMock()
-        provider.client = mock_client
-
-        await provider.shutdown()
-
-        mock_client.__aexit__.assert_called_once_with(None, None, None)
-
-    @pytest.mark.asyncio
-    async def test_shutdown_no_client(self):
-        """Test shutdown when no client exists."""
-        provider = SignalsDiscoveryProvider({})
-        provider.client = None
-
-        # Should not raise exception
-        await provider.shutdown()
-
     def test_config_validation(self):
         """Test configuration validation and defaults."""
         # Test with minimal config
-        provider = SignalsDiscoveryProvider({"enabled": True})
-        assert provider.upstream_url == ""
-        assert provider.timeout == 30
-        assert provider.max_signal_products == 10
+        provider = SignalsDiscoveryProvider({})
+        assert provider.tenant_id is None
+        assert provider.fallback_to_database is True
 
         # Test with full config
         full_config = {
-            "enabled": True,
-            "upstream_url": "http://signals:8080/mcp/",
-            "upstream_token": "token123",
-            "auth_header": "Authorization",
-            "timeout": 45,
-            "forward_promoted_offering": False,
+            "tenant_id": "test_tenant",
             "fallback_to_database": False,
-            "max_signal_products": 15,
         }
 
         provider = SignalsDiscoveryProvider(full_config)
-        assert provider.enabled is True
-        assert provider.upstream_url == "http://signals:8080/mcp/"
-        assert provider.upstream_token == "token123"
-        assert provider.auth_header == "Authorization"
-        assert provider.timeout == 45
-        assert provider.forward_promoted_offering is False
+        assert provider.tenant_id == "test_tenant"
         assert provider.fallback_to_database is False
-        assert provider.max_signal_products == 15

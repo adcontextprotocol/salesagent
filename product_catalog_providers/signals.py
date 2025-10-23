@@ -33,6 +33,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         super().__init__(config)
         self.tenant_id = config.get("tenant_id")
         self.fallback_to_database = config.get("fallback_to_database", True)
+        self.max_signal_products = config.get("max_signal_products", 10)  # Default max products
         self.registry = get_signals_agent_registry()
 
     async def initialize(self) -> None:
