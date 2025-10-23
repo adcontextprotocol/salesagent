@@ -28,12 +28,32 @@ class TestAuthRemovalChanges:
         from src.core.main import get_principal_from_context
 
         context = Mock(spec=["meta"])  # Limit to only meta attribute
-        context.meta = {"headers": {"x-adcp-auth": "test-token"}}
+        # Must include Host header for tenant detection (security fix)
+        context.meta = {
+            "headers": {
+                "x-adcp-auth": "test-token",
+                "host": "test-tenant.sales-agent.scope3.com",  # Required for tenant detection
+            }
+        }
 
-        with patch("src.core.main.get_http_headers", return_value={"x-adcp-auth": "test-token"}):
-            with patch("src.core.main.get_principal_from_token", return_value="test_principal"):
-                result = get_principal_from_context(context)
-                assert result == "test_principal"
+        with patch(
+            "src.core.main.get_http_headers",
+            return_value={
+                "x-adcp-auth": "test-token",
+                "host": "test-tenant.sales-agent.scope3.com",
+            },
+        ):
+            # Mock tenant lookup to succeed
+            with patch("src.core.main.get_tenant_by_subdomain") as mock_tenant_lookup:
+                mock_tenant_lookup.return_value = {
+                    "tenant_id": "tenant_test",
+                    "subdomain": "test-tenant",
+                    "name": "Test Tenant",
+                }
+                with patch("src.core.main.set_current_tenant"):
+                    with patch("src.core.main.get_principal_from_token", return_value="test_principal"):
+                        result = get_principal_from_context(context)
+                        assert result == "test_principal"
 
     def test_audit_logging_handles_none_principal(self):
         """Test that audit logging works with None principal_id."""
