@@ -3788,7 +3788,7 @@ def _list_authorized_properties_impl(
         headers = {}
     else:
         # FastMCP Context has meta.headers
-        headers = context.meta.get("headers", {}) if context and context.meta else {}
+        headers = context.meta.get("headers", {}) if context and hasattr(context, "meta") and context.meta else {}
         testing_context = get_testing_context(headers)
 
     # Note: apply_testing_hooks signature is (data, testing_ctx, operation, campaign_info)
