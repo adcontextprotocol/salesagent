@@ -36,7 +36,7 @@ class TestSchemaValidationModes:
 
             # Verify the valid fields work
             assert request.brief == "test"
-            assert request.promoted_offering == "test"
+            assert request.brand_manifest.name == "test"
 
             # Verify unknown field was dropped
             assert not hasattr(request, "unknown_field")
@@ -49,6 +49,9 @@ class TestSchemaValidationModes:
                 buyer_ref="test-123",
                 brand_manifest={"name": "Test Product"},
                 packages=[],
+                start_time="2025-02-15T00:00:00Z",
+                end_time="2025-02-28T23:59:59Z",
+                budget={"total": 5000.0, "currency": "USD"},
                 adcp_version="1.8.0",  # Future field from v1.8.0 schema
             )
 
@@ -62,6 +65,9 @@ class TestSchemaValidationModes:
                 buyer_ref="test-123",
                 brand_manifest={"name": "Test Product"},
                 packages=[],
+                start_time="2025-02-15T00:00:00Z",
+                end_time="2025-02-28T23:59:59Z",
+                budget={"total": 5000.0, "currency": "USD"},
                 future_field="from_v2.0",  # Field that doesn't exist yet
                 another_future_field=123,
             )
@@ -79,6 +85,9 @@ class TestSchemaValidationModes:
                     buyer_ref="test-123",
                     brand_manifest={"name": "Test Product"},
                     packages=[],
+                    start_time="2025-02-15T00:00:00Z",
+                    end_time="2025-02-28T23:59:59Z",
+                    budget={"total": 5000.0, "currency": "USD"},
                     future_field="should_fail",
                 )
 
