@@ -51,6 +51,7 @@ from src.core.database.models import (
     AuthorizedProperty,
     MediaBuy,
     PropertyTag,
+    SignalsAgent,
     Tenant,
     WorkflowStep,
 )
@@ -1296,8 +1297,6 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
     catalog_config = {"provider": "database", "config": {}}  # Default to database provider
 
     # Check if tenant has any enabled signals agents (new registry-based approach)
-    from src.core.database.models import SignalsAgent
-
     with get_db_session() as session:
         stmt = select(SignalsAgent).filter_by(tenant_id=tenant["tenant_id"], enabled=True)
         has_signals_agents = session.scalars(stmt).first() is not None
