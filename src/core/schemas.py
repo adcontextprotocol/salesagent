@@ -2024,7 +2024,7 @@ class BrandAsset(BaseModel):
     """Multimedia brand asset."""
 
     url: str = Field(..., description="URL to brand asset")
-    type: str = Field(..., description="Asset type (image, video, audio, etc.)")
+    asset_type: str = Field(..., description="Asset type (image, video, audio, etc.)")
     tags: list[str] | None = Field(None, description="Asset tags for categorization")
     width: int | None = Field(None, ge=1, description="Asset width in pixels")
     height: int | None = Field(None, ge=1, description="Asset height in pixels")
@@ -3356,10 +3356,9 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    publisher_domains: list[str] = Field(
-        ...,
-        description="Publisher domains this agent is authorized to represent. Buyers should fetch each publisher's adagents.json to see property definitions and verify this agent is in their authorized_agents list with authorization scope.",
-        min_length=1,
+    publisher_domains: list[str] = Field(..., description="Publisher domains this agent is authorized to represent")
+    tags: dict[str, PropertyTagMetadata] = Field(
+        default_factory=dict, description="Metadata for each tag referenced by properties"
     )
     primary_channels: list[str] | None = Field(
         None, description="Primary advertising channels in this portfolio (helps buyers filter relevance)"
@@ -3398,7 +3397,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
         if count == 0:
             return "No authorized publisher domains found."
         elif count == 1:
-            return f"Found 1 authorized publisher domain: {self.publisher_domains[0]}"
+            return "Found 1 authorized publisher domain."
         else:
             return f"Found {count} authorized publisher domains."
 

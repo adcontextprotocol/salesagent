@@ -155,26 +155,23 @@ class TestListAuthorizedPropertiesResponse:
     """Test ListAuthorizedPropertiesResponse schema validation."""
 
     def test_response_with_minimal_fields(self):
-        """Test response with only required fields (per AdCP v2.4 spec)."""
+        """Test response with only required fields."""
         response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
 
         assert response.publisher_domains == ["example.com"]
+        assert response.tags == {}
         assert response.errors is None
 
     def test_response_with_all_fields(self):
         """Test response with all fields (per AdCP v2.4 spec)."""
         response = ListAuthorizedPropertiesResponse(
-            publisher_domains=["example.com", "test.com"],
-            primary_channels=["display", "video"],
-            primary_countries=["US", "CA"],
-            portfolio_description="Premium content properties",
-            advertising_policies="No gambling or adult content",
+            publisher_domains=["example.com"],
+            tags={"premium_content": tag_metadata},
             errors=[{"code": "WARNING", "message": "Test warning"}],
         )
 
-        assert len(response.publisher_domains) == 2
-        assert response.primary_channels == ["display", "video"]
-        assert response.primary_countries == ["US", "CA"]
+        assert len(response.publisher_domains) == 1
+        assert "premium_content" in response.tags
         assert len(response.errors) == 1
 
     def test_response_model_dump_includes_empty_errors(self):
@@ -189,11 +186,8 @@ class TestListAuthorizedPropertiesResponse:
         """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 schema."""
         # Create response with all required + optional fields
         response = ListAuthorizedPropertiesResponse(
-            publisher_domains=["example.com", "test.com"],
-            primary_channels=["display"],
-            primary_countries=["US"],
-            portfolio_description="Test portfolio",
-            advertising_policies="Standard IAB policies",
+            publisher_domains=["example.com"],
+            tags={"test": PropertyTagMetadata(name="Test", description="Test tag")},
             errors=[],
         )
 

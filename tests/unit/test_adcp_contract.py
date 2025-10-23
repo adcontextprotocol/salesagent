@@ -1894,12 +1894,7 @@ class TestAdCPContract:
         """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 list-authorized-properties-response schema."""
         # Create response with all required + optional fields (per official AdCP v2.4 spec)
         response = ListAuthorizedPropertiesResponse(
-            publisher_domains=["example.com"],
-            primary_channels=["display"],
-            primary_countries=["US"],
-            portfolio_description="Premium content sites",
-            advertising_policies="IAB standard categories only",
-            errors=[],
+            publisher_domains=["example.com"], tags={"premium_content": tag_metadata}, errors=[]
         )
 
         # Test AdCP-compliant response
@@ -1926,6 +1921,10 @@ class TestAdCPContract:
         # Verify publisher_domains is array
         assert isinstance(adcp_response["publisher_domains"], list)
 
+        # Verify tags is object when present
+        if adcp_response["tags"] is not None:
+            assert isinstance(adcp_response["tags"], dict)
+
         # Verify errors is array when present
         if adcp_response["errors"] is not None:
             assert isinstance(adcp_response["errors"], list)
@@ -1941,9 +1940,9 @@ class TestAdCPContract:
             assert isinstance(adcp_response["advertising_policies"], str)
 
         # Verify message is provided via __str__() not as schema field (response already created above)
-        assert str(response) == "Found 1 authorized publisher domain: example.com"
+        assert str(response) == "Found 1 authorized publisher domain."
 
-        # Verify field count expectations (7 domain fields: publisher_domains, errors, primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated)
+        # Verify field count expectations (7 domain fields: publisher_domains, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies)
         assert len(adcp_response) == 7
 
     def test_get_signals_request_adcp_compliance(self):

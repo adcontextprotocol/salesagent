@@ -390,7 +390,7 @@ class BrandManifest(BaseModel):
     metadata: Annotated[Metadata | None, Field(description="Additional brand metadata")] = None
 
 
-class Asset19(BaseModel):
+class Asset17(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -411,7 +411,7 @@ class Asset19(BaseModel):
     metadata: Annotated[dict[str, Any] | None, Field(description="Additional asset-specific metadata")] = None
 
 
-class ProductCatalog17(BaseModel):
+class ProductCatalog15(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -428,7 +428,7 @@ class ProductCatalog17(BaseModel):
     ] = None
 
 
-class BrandManifest16(BaseModel):
+class BrandManifest14(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -452,13 +452,13 @@ class BrandManifest16(BaseModel):
     ] = None
     tagline: Annotated[str | None, Field(description="Brand tagline or slogan")] = None
     assets: Annotated[
-        list[Asset19] | None,
+        list[Asset17] | None,
         Field(
             description="Brand asset library with explicit assets and tags. Assets are referenced inline with URLs pointing to CDN-hosted files."
         ),
     ] = None
     product_catalog: Annotated[
-        ProductCatalog17 | None,
+        ProductCatalog15 | None,
         Field(
             description="Product catalog information for e-commerce advertisers. Enables SKU-level creative generation and product selection."
         ),
@@ -511,7 +511,7 @@ class Offering(BaseModel):
     assets: Annotated[list[dict[str, Any]] | None, Field(description="Assets specific to this offering")] = None
 
 
-class AssetType28(Enum):
+class AssetType25(Enum):
     image = "image"
     video = "video"
     audio = "audio"
@@ -533,7 +533,7 @@ class AssetSelectors(BaseModel):
         list[str] | None, Field(description="Select assets with specific tags (e.g., ['holiday', 'premium'])")
     ] = None
     asset_types: Annotated[
-        list[AssetType28] | None, Field(description="Filter by asset type (e.g., ['image', 'video'])")
+        list[AssetType25] | None, Field(description="Filter by asset type (e.g., ['image', 'video'])")
     ] = None
     exclude_tags: Annotated[list[str] | None, Field(description="Exclude assets with these tags")] = None
 
@@ -543,7 +543,7 @@ class Assets74(BaseModel):
         extra="forbid",
     )
     brand_manifest: Annotated[
-        BrandManifest | BrandManifest16 | AnyUrl,
+        BrandManifest | BrandManifest14 | AnyUrl,
         Field(
             description="Brand manifest provided either as an inline object or a URL string pointing to a hosted manifest",
             examples=[

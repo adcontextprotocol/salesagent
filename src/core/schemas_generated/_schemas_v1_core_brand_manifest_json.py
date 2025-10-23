@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Union
+from typing import Annotated, Any
 
 from pydantic import AnyUrl, AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, RootModel
 
@@ -253,7 +253,7 @@ class BrandManifest2(BaseModel):
     metadata: Annotated[Metadata | None, Field(description="Additional brand metadata")] = None
 
 
-class BrandManifest(RootModel[Union[BrandManifest1, BrandManifest2]]):
+class BrandManifest(RootModel[BrandManifest1 | BrandManifest2]):
     root: Annotated[
         BrandManifest1 | BrandManifest2,
         Field(

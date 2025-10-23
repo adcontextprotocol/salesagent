@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Union
+from typing import Annotated
 
 from pydantic import AnyUrl, AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 
@@ -393,7 +393,7 @@ class UpdateMediaBuyRequest2(BaseModel):
     ] = None
 
 
-class UpdateMediaBuyRequest(RootModel[Union[UpdateMediaBuyRequest1, UpdateMediaBuyRequest2]]):
+class UpdateMediaBuyRequest(RootModel[UpdateMediaBuyRequest1 | UpdateMediaBuyRequest2]):
     root: Annotated[
         UpdateMediaBuyRequest1 | UpdateMediaBuyRequest2,
         Field(
