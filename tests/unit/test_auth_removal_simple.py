@@ -53,8 +53,13 @@ class TestAuthRemovalChanges:
                 }
                 with patch("src.core.main.set_current_tenant"):
                     with patch("src.core.main.get_principal_from_token", return_value="test_principal"):
-                        result = get_principal_from_context(context)
-                        assert result == "test_principal"
+                        principal_id, tenant = get_principal_from_context(context)
+                        assert principal_id == "test_principal"
+                        assert tenant == {
+                            "tenant_id": "tenant_test",
+                            "subdomain": "test-tenant",
+                            "name": "Test Tenant",
+                        }
 
     def test_audit_logging_handles_none_principal(self):
         """Test that audit logging works with None principal_id."""
