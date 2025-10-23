@@ -400,15 +400,22 @@ def get_push_notification_config_from_headers(headers: dict[str, str] | None) ->
     }
 
 
-def get_principal_from_context(context: Context | None) -> str | None:
-    """Extract principal ID from the FastMCP context using x-adcp-auth header.
+def get_principal_from_context(context: Context | None) -> tuple[str | None, dict | None]:
+    """Extract principal ID and tenant context from the FastMCP context using x-adcp-auth header.
 
     Uses the current recommended FastMCP pattern with get_http_headers().
     Falls back to context.meta["headers"] for sync tools where get_http_headers() may return empty dict.
     Requires FastMCP >= 2.11.0.
+
+    Returns:
+        tuple[principal_id, tenant_context]: Principal ID and tenant dict, or (None, None) if no auth
+
+    Note: Returns tenant context explicitly because ContextVar changes in sync functions
+    don't reliably propagate to async callers (Python ContextVar + async/sync boundary issue).
+    The caller MUST call set_current_tenant(tenant_context) in their own context.
     """
     if not context:
-        return None
+        return (None, None)
 
     # Get headers using the recommended FastMCP approach
     headers = None
@@ -431,7 +438,7 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
     # If still no headers dict available, return None
     if not headers:
-        return None
+        return (None, None)
 
     # Get the x-adcp-auth header (case-insensitive lookup)
     auth_token = _get_header_case_insensitive(headers, "x-adcp-auth")
@@ -448,7 +455,7 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
     if not auth_token:
         console.print("[yellow]No x-adcp-auth token found - OK for discovery endpoints[/yellow]")
-        return None  # No auth provided - this is OK for discovery endpoints
+        return (None, None)  # No auth provided - this is OK for discovery endpoints
 
     # Check if a specific tenant was requested via header or subdomain
     requested_tenant_id = None
@@ -545,7 +552,14 @@ def get_principal_from_context(context: Context | None) -> str | None:
             f"The token may be expired, revoked, or associated with a different tenant.",
         )
 
-    return principal_id
+    # If tenant_context wasn't set by header detection, get it from current tenant
+    # (get_principal_from_token set it as a side effect for global lookup case)
+    if not tenant_context:
+        tenant_context = get_current_tenant()
+
+    # Return both principal_id and tenant_context explicitly
+    # Caller MUST call set_current_tenant(tenant_context) in their async context
+    return (principal_id, tenant_context)
 
 
 def get_principal_adapter_mapping(principal_id: str) -> dict[str, Any]:
@@ -948,7 +962,11 @@ def _get_principal_id_from_context(context: Context) -> str:
         return context.principal_id
 
     # Otherwise, extract from FastMCP Context headers
-    principal_id = get_principal_from_context(context)
+    principal_id, tenant = get_principal_from_context(context)
+
+    # Set tenant context if returned (sync function so ContextVar should propagate)
+    if tenant:
+        set_current_tenant(tenant)
 
     # Extract headers for debugging
     headers = {}
@@ -963,7 +981,7 @@ def _get_principal_id_from_context(context: Context) -> str:
             raise ToolError(
                 f"Missing x-adcp-auth header. "
                 f"Apx-Incoming-Host: {apx_host}, "
-                f"Tenant: {get_current_tenant().get('tenant_id') if get_current_tenant() else 'NONE'}"
+                f"Tenant: {tenant.get('tenant_id') if tenant else 'NONE'}"
             )
         else:
             # Header present but invalid (token not found in DB)
@@ -1029,12 +1047,17 @@ def _verify_principal(media_buy_id: str, context: Context):
 def log_tool_activity(context: Context, tool_name: str, start_time: float = None):
     """Log tool activity to the activity feed."""
     try:
-        tenant = get_current_tenant()
+        # Get principal and tenant context
+        principal_id, tenant = get_principal_from_context(context)
+
+        # Set tenant context if returned
+        if tenant:
+            set_current_tenant(tenant)
+        else:
+            tenant = get_current_tenant()
+
         if not tenant:
             return
-
-        # Get principal name
-        principal_id = get_principal_from_context(context)
         principal_name = "Unknown"
 
         if principal_id:
@@ -1126,42 +1149,23 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
         # For discovery endpoints, authentication is optional
         logger.info("[GET_PRODUCTS] About to call get_principal_from_context")
         print("🔍 [GET_PRODUCTS DEBUG] About to call get_principal_from_context", flush=True)
-        principal_id = get_principal_from_context(context)  # Returns None if no auth
-        logger.info(f"[GET_PRODUCTS] principal_id returned: {principal_id}")
-        print(f"🔍 [GET_PRODUCTS DEBUG] principal_id returned: {principal_id}", flush=True)
+        principal_id, tenant = get_principal_from_context(context)  # Returns (None, None) if no auth
+        logger.info(f"[GET_PRODUCTS] principal_id returned: {principal_id}, tenant: {tenant}")
+        print(f"🔍 [GET_PRODUCTS DEBUG] principal_id returned: {principal_id}, tenant: {tenant}", flush=True)
 
-        # Try to get tenant context - if it fails, provide detailed error
-        try:
-            tenant = get_current_tenant()
-            logger.info(f"[GET_PRODUCTS] tenant returned: {tenant}")
-            print(f"🔍 [GET_PRODUCTS DEBUG] tenant returned: {tenant}", flush=True)
-        except RuntimeError as e:
-            # Tenant context not set - this means authentication failed to set it
-            logger.error(
-                f"[GET_PRODUCTS] Tenant context not set after authentication. principal_id={principal_id}, error={e}"
-            )
-            print(f"❌ [GET_PRODUCTS DEBUG] Tenant context not set. principal_id={principal_id}", flush=True)
-
-            # Extract headers for debugging
-            headers = {}
-            if hasattr(context, "meta") and isinstance(context.meta, dict):
-                headers = context.meta.get("headers", {})
-            elif hasattr(context, "headers"):
-                headers = context.headers
-
-            auth_header = headers.get("x-adcp-auth", "NOT_PRESENT")
-            apx_host = headers.get("apx-incoming-host", "NOT_PRESENT")
-
+        # Set tenant context explicitly in this async context (ContextVar propagation fix)
+        if tenant:
+            set_current_tenant(tenant)
+            logger.info(f"[GET_PRODUCTS] Set tenant context: {tenant['tenant_id']}")
+            print(f"🔍 [GET_PRODUCTS DEBUG] Set tenant context: {tenant['tenant_id']}", flush=True)
+        elif principal_id:
+            # If we have principal but no tenant, something went wrong
+            logger.error(f"[GET_PRODUCTS] Principal found but no tenant context: principal_id={principal_id}")
+            print("❌ [GET_PRODUCTS DEBUG] Principal found but no tenant context", flush=True)
             raise ToolError(
-                f"Tenant context not set. This means authentication failed or no valid principal found. "
-                f"principal_id={principal_id}, x-adcp-auth={'present' if auth_header != 'NOT_PRESENT' else 'missing'}, "
-                f"apx-incoming-host={apx_host}"
+                f"Authentication succeeded but tenant context missing. " f"This is a bug. principal_id={principal_id}"
             )
-
-        if not tenant:
-            logger.error("[GET_PRODUCTS] No tenant context available - raising ToolError")
-            print("❌ [GET_PRODUCTS DEBUG] No tenant context - raising ToolError", flush=True)
-            raise ToolError("No tenant context available")
+        # else: No auth provided, which is OK for discovery endpoints
 
     # Get the Principal object with ad server mappings
     principal = get_principal_object(principal_id) if principal_id else None
@@ -1646,10 +1650,13 @@ def _list_creative_formats_impl(
         req = ListCreativeFormatsRequest()
 
     # For discovery endpoints, authentication is optional
-    principal_id = get_principal_from_context(context)  # Returns None if no auth
+    principal_id, tenant = get_principal_from_context(context)  # Returns (None, None) if no auth
 
-    # Get tenant information
-    tenant = get_current_tenant()
+    # Set tenant context if returned
+    if tenant:
+        set_current_tenant(tenant)
+    else:
+        tenant = get_current_tenant()
     if not tenant:
         raise ToolError("No tenant context available")
 
@@ -3754,14 +3761,19 @@ def _list_authorized_properties_impl(
         req = ListAuthorizedPropertiesRequest()
 
     # Get tenant and principal from context
-    tenant = get_current_tenant()
+    # Authentication is OPTIONAL for discovery endpoints (returns public inventory)
+    principal_id, tenant = get_principal_from_context(context)  # Returns (None, None) if no auth
+
+    # Set tenant context if returned
+    if tenant:
+        set_current_tenant(tenant)
+    else:
+        tenant = get_current_tenant()
+
     if not tenant:
         raise ToolError("AUTHENTICATION_ERROR", "Could not resolve tenant from context")
 
     tenant_id = tenant["tenant_id"]
-
-    # Authentication is OPTIONAL for discovery endpoints (returns public inventory)
-    principal_id = get_principal_from_context(context)  # Returns None if no auth
 
     # Apply testing hooks
     from src.core.testing_hooks import TestingContext
@@ -6247,7 +6259,9 @@ def get_media_buy_delivery(
 
 def _require_admin(context: Context) -> None:
     """Verify the request is from an admin user."""
-    principal_id = get_principal_from_context(context)
+    principal_id, tenant = get_principal_from_context(context)
+    if tenant:
+        set_current_tenant(tenant)
     if principal_id != "admin":
         raise PermissionError("This operation requires admin privileges")
 
@@ -6782,8 +6796,11 @@ def verify_task(req, context):
 def mark_task_complete(req, context):
     """Mark a task as complete with automatic verification."""
     # Admin only
-    principal_id = get_principal_from_context(context)
-    tenant = get_current_tenant()
+    principal_id, tenant = get_principal_from_context(context)
+    if tenant:
+        set_current_tenant(tenant)
+    else:
+        tenant = get_current_tenant()
     if principal_id != f"{tenant['tenant_id']}_admin":
         raise ToolError("PERMISSION_DENIED", "Only administrators can mark tasks complete")
 
@@ -6970,8 +6987,11 @@ from src.core.strategy import StrategyManager
 
 def get_strategy_manager(context: Context | None) -> StrategyManager:
     """Get strategy manager for current context."""
-    principal_id = get_principal_from_context(context)
-    tenant_config = get_current_tenant()
+    principal_id, tenant_config = get_principal_from_context(context)
+    if tenant_config:
+        set_current_tenant(tenant_config)
+    else:
+        tenant_config = get_current_tenant()
 
     if not tenant_config:
         raise ToolError("No tenant configuration found")

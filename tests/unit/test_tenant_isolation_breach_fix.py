@@ -62,19 +62,22 @@ def test_get_principal_from_context_uses_global_lookup_when_no_tenant_detected()
     }
 
     # Mock get_http_headers to return empty dict (forcing fallback to context.meta)
-    # Mock get_principal_from_token to simulate successful global lookup
+    # Mock get_principal_from_token and get_current_tenant to simulate successful global lookup
+    mock_tenant = {"tenant_id": "tenant_test", "subdomain": "test"}
     with (
         patch("src.core.main.get_http_headers", return_value={}),
         patch("src.core.main.get_principal_from_token") as mock_get_principal,
+        patch("src.core.main.get_current_tenant", return_value=mock_tenant),
     ):
         # Global lookup should succeed and return principal_id
         mock_get_principal.return_value = "principal_abc123"
 
-        # Should succeed via global token lookup
-        principal_id = get_principal_from_context(context)
+        # Should succeed via global token lookup and return tuple
+        principal_id, tenant = get_principal_from_context(context)
 
-        # Verify we got the principal ID
+        # Verify we got the principal ID and tenant
         assert principal_id == "principal_abc123"
+        assert tenant == mock_tenant
 
         # Verify get_principal_from_token was called with None for tenant_id (global lookup)
         mock_get_principal.assert_called_once_with("some-valid-token", None)
