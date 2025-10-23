@@ -19,8 +19,9 @@ class TestAuthRemovalChanges:
         context.meta = {}  # Empty meta, no headers
 
         with patch("src.core.main.get_http_headers", return_value={}):  # No x-adcp-auth header
-            result = get_principal_from_context(context)
-            assert result is None
+            principal_id, tenant = get_principal_from_context(context)
+            assert principal_id is None
+            assert tenant is None
 
     def test_get_principal_from_context_works_with_auth(self):
         """Test that get_principal_from_context still works with auth."""
