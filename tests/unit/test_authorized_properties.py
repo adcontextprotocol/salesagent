@@ -213,8 +213,8 @@ class TestListAuthorizedPropertiesResponse:
         for field in optional_fields:
             assert field in adcp_response
 
-        # Verify field count expectations (1 required + 6 optional = 7 total)
-        assert len(adcp_response) == 7
+        # Verify field count expectations (1 required + 7 optional = 8 total: publisher_domains, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated)
+        assert len(adcp_response) == 8
 
 
 class TestPropertyTagMetadata:
