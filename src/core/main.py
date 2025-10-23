@@ -4143,17 +4143,16 @@ async def _validate_and_convert_format_ids(
 
 async def _create_media_buy_impl(
     buyer_ref: str,
-    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
+    brand_manifest: Any,  # BrandManifest | str - REQUIRED per AdCP v2.2.0 spec
+    packages: list[Any],  # REQUIRED per AdCP spec
+    start_time: Any,  # datetime | Literal["asap"] | str - REQUIRED per AdCP spec
+    end_time: Any,  # datetime | str - REQUIRED per AdCP spec
+    budget: Any,  # Budget | float | dict - REQUIRED per AdCP spec
     po_number: str | None = None,
-    packages: list[Any] | None = None,
-    start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
-    end_time: Any | None = None,  # datetime | str - validated by Pydantic
-    budget: Any | None = None,  # Budget | float | dict - validated by Pydantic
-    promoted_offering: str | None = None,
-    product_ids: list[str] | None = None,
-    start_date: Any | None = None,  # date | str - validated by Pydantic
-    end_date: Any | None = None,  # date | str - validated by Pydantic
-    total_budget: float | None = None,
+    product_ids: list[str] | None = None,  # Legacy format conversion
+    start_date: Any | None = None,  # Legacy format conversion
+    end_date: Any | None = None,  # Legacy format conversion
+    total_budget: float | None = None,  # Legacy format conversion
     targeting_overlay: dict[str, Any] | None = None,
     pacing: str = "even",
     daily_budget: float | None = None,
@@ -4168,14 +4167,13 @@ async def _create_media_buy_impl(
     """Create a media buy with the specified parameters.
 
     Args:
-        buyer_ref: Buyer reference for tracking (required per AdCP spec)
-        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
+        buyer_ref: Buyer reference for tracking (REQUIRED per AdCP spec)
+        brand_manifest: Brand information manifest - inline object or URL string (REQUIRED per AdCP v2.2.0 spec)
+        packages: Array of packages with products and budgets (REQUIRED)
+        start_time: Campaign start time ISO 8601 or 'asap' (REQUIRED)
+        end_time: Campaign end time ISO 8601 (REQUIRED)
+        budget: Overall campaign budget (REQUIRED)
         po_number: Purchase order number (optional)
-        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
-        packages: Array of packages with products and budgets
-        start_time: Campaign start time (ISO 8601)
-        end_time: Campaign end time (ISO 8601)
-        budget: Overall campaign budget
         product_ids: Legacy: Product IDs (converted to packages)
         start_date: Legacy: Start date (converted to start_time)
         end_date: Legacy: End date (converted to end_time)
@@ -5420,17 +5418,16 @@ async def _create_media_buy_impl(
 @mcp.tool()
 async def create_media_buy(
     buyer_ref: str,
-    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
+    brand_manifest: Any,  # BrandManifest | str - REQUIRED per AdCP v2.2.0 spec
+    packages: list[Any],  # REQUIRED per AdCP spec
+    start_time: Any,  # datetime | Literal["asap"] | str - REQUIRED per AdCP spec
+    end_time: Any,  # datetime | str - REQUIRED per AdCP spec
+    budget: Any,  # Budget | float | dict - REQUIRED per AdCP spec
     po_number: str | None = None,
-    packages: list[Any] | None = None,
-    start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
-    end_time: Any | None = None,  # datetime | str - validated by Pydantic
-    budget: Any | None = None,  # Budget | float | dict - validated by Pydantic
-    promoted_offering: str | None = None,
-    product_ids: list[str] | None = None,
-    start_date: Any | None = None,  # date | str - validated by Pydantic
-    end_date: Any | None = None,  # date | str - validated by Pydantic
-    total_budget: float | None = None,
+    product_ids: list[str] | None = None,  # Legacy format conversion
+    start_date: Any | None = None,  # Legacy format conversion
+    end_date: Any | None = None,  # Legacy format conversion
+    total_budget: float | None = None,  # Legacy format conversion
     targeting_overlay: dict[str, Any] | None = None,
     pacing: str = "even",
     daily_budget: float | None = None,
@@ -5448,14 +5445,13 @@ async def create_media_buy(
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        buyer_ref: Buyer reference for tracking (required per AdCP spec)
-        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
+        buyer_ref: Buyer reference for tracking (REQUIRED per AdCP spec)
+        brand_manifest: Brand information manifest - inline object or URL string (REQUIRED per AdCP v2.2.0 spec)
+        packages: Array of packages with products and budgets (REQUIRED)
+        start_time: Campaign start time ISO 8601 or 'asap' (REQUIRED)
+        end_time: Campaign end time ISO 8601 (REQUIRED)
+        budget: Overall campaign budget (REQUIRED)
         po_number: Purchase order number (optional)
-        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
-        packages: Array of packages with products and budgets
-        start_time: Campaign start time (ISO 8601)
-        end_time: Campaign end time (ISO 8601)
-        budget: Overall campaign budget
         product_ids: Legacy: Product IDs (converted to packages)
         start_date: Legacy: Start date (converted to start_time)
         end_date: Legacy: End date (converted to end_time)
@@ -5478,7 +5474,6 @@ async def create_media_buy(
         buyer_ref=buyer_ref,
         brand_manifest=brand_manifest,
         po_number=po_number,
-        promoted_offering=promoted_offering,
         packages=packages,
         start_time=start_time,
         end_time=end_time,

@@ -832,7 +832,7 @@ class TestCreativeLifecycleMCP:
             # Call create_media_buy with packages containing creative_ids
             response = create_media_buy_raw(
                 po_number="PO-TEST-123",
-                promoted_offering="Test Campaign",
+                brand_manifest={"name": "Test Campaign"},
                 packages=packages,
                 start_time=datetime.now(UTC) + timedelta(days=1),
                 end_time=datetime.now(UTC) + timedelta(days=30),

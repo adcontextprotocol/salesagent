@@ -32,7 +32,7 @@ class TestMCPProtocol:
                 {
                     "req": {
                         "brief": "Looking for display ads on news sites",
-                        "promoted_offering": "AI analytics platform for businesses",
+                        "brand_manifest": {"name": "AI analytics platform for businesses"},
                     }
                 },
             )
@@ -82,7 +82,7 @@ class TestMCPProtocol:
                 {
                     "req": {
                         "brief": "video ads for sports content",
-                        "promoted_offering": "Sports betting app targeting NFL fans",
+                        "brand_manifest": {"name": "Sports betting app targeting NFL fans"},
                     }
                 },
             )
@@ -227,7 +227,7 @@ class TestMCPProtocol:
             with pytest.raises(Exception) as exc_info:
                 await client.call_tool(
                     "get_products",
-                    {"req": {"brief": "test", "promoted_offering": "test"}},
+                    {"req": {"brief": "test", "brand_manifest": {"name": "test"}}},
                 )
 
             # Should get auth error
@@ -240,7 +240,7 @@ class TestMCPProtocol:
             # Get a product first
             products_result = await client.call_tool(
                 "get_products",
-                {"req": {"brief": "display ads", "promoted_offering": "test product"}},
+                {"req": {"brief": "display ads", "brand_manifest": {"name": "test product"}}},
             )
 
             content = (
@@ -368,7 +368,7 @@ class TestMCPTestPage:
                 json={
                     "server_url": "http://localhost:8080/mcp/",
                     "tool": "get_products",
-                    "params": {"brief": "test", "promoted_offering": "test offering"},
+                    "params": {"brief": "test", "brand_manifest": {"name": "test offering"}},
                     "access_token": sample_principal["access_token"],
                 },
                 headers={"Content-Type": "application/json"},

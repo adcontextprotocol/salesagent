@@ -129,6 +129,7 @@ class TestRawFunctionParameterValidation:
 
         # This test documents what we expect the signature to be
         # If this fails, it means the helper changed and we need to update callers
+        # Note: promoted_offering kept for backwards compatibility
         expected_params = ["brief", "promoted_offering", "brand_manifest", "filters"]
 
         assert params == expected_params, (
@@ -159,6 +160,7 @@ class TestRawFunctionParameterValidation:
                             passed_params = {kw.arg for kw in child.keywords}
 
                             # These are the ONLY valid parameters for create_get_products_request
+                            # Note: promoted_offering kept for backwards compatibility
                             valid_params = {"brief", "promoted_offering", "brand_manifest", "filters"}
 
                             invalid = passed_params - valid_params
@@ -196,6 +198,7 @@ class TestHelperFunctionDocumentation:
 
         # Verify create_get_products_request (the one that caused the bug)
         assert "create_get_products_request" in signatures
+        # Note: promoted_offering kept for backwards compatibility
         expected = ["brief", "promoted_offering", "brand_manifest", "filters"]
         actual = signatures["create_get_products_request"]
         assert actual == expected, (

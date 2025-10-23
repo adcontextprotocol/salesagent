@@ -218,7 +218,7 @@ class TestSignalsDiscoveryProvider:
                 brief="sports car advertising",
                 tenant_id="test_tenant",
                 principal_id="test_principal",
-                context={"promoted_offering": "BMW M3 2025"},
+                context={"brand_manifest": {"name": "BMW M3 2025"}},
             )
 
             # Should have created products from signals
@@ -226,7 +226,11 @@ class TestSignalsDiscoveryProvider:
 
             # Check that signals were called with correct parameters
             mock_signals_call.assert_called_once_with(
-                "sports car advertising", "test_tenant", "test_principal", {"promoted_offering": "BMW M3 2025"}, None
+                "sports car advertising",
+                "test_tenant",
+                "test_principal",
+                {"brand_manifest": {"name": "BMW M3 2025"}},
+                None,
             )
 
             # Check product characteristics

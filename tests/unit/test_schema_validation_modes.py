@@ -21,7 +21,7 @@ class TestSchemaValidationModes:
 
             # Try to create request with extra field
             with pytest.raises(ValidationError) as exc_info:
-                GetProductsRequest(brief="test", promoted_offering="test", unknown_field="should_fail")
+                GetProductsRequest(brief="test", brand_manifest={"name": "test"}, unknown_field="should_fail")
 
             # Verify it's complaining about the extra field
             assert "unknown_field" in str(exc_info.value)
@@ -30,7 +30,9 @@ class TestSchemaValidationModes:
         """Production mode should silently ignore unknown fields."""
         with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
             # This should NOT raise - extra field should be ignored
-            request = GetProductsRequest(brief="test", promoted_offering="test", unknown_field="should_be_ignored")
+            request = GetProductsRequest(
+                brief="test", brand_manifest={"name": "test"}, unknown_field="should_be_ignored"
+            )
 
             # Verify the valid fields work
             assert request.brief == "test"
@@ -45,7 +47,7 @@ class TestSchemaValidationModes:
             # This was failing before - client sending adcp_version from newer schema
             request = CreateMediaBuyRequest(
                 buyer_ref="test-123",
-                promoted_offering="Test Product",
+                brand_manifest={"name": "Test Product"},
                 packages=[],
                 adcp_version="1.8.0",  # Future field from v1.8.0 schema
             )
@@ -58,7 +60,7 @@ class TestSchemaValidationModes:
         with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
             request = CreateMediaBuyRequest(
                 buyer_ref="test-123",
-                promoted_offering="Test Product",
+                brand_manifest={"name": "Test Product"},
                 packages=[],
                 future_field="from_v2.0",  # Field that doesn't exist yet
                 another_future_field=123,
@@ -75,7 +77,7 @@ class TestSchemaValidationModes:
             with pytest.raises(ValidationError) as exc_info:
                 CreateMediaBuyRequest(
                     buyer_ref="test-123",
-                    promoted_offering="Test Product",
+                    brand_manifest={"name": "Test Product"},
                     packages=[],
                     future_field="should_fail",
                 )
@@ -86,12 +88,12 @@ class TestSchemaValidationModes:
         """ENVIRONMENT variable should be case-insensitive."""
         # Test uppercase
         with patch.dict(os.environ, {"ENVIRONMENT": "PRODUCTION"}):
-            request = GetProductsRequest(brief="test", promoted_offering="test", extra="ignored")
+            request = GetProductsRequest(brief="test", brand_manifest={"name": "test"}, extra="ignored")
             assert request.brief == "test"
 
         # Test mixed case
         with patch.dict(os.environ, {"ENVIRONMENT": "Production"}):
-            request = GetProductsRequest(brief="test", promoted_offering="test", extra="ignored")
+            request = GetProductsRequest(brief="test", brand_manifest={"name": "test"}, extra="ignored")
             assert request.brief == "test"
 
     def test_staging_environment_defaults_to_strict(self):
@@ -99,7 +101,7 @@ class TestSchemaValidationModes:
         with patch.dict(os.environ, {"ENVIRONMENT": "staging"}):
             # Should behave like development (strict)
             with pytest.raises(ValidationError):
-                GetProductsRequest(brief="test", promoted_offering="test", unknown_field="should_fail")
+                GetProductsRequest(brief="test", brand_manifest={"name": "test"}, unknown_field="should_fail")
 
     def test_config_helper_functions(self):
         """Test the config helper functions directly."""

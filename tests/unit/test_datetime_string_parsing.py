@@ -18,7 +18,7 @@ class TestDateTimeStringParsing:
         """Test parsing ISO 8601 with Z timezone (most common format)."""
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             po_number="TEST-001",
             packages=[
                 {
@@ -45,7 +45,7 @@ class TestDateTimeStringParsing:
         """Test parsing ISO 8601 with +00:00 offset."""
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
-            promoted_offering="Adidas UltraBoost 2025 running shoes",
+            brand_manifest={"name": "Adidas UltraBoost 2025 running shoes"},
             po_number="TEST-002",
             packages=[
                 {
@@ -67,7 +67,7 @@ class TestDateTimeStringParsing:
         """Test parsing ISO 8601 with PST offset."""
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
-            promoted_offering="Puma RS-X 2025 training shoes",
+            brand_manifest={"name": "Puma RS-X 2025 training shoes"},
             po_number="TEST-003",
             packages=[
                 {
@@ -89,7 +89,7 @@ class TestDateTimeStringParsing:
         """Test that legacy start_date strings are converted properly."""
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
-            promoted_offering="New Balance 990v6 premium sneakers",
+            brand_manifest={"name": "New Balance 990v6 premium sneakers"},
             po_number="TEST-004",
             product_ids=["prod_1"],
             start_date="2025-02-15",  # String date (no time)
@@ -108,7 +108,7 @@ class TestDateTimeStringParsing:
         """Test that mixing legacy date strings with new datetime strings works."""
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
-            promoted_offering="Reebok Classic leather shoes",
+            brand_manifest={"name": "Reebok Classic leather shoes"},
             po_number="TEST-005",
             product_ids=["prod_1"],
             start_date="2025-02-15",  # Legacy: date string
@@ -141,7 +141,7 @@ class TestDateTimeStringParsing:
         with pytest.raises(ValueError, match="timezone-aware"):
             CreateMediaBuyRequest(
                 buyer_ref="test_ref",  # Required per AdCP spec
-                promoted_offering="Converse Chuck Taylor All Star sneakers",
+                brand_manifest={"name": "Converse Chuck Taylor All Star sneakers"},
                 po_number="TEST-006",
                 packages=[
                     {
@@ -163,7 +163,7 @@ class TestDateTimeStringParsing:
         with pytest.raises(ValidationError):
             CreateMediaBuyRequest(
                 buyer_ref="test_ref",  # Required per AdCP spec
-                promoted_offering="Vans Old Skool skateboard shoes",
+                brand_manifest={"name": "Vans Old Skool skateboard shoes"},
                 po_number="TEST-007",
                 packages=[
                     {
@@ -182,7 +182,7 @@ class TestDateTimeStringParsing:
         """Test that parsed datetimes can be serialized back to ISO 8601."""
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
-            promoted_offering="Asics Gel-Kayano 29 running shoes",
+            brand_manifest={"name": "Asics Gel-Kayano 29 running shoes"},
             po_number="TEST-008",
             packages=[
                 {
@@ -210,15 +210,11 @@ class TestDateTimeStringParsing:
 class TestDateTimeParsingEdgeCases:
     """Test edge cases in datetime parsing that have caused bugs."""
 
-    def test_none_datetime_doesnt_break_tzinfo_access(self):
-        """Regression test: accessing .tzinfo on None datetime should not crash.
-
-        This is the bug from PR #201/#203 - when start_time is None,
-        code that tries to access .tzinfo would crash.
-        """
+    def test_datetime_with_tzinfo_access(self):
+        """Test that accessing .tzinfo on datetime works correctly."""
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
-            promoted_offering="Brooks Ghost 15 running shoes",
+            brand_manifest={"name": "Brooks Ghost 15 running shoes"},
             po_number="TEST-009",
             packages=[
                 {
@@ -228,43 +224,44 @@ class TestDateTimeParsingEdgeCases:
                     "status": "draft",
                 }
             ],
-            # No start_time/end_time provided
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
             budget={"total": 5000.0, "currency": "USD"},
         )
 
-        # These should be None, not crash
-        assert req.start_time is None
-        assert req.end_time is None
+        # Should have timezone info
+        assert req.start_time is not None
+        assert req.start_time.tzinfo is not None
+        assert req.end_time is not None
+        assert req.end_time.tzinfo is not None
 
-        # This should not crash (was the bug)
-        if req.start_time:
-            _ = req.start_time.tzinfo
-
-    def test_legacy_date_none_conversion(self):
-        """Test that None legacy dates don't break datetime conversion."""
+    def test_legacy_date_conversion_with_values(self):
+        """Test that legacy date fields are converted to datetime."""
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
-            promoted_offering="Saucony Triumph 20 running shoes",
+            brand_manifest={"name": "Saucony Triumph 20 running shoes"},
             po_number="TEST-010",
             product_ids=["prod_1"],
-            start_date=None,  # Explicitly None
-            end_date=None,
+            start_date="2025-02-15",
+            end_date="2025-02-28",
             total_budget=5000.0,
         )
 
-        # Should handle None gracefully
-        # (Current code might create start_time/end_time anyway)
-        # The point is it shouldn't crash
+        # Should convert legacy dates to datetimes
+        assert req.start_time is not None
+        assert req.end_time is not None
+        assert req.start_time.tzinfo is not None
+        assert req.end_time.tzinfo is not None
 
     def test_partial_legacy_fields(self):
         """Test that providing only start_date without end_date works."""
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
-            promoted_offering="Hoka One One Clifton 9 running shoes",
+            brand_manifest={"name": "Hoka One One Clifton 9 running shoes"},
             po_number="TEST-011",
             product_ids=["prod_1"],
             start_date="2025-02-15",
-            # No end_date
+            end_date="2025-02-28",  # end_date is now required
             total_budget=5000.0,
         )
 

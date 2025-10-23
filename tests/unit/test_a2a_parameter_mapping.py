@@ -195,7 +195,7 @@ class TestA2AParameterMapping:
             # Request missing required AdCP parameters
             incomplete_parameters = {
                 "buyer_ref": "campaign_123",
-                # Missing: promoted_offering, packages, budget, start_time, end_time
+                # Missing: brand_manifest, packages, budget, start_time, end_time
             }
 
             import asyncio
@@ -206,7 +206,7 @@ class TestA2AParameterMapping:
 
             # Should reject and list missing required parameters
             assert result["success"] is False, "Should reject request missing required AdCP parameters"
-            assert "promoted_offering" in str(result.get("message", "")).lower() or "promoted_offering" in str(
+            assert "brand_manifest" in str(result.get("message", "")).lower() or "brand_manifest" in str(
                 result.get("required_parameters", [])
-            ), "Error should mention missing 'promoted_offering'"
+            ), "Error should mention missing 'brand_manifest'"
             assert "packages" in str(result.get("required_parameters", [])), "Error should mention missing 'packages'"

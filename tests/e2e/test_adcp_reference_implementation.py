@@ -167,7 +167,7 @@ class TestAdCPReferenceImplementation:
                 total_budget=5000.0,
                 start_time=start_time,
                 end_time=end_time,
-                promoted_offering="Nike Air Jordan 2025 Basketball Shoes",
+                brand_manifest={"name": "Nike Air Jordan 2025 Basketball Shoes"},
                 targeting_overlay={
                     "geographic": {"countries": ["US", "CA"]},
                     "demographic": {"age_range": "25-44"},

@@ -215,7 +215,7 @@ def test_get_products_returns_pricing_options(setup_tenant_with_pricing_products
 def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing_products):
     """Test creating media buy with fixed CPM pricing."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
                 package_id="pkg_1",
@@ -254,7 +254,7 @@ def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing_produ
 def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_pricing_products):
     """Test creating media buy with auction CPM pricing."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
                 package_id="pkg_1",
@@ -294,7 +294,7 @@ def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_pricing_pro
 def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_pricing_products):
     """Test that auction bid below floor price fails."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
                 package_id="pkg_1",
@@ -334,7 +334,7 @@ def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_pricin
 def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_products):
     """Test creating media buy with CPCV pricing."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
                 package_id="pkg_1",
@@ -373,7 +373,7 @@ def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_products):
 def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_products):
     """Test that budget below min_spend_per_package fails."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
                 package_id="pkg_1",
@@ -412,7 +412,7 @@ def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_produc
 def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_pricing_products):
     """Test creating media buy choosing CPP from multi-pricing product."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
                 package_id="pkg_1",
@@ -451,7 +451,7 @@ def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_pricing_pro
 def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pricing_products):
     """Test that requesting unavailable pricing model fails."""
     request = CreateMediaBuyRequest(
-        promoted_offering="https://example.com/product",
+        brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
                 package_id="pkg_1",

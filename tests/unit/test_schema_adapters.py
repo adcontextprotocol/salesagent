@@ -16,7 +16,7 @@ class TestGetProductsRequestAdapter:
 
     def test_simple_construction_with_promoted_offering(self):
         """Adapter has simple, flat API for construction."""
-        req = GetProductsRequest(promoted_offering="https://example.com", brief="Video ads")
+        req = GetProductsRequest(brand_manifest={"name": "https://example.com"}, brief="Video ads")
 
         assert req.promoted_offering == "https://example.com"
         assert req.brief == "Video ads"
@@ -31,7 +31,7 @@ class TestGetProductsRequestAdapter:
 
     def test_backward_compatibility_promoted_offering(self):
         """Adapter handles legacy promoted_offering field."""
-        req = GetProductsRequest(promoted_offering="https://example.com")
+        req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
 
         # Auto-converted to brand_manifest
         assert req.brand_manifest is not None
@@ -39,7 +39,7 @@ class TestGetProductsRequestAdapter:
 
     def test_converts_to_generated_schema(self):
         """Adapter converts to generated schema for protocol validation."""
-        req = GetProductsRequest(promoted_offering="https://example.com", brief="Video ads")
+        req = GetProductsRequest(brand_manifest={"name": "https://example.com"}, brief="Video ads")
 
         # Convert to generated schema (validates against JSON Schema)
         generated = req.to_generated()
@@ -92,7 +92,7 @@ class TestGetProductsRequestAdapter:
 
     def test_adcp_compliant_dump(self):
         """Adapter can dump as AdCP-compliant dict."""
-        req = GetProductsRequest(promoted_offering="https://example.com", brief="Video ads")
+        req = GetProductsRequest(brand_manifest={"name": "https://example.com"}, brief="Video ads")
 
         # Dump as AdCP-compliant (validates against JSON Schema)
         data = req.model_dump_adcp_compliant()
@@ -110,7 +110,7 @@ class TestAdapterBenefitsForTesting:
         # OLD: Complex RootModel[Union[...]] from generated
         # NEW: Simple adapter construction
 
-        req = GetProductsRequest(promoted_offering="https://example.com", brief="Test campaign")
+        req = GetProductsRequest(brand_manifest={"name": "https://example.com"}, brief="Test campaign")
 
         # Easy assertions
         assert req.promoted_offering == "https://example.com"
@@ -136,7 +136,7 @@ class TestAdapterBenefitsForTesting:
         6. Repeat every spec change...
         """
         # This test documents the benefit, doesn't assert behavior
-        req = GetProductsRequest(promoted_offering="https://example.com")
+        req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
         assert req.promoted_offering == "https://example.com"
 
     def test_custom_validators_still_work(self):
@@ -145,7 +145,7 @@ class TestAdapterBenefitsForTesting:
         # The adapter has handle_legacy_promoted_offering validator
         # This converts promoted_offering to brand_manifest
 
-        req = GetProductsRequest(promoted_offering="MyBrand")
+        req = GetProductsRequest(brand_manifest={"name": "MyBrand"})
 
         # Custom validator ran
         assert req.brand_manifest is not None  # Auto-created
@@ -160,8 +160,8 @@ class TestAdapterVsManualSchema:
         from src.core.schemas import GetProductsRequest as ManualGetProductsRequest
 
         # Both have same construction API
-        adapter_req = GetProductsRequest(promoted_offering="https://example.com", brief="Test")
-        manual_req = ManualGetProductsRequest(promoted_offering="https://example.com", brief="Test")
+        adapter_req = GetProductsRequest(brand_manifest={"name": "https://example.com"}, brief="Test")
+        manual_req = ManualGetProductsRequest(brand_manifest={"name": "https://example.com"}, brief="Test")
 
         # Both have same fields
         assert adapter_req.promoted_offering == manual_req.promoted_offering
@@ -169,7 +169,7 @@ class TestAdapterVsManualSchema:
 
     def test_adapter_validates_against_spec(self):
         """Adapter uses generated schema, so validates against AdCP JSON Schema."""
-        req = GetProductsRequest(promoted_offering="https://example.com")
+        req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
 
         # Convert to generated schema (validates against JSON Schema)
         generated = req.to_generated()
@@ -199,7 +199,7 @@ class TestAdapterPattern:
         - Always in sync with AdCP spec
         """
         # Example usage
-        req = GetProductsRequest(promoted_offering="https://example.com")
+        req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
 
         # Application code: simple API
         assert req.promoted_offering == "https://example.com"
@@ -221,7 +221,7 @@ class TestAdapterPattern:
 
         Example:
             # Adapter API (simple)
-            adapter = GetProductsRequest(promoted_offering="https://example.com")
+            adapter = GetProductsRequest(brand_manifest={"name": "https://example.com"})
             data = adapter.promoted_offering  # Deprecated field works!
 
             # Converts to spec-compliant generated
@@ -231,7 +231,7 @@ class TestAdapterPattern:
         Note: After schema regeneration, generated schemas are now flat classes
         (no more RootModel[Union[...]]). But adapters still provide value!
         """
-        req = GetProductsRequest(promoted_offering="https://example.com")
+        req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
 
         # Simple flat access with deprecated field
         assert req.promoted_offering == "https://example.com"
@@ -259,12 +259,12 @@ class TestMigrationStrategy:
         - Find issues early
         """
         # Test code uses adapter
-        req = GetProductsRequest(promoted_offering="https://example.com")
+        req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
 
         # Production code still uses manual schema
         from src.core.schemas import GetProductsRequest as ManualReq
 
-        manual = ManualReq(promoted_offering="https://example.com")
+        manual = ManualReq(brand_manifest={"name": "https://example.com"})
 
         # Both work the same
         assert req.promoted_offering == manual.promoted_offering
@@ -284,7 +284,7 @@ class TestMigrationStrategy:
         # NEW: from src.core.schema_adapters import GetProductsRequest
         # OLD: from src.core.schemas import GetProductsRequest
 
-        req = GetProductsRequest(promoted_offering="https://example.com")
+        req = GetProductsRequest(brand_manifest={"name": "https://example.com"})
         assert req.promoted_offering == "https://example.com"
 
     def test_step3_deprecate_manual_schemas(self):
@@ -301,5 +301,5 @@ class TestMigrationStrategy:
         # All imports work the same
         from src.core.schema_adapters import GetProductsRequest as AdapterReq
 
-        req = AdapterReq(promoted_offering="https://example.com")
+        req = AdapterReq(brand_manifest={"name": "https://example.com"})
         assert req.promoted_offering == "https://example.com"

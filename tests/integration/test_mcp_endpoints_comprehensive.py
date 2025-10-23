@@ -145,7 +145,7 @@ class TestMCPEndpointsComprehensive:
                 "get_products",
                 {
                     "brief": "display ads for news content",
-                    "promoted_offering": "Tech startup promoting AI analytics platform",
+                    "brand_manifest": {"name": "Tech startup promoting AI analytics platform"},
                 },
             )
 
@@ -179,7 +179,7 @@ class TestMCPEndpointsComprehensive:
                 "get_products",
                 {
                     "brief": "display advertising on news websites",
-                    "promoted_offering": "B2B software company",
+                    "brand_manifest": {"name": "B2B software company"},
                 },
             )
 
@@ -211,7 +211,7 @@ class TestMCPEndpointsComprehensive:
 
         # Test 1: Legacy format should work
         legacy_request = CreateMediaBuyRequest(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             product_ids=["prod_1", "prod_2"],
             total_budget=5000.0,
             start_date=date.today(),
@@ -239,7 +239,7 @@ class TestMCPEndpointsComprehensive:
 
         # Test 2: New v2.4 format should work (per AdCP spec: product_id singular)
         new_request = CreateMediaBuyRequest(
-            promoted_offering="Adidas UltraBoost 2025 running shoes",
+            brand_manifest={"name": "Adidas UltraBoost 2025 running shoes"},
             buyer_ref="custom_ref_123",
             po_number="PO-V24-67890",  # Required per AdCP spec
             budget=Budget(total=10000.0, currency="EUR", pacing="asap"),
@@ -258,7 +258,7 @@ class TestMCPEndpointsComprehensive:
 
         # Test 3: Mixed format should work (legacy with some new fields)
         mixed_request = CreateMediaBuyRequest(
-            promoted_offering="Puma RS-X 2025 training shoes",
+            brand_manifest={"name": "Puma RS-X 2025 training shoes"},
             buyer_ref="mixed_ref",
             po_number="PO-MIXED-99999",  # Required per AdCP spec
             product_ids=["prod_1"],
@@ -285,7 +285,7 @@ class TestMCPEndpointsComprehensive:
                     "get_products",
                     {
                         "brief": "test",
-                        "promoted_offering": "test",
+                        "brand_manifest": {"name": "test"},
                     },
                 )
 
@@ -329,7 +329,7 @@ class TestMCPEndpointsComprehensive:
                 "get_products",
                 {
                     "brief": "Looking for premium display advertising",
-                    "promoted_offering": "Enterprise SaaS platform for data analytics",
+                    "brand_manifest": {"name": "Enterprise SaaS platform for data analytics"},
                 },
             )
 
@@ -344,7 +344,7 @@ class TestMCPEndpointsComprehensive:
             buy_result = await client.call_tool(
                 "create_media_buy",
                 {
-                    "promoted_offering": "Enterprise SaaS platform for data analytics",
+                    "brand_manifest": {"name": "Enterprise SaaS platform for data analytics"},
                     "po_number": "PO-TEST-12345",  # Required per AdCP spec
                     "product_ids": [product["product_id"]],
                     "total_budget": 10000.0,

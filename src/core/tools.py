@@ -207,17 +207,16 @@ async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> Ge
 
 async def create_media_buy_raw(
     buyer_ref: str,
-    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
+    brand_manifest: Any,  # BrandManifest | str - REQUIRED per AdCP v2.2.0 spec
+    packages: list[Any],  # REQUIRED per AdCP spec
+    start_time: Any,  # datetime | Literal["asap"] | str - REQUIRED per AdCP spec
+    end_time: Any,  # datetime | str - REQUIRED per AdCP spec
+    budget: Any,  # Budget | float | dict - REQUIRED per AdCP spec
     po_number: str | None = None,
-    packages: list[Any] | None = None,
-    start_time: Any | None = None,  # datetime | Literal["asap"] | str - validated by Pydantic
-    end_time: Any | None = None,  # datetime | str - validated by Pydantic
-    budget: Any | None = None,  # Budget | float | dict - validated by Pydantic
-    promoted_offering: str | None = None,
-    product_ids: list[str] | None = None,
-    total_budget: float | None = None,
-    start_date: Any | None = None,  # date | str - validated by Pydantic
-    end_date: Any | None = None,  # date | str - validated by Pydantic
+    product_ids: list[str] | None = None,  # Legacy format conversion
+    total_budget: float | None = None,  # Legacy format conversion
+    start_date: Any | None = None,  # Legacy format conversion
+    end_date: Any | None = None,  # Legacy format conversion
     targeting_overlay: dict[str, Any] | None = None,
     pacing: str = "even",
     daily_budget: float | None = None,
@@ -235,17 +234,17 @@ async def create_media_buy_raw(
     Delegates to the shared implementation in main.py.
 
     Args:
-        buyer_ref: Buyer reference identifier (required per AdCP spec)
-        brand_manifest: Brand information manifest - inline object or URL string (optional, auto-generated from promoted_offering if not provided)
+        buyer_ref: Buyer reference identifier (REQUIRED per AdCP spec)
+        brand_manifest: Brand information manifest - inline object or URL string (REQUIRED per AdCP v2.2.0 spec)
+        packages: List of media packages (REQUIRED)
+        start_time: Campaign start time ISO 8601 or 'asap' (REQUIRED)
+        end_time: Campaign end time ISO 8601 (REQUIRED)
+        budget: Overall campaign budget (REQUIRED)
         po_number: Purchase order number (optional)
-        promoted_offering: DEPRECATED - use brand_manifest instead (still supported for backward compatibility)
-        packages: List of media packages (optional)
-        start_time: Start time (legacy parameter)
-        end_time: End time (legacy parameter)
-        product_ids: List of product IDs to include
-        total_budget: Total budget for the media buy
-        start_date: Flight start date (YYYY-MM-DD)
-        end_date: Flight end date (YYYY-MM-DD)
+        product_ids: Legacy: Product IDs (converted to packages)
+        total_budget: Legacy: Total budget (converted to Budget object)
+        start_date: Legacy: Start date (converted to start_time)
+        end_date: Legacy: End date (converted to end_time)
         targeting_overlay: Additional targeting parameters
         pacing: Pacing strategy
         daily_budget: Daily budget limit
@@ -255,7 +254,6 @@ async def create_media_buy_raw(
         enable_creative_macro: Enable creative macro
         strategy_id: Strategy ID
         push_notification_config: Push notification config for status updates
-        budget: Budget dict
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -269,7 +267,6 @@ async def create_media_buy_raw(
         buyer_ref=buyer_ref,
         brand_manifest=brand_manifest,
         po_number=po_number,
-        promoted_offering=promoted_offering,
         packages=packages,
         start_time=start_time,
         end_time=end_time,

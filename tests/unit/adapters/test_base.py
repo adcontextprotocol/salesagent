@@ -55,7 +55,7 @@ def test_mock_ad_server_create_media_buy(sample_packages, mocker):
 
     # CreateMediaBuyRequest now uses product_ids, not selected_packages
     request = CreateMediaBuyRequest(
-        promoted_offering="Premium basketball shoes for sports enthusiasts",
+        brand_manifest={"name": "Premium basketball shoes for sports enthusiasts"},
         buyer_ref="ref_12345",  # Required per AdCP spec
         product_ids=["pkg_1"],
         start_date=start_time.date(),
