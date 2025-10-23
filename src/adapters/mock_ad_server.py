@@ -592,6 +592,9 @@ class MockAdServer(AdServerAdapter):
 
         # Build context and apply template
         context = build_order_name_context(request, packages, start_time, end_time, tenant_gemini_key)
+        print(
+            f"[NAMING DEBUG] template={repr(order_name_template)}, has_promoted_offering={('promoted_offering' in context)}"
+        )
         order_name = apply_naming_template(order_name_template, context)
 
         # Strategy-aware behavior modifications
