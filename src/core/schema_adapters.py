@@ -426,7 +426,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    # Fields from AdCP spec (v2.0+ uses publisher_domains instead of properties)
+    # Fields from AdCP spec v2.4
     publisher_domains: list[str] = Field(
         ..., description="Publisher domains this agent is authorized to represent", min_length=1
     )
@@ -445,17 +445,6 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     )
     last_updated: str | None = Field(None, description="ISO 8601 timestamp of when authorization list was last updated")
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
-
-    # Legacy field for backward compatibility
-    @property
-    def properties(self) -> list[dict[str, Any]]:
-        """Legacy property for backward compatibility - returns publisher_domains as property objects."""
-        return [{"domain": domain} for domain in self.publisher_domains]
-
-    @property
-    def tags(self) -> dict[str, Any]:
-        """Legacy property for backward compatibility."""
-        return {}
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer.
