@@ -313,7 +313,9 @@ class Colors(BaseModel):
 class Fonts(BaseModel):
     primary: Annotated[str | None, Field(description="Primary font family name")] = None
     secondary: Annotated[str | None, Field(description="Secondary font family name")] = None
-    font_urls: Annotated[list[AnyUrl] | None, Field(description="URLs to web font files if using custom fonts")] = None
+    font_urls: Annotated[list[AnyUrl] | None, Field(description="URLs to web font files if using custom fonts")] = (
+        None
+    )
 
 
 class AssetType(Enum):
@@ -368,7 +370,9 @@ class ProductCatalog(BaseModel):
     categories: Annotated[
         list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = (
+        None
+    )
     update_frequency: Annotated[
         UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
@@ -390,7 +394,9 @@ class Contact(BaseModel):
 
 class Metadata(BaseModel):
     created_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was created")] = None
-    updated_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was last updated")] = None
+    updated_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was last updated")] = (
+        None
+    )
     version: Annotated[str | None, Field(description="Brand card version number")] = None
 
 
@@ -441,7 +447,7 @@ class BrandManifest(BaseModel):
     metadata: Annotated[Metadata | None, Field(description="Additional brand metadata")] = None
 
 
-class Asset15(BaseModel):
+class Asset17(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -462,7 +468,7 @@ class Asset15(BaseModel):
     metadata: Annotated[dict[str, Any] | None, Field(description="Additional asset-specific metadata")] = None
 
 
-class ProductCatalog13(BaseModel):
+class ProductCatalog15(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -473,13 +479,15 @@ class ProductCatalog13(BaseModel):
     categories: Annotated[
         list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = (
+        None
+    )
     update_frequency: Annotated[
         UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
 
 
-class BrandManifest12(BaseModel):
+class BrandManifest14(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -503,13 +511,13 @@ class BrandManifest12(BaseModel):
     ] = None
     tagline: Annotated[str | None, Field(description="Brand tagline or slogan")] = None
     assets: Annotated[
-        list[Asset15] | None,
+        list[Asset17] | None,
         Field(
             description="Brand asset library with explicit assets and tags. Assets are referenced inline with URLs pointing to CDN-hosted files."
         ),
     ] = None
     product_catalog: Annotated[
-        ProductCatalog13 | None,
+        ProductCatalog15 | None,
         Field(
             description="Product catalog information for e-commerce advertisers. Enables SKU-level creative generation and product selection."
         ),
@@ -562,7 +570,7 @@ class Offering(BaseModel):
     assets: Annotated[list[dict[str, Any]] | None, Field(description="Assets specific to this offering")] = None
 
 
-class AssetType22(Enum):
+class AssetType25(Enum):
     image = "image"
     video = "video"
     audio = "audio"
@@ -584,7 +592,7 @@ class AssetSelectors(BaseModel):
         list[str] | None, Field(description="Select assets with specific tags (e.g., ['holiday', 'premium'])")
     ] = None
     asset_types: Annotated[
-        list[AssetType22] | None, Field(description="Filter by asset type (e.g., ['image', 'video'])")
+        list[AssetType25] | None, Field(description="Filter by asset type (e.g., ['image', 'video'])")
     ] = None
     exclude_tags: Annotated[list[str] | None, Field(description="Exclude assets with these tags")] = None
 
@@ -594,7 +602,7 @@ class Assets61(BaseModel):
         extra="forbid",
     )
     brand_manifest: Annotated[
-        BrandManifest | BrandManifest12 | AnyUrl,
+        BrandManifest | BrandManifest14 | AnyUrl,
         Field(
             description="Brand manifest provided either as an inline object or a URL string pointing to a hosted manifest",
             examples=[
@@ -677,19 +685,7 @@ class Creative(BaseModel):
     assets: Annotated[
         dict[
             str,
-            Assets
-            | Assets51
-            | Assets52
-            | Assets53
-            | Assets54
-            | Assets55
-            | Assets56
-            | Assets57
-            | Assets58
-            | Assets59
-            | Assets60
-            | Assets61
-            | Assets62,
+            Assets | Assets51 | Assets52 | Assets53 | Assets54 | Assets55 | Assets56 | Assets57 | Assets58 | Assets59 | Assets60 | Assets61 | Assets62,
         ],
         Field(description="Assets required by the format, keyed by asset_role"),
     ]
@@ -697,7 +693,9 @@ class Creative(BaseModel):
         list[Input] | None,
         Field(description="Preview contexts for generative formats - defines what scenarios to generate previews for"),
     ] = None
-    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = None
+    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = (
+        None
+    )
     approved: Annotated[
         bool | None,
         Field(

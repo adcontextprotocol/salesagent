@@ -527,15 +527,7 @@ class Product(BaseModel):
     delivery_type: Annotated[DeliveryType, Field(description="Type of inventory delivery", title="Delivery Type")]
     pricing_options: Annotated[
         list[
-            PricingOptions
-            | PricingOptions1
-            | PricingOptions2
-            | PricingOptions3
-            | PricingOptions4
-            | PricingOptions5
-            | PricingOptions6
-            | PricingOptions7
-            | PricingOptions8
+            PricingOptions | PricingOptions1 | PricingOptions2 | PricingOptions3 | PricingOptions4 | PricingOptions5 | PricingOptions6 | PricingOptions7 | PricingOptions8
         ],
         Field(description="Available pricing models for this product", min_length=1),
     ]

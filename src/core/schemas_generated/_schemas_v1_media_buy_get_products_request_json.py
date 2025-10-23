@@ -40,7 +40,9 @@ class Colors(BaseModel):
 class Fonts(BaseModel):
     primary: Annotated[str | None, Field(description="Primary font family name")] = None
     secondary: Annotated[str | None, Field(description="Secondary font family name")] = None
-    font_urls: Annotated[list[AnyUrl] | None, Field(description="URLs to web font files if using custom fonts")] = None
+    font_urls: Annotated[list[AnyUrl] | None, Field(description="URLs to web font files if using custom fonts")] = (
+        None
+    )
 
 
 class AssetType(Enum):
@@ -95,7 +97,9 @@ class ProductCatalog(BaseModel):
     categories: Annotated[
         list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = (
+        None
+    )
     update_frequency: Annotated[
         UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
@@ -117,7 +121,9 @@ class Contact(BaseModel):
 
 class Metadata(BaseModel):
     created_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was created")] = None
-    updated_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was last updated")] = None
+    updated_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was last updated")] = (
+        None
+    )
     version: Annotated[str | None, Field(description="Brand card version number")] = None
 
 
@@ -168,7 +174,7 @@ class BrandManifest(BaseModel):
     metadata: Annotated[Metadata | None, Field(description="Additional brand metadata")] = None
 
 
-class Asset10(BaseModel):
+class Asset12(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -189,7 +195,7 @@ class Asset10(BaseModel):
     metadata: Annotated[dict[str, Any] | None, Field(description="Additional asset-specific metadata")] = None
 
 
-class ProductCatalog9(BaseModel):
+class ProductCatalog11(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -200,13 +206,15 @@ class ProductCatalog9(BaseModel):
     categories: Annotated[
         list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = (
+        None
+    )
     update_frequency: Annotated[
         UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
 
 
-class BrandManifest8(BaseModel):
+class BrandManifest10(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -230,13 +238,13 @@ class BrandManifest8(BaseModel):
     ] = None
     tagline: Annotated[str | None, Field(description="Brand tagline or slogan")] = None
     assets: Annotated[
-        list[Asset10] | None,
+        list[Asset12] | None,
         Field(
             description="Brand asset library with explicit assets and tags. Assets are referenced inline with URLs pointing to CDN-hosted files."
         ),
     ] = None
     product_catalog: Annotated[
-        ProductCatalog9 | None,
+        ProductCatalog11 | None,
         Field(
             description="Product catalog information for e-commerce advertisers. Enables SKU-level creative generation and product selection."
         ),
@@ -307,7 +315,7 @@ class GetProductsRequest(BaseModel):
     )
     brief: Annotated[str | None, Field(description="Natural language description of campaign requirements")] = None
     brand_manifest: Annotated[
-        BrandManifest | BrandManifest8 | AnyUrl,
+        BrandManifest | BrandManifest10 | AnyUrl,
         Field(
             description="Brand manifest provided either as an inline object or a URL string pointing to a hosted manifest",
             examples=[
