@@ -4,10 +4,10 @@ Adapter-agnostic utilities that work across all ad servers (GAM, Mock, Kevel, et
 
 Supports variable substitution with fallback syntax:
 - {campaign_name} - Direct substitution
-- {campaign_name|promoted_offering} - Use campaign_name, fall back to promoted_offering
+- {campaign_name|brand_name} - Use campaign_name, fall back to brand_name
 - {date_range} - Formatted date range (e.g., "Oct 7-14, 2025")
 - {month_year} - Month and year (e.g., "Oct 2025")
-- {promoted_offering} - What's being advertised
+- {brand_name} - Brand from brand_manifest
 - {buyer_ref} - Buyer's reference ID
 - {auto_name} - AI-generated name from full context (requires Gemini API key)
 - {product_name} - Product name (for line items)
@@ -64,7 +64,7 @@ def generate_auto_name(
         max_length: Maximum length for generated name
 
     Returns:
-        AI-generated name, or falls back to promoted_offering if Gemini unavailable
+        AI-generated name, or falls back to brand_name if Gemini unavailable
 
     Example output:
         "Nike Air Max Campaign - Q4 Holiday Push"
@@ -72,8 +72,18 @@ def generate_auto_name(
     """
     # Fallback if Gemini not configured
     if not tenant_gemini_key:
-        logger.debug("No Gemini API key configured, falling back to promoted_offering")
-        return request.promoted_offering or request.campaign_name or "Campaign"
+        logger.debug("No Gemini API key configured, falling back to brand_name")
+        # Extract brand name from brand_manifest
+        brand_name = None
+        if hasattr(request, "brand_manifest") and request.brand_manifest:
+            manifest = request.brand_manifest
+            if isinstance(manifest, str):
+                brand_name = manifest
+            elif hasattr(manifest, "name"):
+                brand_name = manifest.name
+            elif isinstance(manifest, dict):
+                brand_name = manifest.get("name")
+        return brand_name or request.campaign_name or "Campaign"
 
     try:
         import google.generativeai as genai
@@ -196,9 +206,9 @@ def apply_naming_template(
         ... })
         "Q1 Launch - Oct 7-14, 2025"
 
-        >>> apply_naming_template("{campaign_name|promoted_offering}", {
+        >>> apply_naming_template("{campaign_name|brand_name}", {
         ...     "campaign_name": None,
-        ...     "promoted_offering": "Nike Shoes"
+        ...     "brand_name": "Nike Shoes"
         ... })
         "Nike Shoes"
     """
@@ -265,9 +275,20 @@ def build_order_name_context(
         tenant_gemini_key=tenant_gemini_key,
     )
 
+    # Extract brand name from brand_manifest
+    brand_name = None
+    if hasattr(request, "brand_manifest") and request.brand_manifest:
+        manifest = request.brand_manifest
+        if isinstance(manifest, str):
+            brand_name = manifest
+        elif hasattr(manifest, "name"):
+            brand_name = manifest.name
+        elif isinstance(manifest, dict):
+            brand_name = manifest.get("name")
+
     return {
         "campaign_name": request.campaign_name,
-        "promoted_offering": request.promoted_offering,
+        "brand_name": brand_name or "N/A",
         "buyer_ref": request.buyer_ref,
         "auto_name": auto_name,
         "date_range": format_date_range(start_time, end_time),
