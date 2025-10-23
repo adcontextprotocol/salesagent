@@ -82,9 +82,11 @@ class TestAuthRemovalChanges:
             source = f.read()
 
         # Key changes should be present - tuple return after ContextVar fix
+        # Updated to accept new require_valid_token parameter for discovery endpoints
         assert (
             "get_principal_from_context(context)  # Returns (None, None) if no auth" in source
             or "get_principal_from_context(context)  # Returns None if no auth" in source
+            or "require_valid_token=False" in source  # New pattern for discovery endpoints
         )
         assert 'principal_id or "anonymous"' in source
 
