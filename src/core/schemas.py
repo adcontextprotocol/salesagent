@@ -2024,7 +2024,7 @@ class BrandAsset(BaseModel):
     """Multimedia brand asset."""
 
     url: str = Field(..., description="URL to brand asset")
-    type: str = Field(..., description="Asset type (image, video, audio, etc.)")
+    asset_type: str = Field(..., description="Asset type (image, video, audio, etc.)")
     tags: list[str] | None = Field(None, description="Asset tags for categorization")
     width: int | None = Field(None, ge=1, description="Asset width in pixels")
     height: int | None = Field(None, ge=1, description="Asset height in pixels")
