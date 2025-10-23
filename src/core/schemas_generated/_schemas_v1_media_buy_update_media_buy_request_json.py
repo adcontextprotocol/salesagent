@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Union
+from typing import Annotated
 
 from pydantic import AnyUrl, AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 
@@ -200,9 +200,7 @@ class UpdateMediaBuyRequest1(BaseModel):
             ge=0.0,
         ),
     ] = None
-    packages: Annotated[list[Packages | Packages1] | None, Field(description="Package-specific updates")] = (
-        None
-    )
+    packages: Annotated[list[Packages | Packages1] | None, Field(description="Package-specific updates")] = None
     push_notification_config: Annotated[
         PushNotificationConfig | None,
         Field(
@@ -385,9 +383,7 @@ class UpdateMediaBuyRequest2(BaseModel):
             ge=0.0,
         ),
     ] = None
-    packages: Annotated[list[Packages2 | Packages3] | None, Field(description="Package-specific updates")] = (
-        None
-    )
+    packages: Annotated[list[Packages2 | Packages3] | None, Field(description="Package-specific updates")] = None
     push_notification_config: Annotated[
         PushNotificationConfig3 | None,
         Field(
@@ -397,7 +393,7 @@ class UpdateMediaBuyRequest2(BaseModel):
     ] = None
 
 
-class UpdateMediaBuyRequest(RootModel[Union[UpdateMediaBuyRequest1, UpdateMediaBuyRequest2]]):
+class UpdateMediaBuyRequest(RootModel[UpdateMediaBuyRequest1 | UpdateMediaBuyRequest2]):
     root: Annotated[
         UpdateMediaBuyRequest1 | UpdateMediaBuyRequest2,
         Field(
