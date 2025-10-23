@@ -576,7 +576,7 @@ class MockAdServer(AdServerAdapter):
         from src.core.database.models import Tenant
         from src.core.utils.naming import apply_naming_template, build_order_name_context
 
-        order_name_template = "{campaign_name|promoted_offering} - {date_range}"  # Default
+        order_name_template = "{campaign_name|brand_name} - {date_range}"  # Default
         tenant_gemini_key = None
         try:
             with get_db_session() as db_session:
