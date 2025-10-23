@@ -164,6 +164,32 @@
             • A 7-day campaign completes in 168 seconds (~2.8 minutes)
         </div>
 
+        <h3 style="margin-top: 2rem;">Creative Formats</h3>
+        <div class="alert" style="background: #e3f2fd; border-color: #90caf9; color: #1565c0; margin-bottom: 1rem;">
+            <strong>ℹ️ Creative Formats:</strong> This product's formats are managed in the product edit page.
+            <a href="{{ url_for('products.edit_product', tenant_id=tenant_id, product_id=product.product_id) }}" style="color: #1565c0; text-decoration: underline;">Edit Product →</a>
+        </div>
+
+        {% if product.formats %}
+        <div style="padding: 1rem; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                {% for format in product.formats %}
+                <span class="badge" style="display: inline-block; padding: 0.5rem 0.75rem; background: #e3f2fd; color: #1565c0; border-radius: 4px; font-size: 0.9rem;">
+                    {% if format.id or format.format_id %}
+                        {{ format.id or format.format_id }}
+                    {% else %}
+                        {{ format }}
+                    {% endif %}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-warning" style="background: #fff3cd; border-color: #ffc107;">
+            <strong>⚠️ No formats configured:</strong> Please edit the product to add creative formats.
+        </div>
+        {% endif %}
+
         <h3 style="margin-top: 2rem;">Debug Settings</h3>
 
         <div class="form-group">
@@ -209,5 +235,7 @@ document.getElementById('test_mode').addEventListener('change', function() {
         document.getElementById('error_rate').value = 100;
     }
 });
+
+// Test mode auto-adjustment remains
 </script>
 {% endblock %}

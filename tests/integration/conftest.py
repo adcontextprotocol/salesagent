@@ -22,8 +22,9 @@ from tests.fixtures import TenantFactory
 def integration_db():
     """Provide an isolated PostgreSQL database for each integration test.
 
-    REQUIRES: PostgreSQL container running (via run_all_tests.sh ci)
-    - ADCP_TEST_DB_URL must be set (e.g., postgresql://adcp_user:test_password@localhost:5433/adcp_test)
+    REQUIRES: PostgreSQL container running (via run_all_tests.sh ci or GitHub Actions)
+    - Uses DATABASE_URL to get PostgreSQL connection info (host, port, user, password)
+    - Database name in URL is ignored - creates a unique database per test (e.g., test_a3f8d92c)
     - Matches production environment exactly
     - Better multi-process support (fixes mcp_server tests)
     - Consistent JSONB behavior
@@ -35,22 +36,40 @@ def integration_db():
     original_db_type = os.environ.get("DB_TYPE")
 
     # Require PostgreSQL - no SQLite fallback
-    postgres_url = os.environ.get("ADCP_TEST_DB_URL")
-    if not postgres_url:
-        pytest.skip("Integration tests require PostgreSQL. Run: ./run_all_tests.sh ci")
+    postgres_url = os.environ.get("DATABASE_URL")
+    if not postgres_url or not postgres_url.startswith("postgresql://"):
+        pytest.skip(
+            "Integration tests require PostgreSQL DATABASE_URL (e.g., postgresql://user:pass@localhost:5432/any_db)"
+        )
 
     # PostgreSQL mode - create unique database per test
     unique_db_name = f"test_{uuid.uuid4().hex[:8]}"
 
     # Create the test database
+    # Parse port from postgres_url (set by run_all_tests.sh or environment)
+    import re
+
     import psycopg2
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
+    pattern = r"postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)"
+    match = re.match(pattern, postgres_url)
+    if match:
+        user, password, host, port_str, _ = match.groups()
+        postgres_port = int(port_str)
+    else:
+        # Fallback to defaults if URL parsing fails
+        pytest.fail(
+            f"Failed to parse DATABASE_URL: {postgres_url}\n"
+            f"Expected format: postgresql://user:pass@host:port/dbname"
+        )
+        user, password, host, postgres_port = "adcp_user", "test_password", "localhost", 5432
+
     conn_params = {
-        "host": "localhost",
-        "port": 5433,  # Default from run_all_tests.sh
-        "user": "adcp_user",
-        "password": "test_password",
+        "host": host,
+        "port": postgres_port,
+        "user": user,
+        "password": password,
         "database": "postgres",  # Connect to default db first
     }
 
@@ -64,7 +83,7 @@ def integration_db():
         cur.close()
         conn.close()
 
-    os.environ["DATABASE_URL"] = f"postgresql://adcp_user:test_password@localhost:5433/{unique_db_name}"
+    os.environ["DATABASE_URL"] = f"postgresql://{user}:{password}@{host}:{postgres_port}/{unique_db_name}"
     os.environ["DB_TYPE"] = "postgresql"
     db_path = unique_db_name  # For cleanup reference
 
@@ -82,7 +101,7 @@ def integration_db():
     # (in case the module import doesn't trigger class definition)
     _ = (Context, WorkflowStep, ObjectWorkflowMapping)
 
-    engine = create_engine(f"postgresql://adcp_user:test_password@localhost:5433/{unique_db_name}", echo=False)
+    engine = create_engine(f"postgresql://{user}:{password}@{host}:{postgres_port}/{unique_db_name}", echo=False)
 
     # Ensure all model classes are imported and registered with Base.metadata
     # Import order matters - some models may not be registered if imported too early
@@ -92,7 +111,6 @@ def integration_db():
         AuthorizedProperty,
         Creative,
         CreativeAssignment,
-        CreativeFormat,
         FormatPerformanceMetrics,
         GAMInventory,
         GAMLineItem,
@@ -128,7 +146,6 @@ def integration_db():
         TenantManagementConfig,
         PushNotificationConfig,
         User,
-        CreativeFormat,
         AdapterConfig,
         GAMInventory,
         ProductInventoryMapping,

@@ -19,6 +19,7 @@ from src.core.schemas import Principal
 
 
 @pytest.mark.integration
+@pytest.mark.requires_db
 class TestAdapterFactory:
     """Test adapter factory function with real database."""
 

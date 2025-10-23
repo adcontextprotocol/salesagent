@@ -36,6 +36,7 @@ from src.adapters.gam.managers.orders import (
     GUARANTEED_LINE_ITEM_TYPES,
     NON_GUARANTEED_LINE_ITEM_TYPES,
 )
+from src.adapters.gam.pricing_compatibility import PricingCompatibility
 from src.core.audit_logger import AuditLogger
 from src.core.schemas import (
     AssetStatus,
@@ -225,6 +226,20 @@ class GoogleAdManager(AdServerAdapter):
             raise ValueError("GAM adapter not configured for order operations")
         return self.orders_manager.check_order_has_guaranteed_items(order_id)
 
+    def get_supported_pricing_models(self) -> set[str]:
+        """Return set of pricing models GAM adapter supports.
+
+        Google Ad Manager supports:
+        - CPM: All line item types
+        - VCPM: STANDARD only (viewable CPM)
+        - CPC: STANDARD, SPONSORSHIP, NETWORK, PRICE_PRIORITY
+        - FLAT_RATE: SPONSORSHIP (translated to CPD internally)
+
+        Returns:
+            Set of pricing model strings supported by this adapter
+        """
+        return {"cpm", "vcpm", "cpc", "flat_rate"}
+
     # Legacy properties for backward compatibility
     @property
     def GEO_COUNTRY_MAP(self):
@@ -269,30 +284,32 @@ class GoogleAdManager(AdServerAdapter):
         """
         self.log("[bold]GoogleAdManager.create_media_buy[/bold] - Creating GAM order")
 
-        # Validate pricing models - GAM only supports CPM (AdCP PR #88)
+        # Validate pricing models - check GAM compatibility
         if package_pricing_info:
             for pkg_id, pricing in package_pricing_info.items():
                 pricing_model = pricing["pricing_model"]
-                self.log(
-                    f"📊 Package {pkg_id} pricing: {pricing_model} "
-                    f"({pricing['currency']}, {'fixed' if pricing['is_fixed'] else 'auction'})"
-                )
 
-                # Enforce GAM limitation: only CPM pricing supported
-                if pricing_model != "cpm":
+                # Check if pricing model is supported by GAM adapter at all
+                try:
+                    gam_cost_type = PricingCompatibility.get_gam_cost_type(pricing_model)
+                except ValueError as e:
                     error_msg = (
-                        f"Google Ad Manager adapter only supports CPM pricing. "
-                        f"Package '{pkg_id}' requested '{pricing_model}' pricing model. "
-                        f"Please choose a product with CPM pricing or contact the publisher "
-                        f"about CPM pricing options for this inventory."
+                        f"Google Ad Manager adapter does not support '{pricing_model}' pricing. "
+                        f"Supported pricing models: CPM, VCPM, CPC, FLAT_RATE. "
+                        f"The requested pricing model ('{pricing_model}') is not available in GAM. "
+                        f"Please choose a product with compatible pricing."
                     )
                     self.log(f"[red]Error: {error_msg}[/red]")
                     return CreateMediaBuyResponse(
-                        media_buy_id="",
-                        status="failed",
-                        message=error_msg,
-                        errors=[Error(code="unsupported_pricing_model", message=error_msg)],
+                        buyer_ref=request.buyer_ref,
+                        media_buy_id=None,
+                        errors=[Error(code="unsupported_pricing_model", message=error_msg, details=None)],
                     )
+
+                self.log(
+                    f"📊 Package {pkg_id} pricing: {pricing_model} → GAM {gam_cost_type} "
+                    f"({pricing['currency']}, {'fixed' if pricing['is_fixed'] else 'auction'})"
+                )
 
         # Validate that advertiser_id and trafficker_id are configured
         if not self.advertiser_id or not self.trafficker_id:
@@ -306,9 +323,8 @@ class GoogleAdManager(AdServerAdapter):
 
             self.log(f"[red]Error: {error_msg}[/red]")
             return CreateMediaBuyResponse(
-                media_buy_id="",
-                status="failed",
-                message=error_msg,
+                buyer_ref=request.buyer_ref,
+                media_buy_id=None,
                 errors=[Error(code="configuration_error", message=error_msg)],
             )
 
@@ -320,13 +336,12 @@ class GoogleAdManager(AdServerAdapter):
         products_map = {}
         with get_db_session() as db_session:
             for package in packages:
-                product = (
-                    db_session.query(Product)
-                    .filter_by(
-                        tenant_id=self.tenant_id, product_id=package.package_id  # package_id is actually product_id
-                    )
-                    .first()
+                from sqlalchemy import select
+
+                stmt = select(Product).filter_by(
+                    tenant_id=self.tenant_id, product_id=package.package_id  # package_id is actually product_id
                 )
+                product = db_session.scalars(stmt).first()
                 if product:
                     products_map[package.package_id] = {
                         "product_id": product.product_id,
@@ -341,9 +356,8 @@ class GoogleAdManager(AdServerAdapter):
             error_msg = f"Unsupported targeting features: {', '.join(unsupported_features)}"
             self.log(f"[red]Error: {error_msg}[/red]")
             return CreateMediaBuyResponse(
-                media_buy_id="",
-                status="failed",
-                message=error_msg,
+                buyer_ref=request.buyer_ref,
+                media_buy_id=None,
                 errors=[Error(code="unsupported_targeting", message=error_msg)],
             )
 
@@ -366,17 +380,16 @@ class GoogleAdManager(AdServerAdapter):
 
             if step_id:
                 return CreateMediaBuyResponse(
+                    buyer_ref=request.buyer_ref,
                     media_buy_id=media_buy_id,
-                    status="submitted",
-                    message=f"Manual order creation workflow created. Step ID: {step_id}. "
-                    f"Human intervention required to create GAM order.",
                     workflow_step_id=step_id,
                 )
             else:
+                error_msg = "Failed to create manual order workflow step"
                 return CreateMediaBuyResponse(
+                    buyer_ref=request.buyer_ref,
                     media_buy_id=media_buy_id,
-                    status="failed",
-                    message="Failed to create manual order workflow step",
+                    errors=[Error(code="workflow_creation_failed", message=error_msg)],
                 )
 
         # Automatic mode - create order directly
@@ -389,7 +402,7 @@ class GoogleAdManager(AdServerAdapter):
         from src.core.database.models import AdapterConfig
         from src.core.utils.naming import apply_naming_template, build_order_name_context
 
-        order_name_template = "{campaign_name|promoted_offering} - {date_range}"  # Default
+        order_name_template = "{campaign_name|brand_name} - {date_range}"  # Default
         tenant_gemini_key = None
         with get_db_session() as db_session:
             from src.core.database.models import Tenant
@@ -443,15 +456,15 @@ class GoogleAdManager(AdServerAdapter):
                 tenant_id=self.tenant_id,
                 order_name=order_name,
                 targeting_overlay=request.targeting_overlay,
+                package_pricing_info=package_pricing_info,
             )
             self.log(f"✓ Created {len(line_item_ids)} line items")
         except Exception as e:
             error_msg = f"Order created but failed to create line items: {str(e)}"
             self.log(f"[red]Error: {error_msg}[/red]")
             return CreateMediaBuyResponse(
+                buyer_ref=request.buyer_ref,
                 media_buy_id=order_id,
-                status="failed",
-                message=error_msg,
                 errors=[Error(code="line_item_creation_failed", message=error_msg)],
             )
 
@@ -463,10 +476,8 @@ class GoogleAdManager(AdServerAdapter):
             step_id = self.workflow_manager.create_activation_workflow_step(order_id, packages)
 
             return CreateMediaBuyResponse(
+                buyer_ref=request.buyer_ref,
                 media_buy_id=order_id,
-                status="submitted",
-                message=f"GAM order created with guaranteed line items ({', '.join(item_types)}). "
-                f"Activation approval required. Workflow step: {step_id}",
                 workflow_step_id=step_id,
             )
 
@@ -481,9 +492,8 @@ class GoogleAdManager(AdServerAdapter):
             )
 
         return CreateMediaBuyResponse(
+            buyer_ref=request.buyer_ref,
             media_buy_id=order_id,
-            status="draft",
-            message=f"Created GAM order with {len(packages)} line items",
             packages=package_responses,
         )
 
@@ -653,7 +663,13 @@ class GoogleAdManager(AdServerAdapter):
         )
 
     def update_media_buy(
-        self, media_buy_id: str, action: str, package_id: str | None, budget: int | None, today: datetime
+        self,
+        media_buy_id: str,
+        buyer_ref: str,
+        action: str,
+        package_id: str | None,
+        budget: int | None,
+        today: datetime,
     ) -> UpdateMediaBuyResponse:
         """Update a media buy in GAM."""
         # Admin-only actions
@@ -661,11 +677,12 @@ class GoogleAdManager(AdServerAdapter):
 
         # Check if action requires admin privileges
         if action in admin_only_actions and not self._is_admin_principal():
+            from src.core.schemas import Error
+
             return UpdateMediaBuyResponse(
                 media_buy_id=media_buy_id,
-                status="failed",
-                reason="Only admin users can approve orders",
-                message="Action denied: insufficient privileges",
+                buyer_ref=buyer_ref,
+                errors=[Error(code="insufficient_privileges", message="Only admin users can approve orders")],
             )
 
         # Check if manual approval is required for media buy updates
@@ -676,18 +693,23 @@ class GoogleAdManager(AdServerAdapter):
             step_id = self.workflow_manager.create_approval_workflow_step(media_buy_id, f"update_media_buy_{action}")
 
             if step_id:
+                # Manual approval success - no errors
                 return UpdateMediaBuyResponse(
                     media_buy_id=media_buy_id,
-                    status="submitted",
-                    message=f"Media buy update action '{action}' submitted for approval. " f"Workflow step: {step_id}",
-                    workflow_step_id=step_id,
+                    buyer_ref=buyer_ref,
                 )
             else:
+                from src.core.schemas import Error
+
                 return UpdateMediaBuyResponse(
                     media_buy_id=media_buy_id,
-                    status="failed",
-                    reason="Failed to create approval workflow step",
-                    message="Unable to process update request - workflow creation failed",
+                    buyer_ref=buyer_ref,
+                    errors=[
+                        Error(
+                            code="workflow_creation_failed",
+                            message="Failed to create approval workflow step",
+                        )
+                    ],
                 )
 
         # Check for activate_order action with guaranteed items
@@ -701,27 +723,29 @@ class GoogleAdManager(AdServerAdapter):
                 step_id = self.workflow_manager.create_activation_workflow_step(media_buy_id, [])
 
                 if step_id:
+                    # Activation workflow created - success (no errors)
                     return UpdateMediaBuyResponse(
                         media_buy_id=media_buy_id,
-                        status="submitted",
-                        reason=f"Cannot auto-activate order with guaranteed line items: {', '.join(item_types)}",
-                        message=f"Manual approval required for guaranteed inventory. Workflow step: {step_id}",
-                        workflow_step_id=step_id,
+                        buyer_ref=buyer_ref,
                     )
                 else:
+                    from src.core.schemas import Error
+
                     return UpdateMediaBuyResponse(
                         media_buy_id=media_buy_id,
-                        status="failed",
-                        reason=f"Cannot auto-activate order with guaranteed line items: {', '.join(item_types)}",
-                        message="Manual approval required for guaranteed inventory, but workflow creation failed",
+                        buyer_ref=buyer_ref,
+                        errors=[
+                            Error(
+                                code="activation_workflow_failed",
+                                message=f"Cannot auto-activate order with guaranteed line items: {', '.join(item_types)}",
+                            )
+                        ],
                     )
 
-        # For allowed actions in automatic mode, return success with action details
+        # For allowed actions in automatic mode, return success (no errors)
         return UpdateMediaBuyResponse(
             media_buy_id=media_buy_id,
-            status="accepted",
-            detail=f"Action '{action}' processed successfully",
-            message=f"Media buy {media_buy_id} updated with action: {action}",
+            buyer_ref=buyer_ref,
         )
 
     def update_media_buy_performance_index(self, media_buy_id: str, package_performance: list) -> bool:
@@ -801,17 +825,21 @@ class GoogleAdManager(AdServerAdapter):
         return self.inventory_manager.validate_inventory_access(ad_unit_ids)
 
     # Sync management methods - delegated to sync manager
-    def sync_inventory(self, db_session, force=False):
+    def sync_inventory(self, db_session, force=False, custom_targeting_limit=1000):
         """Synchronize inventory data from GAM (delegated to sync manager)."""
-        return self.sync_manager.sync_inventory(db_session, force)
+        return self.sync_manager.sync_inventory(db_session, force, custom_targeting_limit)
 
     def sync_orders(self, db_session, force=False):
         """Synchronize orders data from GAM (delegated to sync manager)."""
         return self.sync_manager.sync_orders(db_session, force)
 
-    def sync_full(self, db_session, force=False):
+    def sync_full(self, db_session, force=False, custom_targeting_limit=1000):
         """Perform full synchronization (delegated to sync manager)."""
-        return self.sync_manager.sync_full(db_session, force)
+        return self.sync_manager.sync_full(db_session, force, custom_targeting_limit)
+
+    def sync_selective(self, db_session, sync_types, custom_targeting_limit=1000, audience_segment_limit=None):
+        """Perform selective synchronization (delegated to sync manager)."""
+        return self.sync_manager.sync_selective(db_session, sync_types, custom_targeting_limit, audience_segment_limit)
 
     def get_sync_status(self, db_session, sync_id):
         """Get sync status (delegated to sync manager)."""

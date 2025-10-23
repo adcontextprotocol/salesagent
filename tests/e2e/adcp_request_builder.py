@@ -20,12 +20,13 @@ def build_adcp_media_buy_request(
     total_budget: float,
     start_time: str | datetime,
     end_time: str | datetime,
-    promoted_offering: str = "Test Campaign Product",
+    promoted_offering: str = "Test Campaign Product",  # For backward compat, converted to brand_manifest
     buyer_ref: str | None = None,
     targeting_overlay: dict[str, Any] | None = None,
     currency: str = "USD",
     pacing: str = "even",
     webhook_url: str | None = None,
+    brand_manifest: dict[str, Any] | str | None = None,  # AdCP spec field (preferred)
 ) -> dict[str, Any]:
     """
     Build a valid AdCP V2.3 create_media_buy request.
@@ -35,12 +36,13 @@ def build_adcp_media_buy_request(
         total_budget: Total budget for the campaign
         start_time: Campaign start (ISO 8601 string or datetime)
         end_time: Campaign end (ISO 8601 string or datetime)
-        promoted_offering: Description of what's being promoted (REQUIRED by AdCP)
+        promoted_offering: DEPRECATED - Use brand_manifest instead. Auto-converted if provided.
         buyer_ref: Optional buyer reference (generated if not provided)
         targeting_overlay: Optional targeting parameters
         currency: Currency code (default: USD)
         pacing: Budget pacing strategy (default: even)
         webhook_url: Optional webhook for async notifications
+        brand_manifest: Brand information (name, URL, etc.) - AdCP spec field
 
     Returns:
         Valid AdCP V2.3 CreateMediaBuyRequest dict
@@ -51,7 +53,7 @@ def build_adcp_media_buy_request(
         ...     total_budget=5000.0,
         ...     start_time="2025-10-01T00:00:00Z",
         ...     end_time="2025-10-31T23:59:59Z",
-        ...     promoted_offering="Nike Air Jordan 2025 Basketball Shoes"
+        ...     brand_manifest={"name": "Nike Air Jordan 2025 Basketball Shoes"}
         ... )
     """
     # Convert datetime to ISO 8601 string if needed
@@ -64,11 +66,15 @@ def build_adcp_media_buy_request(
     if buyer_ref is None:
         buyer_ref = generate_buyer_ref()
 
+    # Convert promoted_offering to brand_manifest if needed (backward compatibility)
+    if brand_manifest is None and promoted_offering:
+        brand_manifest = {"name": promoted_offering}
+
     # Build the request following AdCP V2.3 spec exactly
     # Note: ALL budgets are plain numbers per spec (currency from pricing_option_id)
     request: dict[str, Any] = {
         "buyer_ref": buyer_ref,
-        "promoted_offering": promoted_offering,
+        "brand_manifest": brand_manifest,  # AdCP spec field (not promoted_offering)
         "packages": [
             {
                 "buyer_ref": generate_buyer_ref("pkg"),
@@ -100,6 +106,9 @@ def build_sync_creatives_request(
     patch: bool = False,
     dry_run: bool = False,
     webhook_url: str | None = None,
+    assignments: dict[str, list[str]] | None = None,
+    delete_missing: bool = False,
+    validation_mode: str = "strict",
 ) -> dict[str, Any]:
     """
     Build a valid AdCP V2.3 sync_creatives request.
@@ -109,6 +118,9 @@ def build_sync_creatives_request(
         patch: If True, only update provided fields (default: False)
         dry_run: If True, preview changes without applying (default: False)
         webhook_url: Optional webhook for async notifications
+        assignments: Optional dict mapping creative_id to list of package_ids
+        delete_missing: If True, delete creatives not in the sync list (default: False)
+        validation_mode: Validation mode - "strict" or "lenient" (default: strict)
 
     Returns:
         Valid AdCP V2.3 SyncCreativesRequest dict
@@ -117,8 +129,12 @@ def build_sync_creatives_request(
         "creatives": creatives,
         "patch": patch,
         "dry_run": dry_run,
-        "validation_mode": "strict",
+        "validation_mode": validation_mode,
+        "delete_missing": delete_missing,
     }
+
+    if assignments:
+        request["assignments"] = assignments
 
     if webhook_url:
         request["push_notification_config"] = {

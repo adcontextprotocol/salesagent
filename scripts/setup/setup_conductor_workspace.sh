@@ -162,6 +162,7 @@ fi
 # Copy required files from root workspace
 echo ""
 echo "Copying files from root workspace..."
+cp $CONDUCTOR_ROOT_PATH/adcp-manager-key.json .
 
 # Create .env file with secrets from multiple sources
 echo "Creating .env file with secrets and workspace configuration..."
@@ -400,6 +401,51 @@ if [ -f ".env" ]; then
 fi
 
 echo "✓ Workspace environment activated"
+
+# Generate AdCP schemas from official spec
+echo ""
+echo "Generating AdCP schemas from official spec..."
+if command -v uv &> /dev/null && [ -f "scripts/generate_schemas.py" ]; then
+    if uv run python scripts/generate_schemas.py 2>&1 | grep -E "✅|📂|🔧"; then
+        echo "✓ AdCP schemas generated successfully"
+    else
+        echo "⚠️  Warning: Schema generation may have had issues"
+        echo "   Continuing with setup..."
+    fi
+else
+    if ! command -v uv &> /dev/null; then
+        echo "✗ Warning: uv not found, skipping schema generation"
+    elif [ ! -f "scripts/generate_schemas.py" ]; then
+        echo "✗ Warning: schema generation script not found, skipping"
+    fi
+fi
+
+# Check AdCP schema sync
+echo ""
+echo "Checking AdCP schema sync..."
+if command -v uv &> /dev/null && [ -f "scripts/check_schema_sync.py" ]; then
+    # Run schema sync check (but don't fail setup if schemas are out of sync)
+    if uv run python scripts/check_schema_sync.py 2>&1 | tee /tmp/schema_check_output.txt; then
+        echo "✓ AdCP schemas are in sync"
+    else
+        echo ""
+        echo "⚠️  WARNING: AdCP schemas are out of sync!"
+        echo "   This may cause integration issues with creative agent."
+        echo ""
+        echo "   To update schemas, run:"
+        echo "   uv run python scripts/check_schema_sync.py --update"
+        echo "   git add tests/e2e/schemas/"
+        echo "   git commit -m 'Update AdCP schemas to latest from registry'"
+        echo ""
+        echo "   Continuing with setup..."
+    fi
+else
+    if ! command -v uv &> /dev/null; then
+        echo "✗ Warning: uv not found, skipping schema sync check"
+    elif [ ! -f "scripts/check_schema_sync.py" ]; then
+        echo "✗ Warning: schema sync script not found, skipping check"
+    fi
+fi
 
 echo ""
 echo "Setup complete! Next steps:"

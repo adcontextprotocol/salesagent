@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import PricingOption, Product, Tenant
 from src.core.database.product_pricing import get_product_pricing_options
@@ -19,6 +20,32 @@ logger = logging.getLogger(__name__)
 
 # Create Blueprint
 products_bp = Blueprint("products", __name__)
+
+
+def _format_id_to_display_name(format_id: str) -> str:
+    """Convert a format_id to a friendly display name when format lookup fails.
+
+    Examples:
+        "leaderboard_728x90" → "Leaderboard (728x90)"
+        "rectangle_300x250" → "Rectangle (300x250)"
+        "display_300x250" → "Display (300x250)"
+        "video_instream" → "Video Instream"
+        "native_card" → "Native Card"
+    """
+    import re
+
+    # Extract dimensions if present
+    size_match = re.search(r"(\d+)x(\d+)", format_id)
+
+    # Remove dimensions and underscores, convert to title case
+    base_name = re.sub(r"_?\d+x\d+", "", format_id)
+    base_name = base_name.replace("_", " ").title()
+
+    # Add dimensions back if found
+    if size_match:
+        return f"{base_name} ({size_match.group(0)})"
+    else:
+        return base_name
 
 
 def get_creative_formats(
@@ -69,29 +96,52 @@ def get_creative_formats(
     logger.info(f"get_creative_formats: Fetched {len(formats)} formats from registry for tenant {tenant_id}")
 
     formats_list = []
-    for fmt in formats:
+    for idx, fmt in enumerate(formats):
+        # Debug: Log first few formats to diagnose dimension issues
+        if idx < 5:
+            logger.info(
+                f"[DEBUG] Format {idx}: {fmt.name} - "
+                f"format_id={fmt.format_id}, "
+                f"type={fmt.type}, "
+                f"requirements={fmt.requirements}"
+            )
+
         format_dict = {
-            "format_id": fmt.format_id,
+            "id": (
+                fmt.format_id.id
+                if isinstance(fmt.format_id, object) and hasattr(fmt.format_id, "id")
+                else str(fmt.format_id)
+            ),  # Extract string ID from FormatId object
             "agent_url": fmt.agent_url,
             "name": fmt.name,
             "type": fmt.type,
             "category": fmt.category,
             "description": fmt.description or f"{fmt.name} - {fmt.iab_specification or 'Standard format'}",
+            "preview_url": getattr(fmt, "preview_url", None),
             "dimensions": None,
             "duration": None,
         }
 
-        # Add dimensions for display/video formats
-        if fmt.requirements and "width" in fmt.requirements and "height" in fmt.requirements:
-            format_dict["dimensions"] = f"{fmt.requirements['width']}x{fmt.requirements['height']}"
-        elif "_" in fmt.format_id:
+        # Add dimensions for display/video formats using the helper method
+        dimensions = fmt.get_primary_dimensions()
+        if dimensions:
+            width, height = dimensions
+            format_dict["dimensions"] = f"{width}x{height}"
+            if idx < 5:
+                logger.info(f"[DEBUG] Format {idx}: Got dimensions: {format_dict['dimensions']}")
+        elif "_" in str(fmt.format_id):
             # Fallback: Parse dimensions from format_id (e.g., "display_300x250_image" → "300x250")
-            # This handles creative agents that don't populate requirements field
+            # This handles creative agents that don't populate renders or requirements field
             import re
 
-            match = re.search(r"_(\d+)x(\d+)_", fmt.format_id)
+            format_id_str = str(fmt.format_id)
+            match = re.search(r"_(\d+)x(\d+)_", format_id_str)
             if match:
                 format_dict["dimensions"] = f"{match.group(1)}x{match.group(2)}"
+                if idx < 5:
+                    logger.info(f"[DEBUG] Format {idx}: Parsed dimensions from format_id: {format_dict['dimensions']}")
+            elif idx < 5:
+                logger.info(f"[DEBUG] Format {idx}: No dimensions found - format_id doesn't match pattern")
 
         # Add duration for video/audio formats
         if fmt.requirements and "duration" in fmt.requirements:
@@ -126,16 +176,26 @@ def parse_pricing_options_from_form(form_data: dict) -> list[dict]:
             index += 1
             continue
 
-        # Parse pricing model and is_fixed from combined value (AdCP PR #88 UI update)
-        # Values are: cpm_fixed, cpm_auction, cpcv, cpp, cpc, cpv, flat_rate
+        # Parse pricing model and is_fixed from combined value
+        # Guaranteed (fixed): cpm_fixed, flat_rate
+        # Non-guaranteed (auction): cpm_auction, vcpm, cpc
         if pricing_model_raw == "cpm_fixed":
             pricing_model = "cpm"
             is_fixed = True
         elif pricing_model_raw == "cpm_auction":
             pricing_model = "cpm"
             is_fixed = False
+        elif pricing_model_raw == "flat_rate":
+            pricing_model = "flat_rate"
+            is_fixed = True
+        elif pricing_model_raw == "vcpm":
+            pricing_model = "vcpm"
+            is_fixed = False  # vCPM is always auction-based
+        elif pricing_model_raw == "cpc":
+            pricing_model = "cpc"
+            is_fixed = False  # CPC is always auction-based
         else:
-            # All other models are fixed-rate only (cpcv, cpp, cpc, cpv, flat_rate)
+            # Fallback for any other models (shouldn't happen with current UI)
             pricing_model = pricing_model_raw
             is_fixed = True
 
@@ -236,12 +296,16 @@ def list_products(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            products = db_session.scalars(
-                select(Product)
-                .options(joinedload(Product.pricing_options))
-                .filter_by(tenant_id=tenant_id)
-                .order_by(Product.name)
-            ).all()
+            products = (
+                db_session.scalars(
+                    select(Product)
+                    .options(joinedload(Product.pricing_options))
+                    .filter_by(tenant_id=tenant_id)
+                    .order_by(Product.name)
+                )
+                .unique()
+                .all()
+            )
 
             # Convert products to dict format for template
             products_list = []
@@ -249,16 +313,127 @@ def list_products(tenant_id):
                 # Use helper function to get pricing options (handles legacy fallback)
                 pricing_options_list = get_product_pricing_options(product)
 
+                # Parse formats and resolve names from creative agents
+                formats_data = (
+                    product.formats
+                    if isinstance(product.formats, list)
+                    else json.loads(product.formats) if product.formats else []
+                )
+
+                # Debug: Log raw formats data
+                logger.info(f"[DEBUG] Product {product.product_id} raw product.formats from DB: {product.formats}")
+                logger.info(f"[DEBUG] Product {product.product_id} formats_data after parsing: {formats_data}")
+                logger.info(
+                    f"[DEBUG] Product {product.product_id} formats_data type: {type(formats_data)}, len: {len(formats_data)}"
+                )
+
+                # Resolve format names from creative agent registry
+                resolved_formats = []
+                from src.core.format_resolver import get_format
+
+                for fmt in formats_data:
+                    agent_url = None
+                    format_id = None
+
+                    if isinstance(fmt, dict):
+                        # Database JSONB: uses "id" per AdCP spec
+                        agent_url = fmt.get("agent_url")
+                        format_id = fmt.get("id") or fmt.get("format_id")  # "id" is AdCP spec, "format_id" is legacy
+                    elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
+                        # Pydantic object: uses "format_id" attribute (serializes to "id" in JSON)
+                        agent_url = fmt.agent_url
+                        format_id = getattr(fmt, "format_id", None) or getattr(fmt, "id", None)
+                    elif isinstance(fmt, str):
+                        # Legacy: plain string format ID (no agent_url) - should be deprecated
+                        # This data needs to be migrated to proper FormatId structure
+                        logger.error(
+                            f"Product {product.product_id} has DEPRECATED string format: {fmt}. "
+                            "Please edit and re-save this product to migrate to FormatId structure."
+                        )
+                        format_id = fmt
+                        agent_url = None  # Will fail validation below
+                    else:
+                        logger.error(
+                            f"Product {product.product_id} has INVALID format type {type(fmt)}: {fmt}. "
+                            "This data is corrupted and needs manual repair."
+                        )
+                        continue
+
+                    # Validate format_id (agent_url is optional for legacy formats)
+                    if not format_id:
+                        logger.error(
+                            f"Product {product.product_id} format missing format_id. "
+                            "This product needs to be edited and re-saved to fix the data."
+                        )
+                        continue
+
+                    # Warn if agent_url is missing but continue processing
+                    if not agent_url:
+                        logger.warning(
+                            f"Product {product.product_id} format {format_id} missing agent_url. "
+                            "Using format_id as display name. Edit product to fix."
+                        )
+
+                    # Resolve format name from creative agent registry
+                    try:
+                        if agent_url:
+                            format_obj = get_format(format_id, agent_url, tenant_id)
+                            resolved_formats.append(
+                                {"format_id": format_id, "agent_url": agent_url, "name": format_obj.name}
+                            )
+                        else:
+                            # No agent_url - try to find format in registry by format_id
+                            # This handles legacy formats that don't have agent_url stored
+                            from src.core.format_resolver import list_available_formats
+
+                            all_formats = list_available_formats(tenant_id=tenant_id)
+                            matching_format = None
+                            for fmt in all_formats:
+                                if fmt.format_id == format_id:
+                                    matching_format = fmt
+                                    break
+
+                            if matching_format:
+                                resolved_formats.append(
+                                    {
+                                        "format_id": format_id,
+                                        "agent_url": matching_format.agent_url,
+                                        "name": matching_format.name,
+                                    }
+                                )
+                            else:
+                                # Format not found in registry - generate friendly name from format_id
+                                resolved_formats.append(
+                                    {
+                                        "format_id": format_id,
+                                        "agent_url": None,
+                                        "name": _format_id_to_display_name(format_id),
+                                    }
+                                )
+                    except Exception as e:
+                        logger.warning(f"Could not resolve format {format_id} from {agent_url}: {e}")
+                        # Use friendly name as fallback
+                        resolved_formats.append(
+                            {
+                                "format_id": format_id,
+                                "agent_url": agent_url,
+                                "name": _format_id_to_display_name(format_id),
+                            }
+                        )
+
+                logger.info(f"[DEBUG] Product {product.product_id} resolved {len(resolved_formats)} formats")
+                if formats_data and not resolved_formats:
+                    logger.error(
+                        f"[DEBUG] Product {product.product_id} ERROR: Had {len(formats_data)} formats but resolved 0! "
+                        f"This means format resolution failed."
+                    )
+
                 product_dict = {
                     "product_id": product.product_id,
                     "name": product.name,
                     "description": product.description,
                     "pricing_options": pricing_options_list,
-                    "formats": (
-                        product.formats
-                        if isinstance(product.formats, list)
-                        else json.loads(product.formats) if product.formats else []
-                    ),
+                    "formats": resolved_formats,
                     "countries": (
                         product.countries
                         if isinstance(product.countries, list)
@@ -287,6 +462,7 @@ def list_products(tenant_id):
 
 
 @products_bp.route("/add", methods=["GET", "POST"])
+@log_admin_action("add_product")
 @require_tenant_access()
 def add_product(tenant_id):
     """Add a new product - adapter-specific form."""
@@ -319,7 +495,7 @@ def add_product(tenant_id):
                 return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
             with get_db_session() as db_session:
-                # Parse formats - expecting JSON string with FormatReference objects
+                # Parse formats - expecting JSON string with FormatReference objects or checkbox values
                 formats_json = form_data.get("formats", "[]")
                 try:
                     formats = json.loads(formats_json) if formats_json else []
@@ -327,10 +503,18 @@ def add_product(tenant_id):
                     if not isinstance(formats, list):
                         formats = []
                 except json.JSONDecodeError:
-                    # Fallback to legacy format (list of strings)
-                    formats = request.form.getlist("formats")
-                    if not formats:
-                        formats = []
+                    # Fallback to checkbox format: "agent_url|format_id"
+                    formats_raw = request.form.getlist("formats")
+                    formats = []
+                    for fmt_str in formats_raw:
+                        if "|" not in fmt_str:
+                            # Missing agent_url - data format error
+                            logger.error(f"Invalid format value (missing agent_url): {fmt_str}")
+                            flash(f"Invalid format data: {fmt_str}. Please contact support.", "error")
+                            continue
+
+                        agent_url, format_id = fmt_str.split("|", 1)
+                        formats.append({"agent_url": agent_url, "id": format_id})
 
                 # Parse countries - from multi-select
                 countries_list = request.form.getlist("countries")
@@ -340,23 +524,21 @@ def add_product(tenant_id):
                 # Parse and create pricing options (AdCP PR #88)
                 pricing_options_data = parse_pricing_options_from_form(form_data)
 
-                # Derive legacy fields (delivery_type, cpm, price_guidance) from first pricing option for backwards compatibility
-                # These legacy fields are used by implementation_config but will eventually be deprecated
+                # CRITICAL: Products MUST have at least one pricing option
+                if not pricing_options_data or len(pricing_options_data) == 0:
+                    flash("Product must have at least one pricing option", "error")
+                    return redirect(url_for("products.create_product", tenant_id=tenant_id))
+
+                # Derive delivery_type from first pricing option for implementation_config
                 delivery_type = "guaranteed"  # Default
-                cpm = None
-                price_guidance = None
 
                 if pricing_options_data and len(pricing_options_data) > 0:
                     first_option = pricing_options_data[0]
                     # Determine delivery_type based on is_fixed
                     if first_option.get("is_fixed", True):
                         delivery_type = "guaranteed"
-                        cpm = first_option.get("rate")
                     else:
-                        delivery_type = "non-guaranteed"
-                        pg = first_option.get("price_guidance")
-                        if pg and "floor" in pg:
-                            price_guidance = {"min": pg["floor"], "max": pg.get("p90", pg["floor"])}
+                        delivery_type = "non_guaranteed"
 
                 # Build implementation config based on adapter type
                 implementation_config = {}
@@ -368,9 +550,22 @@ def add_product(tenant_id):
                     # Add ad unit/placement targeting if provided
                     ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
                     if ad_unit_ids:
-                        base_config["targeted_ad_unit_ids"] = [
-                            id.strip() for id in ad_unit_ids.split(",") if id.strip()
-                        ]
+                        # Parse comma-separated IDs
+                        id_list = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
+
+                        # Validate that all IDs are numeric (GAM requires numeric IDs)
+                        invalid_ids = [id for id in id_list if not id.isdigit()]
+                        if invalid_ids:
+                            flash(
+                                f"Invalid ad unit IDs: {', '.join(invalid_ids)}. "
+                                f"Ad unit IDs must be numeric (e.g., '23312403859'). "
+                                f"Use 'Browse Ad Units' to select valid ad units.",
+                                "error",
+                            )
+                            # Redirect to form instead of re-rendering to avoid missing context
+                            return redirect(url_for("products.add_product", tenant_id=tenant_id))
+
+                        base_config["targeted_ad_unit_ids"] = id_list
 
                     placement_ids = form_data.get("targeted_placement_ids", "").strip()
                     if placement_ids:
@@ -400,9 +595,6 @@ def add_product(tenant_id):
                     "description": form_data.get("description", ""),
                     "formats": formats,
                     "delivery_type": delivery_type,
-                    "is_fixed_price": (delivery_type == "guaranteed"),
-                    "cpm": cpm,
-                    "price_guidance": price_guidance,
                     "targeting_template": {},
                     "implementation_config": implementation_config,
                 }
@@ -557,7 +749,7 @@ def add_product(tenant_id):
 
         except Exception as e:
             logger.error(f"Error creating product: {e}", exc_info=True)
-            flash("Error creating product", "error")
+            flash(f"Error creating product: {str(e)}", "error")
             return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
     # GET request - show adapter-specific form
@@ -574,7 +766,7 @@ def add_product(tenant_id):
         for prop in authorized_properties:
             properties_list.append(
                 {
-                    "id": prop.id,
+                    "id": prop.property_id,
                     "name": prop.name,
                     "property_type": prop.property_type,
                     "tags": prop.tags or [],
@@ -600,6 +792,7 @@ def add_product(tenant_id):
         return render_template(
             "add_product_gam.html",
             tenant_id=tenant_id,
+            tenant_name=tenant.name,
             inventory_synced=inventory_synced,
             formats=get_creative_formats(tenant_id=tenant_id),
             authorized_properties=properties_list,
@@ -620,9 +813,12 @@ def add_product(tenant_id):
 
 
 @products_bp.route("/<product_id>/edit", methods=["GET", "POST"])
+@log_admin_action("edit_product")
 @require_tenant_access()
 def edit_product(tenant_id, product_id):
     """Edit an existing product."""
+    from sqlalchemy import select
+
     # Get tenant's adapter type and currencies
     with get_db_session() as db_session:
         tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
@@ -652,44 +848,69 @@ def edit_product(tenant_id, product_id):
                 # Sanitize form data
                 form_data = sanitize_form_data(request.form.to_dict())
 
+                # Debug: Log pricing-related form fields
+                pricing_fields = {k: v for k, v in form_data.items() if "pricing" in k or "rate_" in k or "floor_" in k}
+                logger.info(f"[DEBUG] Pricing form fields for product {product_id}: {pricing_fields}")
+
+                # Debug: Log ALL form keys to diagnose format submission
+                logger.info(f"[DEBUG] ALL form keys: {list(request.form.keys())}")
+                logger.info(f"[DEBUG] Form data dict keys: {list(form_data.keys())}")
+
                 # Update basic fields
                 product.name = form_data.get("name", product.name)
                 product.description = form_data.get("description", product.description)
 
-                # Parse formats - expecting multiple checkbox values
-                formats = request.form.getlist("formats")
-                if formats:
+                # Parse formats - expecting multiple checkbox values in format "agent_url|format_id"
+                formats_raw = request.form.getlist("formats")
+                logger.info(f"[DEBUG] Edit product {product_id}: formats_raw from form = {formats_raw}")
+                logger.info(f"[DEBUG] formats_raw length: {len(formats_raw)}")
+                logger.info(f"[DEBUG] formats_raw bool: {bool(formats_raw)}")
+                if formats_raw:
+                    # Convert from "agent_url|format_id" to FormatId dict structure
+                    formats = []
+                    for fmt_str in formats_raw:
+                        if "|" not in fmt_str:
+                            # Missing agent_url - data format error
+                            logger.error(f"Invalid format value (missing agent_url): {fmt_str}")
+                            flash(f"Invalid format data: {fmt_str}. Please contact support.", "error")
+                            continue
+
+                        agent_url, format_id = fmt_str.split("|", 1)
+                        formats.append({"agent_url": agent_url, "id": format_id})
+
+                    if not formats:
+                        flash("No valid formats selected", "error")
+                        return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
+
                     product.formats = formats
+                    logger.info(f"[DEBUG] Updated product.formats to: {formats}")
+                    # Flag JSONB column as modified so SQLAlchemy generates UPDATE
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "formats")
 
                 # Parse countries - from multi-select
                 countries_list = request.form.getlist("countries")
                 if countries_list and "ALL" not in countries_list:
                     product.countries = countries_list
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "countries")
                 else:
                     product.countries = None
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "countries")
 
                 # Get pricing based on line item type (GAM form) or delivery type (other adapters)
                 line_item_type = form_data.get("line_item_type")
 
                 if line_item_type:
-                    # GAM form: map line item type to delivery type and pricing
+                    # GAM form: map line item type to delivery type
                     if line_item_type in ["STANDARD", "SPONSORSHIP"]:
                         product.delivery_type = "guaranteed"
-                        product.is_fixed_price = True
-                        product.cpm = float(form_data.get("cpm", 0)) if form_data.get("cpm") else None
-                        product.price_guidance = None
-                    elif line_item_type == "PRICE_PRIORITY":
-                        product.delivery_type = "non-guaranteed"
-                        product.is_fixed_price = False
-                        product.cpm = None
-                        floor_cpm = float(form_data.get("floor_cpm", 0)) if form_data.get("floor_cpm") else None
-                        if floor_cpm:
-                            product.price_guidance = {"min": floor_cpm, "max": floor_cpm}
-                    elif line_item_type == "HOUSE":
-                        product.delivery_type = "non-guaranteed"
-                        product.is_fixed_price = False
-                        product.cpm = None
-                        product.price_guidance = None
+                    elif line_item_type in ["PRICE_PRIORITY", "HOUSE"]:
+                        product.delivery_type = "non_guaranteed"
 
                     # Update implementation_config with GAM-specific fields
                     if adapter_type == "google_ad_manager":
@@ -701,9 +922,23 @@ def edit_product(tenant_id, product_id):
                         # Add ad unit/placement targeting if provided
                         ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
                         if ad_unit_ids:
-                            base_config["targeted_ad_unit_ids"] = [
-                                id.strip() for id in ad_unit_ids.split(",") if id.strip()
-                            ]
+                            # Parse comma-separated IDs
+                            id_list = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
+
+                            # Validate that all IDs are numeric (GAM requires numeric IDs)
+                            invalid_ids = [id for id in id_list if not id.isdigit()]
+                            if invalid_ids:
+                                flash(
+                                    f"Invalid ad unit IDs: {', '.join(invalid_ids)}. "
+                                    f"Ad unit IDs must be numeric (e.g., '23312403859'). "
+                                    f"Use 'Browse Ad Units' to select valid ad units.",
+                                    "error",
+                                )
+                                return redirect(
+                                    url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id)
+                                )
+
+                            base_config["targeted_ad_unit_ids"] = id_list
 
                         placement_ids = form_data.get("targeted_placement_ids", "").strip()
                         if placement_ids:
@@ -724,29 +959,51 @@ def edit_product(tenant_id, product_id):
 
                         attributes.flag_modified(product, "implementation_config")
 
-                # Update minimum spend override
-                from decimal import Decimal, InvalidOperation
-
-                min_spend_str = form_data.get("min_spend", "").strip()
-                if min_spend_str:
-                    try:
-                        product.min_spend = Decimal(min_spend_str)
-                    except (ValueError, InvalidOperation):
-                        flash("Invalid minimum spend value", "error")
-                        return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
-                else:
-                    product.min_spend = None
-
                 # Update pricing options (AdCP PR #88)
-                # Delete existing pricing options and recreate from form
-                db_session.query(PricingOption).filter_by(tenant_id=tenant_id, product_id=product_id).delete()
+                # Note: min_spend is now stored in pricing_options[].min_spend_per_package
+                from decimal import Decimal
 
+                # Parse pricing options from form FIRST
                 pricing_options_data = parse_pricing_options_from_form(form_data)
-                if pricing_options_data:
-                    logger.info(
-                        f"Updating {len(pricing_options_data)} pricing options for product {product.product_id}"
-                    )
-                    for option_data in pricing_options_data:
+                logger.info(
+                    f"[DEBUG] Parsed {len(pricing_options_data) if pricing_options_data else 0} pricing options: {pricing_options_data}"
+                )
+
+                # CRITICAL: Products MUST have at least one pricing option
+                if not pricing_options_data or len(pricing_options_data) == 0:
+                    flash("Product must have at least one pricing option", "error")
+                    return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
+
+                # Fetch existing pricing options
+                existing_options = list(
+                    db_session.scalars(
+                        select(PricingOption).filter_by(tenant_id=tenant_id, product_id=product_id)
+                    ).all()
+                )
+
+                logger.info(
+                    f"Updating pricing options for product {product.product_id}: "
+                    f"{len(existing_options)} existing, {len(pricing_options_data)} new"
+                )
+
+                # Update existing options or create new ones
+                for idx, option_data in enumerate(pricing_options_data):
+                    if idx < len(existing_options):
+                        # Update existing pricing option
+                        po = existing_options[idx]
+                        po.pricing_model = option_data["pricing_model"]
+                        po.rate = Decimal(str(option_data["rate"])) if option_data["rate"] is not None else None
+                        po.currency = option_data["currency"]
+                        po.is_fixed = option_data["is_fixed"]
+                        po.price_guidance = option_data["price_guidance"]
+                        po.parameters = option_data["parameters"]
+                        po.min_spend_per_package = (
+                            Decimal(str(option_data["min_spend_per_package"]))
+                            if option_data["min_spend_per_package"] is not None
+                            else None
+                        )
+                    else:
+                        # Create new pricing option
                         pricing_option = PricingOption(
                             tenant_id=tenant_id,
                             product_id=product.product_id,
@@ -764,7 +1021,32 @@ def edit_product(tenant_id, product_id):
                         )
                         db_session.add(pricing_option)
 
+                # Delete excess existing options (if new list is shorter)
+                if len(existing_options) > len(pricing_options_data):
+                    for po in existing_options[len(pricing_options_data) :]:
+                        db_session.delete(po)
+
+                # Debug: Log final state before commit
+                from sqlalchemy import inspect as sa_inspect
+
+                logger.info(f"[DEBUG] About to commit product {product_id}")
+                logger.info(f"[DEBUG] product.formats = {product.formats}")
+                logger.info(f"[DEBUG] product.formats type = {type(product.formats)}")
+                logger.info(f"[DEBUG] SQLAlchemy dirty objects: {db_session.dirty}")
+
+                # Check if product is in dirty set and formats was modified
+                if product in db_session.dirty:
+                    insp = sa_inspect(product)
+                    if insp.attrs.formats.history.has_changes():
+                        logger.info("[DEBUG] formats attribute was modified")
+                    else:
+                        logger.info("[DEBUG] formats attribute NOT modified (flag_modified may be needed)")
+
                 db_session.commit()
+
+                # Debug: Verify formats after commit by re-querying
+                db_session.refresh(product)
+                logger.info(f"[DEBUG] After commit - product.formats from DB: {product.formats}")
 
                 flash(f"Product '{product.name}' updated successfully", "success")
                 return redirect(url_for("products.list_products", tenant_id=tenant_id))
@@ -789,20 +1071,18 @@ def edit_product(tenant_id, product_id):
                     }
                 )
 
-            # Derive legacy fields from pricing_options (preferred) or product model (fallback)
-            # This ensures form displays pricing_options data, not potentially stale legacy fields
+            # Derive display values from pricing_options
+            delivery_type = product.delivery_type
+            is_fixed_price = None
+            cpm = None
+            price_guidance = None
+
             if pricing_options_list:
                 first_pricing = pricing_options_list[0]
                 delivery_type = "guaranteed" if first_pricing["is_fixed"] else "non_guaranteed"
                 is_fixed_price = first_pricing["is_fixed"]
                 cpm = first_pricing["rate"]
                 price_guidance = first_pricing["price_guidance"]
-            else:
-                # Fallback to legacy fields if no pricing_options exist
-                delivery_type = product.delivery_type
-                is_fixed_price = product.is_fixed_price
-                cpm = product.cpm
-                price_guidance = product.price_guidance
 
             product_dict = {
                 "product_id": product.product_id,
@@ -811,7 +1091,6 @@ def edit_product(tenant_id, product_id):
                 "delivery_type": delivery_type,
                 "is_fixed_price": is_fixed_price,
                 "cpm": cpm,
-                "min_spend": product.min_spend,
                 "price_guidance": price_guidance,
                 "formats": (
                     product.formats
@@ -841,12 +1120,43 @@ def edit_product(tenant_id, product_id):
                 )
                 inventory_synced = inventory_count > 0
 
+                # Build set of selected format IDs for template checking
+                # Use composite key (agent_url, format_id) tuples per AdCP spec (same as main.py)
+                selected_format_ids = set()
+                logger.info(
+                    f"[DEBUG] Building selected_format_ids from product_dict['formats']: {product_dict['formats']}"
+                )
+                for fmt in product_dict["formats"]:
+                    agent_url = None
+                    format_id = None
+
+                    if isinstance(fmt, dict):
+                        # Database JSONB: uses "id" per AdCP spec
+                        agent_url = fmt.get("agent_url")
+                        format_id = fmt.get("id") or fmt.get("format_id")  # "id" is AdCP spec, "format_id" is legacy
+                        logger.info(f"[DEBUG] Dict format: agent_url={agent_url}, format_id={format_id}")
+                    elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
+                        # Pydantic object: uses "format_id" attribute (serializes to "id" in JSON)
+                        agent_url = fmt.agent_url
+                        format_id = getattr(fmt, "format_id", None) or getattr(fmt, "id", None)
+                        logger.info(f"[DEBUG] Pydantic format: agent_url={agent_url}, format_id={format_id}")
+                    elif isinstance(fmt, str):
+                        # Legacy: plain string format ID (no agent_url) - should be deprecated
+                        format_id = fmt
+                        logger.warning(f"Product {product_dict['product_id']} has legacy string format: {fmt}")
+
+                    if format_id:
+                        selected_format_ids.add((agent_url, format_id))
+
+                logger.info(f"[DEBUG] Final selected_format_ids set: {selected_format_ids}")
+
                 return render_template(
                     "add_product_gam.html",
                     tenant_id=tenant_id,
                     product=product_dict,
+                    selected_format_ids=selected_format_ids,
                     inventory_synced=inventory_synced,
-                    formats=get_creative_formats(),
+                    formats=get_creative_formats(tenant_id=tenant_id),
                     currencies=currencies,
                 )
             else:
@@ -860,7 +1170,7 @@ def edit_product(tenant_id, product_id):
 
     except Exception as e:
         logger.error(f"Error editing product: {e}", exc_info=True)
-        flash("Error editing product", "error")
+        flash(f"Error editing product: {str(e)}", "error")
         return redirect(url_for("products.list_products", tenant_id=tenant_id))
 
 
@@ -916,7 +1226,8 @@ def delete_product(tenant_id, product_id):
                         400,
                     )
 
-            # Delete the product
+            # Delete the product and related pricing options
+            # Foreign key CASCADE automatically handles pricing_options deletion
             db_session.delete(product)
             db_session.commit()
 
@@ -926,11 +1237,25 @@ def delete_product(tenant_id, product_id):
 
     except Exception as e:
         logger.error(f"Error deleting product {product_id}: {e}", exc_info=True)
-        # Sanitize error messages to prevent information leakage
+
+        # Rollback on any error
+        try:
+            db_session.rollback()
+        except:
+            pass
+
+        # More specific error handling
         error_message = str(e)
+
+        # Check for common error types
+        if "ForeignKeyViolation" in error_message or "foreign key constraint" in error_message.lower():
+            logger.error(f"Foreign key constraint violation when deleting product {product_id}")
+            return jsonify({"error": "Cannot delete product - it is referenced by other records"}), 400
+
         if "ValidationError" in error_message or "pattern" in error_message.lower():
             logger.warning(f"Product validation error for {product_id}: {error_message}")
             return jsonify({"error": "Product data validation failed"}), 400
 
+        # Generic error
         logger.error(f"Product deletion failed for {product_id}: {error_message}")
-        return jsonify({"error": "Failed to delete product. Please contact support."}), 500
+        return jsonify({"error": f"Failed to delete product: {error_message}"}), 500

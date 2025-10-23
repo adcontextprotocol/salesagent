@@ -16,7 +16,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.adapters.google_ad_manager import GoogleAdManager
-from src.core.schemas import CreateMediaBuyRequest, MediaPackage, Principal, Targeting
+from src.core.schemas import CreateMediaBuyRequest, FormatId, MediaPackage, Principal, Targeting
+
+# Default agent URL for creating FormatId objects
+DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"
+
+
+def make_format_id(format_id: str) -> FormatId:
+    """Helper to create FormatId objects with default agent URL."""
+    return FormatId(agent_url=DEFAULT_AGENT_URL, id=format_id)
 
 
 class SupportedTargetingTester:
@@ -93,11 +101,11 @@ class SupportedTargetingTester:
             impressions=1000,
             cpm=1.00,
             delivery_type="non_guaranteed",
-            format_ids=["display_300x250"],
+            format_ids=[make_format_id("display_300x250")],
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Professional software and productivity tools",
+            brand_manifest={"name": "Professional software and productivity tools"},
             po_number="GEO_SUPPORTED",
             total_budget=1.00,
             targeting_overlay=Targeting(
@@ -130,7 +138,7 @@ class SupportedTargetingTester:
             impressions=1000,
             cpm=2.00,
             delivery_type="non_guaranteed",
-            format_ids=["display_300x250"],
+            format_ids=[make_format_id("display_300x250")],
         )
 
         # Build key-value pairs from configuration
@@ -158,7 +166,7 @@ class SupportedTargetingTester:
             raise ValueError("No custom targeting keys configured in test config")
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Data analytics and AI-powered insights",
+            brand_manifest={"name": "Data analytics and AI-powered insights"},
             po_number="AEE_AXE_SIGNALS",
             total_budget=2.00,
             targeting_overlay=Targeting(key_value_pairs=key_value_pairs),
@@ -189,7 +197,7 @@ class SupportedTargetingTester:
             impressions=1000,
             cpm=3.00,
             delivery_type="non_guaranteed",
-            format_ids=["display_300x250"],
+            format_ids=[make_format_id("display_300x250")],
         )
 
         # Build key-value pairs from configuration
@@ -211,7 +219,7 @@ class SupportedTargetingTester:
             key_value_pairs["axex"] = values[1] if len(values) > 1 else values[0]
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Cloud infrastructure and enterprise solutions",
+            brand_manifest={"name": "Cloud infrastructure and enterprise solutions"},
             po_number="GEO_AEE_COMBINED",
             total_budget=3.00,
             targeting_overlay=Targeting(
@@ -246,11 +254,11 @@ class SupportedTargetingTester:
             impressions=1000,
             cpm=1.00,
             delivery_type="non_guaranteed",
-            format_ids=["display_300x250"],
+            format_ids=[make_format_id("display_300x250")],
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Mobile app subscriptions and services",
+            brand_manifest={"name": "Mobile app subscriptions and services"},
             po_number="DEVICE_MUST_FAIL",
             total_budget=1.00,
             targeting_overlay=Targeting(device_type_any_of=["mobile", "desktop"]),
@@ -284,11 +292,11 @@ class SupportedTargetingTester:
             impressions=1000,
             cpm=1.00,
             delivery_type="non_guaranteed",
-            format_ids=["display_300x250"],
+            format_ids=[make_format_id("display_300x250")],
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Gaming consoles and video game titles",
+            brand_manifest={"name": "Gaming consoles and video game titles"},
             po_number="OS_MUST_FAIL",
             total_budget=1.00,
             targeting_overlay=Targeting(os_any_of=["iOS", "Android"]),
@@ -322,11 +330,11 @@ class SupportedTargetingTester:
             impressions=1000,
             cpm=1.00,
             delivery_type="non_guaranteed",
-            format_ids=["display_300x250"],
+            format_ids=[make_format_id("display_300x250")],
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Breaking news and journalism platform",
+            brand_manifest={"name": "Breaking news and journalism platform"},
             po_number="KEYWORD_MUST_FAIL",
             total_budget=1.00,
             targeting_overlay=Targeting(keywords_any_of=["sports", "news"]),

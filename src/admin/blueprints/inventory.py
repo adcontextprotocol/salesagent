@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, render_template, request, session
 from sqlalchemy import String, func, or_, select
 
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import GAMInventory, GAMOrder, MediaBuy, Principal, Tenant
 
@@ -30,11 +31,102 @@ def targeting_browser(tenant_id):
     tenant = {"tenant_id": row[0], "name": row[1]}
 
     return render_template(
-        "targeting_browser_simple.html",
+        "targeting_browser.html",
         tenant=tenant,
         tenant_id=tenant_id,
         tenant_name=row[1],
     )
+
+
+@inventory_bp.route("/api/tenant/<tenant_id>/targeting/all", methods=["GET"])
+@require_tenant_access(api_mode=True)
+def get_targeting_data(tenant_id):
+    """Get all targeting data (custom targeting keys, audience segments, labels) from database."""
+    try:
+        with get_db_session() as db_session:
+            from src.core.database.models import GAMInventory
+
+            # Query custom targeting keys
+            custom_keys_stmt = select(GAMInventory).where(
+                GAMInventory.tenant_id == tenant_id,
+                GAMInventory.inventory_type == "custom_targeting_key",
+            )
+            custom_keys_rows = db_session.scalars(custom_keys_stmt).all()
+
+            # Query audience segments
+            audience_segments_stmt = select(GAMInventory).where(
+                GAMInventory.tenant_id == tenant_id,
+                GAMInventory.inventory_type == "audience_segment",
+            )
+            audience_segments_rows = db_session.scalars(audience_segments_stmt).all()
+
+            # Query labels
+            labels_stmt = select(GAMInventory).where(
+                GAMInventory.tenant_id == tenant_id,
+                GAMInventory.inventory_type == "label",
+            )
+            labels_rows = db_session.scalars(labels_stmt).all()
+
+            # Get last sync time from most recent inventory item
+            last_sync_stmt = (
+                select(GAMInventory.last_synced)
+                .where(GAMInventory.tenant_id == tenant_id)
+                .order_by(GAMInventory.last_synced.desc())
+                .limit(1)
+            )
+            last_sync = db_session.scalar(last_sync_stmt)
+
+            # Transform to frontend format
+            custom_keys = []
+            for row in custom_keys_rows:
+                metadata = row.inventory_metadata or {}
+                custom_keys.append(
+                    {
+                        "id": row.inventory_id,
+                        "name": row.name,
+                        "display_name": metadata.get("display_name") if metadata else row.name,
+                        "status": row.status,
+                        "type": metadata.get("type") if metadata else None,
+                    }
+                )
+
+            audiences = []
+            for row in audience_segments_rows:
+                metadata = row.inventory_metadata or {}
+                audiences.append(
+                    {
+                        "id": row.inventory_id,
+                        "name": row.name,
+                        "description": metadata.get("description") if metadata else None,
+                        "status": row.status,
+                        "size": metadata.get("size") if metadata else None,
+                    }
+                )
+
+            labels = []
+            for row in labels_rows:
+                metadata = row.inventory_metadata or {}
+                labels.append(
+                    {
+                        "id": row.inventory_id,
+                        "name": row.name,
+                        "description": metadata.get("description") if metadata else None,
+                        "is_active": row.status == "ACTIVE",
+                    }
+                )
+
+            return jsonify(
+                {
+                    "customKeys": custom_keys,
+                    "audiences": audiences,
+                    "labels": labels,
+                    "last_sync": last_sync.isoformat() if last_sync else None,
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error fetching targeting data: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @inventory_bp.route("/tenant/<tenant_id>/inventory")
@@ -99,18 +191,30 @@ def orders_browser(tenant_id):
 
 
 @inventory_bp.route("/api/tenant/<tenant_id>/sync/orders", methods=["POST"])
+@log_admin_action("sync_orders")
 @require_tenant_access(api_mode=True)
 def sync_orders(tenant_id):
     """Sync GAM orders for a tenant."""
     try:
         with get_db_session() as db_session:
+
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
-            if not tenant.gam_network_code or not tenant.gam_refresh_token:
-                return jsonify({"error": "GAM not configured for this tenant"}), 400
+            # Get GAM configuration from adapter_config
+            adapter_config = tenant.adapter_config
+
+            if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
+                return (
+                    jsonify(
+                        {
+                            "error": "Please connect your GAM account before trying to sync inventory. Go to Ad Server settings to configure GAM."
+                        }
+                    ),
+                    400,
+                )
 
             # Import GAM sync functionality
             from src.adapters.gam_order_sync import sync_gam_orders
@@ -118,8 +222,8 @@ def sync_orders(tenant_id):
             # Perform sync
             result = sync_gam_orders(
                 tenant_id=tenant_id,
-                network_code=tenant.gam_network_code,
-                refresh_token=tenant.gam_refresh_token,
+                network_code=adapter_config.gam_network_code,
+                refresh_token=adapter_config.gam_refresh_token,
             )
 
             return jsonify(result)
@@ -375,6 +479,7 @@ def analyze_ad_server_inventory(tenant_id):
 
 
 @inventory_bp.route("/api/tenant/<tenant_id>/inventory/sync", methods=["POST"])
+@log_admin_action("sync_inventory")
 @require_tenant_access(api_mode=True)
 def sync_inventory(tenant_id):
     """Sync GAM inventory for a tenant with optional selective sync.
@@ -403,7 +508,14 @@ def sync_inventory(tenant_id):
             ).first()
 
             if not adapter_config or not adapter_config.gam_network_code:
-                return jsonify({"error": "GAM not configured for this tenant"}), 400
+                return (
+                    jsonify(
+                        {
+                            "error": "Please connect your GAM account before trying to sync inventory. Go to Ad Server settings to configure GAM."
+                        }
+                    ),
+                    400,
+                )
 
             # Check authentication method - support both OAuth and service account
             auth_method = getattr(adapter_config, "gam_auth_method", None)
@@ -415,7 +527,14 @@ def sync_inventory(tenant_id):
                 elif hasattr(adapter_config, "gam_service_account_json") and adapter_config.gam_service_account_json:
                     auth_method = "service_account"
                 else:
-                    return jsonify({"error": "No GAM authentication configured for this tenant"}), 400
+                    return (
+                        jsonify(
+                            {
+                                "error": "Please connect your GAM account before trying to sync inventory. Go to Ad Server settings to configure GAM."
+                            }
+                        ),
+                        400,
+                    )
 
             # Parse request body for selective sync options
             data = request.get_json() or {}

@@ -154,12 +154,43 @@ class AuditLogger:
 
             # Notify on sensitive operations
             sensitive_ops = [
+                # Media buy operations (business critical)
                 "create_media_buy",
                 "update_media_buy",
                 "delete_media_buy",
                 "approve_creative",
                 "reject_creative",
                 "manual_approval",
+                # Admin UI - User management (security critical)
+                "add_user",
+                "toggle_user",
+                "update_user_role",
+                "update_role",
+                # Admin UI - Tenant management (security critical)
+                "create_tenant",
+                "deactivate_tenant",
+                "reactivate_tenant",
+                "update",  # General tenant settings update
+                "update_general_settings",
+                "add_authorized_domain",
+                "remove_authorized_domain",
+                "add_authorized_email",
+                "remove_authorized_email",
+                # Admin UI - Adapter configuration (infrastructure critical)
+                "update_adapter",
+                "setup_adapter",
+                "configure_gam",
+                "detect_gam_network",
+                # Admin UI - Principal management (access control)
+                "create_principal",
+                "update_mappings",
+                "update_principal_mappings",
+                "register_webhook",
+                "delete_webhook",
+                # Admin UI - Policy changes (business critical)
+                "update_policy",
+                "update_business_rules",
+                "review_policy_task",
             ]
             if operation in sensitive_ops:
                 should_notify = True

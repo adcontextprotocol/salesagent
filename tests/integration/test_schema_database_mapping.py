@@ -17,8 +17,8 @@ from sqlalchemy import delete
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative, MediaBuy, Principal, Tenant
 from src.core.database.models import Product as ProductModel
+from src.core.schemas import PricingOption, Product
 from src.core.schemas import Principal as PrincipalSchema
-from src.core.schemas import Product
 from tests.utils.database_helpers import (
     create_tenant_with_timestamps,
 )
@@ -68,7 +68,7 @@ class TestSchemaFieldMapping:
         )
 
         # Verify critical fields exist in both
-        critical_fields = {"product_id", "name", "description", "formats", "delivery_type", "is_fixed_price"}
+        critical_fields = {"product_id", "name", "description", "formats", "delivery_type"}
         for field in critical_fields:
             assert field in schema_fields, f"Critical field '{field}' missing from Product schema"
             assert field in db_columns, f"Critical field '{field}' missing from ProductModel database"
@@ -97,7 +97,7 @@ class TestSchemaFieldMapping:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
+                property_tags=["all_inventory"],
             )
             session.add(product)
             session.commit()
@@ -163,9 +163,7 @@ class TestSchemaFieldMapping:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
-                cpm=5.50,
-                min_spend=1000.00,
+                property_tags=["all_inventory"],
             )
             session.add(product)
             session.commit()
@@ -178,9 +176,7 @@ class TestSchemaFieldMapping:
                 "description",
                 "formats",
                 "delivery_type",
-                "is_fixed_price",
-                "cpm",
-                "min_spend",
+                "property_tags",
             ]
 
             conversion_data = {}
@@ -193,7 +189,7 @@ class TestSchemaFieldMapping:
             # Verify we got the expected data
             assert conversion_data["product_id"] == "conversion_test_001"
             assert conversion_data["name"] == "Conversion Test Product"
-            assert conversion_data["cpm"] == 5.50
+            assert conversion_data["property_tags"] == ["all_inventory"]
 
             # Test that unsafe field access (what caused the bug) fails predictably
             unsafe_fields = ["pricing", "cost_basis", "margin"]
@@ -234,6 +230,15 @@ class TestSchemaFieldMapping:
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         }
 
         product = Product(**product_data)
@@ -285,7 +290,7 @@ class TestSchemaFieldMapping:
                 formats=["display_300x250", "display_728x90"],  # List
                 targeting_template={"geo": ["US"], "device": ["mobile"]},  # Dict
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
+                property_tags=["all_inventory"],
                 measurement={"viewability": True, "brand_safety": True},  # Dict
                 countries=["US", "CA", "UK"],  # List
             )
@@ -336,10 +341,8 @@ class TestSchemaFieldMapping:
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=False,
-                cpm=7.25,
-                min_spend=2000.00,
                 is_custom=False,
+                property_tags=["all_inventory"],
             )
             session.add(product)
             session.commit()
@@ -352,19 +355,25 @@ class TestSchemaFieldMapping:
                 "description": product.description,
                 "formats": product.formats,
                 "delivery_type": product.delivery_type,
-                "is_fixed_price": product.is_fixed_price,
-                "cpm": float(product.cpm) if product.cpm else None,
-                "min_spend": float(product.min_spend) if product.min_spend else None,
                 "is_custom": product.is_custom if product.is_custom is not None else False,
                 "property_tags": getattr(product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
+                "pricing_options": [
+                    PricingOption(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=7.25,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             }
 
             # This should succeed without validation errors
             try:
                 validated_product = Product(**conversion_data)
                 assert validated_product.product_id == "validation_test_001"
-                assert validated_product.cpm == 7.25
-                assert validated_product.min_spend == 2000.00
+                assert validated_product.pricing_options[0].rate == 7.25
+                assert validated_product.pricing_options[0].pricing_model == "cpm"
             except Exception as e:
                 pytest.fail(f"Schema validation failed with database data: {e}")
 
@@ -387,6 +396,15 @@ class TestFieldAccessPatterns:
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         }
 
         product = Product(**product_data)
@@ -425,6 +443,15 @@ class TestFieldAccessPatterns:
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         }
 
         product = Product(**product_data)
@@ -433,10 +460,10 @@ class TestFieldAccessPatterns:
         with pytest.raises(AttributeError):
             _ = product.pricing  # This would have caused the original bug
 
-        # Unsafe Pattern 2: Direct access to optional field that wasn't set
-        # This is OK for Pydantic models (returns None), but would fail for ORM objects
-        min_spend = product.min_spend  # Optional field, should be None
-        assert min_spend is None
+        # Unsafe Pattern 2: Direct access to non-existent field that was removed
+        # Legacy fields like min_spend no longer exist in Product schema (moved to pricing_options)
+        with pytest.raises(AttributeError):
+            _ = product.min_spend  # Field removed, should raise AttributeError
 
         # Demonstrate what would happen with ORM object (simulated)
         class MockORM:
@@ -459,6 +486,8 @@ class TestFieldAccessPatterns:
         actual_db_fields = {column.name for column in ProductModel.__table__.columns}
 
         # Fields that should exist in database
+        # Note: Legacy pricing fields (cpm, min_spend, is_fixed_price) have been removed
+        # in favor of the pricing_options relationship table
         expected_fields = {
             "tenant_id",
             "product_id",
@@ -467,9 +496,6 @@ class TestFieldAccessPatterns:
             "formats",
             "targeting_template",
             "delivery_type",
-            "is_fixed_price",
-            "cpm",
-            "min_spend",
             "measurement",
             "creative_policy",
             "price_guidance",

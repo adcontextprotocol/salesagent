@@ -4,6 +4,12 @@
 
 {% block content %}
 <style>
+    /* Spinning animation for sync button */
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
     .settings-layout {
         display: grid;
         grid-template-columns: 250px 1fr;
@@ -424,7 +430,7 @@
         </p>
     </div>
     <a href="/tenant/{{ tenant.tenant_id }}" class="btn btn-secondary">
-        <i class="fas fa-arrow-left"></i> Back to Dashboard
+        ← Back to Dashboard
     </a>
 </div>
 
@@ -494,10 +500,10 @@
         <div id="account" class="settings-section active">
             <div class="settings-header">
                 <h2>Account</h2>
-                <p>Organization identity and access control</p>
+                <p>Organization identity, virtual host configuration, and access control</p>
             </div>
 
-            <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/general">
+            <form id="account-settings-form" method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/general">
                 <div class="form-section">
                     <h3>Organization Information</h3>
                     <div class="form-grid">
@@ -516,17 +522,63 @@
                             <label for="virtual_host">Virtual Host (Optional)</label>
                             <input type="text" id="virtual_host" name="virtual_host" value="{{ tenant.virtual_host or '' }}" placeholder="e.g. ad-sales.yourcompany.com">
                             <small>
-                                <p><strong>To use a custom domain:</strong></p>
-                                <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9em;">
-                                    <li>Enter your custom domain above (e.g., ad-sales.yourcompany.com)</li>
-                                    <li>Create a CNAME record pointing your domain to: <code>sales-agent.scope3.com</code></li>
-                                    <li>Save your settings below</li>
-                                    <li>Wait for DNS propagation (5-30 minutes)</li>
-                                </ol>
                                 <p style="margin-top: 0.5rem; color: #666; font-size: 0.85em;">
-                                    💡 Your custom domain will route to this tenant's MCP server and admin interface.
+                                    💡 Your custom domain will route to this tenant's MCP server and admin interface. Enter a domain above to see DNS setup instructions.
                                 </p>
                             </small>
+                        </div>
+
+                        <!-- DNS Configuration Widget -->
+                        <div id="dns-widget-container" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                            <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">📝 Configure DNS Records</h4>
+                            <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                                Follow the steps below to configure your DNS records. The widget will automatically detect your DNS provider and verify your configuration.
+                            </p>
+
+                            <!-- Success message (hidden by default) -->
+                            <div id="dns-success-message" style="display: none; padding: 1rem; background: #d1fae5; border: 2px solid #10b981; border-radius: 8px; margin-bottom: 1rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span style="font-size: 1.5rem;">✅</span>
+                                    <div>
+                                        <div style="font-weight: 600; color: #065f46; font-size: 1rem;">DNS Records Verified!</div>
+                                        <div style="color: #047857; font-size: 0.875rem;">Your custom domain is properly configured and pointing to sales-agent.scope3.com</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="apxdnswidget"></div>
+                        </div>
+
+                        <!-- Domain Registration Status (Approximated Backend) -->
+                        <div id="domain-registration-container" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                            <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">🔒 Domain Registration Status</h4>
+                            <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                                Your domain must be registered with the backend to enable HTTPS/TLS and traffic routing.
+                            </p>
+
+                            <!-- Status display -->
+                            <div id="domain-status-display" style="margin-bottom: 1rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem; background: white; border: 1px solid #e5e7eb; border-radius: 6px;">
+                                    <span id="domain-status-icon" style="font-size: 1.25rem;">⏳</span>
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; font-size: 0.875rem;" id="domain-status-text">Checking status...</div>
+                                        <div style="color: #6b7280; font-size: 0.75rem;" id="domain-status-details"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Action buttons -->
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button type="button" class="btn btn-secondary btn-sm" id="check-domain-status-btn" onclick="checkDomainRegistrationStatus()">
+                                    Check Status
+                                </button>
+                                <button type="button" class="btn btn-primary btn-sm" id="register-domain-btn" onclick="registerDomain()" style="display: none;">
+                                    Register Domain
+                                </button>
+                                <button type="button" class="btn btn-outline-danger btn-sm" id="unregister-domain-btn" onclick="unregisterDomain()" style="display: none;">
+                                    Unregister Domain
+                                </button>
+                            </div>
                         </div>
 
                     </div>
@@ -535,11 +587,106 @@
                 <!-- Budget & Limits moved to Business Rules section -->
                 <!-- Features moved to Business Rules section -->
 
+                <!-- DNS Verification Warning -->
+                <div id="dns-warning-banner" style="display: none; margin-bottom: 1rem; padding: 1rem; background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 1.5rem;">⚠️</span>
+                        <div>
+                            <div style="font-weight: 600; color: #92400e; font-size: 1rem;">DNS Records Not Verified</div>
+                            <div style="color: #78350f; font-size: 0.875rem;">Your custom domain DNS records have not been verified yet. The domain may not work until DNS is properly configured.</div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="button-group">
                     <button type="submit" class="btn btn-primary">Save Account Settings</button>
                     <button type="reset" class="btn btn-secondary">Reset</button>
                 </div>
             </form>
+
+            <!-- Access Control (Domain & Email Authorization) -->
+            <div class="form-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e5e7eb;">
+                <h3>🔐 Access Control</h3>
+                <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1.5rem;">
+                    Control who can access this tenant's admin interface
+                </p>
+
+                <!-- Authorized Domains -->
+                <div style="margin-bottom: 2rem;">
+                    <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">🏢 Authorized Domains</h4>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                        Users from these domains get automatic admin access via OAuth
+                    </p>
+
+                    {% if authorized_domains %}
+                    <div class="domain-list" style="margin-bottom: 1rem;">
+                        {% for domain in authorized_domains %}
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 0.5rem;">
+                            <div style="flex: 1;">
+                                <strong>{{ domain }}</strong>
+                                <small style="color: #6b7280; margin-left: 0.5rem;">@{{ domain }} users</small>
+                            </div>
+                            <form method="POST" action="{{ url_for('settings.remove_authorized_domain', tenant_id=tenant.tenant_id) }}" style="margin: 0;">
+                                <input type="hidden" name="domain" value="{{ domain }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Remove domain {{ domain }}? Users from this domain will lose access.')">Remove</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div style="text-align: center; color: #9ca3af; font-style: italic; margin-bottom: 1rem; padding: 1rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;">
+                        No authorized domains configured
+                    </div>
+                    {% endif %}
+
+                    <form method="POST" action="{{ url_for('settings.add_authorized_domain', tenant_id=tenant.tenant_id) }}" style="display: flex; gap: 0.5rem; align-items: end;">
+                        <div style="flex: 1;">
+                            <label for="new_domain" style="font-size: 0.875rem; font-weight: 500;">Add Domain</label>
+                            <input type="text" id="new_domain" name="domain" placeholder="company.com" style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px;">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Domain</button>
+                    </form>
+                </div>
+
+                <!-- Authorized Emails -->
+                <div>
+                    <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">📧 Authorized Emails</h4>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                        External users requiring explicit access (contractors, agencies, etc.)
+                    </p>
+
+                    {% if authorized_emails %}
+                    <div class="email-list" style="margin-bottom: 1rem;">
+                        {% for email in authorized_emails %}
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem; background: #fef7ec; border: 1px solid #fed7aa; border-radius: 6px; margin-bottom: 0.5rem;">
+                            <div style="flex: 1;">
+                                <strong>{{ email }}</strong>
+                                <small style="color: #92400e; margin-left: 0.5rem;">External user</small>
+                            </div>
+                            <form method="POST" action="{{ url_for('settings.remove_authorized_email', tenant_id=tenant.tenant_id) }}" style="margin: 0;">
+                                <input type="hidden" name="email" value="{{ email }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Remove {{ email }}? This user will lose access.')">Remove</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div style="text-align: center; color: #9ca3af; font-style: italic; margin-bottom: 1rem; padding: 1rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;">
+                        No external emails configured
+                    </div>
+                    {% endif %}
+
+                    <form method="POST" action="{{ url_for('settings.add_authorized_email', tenant_id=tenant.tenant_id) }}" style="display: flex; gap: 0.5rem; align-items: end;">
+                        <div style="flex: 1;">
+                            <label for="new_email" style="font-size: 0.875rem; font-weight: 500;">Add Email</label>
+                            <input type="email" id="new_email" name="email" placeholder="contractor@agency.com" style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px;">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Email</button>
+                    </form>
+                </div>
+            </div>
         </div>
 
         <!-- Ad Server Settings -->
@@ -551,19 +698,7 @@
 
             {% if active_adapter %}
             <div class="status-card success">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong>✅ Connected to {{ active_adapter|title|replace('_', ' ') }}</strong>
-                        <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem;">
-                            Last synced: {{ last_sync_time or 'Never' }}
-                        </p>
-                    </div>
-                    {% if active_adapter == 'google_ad_manager' %}
-                    <button onclick="syncGAMInventory()" class="btn btn-small btn-primary">
-                        <span id="sync-icon">🔄</span> Sync Inventory
-                    </button>
-                    {% endif %}
-                </div>
+                <strong>✅ Connected to {{ active_adapter|title|replace('_', ' ') }}</strong>
             </div>
             {% else %}
             <div class="status-card warning">
@@ -624,57 +759,43 @@
                 <div class="form-section" style="margin-top: 2rem;">
                     <h3>Google Ad Manager Configuration</h3>
 
-                    <!-- OAuth Prerequisites Check -->
-                    <div id="oauth-status" class="status-card" style="background: #f5f5f5; border-left: 4px solid #666; margin-bottom: 1rem;">
-                        <h4>OAuth Setup Status</h4>
-                        <p>Checking OAuth configuration...</p>
-                    </div>
-
-                    {% if adapter_config %}
-                    <div class="status-card" style="background: #f0f9ff; border-left: 4px solid #0066cc;">
-                        <h4>Current Configuration</h4>
+                    {% if adapter_config and adapter_config.get('refresh_token') and adapter_config.get('network_code') %}
+                    <!-- Fully configured - show success state -->
+                    <div class="status-card" style="background: #f0fdf4; border-left: 4px solid #10b981;">
+                        <h4>✅ Configuration Complete</h4>
                         <ul style="list-style: none; padding: 0; margin: 0.5rem 0;">
-                            {% if adapter_config.get('network_code') %}
+                            <li>✅ OAuth Token: Configured</li>
                             <li>✅ Network Code: {{ adapter_config.get('network_code') }}</li>
-                            {% else %}
-                            <li>❌ Network Code: Not configured</li>
-                            {% endif %}
-
-                            {% if adapter_config.get('refresh_token') %}
-                            <li>✅ OAuth Refresh Token: Configured</li>
-                            {% else %}
-                            <li>❌ OAuth Refresh Token: Not configured</li>
-                            {% endif %}
-
-                            {% if adapter_config.get('application_name') %}
-                            <li>✅ Application Name: {{ adapter_config.get('application_name') }}</li>
-                            {% else %}
-                            <li>ℹ️ Application Name: Using default</li>
+                            {% if adapter_config.get('trafficker_id') %}
+                            <li>✅ Trafficker ID: {{ adapter_config.get('trafficker_id') }}</li>
                             {% endif %}
                         </ul>
+                        <button onclick="testGAMConnection()" class="btn btn-secondary btn-sm" style="margin-top: 0.5rem;">
+                            Test Connection
+                        </button>
+                        <button onclick="initiateGAMAuth()" class="btn btn-secondary btn-sm" style="margin-top: 0.5rem; margin-left: 0.5rem;">
+                            Refresh OAuth Token
+                        </button>
                     </div>
                     {% else %}
-                    <div class="alert alert-warning">
-                        <strong>Not Configured</strong>
-                        <p>Google Ad Manager adapter needs configuration. Please set up your GAM credentials below.</p>
-                    </div>
-                    {% endif %}
+                    <!-- Not configured or partially configured -->
 
-                    <div class="form-group" style="margin-top: 1rem;">
-                        <label>OAuth Setup</label>
+                    <!-- Step 1: Get OAuth Token -->
+                    <div class="form-group">
+                        <label><strong>Step 1:</strong> Get OAuth Token</label>
                         {% if adapter_config and adapter_config.get('refresh_token') %}
-                        <div class="status-card success">
+                        <div class="status-card" style="background: #f0fdf4; border-left: 4px solid #10b981;">
                             <strong>✅ OAuth Token Configured</strong>
-                            <p>Your refresh token is active and ready to use.</p>
-                            <button onclick="startGAMOAuth()" class="btn btn-secondary btn-sm" style="margin-top: 0.5rem;">
+                            <p>Your refresh token is active.</p>
+                            <button onclick="initiateGAMAuth()" class="btn btn-secondary btn-sm" style="margin-top: 0.5rem;">
                                 Refresh OAuth Token
                             </button>
                         </div>
                         {% else %}
-                        <div class="status-card warning">
-                            <strong>OAuth Setup Required</strong>
+                        <div class="status-card" style="background: #fef3c7; border-left: 4px solid #f59e0b;">
+                            <strong>⚠️ OAuth Setup Required</strong>
                             <p>Click the button below to authorize AdCP access to your Google Ad Manager account.</p>
-                            <button onclick="startGAMOAuth()" class="btn btn-primary" style="margin-top: 0.5rem;">
+                            <button onclick="initiateGAMAuth()" class="btn btn-primary" style="margin-top: 0.5rem;">
                                 🔑 Get OAuth Token
                             </button>
                         </div>
@@ -682,41 +803,143 @@
 
                         <!-- Advanced option for manual token entry -->
                         <details style="margin-top: 1rem;">
-                            <summary style="cursor: pointer; color: #666; font-size: 0.9em;">Advanced: Manual Token Entry</summary>
+                            <summary style="cursor: pointer; color: #666; font-size: 0.9em;">▸ Advanced: Manual Token Entry</summary>
                             <div style="margin-top: 0.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
                                 <label for="gam_refresh_token">Manual OAuth Refresh Token</label>
                                 <input type="text" id="gam_refresh_token" class="form-control"
                                        value="{{ adapter_config.get('refresh_token', '') if adapter_config else '' }}"
                                        placeholder="Paste your OAuth refresh token here">
                                 <small class="form-text text-muted">For advanced users: manually enter a refresh token if you have one.</small>
+                                <button onclick="saveManualToken()" class="btn btn-primary" style="margin-top: 0.5rem;">
+                                    Save Token
+                                </button>
                             </div>
                         </details>
                     </div>
 
-                    <div class="form-group">
-                        <label for="gam_network_code">Network Code</label>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="gam_network_code" class="form-control"
-                                   value="{{ adapter_config.get('network_code', '') if adapter_config else '' }}"
-                                   placeholder="Will be auto-detected" readonly>
-                            <button onclick="detectGAMNetwork()" class="btn btn-secondary"
-                                    id="detect-network-btn">Auto-detect Network</button>
+                    <!-- Step 2: Auto-detect Network (only show if token exists) -->
+                    {% if adapter_config and adapter_config.get('refresh_token') %}
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label><strong>Step 2:</strong> Auto-detect Network Code</label>
+                        {% if adapter_config.get('network_code') %}
+                        <div class="status-card" style="background: #f0fdf4; border-left: 4px solid #10b981;">
+                            <strong>✅ Network Code Detected: {{ adapter_config.get('network_code') }}</strong>
+                            {% if adapter_config.get('trafficker_id') %}
+                            <p>Trafficker ID: {{ adapter_config.get('trafficker_id') }}</p>
+                            {% endif %}
                         </div>
-                        <small class="form-text text-muted">Automatically retrieved from your GAM account</small>
-                    </div>
+                        {% else %}
+                        <div style="display: flex; gap: 0.5rem; align-items: start;">
+                            <div style="flex: 1;">
+                                <input type="text" id="gam_network_code" class="form-control"
+                                       value="{{ adapter_config.get('network_code', '') if adapter_config else '' }}"
+                                       placeholder="Click button to auto-detect →" readonly>
+                            </div>
+                            <button onclick="detectGAMNetwork()" class="btn btn-primary" id="detect-network-btn">
+                                Auto-detect Network
+                            </button>
+                        </div>
+                        <small class="form-text text-muted">Uses your OAuth token to automatically retrieve your GAM network code and trafficker ID.</small>
 
-                    <div class="form-group">
-                        <label for="gam_trafficker_id">Trafficker User ID</label>
-                        <input type="text" id="gam_trafficker_id" class="form-control"
-                               value="{{ adapter_config.get('trafficker_id', '') if adapter_config else '' }}"
-                               placeholder="Your GAM user ID (will be auto-detected)">
-                        <small class="form-text text-muted">The GAM user ID who will create line items. Auto-detected when you click "Auto-detect Network" above.</small>
+                        <input type="hidden" id="gam_trafficker_id"
+                               value="{{ adapter_config.get('trafficker_id', '') if adapter_config else '' }}">
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% endif %}
+
+                    <!-- Service Account Integration Option -->
+                    <div class="form-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid #e5e7eb;">
+                        <h3>🔧 Alternative: Service Account Integration (Recommended for Partners)</h3>
+                        <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                            For partner integrations, we can create and manage a service account for you. This is more secure and doesn't require sharing credentials.
+                        </p>
+
+                        {% if adapter_config and adapter_config.get('service_account_email') %}
+                        <!-- Service account already created -->
+                        <div class="status-card" style="background: #f0fdf4; border-left: 4px solid #10b981;">
+                            <h4>✅ Service Account Created</h4>
+                            <p style="margin: 0.5rem 0;">
+                                <strong>Service Account Email:</strong><br>
+                                <code style="background: #e5e7eb; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.9em;">{{ adapter_config.get('service_account_email') }}</code>
+                            </p>
+                            <div style="margin-top: 1rem; padding: 1rem; background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 4px;">
+                                <p style="margin: 0; font-size: 0.875rem;"><strong>⚠️ Next Steps:</strong></p>
+                                <ol style="margin: 0.5rem 0 0 1.5rem; padding: 0; font-size: 0.875rem;">
+                                    <li>Log into your Google Ad Manager account</li>
+                                    <li>Go to <strong>Admin → Access & authorization → Users</strong></li>
+                                    <li>Click <strong>New user</strong></li>
+                                    <li>Add the service account email above</li>
+                                    <li>Assign the <strong>Trafficker</strong> role</li>
+                                    <li>Click <strong>Save</strong></li>
+                                    <li>Enter your GAM Network Code below</li>
+                                    <li>Click "Save Network Code"</li>
+                                    <li>Click "Test Connection" to verify</li>
+                                </ol>
+                            </div>
+
+                            <!-- Network Code Configuration -->
+                            <div style="margin-top: 1.5rem;">
+                                <label style="font-weight: 600; font-size: 0.875rem; display: block; margin-bottom: 0.5rem;">
+                                    GAM Network Code <span style="color: #dc2626;">*</span>
+                                </label>
+                                {% if adapter_config.get('network_code') %}
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="text" id="service_account_network_code"
+                                           value="{{ adapter_config.get('network_code') }}"
+                                           style="flex: 1; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace;"
+                                           placeholder="e.g., 12345678">
+                                    <button onclick="saveServiceAccountNetworkCode()" class="btn btn-primary btn-sm">
+                                        Save Network Code
+                                    </button>
+                                </div>
+                                <small style="color: #10b981; display: block; margin-top: 0.25rem;">✅ Network code configured</small>
+                                {% else %}
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="text" id="service_account_network_code"
+                                           style="flex: 1; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace;"
+                                           placeholder="e.g., 12345678">
+                                    <button onclick="saveServiceAccountNetworkCode()" class="btn btn-primary btn-sm">
+                                        Save Network Code
+                                    </button>
+                                </div>
+                                <small style="color: #6b7280; display: block; margin-top: 0.25rem;">
+                                    Find this in GAM under Admin → Global Settings → Network Code
+                                </small>
+                                {% endif %}
+                            </div>
+
+                            <div style="margin-top: 1rem;">
+                                <button onclick="testGAMServiceAccountConnection()" class="btn btn-primary btn-sm"
+                                        {% if not adapter_config.get('network_code') %}disabled title="Save network code first"{% endif %}>
+                                    Test Connection
+                                </button>
+                                <button onclick="copyServiceAccountEmail()" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem;">
+                                    📋 Copy Email
+                                </button>
+                            </div>
+                        </div>
+                        {% else %}
+                        <!-- No service account yet -->
+                        <div class="status-card" style="background: #f9fafb; border-left: 4px solid #9ca3af;">
+                            <p style="margin: 0 0 1rem 0; font-size: 0.875rem;">
+                                We'll create a service account in our GCP project and provide you with the email address. You then add this email as a user in your Google Ad Manager with the Trafficker role.
+                            </p>
+                            <button onclick="createServiceAccount()" class="btn btn-success" id="create-service-account-btn">
+                                🔑 Create Service Account
+                            </button>
+                        </div>
+                        {% endif %}
                     </div>
 
                     <div class="form-group" style="margin-top: 2rem;">
-                        <button onclick="saveGAMConfig()" class="btn btn-primary">Save GAM Configuration</button>
                         {% if adapter_config and adapter_config.get('refresh_token') %}
-                        <button onclick="testGAMConnection()" class="btn btn-secondary" style="margin-left: 0.5rem;">Test Connection</button>
+                        <button onclick="saveGAMConfig()" class="btn btn-primary">Save Configuration</button>
+                        {% else %}
+                        <button onclick="saveGAMConfig()" class="btn btn-primary" disabled title="Get OAuth token first">
+                            Save Configuration
+                        </button>
+                        <small class="form-text text-muted">Complete Step 1 to enable saving</small>
                         {% endif %}
                     </div>
                 </div>
@@ -1025,14 +1248,14 @@ REJECT - Creative cannot be approved:
                                 <div class="form-group" style="margin-top: 1rem;">
                                     <label for="auto_reject_threshold">
                                         Auto-Reject Threshold
-                                        <span style="color: #ef4444; font-weight: 600; margin-left: 0.5rem;" id="reject_threshold_value">10%</span>
+                                        <span style="color: #ef4444; font-weight: 600; margin-left: 0.5rem;" id="reject_threshold_value">90%</span>
                                     </label>
                                     <input type="range" id="auto_reject_threshold" name="auto_reject_threshold"
-                                           min="0.0" max="0.5" step="0.05"
-                                           value="{{ (tenant.ai_policy.auto_reject_threshold if tenant.ai_policy else 0.10) }}"
+                                           min="0.5" max="1.0" step="0.05"
+                                           value="{{ (tenant.ai_policy.auto_reject_threshold if tenant.ai_policy else 0.90) }}"
                                            class="form-control" style="margin-bottom: 0.5rem;"
                                            oninput="document.getElementById('reject_threshold_value').textContent = Math.round(this.value * 100) + '%'">
-                                    <small>AI must be this certain or less to auto-reject (default: 10%)</small>
+                                    <small>AI must be at least this confident to auto-reject (default: 90%)</small>
                                 </div>
                             </div>
 
@@ -1068,6 +1291,78 @@ REJECT - Creative cannot be approved:
                     </div>
                 </div>
 
+                <!-- Advertising Policy Section -->
+                <div class="form-section">
+                    <h3>Advertising Policy</h3>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                        Configure which types of advertisers and content are permitted on your inventory
+                    </p>
+
+                    <div class="form-group">
+                        <label for="policy_check_enabled">
+                            <input type="checkbox" id="policy_check_enabled" name="policy_check_enabled"
+                                   {% if tenant.advertising_policy and tenant.advertising_policy.get('enabled') != False %}checked{% endif %}>
+                            Enable automated advertising policy checks
+                        </label>
+                        <small>AI-powered analysis of advertiser briefs during product discovery</small>
+                    </div>
+
+                    <div id="advertising-policy-config" style="{% if tenant.advertising_policy and tenant.advertising_policy.get('enabled') == False %}display: none;{% endif %}">
+                        {% if not tenant.gemini_api_key %}
+                        <div class="alert alert-warning" style="padding: 0.75rem; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; margin-bottom: 1rem;">
+                            <strong>⚠️ Gemini API Key Required</strong>
+                            <p style="margin: 0.5rem 0 0;">Advertising policy checks require a Gemini API key to function. Without it, all campaigns will be allowed by default. Please set your key in <a href="#" onclick="event.preventDefault(); switchSettingsSection('integrations')">Integrations → AI Services</a>.</p>
+                        </div>
+                        {% endif %}
+
+                        <div class="form-group">
+                            <label for="default_prohibited_categories">Baseline Protected Categories</label>
+                            <textarea id="default_prohibited_categories" name="default_prohibited_categories" class="form-control" rows="5"
+                                      placeholder="Enter one category per line">{{ (tenant.advertising_policy.get('default_prohibited_categories', []) if tenant.advertising_policy else ['Targeting of vulnerable populations (children, elderly, disabled)', 'Discriminatory content based on protected characteristics', 'Illegal products/services', 'Misleading or deceptive claims', 'Harmful content that could exploit users'])|join('\n') }}</textarea>
+                            <small>Core policy categories that apply to all campaigns. These are always enforced when policy checks are enabled. Edit to match your standards.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="default_prohibited_tactics">Baseline Prohibited Tactics</label>
+                            <textarea id="default_prohibited_tactics" name="default_prohibited_tactics" class="form-control" rows="3"
+                                      placeholder="Enter one tactic per line">{{ (tenant.advertising_policy.get('default_prohibited_tactics', []) if tenant.advertising_policy else ['Clickbait or sensationalist content', 'False urgency or scarcity claims', 'Hidden or deceptive pricing'])|join('\n') }}</textarea>
+                            <small>Core advertising tactics that are never permitted. Edit to match your standards.</small>
+                        </div>
+
+                        <hr style="margin: 1.5rem 0; border: 0; border-top: 1px solid #e5e7eb;">
+
+                        <div class="form-group">
+                            <label for="prohibited_categories">Additional Prohibited Categories</label>
+                            <textarea id="prohibited_categories" name="prohibited_categories" class="form-control" rows="4"
+                                      placeholder="Enter one category per line (e.g., tobacco, gambling, adult content)">{{ (tenant.advertising_policy.get('prohibited_categories', []) if tenant.advertising_policy else [])|join('\n') }}</textarea>
+                            <small>Additional content categories to block beyond the baseline. Examples: tobacco, gambling, cannabis, alcohol, political ads, cryptocurrency.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="prohibited_tactics">Additional Prohibited Tactics</label>
+                            <textarea id="prohibited_tactics" name="prohibited_tactics" class="form-control" rows="3"
+                                      placeholder="Enter one tactic per line">{{ (tenant.advertising_policy.get('prohibited_tactics', []) if tenant.advertising_policy else [])|join('\n') }}</textarea>
+                            <small>Additional advertising tactics to prohibit beyond the baseline.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="prohibited_advertisers">Blocked Advertisers/Domains</label>
+                            <textarea id="prohibited_advertisers" name="prohibited_advertisers" class="form-control" rows="3"
+                                      placeholder="Enter one domain or advertiser name per line (e.g., competitor.com)">{{ (tenant.advertising_policy.get('prohibited_advertisers', []) if tenant.advertising_policy else [])|join('\n') }}</textarea>
+                            <small>Specific advertisers or domains to block. One per line.</small>
+                        </div>
+
+                        <div style="background: #eff6ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #2563eb; margin-top: 1rem; font-size: 0.875rem;">
+                            <strong>How It Works:</strong>
+                            <ul style="margin: 0.5rem 0 0 1.5rem;">
+                                <li>AI analyzes each campaign brief against your baseline + additional rules</li>
+                                <li>Returns: <strong>Allowed</strong>, <strong>Restricted</strong>, or <strong>Blocked</strong></li>
+                                <li>Without Gemini API key: All campaigns allowed by default (policy checks disabled)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="button-group">
                     <button type="button" onclick="saveBusinessRules()" class="btn btn-primary">
                         Save Business Rules
@@ -1087,7 +1382,7 @@ REJECT - Creative cannot be approved:
             <div class="form-section">
                 <h3>Inventory Sync Status</h3>
 
-                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
                     <div class="stat-card">
                         <div class="stat-value">{{ inventory_count|default(0) }}</div>
                         <div class="stat-label">Total Items</div>
@@ -1100,29 +1395,77 @@ REJECT - Creative cannot be approved:
                         <div class="stat-value">{{ placements_count|default(0) }}</div>
                         <div class="stat-label">Placements</div>
                     </div>
-                </div>
-
-                <div class="status-card {% if last_sync_time %}success{% else %}warning{% endif %}">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong>{% if last_sync_time %}Last synced: {{ last_sync_time }}{% else %}No sync performed yet{% endif %}</strong>
-                            <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
-                                Syncing imports ad units, placements, and targeting options from Google Ad Manager.
-                            </p>
-                        </div>
-                        <button onclick="syncGAMInventory()" class="btn btn-primary" style="white-space: nowrap;">
-                            <span id="sync-icon">🔄</span> Sync Now
-                        </button>
+                    <div class="stat-card">
+                        <div class="stat-value">{{ (custom_targeting_keys_count|default(0) + custom_targeting_values_count|default(0)) }}</div>
+                        <div class="stat-label">Targeting (Keys+Values)</div>
                     </div>
                 </div>
+
+                <div class="status-card {% if running_sync %}info{% elif last_sync_time %}success{% else %}warning{% endif %}">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            {% if running_sync %}
+                                <strong>⏳ Sync in progress...</strong>
+                                <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
+                                    Started {{ running_sync.started_at.strftime('%Y-%m-%d %I:%M %p UTC') }}. This may take several minutes for large inventories.
+                                </p>
+                                <p style="margin: 0.5rem 0 0 0; font-size: 0.75rem; color: #666;">
+                                    <em>The sync will continue even if you navigate away from this page.</em>
+                                </p>
+                                <button onclick="resetStuckSync()" class="btn" style="margin-top: 0.5rem; background: #dc2626; color: white; font-size: 0.875rem; padding: 0.375rem 0.75rem;">
+                                    🛑 Reset Stuck Sync
+                                </button>
+                            {% elif last_sync_time %}
+                                <strong>Last synced: {{ last_sync_time }}</strong>
+                                <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
+                                    Syncing imports ad units, placements, and targeting options from Google Ad Manager.
+                                </p>
+                            {% else %}
+                                <strong>No sync performed yet</strong>
+                                <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
+                                    Syncing imports ad units, placements, and targeting options from Google Ad Manager.
+                                </p>
+                            {% endif %}
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; flex-direction: column;">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button onclick="syncGAMInventory('incremental')" class="btn btn-primary" style="white-space: nowrap;" {% if not last_sync_time or running_sync %}disabled{% if not last_sync_time %} title="No previous sync - use Full Reset first"{% elif running_sync %} title="Sync already in progress"{% endif %}{% endif %}>
+                                    <span id="sync-icon-incremental">🔄</span> Incremental Sync
+                                </button>
+                                <button onclick="syncGAMInventory('full')" class="btn btn-warning" style="white-space: nowrap;" {% if running_sync %}disabled title="Sync already in progress"{% endif %}>
+                                    <span id="sync-icon-full">⚠️</span> Full Reset
+                                </button>
+                            </div>
+                            <p style="margin: 0; font-size: 0.75rem; color: #666;">
+                                <strong>Incremental:</strong> Only changed items (fast). <strong>Full Reset:</strong> Deletes & re-syncs all (slow).
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {% if running_sync %}
+                <script>
+                    // Auto-resume polling for running sync
+                    document.addEventListener('DOMContentLoaded', function() {
+                        const syncId = "{{ running_sync.sync_id }}";
+                        const button = document.querySelector('button[onclick*="syncGAMInventory"]');
+                        if (button && syncId) {
+                            // Disable both buttons
+                            document.querySelectorAll('button[onclick*="syncGAMInventory"]').forEach(btn => btn.disabled = true);
+                            // Start polling
+                            pollSyncStatus(syncId, button, button.innerHTML, null);
+                        }
+                    });
+                </script>
+                {% endif %}
 
                 <div class="form-section" style="margin-top: 1.5rem;">
                     <h3>Actions</h3>
                     <div style="display: flex; gap: 1rem;">
-                        <a href="/admin/tenant/{{ tenant_id }}/inventory?type=all" class="btn btn-secondary">
+                        <a href="{{ url_for('inventory.inventory_browser', tenant_id=tenant_id, type='all') }}" class="btn btn-secondary">
                             📊 Browse Inventory
                         </a>
-                        <a href="/admin/tenant/{{ tenant_id }}/targeting" class="btn btn-secondary">
+                        <a href="{{ url_for('inventory.targeting_browser', tenant_id=tenant_id) }}" class="btn btn-secondary">
                             🎯 Browse Targeting
                         </a>
                     </div>
@@ -1183,36 +1526,8 @@ REJECT - Creative cannot be approved:
 
         </div>
 
-        <!-- Creative Formats Settings -->
-        <div id="creatives" class="settings-section">
-            <div class="settings-header">
-                <h2>Creative Formats</h2>
-                <p>Manage accepted creative formats and auto-approval rules</p>
-            </div>
-
-            <div class="form-section">
-                <h3>Auto-Approval Settings</h3>
-                <p style="margin-bottom: 1rem; color: #6b7280; font-size: 0.875rem;">
-                    Select formats that can be automatically approved without human review
-                </p>
-
-                <div class="form-grid">
-                    {% for format in creative_formats %}
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="format_{{ format.id }}" name="auto_approve_{{ format.id }}"
-                               {% if format.auto_approve %}checked{% endif %}>
-                        <label for="format_{{ format.id }}">{{ format.name }} ({{ format.dimensions }})</label>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-
-            <div class="button-group">
-                <a href="/tenant/{{ tenant.tenant_id }}/creative-formats" class="btn btn-primary">
-                    Manage Creative Formats
-                </a>
-            </div>
-        </div>
+        <!-- Creative Formats section removed - table dropped in migration f2addf453200 -->
+        <!-- Formats are now fetched from creative agents via AdCP, not stored in local DB -->
 
         <!-- Advertisers Settings -->
         <div id="advertisers" class="settings-section">
@@ -1297,6 +1612,11 @@ REJECT - Creative cannot be approved:
                                                     onclick="copyA2AConfig('{{ principal.principal_id }}', '{{ principal.name }}', '{{ principal.access_token }}')"
                                                     title="Copy A2A Configuration">
                                                 📋 A2A
+                                            </button>
+                                            <button class="btn btn-outline-primary btn-sm"
+                                                    onclick="copyMCPConfig('{{ principal.principal_id }}', '{{ principal.name }}', '{{ principal.access_token }}')"
+                                                    title="Copy MCP Configuration">
+                                                📋 MCP
                                             </button>
                                             <button class="btn btn-outline-secondary btn-sm"
                                                     onclick="editPrincipalMappings('{{ principal.principal_id }}', '{{ principal.name }}')"
@@ -1505,6 +1825,29 @@ REJECT - Creative cannot be approved:
                         <button type="button" onclick="testSignalsConnection()" class="btn btn-secondary">Test Connection</button>
                     </div>
                 </form>
+            </div>
+
+            <div class="form-section">
+                <h3>Creative Agents</h3>
+                <p class="form-section-description">
+                    Manage creative agents that provide ad format definitions and rendering capabilities. The default AdCP creative agent is always available.
+                </p>
+
+                <div style="margin-bottom: 1rem;">
+                    <a href="{{ url_for('creative_agents.list_creative_agents', tenant_id=tenant.tenant_id) }}"
+                       class="btn btn-primary">
+                        Manage Creative Agents
+                    </a>
+                </div>
+
+                <div style="padding: 1rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;">
+                    <p style="margin: 0; color: #6b7280; font-size: 0.875rem;">
+                        💡 <strong>What are Creative Agents?</strong><br>
+                        Creative agents are external services that define ad formats (like "Display 300x250" or "Video Pre-Roll 30s")
+                        and handle creative rendering. You can add custom creative agents to support proprietary formats or
+                        integrate with specialized creative services.
+                    </p>
+                </div>
             </div>
         </div>
 
@@ -1769,6 +2112,381 @@ result = await client.tools.get_products(brief="video ads")</pre>
 </div>
 
 <script src="{{ url_for('static', filename='js/tenant_settings.js') }}"></script>
+
+<!-- Approximated DNS Widget -->
+<link rel="stylesheet" href="https://cloud.approximated.app/dnswidget/dnswidget.v1.css">
+<script src="https://cloud.approximated.app/dnswidget/dnswidget.v1.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const virtualHostInput = document.getElementById('virtual_host');
+    const dnsWidgetContainer = document.getElementById('dns-widget-container');
+    const tenantId = '{{ tenant.tenant_id }}';
+
+    let widgetInitialized = false;
+    let debounceTimer = null;
+    let dnsVerified = false;
+
+    // Function to initialize the DNS widget
+    async function initializeDNSWidget() {
+        const virtualHost = virtualHostInput.value.trim();
+        console.log('initializeDNSWidget called with domain:', virtualHost);
+
+        // Show/hide widget based on virtual host input
+        if (virtualHost) {
+            dnsWidgetContainer.style.display = 'block';
+
+            // Only initialize once
+            if (!widgetInitialized) {
+                try {
+                    // Get script name for proper URL routing
+                    const scriptName = document.getElementById('settings-config').dataset.scriptName || '';
+
+                    // Get token from our backend
+                    const response = await fetch(`${scriptName}/tenant/${tenantId}/settings/approximated-token`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        console.error('Failed to get Approximated token:', await response.text());
+                        dnsWidgetContainer.innerHTML = '<p style="color: #dc2626; font-size: 0.875rem;">❌ DNS widget unavailable. Please contact support.</p>';
+                        return;
+                    }
+
+                    const data = await response.json();
+                    console.log('Approximated token API response:', data);
+
+                    if (data.success && data.token) {
+                        console.log('Initializing DNS widget with token:', data.token.substring(0, 20) + '...');
+
+                        // Wait for widget library to be ready
+                        if (!window.apxDns) {
+                            console.error('Approximated DNS widget library not loaded');
+                            dnsWidgetContainer.innerHTML = '<p style="color: #dc2626; font-size: 0.875rem;">❌ DNS widget library not loaded.</p>';
+                            return;
+                        }
+
+                        // Initialize Approximated widget
+                        const config = {
+                            token: data.token,
+                            api_url: "https://cloud.approximated.app/api/dns",
+                            dnsRecords: [
+                                {
+                                    type: "CNAME",
+                                    host: "@",
+                                    value: "sales-agent.scope3.com",
+                                    ttl: 3600
+                                }
+                            ],
+                            domain: virtualHost,
+                            prefillDomain: virtualHost,
+                            verifyAutoScroll: true
+                        };
+
+                        window.apxDns.init(config);
+                        widgetInitialized = true;
+
+                        // Listen for widget events
+                        document.addEventListener('apx-dnswidget-records-completely-verified', function(e) {
+                            console.log('DNS records verified successfully!', e.detail);
+                            dnsVerified = true;
+
+                            // Show success message
+                            const successMessage = document.getElementById('dns-success-message');
+                            if (successMessage) {
+                                successMessage.style.display = 'block';
+                            }
+
+                            // Optionally hide the widget details to show clean success state
+                            const widgetDiv = document.getElementById('apxdnswidget');
+                            if (widgetDiv) {
+                                widgetDiv.style.display = 'none';
+                            }
+                        });
+
+                        document.addEventListener('apx-dnswidget-records-failed-verification', function(e) {
+                            console.log('DNS verification failed:', e.detail);
+                            dnsVerified = false;
+
+                            // Hide success message if shown
+                            const successMessage = document.getElementById('dns-success-message');
+                            if (successMessage) {
+                                successMessage.style.display = 'none';
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error initializing DNS widget:', error);
+                    dnsWidgetContainer.innerHTML = '<p style="color: #dc2626; font-size: 0.875rem;">❌ Error initializing DNS widget. Check console for details.</p>';
+                }
+            }
+        } else {
+            dnsWidgetContainer.style.display = 'none';
+        }
+    }
+
+    // Watch for changes to virtual host (debounced)
+    virtualHostInput.addEventListener('input', function() {
+        // Clear existing timer
+        if (debounceTimer) {
+            clearTimeout(debounceTimer);
+        }
+
+        // Set new timer - wait 500ms after user stops typing
+        debounceTimer = setTimeout(function() {
+            // Reset widget on domain change - reinitialize with new domain
+            widgetInitialized = false;
+            dnsVerified = false;
+
+            // Hide success message
+            const successMessage = document.getElementById('dns-success-message');
+            if (successMessage) {
+                successMessage.style.display = 'none';
+            }
+
+            // Clear and show widget div
+            const widgetDiv = document.getElementById('apxdnswidget');
+            if (widgetDiv) {
+                widgetDiv.innerHTML = '';
+                widgetDiv.style.display = 'block';
+            }
+
+            initializeDNSWidget();
+        }, 500);
+    });
+
+    // Initialize on page load if virtual host has a value
+    initializeDNSWidget();
+
+    // Show/hide domain registration container based on virtual host
+    function updateDomainRegistrationVisibility() {
+        const virtualHost = virtualHostInput.value.trim();
+        const domainRegistrationContainer = document.getElementById('domain-registration-container');
+
+        if (virtualHost && domainRegistrationContainer) {
+            domainRegistrationContainer.style.display = 'block';
+        } else if (domainRegistrationContainer) {
+            domainRegistrationContainer.style.display = 'none';
+        }
+    }
+
+    // Watch for virtual host changes to show/hide registration container
+    virtualHostInput.addEventListener('input', updateDomainRegistrationVisibility);
+    updateDomainRegistrationVisibility(); // Initial check
+
+    // Form submission handler - show warning if DNS not verified
+    const accountForm = document.getElementById('account-settings-form');
+    if (accountForm) {
+        accountForm.addEventListener('submit', function(e) {
+            const virtualHost = virtualHostInput.value.trim();
+            const warningBanner = document.getElementById('dns-warning-banner');
+
+            // If virtual host is set but DNS not verified, show warning
+            if (virtualHost && !dnsVerified) {
+                // Show warning banner
+                if (warningBanner) {
+                    warningBanner.style.display = 'block';
+                    // Scroll to warning
+                    warningBanner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+
+                // Prevent submission and ask for confirmation
+                e.preventDefault();
+
+                if (confirm('⚠️ DNS records have not been verified yet.\n\nYour custom domain may not work until DNS is properly configured.\n\nDo you want to save anyway?')) {
+                    // User confirmed, submit the form
+                    accountForm.submit();
+                }
+            } else {
+                // Hide warning banner if shown
+                if (warningBanner) {
+                    warningBanner.style.display = 'none';
+                }
+            }
+        });
+    }
+});
+
+// Domain Registration Functions (defined globally for onclick handlers)
+async function checkDomainRegistrationStatus() {
+    const virtualHostInput = document.getElementById('virtual_host');
+    const domain = virtualHostInput.value.trim();
+
+    if (!domain) {
+        alert('Please enter a domain first');
+        return;
+    }
+
+    const statusIcon = document.getElementById('domain-status-icon');
+    const statusText = document.getElementById('domain-status-text');
+    const statusDetails = document.getElementById('domain-status-details');
+    const registerBtn = document.getElementById('register-domain-btn');
+    const unregisterBtn = document.getElementById('unregister-domain-btn');
+    const checkBtn = document.getElementById('check-domain-status-btn');
+
+    // Show loading state
+    statusIcon.textContent = '⏳';
+    statusText.textContent = 'Checking status...';
+    statusDetails.textContent = '';
+    checkBtn.disabled = true;
+
+    try {
+        const scriptName = document.getElementById('settings-config').dataset.scriptName || '';
+        const tenantId = document.getElementById('settings-config').dataset.tenantId;
+
+        const response = await fetch(`${scriptName}/tenant/${tenantId}/settings/approximated-domain-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain: domain })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            if (data.registered) {
+                // Domain is registered
+                statusIcon.textContent = '✅';
+                statusText.textContent = 'Domain Registered';
+
+                let details = [];
+                if (data.ssl_active) {
+                    details.push('HTTPS/TLS active');
+                } else if (data.tls_enabled) {
+                    details.push('TLS certificate pending (wait 1-2 minutes)');
+                } else {
+                    details.push('TLS not yet active');
+                }
+
+                if (data.target_address) {
+                    details.push(`Backend: ${data.target_address}`);
+                }
+
+                if (data.status) {
+                    details.push(`Status: ${data.status}`);
+                }
+
+                statusDetails.textContent = details.join(' • ');
+                registerBtn.style.display = 'none';
+                unregisterBtn.style.display = 'inline-block';
+            } else {
+                // Domain not registered
+                statusIcon.textContent = '❌';
+                statusText.textContent = 'Domain Not Registered';
+                statusDetails.textContent = 'Click "Register Domain" to enable HTTPS/TLS';
+                registerBtn.style.display = 'inline-block';
+                unregisterBtn.style.display = 'none';
+            }
+        } else {
+            statusIcon.textContent = '⚠️';
+            statusText.textContent = 'Check Failed';
+            statusDetails.textContent = data.error || 'Unknown error';
+            registerBtn.style.display = 'none';
+            unregisterBtn.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error checking domain status:', error);
+        statusIcon.textContent = '⚠️';
+        statusText.textContent = 'Error';
+        statusDetails.textContent = error.message;
+        registerBtn.style.display = 'none';
+        unregisterBtn.style.display = 'none';
+    } finally {
+        checkBtn.disabled = false;
+    }
+}
+
+async function registerDomain() {
+    const virtualHostInput = document.getElementById('virtual_host');
+    const domain = virtualHostInput.value.trim();
+
+    if (!domain) {
+        alert('Please enter a domain first');
+        return;
+    }
+
+    if (!confirm(`Register domain ${domain}?\n\nThis will:\n• Issue HTTPS/TLS certificate\n• Enable traffic routing\n• Take 1-2 minutes to complete`)) {
+        return;
+    }
+
+    const registerBtn = document.getElementById('register-domain-btn');
+    registerBtn.disabled = true;
+    registerBtn.textContent = 'Registering...';
+
+    try {
+        const scriptName = document.getElementById('settings-config').dataset.scriptName || '';
+        const tenantId = document.getElementById('settings-config').dataset.tenantId;
+
+        const response = await fetch(`${scriptName}/tenant/${tenantId}/settings/approximated-register-domain`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain: domain })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`✅ ${data.message}\n\nWait 1-2 minutes for TLS certificate to be issued.`);
+            // Refresh status
+            await checkDomainRegistrationStatus();
+        } else {
+            alert(`❌ Registration failed:\n${data.error}`);
+        }
+    } catch (error) {
+        console.error('Error registering domain:', error);
+        alert(`❌ Error: ${error.message}`);
+    } finally {
+        registerBtn.disabled = false;
+        registerBtn.textContent = 'Register Domain';
+    }
+}
+
+async function unregisterDomain() {
+    const virtualHostInput = document.getElementById('virtual_host');
+    const domain = virtualHostInput.value.trim();
+
+    if (!domain) {
+        alert('Please enter a domain first');
+        return;
+    }
+
+    if (!confirm(`⚠️ Unregister domain ${domain}?\n\nThis will:\n• Remove HTTPS/TLS certificate\n• Stop traffic routing\n• Domain will stop working\n\nAre you sure?`)) {
+        return;
+    }
+
+    const unregisterBtn = document.getElementById('unregister-domain-btn');
+    unregisterBtn.disabled = true;
+    unregisterBtn.textContent = 'Unregistering...';
+
+    try {
+        const scriptName = document.getElementById('settings-config').dataset.scriptName || '';
+        const tenantId = document.getElementById('settings-config').dataset.tenantId;
+
+        const response = await fetch(`${scriptName}/tenant/${tenantId}/settings/approximated-unregister-domain`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain: domain })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`✅ ${data.message}`);
+            // Refresh status
+            await checkDomainRegistrationStatus();
+        } else {
+            alert(`❌ Unregistration failed:\n${data.error}`);
+        }
+    } catch (error) {
+        console.error('Error unregistering domain:', error);
+        alert(`❌ Error: ${error.message}`);
+    } finally {
+        unregisterBtn.disabled = false;
+        unregisterBtn.textContent = 'Unregister Domain';
+    }
+}
+</script>
 
 <!-- Edit Principal Mappings Modal -->
 <div class="modal fade" id="editPrincipalModal" tabindex="-1" aria-labelledby="editPrincipalModalLabel" aria-hidden="true">

@@ -22,16 +22,20 @@ class GAMAuthManager:
 
         Args:
             config: Dictionary containing authentication configuration:
-                - refresh_token: OAuth refresh token (preferred)
+                - refresh_token: OAuth refresh token
+                - service_account_json: Service account credentials as JSON string
                 - service_account_key_file: Path to service account JSON file (legacy)
         """
         self.config = config
         self.refresh_token = config.get("refresh_token")
+        self.service_account_json = config.get("service_account_json")
         self.key_file = config.get("service_account_key_file")
 
         # Validate that we have at least one authentication method
-        if not self.refresh_token and not self.key_file:
-            raise ValueError("GAM config requires either 'refresh_token' or 'service_account_key_file'")
+        if not self.refresh_token and not self.service_account_json and not self.key_file:
+            raise ValueError(
+                "GAM config requires either 'refresh_token', 'service_account_json', or 'service_account_key_file'"
+            )
 
     def get_credentials(self):
         """Get authenticated credentials for GAM API.
@@ -46,7 +50,7 @@ class GAMAuthManager:
         try:
             if self.refresh_token:
                 return self._get_oauth_credentials()
-            elif self.key_file:
+            elif self.service_account_json or self.key_file:
                 return self._get_service_account_credentials()
             else:
                 raise ValueError("No valid authentication method configured")
@@ -75,11 +79,33 @@ class GAMAuthManager:
         return oauth2_client
 
     def _get_service_account_credentials(self):
-        """Get service account credentials from JSON key file (legacy)."""
-        credentials = google.oauth2.service_account.Credentials.from_service_account_file(
-            self.key_file, scopes=["https://www.googleapis.com/auth/dfp"]
-        )
-        return credentials
+        """Get service account credentials from JSON string or file.
+
+        Supports both direct JSON string (preferred for cloud deployments)
+        and file path (legacy).
+        """
+        import json
+
+        if self.service_account_json:
+            # Parse JSON string directly
+            try:
+                key_data = json.loads(self.service_account_json)
+                credentials = google.oauth2.service_account.Credentials.from_service_account_info(
+                    key_data, scopes=["https://www.googleapis.com/auth/dfp"]
+                )
+                logger.info("Using service account credentials from JSON string")
+                return credentials
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid service account JSON: {e}") from e
+        elif self.key_file:
+            # Legacy: Load from file
+            credentials = google.oauth2.service_account.Credentials.from_service_account_file(
+                self.key_file, scopes=["https://www.googleapis.com/auth/dfp"]
+            )
+            logger.info(f"Using service account credentials from file: {self.key_file}")
+            return credentials
+        else:
+            raise ValueError("No service account credentials configured")
 
     def is_oauth_configured(self) -> bool:
         """Check if OAuth authentication is configured."""
@@ -87,7 +113,7 @@ class GAMAuthManager:
 
     def is_service_account_configured(self) -> bool:
         """Check if service account authentication is configured."""
-        return self.key_file is not None
+        return self.service_account_json is not None or self.key_file is not None
 
     def get_auth_method(self) -> str:
         """Get the current authentication method name."""

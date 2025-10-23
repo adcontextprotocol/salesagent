@@ -61,12 +61,14 @@ class GAMSyncManager:
 
         logger.info(f"Initialized GAMSyncManager for tenant {tenant_id} (dry_run: {dry_run})")
 
-    def sync_inventory(self, db_session: Session, force: bool = False) -> dict[str, Any]:
+    def sync_inventory(self, db_session: Session, force: bool = False, fetch_custom_targeting_values: bool = False, custom_targeting_limit: int = 1000) -> dict[str, Any]:
         """Synchronize inventory data from GAM to database.
 
         Args:
             db_session: Database session for persistence
             force: Force sync even if recent sync exists
+            fetch_custom_targeting_values: Whether to fetch custom targeting values (default False for lazy loading)
+            custom_targeting_limit: Maximum number of values per custom targeting key (only used if fetch_custom_targeting_values=True)
 
         Returns:
             Sync summary with timing and results
@@ -104,8 +106,11 @@ class GAMSyncManager:
                 }
                 logger.info("[DRY RUN] Simulated inventory sync completed")
             else:
-                # Perform actual inventory sync
-                summary = self.inventory_manager.sync_all_inventory()
+                # Perform actual inventory sync with custom targeting parameters
+                summary = self.inventory_manager.sync_all_inventory(
+                    custom_targeting_limit=custom_targeting_limit,
+                    fetch_values=fetch_custom_targeting_values
+                )
 
                 # Save inventory to database - this would be delegated to inventory service
                 from src.services.gam_inventory_service import GAMInventoryService
@@ -215,12 +220,13 @@ class GAMSyncManager:
 
             raise
 
-    def sync_full(self, db_session: Session, force: bool = False) -> dict[str, Any]:
+    def sync_full(self, db_session: Session, force: bool = False, custom_targeting_limit: int = 1000) -> dict[str, Any]:
         """Perform full synchronization of both inventory and orders.
 
         Args:
             db_session: Database session for persistence
             force: Force sync even if recent sync exists
+            custom_targeting_limit: Maximum number of values per custom targeting key (default 1000)
 
         Returns:
             Combined sync summary
@@ -242,8 +248,8 @@ class GAMSyncManager:
                 "dry_run": self.dry_run,
             }
 
-            # Sync inventory first
-            inventory_result = self.sync_inventory(db_session, force=True)
+            # Sync inventory first with custom targeting limit
+            inventory_result = self.sync_inventory(db_session, force=True, custom_targeting_limit=custom_targeting_limit)
             combined_summary["inventory"] = inventory_result.get("summary", {})
 
             # Then sync orders
@@ -269,6 +275,87 @@ class GAMSyncManager:
 
         except Exception as e:
             logger.error(f"Full sync failed for tenant {self.tenant_id}: {e}", exc_info=True)
+
+            # Update sync job with error
+            sync_job.status = "failed"
+            sync_job.completed_at = datetime.now(UTC)
+            sync_job.error_message = str(e)
+            db_session.commit()
+
+            raise
+
+    def sync_selective(
+        self,
+        db_session: Session,
+        sync_types: list[str],
+        custom_targeting_limit: int = 1000,
+        audience_segment_limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Perform selective synchronization of specific inventory types.
+
+        Args:
+            db_session: Database session for persistence
+            sync_types: List of inventory types to sync (ad_units, placements, labels, custom_targeting, audience_segments)
+            custom_targeting_limit: Maximum number of values per custom targeting key (default 1000)
+            audience_segment_limit: Maximum number of audience segments to sync (None = unlimited)
+
+        Returns:
+            Sync summary with timing and results
+        """
+        logger.info(f"Starting selective sync for tenant {self.tenant_id}: {sync_types}")
+
+        # Create sync job
+        sync_job = self._create_sync_job(db_session, "selective", "api")
+
+        try:
+            # Update status to running
+            sync_job.status = "running"
+            db_session.commit()
+
+            start_time = datetime.now()
+
+            if self.dry_run:
+                # Simulate selective sync in dry-run mode
+                summary = {
+                    "tenant_id": self.tenant_id,
+                    "sync_time": start_time.isoformat(),
+                    "dry_run": True,
+                    "sync_types": sync_types,
+                    "duration_seconds": 0,
+                }
+                logger.info("[DRY RUN] Simulated selective sync completed")
+            else:
+                # Get discovery instance
+                discovery = self.inventory_manager._get_discovery()
+
+                # Perform selective sync using the discovery's sync_selective method
+                summary = discovery.sync_selective(
+                    sync_types=sync_types,
+                    custom_targeting_limit=custom_targeting_limit,
+                    audience_segment_limit=audience_segment_limit,
+                )
+
+                # Save inventory to database
+                from src.services.gam_inventory_service import GAMInventoryService
+
+                inventory_service = GAMInventoryService(db_session)
+                inventory_service._save_inventory_to_db(self.tenant_id, discovery)
+
+            # Update sync job with results
+            sync_job.status = "completed"
+            sync_job.completed_at = datetime.now(UTC)
+            sync_job.summary = json.dumps(summary)
+            db_session.commit()
+
+            logger.info(f"Selective sync completed for tenant {self.tenant_id}: {summary}")
+            return {
+                "sync_id": sync_job.sync_id,
+                "status": "completed",
+                "summary": summary,
+            }
+
+        except Exception as e:
+            logger.error(f"Selective sync failed for tenant {self.tenant_id}: {e}", exc_info=True)
 
             # Update sync job with error
             sync_job.status = "failed"

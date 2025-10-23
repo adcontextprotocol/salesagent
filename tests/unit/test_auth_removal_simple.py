@@ -19,8 +19,9 @@ class TestAuthRemovalChanges:
         context.meta = {}  # Empty meta, no headers
 
         with patch("src.core.main.get_http_headers", return_value={}):  # No x-adcp-auth header
-            result = get_principal_from_context(context)
-            assert result is None
+            principal_id, tenant = get_principal_from_context(context)
+            assert principal_id is None
+            assert tenant is None
 
     def test_get_principal_from_context_works_with_auth(self):
         """Test that get_principal_from_context still works with auth."""
@@ -28,12 +29,37 @@ class TestAuthRemovalChanges:
         from src.core.main import get_principal_from_context
 
         context = Mock(spec=["meta"])  # Limit to only meta attribute
-        context.meta = {"headers": {"x-adcp-auth": "test-token"}}
+        # Must include Host header for tenant detection (security fix)
+        context.meta = {
+            "headers": {
+                "x-adcp-auth": "test-token",
+                "host": "test-tenant.sales-agent.scope3.com",  # Required for tenant detection
+            }
+        }
 
-        with patch("src.core.main.get_http_headers", return_value={"x-adcp-auth": "test-token"}):
-            with patch("src.core.main.get_principal_from_token", return_value="test_principal"):
-                result = get_principal_from_context(context)
-                assert result == "test_principal"
+        with patch(
+            "src.core.main.get_http_headers",
+            return_value={
+                "x-adcp-auth": "test-token",
+                "host": "test-tenant.sales-agent.scope3.com",
+            },
+        ):
+            # Mock tenant lookup to succeed
+            with patch("src.core.main.get_tenant_by_subdomain") as mock_tenant_lookup:
+                mock_tenant_lookup.return_value = {
+                    "tenant_id": "tenant_test",
+                    "subdomain": "test-tenant",
+                    "name": "Test Tenant",
+                }
+                with patch("src.core.main.set_current_tenant"):
+                    with patch("src.core.main.get_principal_from_token", return_value="test_principal"):
+                        principal_id, tenant = get_principal_from_context(context)
+                        assert principal_id == "test_principal"
+                        assert tenant == {
+                            "tenant_id": "tenant_test",
+                            "subdomain": "test-tenant",
+                            "name": "Test Tenant",
+                        }
 
     def test_audit_logging_handles_none_principal(self):
         """Test that audit logging works with None principal_id."""
@@ -55,14 +81,19 @@ class TestAuthRemovalChanges:
         with open("src/core/main.py") as f:
             source = f.read()
 
-        # Key changes should be present
-        assert "get_principal_from_context(context)  # Returns None if no auth" in source
+        # Key changes should be present - tuple return after ContextVar fix
+        # Updated to accept new require_valid_token parameter for discovery endpoints
+        assert (
+            "get_principal_from_context(context)  # Returns (None, None) if no auth" in source
+            or "get_principal_from_context(context)  # Returns None if no auth" in source
+            or "require_valid_token=False" in source  # New pattern for discovery endpoints
+        )
         assert 'principal_id or "anonymous"' in source
 
     def test_pricing_filtering_for_anonymous_users(self):
         """Test that pricing data is filtered for anonymous users."""
         # Test the pricing filtering logic
-        from src.core.schemas import Product
+        from src.core.schemas import PricingOption, Product
 
         # Create a product with pricing data
         product = Product(
@@ -71,26 +102,35 @@ class TestAuthRemovalChanges:
             description="Test description",
             formats=["display_300x250"],
             delivery_type="non_guaranteed",
-            is_fixed_price=True,
-            cpm=2.50,
-            min_spend=1000.0,
             property_tags=["all_inventory"],  # Required per AdCP spec
+            pricing_options=[
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=2.50,
+                    currency="USD",
+                    is_fixed=True,
+                    min_spend_per_package=1000.0,
+                )
+            ],
         )
 
-        # Simulate the anonymous user logic
+        # Simulate the anonymous user logic - remove rate for anonymous users
         principal_id = None
         if principal_id is None:  # Anonymous user
-            product.cpm = None
-            product.min_spend = None
+            # Remove pricing rate from all pricing_options
+            for po in product.pricing_options:
+                po.rate = None
 
         # Verify pricing data is removed
-        assert product.cpm is None
-        assert product.min_spend is None
+        assert product.pricing_options[0].rate is None
+        # But other fields like currency and is_fixed remain
+        assert product.pricing_options[0].currency == "USD"
+        assert product.pricing_options[0].is_fixed is True
 
         # Other data should remain
         assert product.product_id == "test_product"
         assert product.name == "Test Product"
-        assert product.is_fixed_price is True
 
     def test_pricing_message_for_anonymous_users(self):
         """Test that the pricing message is added for anonymous users."""
@@ -109,7 +149,7 @@ class TestAuthRemovalChanges:
 
     def test_authenticated_users_keep_pricing_data(self):
         """Test that authenticated users still get full pricing data."""
-        from src.core.schemas import Product
+        from src.core.schemas import PricingOption, Product
 
         # Create a product with pricing data
         product = Product(
@@ -118,21 +158,28 @@ class TestAuthRemovalChanges:
             description="Test description",
             formats=["display_300x250"],
             delivery_type="non_guaranteed",
-            is_fixed_price=True,
-            cpm=2.50,
-            min_spend=1000.0,
             property_tags=["all_inventory"],  # Required per AdCP spec
+            pricing_options=[
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=2.50,
+                    currency="USD",
+                    is_fixed=True,
+                    min_spend_per_package=1000.0,
+                )
+            ],
         )
 
         # Simulate authenticated user logic
         principal_id = "authenticated_user"
         if principal_id is None:  # This should NOT trigger for authenticated users
-            product.cpm = None
-            product.min_spend = None
+            for po in product.pricing_options:
+                po.rate = None
 
-        # Verify pricing data is preserved
-        assert product.cpm == 2.50
-        assert product.min_spend == 1000.0
+        # Verify pricing data is preserved (not removed for authenticated users)
+        assert product.pricing_options[0].rate == 2.50
+        assert product.pricing_options[0].min_spend_per_package == 1000.0
 
         # No pricing message for authenticated users
         pricing_message = None

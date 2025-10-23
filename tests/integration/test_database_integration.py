@@ -54,42 +54,22 @@ def test_settings_queries():
             print(f"   ❌ ERROR: {e}")
             errors.append(f"Products query: {e}")
 
-        # Test 3: Creative formats query (the problematic one)
-        print("\n3. Testing creative formats query...")
+        # Test 3: Creatives query (creative_formats table was dropped in migration f2addf453200)
+        print("\n3. Testing creatives query...")
         try:
-            # First check what columns actually exist
             cursor.execute(
                 """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name = 'creative_formats'
-            """
-            )
-            columns = [row[0] for row in cursor.fetchall()]
-            print(f"   Available columns: {', '.join(columns)}")
-
-            # Try the query that was failing
-            cursor.execute(
-                """
-                SELECT format_id, name, width, height
-                FROM creative_formats
-                WHERE tenant_id = %s OR tenant_id IS NULL
-                ORDER BY name
+                SELECT COUNT(*)
+                FROM creatives
+                WHERE tenant_id = %s
             """,
                 (tenant_id,),
             )
-            formats = cursor.fetchall()
-            print(f"   ✓ Creative formats found: {len(formats)}")
-
-            # Check if auto_approve column exists
-            if "auto_approve" in columns:
-                print("   ✓ auto_approve column exists")
-            else:
-                print("   ⚠️  auto_approve column DOES NOT exist (this was the bug!)")
-
+            count = cursor.fetchone()[0]
+            print(f"   ✓ Creatives count: {count}")
         except Exception as e:
             print(f"   ❌ ERROR: {e}")
-            errors.append(f"Creative formats query: {e}")
+            errors.append(f"Creatives query: {e}")
 
         # Test 4: Media buys with date query
         print("\n4. Testing media buys date query...")

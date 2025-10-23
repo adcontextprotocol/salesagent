@@ -16,6 +16,10 @@ gam_ad_units.json
 client_secret*.json
 credentials*.json
 
+# GCP Service Account Keys
+*-key.json
+adcp-manager-key.json
+
 # Build artifacts
 *.egg-info/
 *.egg-info
@@ -44,6 +48,12 @@ Thumbs.db
 
 # Python
 *.pyc
+
+# Diagnostic scripts (one-off debugging tools)
+check_*.py
+diagnose_*.py
+fix_*.py
+test_sync.py
 *.pyo
 *.pyd
 .Python
@@ -91,7 +101,4 @@ test_*.db
 test_*.db-*
 test_*[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]/
 .env.test
-
-# Schema cache metadata (ETag tracking)
-# Don't commit .meta files - they're local cache metadata
-tests/e2e/schemas/**/*.meta
+test_sync.py

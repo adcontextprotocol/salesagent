@@ -6,8 +6,8 @@ management using environment variables.
 
 import os
 
-from pydantic import ConfigDict, Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class GAMOAuthConfig(BaseSettings):
@@ -16,7 +16,7 @@ class GAMOAuthConfig(BaseSettings):
     client_id: str = Field(default="", description="GAM OAuth Client ID from Google Cloud Console")
     client_secret: str = Field(default="", description="GAM OAuth Client Secret from Google Cloud Console")
 
-    model_config = ConfigDict(env_prefix="GAM_OAUTH_", case_sensitive=False)
+    model_config = SettingsConfigDict(env_prefix="GAM_OAUTH_", case_sensitive=False)
 
     @field_validator("client_id")
     @classmethod
@@ -45,7 +45,7 @@ class DatabaseConfig(BaseSettings):
     url: str | None = Field(default=None, description="Database connection URL")
     type: str = Field(default="postgresql", description="Database type")
 
-    model_config = ConfigDict(env_prefix="DATABASE_", case_sensitive=False)
+    model_config = SettingsConfigDict(env_prefix="DATABASE_", case_sensitive=False)
 
 
 class ServerConfig(BaseSettings):
@@ -55,7 +55,7 @@ class ServerConfig(BaseSettings):
     admin_ui_port: int = Field(default=8001, description="Admin UI port")
     a2a_port: int = Field(default=8091, description="A2A server port")
 
-    model_config = ConfigDict(env_prefix="", case_sensitive=False)
+    model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
 
 class GoogleOAuthConfig(BaseSettings):
@@ -65,7 +65,7 @@ class GoogleOAuthConfig(BaseSettings):
     client_secret: str | None = Field(default=None, description="Google OAuth Client Secret")
     credentials_file: str | None = Field(default=None, description="Path to Google OAuth credentials file")
 
-    model_config = ConfigDict(env_prefix="GOOGLE_", case_sensitive=False)
+    model_config = SettingsConfigDict(env_prefix="GOOGLE_", case_sensitive=False)
 
 
 class SuperAdminConfig(BaseSettings):
@@ -74,7 +74,7 @@ class SuperAdminConfig(BaseSettings):
     emails: str = Field(..., description="Comma-separated list of super admin emails")
     domains: str | None = Field(default=None, description="Comma-separated list of super admin domains")
 
-    model_config = ConfigDict(env_prefix="SUPER_ADMIN_", case_sensitive=False)
+    model_config = SettingsConfigDict(env_prefix="SUPER_ADMIN_", case_sensitive=False)
 
     @property
     def email_list(self) -> list[str]:
@@ -102,9 +102,9 @@ class AppConfig(BaseSettings):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     google_oauth: GoogleOAuthConfig = Field(default_factory=GoogleOAuthConfig)
-    superadmin: SuperAdminConfig = Field(default_factory=SuperAdminConfig)
+    superadmin: SuperAdminConfig = Field(default_factory=SuperAdminConfig)  # type: ignore[arg-type]
 
-    model_config = ConfigDict(env_prefix="", case_sensitive=False)
+    model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
 
 # Global configuration instance
@@ -115,7 +115,7 @@ def get_config() -> AppConfig:
     """Get the global configuration instance."""
     global _config
     if _config is None:
-        _config = AppConfig()
+        _config = AppConfig()  # type: ignore[call-arg]
     return _config
 
 

@@ -73,7 +73,20 @@ class TestConfiguration:
     @pytest.mark.smoke
     def test_config_loader_works(self, test_database):
         """Test that config loader can be imported and used."""
-        from src.core.config_loader import load_config
+        from src.core.config_loader import load_config, set_current_tenant
+
+        # Set a minimal tenant context for testing
+        set_current_tenant(
+            {
+                "tenant_id": "test_tenant",
+                "name": "Test Tenant",
+                "ad_server": "mock",
+                "auto_approve_formats": [],
+                "human_review_required": True,
+                "max_daily_budget": 10000,
+                "enable_axe_signals": True,
+            }
+        )
 
         # Should not raise an error
         config = load_config()

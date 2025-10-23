@@ -6,6 +6,7 @@ for Google Ad Manager orders.
 """
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -250,10 +251,11 @@ class GAMOrdersManager:
         end_time: datetime,
         targeting: dict[str, Any],
         products_map: dict[str, Any],
-        log_func: callable = None,
-        tenant_id: str = None,
-        order_name: str = None,
-        targeting_overlay: Any = None,
+        log_func: Callable | None = None,
+        tenant_id: str | None = None,
+        order_name: str | None = None,
+        targeting_overlay: Any | None = None,
+        package_pricing_info: dict[str, dict] | None = None,
     ) -> list[str]:
         """Create line items for an order.
 
@@ -268,6 +270,8 @@ class GAMOrdersManager:
             tenant_id: Tenant ID for fetching naming templates
             order_name: Order name for line item naming context
             targeting_overlay: Original AdCP targeting overlay for frequency caps, etc.
+            package_pricing_info: Optional pricing info per package (AdCP PR #88)
+                Maps package_id → {pricing_model, rate, currency, is_fixed, bid_price}
 
         Returns:
             List of created line item IDs
@@ -291,15 +295,18 @@ class GAMOrdersManager:
         # Get line item naming template from adapter config
         line_item_name_template = "{product_name}"  # Default
         if tenant_id:
+            from sqlalchemy import select
+
             from src.core.database.database_session import get_db_session
             from src.core.database.models import AdapterConfig
 
             with get_db_session() as db_session:
-                adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+                stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
+                adapter_config = db_session.scalars(stmt).first()
                 if adapter_config and adapter_config.gam_line_item_name_template:
-                    line_item_name_template = adapter_config.gam_line_item_name_template
+                    line_item_name_template = adapter_config.gam_line_item_name_template  # type: ignore[assignment]
 
-        created_line_item_ids = []
+        created_line_item_ids: list[str] = []
         flight_duration_days = (end_time - start_time).days
 
         for package_index, package in enumerate(packages, start=1):
@@ -314,9 +321,24 @@ class GAMOrdersManager:
             if impl_config.get("targeted_ad_unit_ids"):
                 if "inventoryTargeting" not in line_item_targeting:
                     line_item_targeting["inventoryTargeting"] = {}
+
+                # Validate ad unit IDs are numeric (GAM requires numeric IDs, not codes/names)
+                ad_unit_ids = impl_config["targeted_ad_unit_ids"]
+                invalid_ids = [id for id in ad_unit_ids if not str(id).isdigit()]
+                if invalid_ids:
+                    error_msg = (
+                        f"Product '{package.package_id}' has invalid ad unit IDs: {invalid_ids}. "
+                        f"GAM requires numeric ad unit IDs (e.g., '23312403859'), not ad unit codes or names. "
+                        f"\n\nInvalid values found: {', '.join(str(id) for id in invalid_ids)}"
+                        f"\n\nTo fix: Update the product's targeted_ad_unit_ids to use numeric IDs from GAM."
+                        f"\nFind IDs in GAM Admin UI → Inventory → Ad Units (the numeric ID column)."
+                    )
+                    log(f"[red]Error: {error_msg}[/red]")
+                    raise ValueError(error_msg)
+
                 line_item_targeting["inventoryTargeting"]["targetedAdUnits"] = [
                     {"adUnitId": ad_unit_id, "includeDescendants": impl_config.get("include_descendants", True)}
-                    for ad_unit_id in impl_config["targeted_ad_unit_ids"]
+                    for ad_unit_id in ad_unit_ids
                 ]
 
             if impl_config.get("targeted_placement_ids"):
@@ -329,8 +351,13 @@ class GAMOrdersManager:
             # Require inventory targeting - no fallback
             if "inventoryTargeting" not in line_item_targeting or not line_item_targeting["inventoryTargeting"]:
                 error_msg = (
-                    f"Product {package.package_id} is not configured with inventory targeting. "
-                    f"Please configure 'targeted_ad_unit_ids' or 'targeted_placement_ids' in the product's implementation_config."
+                    f"Product '{package.package_id}' is not configured with inventory targeting. "
+                    f"GAM requires all line items to target specific ad units or placements. "
+                    f"\n\nTo fix this product, add one of the following to implementation_config:"
+                    f"\n  - 'targeted_ad_unit_ids': ['your_ad_unit_id'] (list of GAM ad unit IDs)"
+                    f"\n  - 'targeted_placement_ids': ['your_placement_id'] (list of GAM placement IDs)"
+                    f"\n\nYou can find ad unit IDs in GAM Admin UI → Inventory → Ad Units"
+                    f"\n\nFor testing, you can use Mock adapter instead of GAM (set ad_server='mock' on tenant)."
                 )
                 log(f"[red]Error: {error_msg}[/red]")
                 raise ValueError(error_msg)
@@ -506,16 +533,70 @@ class GAMOrdersManager:
                 full_line_item_name, GAM_NAME_LIMITS["max_line_item_name_length"]
             )
 
+            # Determine pricing configuration - use package_pricing_info if available, else fallback
+            pricing_info = package_pricing_info.get(package.package_id) if package_pricing_info else None
+
+            if pricing_info:
+                # Use pricing info from AdCP request (AdCP PR #88)
+                from src.adapters.gam.pricing_compatibility import PricingCompatibility
+
+                pricing_model = pricing_info["pricing_model"]
+                rate = pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                currency = pricing_info["currency"]
+                is_guaranteed = pricing_info["is_fixed"]
+
+                # Map AdCP pricing model to GAM cost type
+                gam_cost_type = PricingCompatibility.get_gam_cost_type(pricing_model)
+
+                # For FLAT_RATE, calculate CPD rate (total budget / days)
+                if pricing_model == "flat_rate":
+                    rate_per_day = rate / max(flight_duration_days, 1)
+                    log(f"  FLAT_RATE pricing: ${rate:,.2f} total → ${rate_per_day:,.2f} per day (CPD)")
+                    cost_type = "CPD"
+                    cost_per_unit_micro = int(rate_per_day * 1_000_000)
+                else:
+                    cost_type = gam_cost_type
+                    cost_per_unit_micro = int(rate * 1_000_000)
+
+                # Select appropriate line item type based on pricing + guarantees
+                line_item_type = PricingCompatibility.select_line_item_type(pricing_model, is_guaranteed)
+                priority = PricingCompatibility.get_default_priority(line_item_type)
+
+                # Update goal units based on pricing model
+                if pricing_model == "cpc":
+                    # CPC: goal should be in clicks, not impressions
+                    goal_unit_type = "CLICKS"
+                    # Keep goal_units as-is (package.impressions serves as click goal)
+                elif pricing_model == "vcpm":
+                    # VCPM: goal should be in viewable impressions
+                    goal_unit_type = "VIEWABLE_IMPRESSIONS"
+                    # Keep goal_units as-is (package.impressions serves as viewable impression goal)
+                else:
+                    # CPM, FLAT_RATE: use impressions (already set above)
+                    pass
+
+                log(
+                    f"  Package pricing: {pricing_model.upper()} @ ${rate:,.2f} {currency} "
+                    f"→ GAM {cost_type} @ ${rate:,.2f}, line_item_type={line_item_type}, priority={priority}"
+                )
+            else:
+                # Fallback to product config (legacy behavior)
+                line_item_type = impl_config.get("line_item_type", "STANDARD")
+                priority = impl_config.get("priority", 8)
+                cost_type = impl_config.get("cost_type", "CPM")
+                currency = "USD"
+                cost_per_unit_micro = int(package.cpm * 1_000_000)
+
             # Build line item object
             line_item = {
                 "name": line_item_name,
                 "orderId": int(order_id),
                 "targeting": line_item_targeting,
                 "creativePlaceholders": creative_placeholders,
-                "lineItemType": impl_config.get("line_item_type", "STANDARD"),
-                "priority": impl_config.get("priority", 8),
-                "costType": impl_config.get("cost_type", "CPM"),
-                "costPerUnit": {"currencyCode": "USD", "microAmount": int(package.cpm * 1_000_000)},
+                "lineItemType": line_item_type,
+                "priority": priority,
+                "costType": cost_type,
+                "costPerUnit": {"currencyCode": currency, "microAmount": cost_per_unit_micro},
                 "primaryGoal": {
                     "goalType": goal_type,
                     "unitType": goal_unit_type,

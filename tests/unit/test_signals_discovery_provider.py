@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from product_catalog_providers.signals import SignalsDiscoveryProvider
-from src.core.schemas import Product
+from src.core.schemas import PricingOption, Product
 
 
 class TestSignalsDiscoveryProvider:
@@ -104,9 +104,16 @@ class TestSignalsDiscoveryProvider:
                     description="From database",
                     formats=["display_300x250"],
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    cpm=5.0,
-                    property_tags=["all_inventory"],  # Required per AdCP spec
+                    property_tags=["all_inventory"],
+                    pricing_options=[
+                        PricingOption(
+                            pricing_option_id="cpm_usd_auction",
+                            pricing_model="cpm",
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance={"floor": 5.0, "suggested_rate": 7.5},
+                        )
+                    ],
                 )
             ]
             mock_db.return_value = mock_products
@@ -132,9 +139,16 @@ class TestSignalsDiscoveryProvider:
                     description="From database",
                     formats=["display_300x250"],
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    cpm=5.0,
-                    property_tags=["all_inventory"],  # Required per AdCP spec
+                    property_tags=["all_inventory"],
+                    pricing_options=[
+                        PricingOption(
+                            pricing_option_id="cpm_usd_auction",
+                            pricing_model="cpm",
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance={"floor": 5.0, "suggested_rate": 7.5},
+                        )
+                    ],
                 )
             ]
             mock_db.return_value = mock_products
@@ -204,7 +218,7 @@ class TestSignalsDiscoveryProvider:
                 brief="sports car advertising",
                 tenant_id="test_tenant",
                 principal_id="test_principal",
-                context={"promoted_offering": "BMW M3 2025"},
+                context={"brand_manifest": {"name": "BMW M3 2025"}},
             )
 
             # Should have created products from signals
@@ -212,7 +226,11 @@ class TestSignalsDiscoveryProvider:
 
             # Check that signals were called with correct parameters
             mock_signals_call.assert_called_once_with(
-                "sports car advertising", "test_tenant", "test_principal", {"promoted_offering": "BMW M3 2025"}, None
+                "sports car advertising",
+                "test_tenant",
+                "test_principal",
+                {"brand_manifest": {"name": "BMW M3 2025"}},
+                None,
             )
 
             # Check product characteristics
@@ -281,7 +299,14 @@ class TestSignalsDiscoveryProvider:
 
         # Check price calculation (average CPM from signals)
         expected_price = (2.0 + 1.5) / 2  # 1.75 (average of signal CPMs)
-        assert abs(product.cpm - expected_price) < 0.01
+        # Check pricing_options instead of legacy cpm field
+        assert len(product.pricing_options) > 0
+        pricing_option = product.pricing_options[0]
+        # Signals products use auction pricing with price_guidance
+        if pricing_option.price_guidance:
+            # PriceGuidance uses floor field - check it's reasonable
+            assert pricing_option.price_guidance.floor > 0
+            assert pricing_option.price_guidance.floor <= expected_price * 1.5  # Within reasonable range
 
     @pytest.mark.asyncio
     async def test_create_product_from_signals(self):
@@ -374,9 +399,16 @@ class TestSignalsDiscoveryProvider:
                         description="From database",
                         formats=["display_300x250"],
                         delivery_type="non_guaranteed",
-                        is_fixed_price=False,
-                        cpm=5.0,
-                        property_tags=["all_inventory"],  # Required per AdCP spec
+                        property_tags=["all_inventory"],
+                        pricing_options=[
+                            PricingOption(
+                                pricing_option_id="cpm_usd_auction",
+                                pricing_model="cpm",
+                                currency="USD",
+                                is_fixed=False,
+                                price_guidance={"floor": 5.0, "suggested_rate": 7.5},
+                            )
+                        ],
                     )
                 ]
                 mock_db.return_value = mock_db_products

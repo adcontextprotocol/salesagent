@@ -15,6 +15,7 @@ from src.admin.blueprints.api import api_bp
 from src.admin.blueprints.auth import auth_bp, init_oauth
 from src.admin.blueprints.authorized_properties import authorized_properties_bp
 from src.admin.blueprints.core import core_bp
+from src.admin.blueprints.creative_agents import creative_agents_bp
 from src.admin.blueprints.creatives import creatives_bp
 from src.admin.blueprints.format_search import bp as format_search_bp
 from src.admin.blueprints.gam import gam_bp
@@ -219,13 +220,37 @@ def create_app(config=None):
         logger.info(f"Redirecting external domain {apx_host}/admin to subdomain: {redirect_url}")
         return redirect(redirect_url, code=302)
 
-    # Add context processor to make script_name available in templates
+    # Add context processor to make script_name and tenant available in templates
     @app.context_processor
-    def inject_script_name():
-        """Make the script_name (e.g., /admin) available in all templates."""
+    def inject_context():
+        """Make the script_name (e.g., /admin) and current tenant available in all templates."""
+        from flask import session
+        from sqlalchemy import select
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Tenant
+
+        context = {}
+
+        # Inject script_name
         if os.environ.get("PRODUCTION") == "true":
-            return {"script_name": "/admin"}
-        return {"script_name": ""}
+            context["script_name"] = "/admin"
+        else:
+            context["script_name"] = ""
+
+        # Inject fresh tenant data if user is logged in with a tenant
+        tenant_id = session.get("tenant_id")
+        if tenant_id:
+            try:
+                with get_db_session() as db_session:
+                    stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+                    tenant = db_session.scalars(stmt).first()
+                    if tenant:
+                        context["tenant"] = tenant
+            except Exception as e:
+                logger.warning(f"Could not load tenant {tenant_id} for context: {e}")
+
+        return context
 
     # Add after_request handler to fix hardcoded URLs in HTML responses
     @app.after_request
@@ -258,11 +283,14 @@ def create_app(config=None):
     app.register_blueprint(users_bp)  # Already has url_prefix in blueprint
     app.register_blueprint(gam_bp)
     app.register_blueprint(operations_bp, url_prefix="/tenant/<tenant_id>")
-    app.register_blueprint(creatives_bp, url_prefix="/tenant/<tenant_id>/creative-formats")
+    app.register_blueprint(creatives_bp, url_prefix="/tenant/<tenant_id>/creatives")
     app.register_blueprint(policy_bp, url_prefix="/tenant/<tenant_id>/policy")
     app.register_blueprint(settings_bp, url_prefix="/tenant/<tenant_id>/settings")
-    app.register_blueprint(adapters_bp, url_prefix="/tenant/<tenant_id>")
+    app.register_blueprint(
+        adapters_bp
+    )  # No url_prefix - routes define their own paths like /adapters/{adapter}/config/{tenant_id}/{product_id}
     app.register_blueprint(authorized_properties_bp, url_prefix="/tenant")  # Tenant-specific routes
+    app.register_blueprint(creative_agents_bp, url_prefix="/tenant/<tenant_id>/creative-agents")
     app.register_blueprint(inventory_bp)  # Has its own internal routing
     app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(format_search_bp)  # Format search API (/api/formats)

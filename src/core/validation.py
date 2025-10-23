@@ -1,9 +1,12 @@
 """Server-side validation utilities for form inputs."""
 
 import json
+import logging
 import re
 from typing import Any
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 
 class ValidationError(Exception):
@@ -49,10 +52,7 @@ class FormValidator:
 
             return None
         except Exception as e:
-            # Log the specific error for debugging but return generic message
-            import logging
-
-            logging.getLogger(__name__).debug(f"URL validation error: {e}")
+            logger.debug(f"URL validation error: {e}")
             return "Invalid URL format"
 
     @staticmethod
@@ -197,7 +197,7 @@ def validate_form_data(data: dict[str, Any], validators: dict[str, list] | list[
     Returns:
         Tuple of (is_valid, list of error messages)
     """
-    errors = []
+    errors: list[str] = []
 
     # Handle simple required field validation when passed a list
     if isinstance(validators, list):
@@ -211,11 +211,13 @@ def validate_form_data(data: dict[str, Any], validators: dict[str, list] | list[
         value = data.get(field, "")
 
         for validator in field_validators:
-            if callable(validator):
-                error = validator(value)
-                if error:
-                    errors.append(f"{field.title()}: {error}")
-                    break  # Stop on first error for this field
+            if not callable(validator):
+                continue
+
+            error = validator(value)
+            if error:
+                errors.append(f"{field.title()}: {error}")
+                break  # Stop on first error for this field
 
     return (len(errors) == 0, errors)
 
@@ -241,6 +243,51 @@ def sanitize_url(url: str) -> str:
 
     # Remove trailing slashes
     return url.rstrip("/")
+
+
+def normalize_agent_url(url: str) -> str:
+    """Normalize agent URL to base form for consistent comparison.
+
+    Strips common path suffixes that users might include:
+    - /mcp
+    - /a2a
+    - /.well-known/adcp/sales
+    - Trailing slashes
+
+    This ensures all variations of an agent URL normalize to the same base URL:
+        "https://creative.adcontextprotocol.org/" -> "https://creative.adcontextprotocol.org"
+        "https://creative.adcontextprotocol.org/mcp" -> "https://creative.adcontextprotocol.org"
+        "https://creative.adcontextprotocol.org/a2a" -> "https://creative.adcontextprotocol.org"
+        "https://publisher.com/.well-known/adcp/sales" -> "https://publisher.com"
+
+    Args:
+        url: Agent URL to normalize
+
+    Returns:
+        Normalized base URL
+    """
+    if not url:
+        return url
+
+    # First, remove trailing slashes
+    normalized = url.rstrip("/")
+
+    # Common path suffixes to strip (order matters - longest first)
+    suffixes_to_strip = [
+        "/.well-known/adcp/sales",
+        "/mcp",
+        "/a2a",
+    ]
+
+    # Strip each suffix (check multiple times in case of multiple trailing slashes)
+    for suffix in suffixes_to_strip:
+        if normalized.endswith(suffix):
+            normalized = normalized[: -len(suffix)]
+            # Remove any trailing slashes that remain
+            normalized = normalized.rstrip("/")
+            break  # Only strip one suffix
+
+    return normalized
 
 
 def sanitize_form_data(data: dict[str, Any]) -> dict[str, Any]:
@@ -309,7 +356,7 @@ def validate_gam_refresh_token(refresh_token: str) -> str | None:
 
 def validate_gam_config(data: dict[str, Any]) -> dict[str, str | None]:
     """Validate all GAM configuration fields."""
-    errors = {}
+    errors: dict[str, str | None] = {}
 
     # Validate network code
     if "network_code" in data:

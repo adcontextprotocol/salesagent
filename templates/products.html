@@ -36,7 +36,7 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2>Products - {{ tenant_name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
-            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
+            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Dashboard</a>
             <a href="{{ url_for('products.add_product', tenant_id=tenant_id) }}" class="btn btn-primary">Add Product</a>
         </div>
     </div>
@@ -50,7 +50,7 @@
                 <th>Formats</th>
                 <th>Countries</th>
                 <th>Type</th>
-                <th>CPM</th>
+                <th>Pricing</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -62,7 +62,10 @@
                 <td>{{ product.description or '-' }}</td>
                 <td>
                     {% for format in product.formats %}
-                    <span class="badge">{{ format }}</span>
+                        {# Format is now resolved with name field from creative agent #}
+                        <span class="badge" title="{{ format.format_id }} ({{ format.agent_url }})">
+                            {{ format.name }}
+                        </span>
                     {% endfor %}
                 </td>
                 <td>
@@ -108,12 +111,29 @@
                     {% if product.pricing_options and product.pricing_options|length > 0 %}
                         {# Display first pricing option (primary) #}
                         {% set first_option = product.pricing_options[0] %}
+                        {# Show pricing model badge #}
+                        {% set pm = first_option.pricing_model|upper %}
+                        {% if pm == "CPM" %}
+                            <span class="badge" style="background: #28a745;">CPM</span>
+                        {% elif pm == "VCPM" %}
+                            <span class="badge" style="background: #17a2b8;">VCPM</span>
+                        {% elif pm == "CPC" %}
+                            <span class="badge" style="background: #ffc107; color: #333;">CPC</span>
+                        {% elif pm == "FLAT_RATE" %}
+                            <span class="badge" style="background: #6f42c1; color: white;">FLAT</span>
+                        {% elif pm == "CPCV" %}
+                            <span class="badge" style="background: #fd7e14;">CPCV</span>
+                        {% elif pm == "CPV" %}
+                            <span class="badge" style="background: #e83e8c;">CPV</span>
+                        {% elif pm == "CPP" %}
+                            <span class="badge" style="background: #6610f2; color: white;">CPP</span>
+                        {% else %}
+                            <span class="badge">{{ pm }}</span>
+                        {% endif %}
                         {% if first_option.is_fixed and first_option.rate %}
                             {# Fixed price #}
-                            {{ first_option.currency }} ${{ "%.2f"|format(first_option.rate) }}
-                            {% if first_option.pricing_model != "cpm" %}
-                                <span style="color: #666; font-size: 0.85em;">({{ first_option.pricing_model|upper }})</span>
-                            {% endif %}
+                            <br>
+                            <span style="font-weight: 600;">{{ first_option.currency }} ${{ "%.2f"|format(first_option.rate) }}</span>
                         {% elif not first_option.is_fixed and first_option.price_guidance %}
                             {# Auction pricing with guidance #}
                             {% if first_option.price_guidance.floor %}

@@ -35,10 +35,14 @@ def get_current_tenant() -> dict[str, Any]:
     """Get current tenant from context."""
     tenant = current_tenant.get()
     if not tenant:
-        # Fallback for CLI/testing - use default tenant
-        tenant = get_default_tenant()
-        if not tenant:
-            raise RuntimeError("No tenant in context and no default tenant found")
+        # SECURITY: Do NOT fall back to default tenant in production.
+        # This would cause tenant isolation breach.
+        # Only CLI/testing scripts should call this without context.
+        raise RuntimeError(
+            "No tenant context set. Tenant must be set via set_current_tenant() "
+            "before calling this function. This is a critical security error - "
+            "falling back to default tenant would breach tenant isolation."
+        )
     return tenant
 
 
@@ -139,6 +143,32 @@ def get_tenant_by_subdomain(subdomain: str) -> dict[str, Any] | None:
     try:
         with get_db_session() as db_session:
             stmt = select(Tenant).filter_by(subdomain=subdomain, is_active=True)
+            tenant = db_session.scalars(stmt).first()
+
+            if tenant:
+                from src.core.utils.tenant_utils import serialize_tenant_to_dict
+
+                return serialize_tenant_to_dict(tenant)
+            return None
+    except Exception as e:
+        # If table doesn't exist or other DB errors, return None
+        if "no such table" in str(e) or "does not exist" in str(e):
+            return None
+        raise
+
+
+def get_tenant_by_id(tenant_id: str) -> dict[str, Any] | None:
+    """Get tenant by tenant_id.
+
+    Args:
+        tenant_id: The tenant_id to look up (e.g., 'tenant_wonderstruck')
+
+    Returns:
+        Tenant dict if found, None otherwise
+    """
+    try:
+        with get_db_session() as db_session:
+            stmt = select(Tenant).filter_by(tenant_id=tenant_id, is_active=True)
             tenant = db_session.scalars(stmt).first()
 
             if tenant:

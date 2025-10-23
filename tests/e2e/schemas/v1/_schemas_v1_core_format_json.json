@@ -6,13 +6,8 @@
   "type": "object",
   "properties": {
     "format_id": {
-      "type": "string",
-      "description": "Unique identifier for the format"
-    },
-    "agent_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "Base URL of the agent that provides this format (authoritative source). E.g., 'https://reference.adcp.org', 'https://dco.example.com'"
+      "$ref": "/schemas/v1/core/format-id.json",
+      "description": "Structured format identifier with agent URL and format name"
     },
     "name": {
       "type": "string",
@@ -25,7 +20,7 @@
     "preview_image": {
       "type": "string",
       "format": "uri",
-      "description": "Optional preview image URL for format browsing/discovery UI"
+      "description": "Optional preview image URL for format browsing/discovery UI. Should be 400x300px (4:3 aspect ratio) PNG or JPG. Used as thumbnail/card image in format browsers."
     },
     "example_url": {
       "type": "string",
@@ -45,14 +40,98 @@
         "universal"
       ]
     },
-    "requirements": {
-      "type": "object",
-      "description": "Technical specifications for this format (e.g., dimensions, duration, file size limits, codecs)",
-      "additionalProperties": true
+    "renders": {
+      "type": "array",
+      "description": "Specification of rendered pieces for this format. Most formats produce a single render. Companion ad formats (video + banner), adaptive formats, and multi-placement formats produce multiple renders. Each render specifies its role and dimensions.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Semantic role of this rendered piece (e.g., 'primary', 'companion', 'mobile_variant')"
+          },
+          "dimensions": {
+            "type": "object",
+            "description": "Dimensions for this rendered piece",
+            "properties": {
+              "width": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Fixed width in specified units"
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Fixed height in specified units"
+              },
+              "min_width": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Minimum width for responsive renders"
+              },
+              "min_height": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Minimum height for responsive renders"
+              },
+              "max_width": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Maximum width for responsive renders"
+              },
+              "max_height": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Maximum height for responsive renders"
+              },
+              "responsive": {
+                "type": "object",
+                "description": "Indicates which dimensions are responsive/fluid",
+                "properties": {
+                  "width": {
+                    "type": "boolean"
+                  },
+                  "height": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "width",
+                  "height"
+                ]
+              },
+              "aspect_ratio": {
+                "type": "string",
+                "description": "Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1')",
+                "pattern": "^\\d+:\\d+$"
+              },
+              "unit": {
+                "type": "string",
+                "enum": [
+                  "px",
+                  "dp",
+                  "inches",
+                  "cm"
+                ],
+                "default": "px",
+                "description": "Unit of measurement for dimensions"
+              }
+            },
+            "required": [
+              "unit"
+            ]
+          }
+        },
+        "required": [
+          "role",
+          "dimensions"
+        ]
+      },
+      "minItems": 1
     },
     "assets_required": {
       "type": "array",
-      "description": "Array of required assets or asset groups for this format. Can contain individual assets or repeatable asset sequences (e.g., carousel products, slideshow frames).",
+      "description": "Array of required assets or asset groups for this format. Each asset is identified by its asset_id, which must be used as the key in creative manifests. Can contain individual assets or repeatable asset sequences (e.g., carousel products, slideshow frames).",
       "items": {
         "oneOf": [
           {
@@ -61,7 +140,7 @@
             "properties": {
               "asset_id": {
                 "type": "string",
-                "description": "Identifier for this asset in the format"
+                "description": "Unique identifier for this asset. Creative manifests MUST use this exact value as the key in the assets object."
               },
               "asset_type": {
                 "type": "string",
@@ -70,16 +149,20 @@
                   "image",
                   "video",
                   "audio",
+                  "vast",
+                  "daast",
                   "text",
                   "html",
+                  "css",
                   "javascript",
                   "url",
-                  "brand_manifest"
+                  "webhook",
+                  "promoted_offerings"
                 ]
               },
               "asset_role": {
                 "type": "string",
-                "description": "Purpose of this asset (e.g., 'hero_image', 'logo', 'headline', 'cta_button')"
+                "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests\u2014use asset_id instead. This field is for human-readable documentation and UI display only."
               },
               "required": {
                 "type": "boolean",
@@ -138,16 +221,20 @@
                         "image",
                         "video",
                         "audio",
+                        "vast",
+                        "daast",
                         "text",
                         "html",
+                        "css",
                         "javascript",
                         "url",
-                        "brand_manifest"
+                        "webhook",
+                        "promoted_offerings"
                       ]
                     },
                     "asset_role": {
                       "type": "string",
-                      "description": "Purpose of this asset"
+                      "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests\u2014use asset_id instead. This field is for human-readable documentation and UI display only."
                     },
                     "required": {
                       "type": "boolean",
@@ -193,7 +280,7 @@
       "type": "array",
       "description": "For generative formats: array of format IDs that this format can generate. When a format accepts inputs like brand_manifest and message, this specifies what concrete output formats can be produced (e.g., a generative banner format might output standard image banner formats).",
       "items": {
-        "type": "string"
+        "$ref": "/schemas/v1/core/format-id.json"
       }
     }
   },

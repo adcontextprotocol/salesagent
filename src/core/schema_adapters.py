@@ -21,17 +21,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
-from src.core.schemas import AdCPBaseModel
+from src.core.schemas import AdCPBaseModel, FormatId
+
+# Import generated schema (now a single class after schema regeneration on Oct 17, 2025)
 from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
     GetProductsRequest as _GeneratedGetProductsRequest,
-)
-
-# Import generated schemas
-from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
-    GetProductsRequest1 as _GeneratedGetProductsRequest1,
-)
-from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
-    GetProductsRequest2 as _GeneratedGetProductsRequest2,
 )
 
 
@@ -43,10 +37,10 @@ class GetProductsRequest(BaseModel):
     but complex to use. This adapter hides that complexity.
 
     Usage:
-        # Simple construction (just like manual schemas)
-        req = GetProductsRequest(promoted_offering="https://example.com", brief="Video ads")
+        # Simple construction with brand_manifest
+        req = GetProductsRequest(brand_manifest={"name": "Nike Shoes"}, brief="Video ads")
 
-        # With brand_manifest
+        # With full brand manifest
         req = GetProductsRequest(
             brand_manifest={"name": "Acme", "url": "https://acme.com"},
             brief="Display ads"
@@ -92,35 +86,33 @@ class GetProductsRequest(BaseModel):
     def to_generated(self) -> _GeneratedGetProductsRequest:
         """Convert to the generated schema for protocol validation.
 
-        This creates the appropriate generated schema variant (GetProductsRequest1 or
-        GetProductsRequest2) based on which fields are present.
-
         Returns:
             Generated schema instance that can be validated against AdCP JSON Schema
         """
-        # Determine which variant to use
-        variant: _GeneratedGetProductsRequest1 | _GeneratedGetProductsRequest2
-        if self.promoted_offering and not self.brand_manifest:
-            # Use variant 1 (requires promoted_offering)
-            variant = _GeneratedGetProductsRequest1(
-                promoted_offering=self.promoted_offering,
-                brief=self.brief or None,
-                filters=self.filters,  # type: ignore[arg-type]
-            )
-        elif self.brand_manifest:
-            # Use variant 2 (requires brand_manifest)
-            variant = _GeneratedGetProductsRequest2(
-                promoted_offering=self.promoted_offering,
-                brand_manifest=self.brand_manifest,  # type: ignore[arg-type]
-                brief=self.brief or None,
-                filters=self.filters,  # type: ignore[arg-type]
-            )
-        else:
-            # Fallback - shouldn't happen due to validator
-            raise ValueError("Either promoted_offering or brand_manifest must be provided")
+        # Convert filters to match generated schema format
+        # Generated schema expects format_ids as list[FormatId] objects, not strings
+        filters_dict = None
+        if self.filters:
+            # Handle both dict and Pydantic model cases
+            if isinstance(self.filters, dict):
+                filters_dict = self.filters.copy()
+            else:
+                filters_dict = self.filters.model_dump(exclude_none=True)
 
-        # Wrap in RootModel
-        return _GeneratedGetProductsRequest(root=variant)  # type: ignore[arg-type]
+            # Convert format_ids from strings to FormatId objects if present
+            if "format_ids" in filters_dict and filters_dict["format_ids"]:
+                filters_dict["format_ids"] = [
+                    {"agent_url": "https://creatives.adcontextprotocol.org", "id": fmt_id}
+                    for fmt_id in filters_dict["format_ids"]
+                ]
+
+        # Create generated schema instance (only fields that exist in AdCP spec)
+        # Note: promoted_offering, min_exposures, strategy_id, webhook_url are adapter-only fields
+        return _GeneratedGetProductsRequest(
+            brand_manifest=self.brand_manifest,  # type: ignore[arg-type]
+            brief=self.brief or None,
+            filters=filters_dict,  # type: ignore[arg-type]
+        )
 
     @classmethod
     def from_generated(cls, generated: _GeneratedGetProductsRequest) -> "GetProductsRequest":
@@ -132,8 +124,8 @@ class GetProductsRequest(BaseModel):
         Returns:
             Adapter instance with simple API
         """
-        # Extract data from the RootModel union
-        data = generated.root.model_dump()
+        # Extract data from generated schema (now a flat class after schema regeneration)
+        data = generated.model_dump()
 
         return cls(**data)
 
@@ -188,18 +180,19 @@ class GetProductsResponse(AdCPBaseModel):
         else:
             base_msg = f"Found {count} products that match your requirements."
 
-        # Check if this looks like an anonymous response (all pricing is None)
+        # Check if this looks like an anonymous response (all pricing_options have no rates)
         # Products can be dicts or objects, so we need to handle both
         if count > 0:
             all_missing_pricing = True
             for p in self.products:
                 if isinstance(p, dict):
-                    if p.get("cpm") is not None or p.get("min_spend") is not None:
+                    pricing_options = p.get("pricing_options", [])
+                    if pricing_options and any(po.get("rate") is not None for po in pricing_options):
                         all_missing_pricing = False
                         break
                 else:
-                    if hasattr(p, "cpm") and hasattr(p, "min_spend"):
-                        if p.cpm is not None or p.min_spend is not None:
+                    if hasattr(p, "pricing_options") and p.pricing_options:
+                        if any(po.rate is not None for po in p.pricing_options):
                             all_missing_pricing = False
                             break
 
@@ -433,12 +426,24 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    # Fields from generated schema (flexible - accepts dicts or objects)
-    properties: list[Any] = Field(..., description="Array of authorized properties")
-    tags: dict[str, Any] = Field(default_factory=dict, description="Metadata for tags")
+    # Fields from AdCP spec v2.4
+    publisher_domains: list[str] = Field(
+        ..., description="Publisher domains this agent is authorized to represent", min_length=1
+    )
     primary_channels: list[str] | None = Field(None, description="Primary advertising channels")
     primary_countries: list[str] | None = Field(None, description="Primary countries (ISO 3166-1 alpha-2)")
     portfolio_description: str | None = Field(None, description="Markdown portfolio description", max_length=5000)
+    advertising_policies: str | None = Field(
+        None,
+        description=(
+            "Publisher's advertising content policies, restrictions, and guidelines in natural language. "
+            "May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, "
+            "or links to full policy documentation."
+        ),
+        min_length=1,
+        max_length=10000,
+    )
+    last_updated: str | None = Field(None, description="ISO 8601 timestamp of when authorization list was last updated")
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
 
     def __str__(self) -> str:
@@ -447,13 +452,13 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
         Used by both MCP (for display) and A2A (for task messages).
         Provides conversational text without adding non-spec fields to the schema.
         """
-        count = len(self.properties)
+        count = len(self.publisher_domains)
         if count == 0:
-            return "No authorized properties found."
+            return "No authorized publisher domains found."
         elif count == 1:
-            return "Found 1 authorized property."
+            return f"Found 1 authorized publisher domain: {self.publisher_domains[0]}"
         else:
-            return f"Found {count} authorized properties."
+            return f"Found {count} authorized publisher domains."
 
     def to_generated(self) -> _GeneratedListAuthorizedPropertiesResponse:
         """Convert to generated schema for protocol validation."""
@@ -485,7 +490,9 @@ class ListCreativeFormatsRequest(BaseModel):
     type: str | None = Field(None, description="Filter by format type")
     standard_only: bool | None = Field(None, description="Only return IAB standard formats")
     category: str | None = Field(None, description="Filter by category")
-    format_ids: list[str] | None = Field(None, description="Filter by specific format IDs")
+    format_ids: list[FormatId] | None = Field(
+        None, description="Return only these specific format IDs (e.g., from get_products response)"
+    )
 
     def to_generated(self) -> _GeneratedListCreativeFormatsRequest:
         """Convert to generated schema for protocol validation."""
@@ -510,9 +517,12 @@ class ListAuthorizedPropertiesRequest(BaseModel):
 class CreateMediaBuyResponse(AdCPBaseModel):
     """Adapter for CreateMediaBuyResponse - adds __str__() and internal field handling.
 
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+
     Example:
         resp = CreateMediaBuyResponse(
-            status="completed",
             buyer_ref="buy_123",
             media_buy_id="mb_456",
             workflow_step_id="ws_789"  # Internal field
@@ -524,12 +534,10 @@ class CreateMediaBuyResponse(AdCPBaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    # Required AdCP fields
-    status: str = Field(..., description="Task status")
+    # Required AdCP domain fields
     buyer_ref: str = Field(..., description="Buyer's reference identifier")
 
-    # Optional AdCP fields
-    task_id: str | None = None
+    # Optional AdCP domain fields
     media_buy_id: str | None = None
     creative_deadline: Any | None = None
     packages: list[Any] | None = Field(default_factory=list)
@@ -553,15 +561,9 @@ class CreateMediaBuyResponse(AdCPBaseModel):
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer."""
-        if self.status == "completed":
-            return f"Media buy {self.media_buy_id or self.buyer_ref} created successfully."
-        elif self.status == "working":
-            return f"Media buy {self.buyer_ref} is being created..."
-        elif self.status == "submitted":
-            return f"Media buy {self.buyer_ref} submitted for approval."
-        elif self.status == "input-required":
-            return f"Media buy {self.buyer_ref} requires additional input."
-        return f"Media buy {self.buyer_ref}: {self.status}"
+        if self.media_buy_id:
+            return f"Media buy {self.media_buy_id} created successfully."
+        return f"Media buy {self.buyer_ref} created."
 
 
 # ============================================================================
@@ -570,24 +572,24 @@ class CreateMediaBuyResponse(AdCPBaseModel):
 
 
 class UpdateMediaBuyResponse(AdCPBaseModel):
-    """Adapter for UpdateMediaBuyResponse - adds __str__() for protocol abstraction."""
+    """Adapter for UpdateMediaBuyResponse - adds __str__() for protocol abstraction.
+
+    Per AdCP PR #113, protocol fields excluded from domain response.
+    """
 
     model_config = {"arbitrary_types_allowed": True}
 
-    status: str = Field(..., description="Task status")
     buyer_ref: str = Field(..., description="Buyer's reference identifier")
-    task_id: str | None = None
-    media_buy_id: str | None = None
-    packages: list[Any] | None = None
+    media_buy_id: str = Field(..., description="Publisher's identifier for the media buy")
+    implementation_date: str | None = Field(None, description="ISO 8601 date when changes will take effect")
+    affected_packages: list[Any] | None = Field(default_factory=list)
     errors: list[Any] | None = None
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer."""
-        if self.status == "completed":
-            return f"Media buy {self.media_buy_id or self.buyer_ref} updated successfully."
-        elif self.status == "working":
-            return f"Media buy {self.buyer_ref} is being updated..."
-        return f"Media buy {self.buyer_ref}: {self.status}"
+        if self.media_buy_id:
+            return f"Media buy {self.media_buy_id} updated successfully."
+        return f"Media buy {self.buyer_ref} updated."
 
 
 # ============================================================================
@@ -596,23 +598,50 @@ class UpdateMediaBuyResponse(AdCPBaseModel):
 
 
 class SyncCreativesResponse(AdCPBaseModel):
-    """Adapter for SyncCreativesResponse - keeps message field (it's in spec!)."""
+    """Adapter for SyncCreativesResponse - adds __str__() for protocol abstraction.
+
+    Per AdCP PR #113, this response contains ONLY domain data.
+    Protocol fields (status, task_id, message, context_id) are added by the
+    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+
+    Official spec: /schemas/v1/media-buy/sync-creatives-response.json
+    """
 
     model_config = {"arbitrary_types_allowed": True}
 
-    message: str = Field(..., description="Human-readable result message")
-    status: str = Field("completed", description="Task status")
-    context_id: str | None = None
-    task_id: str | None = None
-    dry_run: bool = Field(False, description="Whether this was a dry run")
-    summary: Any | None = None
-    results: list[Any] | None = None
-    assignments_summary: Any | None = None
-    assignment_results: list[Any] | None = None
+    # Required fields (per official spec)
+    creatives: list[Any] = Field(..., description="Results for each creative processed")
+
+    # Optional fields (per official spec)
+    dry_run: bool | None = Field(None, description="Whether this was a dry run (no actual changes made)")
 
     def __str__(self) -> str:
-        """Return message field (spec-compliant in this case)."""
-        return self.message
+        """Return human-readable summary message for protocol envelope."""
+        # Count actions from creatives list
+        created = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "created")
+        updated = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "updated")
+        deleted = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "deleted")
+        failed = sum(1 for c in self.creatives if isinstance(c, dict) and c.get("action") == "failed")
+
+        parts = []
+        if created:
+            parts.append(f"{created} created")
+        if updated:
+            parts.append(f"{updated} updated")
+        if deleted:
+            parts.append(f"{deleted} deleted")
+        if failed:
+            parts.append(f"{failed} failed")
+
+        if parts:
+            msg = f"Creative sync completed: {', '.join(parts)}"
+        else:
+            msg = "Creative sync completed: no changes"
+
+        if self.dry_run:
+            msg += " (dry run)"
+
+        return msg
 
 
 # ============================================================================
@@ -630,7 +659,12 @@ class GetMediaBuyDeliveryResponse(AdCPBaseModel):
     currency: str = Field(..., pattern=r"^[A-Z]{3}$", description="ISO 4217 currency code")
     media_buy_deliveries: list[Any] = Field(..., description="Array of delivery data for each media buy")
 
-    # Optional AdCP fields (webhook-specific)
+    # Optional AdCP fields
+    aggregated_totals: dict[str, Any] | None = Field(
+        None, description="Combined metrics across all media buys (API responses only, not webhooks)"
+    )
+
+    # Optional webhook-specific fields
     notification_type: str | None = None
     partial_data: bool | None = None
     unavailable_count: int | None = None
@@ -713,7 +747,6 @@ class ListCreativesResponse(AdCPBaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    message: str = Field(..., description="Human-readable result message")
     query_summary: Any = Field(..., description="Summary of the query")
     pagination: Any = Field(..., description="Pagination information")
     creatives: list[Any] = Field(..., description="Array of creative assets")
@@ -722,8 +755,15 @@ class ListCreativesResponse(AdCPBaseModel):
     status_summary: dict[str, int] | None = None
 
     def __str__(self) -> str:
-        """Return message field (it's in the spec for this one)."""
-        return self.message
+        """Generate human-readable message from query_summary."""
+        total = self.query_summary.total_matching
+        returned = self.query_summary.returned
+        if total == 0:
+            return "No creatives found."
+        elif returned == total:
+            return f"Found {total} creative{'s' if total != 1 else ''}."
+        else:
+            return f"Found {total} creatives, showing {returned}."
 
 
 # ============================================================================

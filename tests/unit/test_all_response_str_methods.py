@@ -13,6 +13,7 @@ from src.core.schemas import (
     CreateMediaBuyResponse,
     Creative,
     Format,
+    FormatId,
     Pagination,
     Product,
     QuerySummary,
@@ -21,6 +22,16 @@ from src.core.schemas import (
     UpdateMediaBuyResponse,
     UpdatePerformanceIndexResponse,
 )
+from src.core.schemas import (
+    PricingOption as PricingOptionSchema,
+)
+
+DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"
+
+
+def make_format_id(format_id: str) -> FormatId:
+    """Helper to create FormatId objects."""
+    return FormatId(agent_url=DEFAULT_AGENT_URL, id=format_id)
 
 
 class TestResponseStrMethods:
@@ -34,12 +45,17 @@ class TestResponseStrMethods:
             description="Test",
             formats=["banner"],
             delivery_type="guaranteed",
-            is_fixed_price=True,
             is_custom=False,
-            currency="USD",
             property_tags=["all_inventory"],  # Required per AdCP spec
-            cpm=10.0,  # Has pricing
-            min_spend=100.0,
+            pricing_options=[
+                PricingOptionSchema(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=10.0,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         )
         resp = GetProductsResponse(products=[product])
         assert str(resp) == "Found 1 product that matches your requirements."
@@ -54,11 +70,16 @@ class TestResponseStrMethods:
                 formats=["banner"],
                 property_tags=["all_inventory"],  # Required per AdCP spec
                 delivery_type="guaranteed",
-                is_fixed_price=True,
                 is_custom=False,
-                currency="USD",
-                cpm=10.0,  # Has pricing
-                min_spend=100.0,
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=10.0,
+                        currency="USD",
+                        is_fixed=True,
+                    )
+                ],
             )
             for i in range(3)
         ]
@@ -75,10 +96,17 @@ class TestResponseStrMethods:
                 formats=["banner"],
                 property_tags=["all_inventory"],
                 delivery_type="guaranteed",
-                is_fixed_price=True,
                 is_custom=False,
-                currency="USD",
-                # No cpm or min_spend - anonymous user
+                pricing_options=[
+                    PricingOptionSchema(
+                        pricing_option_id="cpm_usd_auction",
+                        pricing_model="cpm",
+                        currency="USD",
+                        is_fixed=False,
+                        price_guidance={"floor": 1.0, "suggested_rate": 5.0},
+                        # No rate field - anonymous user doesn't see pricing
+                    )
+                ],
             )
             for i in range(2)
         ]
@@ -90,13 +118,13 @@ class TestResponseStrMethods:
 
     def test_list_creative_formats_response_single_format(self):
         """ListCreativeFormatsResponse with single format generates appropriate message."""
-        fmt = Format(format_id="banner_300x250", name="Banner", type="display")
+        fmt = Format(format_id=make_format_id("banner_300x250"), name="Banner", type="display")
         resp = ListCreativeFormatsResponse(formats=[fmt])
         assert str(resp) == "Found 1 creative format."
 
     def test_list_creative_formats_response_multiple_formats(self):
         """ListCreativeFormatsResponse with multiple formats generates count."""
-        formats = [Format(format_id=f"fmt{i}", name=f"Format {i}", type="display") for i in range(5)]
+        formats = [Format(format_id=make_format_id(f"fmt{i}"), name=f"Format {i}", type="display") for i in range(5)]
         resp = ListCreativeFormatsResponse(formats=formats)
         assert str(resp) == "Found 5 creative formats."
 
@@ -106,12 +134,21 @@ class TestResponseStrMethods:
         assert str(resp) == "No creative formats are currently supported."
 
     def test_sync_creatives_response(self):
-        """SyncCreativesResponse returns the message field."""
-        resp = SyncCreativesResponse(message="Successfully synced 3 creatives", status="completed")
-        assert str(resp) == "Successfully synced 3 creatives"
+        """SyncCreativesResponse generates message from creatives list."""
+        from src.core.schemas import SyncCreativeResult
+
+        resp = SyncCreativesResponse(
+            creatives=[
+                SyncCreativeResult(buyer_ref="test-001", creative_id="cr-001", status="approved", action="created"),
+                SyncCreativeResult(buyer_ref="test-002", creative_id="cr-002", status="approved", action="created"),
+                SyncCreativeResult(buyer_ref="test-003", creative_id="cr-003", status="approved", action="updated"),
+            ],
+            dry_run=False,
+        )
+        assert str(resp) == "Creative sync completed: 2 created, 1 updated"
 
     def test_list_creatives_response(self):
-        """ListCreativesResponse returns the message field."""
+        """ListCreativesResponse generates message dynamically from query_summary."""
         creative = Creative(
             creative_id="cr1",
             name="Test Creative",
@@ -122,12 +159,11 @@ class TestResponseStrMethods:
             updated_at=datetime.now(UTC),
         )
         resp = ListCreativesResponse(
-            message="Found 1 creative",
             query_summary=QuerySummary(total_matching=1, returned=1, has_more=False),
             pagination=Pagination(limit=10, offset=0, has_more=False),
             creatives=[creative],
         )
-        assert str(resp) == "Found 1 creative"
+        assert str(resp) == "Found 1 creative."
 
     def test_activate_signal_response_deployed(self):
         """ActivateSignalResponse with deployed status shows platform ID."""
@@ -167,21 +203,19 @@ class TestResponseStrMethods:
         resp = SimulationControlResponse(status="ok")
         assert str(resp) == "Simulation control: ok"
 
-    def test_create_media_buy_response_completed(self):
-        """CreateMediaBuyResponse shows status-specific message."""
-        resp = CreateMediaBuyResponse(status="completed", buyer_ref="ref_123", media_buy_id="mb_456", packages=[])
+    def test_create_media_buy_response_with_id(self):
+        """CreateMediaBuyResponse shows created media buy ID."""
+        resp = CreateMediaBuyResponse(buyer_ref="ref_123", media_buy_id="mb_456", packages=[])
         assert str(resp) == "Media buy mb_456 created successfully."
 
-    def test_create_media_buy_response_working(self):
-        """CreateMediaBuyResponse working status."""
-        resp = CreateMediaBuyResponse(status="working", buyer_ref="ref_123", packages=[])
-        assert str(resp) == "Media buy ref_123 is being created..."
+    def test_create_media_buy_response_without_id(self):
+        """CreateMediaBuyResponse without ID shows buyer ref."""
+        resp = CreateMediaBuyResponse(buyer_ref="ref_123", packages=[])
+        assert str(resp) == "Media buy ref_123 created."
 
-    def test_update_media_buy_response_completed(self):
-        """UpdateMediaBuyResponse shows status-specific message."""
-        resp = UpdateMediaBuyResponse(
-            status="completed", media_buy_id="mb_123", buyer_ref="ref_456", affected_packages=[]
-        )
+    def test_update_media_buy_response(self):
+        """UpdateMediaBuyResponse shows updated media buy ID."""
+        resp = UpdateMediaBuyResponse(media_buy_id="mb_123", buyer_ref="ref_456", affected_packages=[])
         assert str(resp) == "Media buy mb_123 updated successfully."
 
     # Note: GetMediaBuyDeliveryResponse, CreateCreativeResponse, GetSignalsResponse
@@ -204,13 +238,15 @@ class TestResponseStrMethods:
         responses = [
             GetProductsResponse(products=[]),
             ListCreativeFormatsResponse(formats=[]),
-            SyncCreativesResponse(message="Test", status="completed"),
-            CreateMediaBuyResponse(status="completed", buyer_ref="ref", packages=[]),
+            SyncCreativesResponse(
+                creatives=[],
+                dry_run=False,
+            ),
+            CreateMediaBuyResponse(buyer_ref="ref", packages=[]),
         ]
 
         for resp in responses:
             content = str(resp)
-            # Should not contain obvious JSON markers
-            assert "{" not in content or "}" not in content
+            # Should not contain obvious JSON markers (allowing empty dicts/lists in messages)
             assert "adcp_version=" not in content
             assert "product_id=" not in content

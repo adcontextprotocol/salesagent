@@ -566,11 +566,13 @@ class ContextManager(DatabaseManager):
 
                 for webhook_config in webhooks:
                     # Build notification payload
+                    # Use tool_name for operation identification, mapping.action for workflow action context
                     payload = {
                         "step_id": step.step_id,
                         "object_type": mapping.object_type,
                         "object_id": mapping.object_id,
-                        "action": mapping.action,
+                        "operation": step.tool_name or mapping.action,  # Tool name is the actual operation
+                        "action": mapping.action,  # Workflow action (e.g., "approval_required", "created")
                         "status": new_status,
                         "step_type": step.step_type,
                         "owner": step.owner,
@@ -592,8 +594,8 @@ class ContextManager(DatabaseManager):
                         headers = {"Content-Type": "application/json"}
 
                         # Add HMAC signature if configured
-                        if webhook_config.auth_type == "hmac_sha256" and webhook_config.auth_config:
-                            secret = webhook_config.auth_config.get("secret")
+                        if webhook_config.authentication_type == "hmac_sha256" and webhook_config.webhook_secret:
+                            secret = webhook_config.webhook_secret
                             if secret:
                                 from src.core.webhook_authenticator import WebhookAuthenticator
 

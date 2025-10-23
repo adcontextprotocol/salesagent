@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, redirect, render_template, request, sessio
 from sqlalchemy import select
 
 from src.admin.utils import get_tenant_config_from_db, require_auth
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.audit_logger import AuditLogger
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AuditLog, Context, Tenant, WorkflowStep
@@ -77,7 +78,7 @@ def index(tenant_id):
             .order_by(AuditLog.timestamp.desc())
             .limit(20)
         )
-        audit_logs = session.scalars(stmt).all()
+        audit_logs = db_session.scalars(stmt).all()
 
         recent_checks = []
         for log in audit_logs:
@@ -130,6 +131,7 @@ def index(tenant_id):
 
 @policy_bp.route("/update", methods=["POST"])
 @require_auth()
+@log_admin_action("update_policy")
 def update(tenant_id):
     """Update policy settings for the tenant."""
     # Check access - only admins can update policy
@@ -206,6 +208,7 @@ def rules(tenant_id):
 
 @policy_bp.route("/review/<task_id>", methods=["GET", "POST"])
 @require_auth()
+@log_admin_action("review_policy_task")
 def review_task(tenant_id, task_id):
     """Review and approve/reject a policy review task."""
     # Check access

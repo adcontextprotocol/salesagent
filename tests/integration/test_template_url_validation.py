@@ -169,6 +169,10 @@ class TestTemplateUrlValidation:
                                 if "delete" in endpoint or "toggle" in endpoint:
                                     test_params["config_id"] = "test_config"
 
+                            # Add media_buy_id for media buy endpoints
+                            if "media_buy" in endpoint:
+                                test_params["media_buy_id"] = "test_buy"
+
                             url_for(endpoint, **test_params)
                         except BuildError as e:
                             form_errors.append({"template": str(relative_path), "endpoint": endpoint, "error": str(e)})

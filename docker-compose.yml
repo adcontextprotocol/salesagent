@@ -21,31 +21,15 @@ services:
       # Database configuration
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
 
-      # Optional: Individual DB vars instead of DATABASE_URL
-      # DB_TYPE: postgresql
-      # DB_HOST: postgres
-      # DB_PORT: 5432
-      # DB_NAME: adcp
-      # DB_USER: adcp_user
-      # DB_PASSWORD: secure_password_change_me
-
-      # Gemini API key (required for AI features)
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-
-      # Super admin authorization (required for startup validation)
-      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
-      SUPER_ADMIN_DOMAINS: ${SUPER_ADMIN_DOMAINS}
-
-      # Optional: Google OAuth credentials via environment
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-
-      # GAM OAuth credentials (required for Google Ad Manager functionality)
+      # Secrets (loaded from host environment or .env.secrets file via shell)
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       GAM_OAUTH_CLIENT_ID: ${GAM_OAUTH_CLIENT_ID:-}
       GAM_OAUTH_CLIENT_SECRET: ${GAM_OAUTH_CLIENT_SECRET:-}
-
-      # Encryption key for sensitive data
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      APPROXIMATED_API_KEY: ${APPROXIMATED_API_KEY:-}
 
       # Skip nginx for standalone service
       SKIP_NGINX: "true"
@@ -89,23 +73,18 @@ services:
       FLASK_ENV: production
       FLASK_DEBUG: ${FLASK_DEBUG:-0}
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-dev-secret-key-change-in-production}
-      # Gemini API key (required for AI features)
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      # Super admin authorization (set these via .env file)
-      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
-      SUPER_ADMIN_DOMAINS: ${SUPER_ADMIN_DOMAINS}
-      # Optional: Google OAuth credentials via environment
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_OAUTH_CREDENTIALS_FILE: ${GOOGLE_OAUTH_CREDENTIALS_FILE:-}
-      # GAM OAuth credentials (required for Google Ad Manager functionality)
-      GAM_OAUTH_CLIENT_ID: ${GAM_OAUTH_CLIENT_ID:-}
-      GAM_OAUTH_CLIENT_SECRET: ${GAM_OAUTH_CLIENT_SECRET:-}
       # Test mode
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-false}
 
-      # Encryption key for sensitive data
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      # Secrets (loaded from host environment or .env.secrets file via shell)
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      GAM_OAUTH_CLIENT_ID: ${GAM_OAUTH_CLIENT_ID:-}
+      GAM_OAUTH_CLIENT_SECRET: ${GAM_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      APPROXIMATED_API_KEY: ${APPROXIMATED_API_KEY:-}
 
       # Server ports - external ports for agent cards
       ADCP_SALES_PORT: ${ADCP_SALES_PORT:-8080}

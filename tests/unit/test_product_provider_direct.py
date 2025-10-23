@@ -34,7 +34,7 @@ async def test_product_provider():
             tenant_id="default",
             principal_id="test_principal",
             context={
-                "promoted_offering": "gourmet robot food",
+                "brand_manifest": {"name": "gourmet robot food"},
                 "tenant_id": "default",
                 "principal_id": "test_principal",
             },

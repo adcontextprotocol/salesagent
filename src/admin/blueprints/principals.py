@@ -7,10 +7,11 @@ import uuid
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from src.admin.services import DashboardService
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal, PushNotificationConfig, Tenant
 
@@ -86,10 +87,10 @@ def list_principals(tenant_id):
                 tenant_id=tenant_id,
                 advertisers=principals_list,
                 # Template variables to match main dashboard
-                active_campaigns=metrics["active_buys"],
-                total_spend=metrics["total_revenue"],
-                principals_count=metrics["total_advertisers"],
-                products_count=metrics["products_count"],
+                active_campaigns=metrics.get("live_buys", 0),
+                total_spend=metrics.get("total_revenue", 0),
+                principals_count=metrics.get("total_advertisers", 0),
+                products_count=metrics.get("products_count", 0),
                 recent_buys=recent_media_buys,
                 recent_media_buys=recent_media_buys,
                 features=features,
@@ -110,6 +111,10 @@ def list_principals(tenant_id):
 
 @principals_bp.route("/principals/create", methods=["GET", "POST"])
 @require_tenant_access()
+@log_admin_action(
+    "create_principal",
+    extract_details=lambda r, **kw: {"name": request.form.get("name")} if request.method == "POST" else {},
+)
 def create_principal(tenant_id):
     """Create a new principal (advertiser) for a tenant."""
     if request.method == "GET":
@@ -246,6 +251,7 @@ def get_principal(tenant_id, principal_id):
 
 
 @principals_bp.route("/principal/<principal_id>/update_mappings", methods=["POST"])
+@log_admin_action("update_mappings")
 @require_tenant_access()
 def update_mappings(tenant_id, principal_id):
     """Update principal platform mappings."""
@@ -301,6 +307,7 @@ def update_mappings(tenant_id, principal_id):
 
 
 @principals_bp.route("/api/gam/get-advertisers", methods=["POST"])
+@log_admin_action("get_gam_advertisers")
 @require_tenant_access()
 def get_gam_advertisers(tenant_id):
     """Get list of advertisers from GAM for a tenant."""
@@ -425,6 +432,7 @@ def get_principal_config(tenant_id, principal_id):
 
 
 @principals_bp.route("/api/principal/<principal_id>/testing-config", methods=["POST"])
+@log_admin_action("save_testing_config")
 @require_tenant_access()
 def save_testing_config(tenant_id, principal_id):
     """Save testing configuration (HITL settings) for a mock adapter principal."""
@@ -503,6 +511,7 @@ def manage_webhooks(tenant_id, principal_id):
 
 
 @principals_bp.route("/principals/<principal_id>/webhooks/register", methods=["POST"])
+@log_admin_action("register_webhook")
 @require_tenant_access()
 def register_webhook(tenant_id, principal_id):
     """Register a new webhook for a principal."""
@@ -563,6 +572,7 @@ def register_webhook(tenant_id, principal_id):
 
 
 @principals_bp.route("/principals/<principal_id>/webhooks/<config_id>/delete", methods=["POST"])
+@log_admin_action("delete_webhook")
 @require_tenant_access()
 def delete_webhook(tenant_id, principal_id, config_id):
     """Delete a webhook configuration."""
@@ -592,6 +602,7 @@ def delete_webhook(tenant_id, principal_id, config_id):
 
 
 @principals_bp.route("/principals/<principal_id>/webhooks/<config_id>/toggle", methods=["POST"])
+@log_admin_action("toggle_webhook")
 @require_tenant_access()
 def toggle_webhook(tenant_id, principal_id, config_id):
     """Toggle webhook active status."""

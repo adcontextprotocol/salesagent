@@ -27,6 +27,7 @@ from sqlalchemy import delete
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ProductModel
 from src.core.database.models import Tenant
+from src.core.schemas import PriceGuidance, PricingOption
 from src.core.schemas import Product as ProductSchema
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
 from tests.utils.database_helpers import create_tenant_with_timestamps
@@ -162,13 +163,19 @@ class TestMCPToolRoundtripValidation:
                 "description": db_product.description or "",
                 "formats": db_product.formats,  # Internal field name
                 "delivery_type": db_product.delivery_type,
-                "is_fixed_price": db_product.is_fixed_price,
-                "cpm": float(db_product.cpm) if db_product.cpm else None,
-                "min_spend": float(db_product.min_spend) if db_product.min_spend else None,
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
                 "is_custom": db_product.is_custom or False,
                 "property_tags": getattr(db_product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
+                "pricing_options": [
+                    PricingOption(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=float(db_product.cpm) if db_product.cpm else 10.0,
+                        currency="USD",
+                        is_fixed=db_product.is_fixed_price if hasattr(db_product, "is_fixed_price") else True,
+                    )
+                ],
             }
             schema_product = ProductSchema(**product_data)
             schema_products.append(schema_product)
@@ -235,13 +242,19 @@ class TestMCPToolRoundtripValidation:
                 "description": db_product.description or "",
                 "formats": db_product.formats,  # Internal field name
                 "delivery_type": db_product.delivery_type,
-                "is_fixed_price": db_product.is_fixed_price,
-                "cpm": float(db_product.cpm) if db_product.cpm else None,
-                "min_spend": float(db_product.min_spend) if db_product.min_spend else None,
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
                 "is_custom": db_product.is_custom or False,
                 "property_tags": getattr(db_product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
+                "pricing_options": [
+                    PricingOption(
+                        pricing_option_id="cpm_usd_fixed",
+                        pricing_model="cpm",
+                        rate=float(db_product.cpm) if db_product.cpm else 10.0,
+                        currency="USD",
+                        is_fixed=db_product.is_fixed_price if hasattr(db_product, "is_fixed_price") else True,
+                    )
+                ],
             }
             schema_product = ProductSchema(**product_data)
             schema_products.append(schema_product)
@@ -294,11 +307,17 @@ class TestMCPToolRoundtripValidation:
             description="Testing the exact roundtrip conversion pattern",
             formats=["display_300x250", "video_15s"],  # Internal field name
             delivery_type="guaranteed",
-            is_fixed_price=True,
-            cpm=15.75,
-            min_spend=3000.0,
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
+            pricing_options=[
+                PricingOption(
+                    pricing_option_id="cpm_usd_fixed",
+                    pricing_model="cpm",
+                    rate=15.75,
+                    currency="USD",
+                    is_fixed=True,
+                )
+            ],
         )
 
         # Step 1: Convert to dict (what the tool does before testing hooks)
@@ -329,9 +348,7 @@ class TestMCPToolRoundtripValidation:
         assert reconstructed_product.description == original_product.description
         assert reconstructed_product.formats == original_product.formats
         assert reconstructed_product.delivery_type == original_product.delivery_type
-        assert reconstructed_product.is_fixed_price == original_product.is_fixed_price
-        assert reconstructed_product.cpm == original_product.cpm
-        assert reconstructed_product.min_spend == original_product.min_spend
+        assert reconstructed_product.pricing_options == original_product.pricing_options
 
     def test_adcp_spec_compliance_after_roundtrip(self):
         """
@@ -347,11 +364,18 @@ class TestMCPToolRoundtripValidation:
             description="Testing AdCP spec compliance after roundtrip",
             formats=["display_300x250", "display_728x90"],  # Internal field name
             delivery_type="non_guaranteed",
-            is_fixed_price=False,
-            cpm=8.25,
-            min_spend=1500.0,
             is_custom=True,
             property_tags=["all_inventory"],  # Required per AdCP spec
+            pricing_options=[
+                PricingOption(
+                    pricing_option_id="cpm_usd_auction",
+                    pricing_model="cpm",
+                    rate=8.25,
+                    currency="USD",
+                    is_fixed=False,
+                    price_guidance=PriceGuidance(floor=5.0, p50=8.25, p75=10.0),
+                )
+            ],
         )
 
         # Roundtrip through internal format
@@ -373,7 +397,7 @@ class TestMCPToolRoundtripValidation:
             "description",
             "format_ids",
             "delivery_type",
-            "is_fixed_price",
+            "pricing_options",
             "is_custom",
         ]
 
@@ -414,10 +438,17 @@ class TestMCPToolRoundtripValidation:
             "description": "Testing correct schema validation",
             "formats": ["display_300x250"],  # CORRECT: Internal field name
             "delivery_type": "guaranteed",
-            "is_fixed_price": True,
-            "cpm": 10.0,
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [
+                {
+                    "pricing_option_id": "cpm_usd_fixed",
+                    "pricing_model": "cpm",
+                    "rate": 10.0,
+                    "currency": "USD",
+                    "is_fixed": True,
+                }
+            ],
         }
 
         # This should succeed
@@ -445,11 +476,18 @@ class TestMCPToolRoundtripPatterns:
                     "description": "Pattern test for guaranteed products",
                     "formats": ["display_300x250"],
                     "delivery_type": "guaranteed",
-                    "is_fixed_price": True,
-                    "cpm": 12.0,
-                    "min_spend": 2000.0,
                     "is_custom": False,
                     "property_tags": ["all_inventory"],  # Required per AdCP spec
+                    "pricing_options": [
+                        {
+                            "pricing_option_id": "cpm_usd_fixed",
+                            "pricing_model": "cpm",
+                            "rate": 12.0,
+                            "currency": "USD",
+                            "is_fixed": True,
+                            "min_spend_per_package": 2000.0,
+                        }
+                    ],
                 },
             },
             {
@@ -460,11 +498,19 @@ class TestMCPToolRoundtripPatterns:
                     "description": "Pattern test for non-guaranteed products",
                     "formats": ["video_15s", "video_30s"],
                     "delivery_type": "non_guaranteed",
-                    "is_fixed_price": False,
-                    "cpm": None,  # Test null handling
-                    "min_spend": 5000.0,
                     "is_custom": True,
                     "property_tags": ["all_inventory"],  # Required per AdCP spec
+                    "pricing_options": [
+                        {
+                            "pricing_option_id": "cpm_usd_auction",
+                            "pricing_model": "cpm",
+                            "rate": None,  # Test null handling for auction pricing
+                            "currency": "USD",
+                            "is_fixed": False,
+                            "price_guidance": {"floor": 3.0, "p50": 5.0, "p75": 7.0},
+                            "min_spend_per_package": 5000.0,
+                        }
+                    ],
                 },
             },
             {
@@ -475,9 +521,18 @@ class TestMCPToolRoundtripPatterns:
                     "description": "Pattern test with minimal fields",
                     "formats": ["display_728x90"],
                     "delivery_type": "non_guaranteed",
-                    "is_fixed_price": False,
                     "is_custom": False,
                     "property_tags": ["all_inventory"],  # Required per AdCP spec
+                    "pricing_options": [
+                        {
+                            "pricing_option_id": "cpm_usd_auction",
+                            "pricing_model": "cpm",
+                            "rate": 5.0,
+                            "currency": "USD",
+                            "is_fixed": False,
+                            "price_guidance": {"floor": 3.0, "p50": 5.0, "p75": 7.0},
+                        }
+                    ],
                 },
             },
         ]
@@ -505,7 +560,7 @@ class TestMCPToolRoundtripPatterns:
                 assert reconstructed.name == original.name
                 assert reconstructed.formats == original.formats
                 assert reconstructed.delivery_type == original.delivery_type
-                assert reconstructed.is_fixed_price == original.is_fixed_price
+                assert reconstructed.pricing_options == original.pricing_options
 
                 # Step 7: Verify AdCP spec compliance
                 adcp_output = reconstructed.model_dump()
@@ -525,9 +580,6 @@ class TestMCPToolRoundtripPatterns:
             "description": "Testing all field mapping scenarios",
             "formats": ["display_300x250", "video_15s"],  # Internal name
             "delivery_type": "guaranteed",
-            "is_fixed_price": True,
-            "cpm": 15.0,
-            "min_spend": 2500.0,
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
             # Optional fields that might cause mapping issues
@@ -543,6 +595,16 @@ class TestMCPToolRoundtripPatterns:
                 "templates_available": True,
                 "max_file_size": "5MB",
             },
+            "pricing_options": [
+                {
+                    "pricing_option_id": "cpm_usd_fixed",
+                    "pricing_model": "cpm",
+                    "rate": 15.0,
+                    "currency": "USD",
+                    "is_fixed": True,
+                    "min_spend_per_package": 2500.0,
+                }
+            ],
         }
 
         # Create Product object

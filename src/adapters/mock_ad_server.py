@@ -89,7 +89,7 @@ class MockAdServer(AdServerAdapter):
 
     def get_supported_pricing_models(self) -> set[str]:
         """Mock adapter supports all pricing models (AdCP PR #88)."""
-        return {"cpm", "cpcv", "cpp", "cpc", "cpv", "flat_rate"}
+        return {"cpm", "vcpm", "cpcv", "cpp", "cpc", "cpv", "flat_rate"}
 
     def _initialize_hitl_config(self):
         """Initialize Human-in-the-Loop configuration from principal platform_mappings."""
@@ -298,17 +298,10 @@ class MockAdServer(AdServerAdapter):
             errors.append("InvalidArgumentError @ lineItem[0].endDateTime")
 
         # Inventory targeting validation (like GAM requirement)
-        has_inventory_targeting = False
-        if request.targeting_overlay and hasattr(request.targeting_overlay, "custom"):
-            if request.targeting_overlay.custom and "inventory" in str(request.targeting_overlay.custom):
-                has_inventory_targeting = True
-
-        # For non-guaranteed line items, require some form of inventory targeting
-        for package in packages:
-            if package.delivery_type == "non_guaranteed":
-                if not has_inventory_targeting:
-                    errors.append("RequiredError.REQUIRED @ lineItem[0].targeting.inventoryTargeting")
-                    break
+        # Note: Mock adapter skips inventory targeting validation
+        # Real adapters like GAM will enforce their own inventory targeting requirements
+        # Mock adapter accepts Run of Site (no specific inventory targeting) for testing flexibility
+        # This allows test scenarios to run without configuring ad unit IDs
 
         # Goal validation (like GAM limits)
         for package in packages:
@@ -364,9 +357,17 @@ class MockAdServer(AdServerAdapter):
                 )
 
         # AI-powered test orchestration (check promoted_offering/brief for test instructions)
-        # For mock adapter, buyers put test directives in the brief (promoted_offering field)
+        # For mock adapter, buyers put test directives in brand_manifest.name field
         scenario = None
-        test_message = request.promoted_offering
+        test_message = None
+        if request.brand_manifest:
+            if isinstance(request.brand_manifest, str):
+                test_message = request.brand_manifest
+            elif hasattr(request.brand_manifest, "name"):
+                test_message = request.brand_manifest.name
+            elif isinstance(request.brand_manifest, dict):
+                test_message = request.brand_manifest.get("name")
+
         if test_message and isinstance(test_message, str) and test_message.strip():
             try:
                 orchestrator = AITestOrchestrator()
@@ -399,8 +400,6 @@ class MockAdServer(AdServerAdapter):
             if scenario.should_ask_question:
                 return CreateMediaBuyResponse(
                     media_buy_id=f"pending_question_{id(request)}",
-                    status="pending",
-                    message=scenario.question_text or "Additional information needed",
                     creative_deadline=None,
                     buyer_ref=request.buyer_ref,
                 )
@@ -510,9 +509,8 @@ class MockAdServer(AdServerAdapter):
 
         # Return pending response
         return CreateMediaBuyResponse(
+            buyer_ref=request.buyer_ref,
             media_buy_id=f"pending_{step.step_id}",
-            status="submitted",
-            message=f"Media buy submitted for processing. Task ID: {step.step_id}",
             creative_deadline=None,
         )
 
@@ -578,7 +576,7 @@ class MockAdServer(AdServerAdapter):
         from src.core.database.models import Tenant
         from src.core.utils.naming import apply_naming_template, build_order_name_context
 
-        order_name_template = "{campaign_name|promoted_offering} - {date_range}"  # Default
+        order_name_template = "{campaign_name|brand_name} - {date_range}"  # Default
         tenant_gemini_key = None
         try:
             with get_db_session() as db_session:
@@ -594,6 +592,9 @@ class MockAdServer(AdServerAdapter):
 
         # Build context and apply template
         context = build_order_name_context(request, packages, start_time, end_time, tenant_gemini_key)
+        print(
+            f"[NAMING DEBUG] template={repr(order_name_template)}, has_promoted_offering={('promoted_offering' in context)}"
+        )
         order_name = apply_naming_template(order_name_template, context)
 
         # Strategy-aware behavior modifications
@@ -706,10 +707,10 @@ class MockAdServer(AdServerAdapter):
             self.log(f"Would return: Campaign ID '{media_buy_id}' with status 'pending_creative'")
 
         return CreateMediaBuyResponse(
-            status="completed",  # Mock adapter completes immediately
             buyer_ref=request.buyer_ref,  # Required field per AdCP spec
             media_buy_id=media_buy_id,
             creative_deadline=datetime.now(UTC) + timedelta(days=2),
+            errors=None,  # No errors for successful mock response
         )
 
     def add_creative_assets(
@@ -1107,12 +1108,13 @@ class MockAdServer(AdServerAdapter):
     def update_media_buy(
         self,
         media_buy_id: str,
+        buyer_ref: str,
         action: str,
         package_id: str | None,
         budget: int | None,
         today: datetime,
     ) -> UpdateMediaBuyResponse:
-        return UpdateMediaBuyResponse(status="accepted")
+        return UpdateMediaBuyResponse(media_buy_id=media_buy_id, buyer_ref=buyer_ref)
 
     def get_config_ui_endpoint(self) -> str | None:
         """Return the URL path for the mock adapter's configuration UI."""
@@ -1173,14 +1175,26 @@ class MockAdServer(AdServerAdapter):
                             },
                         }
 
+                        # Handle format selection
+                        formats = request.form.getlist("formats")
+                        if formats:
+                            product_obj.formats = formats
+
                         # Validate the configuration
                         validation_errors = self.validate_product_config(new_config)
                         if validation_errors:
+                            # Get formats for re-rendering
+                            from src.admin.blueprints.products import get_creative_formats
+
+                            available_formats = get_creative_formats(tenant_id=tenant_id)
+
                             return render_template(
                                 "adapters/mock_product_config.html",
                                 tenant_id=tenant_id,
                                 product=product,
                                 config=config,
+                                formats=available_formats,
+                                selected_formats=product_obj.formats or [],
                                 error=validation_errors[0],
                             )
 
@@ -1188,19 +1202,33 @@ class MockAdServer(AdServerAdapter):
                         product_obj.implementation_config = new_config
                         session.commit()
 
+                        # Get formats for success page
+                        from src.admin.blueprints.products import get_creative_formats
+
+                        available_formats = get_creative_formats(tenant_id=tenant_id)
+
                         return render_template(
                             "adapters/mock_product_config.html",
                             tenant_id=tenant_id,
                             product=product,
                             config=new_config,
+                            formats=available_formats,
+                            selected_formats=product_obj.formats or [],
                             success=True,
                         )
+
+                    # GET request - fetch available formats from creative agents
+                    from src.admin.blueprints.products import get_creative_formats
+
+                    available_formats = get_creative_formats(tenant_id=tenant_id)
 
                     return render_template(
                         "adapters/mock_product_config.html",
                         tenant_id=tenant_id,
                         product=product,
                         config=config,
+                        formats=available_formats,
+                        selected_formats=product_obj.formats or [],
                     )
 
             return wrapped_view()

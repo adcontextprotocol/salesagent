@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import attributes
 
 from src.admin.utils import require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Context, WorkflowStep
 from src.core.database.models import Principal as ModelPrincipal
@@ -30,14 +31,17 @@ def list_workflows(tenant_id, **kwargs):
         if not tenant:
             return "Tenant not found", 404
 
-        # Get all workflow steps that need attention
+        # Get all workflow steps (not just pending approval)
         stmt = (
             select(WorkflowStep)
             .join(Context, WorkflowStep.context_id == Context.context_id)
-            .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "pending_approval")
+            .filter(Context.tenant_id == tenant_id)
             .order_by(WorkflowStep.created_at.desc())
         )
-        pending_steps = db.scalars(stmt).all()
+        all_steps = db.scalars(stmt).all()
+
+        # Separate pending approval steps for summary
+        pending_steps = [s for s in all_steps if s.status == "pending_approval"]
 
         # Get media buys for context
         stmt = select(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc())
@@ -51,9 +55,9 @@ def list_workflows(tenant_id, **kwargs):
             "total_spend": sum(mb.budget or 0 for mb in media_buys if mb.status == "active"),
         }
 
-        # Format workflow steps for display
+        # Format all workflow steps for display in tasks tab
         workflows_list = []
-        for step in pending_steps:
+        for step in all_steps:
             context = db.scalars(select(Context).filter_by(context_id=step.context_id)).first()
             principal = None
             if context and context.principal_id:
@@ -66,9 +70,13 @@ def list_workflows(tenant_id, **kwargs):
                     "step_id": step.step_id,
                     "workflow_id": step.workflow_id,
                     "step_name": step.step_name,
+                    "step_type": step.step_type,
                     "status": step.status,
                     "created_at": step.created_at,
+                    "completed_at": step.completed_at,
                     "principal_name": principal.name if principal else "Unknown",
+                    "assigned_to": step.assigned_to,
+                    "error_message": step.error_message,
                     "request_data": step.request_data,
                 }
             )
@@ -102,7 +110,7 @@ def list_workflows(tenant_id, **kwargs):
             summary=summary,
             workflows=workflows_list,
             media_buys=media_buys,
-            tasks=[],  # Deprecated - using workflow_steps now
+            tasks=workflows_list,  # Using workflow_steps as tasks
             audit_logs=audit_logs,
         )
 
@@ -154,6 +162,7 @@ def review_workflow_step(tenant_id, workflow_id, step_id):
 
 @workflows_bp.route("/<tenant_id>/workflows/<workflow_id>/steps/<step_id>/approve", methods=["POST"])
 @require_tenant_access()
+@log_admin_action("approve_workflow_step")
 def approve_workflow_step(tenant_id, workflow_id, step_id):
     """Approve a workflow step."""
     try:
@@ -196,6 +205,7 @@ def approve_workflow_step(tenant_id, workflow_id, step_id):
 
 @workflows_bp.route("/<tenant_id>/workflows/<workflow_id>/steps/<step_id>/reject", methods=["POST"])
 @require_tenant_access()
+@log_admin_action("reject_workflow_step")
 def reject_workflow_step(tenant_id, workflow_id, step_id):
     """Reject a workflow step with a reason."""
     try:

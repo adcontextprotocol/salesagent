@@ -316,7 +316,6 @@ def google_callback():
                 # Check if user is super admin or has tenant access
                 if is_super_admin(email):
                     session["tenant_id"] = tenant_id
-                    session["tenant_name"] = tenant.name
                     session["is_super_admin"] = True
                     flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
 
@@ -326,15 +325,25 @@ def google_callback():
                     else:
                         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
-                # Check if user has access to this tenant
-                user_record = db_session.scalars(
-                    select(User).filter_by(email=email, tenant_id=tenant_id, is_active=True)
-                ).first()
+                # Check if user is authorized (via email list or domain list)
+                from src.admin.domain_access import ensure_user_in_tenant, get_user_tenant_access
 
-                if user_record:
+                email_domain = email.split("@")[1] if "@" in email else ""
+                tenant_access = get_user_tenant_access(email)
+
+                # Check if user has access to this specific tenant
+                has_tenant_access = False
+                if tenant_access["domain_tenant"] and tenant_access["domain_tenant"].tenant_id == tenant_id:
+                    has_tenant_access = True
+                elif any(t.tenant_id == tenant_id for t in tenant_access["email_tenants"]):
+                    has_tenant_access = True
+
+                if has_tenant_access:
+                    # Ensure user record exists (auto-create if needed)
+                    user_record = ensure_user_in_tenant(email, tenant_id, role="admin", name=user.get("name"))
+
                     session["tenant_id"] = tenant_id
-                    session["tenant_name"] = tenant.name
-                    session["is_tenant_admin"] = user_record.is_admin
+                    session["is_tenant_admin"] = user_record.role == "admin"
                     flash(f"Welcome {user.get('name', email)}!", "success")
 
                     # Redirect to tenant-specific subdomain if accessed via subdomain
@@ -348,7 +357,7 @@ def google_callback():
                     return redirect(url_for("auth.tenant_login", tenant_id=tenant_id))
 
         # Domain-based access control using email domain extraction
-        from src.admin.domain_access import ensure_user_in_tenant, get_user_tenant_access
+        # (ensure_user_in_tenant and get_user_tenant_access already imported above)
 
         email_domain = email.split("@")[1] if "@" in email else ""
 
@@ -407,7 +416,6 @@ def google_callback():
             user_record = ensure_user_in_tenant(email, tenant.tenant_id, role="admin", name=user.get("name"))
 
             session["tenant_id"] = tenant.tenant_id
-            session["tenant_name"] = tenant.name
             session["is_tenant_admin"] = user_record.role == "admin"
             flash(f"Welcome {user.get('name', email)}! ({access_type.title()} Access)", "success")
 
@@ -468,7 +476,6 @@ def select_tenant():
         for tenant in session["available_tenants"]:
             if tenant["tenant_id"] == tenant_id:
                 session["tenant_id"] = tenant_id
-                session["tenant_name"] = tenant["name"]
                 session["is_tenant_admin"] = tenant["is_admin"]
                 session.pop("available_tenants", None)  # Clean up
                 flash(f"Welcome to {tenant['name']}!", "success")

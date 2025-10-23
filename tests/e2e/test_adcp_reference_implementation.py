@@ -109,8 +109,13 @@ class TestAdCPReferenceImplementation:
         print("REFERENCE E2E TEST: Complete Campaign Lifecycle")
         print("=" * 80)
 
-        # Setup MCP client
-        headers = {"x-adcp-auth": test_auth_token}
+        # Setup MCP client with both auth and tenant detection headers
+        # Note: Host header is automatically set by HTTP client based on URL,
+        # so we use x-adcp-tenant header for explicit tenant selection in E2E tests
+        headers = {
+            "x-adcp-auth": test_auth_token,
+            "x-adcp-tenant": "ci-test",  # Explicit tenant selection for E2E tests
+        }
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
 
         async with Client(transport=transport) as client:
@@ -121,7 +126,10 @@ class TestAdCPReferenceImplementation:
 
             products_result = await client.call_tool(
                 "get_products",
-                {"promoted_offering": "Premium Athletic Footwear", "brief": "display advertising"},
+                {
+                    "brand_manifest": {"name": "Premium Athletic Footwear"},
+                    "brief": "display advertising",
+                },
             )
             products_data = json.loads(products_result.content[0].text)
 
@@ -159,7 +167,7 @@ class TestAdCPReferenceImplementation:
                 total_budget=5000.0,
                 start_time=start_time,
                 end_time=end_time,
-                promoted_offering="Nike Air Jordan 2025 Basketball Shoes",
+                brand_manifest={"name": "Nike Air Jordan 2025 Basketball Shoes"},
                 targeting_overlay={
                     "geographic": {"countries": ["US", "CA"]},
                     "demographic": {"age_range": "25-44"},

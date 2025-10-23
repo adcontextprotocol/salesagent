@@ -4,61 +4,15 @@ Provides layered format lookup:
 1. Product-level overrides (from product.implementation_config.format_overrides)
 2. Dynamic format discovery from creative agents (via CreativeAgentRegistry)
 
-Note: Tenant custom formats (creative_formats table) are deprecated in favor of
+Note: Tenant custom formats (creative_formats table) were removed in favor of
 creative agent-based format discovery per AdCP v2.4.
 """
 
 import asyncio
 import json
-from collections.abc import Sequence
-from typing import Any
 
 from src.core.database.database_session import get_db_session
 from src.core.schemas import Format
-
-
-def _parse_format_from_db_row(row: Sequence[Any]) -> Format:
-    """Extract Format object from database row.
-
-    Args:
-        row: Database tuple with format fields:
-            (format_id, name, type, description, width, height,
-             duration_seconds, max_file_size_kb, specs, is_standard, platform_config)
-
-    Returns:
-        Format object constructed from database row
-    """
-    # Parse JSON fields (handle both string and dict from SQLite vs PostgreSQL)
-    specs = json.loads(row[8]) if isinstance(row[8], str) else row[8]
-    platform_config_data: dict[str, Any] | None = None
-    if row[10]:
-        platform_config_data = json.loads(row[10]) if isinstance(row[10], str) else row[10]
-
-    # Build requirements dict from database columns
-    requirements: dict[str, Any] = {}
-    if row[4]:  # width
-        requirements["width"] = row[4]
-    if row[5]:  # height
-        requirements["height"] = row[5]
-    if row[6]:  # duration_seconds
-        requirements["duration_max"] = row[6]
-    if row[7]:  # max_file_size_kb
-        requirements["max_file_size_kb"] = row[7]
-
-    # Merge with specs JSON
-    if specs:
-        requirements.update(specs)
-
-    return Format(
-        format_id=row[0],
-        name=row[1],
-        type=row[2],
-        is_standard=bool(row[9]),
-        iab_specification=None,  # Not stored in creative_formats table
-        assets_required=None,  # Not stored in creative_formats table
-        requirements=requirements if requirements else None,
-        platform_config=platform_config_data,
-    )
 
 
 def get_format(
@@ -200,41 +154,6 @@ def _get_product_format_override(tenant_id: str, product_id: str, format_id: str
         return Format(**format_dict)
 
 
-def _get_tenant_custom_format(tenant_id: str, format_id: str) -> Format | None:
-    """Get tenant-specific custom format from database.
-
-    Tenants can define custom formats in the creative_formats table.
-    Useful for non-standard sizes or platform-specific configurations.
-
-    Args:
-        tenant_id: Tenant identifier
-        format_id: Format to look up
-
-    Returns:
-        Custom Format object, or None if not found
-    """
-    from sqlalchemy import text
-
-    with get_db_session() as session:
-        result = session.execute(
-            text(
-                """
-                SELECT format_id, name, type, description, width, height,
-                       duration_seconds, max_file_size_kb, specs, is_standard,
-                       platform_config
-                FROM creative_formats
-                WHERE tenant_id = :tenant_id AND format_id = :format_id
-            """
-            ),
-            {"tenant_id": tenant_id, "format_id": format_id},
-        )
-        row = result.fetchone()
-        if not row:
-            return None
-
-        return _parse_format_from_db_row(row)
-
-
 def list_available_formats(
     tenant_id: str | None = None,
     max_width: int | None = None,
@@ -262,9 +181,19 @@ def list_available_formats(
     Returns:
         List of all available Format objects from all registered agents
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     from src.core.creative_agent_registry import get_creative_agent_registry
 
-    registry = get_creative_agent_registry()
+    logger.info(f"[list_available_formats] Starting format fetch for tenant_id={tenant_id}")
+
+    try:
+        registry = get_creative_agent_registry()
+    except Exception as e:
+        logger.error(f"[list_available_formats] Failed to get creative agent registry: {e}", exc_info=True)
+        return []
 
     # Get formats from all agents (default + tenant-specific)
     # Check if we're already in an async context
@@ -274,6 +203,7 @@ def list_available_formats(
         # Return a coroutine that needs to be awaited
         import warnings
 
+        logger.debug("[list_available_formats] Running in async context, using thread pool")
         warnings.warn(
             "list_available_formats() called from async context. "
             "Use await registry.list_all_formats() directly instead.",
@@ -299,9 +229,10 @@ def list_available_formats(
                     )
                 )
             )
-            formats = future.result()
+            formats = future.result(timeout=30)  # 30 second timeout
     except RuntimeError:
         # No running loop, we can safely create one
+        logger.debug("[list_available_formats] No async context, creating new event loop")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -318,7 +249,17 @@ def list_available_formats(
                     type_filter=type_filter,
                 )
             )
+        except TimeoutError:
+            logger.error("[list_available_formats] Timeout fetching formats from creative agents")
+            return []
+        except Exception as e:
+            logger.error(f"[list_available_formats] Error in async format fetch: {e}", exc_info=True)
+            return []
         finally:
             loop.close()
+    except Exception as e:
+        logger.error(f"[list_available_formats] Unexpected error fetching formats: {e}", exc_info=True)
+        return []
 
+    logger.info(f"[list_available_formats] Successfully fetched {len(formats)} formats")
     return formats

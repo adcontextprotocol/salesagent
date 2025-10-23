@@ -13,7 +13,15 @@ from sqlalchemy import delete, select
 from src.adapters.google_ad_manager import GUARANTEED_LINE_ITEM_TYPES, NON_GUARANTEED_LINE_ITEM_TYPES
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product, Tenant
-from src.core.schemas import MediaPackage, Principal
+from src.core.schemas import FormatId, MediaPackage, Principal
+
+# Default agent URL for creating FormatId objects
+DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"
+
+
+def make_format_id(format_id: str) -> FormatId:
+    """Helper to create FormatId objects with default agent URL."""
+    return FormatId(agent_url=DEFAULT_AGENT_URL, id=format_id)
 
 
 class TestGAMAutomationBasics:
@@ -147,7 +155,7 @@ class TestGAMPackageTypes:
             delivery_type="non_guaranteed",
             impressions=10000,
             cpm=2.50,
-            format_ids=["display_300x250"],
+            format_ids=[make_format_id("display_300x250")],
         )
 
         assert non_guaranteed_pkg.delivery_type == "non_guaranteed"
@@ -159,7 +167,7 @@ class TestGAMPackageTypes:
             delivery_type="guaranteed",
             impressions=50000,
             cpm=5.00,
-            format_ids=["display_300x250"],
+            format_ids=[make_format_id("display_300x250")],
         )
 
         assert guaranteed_pkg.delivery_type == "guaranteed"

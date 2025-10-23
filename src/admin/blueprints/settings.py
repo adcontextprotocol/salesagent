@@ -15,6 +15,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from sqlalchemy import select
 
 from src.admin.utils import require_auth, require_tenant_access
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 
@@ -45,6 +46,42 @@ def validate_naming_template(template: str, field_name: str) -> str | None:
         return f"{field_name} contains empty variable placeholder {{}}"
 
     return None
+
+
+def validate_policy_list(
+    items: list[str], field_name: str, max_items: int = 100, max_length: int = 500
+) -> tuple[list[str], str | None]:
+    """Validate and sanitize policy rule lists.
+
+    Args:
+        items: List of policy rules to validate
+        field_name: Name of the field for error messages
+        max_items: Maximum number of items allowed (default: 100)
+        max_length: Maximum length per item (default: 500)
+
+    Returns:
+        Tuple of (validated_items, error_message)
+        If validation passes, error_message is None
+    """
+    if len(items) > max_items:
+        return [], f"{field_name}: Maximum {max_items} items allowed (received {len(items)})"
+
+    validated = []
+    for idx, item in enumerate(items):
+        # Normalize whitespace (remove control characters, multiple spaces)
+        sanitized = " ".join(item.split())
+
+        if len(sanitized) > max_length:
+            return [], f"{field_name}: Item {idx + 1} exceeds {max_length} characters: '{sanitized[:50]}...'"
+
+        # Check for potentially dangerous characters (HTML, scripts)
+        if any(char in sanitized for char in ["<", ">", "{", "}"]):
+            return [], f"{field_name}: Item {idx + 1} contains invalid characters: '{sanitized[:50]}...'"
+
+        if sanitized:  # Only add non-empty after sanitization
+            validated.append(sanitized)
+
+    return validated, None
 
 
 # Tenant management settings routes
@@ -92,6 +129,7 @@ def update_admin_settings():
 
 @settings_bp.route("/general", methods=["POST"])
 @require_tenant_access()
+@log_admin_action("update_general_settings")
 def update_general(tenant_id):
     """Update general tenant settings."""
     try:
@@ -223,6 +261,12 @@ def update_general(tenant_id):
 
 @settings_bp.route("/adapter", methods=["POST"])
 @require_tenant_access()
+@log_admin_action(
+    "update_adapter",
+    extract_details=lambda r, **kw: {
+        "adapter": request.json.get("adapter") if request.is_json else request.form.get("adapter")
+    },
+)
 def update_adapter(tenant_id):
     """Update the active adapter for a tenant."""
     try:
@@ -264,13 +308,45 @@ def update_adapter(tenant_id):
                     network_code = (
                         request.json.get("gam_network_code", "").strip() if request.json.get("gam_network_code") else ""
                     )
+                    refresh_token = (
+                        request.json.get("gam_refresh_token", "").strip()
+                        if request.json.get("gam_refresh_token")
+                        else ""
+                    )
+                    trafficker_id = (
+                        request.json.get("gam_trafficker_id", "").strip()
+                        if request.json.get("gam_trafficker_id")
+                        else ""
+                    )
+                    order_name_template = (
+                        request.json.get("order_name_template", "").strip()
+                        if request.json.get("order_name_template")
+                        else ""
+                    )
+                    line_item_name_template = (
+                        request.json.get("line_item_name_template", "").strip()
+                        if request.json.get("line_item_name_template")
+                        else ""
+                    )
                     manual_approval = request.json.get("gam_manual_approval", False)
                 else:
                     network_code = request.form.get("gam_network_code", "").strip()
+                    refresh_token = request.form.get("gam_refresh_token", "").strip()
+                    trafficker_id = request.form.get("gam_trafficker_id", "").strip()
+                    order_name_template = request.form.get("order_name_template", "").strip()
+                    line_item_name_template = request.form.get("line_item_name_template", "").strip()
                     manual_approval = request.form.get("gam_manual_approval") == "on"
 
                 if network_code:
                     adapter_config_obj.gam_network_code = network_code
+                if refresh_token:
+                    adapter_config_obj.gam_refresh_token = refresh_token
+                if trafficker_id:
+                    adapter_config_obj.gam_trafficker_id = trafficker_id
+                if order_name_template:
+                    adapter_config_obj.gam_order_name_template = order_name_template
+                if line_item_name_template:
+                    adapter_config_obj.gam_line_item_name_template = line_item_name_template
                 adapter_config_obj.gam_manual_approval_required = manual_approval
             elif new_adapter == "mock":
                 if request.is_json:
@@ -302,6 +378,7 @@ def update_adapter(tenant_id):
 
 
 @settings_bp.route("/slack", methods=["POST"])
+@log_admin_action("update_slack")
 @require_tenant_access()
 def update_slack(tenant_id):
     """Update Slack integration settings."""
@@ -349,6 +426,7 @@ def update_slack(tenant_id):
 
 
 @settings_bp.route("/ai", methods=["POST"])
+@log_admin_action("update_ai")
 @require_tenant_access()
 def update_ai(tenant_id):
     """Update AI services settings (Gemini API key)."""
@@ -380,6 +458,7 @@ def update_ai(tenant_id):
 
 
 @settings_bp.route("/signals", methods=["POST"])
+@log_admin_action("update_signals")
 @require_tenant_access()
 def update_signals(tenant_id):
     """Update signals discovery agent settings."""
@@ -443,6 +522,7 @@ def update_signals(tenant_id):
 
 
 @settings_bp.route("/test_signals", methods=["POST"])
+@log_admin_action("test_signals")
 @require_tenant_access()
 def test_signals(tenant_id):
     """Test connection to signals discovery agent."""
@@ -526,6 +606,7 @@ def test_signals(tenant_id):
 
 # Domain and Email Management Routes
 @settings_bp.route("/domains/add", methods=["POST"])
+@log_admin_action("add_authorized_domain")
 @require_tenant_access()
 def add_authorized_domain(tenant_id):
     """Add domain to tenant's authorized domains list."""
@@ -556,6 +637,7 @@ def add_authorized_domain(tenant_id):
 
 
 @settings_bp.route("/domains/remove", methods=["POST"])
+@log_admin_action("remove_authorized_domain")
 @require_tenant_access()
 def remove_authorized_domain(tenant_id):
     """Remove domain from tenant's authorized domains list."""
@@ -581,6 +663,7 @@ def remove_authorized_domain(tenant_id):
 
 
 @settings_bp.route("/emails/add", methods=["POST"])
+@log_admin_action("add_authorized_email")
 @require_tenant_access()
 def add_authorized_email(tenant_id):
     """Add email to tenant's authorized emails list."""
@@ -611,6 +694,7 @@ def add_authorized_email(tenant_id):
 
 
 @settings_bp.route("/emails/remove", methods=["POST"])
+@log_admin_action("remove_authorized_email")
 @require_tenant_access()
 def remove_authorized_email(tenant_id):
     """Remove email from tenant's authorized emails list."""
@@ -637,6 +721,7 @@ def remove_authorized_email(tenant_id):
 
 # Test route for domain access functionality
 @settings_bp.route("/access/test", methods=["POST"])
+@log_admin_action("test_domain_access")
 @require_tenant_access()
 def test_domain_access(tenant_id):
     """Test email access for this tenant."""
@@ -679,6 +764,7 @@ def test_domain_access(tenant_id):
 
 
 @settings_bp.route("/business-rules", methods=["POST"])
+@log_admin_action("update_business_rules")
 @require_tenant_access()
 def update_business_rules(tenant_id):
     """Update business rules (budget, naming, approvals, features)."""
@@ -863,6 +949,75 @@ def update_business_rules(tenant_id):
 
                 attributes.flag_modified(tenant, "ai_policy")
 
+            # Update advertising policy configuration
+            if any(
+                key in data
+                for key in [
+                    "policy_check_enabled",
+                    "default_prohibited_categories",
+                    "default_prohibited_tactics",
+                    "prohibited_categories",
+                    "prohibited_tactics",
+                    "prohibited_advertisers",
+                ]
+            ):
+                # Get existing advertising policy or create new dict
+                advertising_policy = tenant.advertising_policy if tenant.advertising_policy else {}
+
+                # Update enabled status
+                if "policy_check_enabled" in data:
+                    advertising_policy["enabled"] = data.get("policy_check_enabled") in [True, "true", "on", 1, "1"]
+                elif not request.is_json:
+                    # Checkbox not present means unchecked
+                    advertising_policy["enabled"] = False
+
+                # Helper function for parsing and validating policy lists
+                def parse_and_validate_policy_field(field_name: str, display_name: str) -> list[str]:
+                    """Parse and validate a policy field from form data."""
+                    field_str = data.get(field_name, "").strip()
+                    if not field_str:
+                        return []
+
+                    # Parse newline-separated list
+                    items = [line.strip() for line in field_str.split("\n") if line.strip()]
+
+                    # Validate
+                    validated, error = validate_policy_list(items, display_name)
+                    if error:
+                        if request.is_json:
+                            raise ValueError(error)
+                        flash(error, "error")
+                        raise ValueError(error)
+
+                    return validated
+
+                # Update all policy fields with validation
+                policy_fields = {
+                    "default_prohibited_categories": "Baseline Protected Categories",
+                    "default_prohibited_tactics": "Baseline Prohibited Tactics",
+                    "prohibited_categories": "Additional Prohibited Categories",
+                    "prohibited_tactics": "Additional Prohibited Tactics",
+                    "prohibited_advertisers": "Blocked Advertisers/Domains",
+                }
+
+                for field_name, display_name in policy_fields.items():
+                    if field_name in data:
+                        try:
+                            advertising_policy[field_name] = parse_and_validate_policy_field(field_name, display_name)
+                        except ValueError as e:
+                            if request.is_json:
+                                return jsonify({"success": False, "error": str(e)}), 400
+                            return redirect(
+                                url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules")
+                            )
+
+                # Save updated policy
+                tenant.advertising_policy = advertising_policy
+                # Mark as modified for JSONB update
+                from sqlalchemy.orm import attributes
+
+                attributes.flag_modified(tenant, "advertising_policy")
+
             # Update features
             if "enable_axe_signals" in data:
                 tenant.enable_axe_signals = data.get("enable_axe_signals") in [True, "true", "on", 1, "1"]
@@ -887,3 +1042,199 @@ def update_business_rules(tenant_id):
 
         flash(f"Error updating business rules: {str(e)}", "error")
         return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
+
+
+@settings_bp.route("/approximated-domain-status", methods=["POST"])
+@require_tenant_access()
+def check_approximated_domain_status(tenant_id):
+    """Check if a domain is registered with Approximated."""
+    try:
+        import requests
+
+        data = request.get_json()
+        domain = data.get("domain")
+        if not domain:
+            return jsonify({"success": False, "error": "Domain required"}), 400
+
+        approximated_api_key = os.getenv("APPROXIMATED_API_KEY")
+        if not approximated_api_key:
+            return jsonify({"success": False, "error": "Approximated not configured"}), 500
+
+        # Check domain registration status using correct Approximated API endpoint
+        response = requests.get(
+            f"https://cloud.approximated.app/api/vhosts/by/incoming/{domain}",
+            headers={
+                "api-key": approximated_api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            response_data = response.json()
+            # Approximated API wraps data in 'data' key
+            domain_data = response_data.get("data", response_data)
+
+            return jsonify(
+                {
+                    "success": True,
+                    "registered": True,
+                    "status": domain_data.get("status"),
+                    "tls_enabled": domain_data.get("has_ssl", False),
+                    "ssl_active": domain_data.get("status", "").startswith("ACTIVE_SSL"),
+                    "target_address": domain_data.get("target_address"),
+                }
+            )
+        elif response.status_code == 404:
+            return jsonify({"success": True, "registered": False})
+        else:
+            logger.error(f"Approximated API error: {response.status_code} - {response.text}")
+            return jsonify({"success": False, "error": f"API error: {response.status_code}"}), 500
+
+    except Exception as e:
+        logger.error(f"Error checking domain status: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@settings_bp.route("/approximated-register-domain", methods=["POST"])
+@require_tenant_access()
+@log_admin_action("register_approximated_domain")
+def register_approximated_domain(tenant_id):
+    """Register a domain with Approximated for TLS and routing."""
+    try:
+        import requests
+
+        data = request.get_json()
+        domain = data.get("domain")
+        if not domain:
+            return jsonify({"success": False, "error": "Domain required"}), 400
+
+        approximated_api_key = os.getenv("APPROXIMATED_API_KEY")
+        if not approximated_api_key:
+            return jsonify({"success": False, "error": "Approximated not configured"}), 500
+
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
+
+            if tenant.virtual_host != domain:
+                return jsonify({"success": False, "error": "Domain must match tenant's virtual_host"}), 400
+
+        # Get backend target address from environment
+        backend_url = os.getenv("APPROXIMATED_BACKEND_URL", "adcp-sales-agent.fly.dev")
+
+        # Register domain with Approximated using correct API endpoint
+        response = requests.post(
+            "https://cloud.approximated.app/api/vhosts",
+            headers={
+                "api-key": approximated_api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json={
+                "incoming_address": domain,
+                "target_address": backend_url,
+            },
+            timeout=10,
+        )
+
+        if response.status_code in (200, 201):
+            logger.info(f"✅ Registered domain with Approximated: {domain}")
+            return jsonify({"success": True, "message": f"Domain {domain} registered successfully"})
+        elif response.status_code == 409:
+            # Already exists - that's OK
+            logger.info(f"✅ Domain already registered: {domain}")
+            return jsonify({"success": True, "message": f"Domain {domain} already registered"})
+        else:
+            error_msg = f"Approximated API error: {response.status_code} - {response.text}"
+            logger.error(error_msg)
+            return jsonify({"success": False, "error": error_msg}), response.status_code
+
+    except Exception as e:
+        logger.error(f"Error registering domain: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@settings_bp.route("/approximated-unregister-domain", methods=["POST"])
+@require_tenant_access()
+@log_admin_action("unregister_approximated_domain")
+def unregister_approximated_domain(tenant_id):
+    """Unregister a domain from Approximated."""
+    try:
+        import requests
+
+        data = request.get_json()
+        domain = data.get("domain")
+        if not domain:
+            return jsonify({"success": False, "error": "Domain required"}), 400
+
+        approximated_api_key = os.getenv("APPROXIMATED_API_KEY")
+        if not approximated_api_key:
+            return jsonify({"success": False, "error": "Approximated not configured"}), 500
+
+        # Unregister domain from Approximated using correct API endpoint
+        response = requests.delete(
+            f"https://cloud.approximated.app/api/vhosts/by/incoming/{domain}",
+            headers={
+                "api-key": approximated_api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            timeout=10,
+        )
+
+        if response.status_code in (200, 204):
+            logger.info(f"✅ Unregistered domain from Approximated: {domain}")
+            return jsonify({"success": True, "message": f"Domain {domain} unregistered successfully"})
+        elif response.status_code == 404:
+            # Already gone - that's OK
+            logger.info(f"✅ Domain already unregistered: {domain}")
+            return jsonify({"success": True, "message": f"Domain {domain} was not registered"})
+        else:
+            error_msg = f"Approximated API error: {response.status_code} - {response.text}"
+            logger.error(error_msg)
+            return jsonify({"success": False, "error": error_msg}), response.status_code
+
+    except Exception as e:
+        logger.error(f"Error unregistering domain: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@settings_bp.route("/approximated-token", methods=["POST"])
+@require_tenant_access()
+def get_approximated_token(tenant_id):
+    """Generate an Approximated DNS widget token."""
+    try:
+        import requests
+
+        # Get API key from environment
+        approximated_api_key = os.getenv("APPROXIMATED_API_KEY")
+        if not approximated_api_key:
+            logger.error("APPROXIMATED_API_KEY not configured in environment")
+            return jsonify({"success": False, "error": "DNS widget not configured on server"}), 500
+
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
+
+            # Request token from Approximated API
+            response = requests.get(
+                "https://cloud.approximated.app/api/dns/token",
+                headers={"api-key": approximated_api_key},
+                timeout=10,
+            )
+
+            if response.status_code == 200:
+                token_data = response.json()
+                logger.info(f"Approximated API response: {token_data}")
+                return jsonify({"success": True, "token": token_data.get("token")})
+            else:
+                logger.error(f"Approximated API error: {response.status_code} - {response.text}")
+                return jsonify({"success": False, "error": f"API error: {response.status_code}"}), response.status_code
+
+    except Exception as e:
+        logger.error(f"Error generating Approximated token: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500

@@ -294,8 +294,11 @@ function loadInventoryStatus() {
             }
 
             stats.innerHTML = `
-                <div><strong>Total Ad Units:</strong> ${data.total_units || 0}</div>
-                <div><strong>Root Units:</strong> ${data.root_units ? data.root_units.length : 0}</div>
+                <div><strong>Ad Units:</strong> ${data.total_units || 0}</div>
+                <div><strong>Placements:</strong> ${data.placements || 0}</div>
+                <div><strong>Labels:</strong> ${data.labels || 0}</div>
+                <div><strong>Targeting Keys:</strong> ${data.custom_targeting_keys || 0}</div>
+                <div><strong>Audience Segments:</strong> ${data.audience_segments || 0}</div>
             `;
 
             inventoryTree = data;
@@ -633,7 +636,20 @@ function performSelectiveSync() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
     })
-        .then(response => response.json())
+        .then(async response => {
+            // Check HTTP status first before parsing JSON
+            if (!response.ok) {
+                // Try to parse error message from JSON response
+                try {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+                } catch (e) {
+                    // If JSON parsing fails, use status text
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.error) {
                 throw new Error(data.error);
@@ -643,7 +659,7 @@ function performSelectiveSync() {
             if (data.ad_units) message += `Ad Units: ${data.ad_units.total}\n`;
             if (data.placements) message += `Placements: ${data.placements.total}\n`;
             if (data.labels) message += `Labels: ${data.labels.total}\n`;
-            if (data.custom_targeting) message += `Custom Targeting Keys: ${data.custom_targeting.total_keys}, Values: ${data.custom_targeting.total_values}\n`;
+            if (data.custom_targeting) message += `Custom Targeting Keys: ${data.custom_targeting.total_keys} (values lazy-loaded per key)\n`;
             if (data.audience_segments) message += `Audience Segments: ${data.audience_segments.total}\n`;
             message += `\nDuration: ${data.duration_seconds.toFixed(2)}s`;
 

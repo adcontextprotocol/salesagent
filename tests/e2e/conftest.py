@@ -49,31 +49,36 @@ def pytest_addoption(parser):
 
 @pytest.fixture(scope="session")
 def docker_services_e2e(request):
-    """Start Docker services for E2E tests with proper health checks."""
-    # Check if we should skip Docker setup
-    if request.config.getoption("--skip-docker"):
-        print("Skipping Docker setup (--skip-docker flag provided)")
-        # Just verify services are accessible
-        try:
-            mcp_port = int(os.getenv("ADCP_SALES_PORT", "8092"))
-            a2a_port = int(os.getenv("A2A_PORT", "8094"))
-            admin_port = int(os.getenv("ADMIN_UI_PORT", "8093"))
-            postgres_port = int(os.getenv("POSTGRES_PORT", "5435"))
+    """
+    Provide service port information for E2E tests.
 
-            # Quick health check
+    If ADCP_TESTING=true (set by run_all_tests.sh), uses existing services.
+    Otherwise, starts its own Docker Compose stack for standalone testing.
+    """
+    # Check if running from run_all_tests.sh (services already started)
+    use_existing_services = os.getenv("ADCP_TESTING") == "true" or request.config.getoption("--skip-docker")
+
+    if use_existing_services:
+        print("Using existing Docker services (ADCP_TESTING=true or --skip-docker)")
+        # Get ports from environment (set by run_all_tests.sh)
+        mcp_port = int(os.getenv("ADCP_SALES_PORT", "8092"))
+        a2a_port = int(os.getenv("A2A_PORT", "8094"))
+        admin_port = int(os.getenv("ADMIN_UI_PORT", "8093"))
+        postgres_port = int(os.getenv("POSTGRES_PORT", "5435"))
+
+        print(f"✓ Using ports: MCP={mcp_port}, A2A={a2a_port}, Admin={admin_port}, Postgres={postgres_port}")
+
+        # Quick health check
+        try:
             response = requests.get(f"http://localhost:{a2a_port}/.well-known/agent.json", timeout=2)
             if response.status_code == 200:
-                print(f"✓ A2A server is accessible on port {a2a_port}")
-
-            print(f"✓ Assuming MCP server is on port {mcp_port}")
-            yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
-            return
+                print("✓ A2A server is healthy")
         except Exception as e:
-            print(f"Warning: Could not verify services are running: {e}")
-            print("Proceeding anyway since --skip-docker was specified")
-            # Use default ports if services couldn't be verified
-            yield {"mcp_port": 8092, "a2a_port": 8094, "admin_port": 8093, "postgres_port": 5435}
-            return
+            print(f"⚠️  Warning: Could not verify A2A server: {e}")
+            print("   Services may still be starting up")
+
+        yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
+        return
 
     # Check if Docker is available
     try:
@@ -89,17 +94,13 @@ def docker_services_e2e(request):
     print("Explicitly removing Docker volumes...")
     subprocess.run(["docker", "volume", "prune", "-f"], capture_output=True, check=False)
 
-    # Use environment variable ports if set (CI), otherwise allocate dynamic ports (local)
+    # Use environment variable ports if set, otherwise allocate dynamic ports
     mcp_port = int(os.getenv("ADCP_SALES_PORT")) if os.getenv("ADCP_SALES_PORT") else find_free_port(10000, 20000)
     a2a_port = int(os.getenv("A2A_PORT")) if os.getenv("A2A_PORT") else find_free_port(20000, 30000)
     admin_port = int(os.getenv("ADMIN_UI_PORT")) if os.getenv("ADMIN_UI_PORT") else find_free_port(30000, 40000)
     postgres_port = int(os.getenv("POSTGRES_PORT")) if os.getenv("POSTGRES_PORT") else find_free_port(40000, 50000)
 
     print(f"Using ports: MCP={mcp_port}, A2A={a2a_port}, Admin={admin_port}, Postgres={postgres_port}")
-    if os.getenv("ADCP_SALES_PORT"):
-        print("(Ports from environment variables)")
-    else:
-        print("(Dynamically allocated ports)")
 
     # Set environment variables for docker-compose
     env = os.environ.copy()
@@ -359,9 +360,12 @@ async def e2e_client(live_server, test_auth_token):
     from fastmcp.client.transports import StreamableHttpTransport
 
     # Create MCP client with test session ID
+    # Note: Host header is automatically set by HTTP client based on URL,
+    # so we use x-adcp-tenant header for explicit tenant selection in E2E tests
     test_session_id = str(uuid.uuid4())
     headers = {
         "x-adcp-auth": test_auth_token,
+        "x-adcp-tenant": "ci-test",  # Explicit tenant selection for E2E tests
         "X-Test-Session-ID": test_session_id,
         "X-Dry-Run": "true",  # Always use dry-run for tests
     }

@@ -86,16 +86,24 @@ def test_correct_product_construction():
     """
 
     # Correct product_data dict with only AdCP-compliant fields
+
     correct_product_data = {
         "product_id": "test_product",
         "name": "Test Product",
         "description": "Test description",
         "formats": ["display_300x250", "audio_15s", "audio_30s"],
         "delivery_type": "guaranteed",
-        "is_fixed_price": True,
-        "cpm": 10.0,
         "is_custom": False,
         "property_tags": ["all_inventory"],  # Required per AdCP spec
+        "pricing_options": [
+            {
+                "pricing_option_id": "cpm_usd_fixed",
+                "pricing_model": "cpm",
+                "rate": 10.0,
+                "currency": "USD",
+                "is_fixed": True,
+            }
+        ],
         # NOTE: Internal fields like targeting_template, price_guidance, etc. are NOT included
     }
 

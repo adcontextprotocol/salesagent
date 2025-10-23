@@ -66,6 +66,14 @@
         <!-- Hidden input to store selected format data -->
         <input type="hidden" id="formats-data" name="formats" value="">
 
+        <!-- Format Preview Modal -->
+        <div id="format-preview-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+            <div style="background: white; border-radius: 8px; max-width: 600px; max-height: 80vh; overflow-y: auto; padding: 2rem; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+                <button onclick="closeFormatPreview()" style="position: absolute; top: 1rem; right: 1rem; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">&times;</button>
+                <div id="format-preview-content"></div>
+            </div>
+        </div>
+
         <script>
         // Format selection state
         let selectedFormats = new Set();
@@ -82,6 +90,33 @@
                 const response = await fetch('/api/formats/list?tenant_id={{ tenant_id }}');
                 const data = await response.json();
 
+                // Check for errors from API
+                if (data.error) {
+                    console.error('API returned error:', data);
+                    document.getElementById('format-loading').innerHTML = `
+                        <div style="color: #e74c3c; padding: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px;">
+                            <strong>⚠️ Error loading formats:</strong> ${data.message || data.error}<br>
+                            <small style="display: block; margin-top: 0.5rem;">Error type: ${data.error_type || 'Unknown'}</small>
+                            <small style="display: block; margin-top: 0.5rem;">Check server logs for details or contact support.</small>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Check for warnings (empty results)
+                if (data.warning) {
+                    console.warn('API returned warning:', data.warning);
+                    document.getElementById('format-loading').innerHTML = `
+                        <div style="color: #856404; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                            <strong>⚠️ No formats available:</strong> ${data.warning}<br>
+                            <small style="display: block; margin-top: 0.5rem;">
+                                Creative agents may be unreachable. Check your network connection or creative agent configuration.
+                            </small>
+                        </div>
+                    `;
+                    return;
+                }
+
                 // Flatten formats from all agents
                 allFormats = [];
                 for (const [agentUrl, formats] of Object.entries(data.agents || {})) {
@@ -90,11 +125,20 @@
                     });
                 }
 
+                console.log(`✅ Loaded ${allFormats.length} formats from ${Object.keys(data.agents || {}).length} agent(s)`);
+
                 document.getElementById('format-loading').style.display = 'none';
                 displayFormats(allFormats);
             } catch (error) {
                 console.error('Error loading formats:', error);
-                document.getElementById('format-loading').innerHTML = '<span style="color: #e74c3c;">Error loading formats. Please refresh the page.</span>';
+                document.getElementById('format-loading').innerHTML = `
+                    <div style="color: #e74c3c; padding: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px;">
+                        <strong>⚠️ Network error loading formats:</strong> ${error.message}<br>
+                        <small style="display: block; margin-top: 0.5rem;">
+                            Cannot reach the formats API. Please check your connection and try refreshing the page.
+                        </small>
+                    </div>
+                `;
             }
         }
 
@@ -154,12 +198,18 @@
                     const bgColor = isSelected ? '#f0f7ff' : '#f9f9f9';
                     const checkIcon = isSelected ? '✓ ' : '';
 
+                    // Check if format has preview info
+                    const hasPreview = format.preview_image || format.example_url || format.description;
+
                     html += `
                         <div style="border: 2px solid ${borderColor}; border-radius: 4px; padding: 0.75rem; background: ${bgColor}; min-height: 120px; cursor: pointer; transition: all 0.2s;"
                              onclick="toggleFormat('${format.format_id}', '${format.name}', '${format.agent_url || ''}')">
                             <div style="display: flex; gap: 0.5rem;">
                                 <div style="flex: 1;">
-                                    <div style="font-weight: 600; color: #333;">${checkIcon}${format.name}</div>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <div style="font-weight: 600; color: #333;">${checkIcon}${format.name}</div>
+                                        ${hasPreview ? `<span class="info-icon" onclick="event.stopPropagation(); showFormatPreview('${format.format_id}')" style="cursor: pointer; color: #0066cc; font-size: 1rem;" title="Show preview">ℹ️</span>` : ''}
+                                    </div>
                                     ${format.description ? `<div style="color: #777; font-size: 0.85rem; margin-top: 0.25rem; line-height: 1.3;">${format.description}</div>` : ''}
                                     ${format.category === 'generative' ? '<span style="background: #9b59b6; color: white; font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 3px; margin-top: 0.5rem; display: inline-block;">AI Generated</span>' : ''}
                                 </div>
@@ -229,6 +279,82 @@
 
             document.getElementById('formats-data').value = JSON.stringify(formatRefs);
         }
+
+        function showFormatPreview(formatId) {
+            const format = allFormats.find(f => f.format_id === formatId);
+            if (!format) return;
+
+            const modal = document.getElementById('format-preview-modal');
+            const content = document.getElementById('format-preview-content');
+
+            let html = `
+                <h3 style="margin-top: 0; margin-bottom: 1rem; color: #333;">${format.name}</h3>
+            `;
+
+            // Description
+            if (format.description) {
+                html += `
+                    <div style="margin-bottom: 1rem;">
+                        <strong style="display: block; margin-bottom: 0.5rem; color: #555;">Description:</strong>
+                        <p style="margin: 0; color: #666; line-height: 1.5;">${format.description}</p>
+                    </div>
+                `;
+            }
+
+            // Preview Image (400x300 per AdCP spec)
+            if (format.preview_image) {
+                html += `
+                    <div style="margin-bottom: 1rem;">
+                        <strong style="display: block; margin-bottom: 0.5rem; color: #555;">Preview:</strong>
+                        <img src="${format.preview_image}" alt="${format.name} preview" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                `;
+            }
+
+            // Example URL
+            if (format.example_url) {
+                html += `
+                    <div style="margin-bottom: 1rem;">
+                        <a href="${format.example_url}" target="_blank" class="btn btn-primary" style="display: inline-block;">
+                            View Interactive Demo →
+                        </a>
+                    </div>
+                `;
+            }
+
+            // Format details
+            html += `
+                <div style="margin-top: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+                    <strong style="display: block; margin-bottom: 0.5rem; color: #555;">Format Details:</strong>
+                    <div style="font-size: 0.9rem; color: #666;">
+                        <div><strong>Format ID:</strong> <code>${format.format_id}</code></div>
+                        <div><strong>Type:</strong> ${format.type}</div>
+                        ${format.agent_url ? `<div><strong>Agent:</strong> ${format.agent_url}</div>` : ''}
+                    </div>
+                </div>
+            `;
+
+            content.innerHTML = html;
+            modal.style.display = 'flex';
+        }
+
+        function closeFormatPreview() {
+            document.getElementById('format-preview-modal').style.display = 'none';
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('format-preview-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeFormatPreview();
+            }
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeFormatPreview();
+            }
+        });
         </script>
 
         <h3 style="margin-top: 2rem;">Pricing & Delivery</h3>
@@ -375,6 +501,13 @@
                         {% endfor %}
                     </div>
                     <small style="color: #666; display: block; margin-top: 0.5rem;">Click a tag to add it, or type your own.</small>
+                </div>
+                {% else %}
+                <div style="margin-top: 0.5rem; padding: 0.75rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                    <strong style="color: #856404;">⚠️ No property tags found</strong><br>
+                    <small style="color: #856404; display: block; margin-top: 0.5rem;">
+                        Property tags like "all_inventory" should be created automatically. If missing, check database migrations or contact support.
+                    </small>
                 </div>
                 {% endif %}
             </div>
@@ -569,15 +702,17 @@ function addPricingOption() {
                     <label>Pricing Model *</label>
                     <select name="pricing_model_${index}" class="pricing-model-select" onchange="updatePricingFields${index}()" required>
                         <option value="">Select...</option>
-                        <option value="cpm_fixed">CPM - Fixed Rate</option>
-                        <option value="cpm_auction">CPM - Auction</option>
-                        <option value="cpcv">CPCV (Cost per completed view)</option>
-                        <option value="cpp">CPP (Cost per point/GRP)</option>
-                        <option value="cpc">CPC (Cost per click)</option>
-                        <option value="cpv">CPV (Cost per view)</option>
-                        <option value="flat_rate">Flat Rate</option>
+                        <optgroup label="Guaranteed (Fixed Price)">
+                            <option value="cpm_fixed">CPM - Fixed Rate (Cost per 1,000 impressions)</option>
+                            <option value="flat_rate">Flat Rate - Fixed Campaign Cost (Sponsorship)</option>
+                        </optgroup>
+                        <optgroup label="Non-Guaranteed (Auction/Bidding)">
+                            <option value="cpm_auction">CPM - Auction (Floor price bidding)</option>
+                            <option value="vcpm">VCPM - Auction (Viewable impressions)</option>
+                            <option value="cpc">CPC - Auction (Cost per click)</option>
+                        </optgroup>
                     </select>
-                    <small style="color: #666;">CPCV/CPP/CPC/CPV/Flat are always fixed rate</small>
+                    <small style="color: #666;">All pricing models shown are supported by Google Ad Manager.</small>
                 </div>
 
                 <div class="form-group">
@@ -638,29 +773,33 @@ function addPricingOption() {
         const priceGuidance = document.getElementById(`price-guidance-${index}`);
 
         // Determine if fixed or auction from pricing model selection
-        const isFixed = pricingModel !== 'cpm_auction';
+        const isAuction = pricingModel.includes('_auction');
 
-        if (isFixed) {
-            rateGroup.style.display = 'block';
-            floorGroup.style.display = 'none';
-            priceGuidance.style.display = 'none';
-            document.querySelector(`input[name="rate_${index}"]`).required = true;
-            document.querySelector(`input[name="floor_${index}"]`).required = false;
-        } else {
-            // Auction mode (only cpm_auction)
+        if (isAuction) {
+            // Auction mode (cpm_auction or cpc_auction)
             rateGroup.style.display = 'none';
             floorGroup.style.display = 'block';
             priceGuidance.style.display = 'block';
             document.querySelector(`input[name="rate_${index}"]`).required = false;
             document.querySelector(`input[name="floor_${index}"]`).required = true;
+        } else {
+            // Fixed rate mode
+            rateGroup.style.display = 'block';
+            floorGroup.style.display = 'none';
+            priceGuidance.style.display = 'none';
+            document.querySelector(`input[name="rate_${index}"]`).required = true;
+            document.querySelector(`input[name="floor_${index}"]`).required = false;
         }
 
         // Show model-specific parameters based on selected model
         const parametersDiv = document.getElementById(`parameters-${index}`);
         const paramsContent = document.getElementById(`params-content-${index}`);
 
-        // Extract base model from cpm_fixed/cpm_auction
-        const baseModel = pricingModel.startsWith('cpm_') ? 'cpm' : pricingModel;
+        // Extract base model - strip _fixed/_auction suffix
+        let baseModel = pricingModel;
+        if (pricingModel.includes('_fixed') || pricingModel.includes('_auction')) {
+            baseModel = pricingModel.split('_')[0]; // cpm_fixed → cpm, cpc_auction → cpc
+        }
 
         if (baseModel === 'cpp') {
             parametersDiv.style.display = 'block';

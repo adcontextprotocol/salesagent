@@ -9,7 +9,6 @@ This directory contains utility scripts for testing, development, deployment, an
 - `init_database.py` - Initialize database with schema
 - Database initialization is handled by `src/core/database/database.py::init_db()` for both dev and CI
 - `populate_creative_formats.py` - Populate creative format data
-- `populate_foundational_formats.py` - Populate foundational creative formats
 - `setup_hooks.sh` - Setup git hooks for development
 - `setup_conductor_workspace.sh` - Setup Conductor workspace
 - `create_scribd_tenant.sh` - Create Scribd-specific tenant
@@ -62,8 +61,8 @@ python scripts/setup/setup_tenant.py "Publisher Name" \
   --adapter google_ad_manager \
   --gam-network-code 123456
 
-# 4. Populate creative formats
-python scripts/setup/populate_foundational_formats.py
+# 4. Populate creative formats (if needed)
+# Creative formats are now fetched from creative agents via AdCP
 ```
 
 ### Development Workflow

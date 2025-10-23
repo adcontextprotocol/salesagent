@@ -94,7 +94,7 @@ def test_environment(monkeypatch, request):
 
     # Check if this is an integration test that needs the database
     is_integration_test = "integration" in str(request.fspath)
-    adcp_test_db_url = os.environ.get("ADCP_TEST_DB_URL")
+    database_url = os.environ.get("DATABASE_URL")
 
     # Check if this is a unittest.TestCase (which manages its own DATABASE_URL)
     # Pytest calls these as "UnitTestCase" in the node hierarchy
@@ -104,17 +104,15 @@ def test_environment(monkeypatch, request):
 
     # IMPORTANT: Unit tests should NEVER use real database connections
     # Remove database-related env vars UNLESS:
-    # 1. This is an integration test with ADCP_TEST_DB_URL set (pytest fixtures), OR
+    # 1. This is an integration test with DATABASE_URL set (for integration_db fixture), OR
     # 2. This is a unittest.TestCase class (manages its own DATABASE_URL in setUpClass)
-    should_preserve_db = is_integration_test and (adcp_test_db_url or is_unittest_class)
+    should_preserve_db = is_integration_test and (database_url or is_unittest_class)
 
     if not should_preserve_db:
         if "DATABASE_URL" in os.environ:
             monkeypatch.delenv("DATABASE_URL", raising=False)
         if "TEST_DATABASE_URL" in os.environ:
             monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
-        if "ADCP_TEST_DB_URL" in os.environ:
-            monkeypatch.delenv("ADCP_TEST_DB_URL", raising=False)
 
     # Set test API keys and credentials
     monkeypatch.setenv("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "test_key_for_mocking"))

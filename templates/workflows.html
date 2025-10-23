@@ -4,8 +4,15 @@
 
 {% block content %}
 <div class="container">
-    <h1>Workflows Dashboard</h1>
-    <p style="color: #666;">Monitor all media buys, tasks, and system activity for {{ tenant.name }}</p>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <div>
+            <h1 style="margin: 0;">Workflows Dashboard</h1>
+            <p style="color: #666; margin: 0.5rem 0 0 0;">Monitor all media buys, tasks, and system activity for {{ tenant.name }}</p>
+        </div>
+        <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">
+            ← Back to Dashboard
+        </a>
+    </div>
 
     <!-- Summary Cards -->
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
@@ -138,23 +145,23 @@
                     <tr>
                         <th>ID</th>
                         <th>Type</th>
-                        <th>Title</th>
-                        <th>Media Buy</th>
+                        <th>Step Name</th>
+                        <th>Workflow</th>
                         <th>Status</th>
-                        <th>Due Date</th>
                         <th>Assigned To</th>
                         <th>Created</th>
+                        <th>Completed</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for task in tasks %}
-                    <tr data-status="{{ task.status }}" data-overdue="{{ 'yes' if task.is_overdue else 'no' }}">
-                        <td><code>{{ task.task_id }}</code></td>
-                        <td>{{ task.task_type }}</td>
-                        <td>{{ task.title }}</td>
+                    <tr data-status="{{ task.status }}">
+                        <td><code>{{ task.step_id }}</code></td>
+                        <td>{{ task.step_type or 'workflow' }}</td>
+                        <td>{{ task.step_name or task.step_id }}</td>
                         <td>
-                            {% if task.media_buy_id %}
-                            <code>{{ task.media_buy_id }}</code>
+                            {% if task.workflow_id %}
+                            <code>{{ task.workflow_id }}</code>
                             {% else %}
                             -
                             {% endif %}
@@ -162,21 +169,19 @@
                         <td>
                             {% if task.status == 'completed' %}
                             <span class="status status-completed">Completed</span>
-                            {% elif task.is_overdue %}
-                            <span class="status status-error">Overdue</span>
+                            {% elif task.status == 'failed' %}
+                            <span class="status status-error">Failed</span>
+                            {% elif task.status == 'pending_approval' %}
+                            <span class="status status-pending">Pending Approval</span>
+                            {% elif task.status == 'in_progress' %}
+                            <span class="status status-pending">In Progress</span>
                             {% else %}
-                            <span class="status status-pending">Pending</span>
+                            <span class="status status-pending">{{ task.status }}</span>
                             {% endif %}
                         </td>
-                        <td>
-                            {% if task.due_date %}
-                            {{ task.due_date.strftime('%Y-%m-%d %H:%M') }}
-                            {% else %}
-                            -
-                            {% endif %}
-                        </td>
-                        <td>{{ task.assigned_to or 'Unassigned' }}</td>
+                        <td>{{ task.assigned_to or task.principal_name or 'Unassigned' }}</td>
                         <td>{{ task.created_at.strftime('%Y-%m-%d %H:%M') if task.created_at else 'N/A' }}</td>
+                        <td>{{ task.completed_at.strftime('%Y-%m-%d %H:%M') if task.completed_at else '-' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -192,24 +197,73 @@
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                 <h3 style="margin: 0;">Audit Logs</h3>
+                <button onclick="exportAuditLogs()" class="btn btn-secondary" style="font-size: 0.9em;">
+                    📥 Export CSV
+                </button>
+            </div>
+
+            <!-- Search and Filter Controls -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <!-- Search Box -->
                 <div>
-                    <label style="margin-right: 1rem;">
-                        Filter:
-                        <select id="log-filter" onchange="filterLogs()">
-                            <option value="all">All</option>
-                            <option value="success">Success</option>
-                            <option value="failed">Failed</option>
-                            <option value="security">Security Violations</option>
-                        </select>
-                    </label>
-                    <label>
-                        Limit:
-                        <select id="log-limit" onchange="filterLogs()">
-                            <option value="100">Last 100</option>
-                            <option value="500">Last 500</option>
-                            <option value="1000">Last 1000</option>
-                        </select>
-                    </label>
+                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Search</label>
+                    <input
+                        type="text"
+                        id="log-search"
+                        placeholder="Search user, operation..."
+                        oninput="filterLogs()"
+                        style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;"
+                    >
+                </div>
+
+                <!-- Date Range Filter -->
+                <div>
+                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Date Range</label>
+                    <select id="log-date-range" onchange="filterLogs()" style="width: 100%; padding: 0.5rem;">
+                        <option value="all">All Time</option>
+                        <option value="today">Today</option>
+                        <option value="7days" selected>Last 7 Days</option>
+                        <option value="30days">Last 30 Days</option>
+                        <option value="90days">Last 90 Days</option>
+                    </select>
+                </div>
+
+                <!-- Operation Type Filter -->
+                <div>
+                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Operation Type</label>
+                    <select id="log-operation-type" onchange="filterLogs()" style="width: 100%; padding: 0.5rem;">
+                        <option value="all">All Operations</option>
+                        <option value="AdminUI">Admin UI</option>
+                        <option value="create_media_buy">Media Buy</option>
+                        <option value="sync_creatives">Creative Sync</option>
+                        <option value="GAM">GAM Operations</option>
+                        <option value="security">Security Violations</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Status and Limit Filters (Second Row) -->
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: flex-end;">
+                <div style="flex: 1;">
+                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Status</label>
+                    <select id="log-status" onchange="filterLogs()" style="width: 100%; padding: 0.5rem;">
+                        <option value="all">All</option>
+                        <option value="success">Success Only</option>
+                        <option value="failed">Failed Only</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Show</label>
+                    <select id="log-limit" onchange="filterLogs()" style="width: 100%; padding: 0.5rem;">
+                        <option value="50">50 entries</option>
+                        <option value="100" selected>100 entries</option>
+                        <option value="250">250 entries</option>
+                        <option value="500">500 entries</option>
+                        <option value="all">All entries</option>
+                    </select>
+                </div>
+                <div style="flex: 2; text-align: right; padding-bottom: 0.5rem;">
+                    <span id="log-count" style="color: #666; font-size: 0.9em;"></span>
                 </div>
             </div>
 
@@ -224,9 +278,16 @@
                         <th>Details</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="audit-logs-tbody">
                     {% for log in audit_logs %}
-                    <tr data-success="{{ 'yes' if log.success else 'no' }}" data-security="{{ 'yes' if 'SECURITY_VIOLATION' in log.operation else 'no' }}">
+                    <tr
+                        data-success="{{ 'yes' if log.success else 'no' }}"
+                        data-security="{{ 'yes' if 'SECURITY_VIOLATION' in log.operation else 'no' }}"
+                        data-timestamp="{{ log.timestamp.isoformat() if log.timestamp else '' }}"
+                        data-operation="{{ log.operation }}"
+                        data-principal="{{ log.principal_name or log.principal_id or '' }}"
+                        data-searchable="{{ (log.operation + ' ' + (log.principal_name or log.principal_id or '') + ' ' + (log.error_message or '')).lower() }}"
+                    >
                         <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else 'N/A' }}</td>
                         <td>
                             {% if 'SECURITY_VIOLATION' in log.operation %}
@@ -375,11 +436,16 @@ function filterTasks() {
 
     rows.forEach(row => {
         let show = false;
+        const status = row.dataset.status;
+
         if (filter === 'all') {
             show = true;
-        } else if (filter === 'overdue' && row.dataset.overdue === 'yes') {
+        } else if (filter === 'pending' && (status === 'pending' || status === 'pending_approval' || status === 'in_progress')) {
             show = true;
-        } else if (filter === row.dataset.status) {
+        } else if (filter === 'completed' && status === 'completed') {
+            show = true;
+        } else if (filter === 'overdue' && status === 'failed') {
+            // Map failed tasks to "overdue" filter for now
             show = true;
         }
         row.style.display = show ? '' : 'none';
@@ -387,22 +453,148 @@ function filterTasks() {
 }
 
 function filterLogs() {
-    const filter = document.getElementById('log-filter').value;
+    const searchText = document.getElementById('log-search').value.toLowerCase();
+    const dateRange = document.getElementById('log-date-range').value;
+    const operationType = document.getElementById('log-operation-type').value;
+    const status = document.getElementById('log-status').value;
+    const limit = document.getElementById('log-limit').value;
     const rows = document.querySelectorAll('#audit-logs tbody tr');
 
+    // Calculate date threshold based on date range
+    let dateThreshold = null;
+    const now = new Date();
+    if (dateRange === 'today') {
+        dateThreshold = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (dateRange === '7days') {
+        dateThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else if (dateRange === '30days') {
+        dateThreshold = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    } else if (dateRange === '90days') {
+        dateThreshold = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    }
+
+    let visibleCount = 0;
+    let shownCount = 0;
+
     rows.forEach(row => {
-        let show = false;
-        if (filter === 'all') {
-            show = true;
-        } else if (filter === 'success' && row.dataset.success === 'yes') {
-            show = true;
-        } else if (filter === 'failed' && row.dataset.success === 'no' && row.dataset.security !== 'yes') {
-            show = true;
-        } else if (filter === 'security' && row.dataset.security === 'yes') {
-            show = true;
+        let show = true;
+
+        // Search filter (user, operation, error message)
+        if (searchText && !row.dataset.searchable.includes(searchText)) {
+            show = false;
         }
+
+        // Date range filter
+        if (show && dateThreshold && row.dataset.timestamp) {
+            const rowDate = new Date(row.dataset.timestamp);
+            if (rowDate < dateThreshold) {
+                show = false;
+            }
+        }
+
+        // Operation type filter
+        if (show && operationType !== 'all') {
+            const operation = row.dataset.operation;
+            if (operationType === 'security' && row.dataset.security !== 'yes') {
+                show = false;
+            } else if (operationType === 'AdminUI' && !operation.includes('AdminUI')) {
+                show = false;
+            } else if (operationType === 'create_media_buy' && !operation.includes('create_media_buy') && !operation.includes('update_media_buy')) {
+                show = false;
+            } else if (operationType === 'sync_creatives' && !operation.includes('sync_creatives')) {
+                show = false;
+            } else if (operationType === 'GAM' && !operation.includes('GAM') && !operation.includes('gam')) {
+                show = false;
+            }
+        }
+
+        // Status filter
+        if (show && status !== 'all') {
+            if (status === 'success' && row.dataset.success !== 'yes') {
+                show = false;
+            } else if (status === 'failed' && row.dataset.success !== 'no') {
+                show = false;
+            }
+        }
+
+        // Count visible rows
+        if (show) {
+            visibleCount++;
+            // Apply limit
+            if (limit !== 'all' && visibleCount > parseInt(limit)) {
+                show = false;
+            } else {
+                shownCount++;
+            }
+        }
+
         row.style.display = show ? '' : 'none';
     });
+
+    // Update count display
+    const countElement = document.getElementById('log-count');
+    if (countElement) {
+        countElement.textContent = `Showing ${shownCount} of ${rows.length} entries`;
+    }
 }
+
+function exportAuditLogs() {
+    const rows = document.querySelectorAll('#audit-logs tbody tr');
+    const csvRows = [];
+
+    // CSV Header
+    csvRows.push(['Timestamp', 'Operation', 'Principal', 'Success', 'Error Message'].join(','));
+
+    // Get visible rows
+    rows.forEach(row => {
+        if (row.style.display !== 'none') {
+            const cells = row.querySelectorAll('td');
+            const timestamp = cells[0].textContent;
+            const operation = cells[1].textContent.trim();
+            const principal = cells[2].textContent.trim();
+            const success = cells[3].textContent.includes('✓') ? 'Success' : 'Failed';
+            const error = row.dataset.success === 'no' ? cells[4].textContent.trim() : '';
+
+            // Escape CSV values
+            const escapeCsv = (val) => {
+                if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+                    return '"' + val.replace(/"/g, '""') + '"';
+                }
+                return val;
+            };
+
+            csvRows.push([
+                escapeCsv(timestamp),
+                escapeCsv(operation),
+                escapeCsv(principal),
+                success,
+                escapeCsv(error)
+            ].join(','));
+        }
+    });
+
+    // Create and download CSV
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    const now = new Date();
+    const filename = `audit_logs_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}.csv`;
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Initialize filter count on page load
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('audit-logs')) {
+        filterLogs();
+    }
+});
 </script>
 {% endblock %}

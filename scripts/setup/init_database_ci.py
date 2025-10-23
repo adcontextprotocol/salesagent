@@ -46,6 +46,14 @@ def init_db_ci():
                 print(f"CI test tenant already exists (ID: {existing_tenant.tenant_id})")
                 tenant_id = existing_tenant.tenant_id
 
+                # Backfill access control if missing (required by setup checklist)
+                needs_access_control = not existing_tenant.authorized_emails and not existing_tenant.authorized_domains
+                if needs_access_control:
+                    print("Backfilling access control for existing tenant...")
+                    existing_tenant.authorized_emails = ["ci-test@example.com"]
+                    session.flush()
+                    print("   ✓ Access control configured")
+
                 # Check if principal exists GLOBALLY by access_token (it's unique across all tenants)
                 stmt_principal = select(Principal).filter_by(access_token="ci-test-token")
                 existing_principal = session.scalars(stmt_principal).first()
@@ -122,8 +130,8 @@ def init_db_ci():
                     ad_server="mock",
                     enable_axe_signals=True,
                     is_active=True,  # Explicitly set for auth lookup
-                    authorized_emails=None,  # SQL NULL (satisfies constraint)
-                    authorized_domains=None,  # SQL NULL (satisfies constraint)
+                    authorized_emails=["ci-test@example.com"],  # Required by setup checklist
+                    authorized_domains=None,  # Optional when emails are set
                     policy_settings=None,  # SQL NULL
                     signals_agent_config=None,  # SQL NULL
                     ai_policy=None,  # SQL NULL
@@ -281,8 +289,7 @@ def init_db_ci():
                     "formats": ["display_300x250", "display_728x90", "display_160x600"],
                     "targeting_template": {"geo": ["US"], "device_type": "any"},
                     "delivery_type": "guaranteed",
-                    "is_fixed_price": True,
-                    "cpm": 15.0,
+                    "pricing": {"model": "cpm", "rate": 15.0, "is_fixed": True},
                 },
                 {
                     "product_id": "prod_video_premium",
@@ -291,8 +298,7 @@ def init_db_ci():
                     "formats": ["video_15s", "video_30s"],
                     "targeting_template": {"geo": ["US"], "device_type": "any"},
                     "delivery_type": "guaranteed",
-                    "is_fixed_price": True,
-                    "cpm": 25.0,
+                    "pricing": {"model": "cpm", "rate": 25.0, "is_fixed": True},
                 },
             ]
 
@@ -310,8 +316,6 @@ def init_db_ci():
                         formats=p["formats"],
                         targeting_template=p["targeting_template"],
                         delivery_type=p["delivery_type"],
-                        is_fixed_price=p["is_fixed_price"],
-                        cpm=p.get("cpm"),
                         property_tags=["all_inventory"],  # Required per AdCP spec
                         # Explicitly set all JSONB fields to None (SQL NULL) to satisfy constraints
                         measurement=None,
@@ -325,13 +329,14 @@ def init_db_ci():
                     print(f"  ✓ Created product: {p['name']} (property_tags=['all_inventory'])")
 
                     # Create corresponding pricing_option (required for pricing display)
+                    pricing = p["pricing"]
                     pricing_option = PricingOption(
                         tenant_id=tenant_id,
                         product_id=p["product_id"],
-                        pricing_model="cpm",
-                        rate=p.get("cpm"),
+                        pricing_model=pricing["model"],
+                        rate=pricing["rate"],
                         currency="USD",
-                        is_fixed=p["is_fixed_price"],
+                        is_fixed=pricing["is_fixed"],
                         price_guidance=None,  # Not used for fixed price products
                     )
                     session.add(pricing_option)

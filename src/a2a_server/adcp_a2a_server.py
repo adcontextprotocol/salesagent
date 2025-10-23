@@ -131,24 +131,111 @@ class AdCPRequestHandler(RequestHandler):
         Raises:
             ValueError: If authentication fails
         """
-        # Get request headers for debugging
-        headers = getattr(_request_context, "request_headers", {})
-        apx_host = headers.get("apx-incoming-host", "NOT_PRESENT")
+        # Import tenant resolution functions
+        from src.core.config_loader import (
+            get_tenant_by_id,
+            get_tenant_by_subdomain,
+            get_tenant_by_virtual_host,
+            set_current_tenant,
+        )
 
-        # Authenticate using the token
-        principal_id = get_principal_from_token(auth_token)
+        # Get request headers for debugging (case-insensitive lookup)
+        headers = getattr(_request_context, "request_headers", {})
+
+        # Helper to get header case-insensitively
+        def get_header(header_name: str) -> str | None:
+            for key, value in headers.items():
+                if key.lower() == header_name.lower():
+                    return value
+            return None
+
+        apx_host = get_header("apx-incoming-host") or "NOT_PRESENT"
+        host = get_header("host")
+        tenant_header = get_header("x-adcp-tenant")
+
+        logger.info("[A2A AUTH] Resolving tenant from headers:")
+        logger.info(f"  Host: {host}")
+        logger.info(f"  Apx-Incoming-Host: {apx_host}")
+        logger.info(f"  x-adcp-tenant: {tenant_header}")
+
+        # CRITICAL: Resolve tenant from headers FIRST (before authentication)
+        # This matches the MCP pattern in main.py::get_principal_from_context()
+        requested_tenant_id = None
+        tenant_context = None
+        detection_method = None
+
+        # 1. Check Host header for subdomain
+        if not requested_tenant_id and host:
+            subdomain = host.split(".")[0] if "." in host else None
+            if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www", "admin"]:
+                logger.info(f"[A2A AUTH] Looking up tenant by subdomain: {subdomain}")
+                tenant_context = get_tenant_by_subdomain(subdomain)
+                if tenant_context:
+                    requested_tenant_id = tenant_context["tenant_id"]
+                    detection_method = "subdomain"
+                    set_current_tenant(tenant_context)
+                    logger.info(f"[A2A AUTH] ✅ Tenant detected from subdomain: {subdomain} → {requested_tenant_id}")
+                else:
+                    # Try virtual host lookup
+                    logger.info(f"[A2A AUTH] Trying virtual host lookup for: {host}")
+                    tenant_context = get_tenant_by_virtual_host(host)
+                    if tenant_context:
+                        requested_tenant_id = tenant_context["tenant_id"]
+                        detection_method = "host header (virtual host)"
+                        set_current_tenant(tenant_context)
+                        logger.info(f"[A2A AUTH] ✅ Tenant detected from Host header: {host} → {requested_tenant_id}")
+
+        # 2. Check x-adcp-tenant header
+        if not requested_tenant_id and tenant_header:
+            logger.info(f"[A2A AUTH] Looking up tenant from x-adcp-tenant: {tenant_header}")
+            tenant_context = get_tenant_by_subdomain(tenant_header)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                detection_method = "x-adcp-tenant (subdomain)"
+                set_current_tenant(tenant_context)
+                logger.info(
+                    f"[A2A AUTH] ✅ Tenant detected from x-adcp-tenant: {tenant_header} → {requested_tenant_id}"
+                )
+            else:
+                # Fallback: assume it's a tenant_id
+                tenant_context = get_tenant_by_id(tenant_header)
+                if tenant_context:
+                    requested_tenant_id = tenant_context["tenant_id"]
+                    detection_method = "x-adcp-tenant (direct)"
+                    set_current_tenant(tenant_context)
+                    logger.info(f"[A2A AUTH] ✅ Tenant detected from x-adcp-tenant: {requested_tenant_id}")
+
+        # 3. Check Apx-Incoming-Host header (for Approximated.app routing)
+        if not requested_tenant_id and apx_host and apx_host != "NOT_PRESENT":
+            logger.info(f"[A2A AUTH] Looking up tenant by Apx-Incoming-Host: {apx_host}")
+            tenant_context = get_tenant_by_virtual_host(apx_host)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                detection_method = "apx-incoming-host"
+                set_current_tenant(tenant_context)
+                logger.info(f"[A2A AUTH] ✅ Tenant detected from Apx-Incoming-Host: {apx_host} → {requested_tenant_id}")
+
+        if requested_tenant_id:
+            logger.info(f"[A2A AUTH] Final tenant_id: {requested_tenant_id} (via {detection_method})")
+        else:
+            logger.warning("[A2A AUTH] ⚠️  No tenant detected from headers - will use global token lookup")
+
+        # NOW authenticate with tenant context (if we have one)
+        principal_id = get_principal_from_token(auth_token, requested_tenant_id)
         if not principal_id:
             raise ServerError(
                 InvalidRequestError(
                     message=f"Invalid authentication token (not found in database). "
                     f"Token: {auth_token[:20]}..., "
+                    f"Tenant: {requested_tenant_id or 'any'}, "
                     f"Apx-Incoming-Host: {apx_host}"
                 )
             )
 
-        # Get tenant info (set as side effect of authentication)
-        tenant = get_current_tenant()
-        if not tenant:
+        # Get tenant info (either from header detection or from token lookup)
+        if not tenant_context:
+            tenant_context = get_current_tenant()
+        if not tenant_context:
             raise ServerError(
                 InvalidRequestError(
                     message=f"Unable to determine tenant from authentication. "
@@ -161,10 +248,14 @@ class AdCPRequestHandler(RequestHandler):
         if not context_id:
             context_id = f"a2a_{datetime.now(UTC).timestamp()}"
 
+        logger.info(
+            f"[A2A AUTH] ✅ Authentication successful: tenant={tenant_context['tenant_id']}, principal={principal_id}"
+        )
+
         # Create ToolContext
         return ToolContext(
             context_id=context_id,
-            tenant_id=tenant["tenant_id"],
+            tenant_id=tenant_context["tenant_id"],
             principal_id=principal_id,
             tool_name=tool_name,
             request_timestamp=datetime.now(UTC),
@@ -341,7 +432,20 @@ class AdCPRequestHandler(RequestHandler):
         try:
             # Get authentication token
             auth_token = self._get_auth_token()
-            if not auth_token:
+
+            # List of skills that don't require authentication (public discovery endpoints)
+            public_skills = {"list_authorized_properties"}
+
+            # Check if any requested skills require authentication
+            requires_auth = True
+            if skill_invocations:
+                # If ALL skills are public, don't require auth
+                requested_skills = {inv["skill"] for inv in skill_invocations}
+                if requested_skills.issubset(public_skills):
+                    requires_auth = False
+
+            # Require authentication for non-public skills
+            if requires_auth and not auth_token:
                 raise ServerError(
                     InvalidRequestError(
                         message="Missing authentication token - Bearer token required in Authorization header"
@@ -1146,7 +1250,7 @@ class AdCPRequestHandler(RequestHandler):
 
             # Validate AdCP spec required parameters
             required_params = [
-                "promoted_offering",
+                "brand_manifest",
                 "packages",
                 "budget",
                 "start_time",
@@ -1164,8 +1268,8 @@ class AdCPRequestHandler(RequestHandler):
                 }
 
             # Call core function with AdCP spec-compliant parameters
-            response = core_create_media_buy_tool(
-                promoted_offering=parameters["promoted_offering"],
+            response = await core_create_media_buy_tool(
+                brand_manifest=parameters["brand_manifest"],
                 po_number=parameters.get("po_number", f"A2A-{uuid.uuid4().hex[:8]}"),
                 buyer_ref=parameters.get("buyer_ref", f"A2A-{tool_context.principal_id}"),
                 packages=parameters["packages"],
@@ -1222,23 +1326,14 @@ class AdCPRequestHandler(RequestHandler):
             )
 
             # Convert response to A2A format (using AdCP spec field names)
+            # Convert response to A2A format
+            # Note: SyncCreativesResponse only contains domain data (creatives, dry_run)
+            # Protocol fields (status, task_id, etc.) are added by the A2A protocol layer
             return {
-                "success": response.status == "completed",
-                "status": response.status,
-                "message": str(response),  # Use __str__ method for human-readable message
-                "summary": response.summary.model_dump() if response.summary else None,
-                "results": [result.model_dump() for result in response.results] if response.results else [],
-                "assignments_summary": (
-                    response.assignments_summary.model_dump() if response.assignments_summary else None
-                ),
-                "assignment_results": (
-                    [result.model_dump() for result in response.assignment_results]
-                    if response.assignment_results
-                    else []
-                ),
+                "success": True,
+                "creatives": [result.model_dump() for result in response.creatives],
                 "dry_run": response.dry_run,
-                "context_id": response.context_id,
-                "task_id": response.task_id,
+                "message": str(response),  # Use __str__ method for human-readable message
             }
 
         except Exception as e:
@@ -1281,10 +1376,10 @@ class AdCPRequestHandler(RequestHandler):
                 message = response.get("message", "Creatives retrieved successfully")
             else:
                 creatives_list = [creative.model_dump() for creative in response.creatives]
-                total_count = response.total_count
-                page = response.page
-                limit = response.limit
-                has_more = response.has_more
+                total_count = response.query_summary.total_matching
+                page = response.pagination.current_page
+                limit = response.pagination.limit
+                has_more = response.pagination.has_more
                 message = str(response)  # Use __str__ method for human-readable message
 
             # Convert response to A2A format
@@ -1301,61 +1396,6 @@ class AdCPRequestHandler(RequestHandler):
         except Exception as e:
             logger.error(f"Error in list_creatives skill: {e}")
             raise ServerError(InternalError(message=f"Failed to list creatives: {str(e)}"))
-
-    async def _handle_add_creative_assets_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit add_creative_assets skill invocation."""
-        try:
-            # Create ToolContext from A2A auth info
-            tool_context = self._create_tool_context_from_a2a(
-                auth_token=auth_token,
-                tool_name="add_creative_assets",
-            )
-
-            # Map A2A parameters to AddCreativeAssetsRequest
-            # Required parameters
-            if "media_buy_id" not in parameters and "buyer_ref" not in parameters:
-                return {
-                    "success": False,
-                    "message": "Either 'media_buy_id' or 'buyer_ref' parameter is required",
-                    "required_parameters": ["media_buy_id OR buyer_ref", "assets"],
-                    "received_parameters": list(parameters.keys()),
-                }
-
-            if "assets" not in parameters:
-                return {
-                    "success": False,
-                    "message": "Missing required parameter: 'assets'",
-                    "required_parameters": ["media_buy_id OR buyer_ref", "assets"],
-                    "received_parameters": list(parameters.keys()),
-                }
-
-            # Create request object with parameter mapping
-            request = AddCreativeAssetsRequest(
-                media_buy_id=parameters.get("media_buy_id"),
-                buyer_ref=parameters.get("buyer_ref"),
-                assets=parameters["assets"],
-                creative_group_name=parameters.get("creative_group_name"),
-            )
-
-            # Call core function directly with individual parameters
-            response = core_add_creative_assets_tool(
-                assets=request.assets,
-                media_buy_id=request.media_buy_id,
-                buyer_ref=request.buyer_ref,
-                context=tool_context,
-            )
-
-            # Convert response to A2A format
-            return {
-                "success": True,
-                "message": str(response),  # Use __str__ method for human-readable message
-                "creative_ids": response.creative_ids if hasattr(response, "creative_ids") else [],
-                "status": response.status if hasattr(response, "status") else "pending_review",
-            }
-
-        except Exception as e:
-            logger.error(f"Error in add_creative_assets skill: {e}")
-            raise ServerError(InternalError(message=f"Failed to add creative assets: {str(e)}"))
 
     async def _handle_create_creative_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit create_creative skill invocation."""
@@ -1625,38 +1665,48 @@ class AdCPRequestHandler(RequestHandler):
             logger.error(f"Error in list_creative_formats skill: {e}")
             raise ServerError(InternalError(message=f"Unable to retrieve creative formats: {str(e)}"))
 
-    async def _handle_list_authorized_properties_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit list_authorized_properties skill invocation (CRITICAL AdCP endpoint)."""
+    async def _handle_list_authorized_properties_skill(self, parameters: dict, auth_token: str | None) -> dict:
+        """Handle explicit list_authorized_properties skill invocation (CRITICAL AdCP endpoint).
+
+        NOTE: Authentication is OPTIONAL for this endpoint since it returns public discovery data.
+        If no auth token provided, uses headers for tenant detection.
+
+        Per AdCP v2.4 spec, returns publisher_domains (not properties/tags).
+        """
         try:
-            # Create ToolContext from A2A auth info
-            tool_context = self._create_tool_context_from_a2a(
-                auth_token=auth_token,
-                tool_name="list_authorized_properties",
-            )
+            # Create ToolContext from A2A auth info (which sets tenant context as side effect)
+            tool_context = None
+
+            if auth_token:
+                try:
+                    tool_context = self._create_tool_context_from_a2a(
+                        auth_token=auth_token,
+                        tool_name="list_authorized_properties",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to create authenticated context (continuing without auth): {e}")
+                    tool_context = None
 
             # Map A2A parameters to ListAuthorizedPropertiesRequest
             request = ListAuthorizedPropertiesRequest(tags=parameters.get("tags", []))
 
             # Call core function directly
+            # Context can be None for unauthenticated calls - tenant will be detected from headers
             response = core_list_authorized_properties_tool(req=request, context=tool_context)
 
             # Handle both dict and object responses (defensive pattern)
+            # Per AdCP v2.4 spec, response has publisher_domains (not properties/tags)
             if isinstance(response, dict):
-                properties = response.get("properties", [])
-                tags = response.get("tags", {})
-                properties_list = properties
+                publisher_domains = response.get("publisher_domains", [])
             else:
-                properties = response.properties
-                tags = response.tags
-                properties_list = [prop.model_dump() for prop in properties]
+                publisher_domains = response.publisher_domains
 
-            # Convert response to A2A format
+            # Convert response to A2A format (using AdCP v2.4 spec fields)
             return {
                 "success": True,
-                "properties": properties_list,
-                "tags": tags,
-                "message": "Authorized properties retrieved successfully",
-                "total_count": len(properties_list),
+                "publisher_domains": publisher_domains,
+                "message": f"Found {len(publisher_domains)} authorized publisher domains",
+                "total_count": len(publisher_domains),
             }
 
         except Exception as e:
@@ -1672,33 +1722,48 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="update_media_buy",
             )
 
-            # Validate required parameters
-            if "media_buy_id" not in parameters:
+            # Validate required parameters (per AdCP v2.0+ spec: media_buy_id + optional packages)
+            if "media_buy_id" not in parameters and "buyer_ref" not in parameters:
                 return {
                     "success": False,
-                    "message": "Missing required parameter: 'media_buy_id'",
-                    "required_parameters": ["media_buy_id", "updates"],
+                    "message": "Missing required parameter: one of 'media_buy_id' or 'buyer_ref' is required",
+                    "required_parameters": ["media_buy_id (or buyer_ref)"],
                     "received_parameters": list(parameters.keys()),
                 }
 
-            if "updates" not in parameters:
-                return {
-                    "success": False,
-                    "message": "Missing required parameter: 'updates'",
-                    "required_parameters": ["media_buy_id", "updates"],
-                    "received_parameters": list(parameters.keys()),
-                }
+            # Extract update parameters (AdCP v2.0+ uses individual fields, not 'updates' wrapper)
+            # Support both 'packages' (AdCP v2.0+) and legacy 'updates' field for backward compatibility
+            packages = parameters.get("packages")
+            if packages is None and "updates" in parameters:
+                # Legacy format: extract packages from updates object
+                packages = parameters["updates"].get("packages")
 
-            # Call core function directly
+            # Call core function directly with AdCP v2.0+ parameter names
             response = core_update_media_buy_tool(
-                media_buy_id=parameters["media_buy_id"],
-                updates=parameters["updates"],
+                media_buy_id=parameters.get("media_buy_id"),
+                buyer_ref=parameters.get("buyer_ref"),
+                active=parameters.get("active"),
+                start_time=parameters.get("start_time"),
+                end_time=parameters.get("end_time"),
+                budget=parameters.get("budget"),
+                packages=packages,
                 push_notification_config=parameters.get("push_notification_config"),
                 context=tool_context,
             )
 
-            # Convert response to A2A format
-            return response  # Raw function already returns dict format
+            # Convert response to A2A format (handle both Pydantic objects and dicts)
+            if hasattr(response, "model_dump"):
+                # Real Pydantic response object
+                result = response.model_dump(exclude_none=False, mode="json")
+                result["success"] = response.errors is None or len(response.errors) == 0
+                result["message"] = str(response)  # Human-readable message via __str__
+            else:
+                # Already a dict (from mock or legacy code)
+                result = response
+                if "success" not in result:
+                    result["success"] = result.get("errors") is None or len(result.get("errors", [])) == 0
+
+            return result
 
         except Exception as e:
             logger.error(f"Error in update_media_buy skill: {e}")
@@ -1774,8 +1839,19 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Convert response to A2A format
-            return response  # Raw function already returns dict format
+            # Convert response to A2A format (handle both Pydantic objects and dicts)
+            if hasattr(response, "model_dump"):
+                # Real Pydantic response object
+                result = response.model_dump(exclude_none=False, mode="json")
+                result["success"] = response.errors is None or len(response.errors) == 0
+                result["message"] = str(response)  # Human-readable message via __str__
+            else:
+                # Already a dict (from mock or legacy code)
+                result = response
+                if "success" not in result:
+                    result["success"] = result.get("errors") is None or len(result.get("errors", [])) == 0
+
+            return result
 
         except Exception as e:
             logger.error(f"Error in update_performance_index skill: {e}")
@@ -2132,13 +2208,21 @@ def main():
         # Debug logging
         logger.info(f"Agent card request headers: {dict(request.headers)}")
 
+        # Helper to get header case-insensitively
+        def get_header_case_insensitive(headers, header_name: str) -> str | None:
+            """Get header value with case-insensitive lookup."""
+            for key, value in headers.items():
+                if key.lower() == header_name.lower():
+                    return value
+            return None
+
         # Determine protocol based on host (localhost = HTTP, others = HTTPS)
         def get_protocol(hostname: str) -> str:
             """Return HTTP for localhost, HTTPS for production domains."""
             return "http" if hostname.startswith("localhost") or hostname.startswith("127.0.0.1") else "https"
 
         # Check for Approximated routing first (takes priority)
-        apx_incoming_host = request.headers.get("Apx-Incoming-Host")
+        apx_incoming_host = get_header_case_insensitive(request.headers, "Apx-Incoming-Host")
         if apx_incoming_host:
             # Use the original host from Approximated - preserve the exact domain
             protocol = get_protocol(apx_incoming_host)
@@ -2146,7 +2230,7 @@ def main():
             logger.info(f"Using Apx-Incoming-Host: {apx_incoming_host} -> {server_url}")
         else:
             # Fallback to Host header
-            host = request.headers.get("Host", "")
+            host = get_header_case_insensitive(request.headers, "Host") or ""
             if host and host != "sales-agent.scope3.com":
                 # For external domains or localhost, use appropriate protocol
                 protocol = get_protocol(host)
@@ -2207,11 +2291,18 @@ def main():
 
     async def debug_tenant_endpoint(request):
         """Debug endpoint to check tenant detection from headers."""
-        headers = dict(request.headers)
 
-        # Check for Apx-Incoming-Host header
-        apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
-        host_header = headers.get("host") or headers.get("Host")
+        # Helper to get header case-insensitively
+        def get_header_case_insensitive(headers, header_name: str) -> str | None:
+            """Get header value with case-insensitive lookup."""
+            for key, value in headers.items():
+                if key.lower() == header_name.lower():
+                    return value
+            return None
+
+        # Check for Apx-Incoming-Host header (case-insensitive)
+        apx_host = get_header_case_insensitive(request.headers, "Apx-Incoming-Host")
+        host_header = get_header_case_insensitive(request.headers, "Host")
 
         # Resolve tenant using same logic as auth
         tenant_id = None
@@ -2303,17 +2394,19 @@ def main():
         """Extract Bearer token and set authentication context for A2A requests."""
         # Only process A2A endpoint requests (handle both /a2a and /a2a/)
         if request.url.path in ["/a2a", "/a2a/"] and request.method == "POST":
-            # Extract Bearer token from Authorization header (case-insensitive)
-            auth_header = request.headers.get("authorization", "").strip()
-            # Also try Authorization with capital A (case variations)
-            if not auth_header:
-                auth_header = request.headers.get("Authorization", "").strip()
+            # Extract Bearer token from Authorization header (case-insensitive iteration)
+            # Use same pattern as MCP for robust header extraction
+            auth_header = None
+            for key, value in request.headers.items():
+                if key.lower() == "authorization":
+                    auth_header = value.strip()
+                    break
 
             logger.info(
-                f"Processing A2A request to {request.url.path} with auth header: {'Bearer...' if auth_header.startswith('Bearer ') else repr(auth_header[:20]) + '...' if auth_header else 'missing'}"
+                f"Processing A2A request to {request.url.path} with auth header: {'Bearer...' if auth_header and auth_header.startswith('Bearer ') else repr(auth_header[:20]) + '...' if auth_header else 'missing'}"
             )
 
-            if auth_header.startswith("Bearer "):
+            if auth_header and auth_header.startswith("Bearer "):
                 token = auth_header[7:]  # Remove "Bearer " prefix
                 # Store token and headers in thread-local storage for handler access
                 _request_context.auth_token = token

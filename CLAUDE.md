@@ -37,12 +37,14 @@ pytest tests/unit/test_adcp_contract.py -v
 ```
 
 **Current Schema Version:**
-- AdCP Version: v2.4
+- AdCP Version: 2.2.0 (official spec version)
 - Schema Version: v1
-- Last Verified: 2025-09-02
+- Last Verified: 2025-10-22
 - Source: https://adcontextprotocol.org/schemas/v1/index.json
+- Note: Internal "v2.4" references in codebase refer to feature evolution, not official spec versions
 
 ---
+
 
 ### PostgreSQL-Only Architecture
 **🚨 DECISION**: This codebase uses **PostgreSQL exclusively**. We do NOT support SQLite.
@@ -305,6 +307,10 @@ def create_media_buy_raw(promoted_offering: str, ...) -> CreateMediaBuyResponse:
 - Python 3.11+
 - PostgreSQL (production and testing)
 - We'll support your deployment approach as best we can
+
+**Known Test Agent Issues:**
+- **`create_media_buy` auth failure** (2025-10-04): Rejects valid auth tokens. See [postmortem](docs/testing/postmortems/2025-10-04-test-agent-auth-bug.md)
+- **`get_media_buy_delivery` parameter mismatch** (2025-10-04): Expects `media_buy_id` (singular) instead of spec-compliant `media_buy_ids` (plural)
 
 **When Test Agent is Down:**
 - Check Fly.io logs first: `fly logs --app <test-agent-app-name>`
@@ -767,6 +773,60 @@ tests/
 └── ui/           # Admin UI tests
 ```
 
+### Database Test Fixtures - MANDATORY
+
+**🚨 CRITICAL**: Use the correct fixture based on test type.
+
+**Integration Tests** (tests/integration/):
+```python
+# ✅ CORRECT - Use integration_db fixture
+@pytest.mark.requires_db
+def test_something(integration_db):
+    """Integration test with real PostgreSQL database."""
+    with get_db_session() as session:
+        # Your test code using real database
+        tenant = Tenant(...)
+        session.add(tenant)
+        session.commit()
+```
+
+**Unit Tests** (tests/unit/):
+```python
+# ✅ CORRECT - Mock database calls
+def test_something():
+    """Unit test with mocked database."""
+    with patch('src.core.database.database_session.get_db_session') as mock_db:
+        # Your test code with mocked database
+        pass
+```
+
+**⚠️ Common Mistakes:**
+
+```python
+# ❌ WRONG - Don't use db_session in integration tests
+def test_something(db_session):  # This expects DATABASE_URL already set
+    tenant = Tenant(...)
+    db_session.add(tenant)  # Will fail in CI
+
+# ❌ WRONG - Don't use @pytest.mark.requires_db in tests/unit/
+# Unit tests should mock the database, not use a real one
+```
+
+**When to use each:**
+- **integration_db**: Integration tests that need real PostgreSQL (CI sets this up)
+- **db_session**: Legacy fixture, being phased out - use integration_db instead
+- **Mock**: Unit tests - mock get_db_session() for fast, isolated tests
+
+**Fixture Details:**
+- `integration_db`: Creates isolated PostgreSQL database per test (via tests/integration/conftest.py)
+- `db_session`: Expects DATABASE_URL to be set, returns session (via tests/conftest_db.py)
+- Unit tests use auto-mock fixture that mocks get_db_session() automatically
+
+**Migration Path:**
+- ✅ New integration tests: Always use `integration_db`
+- ✅ Existing integration tests: Convert from `db_session` to `integration_db` when touched
+- ✅ Unit tests with `@pytest.mark.requires_db`: Consider moving to tests/integration/
+
 ### Quality Enforcement
 **🚨 Pre-commit hooks enforce:**
 - Max 10 mocks per test file
@@ -917,54 +977,59 @@ uv run pytest tests/ -x
 # CI caught it after 2 failed runs
 ```
 
-#### Pre-Push Validation
+#### Pre-Push Hook
 
-**✅ AUTOMATIC CI MODE:**
-The pre-push hook now automatically runs CI mode tests (with PostgreSQL) before every push.
-This catches database-specific issues before they hit GitHub Actions.
+**✅ MIGRATION CHECKS ONLY:**
+The pre-push hook performs a fast migration head check. No tests run in the hook - tests run in CI.
 
 ```bash
-# Pre-push hook automatically runs:
-./run_all_tests.sh ci        # ~3-5 min, exactly like GitHub Actions
+# Pre-push hook checks:
+🔍 Checking for multiple migration heads...
+✅ Migration heads OK
+✅ Pre-push checks passed!
 
-# To skip (not recommended):
-git push --no-verify
+💡 To run tests locally before pushing:
+   ./run_all_tests.sh quick   # Fast (~1 min, no database)
+   ./run_all_tests.sh ci      # Full (~3-5 min, with PostgreSQL)
 ```
 
 **🔧 Setup Pre-Push Hook:**
-If the hook isn't installed or you want to update it:
 ```bash
 ./scripts/setup/setup_hooks.sh
 ```
 
-**Test Modes:**
+**Philosophy:**
+- **Pre-commit**: Code quality (formatting, linting) - fast, automatic
+- **Pre-push**: Migration checks - fast, automatic
+- **CI**: Full test suite - runs on GitHub Actions
+- **Manual**: Developers can run tests locally when needed
 
-**CI Mode (DEFAULT - runs automatically on push):**
-- Starts PostgreSQL container automatically (postgres:15)
-- Runs ALL tests including database-dependent tests
-- Exactly matches GitHub Actions and production environment
-- Catches database issues before CI does
-- Automatically cleans up container
-- ~3-5 minutes
+**Test Modes (Manual):**
 
-**Quick Mode (for fast development iteration):**
+**Quick Mode:**
 - Fast validation: unit tests + integration tests (no database)
 - Skips database-dependent tests (marked with `@pytest.mark.requires_db`)
-- Good for rapid testing during development
+- No PostgreSQL container required
 - ~1 minute
+
+**CI Mode:**
+- Starts PostgreSQL container automatically (postgres:15)
+- Runs ALL tests including database-dependent tests
+- Exactly matches GitHub Actions
+- ~3-5 minutes
 
 **Command Reference:**
 ```bash
-./run_all_tests.sh         # CI mode (default) - PostgreSQL container
-./run_all_tests.sh ci      # CI mode (explicit) - USE THIS before pushing!
-./run_all_tests.sh quick   # Quick mode - fast iteration
+./run_all_tests.sh quick   # Quick mode - fast, no PostgreSQL
+./run_all_tests.sh ci      # CI mode - full test suite with PostgreSQL
 ```
 
-**Why PostgreSQL-only?**
-- Production uses PostgreSQL exclusively
-- SQLite hides bugs (different JSONB behavior, no connection pooling, single-threaded)
-- "No fallbacks - if it's in our control, make it work" (core principle)
-- One database. One source of truth. No hidden bugs.
+**Why No Tests in Pre-Push?**
+- Developers should be able to push quickly
+- CI catches all test failures automatically
+- Pre-commit already handles code quality
+- Developers can manually run tests when they want
+- Keeps workflow fast and uninterrupted
 
 See `docs/testing/` for detailed patterns and case studies.
 
@@ -984,21 +1049,77 @@ pre-commit run adcp-contract-tests --all-files
 ## Adapter Pricing Model Support
 
 ### GAM Adapter
-**Supported**: CPM only (both fixed and auction)
-- Fixed CPM → GAM guaranteed orders
-- Auction CPM → GAM non-guaranteed orders
+**Supported Pricing Models**: CPM, VCPM, CPC, FLAT_RATE
 
-**Not supported**: CPCV, CPP, CPC, CPV, flat_rate
-- GAM supports these internally but adapter doesn't implement them yet
-- Products with non-CPM pricing_options will work (validation passes) but adapter uses CPM
+**✅ FULLY IMPLEMENTED**: End-to-end pricing support with automatic line item type selection, dynamic cost type assignment, and goal unit configuration.
+
+#### Pricing Model Details
+
+| AdCP Model | GAM Cost Type | Line Item Types | Goal Unit Type | Use Case |
+|------------|---------------|-----------------|----------------|----------|
+| **CPM** | CPM | All types (STANDARD, SPONSORSHIP, NETWORK, PRICE_PRIORITY, BULK, HOUSE) | IMPRESSIONS | Cost per 1,000 impressions - most common |
+| **VCPM** | VCPM | STANDARD only | VIEWABLE_IMPRESSIONS | Cost per 1,000 viewable impressions - viewability-based |
+| **CPC** | CPC | STANDARD, SPONSORSHIP, NETWORK, PRICE_PRIORITY | CLICKS | Cost per click - performance-based |
+| **FLAT_RATE** | CPD (internal) | SPONSORSHIP | IMPRESSIONS | Fixed campaign cost - internally translates to CPD (total / days) |
+
+**Not Supported**: CPCV, CPV, CPP (GAM API limitations - video completion and GRP metrics not available)
+
+**Note**: CPD (Cost Per Day) is a GAM cost type but NOT exposed as an AdCP pricing model. It's used internally to translate FLAT_RATE pricing.
+
+**Implementation Status**:
+- ✅ Pricing validation at adapter level
+- ✅ Automatic line item type selection based on pricing + guarantees
+- ✅ Dynamic cost type assignment (CPM, VCPM, CPC, CPD)
+- ✅ Dynamic goal unit types (IMPRESSIONS, VIEWABLE_IMPRESSIONS, CLICKS)
+- ✅ FLAT_RATE → CPD rate calculation (total_budget / campaign_days)
+- ✅ Comprehensive unit tests (22 tests in `test_gam_pricing_compatibility.py`)
+- ✅ Integration tests (6 tests in `test_gam_pricing_models_integration.py`)
+
+#### Line Item Type Selection
+
+GAM adapter **automatically selects** the appropriate line item type based on:
+1. **Pricing model** (FLAT_RATE → SPONSORSHIP, VCPM → STANDARD, others → based on delivery guarantee)
+2. **Delivery guarantee** (guaranteed_impressions → STANDARD, else PRICE_PRIORITY)
+3. **Product override** (implementation_config.line_item_type, validated for compatibility)
+
+**Automatic Selection Logic**:
+- FLAT_RATE pricing → SPONSORSHIP line item (priority 4) with CPD translation
+- VCPM pricing → STANDARD line item (priority 8) - VCPM only works with STANDARD
+- Guaranteed CPM/CPC → STANDARD line item (priority 8)
+- Non-guaranteed CPM/CPC → PRICE_PRIORITY line item (priority 12)
+
+**Manual Override** (via product configuration):
+```json
+{
+  "implementation_config": {
+    "line_item_type": "NETWORK",  // Override default selection
+    "cost_type": "CPC",            // Must be compatible with line_item_type
+    // ... other config
+  }
+}
+```
+
+**Validation**: Incompatible pricing + line item type combinations are rejected with clear error messages.
+
+#### Compatibility Matrix
+
+| Line Item Type | Supported Pricing | Priority | Guaranteed |
+|----------------|------------------|----------|------------|
+| STANDARD | CPM, CPC, VCPM | 8 | ✅ Yes |
+| SPONSORSHIP | CPM, CPC, CPD | 4 | ✅ Yes |
+| NETWORK | CPM, CPC, CPD | 16 | ❌ No |
+| PRICE_PRIORITY | CPM, CPC | 12 | ❌ No |
+| BULK | CPM only | 12 | ❌ No |
+| HOUSE | CPM only | 16 | ❌ No (filler) |
+
+**Source**: Google Ad Manager API v202411 CostType specification
 
 ### Mock Adapter
-**Supported**: All pricing models (CPM, CPCV, CPP, CPC, CPV, flat_rate)
+**Supported**: All AdCP pricing models (CPM, VCPM, CPCV, CPP, CPC, CPV, FLAT_RATE)
 - Both fixed and auction pricing
 - All currencies
 - Simulates appropriate metrics per pricing model
-
-**Note**: Adapter UIs should allow creating pricing_options for products. Currently only legacy pricing fields are shown.
+- Used for testing and development
 
 ---
 

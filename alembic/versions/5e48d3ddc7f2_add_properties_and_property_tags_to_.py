@@ -36,7 +36,7 @@ def upgrade() -> None:
     # Step 3: Backfill existing products with default property_tags
     # This ensures all products have at least one of properties/property_tags
     # Uses SQLAlchemy Core for type-safe updates
-    from sqlalchemy import and_, table, column, update
+    from sqlalchemy import and_, column, table, update
 
     # Define minimal table for update (no need for full model import)
     products_table = table(

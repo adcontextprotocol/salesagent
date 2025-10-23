@@ -17,18 +17,12 @@ from pydantic import AnyUrl
 from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
     BrandManifest,
     BrandManifest8,
-    BrandManifest9,
-    BrandManifest10,
     Filters,
-    Filters1,
     GetProductsRequest,
-    GetProductsRequest1,
-    GetProductsRequest2,
 )
 from src.core.schemas_generated._schemas_v1_media_buy_get_products_response_json import (
     GetProductsResponse,
-    Products,
-    Products1,
+    Product,
 )
 
 
@@ -36,94 +30,71 @@ def create_get_products_request(
     brief: str = "",
     promoted_offering: str | None = None,
     brand_manifest: BrandManifest | BrandManifest8 | str | dict[str, Any] | None = None,
-    filters: Filters | Filters1 | dict[str, Any] | None = None,
+    filters: Filters | dict[str, Any] | None = None,
 ) -> GetProductsRequest:
-    """Create GetProductsRequest, automatically choosing the right variant.
+    """Create GetProductsRequest.
 
-    The generated schema has two variants (oneOf in JSON Schema):
-    - GetProductsRequest1: requires promoted_offering
-    - GetProductsRequest2: requires brand_manifest
-
-    This helper automatically picks the right variant and handles backward compatibility.
+    The new schema (post-regeneration) is a single flat class with all optional fields.
 
     Args:
         brief: Natural language description of campaign requirements
-        promoted_offering: DEPRECATED - Use brand_manifest instead
+        promoted_offering: Advertiser's promoted offering URL or name
         brand_manifest: Brand information (object, URL string, or dict)
         filters: Structured filters for product discovery
 
     Returns:
-        GetProductsRequest (RootModel wrapping the appropriate variant)
+        GetProductsRequest
 
     Examples:
-        >>> # Legacy promoted_offering (auto-converts to brand_manifest)
-        >>> req = create_get_products_request(
-        ...     promoted_offering="https://acme.com",
-        ...     brief="Video ads"
-        ... )
-
-        >>> # Modern brand_manifest
+        >>> # With brand_manifest
         >>> req = create_get_products_request(
         ...     brand_manifest={"name": "Acme", "url": "https://acme.com"},
         ...     brief="Display ads"
         ... )
-    """
-    # Backward compatibility: convert promoted_offering to brand_manifest
-    if promoted_offering and not brand_manifest:
-        if promoted_offering.startswith("http"):
-            brand_manifest = {"url": promoted_offering}
-        else:
-            brand_manifest = {"name": promoted_offering}
 
+        >>> # With promoted_offering (backward compat)
+        >>> req = create_get_products_request(
+        ...     promoted_offering="https://acme.com",
+        ...     brief="Video ads"
+        ... )
+    """
     # Convert filters dict to proper type if needed
     if isinstance(filters, dict):
-        filters_obj: Filters | Filters1 | None = Filters(**filters)
+        filters_obj: Filters | None = Filters(**filters)
     else:
         filters_obj = filters
 
-    # Determine which variant to use FIRST, then convert brand_manifest to correct type
-    if promoted_offering and not brand_manifest:
-        # Use variant 1 (promoted_offering required, no brand_manifest)
-        variant = GetProductsRequest1(
-            promoted_offering=promoted_offering,
-            brief=brief or None,
-            filters=filters_obj,
-        )
+    # Convert brand_manifest to proper type
+    brand_manifest_obj: BrandManifest | BrandManifest8 | AnyUrl | None = None
+    if isinstance(brand_manifest, dict):
+        # Choose BrandManifest or BrandManifest8 based on what's provided
+        if "url" in brand_manifest and brand_manifest["url"] is not None:
+            # Has url - use BrandManifest (url-required variant)
+            brand_manifest_obj = BrandManifest(**brand_manifest)
+        elif "name" in brand_manifest:
+            # Only name - use BrandManifest8 (both optional)
+            brand_manifest_obj = BrandManifest8(**brand_manifest)
+    elif isinstance(brand_manifest, str):
+        # URL string
+        brand_manifest_obj = AnyUrl(brand_manifest)  # type: ignore[assignment]
     else:
-        # Use variant 2 (brand_manifest required)
-        # Convert brand_manifest to GetProductsRequest2 types (BrandManifest9/BrandManifest10)
-        if isinstance(brand_manifest, dict):
-            # Choose correct variant based on what's required
-            # BrandManifest9: url is required (name optional)
-            # BrandManifest10: name is required (url optional)
-            if "url" in brand_manifest and brand_manifest["url"] is not None:
-                # Has url - use BrandManifest9 (url-required variant)
-                brand_manifest_obj: BrandManifest9 | BrandManifest10 | AnyUrl = BrandManifest9(**brand_manifest)
-            elif "name" in brand_manifest and brand_manifest["name"] is not None:
-                # Has name but no url - use BrandManifest10 (name-required variant)
-                brand_manifest_obj = BrandManifest10(**brand_manifest)
-            else:
-                # Neither url nor name - will fail validation (AdCP requires one)
-                raise ValueError("brand_manifest requires at least one of: url, name")
-        elif isinstance(brand_manifest, str):
-            # URL string
-            brand_manifest_obj = AnyUrl(brand_manifest)  # type: ignore[assignment]
-        else:
-            brand_manifest_obj = brand_manifest  # type: ignore[assignment]
+        brand_manifest_obj = brand_manifest  # type: ignore[assignment]
 
-        variant = GetProductsRequest2(
-            brand_manifest=brand_manifest_obj,
-            promoted_offering=promoted_offering,
-            brief=brief or None,
-            filters=filters_obj,
-        )
+    # Handle promoted_offering → brand_manifest conversion (backward compat)
+    if promoted_offering and not brand_manifest_obj:
+        # Convert promoted_offering to brand_manifest for AdCP spec compliance
+        brand_manifest_obj = BrandManifest8(name=promoted_offering)
 
-    # Wrap in RootModel
-    return GetProductsRequest(root=variant)
+    # Create single flat GetProductsRequest (AdCP spec fields only)
+    return GetProductsRequest(
+        brand_manifest=brand_manifest_obj,  # type: ignore[arg-type]
+        brief=brief or None,
+        filters=filters_obj,
+    )
 
 
 def create_get_products_response(
-    products: list[Products | Products1 | dict[str, Any]],
+    products: list[Product | dict[str, Any]],
     status: str = "completed",
     errors: list | None = None,
 ) -> GetProductsResponse:
@@ -157,7 +128,5 @@ __all__ = [
     "BrandManifest",
     "BrandManifest8",
     "Filters",
-    "Filters1",
-    "Products",
-    "Products1",
+    "Product",
 ]

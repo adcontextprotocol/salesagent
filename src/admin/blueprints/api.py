@@ -10,6 +10,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import func, select, text
 
 from src.admin.utils import require_auth
+from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal, Product
 
@@ -17,6 +18,92 @@ logger = logging.getLogger(__name__)
 
 # Create blueprint
 api_bp = Blueprint("api", __name__)
+
+
+@api_bp.route("/formats/list", methods=["GET"])
+def list_formats():
+    """List all available creative formats from registered creative agents.
+
+    Query params:
+        tenant_id: Optional tenant ID for tenant-specific formats
+
+    Returns:
+        JSON with format list grouped by agent URL
+    """
+    from src.core.format_resolver import list_available_formats
+
+    tenant_id = request.args.get("tenant_id")
+
+    logger.info(f"[/api/formats/list] Fetching formats for tenant_id={tenant_id}")
+
+    try:
+        # Get all formats from creative agent registry
+        formats = list_available_formats(tenant_id=tenant_id)
+
+        logger.info(f"[/api/formats/list] Successfully fetched {len(formats)} formats from creative agents")
+
+        if not formats:
+            logger.warning(f"[/api/formats/list] No formats returned for tenant_id={tenant_id}")
+            return jsonify(
+                {
+                    "agents": {},
+                    "total_formats": 0,
+                    "warning": "No creative formats available. Check creative agent configuration.",
+                }
+            )
+
+        # Group formats by agent URL for frontend compatibility
+        agents = {}
+        for fmt in formats:
+            agent_url = fmt.agent_url
+            if agent_url not in agents:
+                agents[agent_url] = []
+
+            # Convert to dict for JSON serialization
+            try:
+                # Handle FormatId object - extract string value
+                format_id_str = fmt.format_id.id if hasattr(fmt.format_id, "id") else str(fmt.format_id)
+
+                format_dict = {
+                    "format_id": format_id_str,
+                    "name": fmt.name,
+                    "type": fmt.type,
+                    "category": fmt.category,
+                    "description": fmt.description,
+                    "iab_specification": fmt.iab_specification,
+                }
+
+                # Add dimensions if available
+                dimensions = fmt.get_primary_dimensions()
+                if dimensions:
+                    width, height = dimensions
+                    format_dict["dimensions"] = f"{width}x{height}"
+
+                agents[agent_url].append(format_dict)
+            except Exception as fmt_error:
+                logger.error(
+                    f"[/api/formats/list] Error serializing format {getattr(fmt, 'format_id', 'unknown')}: {fmt_error}",
+                    exc_info=True,
+                )
+                # Continue with other formats
+
+        logger.info(
+            f"[/api/formats/list] Returning {len(agents)} agent(s) with {sum(len(fmts) for fmts in agents.values())} total formats"
+        )
+        return jsonify({"agents": agents, "total_formats": len(formats)})
+    except Exception as e:
+        logger.error(f"[/api/formats/list] Error listing formats for tenant_id={tenant_id}: {e}", exc_info=True)
+        return (
+            jsonify(
+                {
+                    "error": str(e),
+                    "agents": {},
+                    "error_type": type(e).__name__,
+                    "message": "Failed to fetch creative formats. Check server logs for details.",
+                }
+            ),
+            500,
+        )
 
 
 @api_bp.route("/health", methods=["GET"])
@@ -241,6 +328,7 @@ def get_product_suggestions(tenant_id):
 
 @api_bp.route("/tenant/<tenant_id>/products/quick-create", methods=["POST"])
 @require_auth()
+@log_admin_action("quick_create_products")
 def quick_create_products(tenant_id):
     """Quick create multiple products from suggestions."""
     from flask import session
@@ -424,6 +512,7 @@ def quick_create_products(tenant_id):
 
 @api_bp.route("/gam/get-advertisers", methods=["POST"])
 @require_auth()
+@log_admin_action("gam_get_advertisers")
 def gam_get_advertisers():
     """TODO: Extract implementation from admin_ui.py lines 3580-3653.
     GAM advertiser fetching - implement in phase 2."""
@@ -433,6 +522,7 @@ def gam_get_advertisers():
 
 @api_bp.route("/mcp-test/call", methods=["POST"])
 @require_auth(admin_only=True)
+@log_admin_action("mcp_test_call")
 def mcp_test_call():
     """Execute MCP protocol test call.
 
@@ -508,6 +598,7 @@ def mcp_test_call():
 
 @api_bp.route("/gam/test-connection", methods=["POST"])
 @require_auth()
+@log_admin_action("test_gam_connection")
 def test_gam_connection():
     """Test GAM connection with refresh token and fetch available resources."""
     try:
