@@ -59,9 +59,9 @@ class Dimensions(BaseModel):
     min_height: Annotated[float | None, Field(description="Minimum height for responsive renders", ge=0.0)] = None
     max_width: Annotated[float | None, Field(description="Maximum width for responsive renders", ge=0.0)] = None
     max_height: Annotated[float | None, Field(description="Maximum height for responsive renders", ge=0.0)] = None
-    responsive: Annotated[Responsive | None, Field(description="Indicates which dimensions are responsive/fluid")] = (
-        None
-    )
+    responsive: Annotated[
+        Responsive | None, Field(description="Indicates which dimensions are responsive/fluid")
+    ] = None
     aspect_ratio: Annotated[
         str | None,
         Field(description="Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1')", pattern="^\\d+:\\d+$"),

@@ -304,7 +304,9 @@ class Colors(BaseModel):
 class Fonts(BaseModel):
     primary: Annotated[str | None, Field(description="Primary font family name")] = None
     secondary: Annotated[str | None, Field(description="Secondary font family name")] = None
-    font_urls: Annotated[list[AnyUrl] | None, Field(description="URLs to web font files if using custom fonts")] = None
+    font_urls: Annotated[list[AnyUrl] | None, Field(description="URLs to web font files if using custom fonts")] = (
+        None
+    )
 
 
 class AssetType(Enum):
@@ -359,7 +361,9 @@ class ProductCatalog(BaseModel):
     categories: Annotated[
         list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = (
+        None
+    )
     update_frequency: Annotated[
         UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
@@ -381,7 +385,9 @@ class Contact(BaseModel):
 
 class Metadata(BaseModel):
     created_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was created")] = None
-    updated_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was last updated")] = None
+    updated_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was last updated")] = (
+        None
+    )
     version: Annotated[str | None, Field(description="Brand card version number")] = None
 
 
@@ -464,7 +470,9 @@ class ProductCatalog13(BaseModel):
     categories: Annotated[
         list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = (
+        None
+    )
     update_frequency: Annotated[
         UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
@@ -739,30 +747,16 @@ class Creative(BaseModel):
     updated_date: Annotated[AwareDatetime, Field(description="When the creative was last modified")]
     media_url: Annotated[AnyUrl | None, Field(description="URL of the creative file (for hosted assets)")] = None
     assets: Annotated[
-        dict[
-            str,
-            Assets
-            | Assets38
-            | Assets39
-            | Assets40
-            | Assets41
-            | Assets42
-            | Assets43
-            | Assets44
-            | Assets45
-            | Assets46
-            | Assets47
-            | Assets48
-            | Assets49,
-        ]
-        | None,
+        dict[str, Assets | Assets38 | Assets39 | Assets40 | Assets41 | Assets42 | Assets43 | Assets44 | Assets45 | Assets46 | Assets47 | Assets48 | Assets49] | None,
         Field(description="Assets for this creative, keyed by asset_role"),
     ] = None
     click_url: Annotated[AnyUrl | None, Field(description="Landing page URL for the creative")] = None
     duration: Annotated[float | None, Field(description="Duration in milliseconds (for video/audio)", ge=0.0)] = None
     width: Annotated[float | None, Field(description="Width in pixels (for video/display)", ge=0.0)] = None
     height: Annotated[float | None, Field(description="Height in pixels (for video/display)", ge=0.0)] = None
-    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = None
+    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = (
+        None
+    )
     assignments: Annotated[
         Assignments | None, Field(description="Current package assignments (included when include_assignments=true)")
     ] = None
@@ -793,5 +787,7 @@ class ListCreativesResponse(BaseModel):
     query_summary: Annotated[QuerySummary, Field(description="Summary of the query that was executed")]
     pagination: Annotated[Pagination, Field(description="Pagination information for navigating results")]
     creatives: Annotated[list[Creative], Field(description="Array of creative assets matching the query")]
-    format_summary: Annotated[dict[str, int] | None, Field(description="Breakdown of creatives by format type")] = None
+    format_summary: Annotated[dict[str, int] | None, Field(description="Breakdown of creatives by format type")] = (
+        None
+    )
     status_summary: Annotated[StatusSummary | None, Field(description="Breakdown of creatives by status")] = None

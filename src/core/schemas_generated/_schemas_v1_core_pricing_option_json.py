@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
@@ -316,27 +316,21 @@ class PricingOption9(BaseModel):
 
 class PricingOption(
     RootModel[
-        PricingOption1
-        | PricingOption2
-        | PricingOption3
-        | PricingOption4
-        | PricingOption5
-        | PricingOption6
-        | PricingOption7
-        | PricingOption8
-        | PricingOption9
+        Union[
+            PricingOption1,
+            PricingOption2,
+            PricingOption3,
+            PricingOption4,
+            PricingOption5,
+            PricingOption6,
+            PricingOption7,
+            PricingOption8,
+            PricingOption9,
+        ]
     ]
 ):
     root: Annotated[
-        PricingOption1
-        | PricingOption2
-        | PricingOption3
-        | PricingOption4
-        | PricingOption5
-        | PricingOption6
-        | PricingOption7
-        | PricingOption8
-        | PricingOption9,
+        PricingOption1 | PricingOption2 | PricingOption3 | PricingOption4 | PricingOption5 | PricingOption6 | PricingOption7 | PricingOption8 | PricingOption9,
         Field(
             description="A pricing model option offered by a publisher for a product. Each pricing model has its own schema with model-specific requirements.",
             title="Pricing Option",
