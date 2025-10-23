@@ -164,6 +164,7 @@ class TestListAuthorizedPropertiesResponse:
 
     def test_response_with_all_fields(self):
         """Test response with all fields (per AdCP v2.4 spec)."""
+        tag_metadata = PropertyTagMetadata(name="Premium Content", description="Premium content tag")
         response = ListAuthorizedPropertiesResponse(
             publisher_domains=["example.com"],
             tags={"premium_content": tag_metadata},
