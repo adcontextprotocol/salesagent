@@ -131,9 +131,13 @@ class AdCPRequestHandler(RequestHandler):
         Raises:
             ValueError: If authentication fails
         """
-        # Get request headers for debugging
+        # Get request headers for debugging (case-insensitive lookup)
         headers = getattr(_request_context, "request_headers", {})
-        apx_host = headers.get("apx-incoming-host", "NOT_PRESENT")
+        apx_host = "NOT_PRESENT"
+        for key, value in headers.items():
+            if key.lower() == "apx-incoming-host":
+                apx_host = value
+                break
 
         # Authenticate using the token
         principal_id = get_principal_from_token(auth_token)
@@ -2128,13 +2132,21 @@ def main():
         # Debug logging
         logger.info(f"Agent card request headers: {dict(request.headers)}")
 
+        # Helper to get header case-insensitively
+        def get_header_case_insensitive(headers, header_name: str) -> str | None:
+            """Get header value with case-insensitive lookup."""
+            for key, value in headers.items():
+                if key.lower() == header_name.lower():
+                    return value
+            return None
+
         # Determine protocol based on host (localhost = HTTP, others = HTTPS)
         def get_protocol(hostname: str) -> str:
             """Return HTTP for localhost, HTTPS for production domains."""
             return "http" if hostname.startswith("localhost") or hostname.startswith("127.0.0.1") else "https"
 
         # Check for Approximated routing first (takes priority)
-        apx_incoming_host = request.headers.get("Apx-Incoming-Host")
+        apx_incoming_host = get_header_case_insensitive(request.headers, "Apx-Incoming-Host")
         if apx_incoming_host:
             # Use the original host from Approximated - preserve the exact domain
             protocol = get_protocol(apx_incoming_host)
@@ -2142,7 +2154,7 @@ def main():
             logger.info(f"Using Apx-Incoming-Host: {apx_incoming_host} -> {server_url}")
         else:
             # Fallback to Host header
-            host = request.headers.get("Host", "")
+            host = get_header_case_insensitive(request.headers, "Host") or ""
             if host and host != "sales-agent.scope3.com":
                 # For external domains or localhost, use appropriate protocol
                 protocol = get_protocol(host)
@@ -2203,11 +2215,18 @@ def main():
 
     async def debug_tenant_endpoint(request):
         """Debug endpoint to check tenant detection from headers."""
-        headers = dict(request.headers)
 
-        # Check for Apx-Incoming-Host header
-        apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
-        host_header = headers.get("host") or headers.get("Host")
+        # Helper to get header case-insensitively
+        def get_header_case_insensitive(headers, header_name: str) -> str | None:
+            """Get header value with case-insensitive lookup."""
+            for key, value in headers.items():
+                if key.lower() == header_name.lower():
+                    return value
+            return None
+
+        # Check for Apx-Incoming-Host header (case-insensitive)
+        apx_host = get_header_case_insensitive(request.headers, "Apx-Incoming-Host")
+        host_header = get_header_case_insensitive(request.headers, "Host")
 
         # Resolve tenant using same logic as auth
         tenant_id = None
@@ -2299,17 +2318,19 @@ def main():
         """Extract Bearer token and set authentication context for A2A requests."""
         # Only process A2A endpoint requests (handle both /a2a and /a2a/)
         if request.url.path in ["/a2a", "/a2a/"] and request.method == "POST":
-            # Extract Bearer token from Authorization header (case-insensitive)
-            auth_header = request.headers.get("authorization", "").strip()
-            # Also try Authorization with capital A (case variations)
-            if not auth_header:
-                auth_header = request.headers.get("Authorization", "").strip()
+            # Extract Bearer token from Authorization header (case-insensitive iteration)
+            # Use same pattern as MCP for robust header extraction
+            auth_header = None
+            for key, value in request.headers.items():
+                if key.lower() == "authorization":
+                    auth_header = value.strip()
+                    break
 
             logger.info(
-                f"Processing A2A request to {request.url.path} with auth header: {'Bearer...' if auth_header.startswith('Bearer ') else repr(auth_header[:20]) + '...' if auth_header else 'missing'}"
+                f"Processing A2A request to {request.url.path} with auth header: {'Bearer...' if auth_header and auth_header.startswith('Bearer ') else repr(auth_header[:20]) + '...' if auth_header else 'missing'}"
             )
 
-            if auth_header.startswith("Bearer "):
+            if auth_header and auth_header.startswith("Bearer "):
                 token = auth_header[7:]  # Remove "Bearer " prefix
                 # Store token and headers in thread-local storage for handler access
                 _request_context.auth_token = token
