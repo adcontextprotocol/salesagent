@@ -5863,6 +5863,84 @@ def _update_media_buy_impl(
                     )
                     return result
 
+            # Handle creative_ids updates (AdCP v2.2.0+)
+            if pkg_update.creative_ids is not None:
+                from sqlalchemy import select
+
+                from src.core.database.database_session import get_db_session
+                from src.core.database.models import Creative as DBCreative
+                from src.core.database.models import CreativeAssignment as DBAssignment
+
+                with get_db_session() as session:
+                    # Validate all creative IDs exist
+                    creative_stmt = select(DBCreative).where(
+                        DBCreative.tenant_id == tenant["tenant_id"],
+                        DBCreative.creative_id.in_(pkg_update.creative_ids),
+                    )
+                    creatives_list = session.scalars(creative_stmt).all()
+                    found_creative_ids = {c.creative_id for c in creatives_list}
+                    missing_ids = set(pkg_update.creative_ids) - found_creative_ids
+
+                    if missing_ids:
+                        error_msg = f"Creative IDs not found: {', '.join(missing_ids)}"
+                        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+                        return UpdateMediaBuyResponse(
+                            media_buy_id=req.media_buy_id or "",
+                            buyer_ref=req.buyer_ref or "",
+                            errors=[{"code": "creatives_not_found", "message": error_msg}],
+                        )
+
+                    # Get existing assignments for this package
+                    assignment_stmt = select(DBAssignment).where(
+                        DBAssignment.tenant_id == tenant["tenant_id"],
+                        DBAssignment.media_buy_id == req.media_buy_id,
+                        DBAssignment.package_id == pkg_update.package_id,
+                    )
+                    existing_assignments = session.scalars(assignment_stmt).all()
+                    existing_creative_ids = {a.creative_id for a in existing_assignments}
+
+                    # Determine added and removed creative IDs
+                    requested_ids = set(pkg_update.creative_ids)
+                    added_ids = requested_ids - existing_creative_ids
+                    removed_ids = existing_creative_ids - requested_ids
+
+                    # Remove old assignments
+                    for assignment in existing_assignments:
+                        if assignment.creative_id in removed_ids:
+                            session.delete(assignment)
+
+                    # Add new assignments
+                    import uuid
+
+                    for creative_id in added_ids:
+                        assignment_id = f"assign_{uuid.uuid4().hex[:12]}"
+                        assignment = DBAssignment(
+                            assignment_id=assignment_id,
+                            tenant_id=tenant["tenant_id"],
+                            media_buy_id=req.media_buy_id,
+                            package_id=pkg_update.package_id,
+                            creative_id=creative_id,
+                        )
+                        session.add(assignment)
+
+                    session.commit()
+
+                    # Store results for affected_packages response
+                    if not hasattr(req, "_affected_packages"):
+                        req._affected_packages = []
+                    req._affected_packages.append(
+                        {
+                            "buyer_package_ref": pkg_update.package_id,
+                            "changes_applied": {
+                                "creative_ids": {
+                                    "added": list(added_ids),
+                                    "removed": list(removed_ids),
+                                    "current": pkg_update.creative_ids,
+                                }
+                            },
+                        }
+                    )
+
     # Handle budget updates (Budget object from AdCP spec - v1.8.0 compatible)
     if req.budget is not None:
         from src.core.schemas import extract_budget_amount
@@ -5931,9 +6009,13 @@ def _update_media_buy_impl(
         },
     )
 
+    # Build affected_packages from stored results
+    affected_packages = getattr(req, "_affected_packages", [])
+
     return UpdateMediaBuyResponse(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
+        affected_packages=affected_packages if affected_packages else None,
     )
 
 
