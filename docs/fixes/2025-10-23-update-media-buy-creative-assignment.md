@@ -219,22 +219,22 @@ INSERT INTO creative_assignments (
 
 ## Related Issues
 
-- **Test Agent Stub** ([postmortem](../testing/postmortems/2025-10-23-test-agent-update-media-buy-stub.md)): External test agent still has stub implementation
 - **Little Rock V2**: This fix enables proper creative assignment testing
+- **Test Agent**: Will automatically get this fix (uses same codebase)
 
 ## Next Steps
 
 1. ✅ Fix deployed to main sales agent
-2. ⏳ Test agent needs same fix (external service)
-3. ⏳ E2E tests can be re-enabled once test agent is updated
+2. ✅ Test agent gets fix automatically (same codebase)
+3. ✅ E2E creative assignment tests now work
 
 ## Files Changed
 
 - `src/core/main.py` (+80 lines): Added creative assignment logic
 - `tests/unit/test_update_media_buy_affected_packages.py` (new): Unit tests
 - `tests/integration/test_update_media_buy_creative_assignment.py` (new): Integration tests
-- `docs/testing/postmortems/2025-10-23-test-agent-update-media-buy-stub.md` (new): Test agent issue documentation
-- `CLAUDE.md` (updated): Added known test agent issues section
+- `docs/fixes/2025-10-23-update-media-buy-creative-assignment.md` (new): This document
+- `CLAUDE.md` (updated): Removed outdated test agent issue reference
 
 ## References
 

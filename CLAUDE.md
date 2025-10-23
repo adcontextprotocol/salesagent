@@ -309,7 +309,6 @@ def create_media_buy_raw(promoted_offering: str, ...) -> CreateMediaBuyResponse:
 - We'll support your deployment approach as best we can
 
 **Known Test Agent Issues:**
-- **`update_media_buy` stub implementation** (2025-10-23): Returns success but doesn't persist changes, returns empty `affected_packages` array. See [postmortem](docs/testing/postmortems/2025-10-23-test-agent-update-media-buy-stub.md)
 - **`create_media_buy` auth failure** (2025-10-04): Rejects valid auth tokens. See [postmortem](docs/testing/postmortems/2025-10-04-test-agent-auth-bug.md)
 - **`get_media_buy_delivery` parameter mismatch** (2025-10-04): Expects `media_buy_id` (singular) instead of spec-compliant `media_buy_ids` (plural)
 
