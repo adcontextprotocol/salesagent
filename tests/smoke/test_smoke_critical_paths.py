@@ -150,7 +150,10 @@ class TestMCPCriticalEndpoints:
                 "method": "tools/call",
                 "params": {
                     "name": "get_products",
-                    "arguments": {"brief": "test campaign", "promoted_offering": "Nike Air Max 2025 running shoes"},
+                    "arguments": {
+                        "brief": "test campaign",
+                        "brand_manifest": {"name": "Nike Air Max 2025 running shoes"},
+                    },
                 },
                 "id": 5,
             },

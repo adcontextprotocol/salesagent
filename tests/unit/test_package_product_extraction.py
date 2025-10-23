@@ -13,9 +13,12 @@ class TestPackageProductExtraction:
     def test_get_product_ids_with_single_product_id(self):
         """Test extraction from product_id field (AdCP spec compliant)."""
         req = CreateMediaBuyRequest(
-            promoted_offering="Test",
+            brand_manifest={"name": "Test"},
             buyer_ref="test1",
             po_number="PO-001",
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
+            budget={"total": 5000.0, "currency": "USD"},
             packages=[Package(buyer_ref="pkg1", product_id="prod1")],
         )
 
@@ -26,9 +29,12 @@ class TestPackageProductExtraction:
     def test_get_product_ids_with_multiple_packages(self):
         """Test extraction from multiple packages."""
         req = CreateMediaBuyRequest(
-            promoted_offering="Test",
+            brand_manifest={"name": "Test"},
             buyer_ref="test2",
             po_number="PO-002",
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
+            budget={"total": 5000.0, "currency": "USD"},
             packages=[
                 Package(buyer_ref="pkg1", product_id="prod1"),
                 Package(buyer_ref="pkg2", product_id="prod2"),
@@ -43,9 +49,12 @@ class TestPackageProductExtraction:
     def test_get_product_ids_with_empty_package(self):
         """Test extraction from package with no product_id."""
         req = CreateMediaBuyRequest(
-            promoted_offering="Test",
+            brand_manifest={"name": "Test"},
             buyer_ref="test3",
             po_number="PO-003",
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
+            budget={"total": 5000.0, "currency": "USD"},
             packages=[Package(buyer_ref="pkg1")],
         )
 
@@ -55,9 +64,12 @@ class TestPackageProductExtraction:
     def test_get_product_ids_fallback_to_legacy_product_ids(self):
         """Test fallback to legacy product_ids field when no packages."""
         req = CreateMediaBuyRequest(
-            promoted_offering="Test",
+            brand_manifest={"name": "Test"},
             buyer_ref="test4",
             po_number="PO-004",
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
+            budget={"total": 5000.0, "currency": "USD"},
             product_ids=["legacy1", "legacy2"],
         )
 
@@ -67,9 +79,12 @@ class TestPackageProductExtraction:
     def test_get_product_ids_packages_override_legacy(self):
         """Test that packages take precedence over legacy product_ids."""
         req = CreateMediaBuyRequest(
-            promoted_offering="Test",
+            brand_manifest={"name": "Test"},
             buyer_ref="test5",
             po_number="PO-005",
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
+            budget={"total": 5000.0, "currency": "USD"},
             packages=[Package(buyer_ref="pkg1", product_id="prod1")],
             product_ids=["legacy1", "legacy2"],  # Should be ignored
         )
@@ -83,9 +98,12 @@ class TestPackageProductExtraction:
     def test_get_product_ids_skips_packages_without_product_id(self):
         """Test that packages without product_id are skipped."""
         req = CreateMediaBuyRequest(
-            promoted_offering="Test",
+            brand_manifest={"name": "Test"},
             buyer_ref="test6",
             po_number="PO-006",
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
+            budget={"total": 5000.0, "currency": "USD"},
             packages=[
                 Package(buyer_ref="pkg1", product_id="prod1"),
                 Package(buyer_ref="pkg2"),  # No product_id

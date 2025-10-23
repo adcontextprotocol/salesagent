@@ -1049,13 +1049,9 @@ class GetProductsRequest(AdCPBaseModel):
         "",
         description="Brief description of the advertising campaign or requirements (optional)",
     )
-    promoted_offering: str | None = Field(
-        None,
-        description="DEPRECATED: Use brand_manifest instead. Description of the advertiser and product (still supported for backward compatibility)",
-    )
-    brand_manifest: "BrandManifest | str | None" = Field(
-        None,
-        description="Brand information manifest (inline object or URL string). Auto-generated from promoted_offering if not provided for backward compatibility.",
+    brand_manifest: "BrandManifest | str" = Field(
+        ...,
+        description="Brand information manifest (inline object or URL string). REQUIRED per AdCP v2.2.0 spec.",
     )
     adcp_version: str = Field(
         "1.0.0",
@@ -1066,28 +1062,6 @@ class GetProductsRequest(AdCPBaseModel):
         None,
         description="Structured filters for product discovery",
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def handle_legacy_promoted_offering(cls, values):
-        """Convert legacy promoted_offering to brand_manifest for backward compatibility."""
-        if not isinstance(values, dict):
-            return values
-
-        # Backward compatibility: if promoted_offering provided but no brand_manifest, create simple manifest
-        if values.get("promoted_offering") and not values.get("brand_manifest"):
-            promoted = values["promoted_offering"]
-            if promoted:
-                values["brand_manifest"] = {"name": promoted}
-
-        # Validate that at least one of brand_manifest or promoted_offering is provided
-        if not values.get("brand_manifest") and not values.get("promoted_offering"):
-            raise ValueError(
-                "Either 'brand_manifest' or 'promoted_offering' must be provided. "
-                "'promoted_offering' is deprecated but still supported for backward compatibility."
-            )
-
-        return values
 
 
 class Error(BaseModel):
@@ -2237,33 +2211,27 @@ class Package(BaseModel):
 
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(AdCPBaseModel):
-    # Required AdCP v1.8.0 fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
+    # Required AdCP v2.2.0 fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
     buyer_ref: str = Field(..., description="Buyer reference for tracking (REQUIRED per AdCP spec)")
-    brand_manifest: "BrandManifest | str | None" = Field(
-        None,
-        description="Brand information manifest (inline object or URL string). Auto-generated from promoted_offering if not provided for backward compatibility.",
+    brand_manifest: "BrandManifest | str" = Field(
+        ...,
+        description="Brand information manifest (inline object or URL string). REQUIRED per AdCP v2.2.0 spec.",
+    )
+    packages: list[Package] = Field(..., description="Array of packages with products and budgets (REQUIRED)")
+    start_time: datetime | Literal["asap"] = Field(
+        ..., description="Campaign start time: ISO 8601 datetime or 'asap' for immediate start (REQUIRED)"
+    )
+    end_time: datetime = Field(..., description="Campaign end time (ISO 8601) (REQUIRED)")
+    budget: Budget | float = Field(
+        ...,
+        description="Overall campaign budget (Budget object or number). Currency determined by package pricing options (REQUIRED).",
     )
 
-    # AdCP v2.4 required fields
-    packages: list[Package] | None = Field(None, description="Array of packages with products and budgets")
-    start_time: datetime | Literal["asap"] | None = Field(
-        None, description="Campaign start time: ISO 8601 datetime or 'asap' for immediate start"
-    )
-    end_time: datetime | None = Field(None, description="Campaign end time (ISO 8601)")
-    budget: Budget | float | None = Field(
-        None,
-        description="Overall campaign budget (Budget object or number). Currency determined by package pricing options.",
-    )
-
-    # Deprecated fields (for backward compatibility)
+    # Deprecated fields (for backward compatibility - legacy format conversion only)
     currency: str | None = Field(
         None,
         pattern="^[A-Z]{3}$",
         description="DEPRECATED: Use Package.currency instead. Currency code that will be copied to all packages for backward compatibility.",
-    )
-    promoted_offering: str | None = Field(
-        None,
-        description="DEPRECATED: Use brand_manifest instead. Legacy field for describing what is being promoted.",
     )
 
     # Legacy fields (for backward compatibility)
@@ -2312,24 +2280,9 @@ class CreateMediaBuyRequest(AdCPBaseModel):
             return values
 
         # Handle brand_manifest field (can be inline object or URL string)
-        if "brand_manifest" in values:
-            manifest = values["brand_manifest"]
-            # If it's a string (URL), leave as-is - Pydantic will handle it
-            # If it's a dict (inline manifest), Pydantic will parse it as BrandManifest
-            pass  # No conversion needed, Pydantic union type handles both
-
-        # Backward compatibility: if promoted_offering provided but no brand_manifest, create simple manifest
-        if "promoted_offering" in values and not values.get("brand_manifest"):
-            promoted = values["promoted_offering"]
-            if promoted:
-                values["brand_manifest"] = {"name": promoted}
-
-        # Validate that at least one of brand_manifest or promoted_offering is provided
-        if not values.get("brand_manifest") and not values.get("promoted_offering"):
-            raise ValueError(
-                "Either 'brand_manifest' or 'promoted_offering' must be provided. "
-                "'promoted_offering' is deprecated but still supported for backward compatibility."
-            )
+        # If it's a string (URL), leave as-is - Pydantic will handle it
+        # If it's a dict (inline manifest), Pydantic will parse it as BrandManifest
+        # No conversion needed, Pydantic union type handles both
 
         # If using legacy format, convert to new format
         if "product_ids" in values and not values.get("packages"):

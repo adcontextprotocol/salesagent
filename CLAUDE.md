@@ -37,10 +37,11 @@ pytest tests/unit/test_adcp_contract.py -v
 ```
 
 **Current Schema Version:**
-- AdCP Version: v2.4
+- AdCP Version: 2.2.0 (official spec version)
 - Schema Version: v1
-- Last Verified: 2025-09-02
+- Last Verified: 2025-10-22
 - Source: https://adcontextprotocol.org/schemas/v1/index.json
+- Note: Internal "v2.4" references in codebase refer to feature evolution, not official spec versions
 
 ---
 

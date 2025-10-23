@@ -37,10 +37,10 @@ class GetProductsRequest(BaseModel):
     but complex to use. This adapter hides that complexity.
 
     Usage:
-        # Simple construction (just like manual schemas)
-        req = GetProductsRequest(promoted_offering="https://example.com", brief="Video ads")
+        # Simple construction with brand_manifest
+        req = GetProductsRequest(brand_manifest={"name": "Nike Shoes"}, brief="Video ads")
 
-        # With brand_manifest
+        # With full brand manifest
         req = GetProductsRequest(
             brand_manifest={"name": "Acme", "url": "https://acme.com"},
             brief="Display ads"

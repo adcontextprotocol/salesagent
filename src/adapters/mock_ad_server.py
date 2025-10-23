@@ -357,9 +357,17 @@ class MockAdServer(AdServerAdapter):
                 )
 
         # AI-powered test orchestration (check promoted_offering/brief for test instructions)
-        # For mock adapter, buyers put test directives in the brief (promoted_offering field)
+        # For mock adapter, buyers put test directives in brand_manifest.name field
         scenario = None
-        test_message = request.promoted_offering
+        test_message = None
+        if request.brand_manifest:
+            if isinstance(request.brand_manifest, str):
+                test_message = request.brand_manifest
+            elif hasattr(request.brand_manifest, "name"):
+                test_message = request.brand_manifest.name
+            elif isinstance(request.brand_manifest, dict):
+                test_message = request.brand_manifest.get("name")
+
         if test_message and isinstance(test_message, str) and test_message.strip():
             try:
                 orchestrator = AITestOrchestrator()
@@ -568,7 +576,7 @@ class MockAdServer(AdServerAdapter):
         from src.core.database.models import Tenant
         from src.core.utils.naming import apply_naming_template, build_order_name_context
 
-        order_name_template = "{campaign_name|promoted_offering} - {date_range}"  # Default
+        order_name_template = "{campaign_name|brand_name} - {date_range}"  # Default
         tenant_gemini_key = None
         try:
             with get_db_session() as db_session:
@@ -584,6 +592,9 @@ class MockAdServer(AdServerAdapter):
 
         # Build context and apply template
         context = build_order_name_context(request, packages, start_time, end_time, tenant_gemini_key)
+        print(
+            f"[NAMING DEBUG] template={repr(order_name_template)}, has_promoted_offering={('promoted_offering' in context)}"
+        )
         order_name = apply_naming_template(order_name_template, context)
 
         # Strategy-aware behavior modifications

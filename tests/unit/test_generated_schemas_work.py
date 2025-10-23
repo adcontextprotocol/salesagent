@@ -31,7 +31,7 @@ class TestGeneratedGetProductsRequest:
     def test_can_create_with_promoted_offering(self):
         """Generated schema accepts promoted_offering."""
         req = GeneratedGetProductsRequest(
-            promoted_offering="https://example.com",
+            brand_manifest={"name": "https://example.com"},
             brief="Video ads for luxury cars",
         )
         assert req.promoted_offering == "https://example.com"
@@ -48,19 +48,19 @@ class TestGeneratedGetProductsRequest:
     def test_optional_fields_work(self):
         """Generated schema handles optional fields correctly."""
         # With just promoted_offering
-        req1 = GeneratedGetProductsRequest(promoted_offering="https://example.com")
+        req1 = GeneratedGetProductsRequest(brand_manifest={"name": "https://example.com"})
         assert req1.brief == ""  # Default value
 
         # With filters
         req2 = GeneratedGetProductsRequest(
-            promoted_offering="https://example.com", filters={"format_ids": ["display_300x250"]}
+            brand_manifest={"name": "https://example.com"}, filters={"format_ids": ["display_300x250"]}
         )
         assert req2.filters == {"format_ids": ["display_300x250"]}
 
     def test_serialization_works(self):
         """Generated schema can serialize to dict."""
         req = GeneratedGetProductsRequest(
-            promoted_offering="https://example.com",
+            brand_manifest={"name": "https://example.com"},
             brief="Video ads",
             min_exposures=1000,
         )
@@ -73,7 +73,7 @@ class TestGeneratedGetProductsRequest:
     def test_deserialization_works(self):
         """Generated schema can deserialize from dict."""
         data = {
-            "promoted_offering": "https://example.com",
+            "brand_manifest": {"name": "https://example.com"},
             "brief": "Display ads",
             "adcp_version": "1.0.0",
         }
@@ -155,7 +155,7 @@ class TestGeneratedSchemasVsManual:
         from src.core.schemas import GetProductsRequest as ManualGetProductsRequest
 
         data = {
-            "promoted_offering": "https://example.com",
+            "brand_manifest": {"name": "https://example.com"},
             "brief": "Test brief",
             "adcp_version": "1.0.0",
         }
@@ -196,7 +196,7 @@ class TestGeneratedSchemaBenefits:
         """
         # If AdCP spec changes and we regenerate, this test validates
         # that our code works with the NEW spec
-        req = GeneratedGetProductsRequest(promoted_offering="https://example.com")
+        req = GeneratedGetProductsRequest(brand_manifest={"name": "https://example.com"})
         assert req.promoted_offering == "https://example.com"
 
     def test_no_custom_validators_needed_in_tests(self):
@@ -212,7 +212,7 @@ class TestGeneratedSchemaBenefits:
         """
         # Create request with valid data - no custom validation needed
         req = GeneratedGetProductsRequest(
-            promoted_offering="https://example.com", brief="Test", filters={"format_ids": ["display_300x250"]}
+            brand_manifest={"name": "https://example.com"}, brief="Test", filters={"format_ids": ["display_300x250"]}
         )
 
         # Serialize and deserialize - works perfectly

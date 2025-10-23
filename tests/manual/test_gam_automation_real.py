@@ -281,7 +281,7 @@ class GAMAutomationTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Athletic footwear and sports equipment",
+            brand_manifest={"name": "Athletic footwear and sports equipment"},
             po_number="AUTO001",
             total_budget=10.00,
             targeting_overlay=Targeting(),  # $10 test budget
@@ -339,7 +339,7 @@ class GAMAutomationTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Consumer electronics and smart home devices",
+            brand_manifest={"name": "Consumer electronics and smart home devices"},
             po_number="CONF001",
             total_budget=5.00,
             targeting_overlay=Targeting(),
@@ -398,7 +398,7 @@ class GAMAutomationTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Outdoor gear and camping equipment",
+            brand_manifest={"name": "Outdoor gear and camping equipment"},
             po_number="MAN001",
             total_budget=7.50,
             targeting_overlay=Targeting(),
@@ -460,7 +460,7 @@ class GAMAutomationTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Luxury automotive vehicles and accessories",
+            brand_manifest={"name": "Luxury automotive vehicles and accessories"},
             po_number="GUAR001",
             total_budget=500.00,
             targeting_overlay=Targeting(),
@@ -523,7 +523,7 @@ class GAMAutomationTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Fitness trackers and wearable technology",
+            brand_manifest={"name": "Fitness trackers and wearable technology"},
             po_number="LIFECYCLE001",
             total_budget=7.50,
             targeting_overlay=Targeting(),
@@ -592,7 +592,7 @@ class GAMAutomationTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Sustainable fashion and eco-friendly clothing",
+            brand_manifest={"name": "Sustainable fashion and eco-friendly clothing"},
             po_number="LIFECYCLE002",
             total_budget=20.00,
             targeting_overlay=Targeting(),
@@ -659,7 +659,7 @@ class GAMAutomationTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Premium pet food and pet care products",
+            brand_manifest={"name": "Premium pet food and pet care products"},
             po_number="LIFECYCLE003",
             total_budget=15.00,
             targeting_overlay=Targeting(),
@@ -730,7 +730,7 @@ class GAMAutomationTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Coffee beans and specialty beverages",
+            brand_manifest={"name": "Coffee beans and specialty beverages"},
             po_number="LIFECYCLE004",
             total_budget=1.00,
             targeting_overlay=Targeting(),
