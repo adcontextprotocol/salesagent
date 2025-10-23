@@ -3936,9 +3936,9 @@ def _list_authorized_properties_impl(
                     f"Please add properties via the Admin UI at /admin/tenant/{tenant_id}/authorized-properties",
                 )
 
-            # Create response (AdCP v2.0+ uses publisher_domains instead of full property objects)
+            # Create response with AdCP spec-compliant fields
             response = ListAuthorizedPropertiesResponse(
-                publisher_domains=publisher_domains,
+                publisher_domains=publisher_domains,  # Required per AdCP v2.4 spec
                 advertising_policies=advertising_policies_text,
                 errors=[],
             )
