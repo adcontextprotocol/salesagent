@@ -1578,10 +1578,10 @@ class AdCPRequestHandler(RequestHandler):
         """Handle explicit list_authorized_properties skill invocation (CRITICAL AdCP endpoint).
 
         NOTE: Authentication is OPTIONAL for this endpoint since it returns public discovery data.
-        If no auth token provided, uses default tenant context.
+        If no auth token provided, still creates ToolContext with headers for tenant detection.
         """
         try:
-            # Create ToolContext from A2A auth info (optional for public discovery)
+            # Create ToolContext from A2A auth info or headers (for tenant detection)
             tool_context = None
             if auth_token:
                 try:
@@ -1592,6 +1592,17 @@ class AdCPRequestHandler(RequestHandler):
                 except Exception as e:
                     logger.warning(f"Failed to create authenticated context (continuing without auth): {e}")
                     tool_context = None
+
+            # Even without auth, create ToolContext with headers for tenant detection
+            if not tool_context:
+                headers = getattr(_request_context, "request_headers", {})
+                if headers:
+                    tool_context = ToolContext(
+                        principal_id=None,  # No auth
+                        tool_name="list_authorized_properties",
+                        meta={"headers": dict(headers)},  # Pass headers for tenant detection
+                        testing_context={},
+                    )
 
             # Map A2A parameters to ListAuthorizedPropertiesRequest
             request = ListAuthorizedPropertiesRequest(tags=parameters.get("tags", []))
