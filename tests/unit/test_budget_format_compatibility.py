@@ -109,6 +109,8 @@ class TestBudgetFormatCompatibility:
             buyer_ref="test-123",
             budget=Budget(total=3000.0, currency="EUR"),
             packages=[Package(product_id="prod_1")],
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
         )
 
         # Extract budget and currency using the pattern from naming.py
@@ -139,6 +141,8 @@ class TestBudgetFormatCompatibility:
             buyer_ref="test-123",
             budget={"total": 7500.0, "currency": "GBP"},
             packages=[Package(product_id="prod_1")],
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
         )
 
         # Extract budget and currency using the pattern from naming.py
@@ -167,6 +171,8 @@ class TestBudgetFormatCompatibility:
             budget=5000.0,
             currency="JPY",
             packages=[Package(product_id="prod_1")],
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
         )
 
         # Extract budget and currency
@@ -184,6 +190,8 @@ class TestBudgetFormatCompatibility:
             buyer_ref="test-123",
             budget=5000.0,
             packages=[Package(product_id="prod_1")],
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
         )
 
         # Extract budget and currency
@@ -206,6 +214,8 @@ class TestBudgetFormatCompatibility:
                 Package(product_id="prod_2", budget=Budget(total=3000.0, currency="USD")),  # Budget object
                 Package(product_id="prod_3", budget={"total": 2000.0, "currency": "USD"}),  # Dict
             ],
+            start_time="2025-02-15T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
         )
 
         # Verify each package budget can be extracted
