@@ -66,7 +66,7 @@ RUN useradd -m -u 1000 adcp
 WORKDIR /app
 
 # Cache bust for COPY layer - change this value to force rebuild
-ARG CACHE_BUST=2025-10-23-1300
+ARG CACHE_BUST=2025-10-23-1315
 RUN echo "Cache bust: $CACHE_BUST"
 
 # Copy application code
