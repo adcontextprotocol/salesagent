@@ -479,6 +479,16 @@ def get_principal_from_context(
                 )
             else:
                 console.print(f"[yellow]No tenant found for subdomain: {subdomain}[/yellow]")
+                # If subdomain lookup failed, try virtual host lookup with full hostname
+                console.print(f"[blue]Trying virtual host lookup for full hostname: {host}[/blue]")
+                tenant_context = get_tenant_by_virtual_host(host)
+                if tenant_context:
+                    requested_tenant_id = tenant_context["tenant_id"]
+                    detection_method = "host header (virtual host)"
+                    set_current_tenant(tenant_context)
+                    console.print(
+                        f"[green]Tenant detected from Host header virtual host: {host} → tenant_id: {requested_tenant_id}[/green]"
+                    )
 
     # 2. Check x-adcp-tenant header (set by nginx for path-based routing)
     if not requested_tenant_id:
@@ -1598,7 +1608,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
     return GetProductsResponse(products=modified_products, status=status)
 
 
-@mcp.tool
+@mcp.tool()
 async def get_products(
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
