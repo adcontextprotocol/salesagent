@@ -110,6 +110,48 @@
 </div>
 {% endif %}
 
+<!-- Creative Assignments -->
+<div class="custom-card">
+    <h2>Creative Assignments</h2>
+    {% if creative_assignments_by_package %}
+        {% for package_id, assignments in creative_assignments_by_package.items() %}
+        <div class="package-section">
+            <h3 class="package-header">📦 Package: {{ package_id }}</h3>
+            <div class="creatives-grid">
+                {% for item in assignments %}
+                <div class="creative-card">
+                    <div class="creative-header">
+                        <strong>{{ item.creative.name }}</strong>
+                        <span class="status status-{{ item.creative.status }}">{{ item.creative.status|upper }}</span>
+                    </div>
+                    <div class="creative-details">
+                        <div class="creative-detail-row">
+                            <span class="label">Creative ID:</span>
+                            <span class="value">{{ item.creative.creative_id }}</span>
+                        </div>
+                        <div class="creative-detail-row">
+                            <span class="label">Format:</span>
+                            <span class="value">{{ item.creative.format or 'N/A' }}</span>
+                        </div>
+                        <div class="creative-detail-row">
+                            <span class="label">Weight:</span>
+                            <span class="value">{{ item.assignment.weight }}%</span>
+                        </div>
+                        <div class="creative-detail-row">
+                            <span class="label">Assigned:</span>
+                            <span class="value">{{ item.assignment.created_at.strftime('%Y-%m-%d %H:%M') if item.assignment.created_at else 'N/A' }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p class="no-data">No creatives assigned to this media buy yet.</p>
+    {% endif %}
+</div>
+
 <!-- Workflow History -->
 {% if workflow_steps %}
 <div class="custom-card">
@@ -456,6 +498,75 @@
 .btn-danger:hover {
     background-color: #c82333;
     border-color: #bd2130;
+}
+
+/* Creative Assignments */
+.package-section {
+    margin-bottom: 2rem;
+}
+
+.package-section:last-child {
+    margin-bottom: 0;
+}
+
+.package-header {
+    color: #495057;
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.creatives-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+}
+
+.creative-card {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+.creative-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.creative-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.creative-detail-row {
+    display: flex;
+    font-size: 0.875rem;
+}
+
+.creative-detail-row .label {
+    font-weight: 600;
+    color: #6c757d;
+    width: 80px;
+    flex-shrink: 0;
+}
+
+.creative-detail-row .value {
+    flex: 1;
+    color: #495057;
+}
+
+.no-data {
+    color: #6c757d;
+    font-style: italic;
+    text-align: center;
+    padding: 2rem;
 }
 </style>
 

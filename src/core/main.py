@@ -2826,7 +2826,7 @@ def _sync_creatives_impl(
                             logger.warning(f"Package not found during assignment: {package_id}, skipping")
                             continue
 
-                    # Create assignment
+                    # Create assignment in creative_assignments table
                     assignment = DBAssignment(
                         tenant_id=tenant["tenant_id"],
                         assignment_id=str(uuid.uuid4()),
