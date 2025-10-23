@@ -4208,7 +4208,6 @@ async def _create_media_buy_impl(
             brand_manifest=brand_manifest,
             campaign_name=None,  # Optional display name
             po_number=po_number,
-            promoted_offering=promoted_offering,
             packages=packages,
             start_time=start_time,
             end_time=end_time,
