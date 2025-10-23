@@ -15,6 +15,7 @@ The generated models should match the official AdCP spec exactly.
 """
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -223,6 +224,28 @@ def add_etag_metadata_to_generated_files(output_dir: Path, schema_dir: Path):
     print(f"✅ Added ETag metadata to {updated_count} generated files")
 
 
+def compute_schema_hash(schema_dir: Path) -> str:
+    """Compute a hash of all JSON schema files for sync checking."""
+    hash_md5 = hashlib.md5()
+
+    # Get all JSON schema files, sorted for consistency
+    schema_files = sorted(schema_dir.glob("*.json"))
+
+    for schema_file in schema_files:
+        # Read and normalize JSON (to handle formatting differences)
+        try:
+            with open(schema_file) as f:
+                data = json.load(f)
+            # Convert back to JSON with consistent formatting
+            normalized = json.dumps(data, sort_keys=True)
+            hash_md5.update(normalized.encode())
+        except (json.JSONDecodeError, FileNotFoundError):
+            # Skip invalid JSON files
+            continue
+
+    return hash_md5.hexdigest()
+
+
 def generate_schemas_from_json(schema_dir: Path, output_file: Path):
     """
     Generate Pydantic models from JSON schemas with proper $ref resolution.
@@ -297,12 +320,16 @@ def generate_schemas_from_json(schema_dir: Path, output_file: Path):
         print("\n🔖 Adding source schema ETag metadata to generated files...")
         add_etag_metadata_to_generated_files(output_file, schema_dir)
 
-        # Add header comment to __init__.py
+        # Add header comment to __init__.py with schema hash for sync checking
         init_file = output_file / "__init__.py"
         if not init_file.exists():
             init_file.touch()
 
-        header = '''"""
+        # Compute hash of source schemas for sync checking
+        schema_hash = compute_schema_hash(schema_dir)
+
+        header = f'''# SCHEMA_HASH: {schema_hash}
+"""
 Auto-generated Pydantic models from AdCP JSON schemas.
 
 ⚠️  DO NOT EDIT FILES IN THIS DIRECTORY MANUALLY!
@@ -316,13 +343,16 @@ To regenerate:
 
 Source: https://adcontextprotocol.org/schemas/v1/
 AdCP Version: v2.4 (schemas v1)
+
+The SCHEMA_HASH above is used by pre-commit hooks to detect when
+generated schemas are out of sync with JSON schemas.
 """
 '''
 
         with open(init_file, "w") as f:
             f.write(header)
 
-        print("✅ Added header to __init__.py")
+        print(f"✅ Added header to __init__.py (schema hash: {schema_hash[:8]}...)")
 
     finally:
         # Clean up temp directory

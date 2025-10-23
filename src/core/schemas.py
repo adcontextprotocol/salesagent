@@ -3349,7 +3349,9 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
 class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     """Response payload for list_authorized_properties task (AdCP v2.4 spec compliant).
 
-    Per AdCP PR #113, this response contains ONLY domain data.
+    Per official AdCP v2.4 spec at https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-response.json,
+    this response lists publisher domains. Buyers fetch property definitions from each publisher's adagents.json file.
+
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
@@ -3376,6 +3378,10 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
         ),
         min_length=1,
         max_length=10000,
+    )
+    last_updated: str | None = Field(
+        None,
+        description="ISO 8601 timestamp of when the agent's publisher authorization list was last updated. Buyers can use this to determine if their cached publisher adagents.json files might be stale.",
     )
     errors: list[dict[str, Any]] | None = Field(
         None, description="Task-specific errors and warnings (e.g., property availability issues)"
