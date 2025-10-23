@@ -25,6 +25,17 @@ def upgrade() -> None:
         "tenants", "order_name_template", server_default="{campaign_name|brand_name} - {buyer_ref} - {date_range}"
     )
 
+    # Update existing rows that have the old template
+    # This is a data migration - update all tenants with the old default
+    op.execute(
+        """
+        UPDATE tenants
+        SET order_name_template = '{campaign_name|brand_name} - {buyer_ref} - {date_range}'
+        WHERE order_name_template = '{campaign_name|promoted_offering} - {buyer_ref} - {date_range}'
+           OR order_name_template IS NULL
+        """
+    )
+
 
 def downgrade() -> None:
     """Downgrade schema."""
