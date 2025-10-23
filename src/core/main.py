@@ -1128,9 +1128,35 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
         principal_id = get_principal_from_context(context)  # Returns None if no auth
         logger.info(f"[GET_PRODUCTS] principal_id returned: {principal_id}")
         print(f"🔍 [GET_PRODUCTS DEBUG] principal_id returned: {principal_id}", flush=True)
-        tenant = get_current_tenant()
-        logger.info(f"[GET_PRODUCTS] tenant returned: {tenant}")
-        print(f"🔍 [GET_PRODUCTS DEBUG] tenant returned: {tenant}", flush=True)
+
+        # Try to get tenant context - if it fails, provide detailed error
+        try:
+            tenant = get_current_tenant()
+            logger.info(f"[GET_PRODUCTS] tenant returned: {tenant}")
+            print(f"🔍 [GET_PRODUCTS DEBUG] tenant returned: {tenant}", flush=True)
+        except RuntimeError as e:
+            # Tenant context not set - this means authentication failed to set it
+            logger.error(
+                f"[GET_PRODUCTS] Tenant context not set after authentication. principal_id={principal_id}, error={e}"
+            )
+            print(f"❌ [GET_PRODUCTS DEBUG] Tenant context not set. principal_id={principal_id}", flush=True)
+
+            # Extract headers for debugging
+            headers = {}
+            if hasattr(context, "meta") and isinstance(context.meta, dict):
+                headers = context.meta.get("headers", {})
+            elif hasattr(context, "headers"):
+                headers = context.headers
+
+            auth_header = headers.get("x-adcp-auth", "NOT_PRESENT")
+            apx_host = headers.get("apx-incoming-host", "NOT_PRESENT")
+
+            raise ToolError(
+                f"Tenant context not set. This means authentication failed or no valid principal found. "
+                f"principal_id={principal_id}, x-adcp-auth={'present' if auth_header != 'NOT_PRESENT' else 'missing'}, "
+                f"apx-incoming-host={apx_host}"
+            )
+
         if not tenant:
             logger.error("[GET_PRODUCTS] No tenant context available - raising ToolError")
             print("❌ [GET_PRODUCTS DEBUG] No tenant context - raising ToolError", flush=True)
