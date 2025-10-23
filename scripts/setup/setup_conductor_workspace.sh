@@ -402,6 +402,24 @@ fi
 
 echo "✓ Workspace environment activated"
 
+# Generate AdCP schemas from official spec
+echo ""
+echo "Generating AdCP schemas from official spec..."
+if command -v uv &> /dev/null && [ -f "scripts/generate_schemas.py" ]; then
+    if uv run python scripts/generate_schemas.py 2>&1 | grep -E "✅|📂|🔧"; then
+        echo "✓ AdCP schemas generated successfully"
+    else
+        echo "⚠️  Warning: Schema generation may have had issues"
+        echo "   Continuing with setup..."
+    fi
+else
+    if ! command -v uv &> /dev/null; then
+        echo "✗ Warning: uv not found, skipping schema generation"
+    elif [ ! -f "scripts/generate_schemas.py" ]; then
+        echo "✗ Warning: schema generation script not found, skipping"
+    fi
+fi
+
 # Check AdCP schema sync
 echo ""
 echo "Checking AdCP schema sync..."

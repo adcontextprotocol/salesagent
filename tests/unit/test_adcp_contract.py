@@ -1891,18 +1891,9 @@ class TestAdCPContract:
         assert len(adcp_response) == 2
 
     def test_list_authorized_properties_response_adcp_compliance(self):
-        """Test that ListAuthorizedPropertiesResponse complies with AdCP list-authorized-properties-response schema."""
-        # Create response with all required + optional fields
-        property_obj = Property(
-            property_type="website",
-            name="Example Site",
-            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
-            tags=["premium_content"],
-            publisher_domain="example.com",
-        )
-
-        tag_metadata = PropertyTagMetadata(name="Premium Content", description="High-quality content properties")
-
+        """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 list-authorized-properties-response schema."""
+        # Create response with all required + optional fields (per official AdCP v2.4 spec)
+        tag_metadata = PropertyTagMetadata(name="Premium Content", description="Premium content tag")
         response = ListAuthorizedPropertiesResponse(
             publisher_domains=["example.com"], tags={"premium_content": tag_metadata}, errors=[]
         )
@@ -1918,12 +1909,12 @@ class TestAdCPContract:
 
         # Verify optional AdCP fields present (can be null)
         optional_fields = [
-            "tags",
             "errors",
             "primary_channels",
             "primary_countries",
             "portfolio_description",
             "advertising_policies",
+            "last_updated",
         ]
         for field in optional_fields:
             assert field in adcp_response
@@ -1939,19 +1930,21 @@ class TestAdCPContract:
         if adcp_response["errors"] is not None:
             assert isinstance(adcp_response["errors"], list)
 
-        # Verify new optional fields types
+        # Verify optional fields types
         if adcp_response["primary_channels"] is not None:
             assert isinstance(adcp_response["primary_channels"], list)
         if adcp_response["primary_countries"] is not None:
             assert isinstance(adcp_response["primary_countries"], list)
         if adcp_response["portfolio_description"] is not None:
             assert isinstance(adcp_response["portfolio_description"], str)
+        if adcp_response["advertising_policies"] is not None:
+            assert isinstance(adcp_response["advertising_policies"], str)
 
         # Verify message is provided via __str__() not as schema field (response already created above)
         assert str(response) == "Found 1 authorized publisher domain."
 
-        # Verify field count expectations (7 domain fields: publisher_domains, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies)
-        assert len(adcp_response) == 7
+        # Verify field count expectations (8 domain fields: publisher_domains, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated)
+        assert len(adcp_response) == 8
 
     def test_get_signals_request_adcp_compliance(self):
         """Test that GetSignalsRequest model complies with AdCP get-signals-request schema."""
