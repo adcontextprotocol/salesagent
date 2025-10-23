@@ -308,6 +308,10 @@ def create_media_buy_raw(promoted_offering: str, ...) -> CreateMediaBuyResponse:
 - PostgreSQL (production and testing)
 - We'll support your deployment approach as best we can
 
+**Known Test Agent Issues:**
+- **`create_media_buy` auth failure** (2025-10-04): Rejects valid auth tokens. See [postmortem](docs/testing/postmortems/2025-10-04-test-agent-auth-bug.md)
+- **`get_media_buy_delivery` parameter mismatch** (2025-10-04): Expects `media_buy_id` (singular) instead of spec-compliant `media_buy_ids` (plural)
+
 **When Test Agent is Down:**
 - Check Fly.io logs first: `fly logs --app <test-agent-app-name>`
 - Check Fly.io status: `fly status --app <test-agent-app-name>`
