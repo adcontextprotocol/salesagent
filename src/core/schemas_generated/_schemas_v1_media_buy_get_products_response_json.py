@@ -543,8 +543,7 @@ class Product(BaseModel):
         int | None, Field(description="Estimated exposures/impressions for guaranteed products", ge=0)
     ] = None
     measurement: Annotated[
-        Measurement | None,
-        Field(description="Measurement capabilities included with a product", title="Measurement"),
+        Measurement | None, Field(description="Measurement capabilities included with a product", title="Measurement")
     ] = None
     delivery_measurement: Annotated[
         DeliveryMeasurement,

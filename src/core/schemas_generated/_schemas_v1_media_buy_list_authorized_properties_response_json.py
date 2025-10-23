@@ -101,6 +101,5 @@ class ListAuthorizedPropertiesResponse(BaseModel):
         ),
     ] = None
     errors: Annotated[
-        list[Error] | None,
-        Field(description="Task-specific errors and warnings (e.g., property availability issues)"),
+        list[Error] | None, Field(description="Task-specific errors and warnings (e.g., property availability issues)")
     ] = None

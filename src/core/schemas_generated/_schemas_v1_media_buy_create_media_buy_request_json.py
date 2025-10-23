@@ -331,8 +331,7 @@ class Asset(BaseModel):
     asset_type: Annotated[AssetType, Field(description="Type of asset")]
     url: Annotated[AnyUrl, Field(description="URL to CDN-hosted asset file")]
     tags: Annotated[
-        list[str] | None,
-        Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')"),
+        list[str] | None, Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')")
     ] = None
     name: Annotated[str | None, Field(description="Human-readable asset name")] = None
     description: Annotated[str | None, Field(description="Asset description or usage notes")] = None
@@ -430,8 +429,7 @@ class BrandManifest(BaseModel):
         ),
     ] = None
     disclaimers: Annotated[
-        list[Disclaimer] | None,
-        Field(description="Legal disclaimers or required text that must appear in creatives"),
+        list[Disclaimer] | None, Field(description="Legal disclaimers or required text that must appear in creatives")
     ] = None
     industry: Annotated[
         str | None, Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")
@@ -449,8 +447,7 @@ class Asset10(BaseModel):
     asset_type: Annotated[AssetType, Field(description="Type of asset")]
     url: Annotated[AnyUrl, Field(description="URL to CDN-hosted asset file")]
     tags: Annotated[
-        list[str] | None,
-        Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')"),
+        list[str] | None, Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')")
     ] = None
     name: Annotated[str | None, Field(description="Human-readable asset name")] = None
     description: Annotated[str | None, Field(description="Asset description or usage notes")] = None
@@ -515,8 +512,7 @@ class BrandManifest8(BaseModel):
         ),
     ] = None
     disclaimers: Annotated[
-        list[Disclaimer] | None,
-        Field(description="Legal disclaimers or required text that must appear in creatives"),
+        list[Disclaimer] | None, Field(description="Legal disclaimers or required text that must appear in creatives")
     ] = None
     industry: Annotated[
         str | None, Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")

@@ -304,6 +304,7 @@ def generate_schemas_from_json(schema_dir: Path, output_file: Path):
             "--snake-case-field",
             "--target-python-version",
             "3.12",
+            "--use-union-operator",  # Use X | Y syntax instead of Union[X, Y] and Optional[X]
             "--disable-timestamp",  # Don't add timestamp comments (causes unnecessary git noise)
         ]
 
