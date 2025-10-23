@@ -160,7 +160,7 @@ def media_buy_detail(tenant_id, media_buy_id):
 
     from src.core.context_manager import ContextManager
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import MediaBuy, Principal, WorkflowStep
+    from src.core.database.models import Creative, CreativeAssignment, MediaBuy, Principal, WorkflowStep
 
     try:
         with get_db_session() as db_session:
@@ -176,6 +176,29 @@ def media_buy_detail(tenant_id, media_buy_id):
             if media_buy.principal_id:
                 stmt = select(Principal).filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id)
                 principal = db_session.scalars(stmt).first()
+
+            # Get creative assignments for this media buy
+            stmt = (
+                select(CreativeAssignment, Creative)
+                .join(Creative, CreativeAssignment.creative_id == Creative.creative_id)
+                .filter(CreativeAssignment.media_buy_id == media_buy_id)
+                .filter(CreativeAssignment.tenant_id == tenant_id)
+                .order_by(CreativeAssignment.package_id, CreativeAssignment.created_at)
+            )
+            assignment_results = db_session.execute(stmt).all()
+
+            # Group assignments by package_id
+            creative_assignments_by_package = {}
+            for assignment, creative in assignment_results:
+                pkg_id = assignment.package_id
+                if pkg_id not in creative_assignments_by_package:
+                    creative_assignments_by_package[pkg_id] = []
+                creative_assignments_by_package[pkg_id].append(
+                    {
+                        "assignment": assignment,
+                        "creative": creative,
+                    }
+                )
 
             # Get workflow steps associated with this media buy
             ctx_manager = ContextManager()
@@ -212,6 +235,7 @@ def media_buy_detail(tenant_id, media_buy_id):
                 workflow_steps=workflow_steps,
                 pending_approval_step=pending_approval_step,
                 status_message=status_message,
+                creative_assignments_by_package=creative_assignments_by_package,
             )
     except Exception as e:
         logger.error(f"Error viewing media buy: {e}", exc_info=True)
