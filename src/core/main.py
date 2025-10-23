@@ -514,23 +514,24 @@ def get_principal_from_context(context: Context | None) -> str | None:
                 console.print(f"[green]Tenant detected from Apx-Incoming-Host: {requested_tenant_id}[/green]")
 
     if not requested_tenant_id:
-        # SECURITY: If token is provided but tenant cannot be determined, reject the request.
-        # Global token lookup would breach tenant isolation.
-        console.print("[red]SECURITY ERROR: Token provided but no tenant detected[/red]")
-        from fastmcp.exceptions import ToolError
-
-        raise ToolError(
-            "TENANT_DETECTION_FAILED",
-            f"Cannot determine tenant from request. Please ensure the Host header "
-            f"contains a valid subdomain (e.g., 'wonderstruck.sales-agent.scope3.com') "
-            f"or set the x-adcp-tenant header. "
-            f"Received Host: '{host_header}', Apx-Incoming-Host: '{apx_host_header}', "
-            f"x-adcp-tenant: '{tenant_header}'",
+        # No tenant detected from headers - use global token lookup
+        # SECURITY NOTE: This is safe because get_principal_from_token() will:
+        # 1. Look up the token globally
+        # 2. Find which tenant it belongs to
+        # 3. Set that tenant's context
+        # 4. Return principal_id only if token is valid for that tenant
+        # The security issue we're preventing is: if a subdomain WAS detected but token
+        # doesn't belong to that tenant, we reject it (handled below at line ~534)
+        console.print(
+            "[yellow]No tenant detected from headers - will use global token lookup (finds tenant from token)[/yellow]"
         )
+        detection_method = "global token lookup"
     else:
         console.print(f"[bold green]Final tenant_id: {requested_tenant_id} (via {detection_method})[/bold green]")
 
-    # Validate token and get principal for the detected tenant
+    # Validate token and get principal
+    # If requested_tenant_id is set: validate token belongs to that specific tenant
+    # If requested_tenant_id is None: do global lookup and set tenant context from token
     principal_id = get_principal_from_token(auth_token, requested_tenant_id)
 
     # If token was provided but invalid, raise an error
