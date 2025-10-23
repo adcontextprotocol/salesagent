@@ -200,6 +200,6 @@ async def test_full_request_flow():
         brand_manifest={"name": "TechCorp - Latest 5G smartphone with advanced features"},
     )
 
-    # Verify the request has the new field
-    assert hasattr(request, "promoted_offering")
-    assert request.promoted_offering == "TechCorp - Latest 5G smartphone with advanced features"
+    # Verify the request has brand_manifest (AdCP v2.2.0 spec field)
+    assert hasattr(request, "brand_manifest")
+    assert request.brand_manifest["name"] == "TechCorp - Latest 5G smartphone with advanced features"
