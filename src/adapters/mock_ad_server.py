@@ -357,9 +357,17 @@ class MockAdServer(AdServerAdapter):
                 )
 
         # AI-powered test orchestration (check promoted_offering/brief for test instructions)
-        # For mock adapter, buyers put test directives in the brief (promoted_offering field)
+        # For mock adapter, buyers put test directives in brand_manifest.name field
         scenario = None
-        test_message = request.promoted_offering
+        test_message = None
+        if request.brand_manifest:
+            if isinstance(request.brand_manifest, str):
+                test_message = request.brand_manifest
+            elif hasattr(request.brand_manifest, "name"):
+                test_message = request.brand_manifest.name
+            elif isinstance(request.brand_manifest, dict):
+                test_message = request.brand_manifest.get("name")
+
         if test_message and isinstance(test_message, str) and test_message.strip():
             try:
                 orchestrator = AITestOrchestrator()
