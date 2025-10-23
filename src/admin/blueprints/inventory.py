@@ -548,7 +548,6 @@ def sync_inventory(tenant_id):
             import tempfile
 
             from googleads import ad_manager, oauth2
-            import google.oauth2.service_account
 
             from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
 
@@ -560,18 +559,32 @@ def sync_inventory(tenant_id):
 
                 # Get service account JSON (already decrypted by model property)
                 service_account_json_str = adapter_config.gam_service_account_json
-                service_account_info = json.loads(service_account_json_str)
 
-                # Create service account credentials
-                oauth2_credentials = google.oauth2.service_account.Credentials.from_service_account_info(
-                    service_account_info,
-                    scopes=["https://www.googleapis.com/auth/dfp"]
-                )
+                # Write to temporary file for googleads library
+                # (googleads doesn't support LoadFromString for service accounts)
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                    f.write(service_account_json_str)
+                    temp_keyfile = f.name
 
-                # Create GAM client with service account credentials
-                client = ad_manager.AdManagerClient(
-                    oauth2_credentials, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
-                )
+                try:
+                    # Create GAM service account client using LoadFromStorage
+                    oauth2_client = oauth2.GoogleServiceAccountClient(
+                        path_to_private_key_file=temp_keyfile,
+                        scope='https://www.googleapis.com/auth/dfp'
+                    )
+
+                    # Create GAM client with service account credentials
+                    client = ad_manager.AdManagerClient(
+                        oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
+                    )
+                finally:
+                    # Clean up temp file
+                    import os as os_module
+                    try:
+                        os_module.unlink(temp_keyfile)
+                    except Exception:
+                        pass
             else:
                 # OAuth authentication
                 if not adapter_config.gam_refresh_token:
