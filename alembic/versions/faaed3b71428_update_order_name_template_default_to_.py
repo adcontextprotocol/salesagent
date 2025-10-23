@@ -26,21 +26,26 @@ def upgrade() -> None:
     )
 
     # Update existing rows that have the old template
-    # This is a data migration - update all tenants with promoted_offering references
+    # This is a data migration - update ALL tenants with promoted_offering references
+    # Using aggressive approach: update all rows, not just matching ones
     op.execute(
         """
         UPDATE tenants
-        SET order_name_template = REPLACE(order_name_template, 'promoted_offering', 'brand_name')
-        WHERE order_name_template LIKE '%promoted_offering%'
+        SET order_name_template = REPLACE(COALESCE(order_name_template, ''), 'promoted_offering', 'brand_name')
+        WHERE order_name_template IS NULL
+           OR order_name_template LIKE '%promoted_offering%'
+           OR order_name_template = ''
         """
     )
 
-    # Also set default for NULL templates
+    # Set proper default for any remaining NULL or empty templates
     op.execute(
         """
         UPDATE tenants
         SET order_name_template = '{campaign_name|brand_name} - {buyer_ref} - {date_range}'
         WHERE order_name_template IS NULL
+           OR order_name_template = ''
+           OR order_name_template = 'N/A'
         """
     )
 
