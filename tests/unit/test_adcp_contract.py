@@ -1893,6 +1893,7 @@ class TestAdCPContract:
     def test_list_authorized_properties_response_adcp_compliance(self):
         """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 list-authorized-properties-response schema."""
         # Create response with all required + optional fields (per official AdCP v2.4 spec)
+        tag_metadata = PropertyTagMetadata(name="Premium Content", description="Premium content tag")
         response = ListAuthorizedPropertiesResponse(
             publisher_domains=["example.com"], tags={"premium_content": tag_metadata}, errors=[]
         )
@@ -1942,8 +1943,8 @@ class TestAdCPContract:
         # Verify message is provided via __str__() not as schema field (response already created above)
         assert str(response) == "Found 1 authorized publisher domain."
 
-        # Verify field count expectations (7 domain fields: publisher_domains, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies)
-        assert len(adcp_response) == 7
+        # Verify field count expectations (8 domain fields: publisher_domains, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated)
+        assert len(adcp_response) == 8
 
     def test_get_signals_request_adcp_compliance(self):
         """Test that GetSignalsRequest model complies with AdCP get-signals-request schema."""
