@@ -558,9 +558,8 @@ def sync_inventory(tenant_id):
                 if not hasattr(adapter_config, "gam_service_account_json") or not adapter_config.gam_service_account_json:
                     return jsonify({"error": "Service account credentials not found"}), 400
 
-                # Decrypt service account JSON
-                from src.core.utils.encryption import decrypt_api_key
-                service_account_json_str = decrypt_api_key(adapter_config.gam_service_account_json)
+                # Get service account JSON (already decrypted by model property)
+                service_account_json_str = adapter_config.gam_service_account_json
                 service_account_info = json.loads(service_account_json_str)
 
                 # Create service account credentials
