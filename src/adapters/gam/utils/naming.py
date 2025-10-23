@@ -130,6 +130,7 @@ def build_order_name_context(
     return {
         "campaign_name": request.campaign_name,
         "brand_name": brand_name or "N/A",
+        "promoted_offering": brand_name or "N/A",  # Backward compatibility alias
         "buyer_ref": request.buyer_ref,
         "date_range": format_date_range(start_time, end_time),
         "month_year": format_month_year(start_time),
