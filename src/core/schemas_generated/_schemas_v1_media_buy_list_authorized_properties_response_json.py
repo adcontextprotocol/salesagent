@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 
@@ -44,13 +44,13 @@ class Error(BaseModel):
     code: Annotated[str, Field(description="Error code for programmatic handling")]
     message: Annotated[str, Field(description="Human-readable error message")]
     field: Annotated[
-        str | None, Field(description="Field path associated with the error (e.g., 'packages[0].targeting')")
+        Optional[str], Field(description="Field path associated with the error (e.g., 'packages[0].targeting')")
     ] = None
-    suggestion: Annotated[str | None, Field(description="Suggested fix for the error")] = None
-    retry_after: Annotated[float | None, Field(description="Seconds to wait before retrying the operation", ge=0.0)] = (
-        None
-    )
-    details: Annotated[Any | None, Field(description="Additional task-specific error details")] = None
+    suggestion: Annotated[Optional[str], Field(description="Suggested fix for the error")] = None
+    retry_after: Annotated[
+        Optional[float], Field(description="Seconds to wait before retrying the operation", ge=0.0)
+    ] = None
+    details: Annotated[Optional[Any], Field(description="Additional task-specific error details")] = None
 
 
 class ListAuthorizedPropertiesResponse(BaseModel):
@@ -65,21 +65,21 @@ class ListAuthorizedPropertiesResponse(BaseModel):
         ),
     ]
     primary_channels: Annotated[
-        list[PrimaryChannel] | None,
+        Optional[list[PrimaryChannel]],
         Field(
             description="Primary advertising channels represented in this property portfolio. Helps buying agents quickly filter relevance.",
             min_length=1,
         ),
     ] = None
     primary_countries: Annotated[
-        list[PrimaryCountry] | None,
+        Optional[list[PrimaryCountry]],
         Field(
             description="Primary countries (ISO 3166-1 alpha-2 codes) where properties are concentrated. Helps buying agents quickly filter relevance.",
             min_length=1,
         ),
     ] = None
     portfolio_description: Annotated[
-        str | None,
+        Optional[str],
         Field(
             description="Markdown-formatted description of the property portfolio, including inventory types, audience characteristics, and special features.",
             max_length=5000,
@@ -87,7 +87,7 @@ class ListAuthorizedPropertiesResponse(BaseModel):
         ),
     ] = None
     advertising_policies: Annotated[
-        str | None,
+        Optional[str],
         Field(
             description="Publisher's advertising content policies, restrictions, and guidelines in natural language. May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, or links to full policy documentation.",
             max_length=10000,
@@ -95,12 +95,12 @@ class ListAuthorizedPropertiesResponse(BaseModel):
         ),
     ] = None
     last_updated: Annotated[
-        AwareDatetime | None,
+        Optional[AwareDatetime],
         Field(
             description="ISO 8601 timestamp of when the agent's publisher authorization list was last updated. Buyers can use this to determine if their cached publisher adagents.json files might be stale."
         ),
     ] = None
     errors: Annotated[
-        list[Error] | None,
+        Optional[list[Error]],
         Field(description="Task-specific errors and warnings (e.g., property availability issues)"),
     ] = None

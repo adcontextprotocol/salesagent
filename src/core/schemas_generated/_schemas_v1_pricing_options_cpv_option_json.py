@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
@@ -34,7 +34,7 @@ class Parameters(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    view_threshold: ViewThreshold | ViewThreshold7
+    view_threshold: Union[ViewThreshold, ViewThreshold7]
 
 
 class CpvPricingOption(BaseModel):
@@ -51,7 +51,7 @@ class CpvPricingOption(BaseModel):
     ]
     parameters: Annotated[Parameters, Field(description="CPV-specific parameters defining the view threshold")]
     min_spend_per_package: Annotated[
-        float | None,
+        Optional[float],
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,

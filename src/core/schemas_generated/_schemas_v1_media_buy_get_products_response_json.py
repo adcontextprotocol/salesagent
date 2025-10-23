@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import AnyUrl, AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 
@@ -31,14 +31,14 @@ class PublisherProperty(BaseModel):
         ),
     ]
     property_ids: Annotated[
-        list[PropertyId] | None,
+        Optional[list[PropertyId]],
         Field(
             description="Specific property IDs from the publisher's adagents.json. Mutually exclusive with property_tags.",
             min_length=1,
         ),
     ] = None
     property_tags: Annotated[
-        list[PropertyTag] | None,
+        Optional[list[PropertyTag]],
         Field(
             description="Property tags from the publisher's adagents.json. Product covers all properties with these tags. Mutually exclusive with property_ids.",
             min_length=1,
@@ -74,10 +74,10 @@ class Placement(BaseModel):
         str, Field(description="Human-readable name for the placement (e.g., 'Homepage Banner', 'Article Sidebar')")
     ]
     description: Annotated[
-        str | None, Field(description="Detailed description of where and how the placement appears")
+        Optional[str], Field(description="Detailed description of where and how the placement appears")
     ] = None
     format_ids: Annotated[
-        list[Any] | None,
+        Optional[list[Any]],
         Field(
             description="Format IDs supported by this specific placement (subset of product's formats)", min_length=1
         ),
@@ -103,7 +103,7 @@ class PricingOptions(BaseModel):
         str, Field(description="ISO 4217 currency code", examples=["USD", "EUR", "GBP", "JPY"], pattern="^[A-Z]{3}$")
     ]
     min_spend_per_package: Annotated[
-        float | None,
+        Optional[float],
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,
@@ -115,10 +115,10 @@ class PriceGuidance(BaseModel):
     floor: Annotated[
         float, Field(description="Minimum bid price - publisher will reject bids under this value", ge=0.0)
     ]
-    p25: Annotated[float | None, Field(description="25th percentile winning price", ge=0.0)] = None
-    p50: Annotated[float | None, Field(description="Median winning price", ge=0.0)] = None
-    p75: Annotated[float | None, Field(description="75th percentile winning price", ge=0.0)] = None
-    p90: Annotated[float | None, Field(description="90th percentile winning price", ge=0.0)] = None
+    p25: Annotated[Optional[float], Field(description="25th percentile winning price", ge=0.0)] = None
+    p50: Annotated[Optional[float], Field(description="Median winning price", ge=0.0)] = None
+    p75: Annotated[Optional[float], Field(description="75th percentile winning price", ge=0.0)] = None
+    p90: Annotated[Optional[float], Field(description="90th percentile winning price", ge=0.0)] = None
 
 
 class PricingOptions10(BaseModel):
@@ -134,7 +134,7 @@ class PricingOptions10(BaseModel):
     ]
     price_guidance: Annotated[PriceGuidance, Field(description="Pricing guidance for auction-based CPM bidding")]
     min_spend_per_package: Annotated[
-        float | None,
+        Optional[float],
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,
@@ -156,7 +156,7 @@ class PricingOptions11(BaseModel):
         str, Field(description="ISO 4217 currency code", examples=["USD", "EUR", "GBP", "JPY"], pattern="^[A-Z]{3}$")
     ]
     min_spend_per_package: Annotated[
-        float | None,
+        Optional[float],
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,
@@ -166,10 +166,10 @@ class PricingOptions11(BaseModel):
 
 class PriceGuidance5(BaseModel):
     floor: Annotated[float, Field(description="Minimum acceptable bid price", ge=0.0)]
-    p25: Annotated[float | None, Field(description="25th percentile of recent winning bids", ge=0.0)] = None
-    p50: Annotated[float | None, Field(description="Median of recent winning bids", ge=0.0)] = None
-    p75: Annotated[float | None, Field(description="75th percentile of recent winning bids", ge=0.0)] = None
-    p90: Annotated[float | None, Field(description="90th percentile of recent winning bids", ge=0.0)] = None
+    p25: Annotated[Optional[float], Field(description="25th percentile of recent winning bids", ge=0.0)] = None
+    p50: Annotated[Optional[float], Field(description="Median of recent winning bids", ge=0.0)] = None
+    p75: Annotated[Optional[float], Field(description="75th percentile of recent winning bids", ge=0.0)] = None
+    p90: Annotated[Optional[float], Field(description="90th percentile of recent winning bids", ge=0.0)] = None
 
 
 class PricingOptions12(BaseModel):
@@ -186,7 +186,7 @@ class PricingOptions12(BaseModel):
     ]
     price_guidance: Annotated[PriceGuidance5, Field(description="Statistical guidance for auction pricing")]
     min_spend_per_package: Annotated[
-        float | None,
+        Optional[float],
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,
@@ -207,7 +207,7 @@ class PricingOptions13(BaseModel):
         str, Field(description="ISO 4217 currency code", examples=["USD", "EUR", "GBP", "JPY"], pattern="^[A-Z]{3}$")
     ]
     min_spend_per_package: Annotated[
-        float | None,
+        Optional[float],
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,
@@ -229,7 +229,7 @@ class PricingOptions14(BaseModel):
         str, Field(description="ISO 4217 currency code", examples=["USD", "EUR", "GBP", "JPY"], pattern="^[A-Z]{3}$")
     ]
     min_spend_per_package: Annotated[
-        float | None,
+        Optional[float],
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,
@@ -261,7 +261,7 @@ class Parameters(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    view_threshold: ViewThreshold | ViewThreshold5
+    view_threshold: Union[ViewThreshold, ViewThreshold5]
 
 
 class PricingOptions15(BaseModel):
@@ -278,7 +278,7 @@ class PricingOptions15(BaseModel):
     ]
     parameters: Annotated[Parameters, Field(description="CPV-specific parameters defining the view threshold")]
     min_spend_per_package: Annotated[
-        float | None,
+        Optional[float],
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,
@@ -298,7 +298,7 @@ class Parameters7(BaseModel):
         ),
     ]
     min_points: Annotated[
-        float | None, Field(description="Minimum GRPs/TRPs required for this pricing option", ge=0.0)
+        Optional[float], Field(description="Minimum GRPs/TRPs required for this pricing option", ge=0.0)
     ] = None
 
 
@@ -318,7 +318,7 @@ class PricingOptions16(BaseModel):
         Parameters7, Field(description="CPP-specific parameters for demographic targeting and GRP requirements")
     ]
     min_spend_per_package: Annotated[
-        float | None,
+        Optional[float],
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,
@@ -331,32 +331,32 @@ class Parameters8(BaseModel):
         extra="forbid",
     )
     duration_hours: Annotated[
-        float | None, Field(description="Duration in hours for time-based flat rate pricing (DOOH)", ge=0.0)
+        Optional[float], Field(description="Duration in hours for time-based flat rate pricing (DOOH)", ge=0.0)
     ] = None
     sov_percentage: Annotated[
-        float | None, Field(description="Guaranteed share of voice as percentage (DOOH, 0-100)", ge=0.0, le=100.0)
+        Optional[float], Field(description="Guaranteed share of voice as percentage (DOOH, 0-100)", ge=0.0, le=100.0)
     ] = None
     loop_duration_seconds: Annotated[
-        int | None, Field(description="Duration of ad loop rotation in seconds (DOOH)", ge=1)
+        Optional[int], Field(description="Duration of ad loop rotation in seconds (DOOH)", ge=1)
     ] = None
     min_plays_per_hour: Annotated[
-        int | None, Field(description="Minimum number of times ad plays per hour (DOOH frequency guarantee)", ge=0)
+        Optional[int], Field(description="Minimum number of times ad plays per hour (DOOH frequency guarantee)", ge=0)
     ] = None
     venue_package: Annotated[
-        str | None,
+        Optional[str],
         Field(
             description="Named venue package identifier for DOOH (e.g., 'times_square_network', 'airport_terminals')"
         ),
     ] = None
     estimated_impressions: Annotated[
-        int | None,
+        Optional[int],
         Field(
             description="Estimated impressions for this flat rate option (informational, commonly used with SOV or time-based DOOH)",
             ge=0,
         ),
     ] = None
     daypart: Annotated[
-        str | None,
+        Optional[str],
         Field(
             description="Specific daypart for time-based pricing (e.g., 'morning_commute', 'evening_prime', 'overnight')"
         ),
@@ -382,10 +382,10 @@ class PricingOptions17(BaseModel):
         Literal[True], Field(description="Whether this is a fixed rate (true) or auction-based (false)")
     ]
     parameters: Annotated[
-        Parameters8 | None, Field(description="Flat rate parameters for DOOH and time-based campaigns")
+        Optional[Parameters8], Field(description="Flat rate parameters for DOOH and time-based campaigns")
     ] = None
     min_spend_per_package: Annotated[
-        float | None,
+        Optional[float],
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,
@@ -403,7 +403,7 @@ class Measurement(BaseModel):
     attribution: Annotated[
         str, Field(description="Attribution methodology", examples=["deterministic_purchase", "probabilistic"])
     ]
-    window: Annotated[str | None, Field(description="Attribution window", examples=["30_days", "7_days"])] = None
+    window: Annotated[Optional[str], Field(description="Attribution window", examples=["30_days", "7_days"])] = None
     reporting: Annotated[
         str, Field(description="Reporting frequency and format", examples=["weekly_dashboard", "real_time_api"])
     ]
@@ -417,7 +417,7 @@ class DeliveryMeasurement(BaseModel):
         ),
     ]
     notes: Annotated[
-        str | None,
+        Optional[str],
         Field(
             description="Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly')"
         ),
@@ -518,7 +518,7 @@ class Product(BaseModel):
         ),
     ]
     placements: Annotated[
-        list[Placement] | None,
+        Optional[list[Placement]],
         Field(
             description="Optional array of specific placements within this product. When provided, buyers can target specific placements when assigning creatives.",
             min_length=1,
@@ -527,23 +527,25 @@ class Product(BaseModel):
     delivery_type: Annotated[DeliveryType, Field(description="Type of inventory delivery", title="Delivery Type")]
     pricing_options: Annotated[
         list[
-            PricingOptions
-            | PricingOptions10
-            | PricingOptions11
-            | PricingOptions12
-            | PricingOptions13
-            | PricingOptions14
-            | PricingOptions15
-            | PricingOptions16
-            | PricingOptions17
+            Union[
+                PricingOptions,
+                PricingOptions10,
+                PricingOptions11,
+                PricingOptions12,
+                PricingOptions13,
+                PricingOptions14,
+                PricingOptions15,
+                PricingOptions16,
+                PricingOptions17,
+            ]
         ],
         Field(description="Available pricing models for this product", min_length=1),
     ]
     estimated_exposures: Annotated[
-        int | None, Field(description="Estimated exposures/impressions for guaranteed products", ge=0)
+        Optional[int], Field(description="Estimated exposures/impressions for guaranteed products", ge=0)
     ] = None
     measurement: Annotated[
-        Measurement | None,
+        Optional[Measurement],
         Field(description="Measurement capabilities included with a product", title="Measurement"),
     ] = None
     delivery_measurement: Annotated[
@@ -553,19 +555,19 @@ class Product(BaseModel):
         ),
     ]
     reporting_capabilities: Annotated[
-        ReportingCapabilities | None,
+        Optional[ReportingCapabilities],
         Field(description="Reporting capabilities available for a product", title="Reporting Capabilities"),
     ] = None
     creative_policy: Annotated[
-        CreativePolicy | None,
+        Optional[CreativePolicy],
         Field(description="Creative requirements and restrictions for a product", title="Creative Policy"),
     ] = None
-    is_custom: Annotated[bool | None, Field(description="Whether this is a custom product")] = None
+    is_custom: Annotated[Optional[bool], Field(description="Whether this is a custom product")] = None
     brief_relevance: Annotated[
-        str | None,
+        Optional[str],
         Field(description="Explanation of why this product matches the brief (only included when brief is provided)"),
     ] = None
-    expires_at: Annotated[AwareDatetime | None, Field(description="Expiration timestamp for custom products")] = None
+    expires_at: Annotated[Optional[AwareDatetime], Field(description="Expiration timestamp for custom products")] = None
 
 
 class Error(BaseModel):
@@ -575,13 +577,13 @@ class Error(BaseModel):
     code: Annotated[str, Field(description="Error code for programmatic handling")]
     message: Annotated[str, Field(description="Human-readable error message")]
     field: Annotated[
-        str | None, Field(description="Field path associated with the error (e.g., 'packages[0].targeting')")
+        Optional[str], Field(description="Field path associated with the error (e.g., 'packages[0].targeting')")
     ] = None
-    suggestion: Annotated[str | None, Field(description="Suggested fix for the error")] = None
-    retry_after: Annotated[float | None, Field(description="Seconds to wait before retrying the operation", ge=0.0)] = (
-        None
-    )
-    details: Annotated[Any | None, Field(description="Additional task-specific error details")] = None
+    suggestion: Annotated[Optional[str], Field(description="Suggested fix for the error")] = None
+    retry_after: Annotated[
+        Optional[float], Field(description="Seconds to wait before retrying the operation", ge=0.0)
+    ] = None
+    details: Annotated[Optional[Any], Field(description="Additional task-specific error details")] = None
 
 
 class GetProductsResponse(BaseModel):
@@ -590,5 +592,5 @@ class GetProductsResponse(BaseModel):
     )
     products: Annotated[list[Product], Field(description="Array of matching products")]
     errors: Annotated[
-        list[Error] | None, Field(description="Task-specific errors and warnings (e.g., product filtering issues)")
+        Optional[list[Error]], Field(description="Task-specific errors and warnings (e.g., product filtering issues)")
     ] = None

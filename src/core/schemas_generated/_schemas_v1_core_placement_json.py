@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Optional
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
@@ -38,10 +38,10 @@ class Placement(BaseModel):
         str, Field(description="Human-readable name for the placement (e.g., 'Homepage Banner', 'Article Sidebar')")
     ]
     description: Annotated[
-        str | None, Field(description="Detailed description of where and how the placement appears")
+        Optional[str], Field(description="Detailed description of where and how the placement appears")
     ] = None
     format_ids: Annotated[
-        list[FormatId] | None,
+        Optional[list[FormatId]],
         Field(
             description="Format IDs supported by this specific placement (subset of product's formats)", min_length=1
         ),

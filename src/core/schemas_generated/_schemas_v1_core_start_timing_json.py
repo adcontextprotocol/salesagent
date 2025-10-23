@@ -12,6 +12,6 @@ from pydantic import AwareDatetime, Field, RootModel
 
 class StartTiming(RootModel[Union[str, AwareDatetime]]):
     root: Annotated[
-        str | AwareDatetime,
+        Union[str, AwareDatetime],
         Field(description="Campaign start timing: 'asap' or ISO 8601 date-time", title="Start Timing"),
     ]

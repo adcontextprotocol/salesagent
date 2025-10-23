@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,7 +22,7 @@ class Parameters(BaseModel):
         ),
     ]
     min_points: Annotated[
-        float | None, Field(description="Minimum GRPs/TRPs required for this pricing option", ge=0.0)
+        Optional[float], Field(description="Minimum GRPs/TRPs required for this pricing option", ge=0.0)
     ] = None
 
 
@@ -42,7 +42,7 @@ class CppPricingOption(BaseModel):
         Parameters, Field(description="CPP-specific parameters for demographic targeting and GRP requirements")
     ]
     min_spend_per_package: Annotated[
-        float | None,
+        Optional[float],
         Field(
             description="Minimum spend requirement per package using this pricing option, in the specified currency",
             ge=0.0,

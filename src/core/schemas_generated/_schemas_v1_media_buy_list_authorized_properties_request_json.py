@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
@@ -25,7 +25,7 @@ class ListAuthorizedPropertiesRequest(BaseModel):
         extra="forbid",
     )
     publisher_domains: Annotated[
-        list[PublisherDomain] | None,
+        Optional[list[PublisherDomain]],
         Field(
             description="Filter to specific publisher domains (optional). If omitted, returns all publishers this agent represents.",
             min_length=1,

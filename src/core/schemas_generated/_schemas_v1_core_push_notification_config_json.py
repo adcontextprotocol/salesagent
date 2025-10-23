@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Optional
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
@@ -43,7 +43,7 @@ class PushNotificationConfig(BaseModel):
     )
     url: Annotated[AnyUrl, Field(description="Webhook endpoint URL for task status notifications")]
     token: Annotated[
-        str | None,
+        Optional[str],
         Field(
             description="Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
             min_length=16,

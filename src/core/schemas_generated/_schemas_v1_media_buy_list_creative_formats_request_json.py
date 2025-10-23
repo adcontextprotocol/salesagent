@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Optional
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
@@ -52,48 +52,48 @@ class ListCreativeFormatsRequest(BaseModel):
         extra="forbid",
     )
     format_ids: Annotated[
-        list[FormatId] | None,
+        Optional[list[FormatId]],
         Field(description="Return only these specific format IDs (e.g., from get_products response)"),
     ] = None
     type: Annotated[
-        Type | None, Field(description="Filter by format type (technical categories with distinct requirements)")
+        Optional[Type], Field(description="Filter by format type (technical categories with distinct requirements)")
     ] = None
     asset_types: Annotated[
-        list[AssetType] | None,
+        Optional[list[AssetType]],
         Field(
             description="Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags."
         ),
     ] = None
     max_width: Annotated[
-        int | None,
+        Optional[int],
         Field(
             description="Maximum width in pixels (inclusive). Returns formats where ANY render has width <= this value. For multi-render formats, matches if at least one render fits."
         ),
     ] = None
     max_height: Annotated[
-        int | None,
+        Optional[int],
         Field(
             description="Maximum height in pixels (inclusive). Returns formats where ANY render has height <= this value. For multi-render formats, matches if at least one render fits."
         ),
     ] = None
     min_width: Annotated[
-        int | None,
+        Optional[int],
         Field(
             description="Minimum width in pixels (inclusive). Returns formats where ANY render has width >= this value."
         ),
     ] = None
     min_height: Annotated[
-        int | None,
+        Optional[int],
         Field(
             description="Minimum height in pixels (inclusive). Returns formats where ANY render has height >= this value."
         ),
     ] = None
     is_responsive: Annotated[
-        bool | None,
+        Optional[bool],
         Field(
             description="Filter for responsive formats that adapt to container size. When true, returns formats without fixed dimensions."
         ),
     ] = None
     name_search: Annotated[
-        str | None, Field(description="Search for formats by name (case-insensitive partial match)")
+        Optional[str], Field(description="Search for formats by name (case-insensitive partial match)")
     ] = None

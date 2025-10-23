@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
@@ -26,30 +26,30 @@ class TargetingOverlay(BaseModel):
         extra="forbid",
     )
     geo_country_any_of: Annotated[
-        list[GeoCountryAnyOfItem] | None,
+        Optional[list[GeoCountryAnyOfItem]],
         Field(
             description="Restrict delivery to specific countries (ISO codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_region_any_of: Annotated[
-        list[str] | None,
+        Optional[list[str]],
         Field(
             description="Restrict delivery to specific regions/states. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_metro_any_of: Annotated[
-        list[str] | None,
+        Optional[list[str]],
         Field(
             description="Restrict delivery to specific metro areas (DMA codes). Use for regulatory compliance or RCT testing."
         ),
     ] = None
     geo_postal_code_any_of: Annotated[
-        list[str] | None,
+        Optional[list[str]],
         Field(
             description="Restrict delivery to specific postal/ZIP codes. Use for regulatory compliance or RCT testing."
         ),
     ] = None
     frequency_cap: Annotated[
-        FrequencyCap | None,
+        Optional[FrequencyCap],
         Field(description="Frequency capping settings for package-level application", title="Frequency Cap"),
     ] = None
