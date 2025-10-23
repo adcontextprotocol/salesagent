@@ -2862,6 +2862,10 @@ def _sync_creatives_impl(
 
     # Process assignments (spec-compliant: creative_id → package_ids mapping)
     assignment_list = []
+    # Track assignments per creative for response population
+    assignments_by_creative: dict[str, list[str]] = {}  # creative_id -> [package_ids]
+    assignment_errors_by_creative: dict[str, dict[str, str]] = {}  # creative_id -> {package_id: error}
+
     # Note: assignments should be a dict, but handle both dict and None
     if assignments and isinstance(assignments, dict):
         with get_db_session() as session:
@@ -2870,6 +2874,12 @@ def _sync_creatives_impl(
             from src.core.schemas import CreativeAssignment
 
             for creative_id, package_ids in assignments.items():
+                # Initialize tracking for this creative
+                if creative_id not in assignments_by_creative:
+                    assignments_by_creative[creative_id] = []
+                if creative_id not in assignment_errors_by_creative:
+                    assignment_errors_by_creative[creative_id] = {}
+
                 for package_id in package_ids:
                     # Find which media buy this package belongs to
                     # Packages are stored in media_buy.raw_request["packages"]
@@ -2892,9 +2902,13 @@ def _sync_creatives_impl(
                             break
 
                     if not media_buy_id:
-                        # Package not found - skip if in lenient mode, error if strict
+                        # Package not found - record error
+                        error_msg = f"Package not found: {package_id}"
+                        assignment_errors_by_creative[creative_id][package_id] = error_msg
+
+                        # Skip if in lenient mode, error if strict
                         if validation_mode == "strict":
-                            raise ToolError(f"Package not found: {package_id}")
+                            raise ToolError(error_msg)
                         else:
                             logger.warning(f"Package not found during assignment: {package_id}, skipping")
                             continue
@@ -2921,7 +2935,22 @@ def _sync_creatives_impl(
                         )
                     )
 
+                    # Track successful assignment
+                    assignments_by_creative[creative_id].append(actual_package_id)
+
             session.commit()
+
+    # Update creative results with assignment information (per AdCP spec)
+    for result in results:
+        if result.creative_id in assignments_by_creative:
+            assigned_packages = assignments_by_creative[result.creative_id]
+            if assigned_packages:
+                result.assigned_to = assigned_packages
+
+        if result.creative_id in assignment_errors_by_creative:
+            errors = assignment_errors_by_creative[result.creative_id]
+            if errors:
+                result.assignment_errors = errors
 
     # Create workflow steps for creatives requiring approval
     if creatives_needing_approval:
@@ -4484,6 +4513,17 @@ async def _create_media_buy_impl(
                 if not package.product_id:
                     error_msg = f"Package {package.buyer_ref} must specify product_id."
                     raise ValueError(error_msg)
+
+            # Check for duplicate product_ids across packages
+            product_id_counts: dict[str, int] = {}
+            for package in req.packages:
+                if package.product_id:
+                    product_id_counts[package.product_id] = product_id_counts.get(package.product_id, 0) + 1
+
+            duplicate_products = [pid for pid, count in product_id_counts.items() if count > 1]
+            if duplicate_products:
+                error_msg = f"Duplicate product_id(s) found in packages: {', '.join(duplicate_products)}. Each product can only be used once per media buy."
+                raise ValueError(error_msg)
 
         # 4. Currency-specific budget validation
         from decimal import Decimal

@@ -1713,6 +1713,13 @@ class SyncCreativeResult(BaseModel):
     errors: list[str] = Field(default_factory=list, description="Validation or processing errors (for 'failed' action)")
     warnings: list[str] = Field(default_factory=list, description="Non-fatal warnings about this creative")
     review_feedback: str | None = Field(None, description="Feedback from platform review process")
+    assigned_to: list[str] | None = Field(
+        None,
+        description="Package IDs this creative was successfully assigned to (only present when assignments were requested)",
+    )
+    assignment_errors: dict[str, str] | None = Field(
+        None, description="Assignment errors by package ID (only present when assignment failures occurred)"
+    )
 
 
 class AssignmentsSummary(BaseModel):
