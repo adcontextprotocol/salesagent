@@ -440,9 +440,6 @@ def get_principal_from_context(context: Context | None) -> tuple[str | None, dic
     if not headers:
         return (None, None)
 
-    # Get the x-adcp-auth header (case-insensitive lookup)
-    auth_token = _get_header_case_insensitive(headers, "x-adcp-auth")
-
     # Log all relevant headers for debugging
     host_header = _get_header_case_insensitive(headers, "host")
     apx_host_header = _get_header_case_insensitive(headers, "apx-incoming-host")
@@ -451,13 +448,8 @@ def get_principal_from_context(context: Context | None) -> tuple[str | None, dic
     console.print(f"  Host: {host_header}")
     console.print(f"  Apx-Incoming-Host: {apx_host_header}")
     console.print(f"  x-adcp-tenant: {tenant_header}")
-    console.print(f"  x-adcp-auth: {'Present' if auth_token else 'Missing'}")
 
-    if not auth_token:
-        console.print("[yellow]No x-adcp-auth token found - OK for discovery endpoints[/yellow]")
-        return (None, None)  # No auth provided - this is OK for discovery endpoints
-
-    # Check if a specific tenant was requested via header or subdomain
+    # ALWAYS resolve tenant from headers first (even without auth for public discovery endpoints)
     requested_tenant_id = None
     tenant_context = None
     detection_method = None
@@ -521,24 +513,32 @@ def get_principal_from_context(context: Context | None) -> tuple[str | None, dic
                 console.print(f"[green]Tenant detected from Apx-Incoming-Host: {requested_tenant_id}[/green]")
 
     if not requested_tenant_id:
+        console.print("[yellow]No tenant detected from headers[/yellow]")
+    else:
+        console.print(f"[bold green]Final tenant_id: {requested_tenant_id} (via {detection_method})[/bold green]")
+
+    # NOW check for auth token (after tenant resolution)
+    auth_token = _get_header_case_insensitive(headers, "x-adcp-auth")
+    console.print(f"  x-adcp-auth: {'Present' if auth_token else 'Missing'}")
+
+    if not auth_token:
+        console.print("[yellow]No x-adcp-auth token found - OK for discovery endpoints[/yellow]")
+        # Return tenant context without auth for public discovery endpoints
+        return (None, tenant_context)
+
+    # Validate token and get principal
+    # If requested_tenant_id is set: validate token belongs to that specific tenant
+    # If requested_tenant_id is None: do global lookup and set tenant context from token
+    if not requested_tenant_id:
         # No tenant detected from headers - use global token lookup
         # SECURITY NOTE: This is safe because get_principal_from_token() will:
         # 1. Look up the token globally
         # 2. Find which tenant it belongs to
         # 3. Set that tenant's context
         # 4. Return principal_id only if token is valid for that tenant
-        # The security issue we're preventing is: if a subdomain WAS detected but token
-        # doesn't belong to that tenant, we reject it (handled below at line ~534)
-        console.print(
-            "[yellow]No tenant detected from headers - will use global token lookup (finds tenant from token)[/yellow]"
-        )
+        console.print("[yellow]Using global token lookup (finds tenant from token)[/yellow]")
         detection_method = "global token lookup"
-    else:
-        console.print(f"[bold green]Final tenant_id: {requested_tenant_id} (via {detection_method})[/bold green]")
 
-    # Validate token and get principal
-    # If requested_tenant_id is set: validate token belongs to that specific tenant
-    # If requested_tenant_id is None: do global lookup and set tenant context from token
     principal_id = get_principal_from_token(auth_token, requested_tenant_id)
 
     # If token was provided but invalid, raise an error
@@ -3762,7 +3762,7 @@ def _list_authorized_properties_impl(
 
     # Get tenant and principal from context
     # Authentication is OPTIONAL for discovery endpoints (returns public inventory)
-    principal_id, tenant = get_principal_from_context(context)  # Returns (None, None) if no auth
+    principal_id, tenant = get_principal_from_context(context)  # May return (None, tenant) for public discovery
 
     # Set tenant context if returned
     if tenant:
@@ -3771,7 +3771,10 @@ def _list_authorized_properties_impl(
         tenant = get_current_tenant()
 
     if not tenant:
-        raise ToolError("AUTHENTICATION_ERROR", "Could not resolve tenant from context")
+        raise ToolError(
+            "TENANT_ERROR",
+            "Could not resolve tenant from request context (no subdomain, virtual host, or x-adcp-tenant header found)",
+        )
 
     tenant_id = tenant["tenant_id"]
 
