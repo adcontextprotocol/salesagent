@@ -6,11 +6,10 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastmcp.server.context import Context
-from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ModelProduct
-from src.core.database.models import Tenant
+from src.core.database.models import SignalsAgent
 from src.core.main import get_products
 from src.core.schema_adapters import GetProductsRequest
 from src.core.schemas import Signal
@@ -28,20 +27,22 @@ class TestSignalsAgentWorkflow:
         tenant_data = await create_test_tenant_with_principal()
         tenant_id = tenant_data["tenant"]["tenant_id"]
 
-        # Add signals configuration using real database
-        signals_config = {
-            "enabled": True,
-            "upstream_url": "http://test-signals:8080/mcp/",
-            "upstream_token": "test-token",
-            "auth_header": "x-adcp-auth",
-            "timeout": 30,
-            "forward_promoted_offering": True,
-            "fallback_to_database": True,
-        }
-
+        # Add signals agent using new SignalsAgent table
         with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-            tenant.signals_agent_config = signals_config
+            signals_agent = SignalsAgent(
+                tenant_id=tenant_id,
+                agent_url="http://test-signals:8080/mcp/",
+                name="Test Signals Agent",
+                enabled=True,
+                priority=10,
+                auth_type="bearer",
+                auth_credentials="test-token",
+                forward_promoted_offering=True,
+                fallback_to_database=True,
+                timeout=30,
+                max_signal_products=10,
+            )
+            db_session.add(signals_agent)
             db_session.commit()
 
         return tenant_data
@@ -126,11 +127,12 @@ class TestSignalsAgentWorkflow:
         )
         context = test_context_factory()
 
-        # Mock only external signals API call
-        with patch("product_catalog_providers.signals.Client") as mock_client_class:
+        # Mock only external signals API call (registry will call this)
+        with patch("src.core.signals_agent_registry.Client") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
             mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
             mock_client.call_tool = AsyncMock(
                 return_value={"signals": [signal.model_dump() for signal in mock_signals_response]}
             )
@@ -161,10 +163,11 @@ class TestSignalsAgentWorkflow:
         context = test_context_factory()
 
         # Mock upstream failure
-        with patch("product_catalog_providers.signals.Client") as mock_client_class:
+        with patch("src.core.signals_agent_registry.Client") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
             mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
             mock_client.call_tool = AsyncMock(side_effect=Exception("Connection timeout"))
 
             with self._mock_auth_context(tenant_data):
@@ -188,10 +191,11 @@ class TestSignalsAgentWorkflow:
         context = test_context_factory()
 
         # Mock signals client to verify it's not called
-        with patch("product_catalog_providers.signals.Client") as mock_client_class:
+        with patch("src.core.signals_agent_registry.Client") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
             mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
             mock_client.call_tool = AsyncMock()
 
             with self._mock_auth_context(tenant_data):
