@@ -400,15 +400,22 @@ def get_push_notification_config_from_headers(headers: dict[str, str] | None) ->
     }
 
 
-def get_principal_from_context(context: Context | None) -> tuple[str | None, dict | None]:
+def get_principal_from_context(
+    context: Context | None, require_valid_token: bool = True
+) -> tuple[str | None, dict | None]:
     """Extract principal ID and tenant context from the FastMCP context using x-adcp-auth header.
 
     Uses the current recommended FastMCP pattern with get_http_headers().
     Falls back to context.meta["headers"] for sync tools where get_http_headers() may return empty dict.
     Requires FastMCP >= 2.11.0.
 
+    Args:
+        context: FastMCP context object
+        require_valid_token: If True (default), raises error for invalid tokens.
+                           If False, treats invalid tokens like missing tokens (for discovery endpoints).
+
     Returns:
-        tuple[principal_id, tenant_context]: Principal ID and tenant dict, or (None, None) if no auth
+        tuple[principal_id, tenant_context]: Principal ID and tenant dict, or (None, tenant) if no/invalid auth
 
     Note: Returns tenant context explicitly because ContextVar changes in sync functions
     don't reliably propagate to async callers (Python ContextVar + async/sync boundary issue).
@@ -541,16 +548,23 @@ def get_principal_from_context(context: Context | None) -> tuple[str | None, dic
 
     principal_id = get_principal_from_token(auth_token, requested_tenant_id)
 
-    # If token was provided but invalid, raise an error
-    # This distinguishes between "no auth" (OK) and "bad auth" (error)
+    # If token was provided but invalid, raise an error (unless require_valid_token=False for discovery)
+    # This distinguishes between "no auth" (OK) and "bad auth" (error or warning)
     if principal_id is None:
-        from fastmcp.exceptions import ToolError
+        if require_valid_token:
+            from fastmcp.exceptions import ToolError
 
-        raise ToolError(
-            "INVALID_AUTH_TOKEN",
-            f"Authentication token is invalid for tenant '{requested_tenant_id or 'any'}'. "
-            f"The token may be expired, revoked, or associated with a different tenant.",
-        )
+            raise ToolError(
+                "INVALID_AUTH_TOKEN",
+                f"Authentication token is invalid for tenant '{requested_tenant_id or 'any'}'. "
+                f"The token may be expired, revoked, or associated with a different tenant.",
+            )
+        else:
+            # For discovery endpoints, treat invalid token like missing token
+            console.print(
+                f"[yellow]Invalid token for tenant '{requested_tenant_id or 'any'}' - continuing without auth (discovery endpoint)[/yellow]"
+            )
+            return (None, tenant_context)
 
     # If tenant_context wasn't set by header detection, get it from current tenant
     # (get_principal_from_token set it as a side effect for global lookup case)
@@ -1147,9 +1161,12 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
         # Legacy path - extract from FastMCP Context
         testing_ctx = get_testing_context(context)
         # For discovery endpoints, authentication is optional
+        # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
         logger.info("[GET_PRODUCTS] About to call get_principal_from_context")
         print("🔍 [GET_PRODUCTS DEBUG] About to call get_principal_from_context", flush=True)
-        principal_id, tenant = get_principal_from_context(context)  # Returns (None, None) if no auth
+        principal_id, tenant = get_principal_from_context(
+            context, require_valid_token=False
+        )  # Returns (None, tenant) if no/invalid auth
         logger.info(f"[GET_PRODUCTS] principal_id returned: {principal_id}, tenant: {tenant}")
         print(f"🔍 [GET_PRODUCTS DEBUG] principal_id returned: {principal_id}, tenant: {tenant}", flush=True)
 
@@ -1650,7 +1667,10 @@ def _list_creative_formats_impl(
         req = ListCreativeFormatsRequest()
 
     # For discovery endpoints, authentication is optional
-    principal_id, tenant = get_principal_from_context(context)  # Returns (None, None) if no auth
+    # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
+    principal_id, tenant = get_principal_from_context(
+        context, require_valid_token=False
+    )  # Returns (None, tenant) if no/invalid auth
 
     # Set tenant context if returned
     if tenant:
@@ -3762,7 +3782,10 @@ def _list_authorized_properties_impl(
 
     # Get tenant and principal from context
     # Authentication is OPTIONAL for discovery endpoints (returns public inventory)
-    principal_id, tenant = get_principal_from_context(context)  # May return (None, tenant) for public discovery
+    # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
+    principal_id, tenant = get_principal_from_context(
+        context, require_valid_token=False
+    )  # May return (None, tenant) for public discovery
 
     # Set tenant context if returned
     if tenant:
@@ -3810,9 +3833,8 @@ def _list_authorized_properties_impl(
                     tag_filters.append(AuthorizedProperty.tags.contains([tag]))
                 stmt = stmt.where(sa.or_(*tag_filters))
 
-            # Only include verified properties
-            stmt = stmt.where(AuthorizedProperty.verification_status == "verified")
-
+            # Get all properties for this tenant (no verification status filter)
+            # Publishers control what properties they add - verification is informational only
             authorized_properties = session.scalars(stmt).all()
 
             # Convert database models to Pydantic models
@@ -3895,11 +3917,17 @@ def _list_authorized_properties_impl(
             # Extract unique publisher domains from properties
             publisher_domains = sorted({prop.publisher_domain for prop in properties if prop.publisher_domain})
 
+            # If no properties configured, return error - NO FALLBACK BEHAVIOR
+            if not publisher_domains:
+                raise ToolError(
+                    "NO_PROPERTIES_CONFIGURED",
+                    f"No authorized properties configured for tenant '{tenant_id}'. "
+                    f"Please add properties via the Admin UI at /admin/tenant/{tenant_id}/authorized-properties",
+                )
+
             # Create response (AdCP v2.0+ uses publisher_domains instead of full property objects)
             response = ListAuthorizedPropertiesResponse(
-                publisher_domains=(
-                    publisher_domains if publisher_domains else ["example.com"]
-                ),  # Fallback for empty case
+                publisher_domains=publisher_domains,
                 advertising_policies=advertising_policies_text,
                 errors=[],
             )
