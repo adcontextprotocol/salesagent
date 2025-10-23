@@ -514,13 +514,23 @@ def get_principal_from_context(context: Context | None) -> str | None:
                 console.print(f"[green]Tenant detected from Apx-Incoming-Host: {requested_tenant_id}[/green]")
 
     if not requested_tenant_id:
-        console.print("[yellow]No tenant detected from any source - will use global token lookup[/yellow]")
+        # SECURITY: If token is provided but tenant cannot be determined, reject the request.
+        # Global token lookup would breach tenant isolation.
+        console.print("[red]SECURITY ERROR: Token provided but no tenant detected[/red]")
+        from fastmcp.exceptions import ToolError
+
+        raise ToolError(
+            "TENANT_DETECTION_FAILED",
+            f"Cannot determine tenant from request. Please ensure the Host header "
+            f"contains a valid subdomain (e.g., 'wonderstruck.sales-agent.scope3.com') "
+            f"or set the x-adcp-tenant header. "
+            f"Received Host: '{host_header}', Apx-Incoming-Host: '{apx_host_header}', "
+            f"x-adcp-tenant: '{tenant_header}'",
+        )
     else:
         console.print(f"[bold green]Final tenant_id: {requested_tenant_id} (via {detection_method})[/bold green]")
 
-    # Validate token and get principal
-    # If a specific tenant was requested, validate against it
-    # Otherwise, look up by token alone and set tenant context
+    # Validate token and get principal for the detected tenant
     principal_id = get_principal_from_token(auth_token, requested_tenant_id)
 
     # If token was provided but invalid, raise an error
@@ -665,8 +675,8 @@ try:
     config = load_config()
 except (RuntimeError, Exception) as e:
     # Use minimal config for test environments or when DB is unavailable
-    # This handles both "No tenant in context" and database connection errors
-    if "No tenant in context" in str(e) or "connection" in str(e).lower() or "operational" in str(e).lower():
+    # This handles both "No tenant context set" and database connection errors
+    if "No tenant context" in str(e) or "connection" in str(e).lower() or "operational" in str(e).lower():
         config = {
             "creative_engine": {},
             "dry_run": False,

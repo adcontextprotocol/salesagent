@@ -35,10 +35,14 @@ def get_current_tenant() -> dict[str, Any]:
     """Get current tenant from context."""
     tenant = current_tenant.get()
     if not tenant:
-        # Fallback for CLI/testing - use default tenant
-        tenant = get_default_tenant()
-        if not tenant:
-            raise RuntimeError("No tenant in context and no default tenant found")
+        # SECURITY: Do NOT fall back to default tenant in production.
+        # This would cause tenant isolation breach.
+        # Only CLI/testing scripts should call this without context.
+        raise RuntimeError(
+            "No tenant context set. Tenant must be set via set_current_tenant() "
+            "before calling this function. This is a critical security error - "
+            "falling back to default tenant would breach tenant isolation."
+        )
     return tenant
 
 

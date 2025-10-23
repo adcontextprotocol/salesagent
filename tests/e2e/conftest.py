@@ -360,9 +360,12 @@ async def e2e_client(live_server, test_auth_token):
     from fastmcp.client.transports import StreamableHttpTransport
 
     # Create MCP client with test session ID
+    # Note: Host header is automatically set by HTTP client based on URL,
+    # so we use x-adcp-tenant header for explicit tenant selection in E2E tests
     test_session_id = str(uuid.uuid4())
     headers = {
         "x-adcp-auth": test_auth_token,
+        "x-adcp-tenant": "ci-test",  # Explicit tenant selection for E2E tests
         "X-Test-Session-ID": test_session_id,
         "X-Dry-Run": "true",  # Always use dry-run for tests
     }

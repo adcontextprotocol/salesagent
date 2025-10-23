@@ -26,7 +26,13 @@ class MockContext:
         if auth_token is None:
             self.meta = {"headers": {}}  # No auth header
         else:
-            self.meta = {"headers": {"x-adcp-auth": auth_token}}
+            # Include Host header for tenant detection (security requirement)
+            self.meta = {
+                "headers": {
+                    "x-adcp-auth": auth_token,
+                    "host": "auth-test.sales-agent.scope3.com",  # Matches subdomain in setup_test_data
+                }
+            }
 
 
 class TestListCreativesAuthentication:
@@ -129,7 +135,8 @@ class TestListCreativesAuthentication:
         # Mock context with NO auth token
         mock_context = MockContext(auth_token=None)
 
-        with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "auth_test_tenant"}):
+        # Mock get_http_headers to return empty headers (no auth)
+        with patch("src.core.main.get_http_headers", return_value={}):
             # This should raise ToolError due to missing authentication
             from fastmcp.exceptions import ToolError
 
@@ -147,7 +154,14 @@ class TestListCreativesAuthentication:
         # Mock context with advertiser A's token
         mock_context = MockContext(auth_token="token-advertiser-a")
 
-        with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "auth_test_tenant"}):
+        # Mock get_http_headers to return auth + host headers for tenant detection
+        with patch(
+            "src.core.main.get_http_headers",
+            return_value={
+                "x-adcp-auth": "token-advertiser-a",
+                "host": "auth-test.sales-agent.scope3.com",
+            },
+        ):
             response = core_list_creatives_tool(context=mock_context)
 
             # Verify response structure
@@ -172,7 +186,14 @@ class TestListCreativesAuthentication:
         # Test with advertiser B's token
         mock_context_b = MockContext(auth_token="token-advertiser-b")
 
-        with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "auth_test_tenant"}):
+        # Mock get_http_headers to return auth + host headers for tenant detection
+        with patch(
+            "src.core.main.get_http_headers",
+            return_value={
+                "x-adcp-auth": "token-advertiser-b",
+                "host": "auth-test.sales-agent.scope3.com",
+            },
+        ):
             response = core_list_creatives_tool(context=mock_context_b)
 
             # Verify response structure
@@ -197,9 +218,16 @@ class TestListCreativesAuthentication:
         # Mock context with invalid token
         mock_context = MockContext(auth_token="invalid-token-xyz")
 
-        with patch("src.core.main.get_current_tenant", return_value={"tenant_id": "auth_test_tenant"}):
+        # Mock get_http_headers to return auth + host headers for tenant detection
+        with patch(
+            "src.core.main.get_http_headers",
+            return_value={
+                "x-adcp-auth": "invalid-token-xyz",
+                "host": "auth-test.sales-agent.scope3.com",
+            },
+        ):
             from fastmcp.exceptions import ToolError
 
             # This should raise ToolError due to invalid authentication
-            with pytest.raises(ToolError, match="Authentication token is invalid"):
+            with pytest.raises(ToolError, match="INVALID_AUTH_TOKEN"):
                 core_list_creatives_tool(context=mock_context)
