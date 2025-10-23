@@ -1,0 +1,36 @@
+"""Update order_name_template default to use brand_name instead of promoted_offering
+
+Revision ID: faaed3b71428
+Revises: ed7d05fea3be
+Create Date: 2025-10-22 21:34:50.416702
+
+"""
+
+from collections.abc import Sequence
+
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision: str = "faaed3b71428"
+down_revision: str | Sequence[str] | None = "ed7d05fea3be"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # Update the server_default for order_name_template column
+    # Change from promoted_offering to brand_name per AdCP v2.2.0 spec
+    op.alter_column(
+        "tenants", "order_name_template", server_default="{campaign_name|brand_name} - {buyer_ref} - {date_range}"
+    )
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # Revert to old template (for rollback purposes only)
+    op.alter_column(
+        "tenants",
+        "order_name_template",
+        server_default="{campaign_name|promoted_offering} - {buyer_ref} - {date_range}",
+    )
