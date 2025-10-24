@@ -20,8 +20,29 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
+from urllib.parse import urlparse, urlunparse
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_localhost_for_docker(url: str) -> str:
+    """Replace localhost host with host.docker.internal while preserving userinfo and port."""
+    try:
+        parsed = urlparse(url)
+        if parsed.hostname and parsed.hostname.lower() == "localhost":
+            userinfo = ""
+            if parsed.username:
+                userinfo = parsed.username
+                if parsed.password:
+                    userinfo += f":{parsed.password}"
+                userinfo += "@"
+            port = f":{parsed.port}" if parsed.port else ""
+            new_netloc = f"{userinfo}host.docker.internal{port}"
+            return urlunparse(parsed._replace(netloc=new_netloc))
+    except Exception:
+        # If anything goes wrong, fall back to the original URL
+        pass
+    return url
 
 
 class ProtocolWebhookService:
@@ -35,11 +56,16 @@ class ProtocolWebhookService:
     """
 
     def __init__(self):
-        self.http_client = httpx.AsyncClient(timeout=10.0)
+        # Intentionally do not keep a persistent AsyncClient because this service
+        # is called via asyncio.run() from sync contexts, creating and closing
+        # event loops per call. We'll create a fresh AsyncClient inside each call
+        # to avoid cross-event-loop reuse issues.
+        pass
 
     async def send_notification(
         self,
         webhook_config: dict[str, Any],
+        task_type: str,
         task_id: str,
         status: str,
         result: dict[str, Any] | None = None,
@@ -70,7 +96,7 @@ class ProtocolWebhookService:
             logger.debug(f"No webhook URL configured for task {task_id}, skipping notification")
             return False
 
-        url = webhook_config["url"]
+        url = _normalize_localhost_for_docker(webhook_config["url"])
         auth_config = webhook_config.get("authentication", {})
         schemes = auth_config.get("schemes", [])
         credentials = auth_config.get("credentials")
@@ -78,6 +104,7 @@ class ProtocolWebhookService:
         # Build notification payload (AdCP standard format)
         payload: dict[str, Any] = {
             "task_id": task_id,
+            "task_type": task_type,
             "status": status,
             "timestamp": datetime.now(UTC).isoformat(),
             "adcp_version": "2.3.0",
@@ -96,11 +123,13 @@ class ProtocolWebhookService:
             # Sign payload with HMAC-SHA256
             import json
 
-            payload_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
-            signature = hmac.new(credentials.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
+            timestamp = str(int(time.time()))
+            payload_str = json.dumps(payload, sort_keys=False, separators=(",", ":"))
+            message = f"{timestamp}.{payload_str}"
+            signature = hmac.new(credentials.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
 
             headers["X-AdCP-Signature"] = f"sha256={signature}"
-            headers["X-AdCP-Timestamp"] = str(int(time.time()))
+            headers["X-AdCP-Timestamp"] = timestamp
 
         elif "Bearer" in schemes and credentials:
             # Use Bearer token authentication
@@ -109,10 +138,13 @@ class ProtocolWebhookService:
         # Send notification
         try:
             logger.info(f"Sending protocol-level webhook notification for task {task_id} to {url}")
-            response = await self.http_client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
 
-            logger.info(f"Successfully sent webhook notification for task {task_id} (status: {response.status_code})")
+            logger.info(
+                f"Successfully sent webhook notification for task {task_id} (status: {response.status_code})"
+            )
             return True
 
         except httpx.HTTPStatusError as e:
@@ -130,8 +162,8 @@ class ProtocolWebhookService:
             return False
 
     async def close(self):
-        """Close HTTP client."""
-        await self.http_client.aclose()
+        """No-op: client is created per call."""
+        return None
 
 
 # Global service instance

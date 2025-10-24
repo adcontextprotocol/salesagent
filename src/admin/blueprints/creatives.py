@@ -61,79 +61,105 @@ def _cleanup_completed_tasks():
 
 
 def _call_webhook_for_creative_status(
-    webhook_url: str, creative_id: str, status: str, creative_data: dict = None, tenant_id: str = None
+    db_session,
+    creative_id: str,
+    status: str,
+    tenant_id: str | None = None,
+    review_feedback: str | None = None,
 ):
-    """Call webhook to notify about creative status change with retry logic.
+    """Send protocol-level push notification for creative status update.
 
-    Args:
-        webhook_url: URL to POST notification to
-        creative_id: Creative ID
-        status: New status (approved, rejected, pending)
-        creative_data: Optional creative data to include
-        tenant_id: Optional tenant ID for signature verification
+    Looks up the associated WorkflowStep via ObjectWorkflowMapping for this creative,
+    extracts the stored push_notification_config from the step's request_data, and sends
+    a protocol webhook using ProtocolWebhookService with an AdCP-compliant result shape
+    (SyncCreativesResponse containing SyncCreativeResult for the single creative).
 
     Returns:
-        bool: True if webhook delivered successfully, False otherwise
+        bool: True if webhook delivered successfully, False otherwise (or if no config found)
     """
-    from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
-
     try:
-        # Build payload
-        payload = {
-            "object_type": "creative",
-            "object_id": creative_id,
-            "status": status,
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
+        # Find latest workflow step for this creative to obtain push_notification_config
+        from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
 
-        if creative_data:
-            payload["creative_data"] = creative_data
-
-        headers = {"Content-Type": "application/json"}
-
-        # Get signing secret from tenant
-        signing_secret = None
-        if tenant_id:
-            try:
-                with get_db_session() as db_session:
-                    stmt = select(Tenant).filter_by(tenant_id=tenant_id)
-                    tenant = db_session.scalars(stmt).first()
-                    if tenant and hasattr(tenant, "admin_token") and tenant.admin_token:
-                        signing_secret = tenant.admin_token
-            except Exception as e:
-                logger.warning(f"Could not fetch tenant for signature: {e}")
-
-        # Create delivery configuration
-        delivery = WebhookDelivery(
-            webhook_url=webhook_url,
-            payload=payload,
-            headers=headers,
-            max_retries=3,
-            timeout=10,
-            signing_secret=signing_secret,
-            event_type="creative.status_changed",
-            tenant_id=tenant_id,
-            object_id=creative_id,
+        stmt = (
+            select(ObjectWorkflowMapping)
+            .filter_by(object_type="creative", object_id=creative_id)
+            .order_by(ObjectWorkflowMapping.created_at.desc())
         )
+        mapping = db_session.scalars(stmt).first()
 
-        # Deliver with retry
-        success, result = deliver_webhook_with_retry(delivery)
+        if not mapping:
+            logger.debug(f"No workflow mapping found for creative {creative_id}; skipping webhook notification")
+            return False
 
-        if success:
-            logger.info(
-                f"Successfully delivered webhook for creative {creative_id} status={status} "
-                f"(attempts={result['attempts']}, delivery_id={result['delivery_id']})"
+        step = db_session.get(WorkflowStep, mapping.step_id)
+        if not step or not step.request_data:
+            logger.debug(
+                f"Workflow step missing or has no request_data for creative {creative_id}; skipping webhook notification"
             )
-        else:
-            logger.error(
-                f"Failed to deliver webhook for creative {creative_id} after {result['attempts']} attempts: "
-                f"{result.get('error', 'Unknown error')} (delivery_id={result['delivery_id']})"
-            )
+            return False
 
-        return success
+        webhook_config = step.request_data.get("push_notification_config")
+        if not webhook_config or not webhook_config.get("url"):
+            logger.debug(
+                f"No push_notification_config with URL present for creative {creative_id}; skipping webhook notification"
+            )
+            return False
+
+        # Build AdCP-compliant result payload
+        creative_result = {
+            "creative_id": creative_id,
+            "action": "updated",
+            "status": status,
+        }
+        if review_feedback:
+            creative_result["review_feedback"] = review_feedback
+
+        result = {"creatives": [creative_result]}
+
+        # Send protocol-level notification synchronously (no background thread), using outer session
+        from src.services.protocol_webhook_service import get_protocol_webhook_service
+        import asyncio
+
+        service = get_protocol_webhook_service()
+        try:
+            asyncio.run(
+                service.send_notification(
+                    webhook_config=webhook_config,
+                    task_id=step.step_id,
+                    task_type="sync_creatives",
+                    status="completed",
+                    result=result,
+                    error=None,
+                )
+            )
+        except RuntimeError as loop_err:
+            # If there's already a running loop (unlikely in Flask), fallback to create a new loop
+            try:
+                loop = asyncio.new_event_loop()
+                try:
+                    loop.run_until_complete(
+                        service.send_notification(
+                            webhook_config=webhook_config,
+                            task_id=step.step_id,
+                            task_type="sync_creatives",
+                            status="completed",
+                            result=result,
+                            error=None,
+                        )
+                    )
+                finally:
+                    loop.close()
+            except Exception as send_e:
+                logger.warning(f"Failed to send protocol webhook for creative {creative_id}: {send_e}")
+
+        logger.info(
+            f"Sent protocol-level webhook notification for creative {creative_id} (status={status}) to {webhook_config.get('url')}"
+        )
+        return True
 
     except Exception as e:
-        logger.error(f"Error setting up webhook delivery for creative {creative_id}: {e}", exc_info=True)
+        logger.error(f"Error sending protocol webhook for creative {creative_id}: {e}", exc_info=True)
         return False
 
 
@@ -652,19 +678,15 @@ def _ai_review_creative_async(
                     except Exception as slack_e:
                         logger.warning(f"[AI Review Async] Failed to send Slack notification: {slack_e}")
 
-                # Call webhook if configured
-                if webhook_url:
-                    creative_data = {
-                        "creative_id": creative.creative_id,
-                        "name": creative.name,
-                        "format": creative.format,
-                        "status": creative.status,
-                        "ai_review": creative.data.get("ai_review"),
-                    }
-                    _call_webhook_for_creative_status(
-                        webhook_url, creative_id, creative.status, creative_data, tenant_id
-                    )
-                    logger.info(f"[AI Review Async] Webhook called for {creative_id}")
+                # Send protocol-level push notification if stored on workflow step
+                _call_webhook_for_creative_status(
+                    db_session=session,
+                    creative_id=creative_id,
+                    status=creative.status,
+                    tenant_id=tenant_id,
+                    review_feedback=creative.data.get("ai_review", {}).get("reason"),
+                )
+                logger.info(f"[AI Review Async] Protocol webhook enqueued for {creative_id}")
 
             else:
                 logger.error(f"[AI Review Async] Creative not found: {creative_id}")

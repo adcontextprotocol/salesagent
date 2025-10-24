@@ -31,7 +31,7 @@ class WebhookAuthenticator:
             Headers dict to include in webhook HTTP request
         """
         # Serialize payload consistently (sorted keys, no spaces)
-        payload_str = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        payload_str = json.dumps(payload, separators=(",", ":"), sort_keys=False)
 
         # Include timestamp to prevent replay attacks
         timestamp = str(int(time.time()))
@@ -43,8 +43,8 @@ class WebhookAuthenticator:
         signature = hmac.new(secret.encode("utf-8"), signed_payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
         return {
-            "X-Webhook-Signature": f"sha256={signature}",
-            "X-Webhook-Timestamp": timestamp,
+            "X-ADCP-Signature": f"sha256={signature}",
+            "X-ADCP-Timestamp": timestamp,
         }
 
     @staticmethod
@@ -56,8 +56,8 @@ class WebhookAuthenticator:
 
         Args:
             payload: The raw payload string
-            signature: The signature from X-Webhook-Signature header (with "sha256=" prefix)
-            timestamp: The timestamp from X-Webhook-Timestamp header
+            signature: The signature from X-ADCP-Signature header (with "sha256=" prefix)
+            timestamp: The timestamp from X-ADCP-Timestamp header
             secret: The shared secret key
             tolerance_seconds: Max age of webhook to accept (default 5 minutes)
 
