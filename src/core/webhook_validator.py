@@ -48,10 +48,6 @@ class WebhookURLValidator:
         try:
             parsed = urlparse(url)
 
-            # Always allow localhost and host.docker.internal for testing/dev
-            allow_localhost = True
-            allow_host_docker_internal = True
-
             # Must be HTTP or HTTPS
             if parsed.scheme not in ("http", "https"):
                 return False, "Webhook URL must use http or https protocol"
@@ -60,13 +56,9 @@ class WebhookURLValidator:
             if not parsed.hostname:
                 return False, "Webhook URL must have a valid hostname"
 
-            # Check against blocked hostnames (with localhost allowance)
-            hostname = parsed.hostname.lower()
-            if hostname in cls.BLOCKED_HOSTNAMES:
-                if allow_localhost and hostname == "localhost":
-                    pass  # allow localhost when explicitly enabled
-                else:
-                    return False, f"Webhook URL hostname '{parsed.hostname}' is blocked for security reasons"
+            # Check against blocked hostnames
+            if parsed.hostname.lower() in cls.BLOCKED_HOSTNAMES:
+                return False, f"Webhook URL hostname '{parsed.hostname}' is blocked for security reasons"
 
             # Resolve hostname to IP address
             try:
@@ -77,27 +69,17 @@ class WebhookURLValidator:
             except ValueError as e:
                 return False, f"Invalid IP address from hostname resolution: {e}"
 
-                # Check against blocked IP ranges (with allowances for localhost and host.docker.internal)
+            # Check against blocked IP ranges
             for network in cls.BLOCKED_NETWORKS:
                 if ip in network:
-                    # Allow loopback and host.docker.internal
-                    if (allow_localhost and (ip.is_loopback or str(ip) == "127.0.0.1")) or (
-                        allow_host_docker_internal and hostname == "host.docker.internal"
-                    ):
-                        break
                     return (
                         False,
                         f"Webhook URL resolves to blocked IP range {network} (private/internal network)",
                     )
 
-            # Prevent localhost/private ranges unless explicitly allowed
+            # Prevent localhost even if resolved to public IP somehow
             if ip.is_loopback or ip.is_link_local or ip.is_private:
-                if (allow_localhost and ip.is_loopback) or (
-                    allow_host_docker_internal and hostname == "host.docker.internal"
-                ):
-                    pass
-                else:
-                    return False, f"Webhook URL resolves to private/internal IP address: {ip}"
+                return False, f"Webhook URL resolves to private/internal IP address: {ip}"
 
             return True, ""
 

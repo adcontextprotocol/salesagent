@@ -17,7 +17,6 @@ from typing import Any
 
 import requests
 from sqlalchemy import select
-from urllib.parse import urlparse, urlunparse
 
 from src.core.database.database_session import get_db_session
 from src.core.webhook_authenticator import WebhookAuthenticator
@@ -80,25 +79,8 @@ def deliver_webhook_with_retry(delivery: WebhookDelivery) -> tuple[bool, dict[st
     """
     from src.core.metrics import webhook_delivery_attempts, webhook_delivery_duration, webhook_delivery_total
 
-    # Normalize URL to support container-to-host calls (localhost -> host.docker.internal)
-    def _normalize_webhook_url(url: str) -> str:
-        try:
-            parsed = urlparse(url)
-            hostname = (parsed.hostname or "").lower()
-            if hostname in ("localhost", "127.0.0.1"):
-                new_hostname = "host.docker.internal"
-                netloc = new_hostname
-                if parsed.port:
-                    netloc = f"{new_hostname}:{parsed.port}"
-                return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
-        except Exception:
-            pass
-        return url
-
-    normalized_url = _normalize_webhook_url(delivery.webhook_url)
-
     # Validate webhook URL for SSRF protection
-    is_valid, error_msg = WebhookURLValidator.validate_webhook_url(normalized_url)
+    is_valid, error_msg = WebhookURLValidator.validate_webhook_url(delivery.webhook_url)
     if not is_valid:
         logger.error(f"Webhook URL validation failed: {error_msg}")
         # Record validation failure metrics
@@ -128,7 +110,7 @@ def deliver_webhook_with_retry(delivery: WebhookDelivery) -> tuple[bool, dict[st
         _create_delivery_record(
             delivery_id=delivery_id,
             tenant_id=delivery.tenant_id,
-            webhook_url=normalized_url,
+            webhook_url=delivery.webhook_url,
             payload=delivery.payload,
             event_type=delivery.event_type,
             object_id=delivery.object_id,
@@ -140,11 +122,11 @@ def deliver_webhook_with_retry(delivery: WebhookDelivery) -> tuple[bool, dict[st
 
         try:
             logger.info(
-                f"[Webhook Delivery] Attempt {attempt + 1}/{delivery.max_retries} for {delivery_id} to {normalized_url}"
+                f"[Webhook Delivery] Attempt {attempt + 1}/{delivery.max_retries} for {delivery_id} to {delivery.webhook_url}"
             )
 
             response = requests.post(
-                normalized_url, json=delivery.payload, headers=headers, timeout=delivery.timeout
+                delivery.webhook_url, json=delivery.payload, headers=headers, timeout=delivery.timeout
             )
 
             response_code = response.status_code

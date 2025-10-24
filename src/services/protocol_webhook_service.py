@@ -56,11 +56,6 @@ class ProtocolWebhookService:
     """
 
     def __init__(self):
-        # Intentionally do not keep a persistent AsyncClient because this service
-        # is called via asyncio.run() from sync contexts, creating and closing
-        # event loops per call. We'll create a fresh AsyncClient inside each call
-        # to avoid cross-event-loop reuse issues.
-        pass
 
     async def send_notification(
         self,
@@ -138,13 +133,11 @@ class ProtocolWebhookService:
         # Send notification
         try:
             logger.info(f"Sending protocol-level webhook notification for task {task_id} to {url}")
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
+            
+            response = await self.http_client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
 
-            logger.info(
-                f"Successfully sent webhook notification for task {task_id} (status: {response.status_code})"
-            )
+            logger.info(f"Successfully sent webhook notification for task {task_id} (status: {response.status_code})")
             return True
 
         except httpx.HTTPStatusError as e:
@@ -162,7 +155,8 @@ class ProtocolWebhookService:
             return False
 
     async def close(self):
-        """No-op: client is created per call."""
+        """Close HTTP client."""
+        await self.http_client.aclose()
         return None
 
 
