@@ -185,6 +185,17 @@ class Product(Base, JSONValidatorMixin):
     # Note: PR #79 fields (estimated_exposures, floor_cpm, recommended_cpm) are NOT stored in database
     # They are calculated dynamically from product_performance_metrics table
 
+    # Signals-backed product configuration
+    is_signals_backed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    signals_config: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    # signals_config structure:
+    # {
+    #     "expiry_hours": 24,  # How long dynamic products remain valid
+    #     "pricing_strategy": "signal_cpm",  # "signal_cpm" | "base_plus_signal"
+    #     "name_template": "{signal_name}",  # Template for dynamic product names
+    #     "description_template": "Target {signal_description}"
+    # }
+
     # Relationships
     tenant = relationship("Tenant", back_populates="products")
     # No SQLAlchemy cascade - let database CASCADE handle pricing_options deletion
@@ -232,6 +243,115 @@ class PricingOption(Base):
             ondelete="CASCADE",
         ),
         Index("idx_pricing_options_product", "tenant_id", "product_id"),
+    )
+
+
+class DynamicProductMapping(Base):
+    """Maps opaque dynamic product IDs to signals for activation.
+
+    Created during get_products when signals-backed products generate dynamic variations.
+    Consumed during create_media_buy to activate the corresponding signal.
+    Automatically expires after configured duration from template product.
+    """
+
+    __tablename__ = "dynamic_product_mappings"
+
+    # Opaque product ID (what buyer sees)
+    product_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+
+    # Template product this was generated from
+    tenant_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    template_product_id: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # Signal identification (needed for activation)
+    signal_agent_id: Mapped[int] = mapped_column(Integer, ForeignKey("signals_agents.id"), nullable=False)
+    signal_id: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    # Full signal data (for reference/display)
+    signal_data: Mapped[dict] = mapped_column(JSONType, nullable=False)
+
+    # Expiry
+    expires_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+
+    # Relationships
+    template_product = relationship(
+        "Product",
+        foreign_keys=[tenant_id, template_product_id],
+        primaryjoin="and_(DynamicProductMapping.tenant_id==Product.tenant_id, "
+        "DynamicProductMapping.template_product_id==Product.product_id)",
+    )
+    signal_agent = relationship("SignalsAgent")
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "template_product_id"],
+            ["products.tenant_id", "products.product_id"],
+            ondelete="CASCADE",
+        ),
+        Index("idx_dynamic_products_tenant", "tenant_id"),
+        Index("idx_dynamic_products_expires", "expires_at"),
+        Index("idx_dynamic_products_signal", "signal_agent_id", "signal_id"),
+    )
+
+
+class SignalActivation(Base):
+    """Tracks async signal activation (up to 72 hours).
+
+    Created when create_media_buy is called with dynamic products.
+    Updated via protocol webhooks or polling when activation completes.
+    Contains GAM segment IDs or key/values for targeting after activation.
+    """
+
+    __tablename__ = "signal_activations"
+
+    # Task ID (used in protocol webhooks)
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+
+    # Associated media buy
+    media_buy_id: Mapped[str] = mapped_column(String(100), ForeignKey("media_buys.media_buy_id"), nullable=False)
+
+    # Which signal to activate (from DynamicProductMapping)
+    signal_agent_id: Mapped[int] = mapped_column(Integer, ForeignKey("signals_agents.id"), nullable=False)
+    signal_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    platform: Mapped[str] = mapped_column(String(50), nullable=False)  # "GAM"
+
+    # Activation tracking (from signal agent response)
+    activation_task_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
+
+    # Protocol webhook state
+    has_push_notification: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    webhook_received: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_webhook_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+
+    # Polling fallback
+    last_polled_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    next_poll_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    poll_interval_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    poll_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_poll_attempts: Mapped[int] = mapped_column(Integer, default=288, nullable=False)
+
+    # Activation results (from activate_signal response - AdCP PR #149)
+    gam_segment_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    gam_key_values: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    activation_metadata: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    activation_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Timestamps
+    estimated_completion_time: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    activated_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    failed_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+
+    # Relationships
+    media_buy = relationship("MediaBuy")
+    signal_agent = relationship("SignalsAgent")
+
+    __table_args__ = (
+        Index("idx_signal_activations_media_buy", "media_buy_id"),
+        Index("idx_signal_activations_status", "status"),
+        Index("idx_signal_activations_next_poll", "next_poll_at"),
     )
 
 
