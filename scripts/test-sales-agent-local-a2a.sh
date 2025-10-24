@@ -4,8 +4,14 @@
 
 set -e
 
-SALES_AGENT_URL="http://localhost:8094/a2a"
-API_KEY="HVn6P9PWLykPgOKEWVuo5OpMP5fz8nDP"
+# Check for TEST_LOCAL_SALES_AGENT_KEY environment variable
+if [ -z "$TEST_LOCAL_SALES_AGENT_KEY" ]; then
+  echo "❌ Error: TEST_LOCAL_SALES_AGENT_KEY environment variable is not set"
+  echo "Please set it with: export TEST_LOCAL_SALES_AGENT_KEY=your_key"
+  exit 1
+fi
+
+SALES_AGENT_URL="http://localhost:8091/a2a"
 
 echo "🔗 Testing Local Sales Agent via A2A (JSON-RPC 2.0)"
 echo "Endpoint: $SALES_AGENT_URL"
@@ -16,7 +22,7 @@ echo "📦 Step 1: Send message to get products..."
 MESSAGE_ID=$(uuidgen)
 MESSAGE_RESPONSE=$(curl -s -X POST "$SALES_AGENT_URL" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "x-adcp-auth: $TEST_LOCAL_SALES_AGENT_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
@@ -48,7 +54,7 @@ if [ -n "$TASK_ID" ]; then
 
   STATUS_RESPONSE=$(curl -s -X POST "$SALES_AGENT_URL" \
     -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $API_KEY" \
+    -H "x-adcp-auth: $TEST_LOCAL_SALES_AGENT_KEY" \
     -d '{
       "jsonrpc": "2.0",
       "id": 2,
