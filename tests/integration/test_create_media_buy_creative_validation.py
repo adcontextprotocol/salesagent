@@ -11,7 +11,7 @@ import pytest
 
 from src.core.database.models import Creative as DBCreative
 from src.core.main import _create_media_buy_impl
-from src.core.schemas import CreateMediaBuyResponse, Package
+from src.core.schemas import CreateMediaBuyResponse
 
 
 @pytest.mark.requires_db
@@ -117,12 +117,12 @@ async def test_create_media_buy_rejects_missing_creatives(integration_db):
             buyer_ref="buyer_ref_123",
             brand_manifest={"website": "https://example.com"},
             packages=[
-                Package(
-                    package_id="pkg_1",
-                    product_ids=["test_product"],
-                    impressions=100000,
-                    creative_ids=["nonexistent_creative_1", "nonexistent_creative_2"],
-                ).model_dump()
+                {
+                    "package_id": "pkg_1",
+                    "products": ["test_product"],
+                    "impressions": 100000,
+                    "creative_ids": ["nonexistent_creative_1", "nonexistent_creative_2"],
+                }
             ],
             start_time=datetime(2025, 11, 1, tzinfo=UTC),
             end_time=datetime(2025, 11, 30, tzinfo=UTC),
@@ -264,12 +264,12 @@ async def test_create_media_buy_accepts_existing_creatives(integration_db):
             buyer_ref="buyer_ref_123",
             brand_manifest={"website": "https://example.com"},
             packages=[
-                Package(
-                    package_id="pkg_1",
-                    product_ids=["test_product"],
-                    impressions=100000,
-                    creative_ids=["creative_1", "creative_2"],
-                ).model_dump()
+                {
+                    "package_id": "pkg_1",
+                    "products": ["test_product"],
+                    "impressions": 100000,
+                    "creative_ids": ["creative_1", "creative_2"],
+                }
             ],
             start_time=datetime(2025, 11, 1, tzinfo=UTC),
             end_time=datetime(2025, 11, 30, tzinfo=UTC),
