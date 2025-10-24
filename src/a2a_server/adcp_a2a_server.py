@@ -1305,10 +1305,19 @@ class AdCPRequestHandler(RequestHandler):
             if missing_params:
                 return {
                     "success": False,
+                    "status": "failed",
                     "message": f"Missing required AdCP parameters: {missing_params}",
-                    "required_parameters": required_params,
-                    "received_parameters": list(parameters.keys()),
-                    "error": "This endpoint only accepts AdCP v2.4 spec-compliant format. See https://adcontextprotocol.org/docs/",
+                    "errors": [
+                        {
+                            "code": "validation_error",
+                            "message": f"Missing required AdCP parameters: {missing_params}",
+                            "details": {
+                                "required_parameters": required_params,
+                                "received_parameters": list(parameters.keys()),
+                                "missing_parameters": missing_params,
+                            },
+                        }
+                    ],
                 }
 
             # Call core function with AdCP spec-compliant parameters

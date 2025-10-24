@@ -80,7 +80,7 @@ class TestA2AErrorPropagation:
                 product_id="a2a_error_product",
                 name="A2A Error Test Product",
                 description="Product for error testing",
-                formats=["display_300x250"],
+                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 delivery_type="guaranteed",
                 pricing_model="CPM",
                 rate=10.0,
@@ -171,9 +171,12 @@ class TestA2AErrorPropagation:
             assert result.artifacts is not None
             assert len(result.artifacts) > 0
 
-            # Extract response data
+            # Extract response data from A2A artifact
             artifact = result.artifacts[0]
-            artifact_data = artifact.parts[0].data if hasattr(artifact.parts[0], "data") else {}
+            # A2A Part.root.data contains the actual response data
+            artifact_data = (
+                artifact.parts[0].root.data if hasattr(artifact.parts[0], "root") else artifact.parts[0].data
+            )
 
             # CRITICAL ASSERTIONS: Error propagation
             assert "success" in artifact_data, "Response must include 'success' field"
@@ -186,17 +189,18 @@ class TestA2AErrorPropagation:
             assert "message" in error, "Error must include message"
             assert "Missing required AdCP parameters" in error["message"]
 
-    async def test_create_media_buy_auth_error_includes_errors_field(self, handler, test_tenant):
+    async def test_create_media_buy_auth_error_includes_errors_field(self, handler, test_tenant, test_principal):
         """Test that authentication errors include errors field in A2A response."""
-        # Mock authentication with INVALID principal
-        handler._get_auth_token = MagicMock(return_value="invalid_token")
+        # Mock authentication - use WRONG token for the principal
+        handler._get_auth_token = MagicMock(return_value="wrong_invalid_token_123")
 
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
             patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.main.validate_setup_complete"),  # Skip setup validation for auth test
         ):
-            # Return non-existent principal ID
-            mock_get_principal.return_value = "nonexistent_principal"
+            # Return None to simulate auth failure (token doesn't match any principal)
+            mock_get_principal.return_value = None
             mock_get_tenant.return_value = test_tenant
 
             # Create valid message structure
@@ -222,9 +226,12 @@ class TestA2AErrorPropagation:
             # Process the message - should return auth error
             result = await handler.on_message_send(params)
 
-            # Extract response data
+            # Extract response data from A2A artifact
             artifact = result.artifacts[0]
-            artifact_data = artifact.parts[0].data if hasattr(artifact.parts[0], "data") else {}
+            # A2A Part.root.data contains the actual response data
+            artifact_data = (
+                artifact.parts[0].root.data if hasattr(artifact.parts[0], "root") else artifact.parts[0].data
+            )
 
             # CRITICAL ASSERTIONS: Error propagation for auth failures
             assert artifact_data["success"] is False, "success must be False for auth errors"
@@ -271,9 +278,12 @@ class TestA2AErrorPropagation:
             # Process the message - should succeed
             result = await handler.on_message_send(params)
 
-            # Extract response data
+            # Extract response data from A2A artifact
             artifact = result.artifacts[0]
-            artifact_data = artifact.parts[0].data if hasattr(artifact.parts[0], "data") else {}
+            # A2A Part.root.data contains the actual response data
+            artifact_data = (
+                artifact.parts[0].root.data if hasattr(artifact.parts[0], "root") else artifact.parts[0].data
+            )
 
             # CRITICAL ASSERTIONS: Success response
             assert artifact_data["success"] is True, "success must be True for successful operation"
@@ -318,9 +328,12 @@ class TestA2AErrorPropagation:
             # Process the message
             result = await handler.on_message_send(params)
 
-            # Extract response data
+            # Extract response data from A2A artifact
             artifact = result.artifacts[0]
-            artifact_data = artifact.parts[0].data if hasattr(artifact.parts[0], "data") else {}
+            # A2A Part.root.data contains the actual response data
+            artifact_data = (
+                artifact.parts[0].root.data if hasattr(artifact.parts[0], "root") else artifact.parts[0].data
+            )
 
             # CRITICAL ASSERTIONS: All AdCP fields preserved
             # Required AdCP fields from CreateMediaBuyResponse schema

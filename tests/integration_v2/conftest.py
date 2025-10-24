@@ -238,17 +238,12 @@ def sample_products(integration_db, sample_tenant):
             description="Premium guaranteed display advertising",
             formats=[
                 {
-                    "format_id": "display_300x250",
-                    "name": "Medium Rectangle",
-                    "type": "display",
-                    "description": "Standard display format",
-                    "width": 300,
-                    "height": 250,
-                    "delivery_options": {"hosted": None},
+                    "agent_url": "https://test.com",
+                    "id": "display_300x250",
                 }
             ],
             targeting_template={"geo_country": {"values": ["US"], "required": False}},
-            delivery_type="guaranteed_impressions",
+            delivery_type="guaranteed",
             pricing_model="CPM",
             rate="15.0",
             is_fixed=True,
@@ -266,12 +261,8 @@ def sample_products(integration_db, sample_tenant):
             description="Programmatic video advertising",
             formats=[
                 {
-                    "format_id": "video_15s",
-                    "name": "15 Second Video",
-                    "type": "video",
-                    "description": "Short form video",
-                    "duration": 15,
-                    "delivery_options": {"vast": {"mime_types": ["video/mp4"]}},
+                    "agent_url": "https://test.com",
+                    "id": "video_15s",
                 }
             ],
             targeting_template={},
