@@ -26,6 +26,7 @@ def safe_get_content(result):
     return result if isinstance(result, dict) else {}
 
 
+@pytest.mark.requires_db
 class TestMCPEndpointsComprehensive:
     """Comprehensive tests for all MCP endpoints."""
 
