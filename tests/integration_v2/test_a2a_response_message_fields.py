@@ -1,13 +1,13 @@
-"""Integration tests for A2A response message field validation.
+"""Integration tests for A2A response spec compliance.
 
-This test suite prevents AttributeError bugs when A2A handlers try to access
-fields that don't exist on response objects (like response.message when the
-response type doesn't have a message attribute).
+This test suite validates that A2A handlers return spec-compliant responses
+matching MCP behavior. Per PR #604, A2A responses no longer include protocol
+fields like 'success' or 'message' in the response data. Instead, human-readable
+messages are in Artifact.description.
 
-Key principle: Test the ACTUAL dict construction that happens in _handle_*_skill
-methods, not just the response object structure.
+Key principle: A2A responses must be identical to MCP responses (spec-compliant).
 
-Regression prevention: https://github.com/adcontextprotocol/salesagent/pull/337
+Updated for PR #604: https://github.com/adcontextprotocol/salesagent/pull/604
 """
 
 import contextlib
@@ -17,9 +17,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
-from tests.helpers.a2a_response_validator import (
-    assert_valid_skill_response,
-)
 
 # This test uses sample_products fixture which now uses pricing_options (v2)
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -27,10 +24,10 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 @pytest.mark.integration
 class TestA2AMessageFieldValidation:
-    """Test that all A2A skill handlers properly construct message fields.
+    """Test that all A2A skill handlers return spec-compliant responses.
 
-    These tests catch AttributeError bugs when handlers try to access
-    response.message on response types that don't have that field.
+    Per PR #604, A2A responses no longer include protocol fields (success, message).
+    These are now in Artifact.description, not response data.
     """
 
     @pytest.fixture
@@ -64,12 +61,12 @@ class TestA2AMessageFieldValidation:
         return _mock_context
 
     @pytest.mark.asyncio
-    async def test_create_media_buy_message_field_exists(
+    async def test_create_media_buy_spec_compliant_response(
         self, handler, mock_auth_context, sample_tenant, sample_principal, sample_products
     ):
-        """Test create_media_buy returns a valid message field.
+        """Test create_media_buy returns spec-compliant response (no 'message' field).
 
-        Prevents: 'CreateMediaBuyResponse' object has no attribute 'message'
+        Per PR #604: A2A responses should match MCP responses (spec-compliant).
         """
         with mock_auth_context(handler):
             # Create parameters for create_media_buy skill
@@ -90,17 +87,20 @@ class TestA2AMessageFieldValidation:
                 "end_time": end_date.isoformat(),
             }
 
-            # Call the handler method directly - this is where the bug occurred
+            # Call the handler method directly
             result = await handler._handle_create_media_buy_skill(params, sample_principal["access_token"])
 
-            # ✅ CRITICAL: Use comprehensive validator to check all fields
-            assert_valid_skill_response(result, "create_media_buy")
+            # ✅ Validate spec-compliant response (no 'success' or 'message' fields)
+            assert isinstance(result, dict), "Result must be dict"
+            assert "media_buy_id" in result, "Response must include media_buy_id"
+            assert "message" not in result, "Response should NOT include 'message' field (spec-compliant)"
+            assert "success" not in result, "Response should NOT include 'success' field (spec-compliant)"
 
     @pytest.mark.asyncio
-    async def test_sync_creatives_message_field_exists(self, handler, mock_auth_context, sample_principal):
-        """Test sync_creatives returns a valid message field.
+    async def test_sync_creatives_spec_compliant_response(self, handler, mock_auth_context, sample_principal):
+        """Test sync_creatives returns spec-compliant response (no 'message' field).
 
-        SyncCreativesResponse also doesn't have a .message field, uses __str__
+        Per PR #604: A2A responses should match MCP responses (spec-compliant).
         """
         with mock_auth_context(handler):
             params = {
@@ -118,14 +118,17 @@ class TestA2AMessageFieldValidation:
             # Call handler directly
             result = await handler._handle_sync_creatives_skill(params, sample_principal["access_token"])
 
-            # ✅ Use validator
-            assert_valid_skill_response(result, "sync_creatives")
+            # ✅ Validate spec-compliant response
+            assert isinstance(result, dict), "Result must be dict"
+            assert "creatives" in result, "Response must include creatives"
+            assert "message" not in result, "Response should NOT include 'message' field (spec-compliant)"
+            assert "success" not in result, "Response should NOT include 'success' field (spec-compliant)"
 
     @pytest.mark.asyncio
-    async def test_get_products_message_field_exists(self, handler, mock_auth_context, sample_principal):
-        """Test get_products returns a valid message field.
+    async def test_get_products_spec_compliant_response(self, handler, mock_auth_context, sample_principal):
+        """Test get_products returns spec-compliant response (no 'message' field).
 
-        GetProductsResponse DOES have a .message field, but we should use str() consistently
+        Per PR #604: A2A responses should match MCP responses (spec-compliant).
         """
         with mock_auth_context(handler):
             params = {
@@ -135,13 +138,15 @@ class TestA2AMessageFieldValidation:
 
             result = await handler._handle_get_products_skill(params, sample_principal["access_token"])
 
-            # ✅ Validate message field
-            assert "message" in result, "get_products response must include 'message' field"
-            assert isinstance(result["message"], str), "message must be a string"
+            # ✅ Validate spec-compliant response
+            assert isinstance(result, dict), "Result must be dict"
+            assert "products" in result, "Response must include products"
+            assert "message" not in result, "Response should NOT include 'message' field (spec-compliant)"
+            assert "success" not in result, "Response should NOT include 'success' field (spec-compliant)"
 
     @pytest.mark.asyncio
-    async def test_list_creatives_message_field_exists(self, handler, mock_auth_context, sample_principal):
-        """Test list_creatives returns a valid message field."""
+    async def test_list_creatives_spec_compliant_response(self, handler, mock_auth_context, sample_principal):
+        """Test list_creatives returns spec-compliant response (no 'message' field)."""
         with mock_auth_context(handler):
             params = {
                 "buyer_ref": "test_creative",
@@ -151,35 +156,39 @@ class TestA2AMessageFieldValidation:
 
             result = await handler._handle_list_creatives_skill(params, sample_principal["access_token"])
 
-            # ✅ Validate message field
-            assert "message" in result, "list_creatives response must include 'message' field"
-            assert isinstance(result["message"], str), "message must be a string"
+            # ✅ Validate spec-compliant response
+            assert isinstance(result, dict), "Result must be dict"
+            assert "creatives" in result, "Response must include creatives"
+            assert "message" not in result, "Response should NOT include 'message' field (spec-compliant)"
+            assert "success" not in result, "Response should NOT include 'success' field (spec-compliant)"
 
     @pytest.mark.asyncio
-    async def test_list_creative_formats_message_field_exists(self, handler, mock_auth_context, sample_principal):
-        """Test list_creative_formats returns a valid message field."""
+    async def test_list_creative_formats_spec_compliant_response(self, handler, mock_auth_context, sample_principal):
+        """Test list_creative_formats returns spec-compliant response (no 'message' field)."""
         with mock_auth_context(handler):
             params = {}
 
             result = await handler._handle_list_creative_formats_skill(params, sample_principal["access_token"])
 
-            # ✅ Validate message field
-            assert "message" in result, "list_creative_formats response must include 'message' field"
-            assert isinstance(result["message"], str), "message must be a string"
+            # ✅ Validate spec-compliant response
+            assert isinstance(result, dict), "Result must be dict"
+            assert "formats" in result, "Response must include formats"
+            assert "message" not in result, "Response should NOT include 'message' field (spec-compliant)"
+            assert "success" not in result, "Response should NOT include 'success' field (spec-compliant)"
 
 
 @pytest.mark.integration
 class TestA2AResponseDictConstruction:
-    """Test that all response types can be safely converted to A2A response dicts.
+    """Test that all response types can be safely converted to spec-compliant dicts.
 
-    This catches the pattern where we try to access an attribute that doesn't exist
-    on a Pydantic model, by testing the dict construction directly.
+    Per PR #604, A2A responses use model_dump() directly (no extra fields).
+    Human-readable messages are in Artifact.description, not response data.
     """
 
     def test_create_media_buy_response_to_dict(self):
-        """Test CreateMediaBuyResponse can be converted to A2A dict.
+        """Test CreateMediaBuyResponse can be converted to spec-compliant dict.
 
-        Protocol fields (status) are added by A2A wrapper, not in domain response.
+        Per PR #604: A2A uses model_dump() directly (no extra fields).
         """
         from src.core.schemas import CreateMediaBuyResponse
 
@@ -188,21 +197,19 @@ class TestA2AResponseDictConstruction:
             media_buy_id="mb-456",
         )
 
-        # Simulate what _handle_create_media_buy_skill does
+        # Simulate what _handle_create_media_buy_skill does now (PR #604)
         # ✅ This should NOT raise AttributeError
-        a2a_dict = {
-            "success": True,
-            "media_buy_id": response.media_buy_id,
-            "message": str(response),  # Safe for all response types
-        }
+        a2a_dict = response.model_dump()  # Direct conversion, no extra fields
 
-        assert a2a_dict["message"] == "Media buy mb-456 created successfully."
+        assert "media_buy_id" in a2a_dict
+        assert a2a_dict["media_buy_id"] == "mb-456"
+        assert "success" not in a2a_dict  # No protocol fields
+        assert "message" not in a2a_dict  # No protocol fields
 
     def test_sync_creatives_response_to_dict(self):
-        """Test SyncCreativesResponse can be converted to A2A dict.
+        """Test SyncCreativesResponse can be converted to spec-compliant dict.
 
-        Protocol fields (status, message) are added by A2A wrapper.
-        Domain response uses __str__() to generate message.
+        Per PR #604: A2A uses model_dump() directly (no extra fields).
         """
         from src.core.schemas import SyncCreativeResult, SyncCreativesResponse
 
@@ -219,33 +226,32 @@ class TestA2AResponseDictConstruction:
         )
 
         # ✅ This should NOT raise AttributeError
-        a2a_dict = {
-            "success": True,
-            "message": str(response),  # Safe - uses __str__ method
-        }
+        a2a_dict = response.model_dump()  # Direct conversion, no extra fields
 
-        assert isinstance(a2a_dict["message"], str)
-        assert len(a2a_dict["message"]) > 0
+        assert "creatives" in a2a_dict
+        assert len(a2a_dict["creatives"]) == 1
+        assert "success" not in a2a_dict  # No protocol fields
+        assert "message" not in a2a_dict  # No protocol fields
 
     def test_get_products_response_to_dict(self):
-        """Test GetProductsResponse can be converted to A2A dict."""
+        """Test GetProductsResponse can be converted to spec-compliant dict."""
         from src.core.schema_adapters import GetProductsResponse
 
         response = GetProductsResponse(products=[])
 
-        # ✅ Uses __str__ method to generate message
-        a2a_dict = {
-            "products": [p.model_dump() if hasattr(p, "model_dump") else p for p in response.products],
-            "message": str(response),  # Uses __str__ method
-        }
+        # ✅ Direct conversion, no extra fields
+        a2a_dict = response.model_dump()
 
-        assert a2a_dict["message"] == "No products matched your requirements."
+        assert "products" in a2a_dict
+        assert a2a_dict["products"] == []
+        assert "message" not in a2a_dict  # No protocol fields
+        assert "success" not in a2a_dict  # No protocol fields
 
-    def test_all_response_types_have_str_or_message(self):
-        """Test that all response types used in A2A have either __str__ or .message.
+    def test_all_response_types_have_str_for_artifact_description(self):
+        """Test that all response types have __str__ method for Artifact.description.
 
-        This is a contract test - ensures we don't add response types that
-        can't be safely converted to A2A dicts.
+        Per PR #604: Human-readable messages are in Artifact.description,
+        generated from response.__str__(). All response types must have __str__.
         """
         from src.core.schemas import (
             CreateMediaBuyResponse,
@@ -264,17 +270,12 @@ class TestA2AResponseDictConstruction:
         ]
 
         for response_cls in response_types:
-            # Check if it has __str__ method or message field
+            # All response types must have __str__ method
             has_str_method = hasattr(response_cls, "__str__")
 
-            # Try to create a minimal instance and check for message field
-            # This is tricky because we need to provide required fields
-            # For now, just check the class definition
-            has_message_field = "message" in response_cls.model_fields
-
             assert (
-                has_str_method or has_message_field
-            ), f"{response_cls.__name__} must have either __str__ method or .message field for A2A compatibility"
+                has_str_method
+            ), f"{response_cls.__name__} must have __str__ method for Artifact.description (PR #604)"
 
 
 @pytest.mark.integration
@@ -286,8 +287,11 @@ class TestA2AErrorHandling:
         return AdCPRequestHandler()
 
     @pytest.mark.asyncio
-    async def test_skill_error_has_message_field(self, handler, sample_principal):
-        """Test that skill errors return proper message fields."""
+    async def test_skill_error_has_errors_field(self, handler, sample_principal):
+        """Test that skill errors return spec-compliant error structure.
+
+        Per PR #604: Errors are in 'errors' field, not 'success' or 'message'.
+        """
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal:
@@ -300,11 +304,10 @@ class TestA2AErrorHandling:
 
             try:
                 result = await handler._handle_create_media_buy_skill(params, sample_principal["access_token"])
-                # If it doesn't raise, check the error response structure
-                if not result.get("success", True):
-                    assert "message" in result or "error" in result, "Error response must have message or error field"
+                # If it doesn't raise, check the error response structure (spec-compliant)
+                if result.get("errors"):
+                    assert "errors" in result, "Error response must have errors field"
+                    assert isinstance(result["errors"], list), "errors must be a list"
             except Exception as e:
                 # Errors are expected for invalid params
-                assert "message" not in str(e) or "AttributeError" not in str(
-                    e
-                ), "Should not get AttributeError when handling skill errors"
+                assert "AttributeError" not in str(e), "Should not get AttributeError when handling skill errors"

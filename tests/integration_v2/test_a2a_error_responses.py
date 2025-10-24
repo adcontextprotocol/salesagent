@@ -178,9 +178,7 @@ class TestA2AErrorPropagation:
                 artifact.parts[0].root.data if hasattr(artifact.parts[0], "root") else artifact.parts[0].data
             )
 
-            # CRITICAL ASSERTIONS: Error propagation
-            assert "success" in artifact_data, "Response must include 'success' field"
-            assert artifact_data["success"] is False, "success must be False when errors present"
+            # CRITICAL ASSERTIONS: Error propagation (spec-compliant - no 'success' field)
             assert "errors" in artifact_data, "Response must include 'errors' field"
             assert len(artifact_data["errors"]) > 0, "errors array must not be empty"
 
@@ -233,8 +231,7 @@ class TestA2AErrorPropagation:
                 artifact.parts[0].root.data if hasattr(artifact.parts[0], "root") else artifact.parts[0].data
             )
 
-            # CRITICAL ASSERTIONS: Error propagation for auth failures
-            assert artifact_data["success"] is False, "success must be False for auth errors"
+            # CRITICAL ASSERTIONS: Error propagation for auth failures (spec-compliant - no 'success' field)
             assert "errors" in artifact_data, "Response must include 'errors' field for auth errors"
             assert len(artifact_data["errors"]) > 0, "errors array must not be empty"
 
@@ -285,8 +282,8 @@ class TestA2AErrorPropagation:
                 artifact.parts[0].root.data if hasattr(artifact.parts[0], "root") else artifact.parts[0].data
             )
 
-            # CRITICAL ASSERTIONS: Success response
-            assert artifact_data["success"] is True, "success must be True for successful operation"
+            # CRITICAL ASSERTIONS: Success response (spec-compliant - no 'success' field)
+            # Success is indicated by absence of errors (or empty errors array)
             assert (
                 artifact_data.get("errors") is None or len(artifact_data.get("errors", [])) == 0
             ), "errors field must be None or empty array for success"
@@ -335,7 +332,7 @@ class TestA2AErrorPropagation:
                 artifact.parts[0].root.data if hasattr(artifact.parts[0], "root") else artifact.parts[0].data
             )
 
-            # CRITICAL ASSERTIONS: All AdCP fields preserved
+            # CRITICAL ASSERTIONS: All AdCP fields preserved (spec-compliant)
             # Required AdCP fields from CreateMediaBuyResponse schema
             assert "buyer_ref" in artifact_data, "Must include buyer_ref (AdCP spec required field)"
 
@@ -345,13 +342,9 @@ class TestA2AErrorPropagation:
                 "creative_deadline" in artifact_data or artifact_data.get("creative_deadline") is None
             ), "Must include creative_deadline (AdCP spec field)"
 
-            # A2A-specific augmentation fields (protocol layer fields)
-            assert "success" in artifact_data, "A2A wrapper must add success field"
-            assert "message" in artifact_data, "A2A wrapper must add message field"
-
-            # Protocol fields added by A2A wrapper (not part of CreateMediaBuyResponse schema)
-            # These are added by the ProtocolEnvelope wrapper in the A2A layer
-            assert "status" in artifact_data, "A2A protocol must add status field"
+            # Per PR #604: A2A no longer adds protocol fields (success, message, status) to response data
+            # Human-readable messages are in Artifact.description, not in response data
+            # This makes A2A responses identical to MCP responses (spec-compliant)
 
 
 @pytest.mark.integration
@@ -382,11 +375,8 @@ class TestA2AErrorResponseStructure:
                 parameters={"brand_manifest": {"name": "test"}}, auth_token="test_token"  # Missing required fields
             )
 
-            # Verify error response structure
+            # Verify error response structure (spec-compliant - no 'success' or 'message' fields)
             assert isinstance(result, dict), "Error response must be dict"
-            assert "success" in result, "Error response must have success field"
-            assert result["success"] is False, "Error response success must be False"
-            assert "message" in result, "Error response must have message field"
             # Check for required_parameters in errors[0].details (new structure)
             errors = result.get("errors", [])
             assert len(errors) > 0, "Validation error must have errors array"
@@ -414,8 +404,7 @@ class TestA2AErrorResponseStructure:
                 auth_token="test_token",
             )
 
-            # Verify this is a validation error response
-            assert result["success"] is False, "Validation error should have success=False"
+            # Verify this is a validation error response (spec-compliant - no 'success' field)
             # Check for required_parameters in errors[0].details (new structure)
             errors = result.get("errors", [])
             assert len(errors) > 0, "Validation error must have errors array"
