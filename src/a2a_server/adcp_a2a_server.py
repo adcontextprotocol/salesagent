@@ -318,6 +318,47 @@ class AdCPRequestHandler(RequestHandler):
             # Don't fail the task if webhook fails
             logger.warning(f"Failed to send protocol-level webhook for task {task.id}: {e}")
 
+    def _reconstruct_response_object(self, skill_name: str, data: dict) -> Any:
+        """Reconstruct a response object from skill result data to call __str__().
+
+        Args:
+            skill_name: Name of the skill that produced the result
+            data: Dictionary containing the response data
+
+        Returns:
+            Reconstructed response object, or None if reconstruction fails
+        """
+        try:
+            # Map skill names to response classes
+            from src.core.schema_adapters import (
+                CreateMediaBuyResponse,
+                GetMediaBuyDeliveryResponse,
+                GetProductsResponse,
+                ListAuthorizedPropertiesResponse,
+                ListCreativeFormatsResponse,
+                ListCreativesResponse,
+                SyncCreativesResponse,
+                UpdateMediaBuyResponse,
+            )
+
+            response_map = {
+                "create_media_buy": CreateMediaBuyResponse,
+                "get_media_buy_delivery": GetMediaBuyDeliveryResponse,
+                "get_products": GetProductsResponse,
+                "list_authorized_properties": ListAuthorizedPropertiesResponse,
+                "list_creative_formats": ListCreativeFormatsResponse,
+                "list_creatives": ListCreativesResponse,
+                "sync_creatives": SyncCreativesResponse,
+                "update_media_buy": UpdateMediaBuyResponse,
+            }
+
+            response_class = response_map.get(skill_name)
+            if response_class:
+                return response_class(**data)
+        except Exception as e:
+            logger.debug(f"Could not reconstruct response object for {skill_name}: {e}")
+        return None
+
     async def on_message_send(
         self,
         params: MessageSendParams,
@@ -471,14 +512,26 @@ class AdCPRequestHandler(RequestHandler):
                         logger.error(f"Error in explicit skill {skill_name}: {e}")
                         results.append({"skill": skill_name, "error": str(e), "success": False})
 
-                # Create artifacts for all skill results
+                # Create artifacts for all skill results with human-readable descriptions
                 for i, res in enumerate(results):
                     artifact_data = res["result"] if res["success"] else {"error": res["error"]}
+
+                    # Generate human-readable description from response __str__()
+                    description = None
+                    if res["success"] and isinstance(artifact_data, dict):
+                        try:
+                            response_obj = self._reconstruct_response_object(res["skill"], artifact_data)
+                            if response_obj and hasattr(response_obj, "__str__"):
+                                description = str(response_obj)
+                        except Exception:
+                            pass  # If reconstruction fails, skip description
+
                     task.artifacts = task.artifacts or []
                     task.artifacts.append(
                         Artifact(
                             artifactId=f"skill_result_{i+1}",
                             name=f"{'error' if not res['success'] else res['skill']}_result",
+                            description=description,  # Human-readable message
                             parts=[Part(type="data", data=artifact_data)],
                         )
                     )
@@ -1209,21 +1262,12 @@ class AdCPRequestHandler(RequestHandler):
                 brief=brief, promoted_offering=promoted_offering, context=tool_context
             )
 
-            # Handle both dict and object responses (defensive pattern)
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: products, available_currencies, errors
             if isinstance(response, dict):
-                products = response.get("products", [])
-                message = response.get("message", "Products retrieved successfully")
-                products_list = products
+                return response
             else:
-                products = response.products
-                message = str(response)  # Use __str__ method for human-readable message
-                products_list = [product.model_dump() for product in products]
-
-            # Convert to A2A response format
-            return {
-                "products": products_list,
-                "message": message,
-            }
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in get_products skill: {e}")
@@ -1281,15 +1325,12 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Convert response to A2A format
-            # Use model_dump() to ensure all fields (including errors) are included
-            result = response.model_dump(exclude_none=False, mode="json")
-
-            # Add A2A-specific fields
-            result["success"] = response.errors is None or len(response.errors) == 0
-            result["message"] = str(response)  # Human-readable message via __str__
-
-            return result
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from CreateMediaBuyResponse
+            if isinstance(response, dict):
+                return response
+            else:
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in create_media_buy skill: {e}")
@@ -1325,16 +1366,12 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Convert response to A2A format (using AdCP spec field names)
-            # Convert response to A2A format
-            # Note: SyncCreativesResponse only contains domain data (creatives, dry_run)
-            # Protocol fields (status, task_id, etc.) are added by the A2A protocol layer
-            return {
-                "success": True,
-                "creatives": [result.model_dump() for result in response.creatives],
-                "dry_run": response.dry_run,
-                "message": str(response),  # Use __str__ method for human-readable message
-            }
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: creatives (array of results), dry_run (boolean)
+            if isinstance(response, dict):
+                return response
+            else:
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in sync_creatives skill: {e}")
@@ -1366,32 +1403,12 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Handle both dict and object responses (defensive pattern)
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: query_summary, pagination, creatives (+ optional format_summary, status_summary)
             if isinstance(response, dict):
-                creatives_list = response.get("creatives", [])
-                total_count = response.get("total_count", 0)
-                page = response.get("page", 1)
-                limit = response.get("limit", 50)
-                has_more = response.get("has_more", False)
-                message = response.get("message", "Creatives retrieved successfully")
+                return response
             else:
-                creatives_list = [creative.model_dump() for creative in response.creatives]
-                total_count = response.query_summary.total_matching
-                page = response.pagination.current_page
-                limit = response.pagination.limit
-                has_more = response.pagination.has_more
-                message = str(response)  # Use __str__ method for human-readable message
-
-            # Convert response to A2A format
-            return {
-                "success": True,
-                "creatives": creatives_list,
-                "total_count": total_count,
-                "page": page,
-                "limit": limit,
-                "has_more": has_more,
-                "message": message,
-            }
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in list_creatives skill: {e}")
@@ -1623,43 +1640,12 @@ class AdCPRequestHandler(RequestHandler):
             # Call core function with request
             response = core_list_creative_formats_tool(req=req, context=tool_context)
 
-            # Handle both dict and object responses (core function may return either based on INCLUDE_SCHEMAS_IN_RESPONSES)
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: formats (required), creative_agents (optional), errors (optional)
             if isinstance(response, dict):
-                # Response is already a dict (schema enhancement enabled)
-                formats = response.get("formats", [])
-                message = response.get("message", "Creative formats retrieved successfully")
-                # Formats in dict are already serialized
-                formats_list = formats
+                return response
             else:
-                # Response is ListCreativeFormatsResponse object
-                formats = response.formats
-                message = str(response)  # Use __str__ method for human-readable message
-                # Serialize Format objects to dicts
-                formats_list = [format_obj.model_dump() for format_obj in formats]
-
-            # Convert response to A2A format with schema validation
-            from src.core.schema_validation import INCLUDE_SCHEMAS_IN_RESPONSES, enhance_a2a_response_with_schema
-
-            a2a_response = {
-                "success": True,
-                "formats": formats_list,
-                "message": message,
-                "total_count": len(formats_list),
-                "specification_version": "AdCP v2.4",
-            }
-
-            # Add schema validation metadata for client validation
-            if INCLUDE_SCHEMAS_IN_RESPONSES:
-                from src.core.schemas import ListCreativeFormatsResponse
-
-                enhanced_response = enhance_a2a_response_with_schema(
-                    response_data=a2a_response,
-                    model_class=ListCreativeFormatsResponse,
-                    include_full_schema=False,  # Set to True for development debugging
-                )
-                return enhanced_response
-
-            return a2a_response
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in list_creative_formats skill: {e}")
@@ -1707,20 +1693,13 @@ class AdCPRequestHandler(RequestHandler):
             # Context can be None for unauthenticated calls - tenant will be detected from headers
             response = core_list_authorized_properties_tool(req=request, context=tool_context)
 
-            # Handle both dict and object responses (defensive pattern)
-            # Per AdCP v2.4 spec, response has publisher_domains (not properties/tags)
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP v2.4 spec: only publisher_domains, primary_channels, primary_countries,
+            # portfolio_description, advertising_policies, last_updated, and errors
             if isinstance(response, dict):
-                publisher_domains = response.get("publisher_domains", [])
+                return response
             else:
-                publisher_domains = response.publisher_domains
-
-            # Convert response to A2A format (using AdCP v2.4 spec fields)
-            return {
-                "success": True,
-                "publisher_domains": publisher_domains,
-                "message": f"Found {len(publisher_domains)} authorized publisher domains",
-                "total_count": len(publisher_domains),
-            }
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in list_authorized_properties skill: {e}")
@@ -1764,19 +1743,12 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Convert response to A2A format (handle both Pydantic objects and dicts)
-            if hasattr(response, "model_dump"):
-                # Real Pydantic response object
-                result = response.model_dump(exclude_none=False, mode="json")
-                result["success"] = response.errors is None or len(response.errors) == 0
-                result["message"] = str(response)  # Human-readable message via __str__
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from UpdateMediaBuyResponse
+            if isinstance(response, dict):
+                return response
             else:
-                # Already a dict (from mock or legacy code)
-                result = response
-                if "success" not in result:
-                    result["success"] = result.get("errors") is None or len(result.get("errors", [])) == 0
-
-            return result
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in update_media_buy skill: {e}")
@@ -1852,19 +1824,12 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Convert response to A2A format (handle both Pydantic objects and dicts)
-            if hasattr(response, "model_dump"):
-                # Real Pydantic response object
-                result = response.model_dump(exclude_none=False, mode="json")
-                result["success"] = response.errors is None or len(response.errors) == 0
-                result["message"] = str(response)  # Human-readable message via __str__
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from ProvidePerformanceFeedbackResponse
+            if isinstance(response, dict):
+                return response
             else:
-                # Already a dict (from mock or legacy code)
-                result = response
-                if "success" not in result:
-                    result["success"] = result.get("errors") is None or len(result.get("errors", [])) == 0
-
-            return result
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in update_performance_index skill: {e}")
