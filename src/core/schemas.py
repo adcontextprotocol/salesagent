@@ -2292,7 +2292,7 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         # No conversion needed, Pydantic union type handles both
 
         # If using legacy format, convert to new format
-        if "product_ids" in values and not values.get("packages"):
+        if "product_ids" in values and values.get("product_ids") is not None and not values.get("packages"):
             # Convert product_ids to packages
             # Note: AdCP create-media-buy-request only requires products from client
             # Server generates package_id and initial status per AdCP package schema
