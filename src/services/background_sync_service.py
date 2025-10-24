@@ -64,7 +64,7 @@ def start_inventory_sync_background(
                 started_at = started_at.replace(tzinfo=UTC)
 
             time_running = datetime.now(UTC) - started_at
-            is_stale = time_running > timedelta(hours=1) and not existing_sync.progress_data
+            is_stale = time_running > timedelta(hours=1) and not existing_sync.progress
 
             if is_stale:
                 # Mark stale sync as failed and allow new sync to start
@@ -94,8 +94,7 @@ def start_inventory_sync_background(
             started_at=datetime.now(UTC),
             triggered_by="admin_ui",
             triggered_by_id="system",
-            progress=0,
-            progress_data={
+            progress={
                 "phase": "Starting",
                 "sync_types": sync_types,
                 "custom_targeting_limit": custom_targeting_limit,
@@ -377,7 +376,7 @@ def _update_sync_progress(sync_id: str, progress_data: dict[str, Any]):
             stmt = select(SyncJob).where(SyncJob.sync_id == sync_id)
             sync_job = db.scalars(stmt).first()
             if sync_job:
-                sync_job.progress_data = progress_data
+                sync_job.progress = progress_data
                 db.commit()
     except Exception as e:
         logger.warning(f"Failed to update sync progress: {e}")
