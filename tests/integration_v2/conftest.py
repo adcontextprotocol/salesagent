@@ -386,6 +386,7 @@ def create_test_product_with_pricing(
     is_fixed: bool = True,
     currency: str = "USD",
     min_spend_per_package: Decimal | float | str | None = None,
+    price_guidance: dict | None = None,
     formats: list[dict[str, str]] | None = None,
     targeting_template: dict | None = None,
     delivery_type: str = "guaranteed_impressions",
@@ -487,6 +488,7 @@ def create_test_product_with_pricing(
         rate=rate_decimal,
         currency=currency,
         is_fixed=is_fixed,
+        price_guidance=price_guidance,
         min_spend_per_package=min_spend_decimal,
     )
     session.add(pricing_option)
@@ -525,6 +527,16 @@ def create_auction_product(
     Returns:
         Product with auction pricing
     """
+    # Auction products require price_guidance per AdCP spec (if not already provided)
+    if "price_guidance" not in kwargs:
+        floor_value = float(floor_cpm)
+        kwargs["price_guidance"] = {
+            "floor": floor_value,
+            "p50": floor_value * 1.5,  # Median is 50% above floor
+            "p75": floor_value * 2.0,  # 75th percentile is 2x floor
+            "p90": floor_value * 2.5,  # 90th percentile is 2.5x floor
+        }
+
     return create_test_product_with_pricing(
         session=session,
         tenant_id=tenant_id,

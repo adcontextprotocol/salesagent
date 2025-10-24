@@ -1341,6 +1341,20 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 return response.model_dump()
 
+        except ServerError as e:
+            # Auth errors - return structured error response instead of raising
+            logger.error(f"Error in create_media_buy skill: {e}")
+            return {
+                "success": False,
+                "status": "failed",
+                "message": str(e.message) if hasattr(e, "message") else str(e),
+                "errors": [
+                    {
+                        "code": "authentication_error",
+                        "message": str(e.message) if hasattr(e, "message") else str(e),
+                    }
+                ],
+            }
         except Exception as e:
             logger.error(f"Error in create_media_buy skill: {e}")
             raise ServerError(InternalError(message=f"Failed to create media buy: {str(e)}"))

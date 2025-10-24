@@ -41,10 +41,13 @@ class TestA2AMessageFieldValidation:
     @pytest.fixture
     def mock_auth_context(self, sample_tenant, sample_principal):
         """Mock authentication context for all tests."""
+        from src.core.config_loader import set_current_tenant
 
         @contextlib.contextmanager
         def _mock_context(handler):
             handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+            # Set tenant context explicitly (required for database queries)
+            set_current_tenant({"tenant_id": sample_tenant["tenant_id"], "name": "Test Tenant"})
             # Patch get_current_tenant in both modules where it's used
             # Also skip setup validation for tests
             with (
