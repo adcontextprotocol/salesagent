@@ -213,6 +213,11 @@ def media_buy_detail(tenant_id, media_buy_id):
                     pending_approval_step = db_session.scalars(stmt).first()
                     break
 
+            # Get computed readiness state (not just raw database status)
+            from src.admin.services.media_buy_readiness_service import MediaBuyReadinessService
+            readiness = MediaBuyReadinessService.get_readiness_state(media_buy_id, tenant_id, db_session)
+            computed_state = readiness["state"]
+
             # Determine status message
             status_message = None
             if pending_approval_step:
@@ -236,6 +241,8 @@ def media_buy_detail(tenant_id, media_buy_id):
                 pending_approval_step=pending_approval_step,
                 status_message=status_message,
                 creative_assignments_by_package=creative_assignments_by_package,
+                computed_state=computed_state,
+                readiness=readiness,
             )
     except Exception as e:
         logger.error(f"Error viewing media buy: {e}", exc_info=True)
@@ -303,8 +310,41 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                 media_buy = db_session.scalars(stmt_buy).first()
 
                 if media_buy and media_buy.status == "pending_approval":
-                    # Update media buy status to scheduled
-                    media_buy.status = "scheduled"
+                    # Check if all creatives are approved before moving to scheduled
+                    from src.core.database.models import Creative, CreativeAssignment
+
+                    stmt_assignments = select(CreativeAssignment).filter_by(
+                        tenant_id=tenant_id,
+                        media_buy_id=media_buy_id
+                    )
+                    assignments = db_session.scalars(stmt_assignments).all()
+
+                    all_creatives_approved = True
+                    if assignments:
+                        creative_ids = [a.creative_id for a in assignments]
+                        stmt_creatives = select(Creative).filter(
+                            Creative.tenant_id == tenant_id,
+                            Creative.creative_id.in_(creative_ids)
+                        )
+                        creatives = db_session.scalars(stmt_creatives).all()
+
+                        # Check if any creatives are not approved
+                        for creative in creatives:
+                            if creative.status != "approved":
+                                all_creatives_approved = False
+                                break
+                    else:
+                        # No creatives assigned yet
+                        all_creatives_approved = False
+
+                    # Update status based on creative approval state
+                    if all_creatives_approved:
+                        media_buy.status = "scheduled"
+                    else:
+                        # Keep it in a state that shows it needs creative approval
+                        # Use "draft" which will be displayed as "needs_approval" or "needs_creatives" by readiness service
+                        media_buy.status = "draft"
+
                     media_buy.approved_at = datetime.now(UTC)
                     media_buy.approved_by = user_email
                     db_session.commit()

@@ -48,7 +48,7 @@
         <div class="detail-row">
             <span class="label">Status:</span>
             <span class="value">
-                <span class="status status-{{ media_buy.status }}">{{ media_buy.status|upper }}</span>
+                <span class="status status-{{ computed_state }}">{{ computed_state|upper|replace('_', ' ') }}</span>
                 {% if pending_approval_step %}
                 <span class="status-badge">Awaiting Approval</span>
                 {% endif %}
