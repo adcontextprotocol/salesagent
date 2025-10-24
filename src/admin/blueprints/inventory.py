@@ -567,13 +567,15 @@ def sync_inventory(tenant_id):
                     temp_keyfile = f.name
 
                 try:
-                    # Create service account credentials (same pattern as GAM health check)
-                    oauth2_credentials = google.oauth2.service_account.Credentials.from_service_account_file(
+                    # Create service account credentials
+                    credentials = google.oauth2.service_account.Credentials.from_service_account_file(
                         temp_keyfile, scopes=["https://www.googleapis.com/auth/dfp"]
                     )
+                    # Wrap in GoogleCredentialsClient for AdManagerClient compatibility
+                    oauth2_client = oauth2.GoogleCredentialsClient(credentials)
 
                     # Create GAM client with service account credentials
-                    client = ad_manager.AdManagerClient(oauth2_credentials, adapter_config.gam_network_code)
+                    client = ad_manager.AdManagerClient(oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code)
                 finally:
                     # Clean up temp file
                     try:
