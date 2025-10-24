@@ -5475,7 +5475,18 @@ async def _create_media_buy_impl(
                     elif isinstance(fmt, str):
                         # Legacy string format - convert to FormatId with default agent_url
                         # Use current tenant's URL as agent_url
-                        agent_url = tenant.get("virtual_host", "http://localhost:8001")
+                        virtual_host = tenant.get("virtual_host")
+                        subdomain = tenant.get("subdomain")
+                        tenant_id = tenant.get("tenant_id")
+
+                        # Build agent_url with fallback chain: virtual_host → subdomain → tenant_id
+                        if virtual_host:
+                            agent_url = f"https://{virtual_host}"
+                        elif subdomain:
+                            agent_url = f"https://{subdomain}.adcontext.com"
+                        else:
+                            agent_url = f"adcp://{tenant_id}"
+
                         format_ids_for_package.append(FormatId(agent_url=agent_url, id=fmt))
                     else:
                         # Unknown type - try to extract fields
@@ -5538,7 +5549,18 @@ async def _create_media_buy_impl(
                     elif isinstance(fmt, dict):
                         format_ids_for_package.append(FormatId(**fmt))
                     elif isinstance(fmt, str):
-                        agent_url = tenant.get("virtual_host", "http://localhost:8001")
+                        virtual_host = tenant.get("virtual_host")
+                        subdomain = tenant.get("subdomain")
+                        tenant_id = tenant.get("tenant_id")
+
+                        # Build agent_url with fallback chain: virtual_host → subdomain → tenant_id
+                        if virtual_host:
+                            agent_url = f"https://{virtual_host}"
+                        elif subdomain:
+                            agent_url = f"https://{subdomain}.adcontext.com"
+                        else:
+                            agent_url = f"adcp://{tenant_id}"
+
                         format_ids_for_package.append(FormatId(agent_url=agent_url, id=fmt))
                     else:
                         agent_url = getattr(fmt, "agent_url", None)
@@ -7487,7 +7509,18 @@ def complete_task(req, context):
                                 format_ids_for_package.append(FormatId(**first_format_id))
                             elif isinstance(first_format_id, str):
                                 tenant = get_current_tenant()
-                                agent_url = tenant.get("virtual_host", "http://localhost:8001")
+                                virtual_host = tenant.get("virtual_host")
+                                subdomain = tenant.get("subdomain")
+                                tenant_id = tenant.get("tenant_id")
+
+                                # Build agent_url with fallback chain: virtual_host → subdomain → tenant_id
+                                if virtual_host:
+                                    agent_url = f"https://{virtual_host}"
+                                elif subdomain:
+                                    agent_url = f"https://{subdomain}.adcontext.com"
+                                else:
+                                    agent_url = f"adcp://{tenant_id}"
+
                                 format_ids_for_package.append(FormatId(agent_url=agent_url, id=first_format_id))
 
                         packages.append(
