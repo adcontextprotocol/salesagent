@@ -60,7 +60,9 @@ def test_service_account_json_invalid_format():
 
 @patch("src.adapters.gam.auth.google.oauth2.service_account.Credentials.from_service_account_info")
 def test_service_account_credentials_creation(mock_from_info):
-    """Test that service account credentials are created correctly."""
+    """Test that service account credentials are created and wrapped correctly."""
+    from googleads.oauth2 import GoogleCredentialsClient
+
     service_account_json = json.dumps(
         {
             "type": "service_account",
@@ -76,9 +78,10 @@ def test_service_account_credentials_creation(mock_from_info):
 
     config = {"service_account_json": service_account_json}
     auth_manager = GAMAuthManager(config)
-    credentials = auth_manager.get_credentials()
+    oauth2_client = auth_manager.get_credentials()
 
-    assert credentials == mock_credentials
+    # Verify it returns a GoogleCredentialsClient wrapper
+    assert isinstance(oauth2_client, GoogleCredentialsClient)
     mock_from_info.assert_called_once()
     call_args = mock_from_info.call_args
     assert call_args[1]["scopes"] == ["https://www.googleapis.com/auth/dfp"]
@@ -118,3 +121,29 @@ def test_build_gam_config_with_oauth():
     assert config["trafficker_id"] == "67890"
     assert config["refresh_token"] == "test_token"
     assert "service_account_json" not in config
+
+
+@patch("src.adapters.gam.auth.google.oauth2.service_account.Credentials.from_service_account_info")
+def test_service_account_returns_compatible_oauth2_client(mock_from_info):
+    """Test that service account returns an OAuth2 client compatible with AdManagerClient."""
+    from googleads.oauth2 import GoogleOAuth2Client
+
+    service_account_json = json.dumps(
+        {
+            "type": "service_account",
+            "project_id": "test-project",
+            "private_key_id": "key123",
+            "private_key": "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----\n",
+            "client_email": "test@test-project.iam.gserviceaccount.com",
+        }
+    )
+
+    mock_credentials = Mock()
+    mock_from_info.return_value = mock_credentials
+
+    config = {"service_account_json": service_account_json}
+    auth_manager = GAMAuthManager(config)
+    oauth2_client = auth_manager.get_credentials()
+
+    # Verify it's a subclass of GoogleOAuth2Client (required by AdManagerClient)
+    assert isinstance(oauth2_client, GoogleOAuth2Client)
