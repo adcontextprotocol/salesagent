@@ -1686,6 +1686,19 @@ class AdCPRequestHandler(RequestHandler):
                 except Exception as e:
                     logger.warning(f"Failed to create authenticated context (continuing without auth): {e}")
                     tool_context = None
+            else:
+                # No auth token - create minimal Context-like object with headers for tenant detection
+                # This allows tenant detection via Apx-Incoming-Host, Host, or x-adcp-tenant headers
+                headers = getattr(_request_context, "request_headers", {})
+
+                # Create a simple object that quacks like a FastMCP Context
+                # get_principal_from_context() needs: context.meta["headers"] or context.headers
+                class MinimalContext:
+                    def __init__(self, headers):
+                        self.meta = {"headers": headers}
+                        self.headers = headers
+
+                tool_context = MinimalContext(headers)
 
             # Map A2A parameters to ListAuthorizedPropertiesRequest
             request = ListAuthorizedPropertiesRequest(tags=parameters.get("tags", []))
