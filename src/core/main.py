@@ -545,6 +545,15 @@ def get_principal_from_context(
     # 1. Check host header - try virtual host FIRST, then fall back to subdomain
     if not requested_tenant_id:
         host = _get_header_case_insensitive(headers, "host") or ""
+        apx_host = _get_header_case_insensitive(headers, "apx-incoming-host")
+
+        # Log ALL headers for debugging
+        logger.error("🔍 TENANT DETECTION - Received headers:")
+        for k, v in headers.items():
+            logger.error(f"🔍   {k}: {v}")
+        logger.error(f"🔍 Host header: {host}")
+        logger.error(f"🔍 Apx-Incoming-Host header: {apx_host}")
+
         console.print(f"[blue]Checking Host header: {host}[/blue]")
 
         # CRITICAL: Try virtual host lookup FIRST before extracting subdomain
