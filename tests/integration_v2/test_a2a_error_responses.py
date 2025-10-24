@@ -142,6 +142,8 @@ class TestA2AErrorPropagation:
     def create_message_with_skill(self, skill_name: str, parameters: dict) -> Message:
         """Helper to create message with explicit skill invocation."""
         return Message(
+            message_id="msg_test",
+            context_id="ctx_test",
             role=Role.user,
             parts=[Part(data={"skill": skill_name, "input": parameters})],
         )

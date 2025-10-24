@@ -12,7 +12,7 @@ used in error responses. These tests prevent regression by actually executing
 those error paths.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete
