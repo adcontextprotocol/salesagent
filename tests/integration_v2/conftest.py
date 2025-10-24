@@ -86,8 +86,12 @@ def integration_db():
     # Create the database without running migrations
     from sqlalchemy import create_engine
 
+    # Reset engine BEFORE creating new database to close all old connections
+    from sqlalchemy.orm import scoped_session, sessionmaker
+
     # Import ALL models first, BEFORE using Base
     import src.core.database.models as all_models  # noqa: F401
+    from src.core.database.database_session import reset_engine
 
     # Explicitly ensure Context and workflow models are registered
     from src.core.database.models import (  # noqa: F401
@@ -98,15 +102,16 @@ def integration_db():
         WorkflowStep,
     )
 
+    reset_engine()
+
+    # Reset context manager singleton so it uses the new database session
+    # This is critical because ContextManager caches a session reference
+    import src.core.context_manager
+
+    src.core.context_manager._context_manager_instance = None
+
     engine = create_engine(os.environ["DATABASE_URL"], echo=False)
     Base.metadata.create_all(bind=engine)
-
-    # Reset engine and update globals to point to the test database
-    from sqlalchemy.orm import scoped_session, sessionmaker
-
-    from src.core.database.database_session import reset_engine
-
-    reset_engine()
 
     # Now update the globals to use our test engine
     import src.core.database.database_session as db_session_module
@@ -119,6 +124,9 @@ def integration_db():
 
     # Reset engine to clean up test database connections
     reset_engine()
+
+    # Reset context manager singleton again to avoid stale references
+    src.core.context_manager._context_manager_instance = None
 
     # Cleanup
     engine.dispose()
