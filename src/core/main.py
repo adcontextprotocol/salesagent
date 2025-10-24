@@ -4678,6 +4678,19 @@ async def _create_media_buy_impl(
                     error_msg = f"Package {package.buyer_ref} must specify either product_id or products."
                     raise ValueError(error_msg)
 
+            # Check for duplicate product_ids across packages
+            # Business rule: Each product can only be used once per media buy
+            product_id_counts: dict[str, int] = {}
+            for package in req.packages:
+                if package.product_id:
+                    product_id_counts[package.product_id] = product_id_counts.get(package.product_id, 0) + 1
+                # TODO: Handle products array when v2.4 format is fully implemented
+
+            duplicate_products = [pid for pid, count in product_id_counts.items() if count > 1]
+            if duplicate_products:
+                error_msg = f"Duplicate product_id(s) found in packages: {', '.join(duplicate_products)}. Each product can only be used once per media buy."
+                raise ValueError(error_msg)
+
         # 4. Currency-specific budget validation
         from decimal import Decimal
 
