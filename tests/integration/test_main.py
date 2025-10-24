@@ -3,25 +3,21 @@ from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ProductModel
-from src.core.database.models import Tenant
 
 
 @pytest.mark.requires_db
-def test_product_catalog_schema_conformance(integration_db):
+def test_product_catalog_schema_conformance(integration_db, sample_tenant, sample_products):
     """
     Test that products can be queried from the database and have required fields.
 
     Uses real PostgreSQL database with migrations applied via integration_db fixture.
     """
-    # integration_db fixture has already initialized database with test data
+    # Fixtures provide test tenant and products
+    tenant_id = sample_tenant["tenant_id"]
 
     with get_db_session() as db_session:
-        # Get any tenant from the database
-        tenant = db_session.scalars(select(Tenant)).first()
-        assert tenant is not None, "No tenant found in test database"
-
-        # Query products for that tenant
-        products = db_session.scalars(select(ProductModel).filter_by(tenant_id=tenant.tenant_id)).all()
+        # Query products for the test tenant
+        products = db_session.scalars(select(ProductModel).filter_by(tenant_id=tenant_id)).all()
 
         # Convert to list of dicts for assertions
         rows = []
