@@ -48,6 +48,13 @@ def start_inventory_sync_background(
 
     # Create sync job record
     with get_db_session() as db:
+        # Get adapter type for the tenant
+        from src.core.database.models import AdapterConfig
+
+        adapter_config_stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
+        adapter_config = db.scalars(adapter_config_stmt).first()
+        adapter_type = adapter_config.adapter_type if adapter_config else "mock"
+
         # Check if sync already running
         stmt = select(SyncJob).where(
             SyncJob.tenant_id == tenant_id, SyncJob.status == "running", SyncJob.sync_type == "inventory"
@@ -89,6 +96,7 @@ def start_inventory_sync_background(
         sync_job = SyncJob(
             sync_id=sync_id,
             tenant_id=tenant_id,
+            adapter_type=adapter_type,
             sync_type="inventory",
             status="running",
             started_at=datetime.now(UTC),
