@@ -387,7 +387,12 @@ class TestA2AErrorResponseStructure:
             assert "success" in result, "Error response must have success field"
             assert result["success"] is False, "Error response success must be False"
             assert "message" in result, "Error response must have message field"
-            assert "required_parameters" in result, "Validation error must list required parameters"
+            # Check for required_parameters in errors[0].details (new structure)
+            errors = result.get("errors", [])
+            assert len(errors) > 0, "Validation error must have errors array"
+            assert "required_parameters" in errors[0].get(
+                "details", {}
+            ), "Validation error must list required parameters in errors[0].details"
 
     async def test_errors_field_structure_from_validation_error(self, handler):
         """Test that validation errors produce properly structured errors field."""
@@ -411,4 +416,9 @@ class TestA2AErrorResponseStructure:
 
             # Verify this is a validation error response
             assert result["success"] is False, "Validation error should have success=False"
-            assert "required_parameters" in result, "Validation error should list required params"
+            # Check for required_parameters in errors[0].details (new structure)
+            errors = result.get("errors", [])
+            assert len(errors) > 0, "Validation error must have errors array"
+            assert "required_parameters" in errors[0].get(
+                "details", {}
+            ), "Validation error should list required params in errors[0].details"
