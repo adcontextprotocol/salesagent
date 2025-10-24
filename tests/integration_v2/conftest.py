@@ -141,3 +141,135 @@ def integration_db():
 
     # Dispose of the engine
     engine.dispose()
+
+
+@pytest.fixture
+def sample_tenant(integration_db):
+    """Create a sample tenant for testing."""
+    from decimal import Decimal
+
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import CurrencyLimit, PropertyTag, Tenant
+    from tests.fixtures import TenantFactory
+
+    tenant_data = TenantFactory.create()
+
+    with get_db_session() as session:
+        tenant = Tenant(
+            tenant_id=tenant_data["tenant_id"],
+            name=tenant_data["name"],
+            subdomain=tenant_data["subdomain"],
+            is_active=tenant_data["is_active"],
+            ad_server="mock",
+        )
+        session.add(tenant)
+
+        # Create required CurrencyLimit (needed for budget validation)
+        currency_limit = CurrencyLimit(
+            tenant_id=tenant_data["tenant_id"],
+            currency_code="USD",
+            max_budget_per_package=Decimal("100000.00"),
+        )
+        session.add(currency_limit)
+
+        # Create required PropertyTag (needed for product property_tags)
+        property_tag = PropertyTag(
+            tenant_id=tenant_data["tenant_id"],
+            tag_id="all_inventory",
+            name="All Inventory",
+            description="All available inventory",
+        )
+        session.add(property_tag)
+
+        session.commit()
+
+    return tenant_data
+
+
+@pytest.fixture
+def sample_products(integration_db, sample_tenant):
+    """Create sample products using new pricing_options model."""
+    from src.core.database.database_session import get_db_session
+    from tests.conftest_shared import create_auction_product, create_test_product_with_pricing
+
+    with get_db_session() as session:
+        # Guaranteed product with fixed CPM pricing
+        guaranteed = create_test_product_with_pricing(
+            session=session,
+            tenant_id=sample_tenant["tenant_id"],
+            product_id="guaranteed_display",
+            name="Guaranteed Display Ads",
+            description="Premium guaranteed display advertising",
+            formats=[
+                {
+                    "format_id": "display_300x250",
+                    "name": "Medium Rectangle",
+                    "type": "display",
+                    "description": "Standard display format",
+                    "width": 300,
+                    "height": 250,
+                    "delivery_options": {"hosted": None},
+                }
+            ],
+            targeting_template={"geo_country": {"values": ["US"], "required": False}},
+            delivery_type="guaranteed_impressions",
+            pricing_model="CPM",
+            rate="15.0",
+            is_fixed=True,
+            currency="USD",
+            countries=["US"],
+            is_custom=False,
+        )
+
+        # Non-guaranteed product with auction pricing
+        non_guaranteed = create_auction_product(
+            session=session,
+            tenant_id=sample_tenant["tenant_id"],
+            product_id="non_guaranteed_video",
+            name="Non-Guaranteed Video",
+            description="Programmatic video advertising",
+            formats=[
+                {
+                    "format_id": "video_15s",
+                    "name": "15 Second Video",
+                    "type": "video",
+                    "description": "Short form video",
+                    "duration": 15,
+                    "delivery_options": {"vast": {"mime_types": ["video/mp4"]}},
+                }
+            ],
+            targeting_template={},
+            delivery_type="non_guaranteed",
+            pricing_model="CPM",
+            floor_cpm="10.0",
+            currency="USD",
+            countries=["US", "CA"],
+            is_custom=False,
+            price_guidance={"floor": 10.0, "p50": 20.0, "p75": 30.0, "p90": 40.0},
+        )
+
+        session.commit()
+
+        return [guaranteed.product_id, non_guaranteed.product_id]
+
+
+@pytest.fixture
+def sample_principal(integration_db, sample_tenant):
+    """Create a sample principal (advertiser) for testing."""
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Principal
+    from tests.fixtures import PrincipalFactory
+
+    principal_data = PrincipalFactory.create(tenant_id=sample_tenant["tenant_id"])
+
+    with get_db_session() as session:
+        principal = Principal(
+            tenant_id=sample_tenant["tenant_id"],
+            principal_id=principal_data["principal_id"],
+            name=principal_data["name"],
+            access_token=principal_data["access_token"],
+        )
+        session.add(principal)
+        session.commit()
+
+    return principal_data
