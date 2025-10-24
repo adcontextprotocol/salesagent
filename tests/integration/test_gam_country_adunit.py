@@ -138,7 +138,9 @@ def test_ad_unit_breakdown():
 
         # Test get_ad_unit_breakdown
         result = service.get_ad_unit_breakdown(
-            date_range="this_month", advertiser_id="12345", country="United States"  # Filter by US
+            date_range="this_month",
+            advertiser_id="12345",
+            country="United States",  # Filter by US
         )
 
     # Assertions for test validation

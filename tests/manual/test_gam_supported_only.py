@@ -109,7 +109,9 @@ class SupportedTargetingTester:
             po_number="GEO_SUPPORTED",
             total_budget=1.00,
             targeting_overlay=Targeting(
-                geo_country_any_of=["US"], geo_region_any_of=["CA", "NY"], geo_metro_any_of=["501", "803"]  # NYC, LA
+                geo_country_any_of=["US"],
+                geo_region_any_of=["CA", "NY"],
+                geo_metro_any_of=["501", "803"],  # NYC, LA
             ),
         )
 

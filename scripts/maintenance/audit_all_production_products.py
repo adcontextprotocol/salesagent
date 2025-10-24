@@ -45,18 +45,18 @@ def audit_all_products():
             if not data["pricing_options"]:
                 missing_pricing.append(data["product"])
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("PRODUCTION PRODUCT PRICING AUDIT")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         print(f"Total products in database: {len(products_by_id)}")
         print(f"Products WITH pricing_options: {len(products_by_id) - len(missing_pricing)}")
         print(f"Products MISSING pricing_options: {len(missing_pricing)}")
 
         if missing_pricing:
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print("⚠️  PRODUCTS MISSING PRICING_OPTIONS (BLOCKING MIGRATION)")
-            print(f"{'='*80}\n")
+            print(f"{'=' * 80}\n")
 
             for product in missing_pricing:
                 print(f"❌ {product.product_id}")
@@ -65,9 +65,9 @@ def audit_all_products():
                 print(f"   Delivery Type: {product.delivery_type}")
                 print()
 
-            print(f"{'='*80}")
+            print(f"{'=' * 80}")
             print("⚠️  ACTION REQUIRED")
-            print(f"{'='*80}\n")
+            print(f"{'=' * 80}\n")
             print("These products MUST have pricing_options added before migration can proceed.")
             print("\nRecommended fix (run in Fly.io SSH console):")
             print("\n```python")

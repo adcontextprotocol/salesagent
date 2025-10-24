@@ -98,9 +98,9 @@ def test_page(session, path, description):
 def test_all_admin_pages():
     """Test all pages systematically."""
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("COMPREHENSIVE ADMIN UI TEST")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Create session
     session = requests.Session()
@@ -220,9 +220,9 @@ def test_all_admin_pages():
         test_page(session, path, description)
 
     # Print summary
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("TEST SUMMARY")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     total = len(results["passed"]) + len(results["failed"])
 

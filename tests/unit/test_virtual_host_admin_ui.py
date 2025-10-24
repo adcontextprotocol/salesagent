@@ -20,7 +20,7 @@ class TestVirtualHostAdminUI:
         <div class="form-group">
             <label for="virtual_host">Virtual Host (Optional)</label>
             <input type="text" id="virtual_host" name="virtual_host"
-                   value="{tenant.virtual_host or ''}"
+                   value="{tenant.virtual_host or ""}"
                    placeholder="e.g. ad-sales.yourcompany.com">
             <small>Configure a custom domain through
                    <a href="https://approximated.app" target="_blank">Approximated.app</a>

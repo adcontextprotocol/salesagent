@@ -84,7 +84,7 @@ class GAMReportingManager:
             self._active_reports[media_buy_id] = thread
             thread.start()
 
-            logger.info(f"✅ Started delivery reporting for {media_buy_id} " f"(interval: {reporting_interval_hours}h)")
+            logger.info(f"✅ Started delivery reporting for {media_buy_id} (interval: {reporting_interval_hours}h)")
 
     def stop_delivery_reporting(self, media_buy_id: str):
         """Stop delivery reporting for a media buy.

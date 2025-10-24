@@ -189,7 +189,7 @@ class MCPContextWrapper:
         if not principal_id:
             # Determine if header is missing or just invalid
             if auth_header == "NOT_PRESENT":
-                raise ValueError(f"Missing x-adcp-auth header. " f"Apx-Incoming-Host: {apx_host}")
+                raise ValueError(f"Missing x-adcp-auth header. Apx-Incoming-Host: {apx_host}")
             else:
                 # Header present but invalid (token not found in DB)
                 raise ValueError(
@@ -200,9 +200,7 @@ class MCPContextWrapper:
 
         # Set tenant context (tenant was returned from get_principal_with_tenant)
         if not tenant:
-            raise ValueError(
-                f"No tenant context available. " f"Principal: {principal_id}, " f"Apx-Incoming-Host: {apx_host}"
-            )
+            raise ValueError(f"No tenant context available. Principal: {principal_id}, Apx-Incoming-Host: {apx_host}")
 
         # Set the tenant context in the ContextVar
         set_current_tenant(tenant)

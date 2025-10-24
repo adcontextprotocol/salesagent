@@ -120,7 +120,9 @@ def docker_services_e2e(request):
     # Build first with output visible, then start detached
     print("Step 1/2: Building Docker images...")
     build_result = subprocess.run(
-        ["docker-compose", "build", "--progress=plain"], env=env, capture_output=False  # Show build output
+        ["docker-compose", "build", "--progress=plain"],
+        env=env,
+        capture_output=False,  # Show build output
     )
     if build_result.returncode != 0:
         print(f"❌ Docker build failed with exit code {build_result.returncode}")

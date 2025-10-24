@@ -510,6 +510,7 @@ class MediaPackage(Base):
     Stores packages separately from MediaBuy.raw_request for efficient lookups
     by package_id, which is needed for creative assignments.
     """
+
     __tablename__ = "media_packages"
 
     media_buy_id: Mapped[str] = mapped_column(

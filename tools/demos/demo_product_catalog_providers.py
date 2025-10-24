@@ -28,11 +28,11 @@ TEST_BRIEFS = [
 
 async def test_provider(provider_type: str, config: dict[str, Any], brief: str):
     """Test a specific provider configuration."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Testing {provider_type} provider")
     print(f"Brief: {brief}")
     print(f"Config: {json.dumps(config, indent=2)}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     try:
         # Import here to ensure fresh imports

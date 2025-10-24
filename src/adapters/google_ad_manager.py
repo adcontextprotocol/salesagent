@@ -108,7 +108,9 @@ class GoogleAdManager(AdServerAdapter):
         # advertiser_id is only required for order/campaign operations, not inventory sync
 
         if not self.key_file and not self.service_account_json and not self.refresh_token:
-            raise ValueError("GAM config requires either 'service_account_key_file', 'service_account_json', or 'refresh_token'")
+            raise ValueError(
+                "GAM config requires either 'service_account_key_file', 'service_account_json', or 'refresh_token'"
+            )
 
         # Initialize modular components
         if not self.dry_run:
@@ -314,7 +316,7 @@ class GoogleAdManager(AdServerAdapter):
 
         # Validate that advertiser_id and trafficker_id are configured
         if not self.advertiser_id or not self.trafficker_id:
-            error_msg = "GAM adapter is not fully configured for order creation. " "Missing required configuration: "
+            error_msg = "GAM adapter is not fully configured for order creation. Missing required configuration: "
             missing = []
             if not self.advertiser_id:
                 missing.append("advertiser_id (company_id)")
@@ -340,7 +342,8 @@ class GoogleAdManager(AdServerAdapter):
                 from sqlalchemy import select
 
                 stmt = select(Product).filter_by(
-                    tenant_id=self.tenant_id, product_id=package.package_id  # package_id is actually product_id
+                    tenant_id=self.tenant_id,
+                    product_id=package.package_id,  # package_id is actually product_id
                 )
                 product = db_session.scalars(stmt).first()
                 if product:
@@ -379,11 +382,21 @@ class GoogleAdManager(AdServerAdapter):
                 request, packages, start_time, end_time, media_buy_id
             )
 
+            # Build package responses with package_ids (no line_item_ids yet - order not created)
+            package_responses = []
+            for package in packages:
+                package_responses.append(
+                    {
+                        "package_id": package.package_id,
+                    }
+                )
+
             if step_id:
                 return CreateMediaBuyResponse(
                     buyer_ref=request.buyer_ref,
                     media_buy_id=media_buy_id,
                     workflow_step_id=step_id,
+                    packages=package_responses,
                 )
             else:
                 error_msg = "Failed to create manual order workflow step"
@@ -391,6 +404,7 @@ class GoogleAdManager(AdServerAdapter):
                     buyer_ref=request.buyer_ref,
                     media_buy_id=media_buy_id,
                     errors=[Error(code="workflow_creation_failed", message=error_msg)],
+                    packages=package_responses,
                 )
 
         # Automatic mode - create order directly
@@ -476,10 +490,21 @@ class GoogleAdManager(AdServerAdapter):
 
             step_id = self.workflow_manager.create_activation_workflow_step(order_id, packages)
 
+            # Build package responses with line_item_ids for creative association
+            package_responses = []
+            for package, line_item_id in zip(packages, line_item_ids, strict=False):
+                package_responses.append(
+                    {
+                        "package_id": package.package_id,
+                        "platform_line_item_id": str(line_item_id),  # GAM line item ID for creative association
+                    }
+                )
+
             return CreateMediaBuyResponse(
                 buyer_ref=request.buyer_ref,
                 media_buy_id=order_id,
                 workflow_step_id=step_id,
+                packages=package_responses,
             )
 
         # Build package responses with line_item_ids for creative association
@@ -518,9 +543,7 @@ class GoogleAdManager(AdServerAdapter):
 
         # Validate that creatives manager is initialized
         if not self.creatives_manager:
-            error_msg = (
-                "GAM adapter is not fully configured for creative operations. " "Missing required configuration: "
-            )
+            error_msg = "GAM adapter is not fully configured for creative operations. Missing required configuration: "
             missing = []
             if not self.advertiser_id:
                 missing.append("advertiser_id (company_id)")

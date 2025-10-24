@@ -86,7 +86,7 @@ class WebhookVerifier:
 
         if age_seconds > self.replay_window_seconds:
             raise WebhookVerificationError(
-                f"Timestamp too old ({age_seconds:.0f}s > " f"{self.replay_window_seconds}s window)"
+                f"Timestamp too old ({age_seconds:.0f}s > {self.replay_window_seconds}s window)"
             )
 
     def _verify_signature(

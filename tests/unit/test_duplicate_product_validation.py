@@ -50,7 +50,6 @@ class TestDuplicateProductValidation:
             patch("src.core.main.get_testing_context", return_value=mock_testing_ctx),
             patch("src.core.main.get_context_manager", return_value=mock_ctx_manager),
         ):
-
             # Create packages with duplicate product_id
             packages = [
                 Package(
@@ -84,9 +83,9 @@ class TestDuplicateProductValidation:
             error_msg = result.errors[0].message
             assert "duplicate" in error_msg.lower(), f"Error should mention 'duplicate': {error_msg}"
             assert "prod_test_1" in error_msg, f"Error should mention 'prod_test_1': {error_msg}"
-            assert (
-                "each product can only be used once" in error_msg.lower()
-            ), f"Error should say 'each product can only be used once': {error_msg}"
+            assert "each product can only be used once" in error_msg.lower(), (
+                f"Error should say 'each product can only be used once': {error_msg}"
+            )
 
     @pytest.mark.asyncio
     async def test_multiple_duplicate_products_all_listed(self):
@@ -120,7 +119,6 @@ class TestDuplicateProductValidation:
             patch("src.core.main.get_testing_context", return_value=mock_testing_ctx),
             patch("src.core.main.get_context_manager", return_value=mock_ctx_manager),
         ):
-
             # Create packages with multiple duplicates
             packages = [
                 Package(
@@ -179,7 +177,6 @@ class TestDuplicateProductValidation:
             ),
             patch("src.core.main.activity_feed") as mock_activity,
         ):
-
             # Create a mock session
             mock_session = MagicMock()
             mock_session_context.return_value.__enter__ = MagicMock(return_value=mock_session)

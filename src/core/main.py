@@ -240,7 +240,7 @@ def format_validation_error(validation_error: ValidationError, context: str = "r
             )
         elif "string_type" in error_type:
             error_details.append(
-                f"  • {field_path}: Expected string, got {type(input_val).__name__}. " f"Please provide a string value."
+                f"  • {field_path}: Expected string, got {type(input_val).__name__}. Please provide a string value."
             )
         elif "missing" in error_type:
             error_details.append(f"  • {field_path}: Required field is missing")
@@ -867,9 +867,7 @@ context_mgr = ContextManager()
 
 # --- Adapter Configuration ---
 # Get adapter from config, fallback to mock
-SELECTED_ADAPTER = (
-    (config.get("ad_server", {}).get("adapter") or "mock") if config else "mock"
-).lower()  # noqa: F841 - used below for adapter selection
+SELECTED_ADAPTER = ((config.get("ad_server", {}).get("adapter") or "mock") if config else "mock").lower()  # noqa: F841 - used below for adapter selection
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
 # --- In-Memory State (already initialized above, just adding context_map) ---
@@ -1285,7 +1283,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
             logger.error(f"[GET_PRODUCTS] Principal found but no tenant context: principal_id={principal_id}")
             print("❌ [GET_PRODUCTS DEBUG] Principal found but no tenant context", flush=True)
             raise ToolError(
-                f"Authentication succeeded but tenant context missing. " f"This is a bug. principal_id={principal_id}"
+                f"Authentication succeeded but tenant context missing. This is a bug. principal_id={principal_id}"
             )
         # else: No auth provided, which is OK for discovery endpoints
 
@@ -4282,8 +4280,7 @@ def _validate_pricing_model_selection(
         if bid_decimal < floor_price:
             raise ToolError(
                 "PRICING_ERROR",
-                f"Bid price {package.bid_price} is below floor price {floor_price} "
-                f"for {package.pricing_model} pricing",
+                f"Bid price {package.bid_price} is below floor price {floor_price} for {package.pricing_model} pricing",
             )
 
     # Validate fixed pricing has rate
@@ -4959,7 +4956,7 @@ async def _create_media_buy_impl(
             ctx_manager.update_workflow_step(
                 step.step_id,
                 status="requires_approval",
-                add_comment={"user": "system", "comment": "Manual approval required for media buy creation"}
+                add_comment={"user": "system", "comment": "Manual approval required for media buy creation"},
             )
 
             # Workflow step already created above - no need for separate task
@@ -5019,6 +5016,7 @@ async def _create_media_buy_impl(
                 # Generate permanent package ID using product_id and index
                 # Format: pkg_{product_id}_{timestamp_part}_{idx}
                 import secrets
+
                 package_id = f"pkg_{pkg.product_id}_{secrets.token_hex(4)}_{idx}"
 
                 # Use product_id or buyer_ref for package name since Package schema doesn't have 'name'
@@ -5038,13 +5036,15 @@ async def _create_media_buy_impl(
                     pkg_dict = {}
 
                 # Build response with complete package data (matching auto-approval path)
-                pending_packages.append({
-                    **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
-                    "package_id": package_id,
-                    "name": pkg_name,
-                    "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request package
-                    "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
-                })
+                pending_packages.append(
+                    {
+                        **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
+                        "package_id": package_id,
+                        "name": pkg_name,
+                        "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request package
+                        "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
+                    }
+                )
 
                 # Update the package in raw_request with the generated package_id so UI can find it
                 raw_request_dict["packages"][idx - 1]["package_id"] = package_id
@@ -5087,13 +5087,17 @@ async def _create_media_buy_impl(
                     # Add full package data from raw_request
                     for idx, req_pkg in enumerate(req.packages):
                         if idx == pending_packages.index(pkg_data):
-                            package_config.update({
-                                "product_id": req_pkg.product_id,
-                                "budget": req_pkg.budget.model_dump() if req_pkg.budget else None,
-                                "targeting_overlay": req_pkg.targeting_overlay.model_dump() if req_pkg.targeting_overlay else None,
-                                "creative_ids": req_pkg.creative_ids,
-                                "format_ids_to_provide": req_pkg.format_ids_to_provide,
-                            })
+                            package_config.update(
+                                {
+                                    "product_id": req_pkg.product_id,
+                                    "budget": req_pkg.budget.model_dump() if req_pkg.budget else None,
+                                    "targeting_overlay": req_pkg.targeting_overlay.model_dump()
+                                    if req_pkg.targeting_overlay
+                                    else None,
+                                    "creative_ids": req_pkg.creative_ids,
+                                    "format_ids_to_provide": req_pkg.format_ids_to_provide,
+                                }
+                            )
                             break
 
                     db_package = DBMediaPackage(
@@ -5109,11 +5113,9 @@ async def _create_media_buy_impl(
             # Link the workflow step to the media buy so the approval button shows in UI
             with get_db_session() as session:
                 from src.core.database.models import ObjectWorkflowMapping
+
                 mapping = ObjectWorkflowMapping(
-                    object_type="media_buy",
-                    object_id=media_buy_id,
-                    step_id=step.step_id,
-                    action="create"
+                    object_type="media_buy", object_id=media_buy_id, step_id=step.step_id, action="create"
                 )
                 session.add(mapping)
                 session.commit()
@@ -5207,6 +5209,7 @@ async def _create_media_buy_impl(
             for idx, pkg in enumerate(req.packages, 1):
                 # Generate permanent package ID
                 import secrets
+
                 package_id = f"pkg_{pkg.product_id}_{secrets.token_hex(4)}_{idx}"
 
                 # Serialize the full package to include all fields (budget, targeting, etc.)
@@ -5219,13 +5222,15 @@ async def _create_media_buy_impl(
                     pkg_dict = {}
 
                 # Build response with complete package data (matching auto-approval path)
-                response_packages.append({
-                    **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
-                    "package_id": package_id,
-                    "name": f"{pkg.product_id} - Package {idx}",
-                    "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request
-                    "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
-                })
+                response_packages.append(
+                    {
+                        **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
+                        "package_id": package_id,
+                        "name": f"{pkg.product_id} - Package {idx}",
+                        "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request
+                        "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
+                    }
+                )
 
             # Send Slack notification for configuration-based approval requirement
             try:
@@ -5397,15 +5402,16 @@ async def _create_media_buy_impl(
 
             # Generate permanent package ID (not product_id)
             import secrets
+
             package_id = f"pkg_{product.product_id}_{secrets.token_hex(4)}_{idx}"
 
             # Get buyer_ref and budget from matching request package if available
             buyer_ref = None
             budget = None
             if matching_package:
-                if hasattr(matching_package, 'buyer_ref'):
+                if hasattr(matching_package, "buyer_ref"):
                     buyer_ref = matching_package.buyer_ref
-                if hasattr(matching_package, 'budget'):
+                if hasattr(matching_package, "budget"):
                     budget = matching_package.budget
 
             packages.append(
@@ -5416,7 +5422,9 @@ async def _create_media_buy_impl(
                     cpm=cpm,
                     impressions=int(total_budget / cpm * 1000),
                     format_ids=format_ids_to_use,
-                    targeting_overlay=matching_package.targeting_overlay if matching_package and hasattr(matching_package, 'targeting_overlay') else None,
+                    targeting_overlay=matching_package.targeting_overlay
+                    if matching_package and hasattr(matching_package, "targeting_overlay")
+                    else None,
                     buyer_ref=buyer_ref,
                     product_id=product.product_id,  # Include product_id
                     budget=budget,  # Include budget from request
@@ -5438,7 +5446,9 @@ async def _create_media_buy_impl(
         # Pass package_pricing_info for pricing model support (AdCP PR #88)
         try:
             response = adapter.create_media_buy(req, packages, start_time, end_time, package_pricing_info)
-            logger.info(f"[DEBUG] create_media_buy: Adapter returned response with {len(response.packages) if response.packages else 0} packages")
+            logger.info(
+                f"[DEBUG] create_media_buy: Adapter returned response with {len(response.packages) if response.packages else 0} packages"
+            )
             if response.packages:
                 for i, pkg in enumerate(response.packages):
                     logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg}")
@@ -5501,7 +5511,9 @@ async def _create_media_buy_impl(
                     logger.info(f"[DEBUG] Package {i}: resp_package.get('package_id') = {package_id}")
 
                     if not package_id:
-                        error_msg = f"Adapter did not return package_id for package {i}. This is a critical bug in the adapter."
+                        error_msg = (
+                            f"Adapter did not return package_id for package {i}. This is a critical bug in the adapter."
+                        )
                         logger.error(error_msg)
                         raise ValueError(error_msg)
 
@@ -5528,7 +5540,9 @@ async def _create_media_buy_impl(
                     session.add(db_package)
 
                 session.commit()
-                logger.info(f"Saved {len(packages_to_save)} packages to media_packages table for media_buy {response.media_buy_id}")
+                logger.info(
+                    f"Saved {len(packages_to_save)} packages to media_packages table for media_buy {response.media_buy_id}"
+                )
 
         # Handle creative_ids in packages if provided (immediate association)
         if req.packages:
@@ -5560,10 +5574,7 @@ async def _create_media_buy_impl(
                         error_msg = f"Creative IDs not found: {', '.join(sorted(missing_ids))}"
                         logger.error(error_msg)
                         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                        raise ToolError(
-                            "CREATIVES_NOT_FOUND",
-                            error_msg
-                        )
+                        raise ToolError("CREATIVES_NOT_FOUND", error_msg)
 
                 for i, package in enumerate(req.packages):
                     if package.creative_ids:
@@ -5686,7 +5697,9 @@ async def _create_media_buy_impl(
             # Start with adapter response package (has package_id)
             if i < len(adapter_packages):
                 # Get package_id and other fields from adapter response
-                response_package_dict = adapter_packages[i] if isinstance(adapter_packages[i], dict) else adapter_packages[i].model_dump()
+                response_package_dict = (
+                    adapter_packages[i] if isinstance(adapter_packages[i], dict) else adapter_packages[i].model_dump()
+                )
             else:
                 # Fallback if adapter didn't return enough packages
                 logger.warning(f"Adapter returned fewer packages than request. Using request package {i}")
@@ -5730,7 +5743,7 @@ async def _create_media_buy_impl(
             package_status = TaskStatus.WORKING
             if package.creative_ids and len(package.creative_ids) > 0:
                 package_status = TaskStatus.COMPLETED
-            elif hasattr(package, 'format_ids_to_provide') and package.format_ids_to_provide:
+            elif hasattr(package, "format_ids_to_provide") and package.format_ids_to_provide:
                 package_status = TaskStatus.WORKING
 
             # Add status
@@ -6276,6 +6289,7 @@ def _update_media_buy_impl(
                         if pkg_update.budget:
                             # Extract budget amount - handle both Budget object and legacy float
                             from src.core.schemas import Budget, extract_budget_amount
+
                             if isinstance(pkg_update.budget, Budget):
                                 pkg_budget_amount, _ = extract_budget_amount(pkg_update.budget, request_currency)
                             else:
@@ -6373,12 +6387,7 @@ def _update_media_buy_impl(
                 req._affected_packages.append(
                     {
                         "buyer_package_ref": pkg_update.package_id,
-                        "changes_applied": {
-                            "budget": {
-                                "updated": budget_amount,
-                                "currency": currency
-                            }
-                        },
+                        "changes_applied": {"budget": {"updated": budget_amount, "currency": currency}},
                     }
                 )
 
@@ -6404,16 +6413,14 @@ def _update_media_buy_impl(
                 with get_db_session() as session:
                     # Resolve media_buy_id (might be buyer_ref)
                     mb_stmt = select(MediaBuyModel).where(
-                        MediaBuyModel.media_buy_id == req.media_buy_id,
-                        MediaBuyModel.tenant_id == tenant["tenant_id"]
+                        MediaBuyModel.media_buy_id == req.media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
                     )
                     media_buy_obj = session.scalars(mb_stmt).first()
 
                     # Try buyer_ref if not found
                     if not media_buy_obj:
                         mb_stmt = select(MediaBuyModel).where(
-                            MediaBuyModel.buyer_ref == req.media_buy_id,
-                            MediaBuyModel.tenant_id == tenant["tenant_id"]
+                            MediaBuyModel.buyer_ref == req.media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
                         )
                         media_buy_obj = session.scalars(mb_stmt).first()
 
@@ -6534,6 +6541,7 @@ def _update_media_buy_impl(
 
                 # Persist top-level budget update to database
                 from sqlalchemy import update
+
                 from src.core.database.models import MediaBuy
 
                 with get_db_session() as db_session:
@@ -6544,13 +6552,15 @@ def _update_media_buy_impl(
                     )
                     db_session.execute(stmt)
                     db_session.commit()
-                    logger.info(f"[update_media_buy] Updated MediaBuy {req.media_buy_id} budget to {total_budget} {currency}")
-                
+                    logger.info(
+                        f"[update_media_buy] Updated MediaBuy {req.media_buy_id} budget to {total_budget} {currency}"
+                    )
+
                 # Track top-level budget update in affected_packages
                 # When top-level budget changes, all packages are affected
                 if not hasattr(req, "_affected_packages"):
                     req._affected_packages = []
-                
+
                 # Get all packages for this media buy to report them as affected
                 if hasattr(existing_req, "packages") and existing_req.packages:
                     for pkg in existing_req.packages:
@@ -6559,12 +6569,7 @@ def _update_media_buy_impl(
                             req._affected_packages.append(
                                 {
                                     "buyer_package_ref": package_ref,
-                                    "changes_applied": {
-                                        "budget": {
-                                            "updated": total_budget,
-                                            "currency": currency
-                                        }
-                                    },
+                                    "changes_applied": {"budget": {"updated": total_budget, "currency": currency}},
                                 }
                             )
 
@@ -8059,7 +8064,7 @@ if unified_mode:
                         content=f"""
                     <html>
                     <body>
-                    <h1>Welcome to {tenant.get('name', 'AdCP Sales Agent')}</h1>
+                    <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
                     <p>This is a sales agent for advertising inventory.</p>
                     <p>Domain: {apx_host}</p>
                     </body>
@@ -8094,7 +8099,7 @@ if unified_mode:
                                 content=f"""
                             <html>
                             <body>
-                            <h1>Welcome to {tenant.get('name', 'AdCP Sales Agent')}</h1>
+                            <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
                             <p>Subdomain: {apx_host}</p>
                             </body>
                             </html>

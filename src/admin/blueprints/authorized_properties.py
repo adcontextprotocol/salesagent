@@ -184,8 +184,8 @@ def _save_properties_batch(properties_data: list[dict[str, Any]], tenant_id: str
 
             except Exception as e:
                 error_count += 1
-                errors.append(f"Property {i+1}: {str(e)}")
-                logger.error(f"Error processing property {i+1}: {e}")
+                errors.append(f"Property {i + 1}: {str(e)}")
+                logger.error(f"Error processing property {i + 1}: {e}")
 
         # Commit all changes
         if success_count > 0:

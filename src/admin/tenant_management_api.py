@@ -161,8 +161,7 @@ def create_tenant():
                     # Auto-add creator as fallback with warning
                     email_list.append(creator_email)
                     logger.warning(
-                        f"No access control specified for tenant {data['name']}, "
-                        f"auto-adding creator {creator_email}"
+                        f"No access control specified for tenant {data['name']}, auto-adding creator {creator_email}"
                     )
                 else:
                     return (

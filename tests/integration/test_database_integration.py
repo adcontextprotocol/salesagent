@@ -17,9 +17,9 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://adcp_user:secure_pas
 def test_settings_queries():
     """Test the actual SQL queries used in the settings page."""
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("TESTING REAL DATABASE QUERIES")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     print(f"Database: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else DATABASE_URL}\n")
 
@@ -129,9 +129,9 @@ def test_settings_queries():
         return False
 
     # Summary
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("SUMMARY")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     if errors:
         print(f"\n❌ {len(errors)} queries failed:")

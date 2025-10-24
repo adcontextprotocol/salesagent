@@ -552,9 +552,7 @@ class ContextManager(DatabaseManager):
             )
             session.add(obj_mapping)
             session.commit()
-            console.print(
-                f"[green]✅ Linked {object_type} {object_id} to workflow step {step_id}[/green]"
-            )
+            console.print(f"[green]✅ Linked {object_type} {object_id} to workflow step {step_id}[/green]")
         except Exception as e:
             session.rollback()
             console.print(f"[red]Failed to link object to workflow: {e}[/red]")

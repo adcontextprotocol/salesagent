@@ -160,7 +160,15 @@ def media_buy_detail(tenant_id, media_buy_id):
 
     from src.core.context_manager import ContextManager
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import Creative, CreativeAssignment, MediaBuy, MediaPackage, Principal, Product, WorkflowStep
+    from src.core.database.models import (
+        Creative,
+        CreativeAssignment,
+        MediaBuy,
+        MediaPackage,
+        Principal,
+        Product,
+        WorkflowStep,
+    )
 
     try:
         with get_db_session() as db_session:
@@ -190,10 +198,12 @@ def media_buy_detail(tenant_id, media_buy_id):
                     stmt = select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)
                     product = db_session.scalars(stmt).first()
 
-                packages.append({
-                    "package": media_pkg,
-                    "product": product,
-                })
+                packages.append(
+                    {
+                        "package": media_pkg,
+                        "product": product,
+                    }
+                )
 
             # Get creative assignments for this media buy
             stmt = (
@@ -233,6 +243,7 @@ def media_buy_detail(tenant_id, media_buy_id):
 
             # Get computed readiness state (not just raw database status)
             from src.admin.services.media_buy_readiness_service import MediaBuyReadinessService
+
             readiness = MediaBuyReadinessService.get_readiness_state(media_buy_id, tenant_id, db_session)
             computed_state = readiness["state"]
 
@@ -333,8 +344,7 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                     from src.core.database.models import Creative, CreativeAssignment
 
                     stmt_assignments = select(CreativeAssignment).filter_by(
-                        tenant_id=tenant_id,
-                        media_buy_id=media_buy_id
+                        tenant_id=tenant_id, media_buy_id=media_buy_id
                     )
                     assignments = db_session.scalars(stmt_assignments).all()
 
@@ -342,8 +352,7 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                     if assignments:
                         creative_ids = [a.creative_id for a in assignments]
                         stmt_creatives = select(Creative).filter(
-                            Creative.tenant_id == tenant_id,
-                            Creative.creative_id.in_(creative_ids)
+                            Creative.tenant_id == tenant_id, Creative.creative_id.in_(creative_ids)
                         )
                         creatives = db_session.scalars(stmt_creatives).all()
 
@@ -369,15 +378,16 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                     db_session.commit()
 
                     # Send webhook notification to buyer
-                    stmt_webhook = select(PushNotificationConfig).filter_by(
-                        tenant_id=tenant_id,
-                        principal_id=media_buy.principal_id,
-                        is_active=True
-                    ).order_by(PushNotificationConfig.created_at.desc())
+                    stmt_webhook = (
+                        select(PushNotificationConfig)
+                        .filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id, is_active=True)
+                        .order_by(PushNotificationConfig.created_at.desc())
+                    )
                     webhook_config = db_session.scalars(stmt_webhook).first()
 
                     if webhook_config:
                         import requests
+
                         webhook_payload = {
                             "event": "media_buy_approved",
                             "media_buy_id": media_buy_id,

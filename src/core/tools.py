@@ -22,6 +22,19 @@ from src.core.config_loader import (
     get_current_tenant,
 )
 
+# Import all implementation functions from main.py at the top
+from src.core.main import (
+    _create_media_buy_impl,
+    _get_media_buy_delivery_impl,
+    _get_products_impl,
+    _list_authorized_properties_impl,
+    _list_creative_formats_impl,
+    _list_creatives_impl,
+    _sync_creatives_impl,
+    _update_media_buy_impl,
+    update_performance_index,  # Note: This one doesn't follow _impl pattern yet
+)
+
 # Schema models (explicit imports to avoid collisions)
 # Using adapters for models that need to stay in sync with AdCP spec
 from src.core.schema_adapters import (
@@ -39,19 +52,6 @@ from src.core.schema_adapters import (
 from src.core.schemas import (
     GetMediaBuyDeliveryRequest,
     GetSignalsRequest,
-)
-
-# Import all implementation functions from main.py at the top
-from src.core.main import (
-    _create_media_buy_impl,
-    _get_media_buy_delivery_impl,
-    _get_products_impl,
-    _list_authorized_properties_impl,
-    _list_creative_formats_impl,
-    _list_creatives_impl,
-    _sync_creatives_impl,
-    _update_media_buy_impl,
-    update_performance_index,  # Note: This one doesn't follow _impl pattern yet
 )
 
 
