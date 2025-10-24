@@ -533,15 +533,21 @@ def get_principal_from_context(
     # 3. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
     if not requested_tenant_id:
         apx_host = _get_header_case_insensitive(headers, "apx-incoming-host")
+        console.print(f"[blue]Checking Apx-Incoming-Host header: {apx_host}[/blue]")
         if apx_host:
-            console.print(f"[blue]Looking up tenant by virtual host: {apx_host}[/blue]")
+            console.print(f"[blue]Looking up tenant by virtual host (via Apx-Incoming-Host): {apx_host}[/blue]")
             tenant_context = get_tenant_by_virtual_host(apx_host)
+            console.print(f"[blue]get_tenant_by_virtual_host() returned: {tenant_context}[/blue]")
             if tenant_context:
                 requested_tenant_id = tenant_context["tenant_id"]
                 detection_method = "apx-incoming-host"
                 # Set tenant context immediately for virtual host routing
                 set_current_tenant(tenant_context)
-                console.print(f"[green]Tenant detected from Apx-Incoming-Host: {requested_tenant_id}[/green]")
+                console.print(f"[green]✅ Tenant detected from Apx-Incoming-Host: {requested_tenant_id}[/green]")
+            else:
+                console.print(f"[yellow]⚠️ No tenant found for virtual host: {apx_host}[/yellow]")
+        else:
+            console.print("[yellow]Apx-Incoming-Host header not present[/yellow]")
 
     if not requested_tenant_id:
         console.print("[yellow]No tenant detected from headers[/yellow]")
