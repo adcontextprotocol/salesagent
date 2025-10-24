@@ -711,6 +711,23 @@ def add_product(tenant_id):
                     # Default to empty property_tags list if neither was set
                     product_kwargs["property_tags"] = []
 
+                # Handle signals-backed product configuration
+                is_signals_backed = form_data.get("is_signals_backed") == "1"
+                if is_signals_backed:
+                    signals_config = {
+                        "expiry_hours": int(form_data.get("signals_expiry_hours", 24)),
+                        "pricing_strategy": form_data.get("signals_pricing_strategy", "signal_cpm"),
+                        "name_template": form_data.get("signals_name_template", "{signal_name}"),
+                        "description_template": form_data.get(
+                            "signals_description_template", "Target {signal_description}"
+                        ),
+                    }
+                    product_kwargs["is_signals_backed"] = True
+                    product_kwargs["signals_config"] = signals_config
+                else:
+                    product_kwargs["is_signals_backed"] = False
+                    product_kwargs["signals_config"] = None
+
                 # Create product with correct fields matching the Product model
                 product = Product(**product_kwargs)
                 db_session.add(product)
@@ -755,7 +772,7 @@ def add_product(tenant_id):
     # GET request - show adapter-specific form
     # Load authorized properties and property tags for property selection
     with get_db_session() as db_session:
-        from src.core.database.models import AuthorizedProperty, PropertyTag
+        from src.core.database.models import AuthorizedProperty, PropertyTag, SignalsAgent
 
         authorized_properties = db_session.scalars(
             select(AuthorizedProperty).filter_by(tenant_id=tenant_id, verification_status="verified")
@@ -778,6 +795,14 @@ def add_product(tenant_id):
             select(PropertyTag).filter_by(tenant_id=tenant_id).order_by(PropertyTag.name)
         ).all()
 
+        # Check if tenant has any enabled signals agents
+        has_signals_agents = (
+            db_session.scalar(
+                select(func.count()).select_from(SignalsAgent).filter_by(tenant_id=tenant_id, enabled=True)
+            )
+            > 0
+        )
+
     if adapter_type == "google_ad_manager":
         # For GAM: unified form with inventory selection
         # Check if inventory has been synced
@@ -798,6 +823,7 @@ def add_product(tenant_id):
             authorized_properties=properties_list,
             property_tags=property_tags,
             currencies=currencies,
+            has_signals_agents=has_signals_agents,
         )
     else:
         # For Mock and other adapters: simple form
@@ -809,6 +835,7 @@ def add_product(tenant_id):
             authorized_properties=properties_list,
             property_tags=property_tags,
             currencies=currencies,
+            has_signals_agents=has_signals_agents,
         )
 
 
@@ -1026,6 +1053,29 @@ def edit_product(tenant_id, product_id):
                     for po in existing_options[len(pricing_options_data) :]:
                         db_session.delete(po)
 
+                # Handle signals-backed product configuration
+                is_signals_backed = form_data.get("is_signals_backed") == "1"
+                if is_signals_backed:
+                    signals_config = {
+                        "expiry_hours": int(form_data.get("signals_expiry_hours", 24)),
+                        "pricing_strategy": form_data.get("signals_pricing_strategy", "signal_cpm"),
+                        "name_template": form_data.get("signals_name_template", "{signal_name}"),
+                        "description_template": form_data.get(
+                            "signals_description_template", "Target {signal_description}"
+                        ),
+                    }
+                    product.is_signals_backed = True
+                    product.signals_config = signals_config
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "signals_config")
+                else:
+                    product.is_signals_backed = False
+                    product.signals_config = None
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "signals_config")
+
                 # Debug: Log final state before commit
                 from sqlalchemy import inspect as sa_inspect
 
@@ -1107,9 +1157,25 @@ def edit_product(tenant_id, product_id):
                     if isinstance(product.implementation_config, dict)
                     else json.loads(product.implementation_config) if product.implementation_config else {}
                 ),
+                "is_signals_backed": product.is_signals_backed,
+                "signals_config": (
+                    product.signals_config
+                    if isinstance(product.signals_config, dict)
+                    else json.loads(product.signals_config) if product.signals_config else None
+                ),
             }
 
             product_dict["pricing_options"] = pricing_options_list
+
+            # Check if tenant has any enabled signals agents
+            from src.core.database.models import SignalsAgent
+
+            has_signals_agents = (
+                db_session.scalar(
+                    select(func.count()).select_from(SignalsAgent).filter_by(tenant_id=tenant_id, enabled=True)
+                )
+                > 0
+            )
 
             # Show adapter-specific form
             if adapter_type == "google_ad_manager":
@@ -1158,6 +1224,7 @@ def edit_product(tenant_id, product_id):
                     inventory_synced=inventory_synced,
                     formats=get_creative_formats(tenant_id=tenant_id),
                     currencies=currencies,
+                    has_signals_agents=has_signals_agents,
                 )
             else:
                 return render_template(
@@ -1166,6 +1233,7 @@ def edit_product(tenant_id, product_id):
                     product=product_dict,
                     tenant_adapter=adapter_type,
                     currencies=currencies,
+                    has_signals_agents=has_signals_agents,
                 )
 
     except Exception as e:
