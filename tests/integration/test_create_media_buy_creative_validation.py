@@ -5,6 +5,7 @@ behavior of update_media_buy.
 """
 
 from datetime import UTC
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -26,6 +27,7 @@ async def test_create_media_buy_rejects_missing_creatives(integration_db):
     from src.core.database.database_session import get_db_session
     from src.core.database.models import (
         CurrencyLimit,
+        PricingOption,
         Principal,
         Product,
         PropertyTag,
@@ -80,6 +82,17 @@ async def test_create_media_buy_rejects_missing_creatives(integration_db):
             property_tags=["all_inventory"],
         )
         session.add(product)
+
+        # Create pricing option (required for product)
+        pricing_option = PricingOption(
+            tenant_id="test_tenant",
+            product_id="test_product",
+            pricing_model="cpm",
+            rate=Decimal("10.0"),
+            currency="USD",
+            is_fixed=True,
+        )
+        session.add(pricing_option)
 
         # Note: Intentionally NOT creating any creatives
         session.commit()
@@ -148,6 +161,7 @@ async def test_create_media_buy_accepts_existing_creatives(integration_db):
     from src.core.database.database_session import get_db_session
     from src.core.database.models import (
         CurrencyLimit,
+        PricingOption,
         Principal,
         Product,
         PropertyTag,
@@ -202,6 +216,18 @@ async def test_create_media_buy_accepts_existing_creatives(integration_db):
             property_tags=["all_inventory"],
         )
         session.add(product)
+
+        # Create pricing option (required for product)
+        pricing_option = PricingOption(
+            tenant_id="test_tenant",
+            product_id="test_product",
+            pricing_model="cpm",
+            rate=Decimal("10.0"),
+            currency="USD",
+            is_fixed=True,
+        )
+        session.add(pricing_option)
+
         session.commit()  # Commit before adding creatives (foreign key constraint)
 
         # Create valid creatives
@@ -296,6 +322,7 @@ async def test_create_media_buy_rejects_partial_missing_creatives(integration_db
     from src.core.database.database_session import get_db_session
     from src.core.database.models import (
         CurrencyLimit,
+        PricingOption,
         Principal,
         Product,
         PropertyTag,
@@ -350,6 +377,18 @@ async def test_create_media_buy_rejects_partial_missing_creatives(integration_db
             property_tags=["all_inventory"],
         )
         session.add(product)
+
+        # Create pricing option (required for product)
+        pricing_option = PricingOption(
+            tenant_id="test_tenant",
+            product_id="test_product",
+            pricing_model="cpm",
+            rate=Decimal("10.0"),
+            currency="USD",
+            is_fixed=True,
+        )
+        session.add(pricing_option)
+
         session.commit()  # Commit before adding creatives (foreign key constraint)
 
         # Create ONLY ONE creative (creative_1 exists, creative_2 doesn't)
