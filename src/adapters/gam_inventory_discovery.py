@@ -13,11 +13,13 @@ This module provides:
 """
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
+import pytz
 from googleads import ad_manager
 from zeep.helpers import serialize_object
 
@@ -253,6 +255,7 @@ class GAMInventoryDiscovery:
         self.audience_segments: dict[str, AudienceSegment] = {}
         self.last_sync: datetime | None = None
 
+    @timeout(seconds=600)  # 10 minute timeout for ad units (same as placements)
     @with_retry(operation_name="discover_ad_units")
     def discover_ad_units(self, since: datetime | None = None) -> list[AdUnit]:
         """
@@ -275,11 +278,12 @@ class GAMInventoryDiscovery:
 
         # Add incremental sync filter if requested
         if since:
-            # Ensure timezone-aware datetime for GAM API
+            # Ensure timezone-aware datetime for GAM API (use pytz for GAM compatibility)
             if since.tzinfo is None:
-                from datetime import UTC
-
-                since = since.replace(tzinfo=UTC)
+                since = pytz.utc.localize(since)
+            else:
+                # Convert to pytz timezone if using datetime.timezone.UTC
+                since = since.astimezone(pytz.utc)
 
             statement_builder = (
                 statement_builder.Where("lastModifiedDateTime > :since AND status != :archived")
@@ -328,11 +332,12 @@ class GAMInventoryDiscovery:
         statement_builder = statement_builder.Where("status != :archived").WithBindVariable("archived", "ARCHIVED")
 
         if since:
-            # Ensure timezone-aware datetime for GAM API
+            # Ensure timezone-aware datetime for GAM API (use pytz for GAM compatibility)
             if since.tzinfo is None:
-                from datetime import UTC
-
-                since = since.replace(tzinfo=UTC)
+                since = pytz.utc.localize(since)
+            else:
+                # Convert to pytz timezone if using datetime.timezone.UTC
+                since = since.astimezone(pytz.utc)
 
             statement_builder = (
                 statement_builder.Where("lastModifiedDateTime > :since AND status != :archived")
@@ -365,24 +370,22 @@ class GAMInventoryDiscovery:
 
         Args:
             since: Optional datetime to fetch only items modified since this time (incremental sync)
+                   Note: GAM LabelService doesn't support lastModifiedDateTime filtering,
+                   so we always fetch all labels (they're usually few and rarely change)
         """
-        logger.info(f"Discovering labels (incremental={since is not None})")
+        logger.info(f"Discovering labels (incremental={since is not None}, note: always fetches all labels)")
 
         label_service = self.client.GetService("LabelService")
         discovered_labels = []
 
         statement_builder = ad_manager.StatementBuilder(version="v202505")
 
-        if since:
-            # Ensure timezone-aware datetime for GAM API
-            if since.tzinfo is None:
-                from datetime import UTC
-
-                since = since.replace(tzinfo=UTC)
-
-            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
-                "since", since
-            )
+        # Note: LabelService doesn't support lastModifiedDateTime filtering in GAM API
+        # So we always fetch all labels, even during incremental sync
+        # This is acceptable because:
+        # 1. Labels don't change frequently
+        # 2. There are usually few labels per network
+        # 3. The fetch is fast
 
         while True:
             response = label_service.getLabelsByStatement(statement_builder.ToStatement())
@@ -413,11 +416,14 @@ class GAMInventoryDiscovery:
             max_values_per_key: Optional limit on number of values to fetch per key (only if fetch_values=True)
             fetch_values: Whether to fetch values for each key. Set to False for faster sync (lazy load values later)
             since: Optional datetime to fetch only items modified since this time (incremental sync)
+                   Note: GAM CustomTargetingService doesn't support lastModifiedDateTime filtering,
+                   so we always fetch all keys (acceptable as keys are few and small)
         """
         logger.info(
             "Discovering custom targeting keys"
             + (" and values" if fetch_values else " (values will be lazy loaded)")
             + (f" (max {max_values_per_key} values per key)" if fetch_values and max_values_per_key else "")
+            + (" (note: always fetches all keys)" if since else "")
         )
 
         custom_targeting_service = self.client.GetService("CustomTargetingService")
@@ -426,16 +432,13 @@ class GAMInventoryDiscovery:
         # Discover keys first
         statement_builder = ad_manager.StatementBuilder(version="v202505")
 
-        if since:
-            # Ensure timezone-aware datetime for GAM API
-            if since.tzinfo is None:
-                from datetime import UTC
-
-                since = since.replace(tzinfo=UTC)
-
-            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
-                "since", since
-            )
+        # Note: CustomTargetingService doesn't support lastModifiedDateTime filtering in GAM API
+        # So we always fetch all keys, even during incremental sync
+        # This is acceptable because:
+        # 1. Custom targeting keys don't change frequently
+        # 2. There are usually a modest number of keys per network (<1000)
+        # 3. The fetch is reasonably fast
+        # 4. Keys are small objects
 
         while True:
             response = custom_targeting_service.getCustomTargetingKeysByStatement(statement_builder.ToStatement())
@@ -565,11 +568,12 @@ class GAMInventoryDiscovery:
         statement_builder = statement_builder.Where("type = :type").WithBindVariable("type", "FIRST_PARTY")
 
         if since:
-            # Ensure timezone-aware datetime for GAM API
+            # Ensure timezone-aware datetime for GAM API (use pytz for GAM compatibility)
             if since.tzinfo is None:
-                from datetime import UTC
-
-                since = since.replace(tzinfo=UTC)
+                since = pytz.utc.localize(since)
+            else:
+                # Convert to pytz timezone if using datetime.timezone.UTC
+                since = since.astimezone(pytz.utc)
 
             statement_builder = (
                 statement_builder.Where("lastModifiedDateTime > :since AND type = :type")
@@ -918,8 +922,6 @@ class GAMInventoryDiscovery:
 
     def save_to_cache(self, cache_dir: str) -> None:
         """Save discovered inventory to cache files."""
-        import os
-
         cache_path = os.path.join(cache_dir, f"gam_inventory_{self.tenant_id}.json")
 
         cache_data = {
@@ -947,8 +949,6 @@ class GAMInventoryDiscovery:
         Returns:
             True if loaded successfully, False otherwise
         """
-        import os
-
         cache_path = os.path.join(cache_dir, f"gam_inventory_{self.tenant_id}.json")
 
         if not os.path.exists(cache_path):
@@ -1062,7 +1062,7 @@ def create_inventory_sync_tool(app, get_gam_client_func):
     @app.route("/api/tenant/<tenant_id>/gam/inventory/suggest")
     def suggest_ad_units(tenant_id):
         """Suggest ad units for a product."""
-        from flask import request
+        from flask import request  # Import here - only used in Flask route context
 
         creative_sizes = request.args.getlist("sizes")
         keywords = request.args.getlist("keywords")
