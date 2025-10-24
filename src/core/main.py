@@ -5292,24 +5292,55 @@ async def _create_media_buy_impl(
         # which will be applied separately to its corresponding line item in GAM.
         # The adapter (google_ad_manager.py) handles this per-product targeting at line 491-494
 
-        # Convert products to MediaPackages
-        # If req.packages provided, use format_ids from request; otherwise use product.formats
+        # Convert request packages to MediaPackages
+        # AdCP v2.4 supports multiple packages per product with different budgets/currencies
         packages = []
-        for idx, product in enumerate(products_in_buy, 1):
-            # Determine format_ids to use
-            format_ids_to_use = []
 
-            # Check if this product has a corresponding package in the request with format_ids
-            matching_package = None
-            if req.packages:
-                # Find the package for this product
-                for pkg in req.packages:
-                    if pkg.product_id == product.product_id:
-                        matching_package = pkg
+        # If req.packages provided, iterate over packages (not products)
+        # This supports multiple packages using the same product
+        if req.packages:
+            for idx, req_pkg in enumerate(req.packages, 1):
+                # Get product ID from package (supports both product_id and products[0])
+                # Handle both dict and object representations
+                pkg_product_id = None
+                if isinstance(req_pkg, dict):
+                    pkg_product_id = req_pkg.get("product_id")
+                    if not pkg_product_id and req_pkg.get("products"):
+                        pkg_product_id = req_pkg["products"][0] if req_pkg["products"] else None
+                else:
+                    if hasattr(req_pkg, "product_id") and req_pkg.product_id:
+                        pkg_product_id = req_pkg.product_id
+                    elif hasattr(req_pkg, "products") and req_pkg.products and len(req_pkg.products) > 0:
+                        pkg_product_id = req_pkg.products[0]  # Use first product if multiple
+
+                if not pkg_product_id:
+                    error_msg = "Package must have either product_id or products array"
+                    raise ValueError(error_msg)
+
+                # Find the product for this package
+                product = None
+                for p in products_in_buy:
+                    if p.product_id == pkg_product_id:
+                        product = p
                         break
 
-                # If found and has format_ids, validate and use those
-                if matching_package and hasattr(matching_package, "format_ids") and matching_package.format_ids:
+                if not product:
+                    # This shouldn't happen (validation should catch it), but defensive check
+                    error_msg = f"Product {pkg_product_id} not found in catalog"
+                    raise ValueError(error_msg)
+
+                # Determine format_ids to use
+                format_ids_to_use = []
+
+                # Get format_ids from package (handle both dict and object)
+                pkg_format_ids = None
+                if isinstance(req_pkg, dict):
+                    pkg_format_ids = req_pkg.get("format_ids")
+                elif hasattr(req_pkg, "format_ids"):
+                    pkg_format_ids = req_pkg.format_ids
+
+                # If package has format_ids, validate and use those
+                if pkg_format_ids:
                     # Validate that requested formats are supported by product
                     # Format is composite key: (agent_url, format_id) per AdCP spec
                     # Note: AdCP JSON uses "id" field, but Pydantic object uses "format_id" attribute
@@ -5341,7 +5372,7 @@ async def _create_media_buy_impl(
 
                     # Build set of requested format keys for comparison
                     requested_format_keys = set()
-                    for fmt in matching_package.format_ids:
+                    for fmt in pkg_format_ids:
                         agent_url = None
                         format_id = None
 
@@ -5389,49 +5420,92 @@ async def _create_media_buy_impl(
                         raise ValueError(error_msg)
 
                     # Preserve original format objects for format_ids_to_use
-                    format_ids_to_use = list(matching_package.format_ids)
+                    format_ids_to_use = list(pkg_format_ids)
 
-            # Fallback to product's formats if no request format_ids
-            if not format_ids_to_use:
+                # Fallback to product's formats if no request format_ids
+                if not format_ids_to_use:
+                    format_ids_to_use = list(product.formats) if product.formats else []
+
+                # Get CPM from pricing_options
+                cpm = 10.0  # Default
+                if product.pricing_options and len(product.pricing_options) > 0:
+                    first_option = product.pricing_options[0]
+                    if first_option.rate:
+                        cpm = float(first_option.rate)
+
+                # Generate permanent package ID (not product_id)
+                import secrets
+
+                package_id = f"pkg_{product.product_id}_{secrets.token_hex(4)}_{idx}"
+
+                # Get buyer_ref, budget, and targeting_overlay from request package
+                # Handle both dict and object representations
+                if isinstance(req_pkg, dict):
+                    buyer_ref = req_pkg.get("buyer_ref")
+                    budget = req_pkg.get("budget")
+                    targeting_overlay = req_pkg.get("targeting_overlay")
+                else:
+                    buyer_ref = req_pkg.buyer_ref if hasattr(req_pkg, "buyer_ref") else None
+                    budget = req_pkg.budget if hasattr(req_pkg, "budget") else None
+                    targeting_overlay = req_pkg.targeting_overlay if hasattr(req_pkg, "targeting_overlay") else None
+
+                # Calculate impressions based on package budget or total budget
+                package_budget = total_budget  # Default to total
+                if budget:
+                    # Extract budget amount from Budget object or float
+                    if isinstance(budget, dict):
+                        package_budget = budget.get("total", total_budget)
+                    elif hasattr(budget, "total"):
+                        package_budget = budget.total
+                    else:
+                        package_budget = float(budget)
+
+                packages.append(
+                    MediaPackage(
+                        package_id=package_id,
+                        name=product.name,
+                        delivery_type=product.delivery_type,
+                        cpm=cpm,
+                        impressions=int(package_budget / cpm * 1000),
+                        format_ids=format_ids_to_use,
+                        targeting_overlay=targeting_overlay,
+                        buyer_ref=buyer_ref,
+                        product_id=product.product_id,  # Include product_id
+                        budget=budget,  # Include budget from request
+                    )
+                )
+        else:
+            # Legacy format: No packages provided, create one package per product
+            for idx, product in enumerate(products_in_buy, 1):
+                # Get format_ids from product
                 format_ids_to_use = list(product.formats) if product.formats else []
 
-            # Get CPM from pricing_options
-            cpm = 10.0  # Default
-            if product.pricing_options and len(product.pricing_options) > 0:
-                first_option = product.pricing_options[0]
-                if first_option.rate:
-                    cpm = float(first_option.rate)
+                # Get CPM from pricing_options
+                cpm = 10.0  # Default
+                if product.pricing_options and len(product.pricing_options) > 0:
+                    first_option = product.pricing_options[0]
+                    if first_option.rate:
+                        cpm = float(first_option.rate)
 
-            # Generate permanent package ID (not product_id)
-            import secrets
+                # Generate permanent package ID
+                import secrets
 
-            package_id = f"pkg_{product.product_id}_{secrets.token_hex(4)}_{idx}"
+                package_id = f"pkg_{product.product_id}_{secrets.token_hex(4)}_{idx}"
 
-            # Get buyer_ref and budget from matching request package if available
-            buyer_ref = None
-            budget = None
-            if matching_package:
-                if hasattr(matching_package, "buyer_ref"):
-                    buyer_ref = matching_package.buyer_ref
-                if hasattr(matching_package, "budget"):
-                    budget = matching_package.budget
-
-            packages.append(
-                MediaPackage(
-                    package_id=package_id,
-                    name=product.name,
-                    delivery_type=product.delivery_type,
-                    cpm=cpm,
-                    impressions=int(total_budget / cpm * 1000),
-                    format_ids=format_ids_to_use,
-                    targeting_overlay=matching_package.targeting_overlay
-                    if matching_package and hasattr(matching_package, "targeting_overlay")
-                    else None,
-                    buyer_ref=buyer_ref,
-                    product_id=product.product_id,  # Include product_id
-                    budget=budget,  # Include budget from request
+                packages.append(
+                    MediaPackage(
+                        package_id=package_id,
+                        name=product.name,
+                        delivery_type=product.delivery_type,
+                        cpm=cpm,
+                        impressions=int(total_budget / cpm * 1000),
+                        format_ids=format_ids_to_use,
+                        targeting_overlay=None,
+                        buyer_ref=None,
+                        product_id=product.product_id,
+                        budget=None,
+                    )
                 )
-            )
 
         # Create the media buy using the adapter (SYNCHRONOUS operation)
         # Defensive null check: ensure start_time and end_time are set
