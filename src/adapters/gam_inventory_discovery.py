@@ -381,11 +381,14 @@ class GAMInventoryDiscovery:
         statement_builder = ad_manager.StatementBuilder(version="v202505")
 
         if since:
-            # Ensure timezone-aware datetime for GAM API
+            # Ensure timezone-aware datetime for GAM API (use pytz for GAM compatibility)
             if since.tzinfo is None:
-                from datetime import UTC
-
-                since = since.replace(tzinfo=UTC)
+                import pytz
+                since = pytz.utc.localize(since)
+            else:
+                # Convert to pytz timezone if using datetime.timezone.UTC
+                import pytz
+                since = since.astimezone(pytz.utc)
 
             statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
                 "since", since
@@ -434,11 +437,14 @@ class GAMInventoryDiscovery:
         statement_builder = ad_manager.StatementBuilder(version="v202505")
 
         if since:
-            # Ensure timezone-aware datetime for GAM API
+            # Ensure timezone-aware datetime for GAM API (use pytz for GAM compatibility)
             if since.tzinfo is None:
-                from datetime import UTC
-
-                since = since.replace(tzinfo=UTC)
+                import pytz
+                since = pytz.utc.localize(since)
+            else:
+                # Convert to pytz timezone if using datetime.timezone.UTC
+                import pytz
+                since = since.astimezone(pytz.utc)
 
             statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
                 "since", since
