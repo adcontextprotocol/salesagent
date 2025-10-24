@@ -101,15 +101,27 @@ def integration_db():
     engine = create_engine(os.environ["DATABASE_URL"], echo=False)
     Base.metadata.create_all(bind=engine)
 
-    # Reset the session maker to use the new test database
-    from src.core.database.database_session import Session
+    # Reset engine and update globals to point to the test database
+    from sqlalchemy.orm import scoped_session, sessionmaker
 
-    Session.configure(bind=engine)
+    from src.core.database.database_session import reset_engine
+
+    reset_engine()
+
+    # Now update the globals to use our test engine
+    import src.core.database.database_session as db_session_module
+
+    db_session_module._engine = engine
+    db_session_module._session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db_session_module._scoped_session = scoped_session(db_session_module._session_factory)
 
     yield
 
+    # Reset engine to clean up test database connections
+    reset_engine()
+
     # Cleanup
-    Session.remove()  # Close all sessions
+    engine.dispose()
 
     # Restore original environment
     if original_url is not None:
@@ -170,7 +182,8 @@ def sample_tenant(integration_db):
         currency_limit = CurrencyLimit(
             tenant_id=tenant_data["tenant_id"],
             currency_code="USD",
-            max_budget_per_package=Decimal("100000.00"),
+            min_package_budget=Decimal("1.00"),
+            max_daily_package_spend=Decimal("100000.00"),
         )
         session.add(currency_limit)
 
@@ -269,6 +282,7 @@ def sample_principal(integration_db, sample_tenant):
             principal_id=principal_data["principal_id"],
             name=principal_data["name"],
             access_token=principal_data["access_token"],
+            platform_mappings=principal_data.get("platform_mappings", {}),
         )
         session.add(principal)
         session.commit()

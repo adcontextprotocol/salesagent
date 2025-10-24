@@ -10,6 +10,7 @@ methods, not just the response object structure.
 Regression prevention: https://github.com/adcontextprotocol/salesagent/pull/337
 """
 
+import contextlib
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -41,13 +42,21 @@ class TestA2AMessageFieldValidation:
     def mock_auth_context(self, sample_tenant, sample_principal):
         """Mock authentication context for all tests."""
 
+        @contextlib.contextmanager
         def _mock_context(handler):
             handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-            return patch.multiple(
-                "src.a2a_server.adcp_a2a_server",
-                get_principal_from_token=MagicMock(return_value=sample_principal["principal_id"]),
-                get_current_tenant=MagicMock(return_value={"tenant_id": sample_tenant["tenant_id"]}),
-            )
+            # Patch get_current_tenant in both modules where it's used
+            # Also skip setup validation for tests
+            with (
+                patch.multiple(
+                    "src.a2a_server.adcp_a2a_server",
+                    get_principal_from_token=MagicMock(return_value=sample_principal["principal_id"]),
+                    get_current_tenant=MagicMock(return_value={"tenant_id": sample_tenant["tenant_id"]}),
+                ),
+                patch("src.core.main.get_current_tenant", return_value={"tenant_id": sample_tenant["tenant_id"]}),
+                patch("src.core.main.validate_setup_complete"),
+            ):
+                yield
 
         return _mock_context
 
