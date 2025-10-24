@@ -421,10 +421,9 @@ def get_principal_from_context(
     don't reliably propagate to async callers (Python ContextVar + async/sync boundary issue).
     The caller MUST call set_current_tenant(tenant_context) in their own context.
     """
-    if not context:
-        return (None, None)
-
     # Get headers using the recommended FastMCP approach
+    # NOTE: get_http_headers() works via context vars, so it can work even when context=None
+    # This allows unauthenticated public discovery endpoints to detect tenant from headers
     # CRITICAL: Use include_all=True to get Host header (excluded by default)
     headers = None
     try:
