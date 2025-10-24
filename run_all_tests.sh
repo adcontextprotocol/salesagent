@@ -217,10 +217,19 @@ if [ "$MODE" == "quick" ]; then
     echo -e "${GREEN}✅ Unit tests passed${NC}"
     echo ""
 
-    echo "🔗 Step 3/3: Running integration tests..."
+    echo "🔗 Step 3/4: Running integration tests..."
     # Exclude tests that require a real database connection or running server
     if ! uv run pytest tests/integration/ -m "not requires_db and not requires_server and not skip_ci" -x --tb=line -q; then
         echo -e "${RED}❌ Integration tests failed!${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✅ Integration tests passed${NC}"
+    echo ""
+
+    echo "🔗 Step 4/4: Running integration_v2 tests..."
+    # integration_v2 tests don't need database in quick mode (they're excluded with requires_db marker)
+    if ! uv run pytest tests/integration_v2/ -m "not requires_db and not requires_server and not skip_ci" -x --tb=line -q; then
+        echo -e "${RED}❌ Integration V2 tests failed!${NC}"
         exit 1
     fi
 
@@ -261,7 +270,7 @@ if [ "$MODE" == "ci" ]; then
     echo -e "${GREEN}✅ Unit tests passed${NC}"
     echo ""
 
-    echo "🔗 Step 3/4: Running integration tests (WITH database)..."
+    echo "🔗 Step 3/5: Running integration tests (WITH database)..."
     # Run ALL integration tests (including requires_db) - exactly like CI
     # Keep DATABASE_URL set so integration tests can access the PostgreSQL container
     if ! DATABASE_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/integration/ -x --tb=short -q -m "not requires_server and not skip_ci"; then
@@ -271,7 +280,16 @@ if [ "$MODE" == "ci" ]; then
     echo -e "${GREEN}✅ Integration tests passed${NC}"
     echo ""
 
-    echo "�� Step 4/4: Running e2e tests..."
+    echo "🔗 Step 4/5: Running integration_v2 tests (WITH database)..."
+    # Run integration_v2 tests with PostgreSQL access
+    if ! DATABASE_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/integration_v2/ -x --tb=short -q -m "not requires_server and not skip_ci"; then
+        echo -e "${RED}❌ Integration V2 tests failed!${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✅ Integration V2 tests passed${NC}"
+    echo ""
+
+    echo "�� Step 5/5: Running e2e tests..."
     # E2E tests now use the ALREADY RUNNING Docker stack (no duplicate setup!)
     # Pass flag to tell E2E tests to use existing services
     # conftest.py will start/stop services with --build flag to ensure fresh images
