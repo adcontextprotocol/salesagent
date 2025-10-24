@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.core.schemas import Budget, Package
+from src.core.schemas import Package
 
 
 @pytest.mark.unit
@@ -56,12 +56,12 @@ class TestDuplicateProductValidation:
                 Package(
                     buyer_ref="pkg_1",
                     product_id="prod_test_1",
-                    budget=Budget(total=1000, currency="USD"),
+                    budget=1000.0,
                 ),
                 Package(
                     buyer_ref="pkg_2",
                     product_id="prod_test_1",  # Same product as pkg_1
-                    budget=Budget(total=1500, currency="USD"),
+                    budget=1500.0,
                 ),
             ]
 
@@ -75,7 +75,7 @@ class TestDuplicateProductValidation:
                 packages=packages,
                 start_time=start_time,
                 end_time=end_time,
-                budget=Budget(total=2500, currency="USD"),
+                budget=2500.0,
                 context=mock_context,
             )
 
@@ -126,22 +126,22 @@ class TestDuplicateProductValidation:
                 Package(
                     buyer_ref="pkg_1",
                     product_id="prod_test_1",
-                    budget=Budget(total=1000, currency="USD"),
+                    budget=1000.0,
                 ),
                 Package(
                     buyer_ref="pkg_2",
                     product_id="prod_test_1",  # Duplicate of pkg_1
-                    budget=Budget(total=1500, currency="USD"),
+                    budget=1500.0,
                 ),
                 Package(
                     buyer_ref="pkg_3",
                     product_id="prod_test_2",
-                    budget=Budget(total=2000, currency="USD"),
+                    budget=2000.0,
                 ),
                 Package(
                     buyer_ref="pkg_4",
                     product_id="prod_test_2",  # Duplicate of pkg_3
-                    budget=Budget(total=1800, currency="USD"),
+                    budget=1800.0,
                 ),
             ]
 
@@ -155,7 +155,7 @@ class TestDuplicateProductValidation:
                 packages=packages,
                 start_time=start_time,
                 end_time=end_time,
-                budget=Budget(total=6300, currency="USD"),
+                budget=6300.0,
                 context=mock_context,
             )
 
@@ -207,12 +207,12 @@ class TestDuplicateProductValidation:
                 Package(
                     buyer_ref="pkg_1",
                     product_id="prod_test_1",
-                    budget=Budget(total=1000, currency="USD"),
+                    budget=1000.0,
                 ),
                 Package(
                     buyer_ref="pkg_2",
                     product_id="prod_test_2",  # Different product
-                    budget=Budget(total=1500, currency="USD"),
+                    budget=1500.0,
                 ),
             ]
 
@@ -228,7 +228,7 @@ class TestDuplicateProductValidation:
                     packages=packages,
                     start_time=start_time,
                     end_time=end_time,
-                    budget=Budget(total=2500, currency="USD"),
+                    budget=2500.0,
                 )
 
             # Should NOT be about duplicate products
