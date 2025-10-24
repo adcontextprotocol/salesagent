@@ -56,7 +56,8 @@ class ProtocolWebhookService:
     """
 
     def __init__(self):
-
+        self.http_client = httpx.AsyncClient(timeout=10.0)
+        
     async def send_notification(
         self,
         webhook_config: dict[str, Any],
