@@ -467,9 +467,22 @@ def get_principal_from_context(
         return (None, None)
 
     # Log all relevant headers for debugging
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     host_header = _get_header_case_insensitive(headers, "host")
     apx_host_header = _get_header_case_insensitive(headers, "apx-incoming-host")
     tenant_header = _get_header_case_insensitive(headers, "x-adcp-tenant")
+
+    logger.info("=" * 80)
+    logger.info("TENANT DETECTION - Auth Headers Debug:")
+    logger.info(f"  Host: {host_header}")
+    logger.info(f"  Apx-Incoming-Host: {apx_host_header}")
+    logger.info(f"  x-adcp-tenant: {tenant_header}")
+    logger.info(f"  Total headers available: {len(headers)}")
+    logger.info("=" * 80)
+
     console.print("[blue]Auth Headers Debug:[/blue]")
     console.print(f"  Host: {host_header}")
     console.print(f"  Apx-Incoming-Host: {apx_host_header}")
