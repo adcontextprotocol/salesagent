@@ -1183,18 +1183,13 @@ def test_gam_connection(tenant_id):
                 except json_lib.JSONDecodeError as e:
                     return jsonify({"error": f"Invalid service account JSON: {str(e)}"}), 400
 
-                # Create OAuth2 client from service account
+                # Create credentials from service account (in-memory, no temp file needed)
                 from google.oauth2 import service_account
-                from googleads import oauth2
 
-                # Create credentials from service account info
-                credentials = service_account.Credentials.from_service_account_info(
+                oauth2_client = service_account.Credentials.from_service_account_info(
                     service_account_info,
                     scopes=["https://www.googleapis.com/auth/dfp"],
                 )
-
-                # Wrap in GoogleAds OAuth2 client
-                oauth2_client = oauth2.GoogleServiceAccountClient(credentials)
 
         else:
             return jsonify({"error": f"Invalid auth_method: {auth_method}"}), 400

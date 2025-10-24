@@ -6,95 +6,19 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
-
-
-class PropertyType(Enum):
-    website = "website"
-    mobile_app = "mobile_app"
-    ctv_app = "ctv_app"
-    dooh = "dooh"
-    podcast = "podcast"
-    radio = "radio"
-    streaming_audio = "streaming_audio"
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 
 
-class Type(Enum):
-    domain = "domain"
-    subdomain = "subdomain"
-    network_id = "network_id"
-    ios_bundle = "ios_bundle"
-    android_package = "android_package"
-    apple_app_store_id = "apple_app_store_id"
-    google_play_id = "google_play_id"
-    roku_store_id = "roku_store_id"
-    fire_tv_asin = "fire_tv_asin"
-    samsung_app_id = "samsung_app_id"
-    apple_tv_bundle = "apple_tv_bundle"
-    bundle_id = "bundle_id"
-    venue_id = "venue_id"
-    screen_id = "screen_id"
-    openooh_venue_type = "openooh_venue_type"
-    rss_url = "rss_url"
-    apple_podcast_id = "apple_podcast_id"
-    spotify_show_id = "spotify_show_id"
-    podcast_guid = "podcast_guid"
-
-
-class Identifier(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    type: Annotated[
-        Type,
-        Field(
-            description="Valid identifier types for property identification across different media types",
-            examples=["domain", "ios_bundle", "venue_id", "apple_podcast_id"],
-            title="Property Identifier Types",
-        ),
-    ]
-    value: Annotated[
-        str,
-        Field(
-            description="The identifier value. For domain type: 'example.com' matches www.example.com and m.example.com only; 'subdomain.example.com' matches that specific subdomain; '*.example.com' matches all subdomains"
-        ),
-    ]
-
-
-class Tag(RootModel[str]):
+class PublisherDomain(RootModel[str]):
     root: Annotated[
         str,
         Field(
-            description="Lowercase tag with underscores (e.g., 'conde_nast_network', 'premium_content')",
-            pattern="^[a-z0-9_]+$",
+            description="Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
+            pattern="^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
         ),
     ]
-
-
-class Property(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    property_type: Annotated[PropertyType, Field(description="Type of advertising property")]
-    name: Annotated[str, Field(description="Human-readable property name")]
-    identifiers: Annotated[list[Identifier], Field(description="Array of identifiers for this property", min_length=1)]
-    tags: Annotated[
-        Optional[list[Tag]],
-        Field(description="Tags for categorization and grouping (e.g., network membership, content categories)"),
-    ] = None
-    publisher_domain: Annotated[
-        str, Field(description="Domain where adagents.json should be checked for authorization validation")
-    ]
-
-
-class Tags(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    name: Annotated[str, Field(description="Human-readable name for this tag")]
-    description: Annotated[str, Field(description="Description of what this tag represents")]
 
 
 class PrimaryChannel(Enum):
@@ -120,41 +44,42 @@ class Error(BaseModel):
     code: Annotated[str, Field(description="Error code for programmatic handling")]
     message: Annotated[str, Field(description="Human-readable error message")]
     field: Annotated[
-        Optional[str], Field(description="Field path associated with the error (e.g., 'packages[0].targeting')")
+        str | None, Field(description="Field path associated with the error (e.g., 'packages[0].targeting')")
     ] = None
-    suggestion: Annotated[Optional[str], Field(description="Suggested fix for the error")] = None
-    retry_after: Annotated[
-        Optional[float], Field(description="Seconds to wait before retrying the operation", ge=0.0)
-    ] = None
-    details: Annotated[Optional[Any], Field(description="Additional task-specific error details")] = None
+    suggestion: Annotated[str | None, Field(description="Suggested fix for the error")] = None
+    retry_after: Annotated[float | None, Field(description="Seconds to wait before retrying the operation", ge=0.0)] = (
+        None
+    )
+    details: Annotated[Any | None, Field(description="Additional task-specific error details")] = None
 
 
 class ListAuthorizedPropertiesResponse(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    properties: Annotated[
-        list[Property], Field(description="Array of all properties this agent is authorized to represent")
+    publisher_domains: Annotated[
+        list[PublisherDomain],
+        Field(
+            description="Publisher domains this agent is authorized to represent. Buyers should fetch each publisher's adagents.json to see property definitions and verify this agent is in their authorized_agents list with authorization scope.",
+            min_length=1,
+        ),
     ]
-    tags: Annotated[Optional[dict[str, Tags]], Field(description="Metadata for each tag referenced by properties")] = (
-        None
-    )
     primary_channels: Annotated[
-        Optional[list[PrimaryChannel]],
+        list[PrimaryChannel] | None,
         Field(
             description="Primary advertising channels represented in this property portfolio. Helps buying agents quickly filter relevance.",
             min_length=1,
         ),
     ] = None
     primary_countries: Annotated[
-        Optional[list[PrimaryCountry]],
+        list[PrimaryCountry] | None,
         Field(
             description="Primary countries (ISO 3166-1 alpha-2 codes) where properties are concentrated. Helps buying agents quickly filter relevance.",
             min_length=1,
         ),
     ] = None
     portfolio_description: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Markdown-formatted description of the property portfolio, including inventory types, audience characteristics, and special features.",
             max_length=5000,
@@ -162,14 +87,19 @@ class ListAuthorizedPropertiesResponse(BaseModel):
         ),
     ] = None
     advertising_policies: Annotated[
-        Optional[str],
+        str | None,
         Field(
             description="Publisher's advertising content policies, restrictions, and guidelines in natural language. May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, or links to full policy documentation.",
             max_length=10000,
             min_length=1,
         ),
     ] = None
+    last_updated: Annotated[
+        AwareDatetime | None,
+        Field(
+            description="ISO 8601 timestamp of when the agent's publisher authorization list was last updated. Buyers can use this to determine if their cached publisher adagents.json files might be stale."
+        ),
+    ] = None
     errors: Annotated[
-        Optional[list[Error]],
-        Field(description="Task-specific errors and warnings (e.g., property availability issues)"),
+        list[Error] | None, Field(description="Task-specific errors and warnings (e.g., property availability issues)")
     ] = None

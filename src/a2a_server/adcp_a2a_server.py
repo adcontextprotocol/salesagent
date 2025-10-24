@@ -131,24 +131,111 @@ class AdCPRequestHandler(RequestHandler):
         Raises:
             ValueError: If authentication fails
         """
-        # Get request headers for debugging
-        headers = getattr(_request_context, "request_headers", {})
-        apx_host = headers.get("apx-incoming-host", "NOT_PRESENT")
+        # Import tenant resolution functions
+        from src.core.config_loader import (
+            get_tenant_by_id,
+            get_tenant_by_subdomain,
+            get_tenant_by_virtual_host,
+            set_current_tenant,
+        )
 
-        # Authenticate using the token
-        principal_id = get_principal_from_token(auth_token)
+        # Get request headers for debugging (case-insensitive lookup)
+        headers = getattr(_request_context, "request_headers", {})
+
+        # Helper to get header case-insensitively
+        def get_header(header_name: str) -> str | None:
+            for key, value in headers.items():
+                if key.lower() == header_name.lower():
+                    return value
+            return None
+
+        apx_host = get_header("apx-incoming-host") or "NOT_PRESENT"
+        host = get_header("host")
+        tenant_header = get_header("x-adcp-tenant")
+
+        logger.info("[A2A AUTH] Resolving tenant from headers:")
+        logger.info(f"  Host: {host}")
+        logger.info(f"  Apx-Incoming-Host: {apx_host}")
+        logger.info(f"  x-adcp-tenant: {tenant_header}")
+
+        # CRITICAL: Resolve tenant from headers FIRST (before authentication)
+        # This matches the MCP pattern in main.py::get_principal_from_context()
+        requested_tenant_id = None
+        tenant_context = None
+        detection_method = None
+
+        # 1. Check Host header for subdomain
+        if not requested_tenant_id and host:
+            subdomain = host.split(".")[0] if "." in host else None
+            if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www", "admin"]:
+                logger.info(f"[A2A AUTH] Looking up tenant by subdomain: {subdomain}")
+                tenant_context = get_tenant_by_subdomain(subdomain)
+                if tenant_context:
+                    requested_tenant_id = tenant_context["tenant_id"]
+                    detection_method = "subdomain"
+                    set_current_tenant(tenant_context)
+                    logger.info(f"[A2A AUTH] ✅ Tenant detected from subdomain: {subdomain} → {requested_tenant_id}")
+                else:
+                    # Try virtual host lookup
+                    logger.info(f"[A2A AUTH] Trying virtual host lookup for: {host}")
+                    tenant_context = get_tenant_by_virtual_host(host)
+                    if tenant_context:
+                        requested_tenant_id = tenant_context["tenant_id"]
+                        detection_method = "host header (virtual host)"
+                        set_current_tenant(tenant_context)
+                        logger.info(f"[A2A AUTH] ✅ Tenant detected from Host header: {host} → {requested_tenant_id}")
+
+        # 2. Check x-adcp-tenant header
+        if not requested_tenant_id and tenant_header:
+            logger.info(f"[A2A AUTH] Looking up tenant from x-adcp-tenant: {tenant_header}")
+            tenant_context = get_tenant_by_subdomain(tenant_header)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                detection_method = "x-adcp-tenant (subdomain)"
+                set_current_tenant(tenant_context)
+                logger.info(
+                    f"[A2A AUTH] ✅ Tenant detected from x-adcp-tenant: {tenant_header} → {requested_tenant_id}"
+                )
+            else:
+                # Fallback: assume it's a tenant_id
+                tenant_context = get_tenant_by_id(tenant_header)
+                if tenant_context:
+                    requested_tenant_id = tenant_context["tenant_id"]
+                    detection_method = "x-adcp-tenant (direct)"
+                    set_current_tenant(tenant_context)
+                    logger.info(f"[A2A AUTH] ✅ Tenant detected from x-adcp-tenant: {requested_tenant_id}")
+
+        # 3. Check Apx-Incoming-Host header (for Approximated.app routing)
+        if not requested_tenant_id and apx_host and apx_host != "NOT_PRESENT":
+            logger.info(f"[A2A AUTH] Looking up tenant by Apx-Incoming-Host: {apx_host}")
+            tenant_context = get_tenant_by_virtual_host(apx_host)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                detection_method = "apx-incoming-host"
+                set_current_tenant(tenant_context)
+                logger.info(f"[A2A AUTH] ✅ Tenant detected from Apx-Incoming-Host: {apx_host} → {requested_tenant_id}")
+
+        if requested_tenant_id:
+            logger.info(f"[A2A AUTH] Final tenant_id: {requested_tenant_id} (via {detection_method})")
+        else:
+            logger.warning("[A2A AUTH] ⚠️  No tenant detected from headers - will use global token lookup")
+
+        # NOW authenticate with tenant context (if we have one)
+        principal_id = get_principal_from_token(auth_token, requested_tenant_id)
         if not principal_id:
             raise ServerError(
                 InvalidRequestError(
                     message=f"Invalid authentication token (not found in database). "
                     f"Token: {auth_token[:20]}..., "
+                    f"Tenant: {requested_tenant_id or 'any'}, "
                     f"Apx-Incoming-Host: {apx_host}"
                 )
             )
 
-        # Get tenant info (set as side effect of authentication)
-        tenant = get_current_tenant()
-        if not tenant:
+        # Get tenant info (either from header detection or from token lookup)
+        if not tenant_context:
+            tenant_context = get_current_tenant()
+        if not tenant_context:
             raise ServerError(
                 InvalidRequestError(
                     message=f"Unable to determine tenant from authentication. "
@@ -161,10 +248,14 @@ class AdCPRequestHandler(RequestHandler):
         if not context_id:
             context_id = f"a2a_{datetime.now(UTC).timestamp()}"
 
+        logger.info(
+            f"[A2A AUTH] ✅ Authentication successful: tenant={tenant_context['tenant_id']}, principal={principal_id}"
+        )
+
         # Create ToolContext
         return ToolContext(
             context_id=context_id,
-            tenant_id=tenant["tenant_id"],
+            tenant_id=tenant_context["tenant_id"],
             principal_id=principal_id,
             tool_name=tool_name,
             request_timestamp=datetime.now(UTC),
@@ -341,7 +432,20 @@ class AdCPRequestHandler(RequestHandler):
         try:
             # Get authentication token
             auth_token = self._get_auth_token()
-            if not auth_token:
+
+            # List of skills that don't require authentication (public discovery endpoints)
+            public_skills = {"list_authorized_properties"}
+
+            # Check if any requested skills require authentication
+            requires_auth = True
+            if skill_invocations:
+                # If ALL skills are public, don't require auth
+                requested_skills = {inv["skill"] for inv in skill_invocations}
+                if requested_skills.issubset(public_skills):
+                    requires_auth = False
+
+            # Require authentication for non-public skills
+            if requires_auth and not auth_token:
                 raise ServerError(
                     InvalidRequestError(
                         message="Missing authentication token - Bearer token required in Authorization header"
@@ -1146,7 +1250,7 @@ class AdCPRequestHandler(RequestHandler):
 
             # Validate AdCP spec required parameters
             required_params = [
-                "promoted_offering",
+                "brand_manifest",
                 "packages",
                 "budget",
                 "start_time",
@@ -1165,7 +1269,7 @@ class AdCPRequestHandler(RequestHandler):
 
             # Call core function with AdCP spec-compliant parameters
             response = await core_create_media_buy_tool(
-                promoted_offering=parameters["promoted_offering"],
+                brand_manifest=parameters["brand_manifest"],
                 po_number=parameters.get("po_number", f"A2A-{uuid.uuid4().hex[:8]}"),
                 buyer_ref=parameters.get("buyer_ref", f"A2A-{tool_context.principal_id}"),
                 packages=parameters["packages"],
@@ -1561,38 +1665,61 @@ class AdCPRequestHandler(RequestHandler):
             logger.error(f"Error in list_creative_formats skill: {e}")
             raise ServerError(InternalError(message=f"Unable to retrieve creative formats: {str(e)}"))
 
-    async def _handle_list_authorized_properties_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit list_authorized_properties skill invocation (CRITICAL AdCP endpoint)."""
+    async def _handle_list_authorized_properties_skill(self, parameters: dict, auth_token: str | None) -> dict:
+        """Handle explicit list_authorized_properties skill invocation (CRITICAL AdCP endpoint).
+
+        NOTE: Authentication is OPTIONAL for this endpoint since it returns public discovery data.
+        If no auth token provided, uses headers for tenant detection.
+
+        Per AdCP v2.4 spec, returns publisher_domains (not properties/tags).
+        """
         try:
-            # Create ToolContext from A2A auth info
-            tool_context = self._create_tool_context_from_a2a(
-                auth_token=auth_token,
-                tool_name="list_authorized_properties",
-            )
+            # Create ToolContext from A2A auth info (which sets tenant context as side effect)
+            tool_context = None
+
+            if auth_token:
+                try:
+                    tool_context = self._create_tool_context_from_a2a(
+                        auth_token=auth_token,
+                        tool_name="list_authorized_properties",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to create authenticated context (continuing without auth): {e}")
+                    tool_context = None
+            else:
+                # No auth token - create minimal Context-like object with headers for tenant detection
+                # This allows tenant detection via Apx-Incoming-Host, Host, or x-adcp-tenant headers
+                headers = getattr(_request_context, "request_headers", {})
+
+                # Create a simple object that quacks like a FastMCP Context
+                # get_principal_from_context() needs: context.meta["headers"] or context.headers
+                class MinimalContext:
+                    def __init__(self, headers):
+                        self.meta = {"headers": headers}
+                        self.headers = headers
+
+                tool_context = MinimalContext(headers)
 
             # Map A2A parameters to ListAuthorizedPropertiesRequest
             request = ListAuthorizedPropertiesRequest(tags=parameters.get("tags", []))
 
             # Call core function directly
+            # Context can be None for unauthenticated calls - tenant will be detected from headers
             response = core_list_authorized_properties_tool(req=request, context=tool_context)
 
             # Handle both dict and object responses (defensive pattern)
+            # Per AdCP v2.4 spec, response has publisher_domains (not properties/tags)
             if isinstance(response, dict):
-                properties = response.get("properties", [])
-                tags = response.get("tags", {})
-                properties_list = properties
+                publisher_domains = response.get("publisher_domains", [])
             else:
-                properties = response.properties
-                tags = response.tags
-                properties_list = [prop.model_dump() for prop in properties]
+                publisher_domains = response.publisher_domains
 
-            # Convert response to A2A format
+            # Convert response to A2A format (using AdCP v2.4 spec fields)
             return {
                 "success": True,
-                "properties": properties_list,
-                "tags": tags,
-                "message": "Authorized properties retrieved successfully",
-                "total_count": len(properties_list),
+                "publisher_domains": publisher_domains,
+                "message": f"Found {len(publisher_domains)} authorized publisher domains",
+                "total_count": len(publisher_domains),
             }
 
         except Exception as e:
@@ -2094,13 +2221,21 @@ def main():
         # Debug logging
         logger.info(f"Agent card request headers: {dict(request.headers)}")
 
+        # Helper to get header case-insensitively
+        def get_header_case_insensitive(headers, header_name: str) -> str | None:
+            """Get header value with case-insensitive lookup."""
+            for key, value in headers.items():
+                if key.lower() == header_name.lower():
+                    return value
+            return None
+
         # Determine protocol based on host (localhost = HTTP, others = HTTPS)
         def get_protocol(hostname: str) -> str:
             """Return HTTP for localhost, HTTPS for production domains."""
             return "http" if hostname.startswith("localhost") or hostname.startswith("127.0.0.1") else "https"
 
         # Check for Approximated routing first (takes priority)
-        apx_incoming_host = request.headers.get("Apx-Incoming-Host")
+        apx_incoming_host = get_header_case_insensitive(request.headers, "Apx-Incoming-Host")
         if apx_incoming_host:
             # Use the original host from Approximated - preserve the exact domain
             protocol = get_protocol(apx_incoming_host)
@@ -2108,7 +2243,7 @@ def main():
             logger.info(f"Using Apx-Incoming-Host: {apx_incoming_host} -> {server_url}")
         else:
             # Fallback to Host header
-            host = request.headers.get("Host", "")
+            host = get_header_case_insensitive(request.headers, "Host") or ""
             if host and host != "sales-agent.scope3.com":
                 # For external domains or localhost, use appropriate protocol
                 protocol = get_protocol(host)
@@ -2169,11 +2304,18 @@ def main():
 
     async def debug_tenant_endpoint(request):
         """Debug endpoint to check tenant detection from headers."""
-        headers = dict(request.headers)
 
-        # Check for Apx-Incoming-Host header
-        apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
-        host_header = headers.get("host") or headers.get("Host")
+        # Helper to get header case-insensitively
+        def get_header_case_insensitive(headers, header_name: str) -> str | None:
+            """Get header value with case-insensitive lookup."""
+            for key, value in headers.items():
+                if key.lower() == header_name.lower():
+                    return value
+            return None
+
+        # Check for Apx-Incoming-Host header (case-insensitive)
+        apx_host = get_header_case_insensitive(request.headers, "Apx-Incoming-Host")
+        host_header = get_header_case_insensitive(request.headers, "Host")
 
         # Resolve tenant using same logic as auth
         tenant_id = None
@@ -2262,27 +2404,39 @@ def main():
     # Add authentication middleware for Bearer token extraction
     @app.middleware("http")
     async def auth_middleware(request, call_next):
-        """Extract Bearer token and set authentication context for A2A requests."""
+        """Extract Bearer token and set authentication context for A2A requests.
+
+        Accepts authentication via either:
+        - Authorization: Bearer <token> (standard A2A/HTTP)
+        - x-adcp-auth: <token> (AdCP convention, for compatibility with MCP)
+        """
         # Only process A2A endpoint requests (handle both /a2a and /a2a/)
         if request.url.path in ["/a2a", "/a2a/"] and request.method == "POST":
-            # Extract Bearer token from Authorization header (case-insensitive)
-            auth_header = request.headers.get("authorization", "").strip()
-            # Also try Authorization with capital A (case variations)
-            if not auth_header:
-                auth_header = request.headers.get("Authorization", "").strip()
+            # Try Authorization header first (standard)
+            token = None
+            auth_source = None
 
-            logger.info(
-                f"Processing A2A request to {request.url.path} with auth header: {'Bearer...' if auth_header.startswith('Bearer ') else repr(auth_header[:20]) + '...' if auth_header else 'missing'}"
-            )
+            for key, value in request.headers.items():
+                if key.lower() == "authorization":
+                    auth_header = value.strip()
+                    if auth_header.startswith("Bearer "):
+                        token = auth_header[7:]  # Remove "Bearer " prefix
+                        auth_source = "Authorization"
+                        break
+                elif key.lower() == "x-adcp-auth":
+                    # Also accept x-adcp-auth for compatibility with MCP clients
+                    token = value.strip()
+                    auth_source = "x-adcp-auth"
+                    # Don't break - prefer Authorization if both present
 
-            if auth_header.startswith("Bearer "):
-                token = auth_header[7:]  # Remove "Bearer " prefix
-                # Store token and headers in thread-local storage for handler access
+            if token:
                 _request_context.auth_token = token
                 _request_context.request_headers = dict(request.headers)
-                logger.info(f"Extracted Bearer token for A2A request: {token[:10]}...")
+                logger.info(f"Extracted token from {auth_source} header for A2A request: {token[:10]}...")
             else:
-                logger.warning(f"A2A request to {request.url.path} missing Bearer token in Authorization header")
+                logger.warning(
+                    f"A2A request to {request.url.path} missing authentication (checked Authorization and x-adcp-auth headers)"
+                )
                 _request_context.auth_token = None
                 _request_context.request_headers = dict(request.headers)
 

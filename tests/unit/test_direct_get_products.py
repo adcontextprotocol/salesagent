@@ -36,7 +36,7 @@ async def test_direct_get_products():
         # Call get_products directly
         result = await get_products(
             brief="Discover available advertising products for testing",
-            promoted_offering="gourmet robot food",
+            brand_manifest={"name": "gourmet robot food"},
             context=test_context,
         )
 

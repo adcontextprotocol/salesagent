@@ -156,54 +156,38 @@ class TestListAuthorizedPropertiesResponse:
 
     def test_response_with_minimal_fields(self):
         """Test response with only required fields."""
-        response = ListAuthorizedPropertiesResponse(properties=[])
+        response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
 
-        assert response.properties == []
+        assert response.publisher_domains == ["example.com"]
         assert response.tags == {}
         assert response.errors is None
 
     def test_response_with_all_fields(self):
-        """Test response with all fields."""
-        property_obj = Property(
-            property_type="website",
-            name="Example Site",
-            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
-            tags=["premium_content"],
-            publisher_domain="example.com",
-        )
-
-        tag_metadata = PropertyTagMetadata(name="Premium Content", description="High-quality content properties")
-
+        """Test response with all fields (per AdCP v2.4 spec)."""
+        tag_metadata = PropertyTagMetadata(name="Premium Content", description="Premium content tag")
         response = ListAuthorizedPropertiesResponse(
-            properties=[property_obj],
+            publisher_domains=["example.com"],
             tags={"premium_content": tag_metadata},
             errors=[{"code": "WARNING", "message": "Test warning"}],
         )
 
-        assert len(response.properties) == 1
+        assert len(response.publisher_domains) == 1
         assert "premium_content" in response.tags
         assert len(response.errors) == 1
 
     def test_response_model_dump_includes_empty_errors(self):
         """Test that model_dump ensures errors is always present."""
-        response = ListAuthorizedPropertiesResponse(properties=[])
+        response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
 
         data = response.model_dump()
         assert "errors" in data
         assert data["errors"] == []
 
     def test_response_adcp_compliance(self):
-        """Test that ListAuthorizedPropertiesResponse complies with AdCP schema."""
+        """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 schema."""
         # Create response with all required + optional fields
-        property_obj = Property(
-            property_type="website",
-            name="Example Site",
-            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
-            publisher_domain="example.com",
-        )
-
         response = ListAuthorizedPropertiesResponse(
-            properties=[property_obj],
+            publisher_domains=["example.com"],
             tags={"test": PropertyTagMetadata(name="Test", description="Test tag")},
             errors=[],
         )
@@ -212,25 +196,25 @@ class TestListAuthorizedPropertiesResponse:
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["properties"]
+        required_fields = ["publisher_domains"]
         for field in required_fields:
             assert field in adcp_response
             assert adcp_response[field] is not None
 
         # Verify optional AdCP fields present (can be null)
         optional_fields = [
-            "tags",
             "errors",
             "primary_channels",
             "primary_countries",
             "portfolio_description",
             "advertising_policies",
+            "last_updated",
         ]
         for field in optional_fields:
             assert field in adcp_response
 
-        # Verify field count expectations (1 required + 6 optional = 7 total)
-        assert len(adcp_response) == 7
+        # Verify field count expectations (1 required + 7 optional = 8 total: publisher_domains, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated)
+        assert len(adcp_response) == 8
 
 
 class TestPropertyTagMetadata:

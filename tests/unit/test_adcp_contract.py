@@ -207,14 +207,14 @@ class TestAdCPContract:
 
     def test_adcp_get_products_request(self):
         """Test AdCP get_products request requirements."""
-        # AdCP requires both brief and promoted_offering
+        # AdCP requires both brief and brand_manifest
         request = GetProductsRequest(
             brief="Looking for display ads on news sites",
-            promoted_offering="B2B SaaS company selling analytics software",
+            brand_manifest={"name": "B2B SaaS company selling analytics software"},
         )
 
         assert request.brief is not None
-        assert request.promoted_offering is not None
+        assert request.brand_manifest is not None
 
     def test_product_pr79_fields(self):
         """Test Product schema compliance with AdCP PR #79 (filtering and pricing enhancements).
@@ -276,16 +276,19 @@ class TestAdCPContract:
         # Currency is now in pricing_options, not at product level
         assert adcp_response["pricing_options"][0]["currency"] == "EUR"
 
-        # Verify GetProductsRequest validates oneOf constraint (brand_manifest OR promoted_offering)
-        # Should succeed with promoted_offering
+        # Verify GetProductsRequest requires brand_manifest per AdCP v2.2.0 spec
+        # Should succeed with brand_manifest
         request = GetProductsRequest(
             brief="Looking for high-volume campaigns",
-            promoted_offering="Nike Air Max 2024",
+            brand_manifest={"name": "Nike Air Max 2024"},
         )
-        assert request.promoted_offering == "Nike Air Max 2024"
+        # brand_manifest is required per AdCP v2.2.0 spec
+        assert request.brand_manifest.name == "Nike Air Max 2024"
 
-        # Should fail without promoted_offering or brand_manifest (AdCP requirement)
-        with pytest.raises(ValueError):
+        # Should fail without brand_manifest (AdCP requirement)
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
             GetProductsRequest(brief="Just a brief")
 
     def test_product_properties_or_tags_required(self):
@@ -382,7 +385,7 @@ class TestAdCPContract:
         end_date = datetime.now() + timedelta(days=30)
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",  # Required per AdCP spec
+            brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},  # Required per AdCP spec
             buyer_ref="nike_jordan_2025_q1",  # Required per AdCP spec
             product_ids=["product_1", "product_2"],
             total_budget=5000.0,
@@ -551,7 +554,7 @@ class TestAdCPContract:
     def test_adcp_signal_support(self):
         """Test AdCP v2.4 signal support in targeting."""
         request = CreateMediaBuyRequest(
-            promoted_offering="Luxury automotive vehicles and premium accessories",
+            brand_manifest={"name": "Luxury automotive vehicles and premium accessories"},
             buyer_ref="luxury_auto_campaign_2025",  # Required per AdCP spec
             product_ids=["test_product"],
             total_budget=1000.0,
@@ -1888,45 +1891,36 @@ class TestAdCPContract:
         assert len(adcp_response) == 2
 
     def test_list_authorized_properties_response_adcp_compliance(self):
-        """Test that ListAuthorizedPropertiesResponse complies with AdCP list-authorized-properties-response schema."""
-        # Create response with all required + optional fields
-        property_obj = Property(
-            property_type="website",
-            name="Example Site",
-            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
-            tags=["premium_content"],
-            publisher_domain="example.com",
-        )
-
-        tag_metadata = PropertyTagMetadata(name="Premium Content", description="High-quality content properties")
-
+        """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 list-authorized-properties-response schema."""
+        # Create response with all required + optional fields (per official AdCP v2.4 spec)
+        tag_metadata = PropertyTagMetadata(name="Premium Content", description="Premium content tag")
         response = ListAuthorizedPropertiesResponse(
-            properties=[property_obj], tags={"premium_content": tag_metadata}, errors=[]
+            publisher_domains=["example.com"], tags={"premium_content": tag_metadata}, errors=[]
         )
 
         # Test AdCP-compliant response
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["properties"]
+        required_fields = ["publisher_domains"]
         for field in required_fields:
             assert field in adcp_response
             assert adcp_response[field] is not None
 
         # Verify optional AdCP fields present (can be null)
         optional_fields = [
-            "tags",
             "errors",
             "primary_channels",
             "primary_countries",
             "portfolio_description",
             "advertising_policies",
+            "last_updated",
         ]
         for field in optional_fields:
             assert field in adcp_response
 
-        # Verify properties is array
-        assert isinstance(adcp_response["properties"], list)
+        # Verify publisher_domains is array
+        assert isinstance(adcp_response["publisher_domains"], list)
 
         # Verify tags is object when present
         if adcp_response["tags"] is not None:
@@ -1936,19 +1930,21 @@ class TestAdCPContract:
         if adcp_response["errors"] is not None:
             assert isinstance(adcp_response["errors"], list)
 
-        # Verify new optional fields types
+        # Verify optional fields types
         if adcp_response["primary_channels"] is not None:
             assert isinstance(adcp_response["primary_channels"], list)
         if adcp_response["primary_countries"] is not None:
             assert isinstance(adcp_response["primary_countries"], list)
         if adcp_response["portfolio_description"] is not None:
             assert isinstance(adcp_response["portfolio_description"], str)
+        if adcp_response["advertising_policies"] is not None:
+            assert isinstance(adcp_response["advertising_policies"], str)
 
         # Verify message is provided via __str__() not as schema field (response already created above)
-        assert str(response) == "Found 1 authorized property."
+        assert str(response) == "Found 1 authorized publisher domain."
 
-        # Verify field count expectations (7 domain fields: properties, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies)
-        assert len(adcp_response) == 7
+        # Verify field count expectations (8 domain fields: publisher_domains, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated)
+        assert len(adcp_response) == 8
 
     def test_get_signals_request_adcp_compliance(self):
         """Test that GetSignalsRequest model complies with AdCP get-signals-request schema."""
@@ -2227,7 +2223,7 @@ class TestAdCPContract:
 
         # Test with 'asap' start_time
         request = CreateMediaBuyRequest(
-            promoted_offering="Flash Sale Campaign",
+            brand_manifest={"name": "Flash Sale Campaign"},
             buyer_ref="flash_sale_2025_q1",
             start_time="asap",  # AdCP v1.7.0 supports literal "asap"
             end_time=end_date,
@@ -2273,7 +2269,7 @@ class TestAdCPContract:
 
         # Test with datetime start_time (should still work)
         request = CreateMediaBuyRequest(
-            promoted_offering="Scheduled Campaign",
+            brand_manifest={"name": "Scheduled Campaign"},
             buyer_ref="scheduled_2025_q1",
             start_time=start_date,
             end_time=end_date,

@@ -237,6 +237,10 @@ repos:
         files: '^(src/core/schemas\.py|src/core/main\.py)$'
         pass_filenames: false
 
+      # Check generated schemas are in sync with JSON schemas
+      # NOTE: Removed this hook - script doesn't exist and check_schema_sync.py
+      # already validates schema alignment (runs on every commit via adcp-schema-sync)
+
       # Test MCP endpoints (requires server running)
       - id: mcp-endpoint-tests
         name: Test MCP endpoints

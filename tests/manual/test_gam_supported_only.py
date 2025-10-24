@@ -105,7 +105,7 @@ class SupportedTargetingTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Professional software and productivity tools",
+            brand_manifest={"name": "Professional software and productivity tools"},
             po_number="GEO_SUPPORTED",
             total_budget=1.00,
             targeting_overlay=Targeting(
@@ -166,7 +166,7 @@ class SupportedTargetingTester:
             raise ValueError("No custom targeting keys configured in test config")
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Data analytics and AI-powered insights",
+            brand_manifest={"name": "Data analytics and AI-powered insights"},
             po_number="AEE_AXE_SIGNALS",
             total_budget=2.00,
             targeting_overlay=Targeting(key_value_pairs=key_value_pairs),
@@ -219,7 +219,7 @@ class SupportedTargetingTester:
             key_value_pairs["axex"] = values[1] if len(values) > 1 else values[0]
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Cloud infrastructure and enterprise solutions",
+            brand_manifest={"name": "Cloud infrastructure and enterprise solutions"},
             po_number="GEO_AEE_COMBINED",
             total_budget=3.00,
             targeting_overlay=Targeting(
@@ -258,7 +258,7 @@ class SupportedTargetingTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Mobile app subscriptions and services",
+            brand_manifest={"name": "Mobile app subscriptions and services"},
             po_number="DEVICE_MUST_FAIL",
             total_budget=1.00,
             targeting_overlay=Targeting(device_type_any_of=["mobile", "desktop"]),
@@ -296,7 +296,7 @@ class SupportedTargetingTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Gaming consoles and video game titles",
+            brand_manifest={"name": "Gaming consoles and video game titles"},
             po_number="OS_MUST_FAIL",
             total_budget=1.00,
             targeting_overlay=Targeting(os_any_of=["iOS", "Android"]),
@@ -334,7 +334,7 @@ class SupportedTargetingTester:
         )
 
         request = CreateMediaBuyRequest(
-            promoted_offering="Breaking news and journalism platform",
+            brand_manifest={"name": "Breaking news and journalism platform"},
             po_number="KEYWORD_MUST_FAIL",
             total_budget=1.00,
             targeting_overlay=Targeting(keywords_any_of=["sports", "news"]),

@@ -16,8 +16,7 @@ from fastmcp.server import Context as FastMCPContext
 from pydantic import BaseModel
 from rich.console import Console
 
-from src.core.auth_utils import get_principal_from_context
-from src.core.config_loader import get_current_tenant
+from src.core.config_loader import set_current_tenant
 from src.core.context_manager import get_context_manager
 from src.core.testing_hooks import get_testing_context
 from src.core.tool_context import ToolContext
@@ -175,8 +174,12 @@ class MCPContextWrapper:
         Returns:
             A populated ToolContext object
         """
-        # Get authentication info
-        principal_id = get_principal_from_context(fastmcp_context)
+        # Import here to avoid circular dependency
+        from src.core.main import get_principal_from_context as get_principal_with_tenant
+
+        # Get authentication info and tenant context (returns tuple)
+        # This uses the main.py version which properly detects tenant from subdomain/virtual host
+        principal_id, tenant = get_principal_with_tenant(fastmcp_context, require_valid_token=True)
 
         # Extract headers for debugging
         headers = fastmcp_context.meta.get("headers", {}) if hasattr(fastmcp_context, "meta") else {}
@@ -195,12 +198,14 @@ class MCPContextWrapper:
                     f"Apx-Incoming-Host: {apx_host}"
                 )
 
-        # Get tenant info
-        tenant = get_current_tenant()
+        # Set tenant context (tenant was returned from get_principal_with_tenant)
         if not tenant:
             raise ValueError(
                 f"No tenant context available. " f"Principal: {principal_id}, " f"Apx-Incoming-Host: {apx_host}"
             )
+
+        # Set the tenant context in the ContextVar
+        set_current_tenant(tenant)
 
         # Extract or generate context_id
         headers = fastmcp_context.meta.get("headers", {}) if hasattr(fastmcp_context, "meta") else {}

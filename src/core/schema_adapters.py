@@ -37,10 +37,10 @@ class GetProductsRequest(BaseModel):
     but complex to use. This adapter hides that complexity.
 
     Usage:
-        # Simple construction (just like manual schemas)
-        req = GetProductsRequest(promoted_offering="https://example.com", brief="Video ads")
+        # Simple construction with brand_manifest
+        req = GetProductsRequest(brand_manifest={"name": "Nike Shoes"}, brief="Video ads")
 
-        # With brand_manifest
+        # With full brand manifest
         req = GetProductsRequest(
             brand_manifest={"name": "Acme", "url": "https://acme.com"},
             brief="Display ads"
@@ -426,7 +426,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    # Fields from AdCP spec (v2.0+ uses publisher_domains instead of properties)
+    # Fields from AdCP spec v2.4
     publisher_domains: list[str] = Field(
         ..., description="Publisher domains this agent is authorized to represent", min_length=1
     )
@@ -445,17 +445,6 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     )
     last_updated: str | None = Field(None, description="ISO 8601 timestamp of when authorization list was last updated")
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
-
-    # Legacy field for backward compatibility
-    @property
-    def properties(self) -> list[dict[str, Any]]:
-        """Legacy property for backward compatibility - returns publisher_domains as property objects."""
-        return [{"domain": domain} for domain in self.publisher_domains]
-
-    @property
-    def tags(self) -> dict[str, Any]:
-        """Legacy property for backward compatibility."""
-        return {}
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer.

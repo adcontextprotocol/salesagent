@@ -175,7 +175,7 @@ class TestSignalsDiscoveryProvider:
                 brief="sports car advertising",
                 tenant_id="test_tenant",
                 principal_id="test_principal",
-                context={"promoted_offering": "BMW M3 2025"},
+                context={"brand_manifest": {"name": "BMW M3 2025"}},
             )
 
             # Should have created products from signals
@@ -186,7 +186,7 @@ class TestSignalsDiscoveryProvider:
                 brief="sports car advertising",
                 tenant_id="test_tenant",
                 principal_id="test_principal",
-                context={"promoted_offering": "BMW M3 2025"},
+                context={"brand_manifest": {"name": "BMW M3 2025"}},
                 principal_data=None,
             )
 

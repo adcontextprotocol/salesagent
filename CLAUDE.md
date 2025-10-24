@@ -37,10 +37,11 @@ pytest tests/unit/test_adcp_contract.py -v
 ```
 
 **Current Schema Version:**
-- AdCP Version: v2.4
+- AdCP Version: 2.2.0 (official spec version)
 - Schema Version: v1
-- Last Verified: 2025-09-02
+- Last Verified: 2025-10-22
 - Source: https://adcontextprotocol.org/schemas/v1/index.json
+- Note: Internal "v2.4" references in codebase refer to feature evolution, not official spec versions
 
 ---
 
@@ -306,6 +307,10 @@ def create_media_buy_raw(promoted_offering: str, ...) -> CreateMediaBuyResponse:
 - Python 3.11+
 - PostgreSQL (production and testing)
 - We'll support your deployment approach as best we can
+
+**Known Test Agent Issues:**
+- **`create_media_buy` auth failure** (2025-10-04): Rejects valid auth tokens. See [postmortem](docs/testing/postmortems/2025-10-04-test-agent-auth-bug.md)
+- **`get_media_buy_delivery` parameter mismatch** (2025-10-04): Expects `media_buy_id` (singular) instead of spec-compliant `media_buy_ids` (plural)
 
 **When Test Agent is Down:**
 - Check Fly.io logs first: `fly logs --app <test-agent-app-name>`

@@ -38,7 +38,7 @@ class TestMCPToolRoundtripMinimal:
 
     async def test_get_products_minimal(self, mcp_client):
         """Test get_products with only required parameter (promoted_offering)."""
-        result = await mcp_client.call_tool("get_products", {"promoted_offering": "sustainable products"})
+        result = await mcp_client.call_tool("get_products", {"brand_manifest": {"name": "sustainable products"}})
 
         assert result is not None
         assert "products" in result or "error" not in result
@@ -46,7 +46,9 @@ class TestMCPToolRoundtripMinimal:
     async def test_create_media_buy_minimal(self, mcp_client):
         """Test create_media_buy with minimal required parameters."""
         # Get a product first
-        products = await mcp_client.call_tool("get_products", {"promoted_offering": "test product", "brief": "test"})
+        products = await mcp_client.call_tool(
+            "get_products", {"brand_manifest": {"name": "test product"}, "brief": "test"}
+        )
 
         if products and len(products.get("products", [])) > 0:
             product_id = products["products"][0]["product_id"]
@@ -73,7 +75,9 @@ class TestMCPToolRoundtripMinimal:
         was accessed but didn't exist in the schema.
         """
         # Create a media buy first
-        products = await mcp_client.call_tool("get_products", {"promoted_offering": "test product", "brief": "test"})
+        products = await mcp_client.call_tool(
+            "get_products", {"brand_manifest": {"name": "test product"}, "brief": "test"}
+        )
 
         if products and len(products.get("products", [])) > 0:
             product_id = products["products"][0]["product_id"]
@@ -184,7 +188,7 @@ class TestSchemaConstructionValidation:
         # These deprecated fields should be handled by model_validator
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             po_number="TEST-003",
             product_ids=["prod_1"],
             start_date=date.today(),
@@ -203,7 +207,7 @@ class TestSchemaConstructionValidation:
 
         # Test schemas that should work with minimal params
         test_cases = [
-            (schemas.GetProductsRequest, {"promoted_offering": "test"}),
+            (schemas.GetProductsRequest, {"brand_manifest": {"name": "test"}}),
             (schemas.UpdateMediaBuyRequest, {"media_buy_id": "test"}),
             (schemas.GetMediaBuyDeliveryRequest, {}),
             (schemas.ListCreativesRequest, {}),
@@ -254,7 +258,7 @@ class TestParameterToSchemaMapping:
 
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",
-            promoted_offering="Adidas UltraBoost 2025 running shoes",
+            brand_manifest={"name": "Adidas UltraBoost 2025 running shoes"},
             po_number="TEST-004",
             product_ids=["prod_1", "prod_2"],
             start_date="2025-02-01",

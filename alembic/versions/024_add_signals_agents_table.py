@@ -1,7 +1,7 @@
 """Add signals_agents table for multi-agent signals discovery
 
 Revision ID: 024_add_signals_agents
-Revises: e17d03b0a79e, 6d6ac8d87c34, ed7d05fea3be
+Revises: e17d03b0a79e, 6d6ac8d87c34, ed7d05fea3be, faaed3b71428
 Create Date: 2025-10-22 12:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "024_add_signals_agents"
-down_revision: str | Sequence[str] | None = ("e17d03b0a79e", "6d6ac8d87c34", "ed7d05fea3be")
+down_revision: str | Sequence[str] | None = ("e17d03b0a79e", "6d6ac8d87c34", "ed7d05fea3be", "faaed3b71428")
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

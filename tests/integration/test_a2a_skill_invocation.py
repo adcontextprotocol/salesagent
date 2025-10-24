@@ -7,9 +7,10 @@ to ensure our A2A server properly handles the evolving AdCP spec.
 """
 
 import logging
+from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import Message, Part, Role, Task
+from a2a.types import Message, MessageSendParams, Part, Role, Task
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 
@@ -250,7 +251,10 @@ class TestA2ASkillInvocation:
             mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
             # Create explicit skill invocation message
-            skill_params = {"brief": "Display advertising for news content", "promoted_offering": "News media company"}
+            skill_params = {
+                "brief": "Display advertising for news content",
+                "brand_manifest": {"name": "News media company"},
+            }
             message = self.create_message_with_skill("get_products", skill_params)
             params = MessageSendParams(message=message)
 
@@ -300,7 +304,10 @@ class TestA2ASkillInvocation:
             mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
             # Create explicit skill invocation message using A2A spec 'input' field
-            skill_params = {"brief": "Premium coffee brands", "promoted_offering": "Wonderstruck Premium Video Ads"}
+            skill_params = {
+                "brief": "Premium coffee brands",
+                "brand_manifest": {"name": "Wonderstruck Premium Video Ads"},
+            }
             message = self.create_message_with_skill_a2a_spec("get_products", skill_params)
             params = MessageSendParams(message=message)
 
@@ -360,7 +367,7 @@ class TestA2ASkillInvocation:
             end_date = start_date + timedelta(days=30)
 
             skill_params = {
-                "promoted_offering": "Test Campaign",
+                "brand_manifest": {"name": "Test Campaign"},
                 "packages": [
                     {
                         "buyer_ref": f"pkg_{sample_products[0]}",
@@ -411,7 +418,7 @@ class TestA2ASkillInvocation:
             mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
             # Create hybrid message (text + explicit skill)
-            skill_params = {"brief": "Sports video advertising", "promoted_offering": "Sports brand"}
+            skill_params = {"brief": "Sports video advertising", "brand_manifest": {"name": "Sports brand"}}
             message = self.create_message_hybrid(
                 "I need video products for sports content", "get_products", skill_params
             )
@@ -488,7 +495,7 @@ class TestA2ASkillInvocation:
                             kind="data",
                             data={
                                 "skill": "get_products",
-                                "parameters": {"brief": "video ads", "promoted_offering": "Test Brand Product"},
+                                "parameters": {"brief": "video ads", "brand_manifest": {"name": "Test Brand Product"}},
                             },
                         )
                     ),
@@ -719,14 +726,42 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_list_authorized_properties_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test list_authorized_properties skill invocation."""
+        # Create authorized properties for the tenant
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import AuthorizedProperty
+
+        with get_db_session() as session:
+            prop = AuthorizedProperty(
+                property_id="test_property_1",
+                tenant_id=sample_tenant["tenant_id"],
+                property_type="website",
+                name="Test Site",
+                identifiers=[{"type": "domain", "value": "example.com"}],
+                tags=["test"],
+                publisher_domain="example.com",
+                verification_status="verified",
+            )
+            session.add(prop)
+            session.commit()
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        # Set up tenant context before test
+        from src.core.config_loader import set_current_tenant
+
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+        set_current_tenant(tenant_dict)
 
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.main.get_current_tenant") as mock_get_tenant,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            mock_get_tenant.return_value = tenant_dict
 
             # Create skill invocation
             skill_params = {}
@@ -742,9 +777,10 @@ class TestA2ASkillInvocation:
             assert "list_authorized_properties" in result.metadata["skills_requested"]
             assert result.artifacts is not None
 
-            # Extract response
+            # Extract response - per AdCP v2.4 spec, response has publisher_domains
             artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
-            assert "properties" in artifact_data
+            assert "publisher_domains" in artifact_data
+            assert len(artifact_data["publisher_domains"]) > 0
 
     @pytest.mark.asyncio
     async def test_sync_creatives_skill(self, handler, sample_tenant, sample_principal, sample_products, validator):

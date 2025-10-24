@@ -144,7 +144,7 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         response = _create_media_buy_impl(
-            promoted_offering="Test Campaign",
+            brand_manifest={"name": "Test Campaign"},
             product_ids=["prod_global"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
@@ -171,7 +171,7 @@ class TestMinimumSpendValidation:
 
         # Try to create media buy below product override ($5000)
         response = _create_media_buy_impl(
-            promoted_offering="Test Campaign",
+            brand_manifest={"name": "Test Campaign"},
             product_ids=["prod_high"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
@@ -198,7 +198,7 @@ class TestMinimumSpendValidation:
 
         # Create media buy above product minimum ($500) but below currency limit ($1000)
         response = _create_media_buy_impl(
-            promoted_offering="Test Campaign",
+            brand_manifest={"name": "Test Campaign"},
             product_ids=["prod_low"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
@@ -222,7 +222,7 @@ class TestMinimumSpendValidation:
 
         # Create media buy above minimum
         response = _create_media_buy_impl(
-            promoted_offering="Test Campaign",
+            brand_manifest={"name": "Test Campaign"},
             product_ids=["prod_global"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
@@ -247,7 +247,7 @@ class TestMinimumSpendValidation:
 
         # Try to create media buy with unsupported currency (JPY)
         response = _create_media_buy_impl(
-            promoted_offering="Test Campaign",
+            brand_manifest={"name": "Test Campaign"},
             product_ids=["prod_global"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
@@ -275,7 +275,7 @@ class TestMinimumSpendValidation:
         # €950 should fail (below €900 minimum... wait, that should pass)
         # Let's try €800 which should fail
         response = _create_media_buy_impl(
-            promoted_offering="Test Campaign",
+            brand_manifest={"name": "Test Campaign"},
             product_ids=["prod_global"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
@@ -313,7 +313,7 @@ class TestMinimumSpendValidation:
 
         # Create media buy with low budget in GBP (should succeed - no minimum)
         response = _create_media_buy_impl(
-            promoted_offering="Test Campaign",
+            brand_manifest={"name": "Test Campaign"},
             product_ids=["prod_global"],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
