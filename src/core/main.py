@@ -4070,13 +4070,24 @@ def list_authorized_properties(
     """
     # FIX: Create MinimalContext with headers from FastMCP request (like A2A does)
     # This ensures tenant detection works the same way for both MCP and A2A
+    import logging
+
+    logger = logging.getLogger(__name__)
     tool_context = None
+
     if context:
         try:
+            logger.info(f"MCP list_authorized_properties: context type={type(context)}")
+            logger.info(f"MCP list_authorized_properties: has request_context={hasattr(context, 'request_context')}")
+
             # Access raw Starlette request headers via context.request_context.request
             request = context.request_context.request
+            logger.info(f"MCP list_authorized_properties: request={request}, type={type(request) if request else None}")
+
             if request and hasattr(request, "headers"):
                 headers = dict(request.headers)
+                logger.info(f"MCP list_authorized_properties: Extracted {len(headers)} headers from request")
+                logger.info(f"MCP list_authorized_properties: Host header={headers.get('host')}")
 
                 # Create MinimalContext matching A2A pattern
                 class MinimalContext:
@@ -4085,14 +4096,18 @@ def list_authorized_properties(
                         self.headers = headers
 
                 tool_context = MinimalContext(headers)
+                logger.info("MCP list_authorized_properties: Created MinimalContext successfully")
+            else:
+                logger.warning("MCP list_authorized_properties: request has no headers attribute")
+                tool_context = context
         except Exception as e:
             # Fallback to passing context as-is
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Could not extract headers from FastMCP context: {e}")
+            logger.error(
+                f"MCP list_authorized_properties: Could not extract headers from FastMCP context: {e}", exc_info=True
+            )
             tool_context = context
     else:
+        logger.info("MCP list_authorized_properties: No context provided")
         tool_context = context
 
     return _list_authorized_properties_impl(req, tool_context)
