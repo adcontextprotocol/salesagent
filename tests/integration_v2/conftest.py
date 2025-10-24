@@ -487,10 +487,12 @@ def create_test_product_with_pricing(
     session.flush()  # Get product into session before adding pricing_options
 
     # Create PricingOption
+    # Convert pricing_model to lowercase for AdCP spec compliance
+    pricing_model_lower = pricing_model.lower() if isinstance(pricing_model, str) else pricing_model
     pricing_option = PricingOption(
         tenant_id=tenant_id,
         product_id=product_id,
-        pricing_model=pricing_model,
+        pricing_model=pricing_model_lower,
         rate=rate_decimal,
         currency=currency,
         is_fixed=is_fixed,

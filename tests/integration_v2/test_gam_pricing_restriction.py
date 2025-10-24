@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import CurrencyLimit, PricingOption, Principal, Product, Tenant
+from src.core.database.models import AdapterConfig, CurrencyLimit, PricingOption, Principal, Product, Tenant
 from src.core.main import _create_media_buy_impl
 from src.core.tool_context import ToolContext
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
@@ -33,6 +33,15 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
         session.add(tenant)
         session.flush()
 
+        # Add GAM adapter config
+        adapter_config = AdapterConfig(
+            tenant_id="test_gam_tenant",
+            adapter_type="google_ad_manager",
+            gam_network_code="test_network_123",
+        )
+        session.add(adapter_config)
+        session.flush()
+
         # Add required setup data (access control, authorized properties, currency limits, etc.)
         add_required_setup_data(session, "test_gam_tenant")
 
@@ -42,7 +51,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             principal_id="test_advertiser",
             name="Test Advertiser",
             access_token="test_gam_token",
-            platform_mappings={"google_ad_manager": {"advertiser_id": "gam_adv_123"}},
+            platform_mappings={"google_ad_manager": {"advertiser_id": "123456"}},
         )
         session.add(principal)
 
@@ -53,9 +62,9 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_cpcv",
             name="Video Ads - CPCV",
             description="Video inventory with CPCV pricing",
-            formats=["video_instream"],
+            formats=[{"agent_url": "https://test.com", "id": "video_instream"}],
             delivery_type="non_guaranteed",
-            pricing_model="CPCV",
+            pricing_model="cpcv",
             rate=Decimal("0.40"),
             is_fixed=True,
             targeting_template={},
@@ -71,9 +80,9 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_cpm",
             name="Display Ads - CPM",
             description="Display inventory with CPM pricing",
-            formats=["display_300x250"],
+            formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
             delivery_type="guaranteed",
-            pricing_model="CPM",
+            pricing_model="cpm",
             rate=Decimal("12.50"),
             is_fixed=True,
             targeting_template={},
@@ -90,9 +99,12 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_multi",
             name="Premium Package",
             description="Multiple pricing models (some unsupported)",
-            formats=["display_300x250", "video_instream"],
+            formats=[
+                {"agent_url": "https://test.com", "id": "display_300x250"},
+                {"agent_url": "https://test.com", "id": "video_instream"},
+            ],
             delivery_type="non_guaranteed",
-            pricing_model="CPM",
+            pricing_model="cpm",
             rate=Decimal("15.00"),
             is_fixed=True,
             targeting_template={},
@@ -125,6 +137,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
         session.execute(delete(Product).where(Product.tenant_id == "test_gam_tenant"))
         session.execute(delete(Principal).where(Principal.tenant_id == "test_gam_tenant"))
         session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "test_gam_tenant"))
+        session.execute(delete(AdapterConfig).where(AdapterConfig.tenant_id == "test_gam_tenant"))
         session.commit()
 
 
