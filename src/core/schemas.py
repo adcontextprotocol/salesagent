@@ -2727,7 +2727,7 @@ class PackageUpdate(BaseModel):
 
     package_id: str
     active: bool | None = None  # True to activate, False to pause
-    budget: float | None = None  # New budget in dollars
+    budget: Budget | float | None = None  # Budget object (AdCP spec) or legacy float
     impressions: int | None = None  # Direct impression goal (overrides budget calculation)
     cpm: float | None = None  # Update CPM rate
     daily_budget: float | None = None  # Daily spend cap

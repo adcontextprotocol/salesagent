@@ -131,10 +131,17 @@
                     <span class="value">{{ item.package.package_config.name }}</span>
                 </div>
                 {% endif %}
-                {% if item.package.package_config.get('budget') and item.package.package_config.budget.get('total') %}
+                {% if item.package.package_config.get('budget') %}
                 <div class="detail-row">
                     <span class="label">Budget:</span>
-                    <span class="value">${{ "%.2f"|format(item.package.package_config.budget.total) }}</span>
+                    <span class="value">
+                        {# Handle both Budget object (dict) and legacy float #}
+                        {% if item.package.package_config.budget is mapping %}
+                            ${{ "%.2f"|format(item.package.package_config.budget.total) }}
+                        {% else %}
+                            ${{ "%.2f"|format(item.package.package_config.budget) }}
+                        {% endif %}
+                    </span>
                 </div>
                 {% endif %}
                 {% if item.product %}
