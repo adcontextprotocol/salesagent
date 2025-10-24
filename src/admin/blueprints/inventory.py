@@ -482,7 +482,9 @@ def analyze_ad_server_inventory(tenant_id):
 @log_admin_action("sync_inventory")
 @require_tenant_access(api_mode=True)
 def sync_inventory(tenant_id):
-    """Sync GAM inventory for a tenant with optional selective sync.
+    """Start inventory sync in background (non-blocking).
+
+    Returns immediately with sync_id for tracking progress.
 
     Request body (optional):
     {
@@ -492,11 +494,18 @@ def sync_inventory(tenant_id):
     }
 
     If no body provided, syncs everything (backwards compatible).
+
+    Returns:
+        202 Accepted with sync_id for tracking
+        400 Bad Request if GAM not configured or sync already running
+        404 Not Found if tenant doesn't exist
     """
     try:
+        from src.services.background_sync_service import start_inventory_sync_background
+
+        # Validate tenant exists
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
@@ -517,112 +526,37 @@ def sync_inventory(tenant_id):
                     400,
                 )
 
-            # Check authentication method - support both OAuth and service account
-            auth_method = getattr(adapter_config, "gam_auth_method", None)
+        # Parse request body
+        data = request.get_json() or {}
+        sync_types = data.get("types", None)
+        custom_targeting_limit = data.get("custom_targeting_limit")
+        audience_segment_limit = data.get("audience_segment_limit")
 
-            if not auth_method:
-                # Legacy: infer auth method from available credentials
-                if adapter_config.gam_refresh_token:
-                    auth_method = "oauth"
-                elif hasattr(adapter_config, "gam_service_account_json") and adapter_config.gam_service_account_json:
-                    auth_method = "service_account"
-                else:
-                    return (
-                        jsonify(
-                            {
-                                "error": "Please connect your GAM account before trying to sync inventory. Go to Ad Server settings to configure GAM."
-                            }
-                        ),
-                        400,
-                    )
+        # Start background sync
+        sync_id = start_inventory_sync_background(
+            tenant_id=tenant_id,
+            sync_types=sync_types,
+            custom_targeting_limit=custom_targeting_limit,
+            audience_segment_limit=audience_segment_limit,
+        )
 
-            # Parse request body for selective sync options
-            data = request.get_json() or {}
-            sync_types = data.get("types", None)  # None means sync all
-            custom_targeting_limit = data.get("custom_targeting_limit")
-            audience_segment_limit = data.get("audience_segment_limit")
+        # Return 202 Accepted with sync_id
+        return (
+            jsonify(
+                {
+                    "sync_id": sync_id,
+                    "status": "running",
+                    "message": "Sync started in background. Check status at /api/sync/status/{sync_id}",
+                }
+            ),
+            202,
+        )
 
-            # Import and use GAM inventory discovery
-            import os
-            import json
-            import tempfile
-
-            from googleads import ad_manager, oauth2
-            import google.oauth2.service_account
-
-            from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
-
-            # Create credentials based on auth method
-            if auth_method == "service_account":
-                # Service account authentication
-                if not hasattr(adapter_config, "gam_service_account_json") or not adapter_config.gam_service_account_json:
-                    return jsonify({"error": "Service account credentials not found"}), 400
-
-                # Get service account JSON (already decrypted by model property)
-                service_account_json_str = adapter_config.gam_service_account_json
-
-                # Write to temporary file (required for google.oauth2.service_account.Credentials)
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                    f.write(service_account_json_str)
-                    temp_keyfile = f.name
-
-                try:
-                    # Create service account credentials
-                    credentials = google.oauth2.service_account.Credentials.from_service_account_file(
-                        temp_keyfile, scopes=["https://www.googleapis.com/auth/dfp"]
-                    )
-                    # Wrap in GoogleCredentialsClient for AdManagerClient compatibility
-                    oauth2_client = oauth2.GoogleCredentialsClient(credentials)
-
-                    # Create GAM client with service account credentials
-                    client = ad_manager.AdManagerClient(oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code)
-                finally:
-                    # Clean up temp file
-                    try:
-                        os.unlink(temp_keyfile)
-                    except Exception:
-                        pass
-            else:
-                # OAuth authentication
-                if not adapter_config.gam_refresh_token:
-                    return jsonify({"error": "OAuth refresh token not found"}), 400
-
-                # Create OAuth2 client
-                oauth2_client = oauth2.GoogleRefreshTokenClient(
-                    client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
-                    client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
-                    refresh_token=adapter_config.gam_refresh_token,
-                )
-
-                # Create GAM client
-                client = ad_manager.AdManagerClient(
-                    oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
-                )
-
-            # Initialize GAM inventory discovery
-            discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
-
-            # Perform selective or full sync
-            if sync_types:
-                result = discovery.sync_selective(
-                    sync_types=sync_types,
-                    custom_targeting_limit=custom_targeting_limit,
-                    audience_segment_limit=audience_segment_limit,
-                )
-            else:
-                # Full sync (backwards compatible)
-                result = discovery.sync_all()
-
-            # Save to database
-            from src.services.gam_inventory_service import GAMInventoryService
-
-            inventory_service = GAMInventoryService(db_session)
-            inventory_service._save_inventory_to_db(tenant_id, discovery)
-
-            return jsonify(result)
-
+    except ValueError as e:
+        # Sync already running or validation error
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
-        logger.error(f"Error syncing inventory: {e}", exc_info=True)
+        logger.error(f"Error starting inventory sync: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
