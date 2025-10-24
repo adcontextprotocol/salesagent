@@ -719,20 +719,23 @@ class XandrAdapter(AdServerAdapter):
         try:
             for asset in assets:
                 # Create creative
+                # Extract format_id string from FormatId object
+                format_id = asset.format.id if hasattr(asset.format, "id") else str(asset.format)
+
                 creative_data = {
                     "creative": {
                         "name": asset.name,
                         "advertiser_id": int(self.advertiser_id),
-                        "format": self._map_creative_format(asset.format),
+                        "format": self._map_creative_format(format_id),
                         "width": asset.width or 300,
                         "height": asset.height or 250,
                         "media_url": asset.media_url,
                         "click_url": asset.click_url,
-                        "media_type": "image" if asset.format.startswith("display") else "video",
+                        "media_type": "image" if format_id.startswith("display") else "video",
                     }
                 }
 
-                if asset.format.startswith("video"):
+                if format_id.startswith("video"):
                     creative_data["creative"]["duration"] = asset.duration or 30
 
                 response = self._make_request("POST", "/creative", creative_data)

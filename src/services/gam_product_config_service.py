@@ -90,11 +90,15 @@ class GAMProductConfigService:
         for format_item in formats:
             # Handle both format storage patterns:
             # 1. Simple string: "display_300x250"
-            # 2. Dict with format_id: {"format_id": "display_300x250", "name": "...", ...}
+            # 2. Dict with format_id or id: {"id": "display_300x250", "agent_url": "..."}
+            # 3. FormatId Pydantic object with .id attribute
             if isinstance(format_item, dict):
-                format_id = format_item.get("format_id", "")
+                format_id = format_item.get("id") or format_item.get("format_id", "")
+            elif hasattr(format_item, "id"):
+                # FormatId Pydantic object
+                format_id = format_item.id
             else:
-                format_id = format_item
+                format_id = str(format_item)
 
             if format_id in format_dimensions:
                 width, height = format_dimensions[format_id]

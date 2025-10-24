@@ -132,17 +132,25 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
 
     yield
 
-    # Cleanup (SQLAlchemy 2.0 pattern)
+    # Cleanup (SQLAlchemy 2.0 pattern) - delete in correct order to avoid FK violations
+    from src.core.database.models import CreativeAssignment, MediaBuy, MediaPackage
+
     with get_db_session() as session:
+        # Delete tables that reference media_buys first
+        session.execute(delete(CreativeAssignment).where(CreativeAssignment.tenant_id == "test_gam_tenant"))
+        session.execute(delete(MediaPackage).where(MediaPackage.media_buy_id.like("mock_buy_%")))
+        session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == "test_gam_tenant"))
+
+        # Then delete other tenant data
         session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_gam_tenant"))
         session.execute(delete(Product).where(Product.tenant_id == "test_gam_tenant"))
         session.execute(delete(Principal).where(Principal.tenant_id == "test_gam_tenant"))
         session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "test_gam_tenant"))
         session.execute(delete(AdapterConfig).where(AdapterConfig.tenant_id == "test_gam_tenant"))
+        session.execute(delete(Tenant).where(Tenant.tenant_id == "test_gam_tenant"))
         session.commit()
 
 
-@pytest.mark.skip_ci  # TODO: Fix FormatId hashable bug before enabling
 @pytest.mark.requires_db
 @pytest.mark.asyncio
 async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
@@ -205,7 +213,6 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
         assert "cpcv" in error_msg.lower() or "pricing" in error_msg.lower()
 
 
-@pytest.mark.skip_ci  # TODO: Fix FormatId hashable bug before enabling
 @pytest.mark.requires_db
 @pytest.mark.asyncio
 async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
@@ -214,6 +221,7 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
 
     from src.adapters.google_ad_manager import GoogleAdManager
     from src.core.config_loader import set_current_tenant
+    from src.core.schemas import CreateMediaBuyResponse
 
     start_time = datetime.now(UTC) + timedelta(days=1)
     end_time = start_time + timedelta(days=30)
@@ -241,7 +249,15 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
     # Mock get_adapter to return a mock GAM adapter that accepts CPM
     mock_adapter = MagicMock(spec=GoogleAdManager)
     mock_adapter.get_supported_pricing_models.return_value = ["cpm"]
-    mock_adapter.create_media_buy = MagicMock(return_value={"order_id": "123", "line_items": []})
+
+    # Return proper CreateMediaBuyResponse with packages attribute
+    mock_response = CreateMediaBuyResponse(
+        buyer_ref="test-buyer-cpm",
+        media_buy_id="mock_buy_123",
+        creative_deadline=datetime.now(UTC) + timedelta(days=2),
+        packages=[{"buyer_ref": "pkg_1", "package_id": "mock_pkg_1"}],
+    )
+    mock_adapter.create_media_buy = MagicMock(return_value=mock_response)
 
     with patch("src.core.main.get_adapter", return_value=mock_adapter):
         # This should succeed
@@ -264,7 +280,6 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         assert response.media_buy_id is not None
 
 
-@pytest.mark.skip_ci  # TODO: Fix FormatId hashable bug before enabling
 @pytest.mark.requires_db
 @pytest.mark.asyncio
 async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
@@ -324,7 +339,6 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
         assert "cpp" in error_msg.lower() or "pricing" in error_msg.lower()
 
 
-@pytest.mark.skip_ci  # TODO: Fix FormatId hashable bug before enabling
 @pytest.mark.requires_db
 @pytest.mark.asyncio
 async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
@@ -333,6 +347,7 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
 
     from src.adapters.google_ad_manager import GoogleAdManager
     from src.core.config_loader import set_current_tenant
+    from src.core.schemas import CreateMediaBuyResponse
 
     start_time = datetime.now(UTC) + timedelta(days=1)
     end_time = start_time + timedelta(days=30)
@@ -360,7 +375,15 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
     # Mock get_adapter to return a mock GAM adapter that accepts CPM
     mock_adapter = MagicMock(spec=GoogleAdManager)
     mock_adapter.get_supported_pricing_models.return_value = ["cpm"]
-    mock_adapter.create_media_buy = MagicMock(return_value={"order_id": "123", "line_items": []})
+
+    # Return proper CreateMediaBuyResponse with packages attribute
+    mock_response = CreateMediaBuyResponse(
+        buyer_ref="test-buyer-multi-cpm",
+        media_buy_id="mock_buy_456",
+        creative_deadline=datetime.now(UTC) + timedelta(days=2),
+        packages=[{"buyer_ref": "pkg_1", "package_id": "mock_pkg_1"}],
+    )
+    mock_adapter.create_media_buy = MagicMock(return_value=mock_response)
 
     with patch("src.core.main.get_adapter", return_value=mock_adapter):
         # This should succeed - buyer chose CPM from multi-option product

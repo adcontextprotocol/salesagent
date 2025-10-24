@@ -1261,6 +1261,16 @@ class FormatId(BaseModel):
         """Return representation for debugging."""
         return f"FormatId(id='{self.id}', agent_url='{self.agent_url}')"
 
+    def __hash__(self) -> int:
+        """Make FormatId hashable for use in sets and as dict keys."""
+        return hash((self.agent_url, self.id))
+
+    def __eq__(self, other: object) -> bool:
+        """Compare FormatId objects by agent_url and id."""
+        if not isinstance(other, FormatId):
+            return False
+        return self.agent_url == other.agent_url and self.id == other.id
+
 
 class Creative(BaseModel):
     """Individual creative asset in the creative library - AdCP spec compliant."""

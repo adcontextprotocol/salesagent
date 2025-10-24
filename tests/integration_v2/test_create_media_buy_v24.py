@@ -115,7 +115,15 @@ class TestCreateMediaBuyV24Format:
                 "product_id": "prod_test_v24",
             }
 
-            # Cleanup
+            # Cleanup - delete in correct order to avoid foreign key violations
+            from src.core.database.models import CreativeAssignment, MediaBuy, MediaPackage
+
+            # Delete tables that reference media_buys first
+            session.execute(delete(CreativeAssignment).where(CreativeAssignment.tenant_id == "test_tenant_v24"))
+            session.execute(delete(MediaPackage).where(MediaPackage.media_buy_id.like("buy_%")))
+            session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == "test_tenant_v24"))
+
+            # Then delete other tenant data
             session.execute(delete(ModelProduct).where(ModelProduct.tenant_id == "test_tenant_v24"))
             session.execute(delete(ModelPrincipal).where(ModelPrincipal.tenant_id == "test_tenant_v24"))
             session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "test_tenant_v24"))
