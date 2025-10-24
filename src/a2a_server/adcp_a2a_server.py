@@ -1247,6 +1247,7 @@ class AdCPRequestHandler(RequestHandler):
             # Map A2A parameters to GetProductsRequest
             brief = parameters.get("brief", "")
             promoted_offering = parameters.get("promoted_offering", "")
+            brand_manifest = parameters.get("brand_manifest")
 
             if not brief and not promoted_offering:
                 raise ServerError(
@@ -1259,7 +1260,10 @@ class AdCPRequestHandler(RequestHandler):
 
             # Call core function directly with individual parameters, not request object
             response = await core_get_products_tool(
-                brief=brief, promoted_offering=promoted_offering, context=tool_context
+                brief=brief,
+                promoted_offering=promoted_offering,
+                brand_manifest=brand_manifest,
+                context=tool_context,
             )
 
             # Return spec-compliant response (no extra fields)
