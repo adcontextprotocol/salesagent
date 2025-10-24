@@ -1186,10 +1186,12 @@ def test_gam_connection(tenant_id):
                 # Create credentials from service account (in-memory, no temp file needed)
                 from google.oauth2 import service_account
 
-                oauth2_client = service_account.Credentials.from_service_account_info(
+                credentials = service_account.Credentials.from_service_account_info(
                     service_account_info,
                     scopes=["https://www.googleapis.com/auth/dfp"],
                 )
+                # Wrap in GoogleCredentialsClient for AdManagerClient compatibility
+                oauth2_client = oauth2.GoogleCredentialsClient(credentials)
 
         else:
             return jsonify({"error": f"Invalid auth_method: {auth_method}"}), 400
