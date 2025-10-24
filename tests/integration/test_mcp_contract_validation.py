@@ -85,7 +85,7 @@ class TestMCPContractValidation:
             packages=[{"buyer_ref": "pkg1", "products": ["prod1"], "status": "draft"}],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
+            budget=5000.0,  # Per AdCP v2.2.0, budget is a number
             po_number="PO-12345",
         )
 
@@ -109,7 +109,7 @@ class TestMCPContractValidation:
             packages=[Package(buyer_ref="pkg1", product_id=None)],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
+            budget=5000.0,  # Per AdCP v2.2.0, budget is a number
         )
         assert request.get_product_ids() == []  # Should return empty list, not crash
 
@@ -121,7 +121,7 @@ class TestMCPContractValidation:
             packages=[Package(buyer_ref="pkg2")],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
+            budget=5000.0,  # Per AdCP v2.2.0, budget is a number
         )
         assert request.get_product_ids() == []
 
@@ -137,7 +137,7 @@ class TestMCPContractValidation:
             ],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
+            budget=5000.0,  # Per AdCP v2.2.0, budget is a number
         )
         assert request.get_product_ids() == ["prod1"]
 
@@ -250,7 +250,7 @@ class TestSchemaDefaultValues:
             packages=[{"buyer_ref": "pkg1", "products": ["prod1"], "status": "draft"}],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
+            budget=5000.0,  # Per AdCP v2.2.0, budget is a number
             po_number="test",
         )
         assert req.pacing == "even"  # Sensible default

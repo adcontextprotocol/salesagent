@@ -2041,7 +2041,7 @@ class TestAdCPContract:
 
         from datetime import UTC, datetime
 
-        from src.core.schemas import AdCPPackageUpdate, Budget, UpdateMediaBuyRequest
+        from src.core.schemas import AdCPPackageUpdate, UpdateMediaBuyRequest
 
         # Test AdCP-compliant request with media_buy_id (oneOf option 1)
         adcp_request_id = UpdateMediaBuyRequest(
@@ -2049,10 +2049,8 @@ class TestAdCPContract:
             active=True,
             start_time=datetime(2025, 2, 1, 9, 0, 0, tzinfo=UTC),
             end_time=datetime(2025, 2, 28, 23, 59, 59, tzinfo=UTC),
-            budget=Budget(total=5000.0, currency="USD", pacing="even"),
-            packages=[
-                AdCPPackageUpdate(package_id="pkg_123", active=True, budget=Budget(total=2500.0, currency="USD"))
-            ],
+            budget=5000.0,  # Per AdCP v2.2.0, budget is a number
+            packages=[AdCPPackageUpdate(package_id="pkg_123", active=True, budget=2500.0)],  # Per AdCP v2.2.0
         )
 
         adcp_response_id = adcp_request_id.model_dump()
@@ -2105,12 +2103,11 @@ class TestAdCPContract:
                 assert has_package_id or has_buyer_ref, "Each package must have either package_id or buyer_ref"
                 assert not (has_package_id and has_buyer_ref), "Package cannot have both package_id and buyer_ref"
 
-        # ✅ VERIFY budget structure (currency/pacing in budget object, not top-level)
-        if adcp_response_id.get("budget"):
+        # ✅ VERIFY budget structure (per AdCP v2.2.0, budget is a number)
+        if adcp_response_id.get("budget") is not None:
             budget = adcp_response_id["budget"]
-            assert isinstance(budget, dict), "budget must be object"
-            assert "total" in budget, "budget must have total field"
-            assert "currency" in budget, "budget must have currency field (not top-level)"
+            assert isinstance(budget, int | float), "budget must be a number per AdCP v2.2.0 spec"
+            assert budget >= 0, "budget must be non-negative"
 
         # NOTE: oneOf constraint validation happens at protocol boundary (MCP/A2A request validation)
         # not in Pydantic model construction. The JSON Schema enforces this when requests come in.
@@ -2234,7 +2231,7 @@ class TestAdCPContract:
                     "status": "draft",
                 }
             ],
-            budget={"total": 25000, "currency": "USD", "pacing": "asap"},
+            budget=25000.0,  # Per AdCP v2.2.0, budget is a number
         )
 
         # Verify asap is accepted
@@ -2280,7 +2277,7 @@ class TestAdCPContract:
                     "status": "draft",
                 }
             ],
-            budget={"total": 10000, "currency": "USD", "pacing": "even"},
+            budget=10000.0,  # Per AdCP v2.2.0, budget is a number
         )
 
         # Verify datetime is still accepted

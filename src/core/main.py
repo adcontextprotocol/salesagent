@@ -4959,7 +4959,7 @@ async def _create_media_buy_impl(
             ctx_manager.update_workflow_step(
                 step.step_id,
                 status="requires_approval",
-                add_comment={"user": "system", "comment": "Manual approval required for media buy creation"}
+                add_comment={"user": "system", "comment": "Manual approval required for media buy creation"},
             )
 
             # Workflow step already created above - no need for separate task
@@ -5019,6 +5019,7 @@ async def _create_media_buy_impl(
                 # Generate permanent package ID using product_id and index
                 # Format: pkg_{product_id}_{timestamp_part}_{idx}
                 import secrets
+
                 package_id = f"pkg_{pkg.product_id}_{secrets.token_hex(4)}_{idx}"
 
                 # Use product_id or buyer_ref for package name since Package schema doesn't have 'name'
@@ -5038,13 +5039,15 @@ async def _create_media_buy_impl(
                     pkg_dict = {}
 
                 # Build response with complete package data (matching auto-approval path)
-                pending_packages.append({
-                    **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
-                    "package_id": package_id,
-                    "name": pkg_name,
-                    "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request package
-                    "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
-                })
+                pending_packages.append(
+                    {
+                        **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
+                        "package_id": package_id,
+                        "name": pkg_name,
+                        "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request package
+                        "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
+                    }
+                )
 
                 # Update the package in raw_request with the generated package_id so UI can find it
                 raw_request_dict["packages"][idx - 1]["package_id"] = package_id
@@ -5087,13 +5090,17 @@ async def _create_media_buy_impl(
                     # Add full package data from raw_request
                     for idx, req_pkg in enumerate(req.packages):
                         if idx == pending_packages.index(pkg_data):
-                            package_config.update({
-                                "product_id": req_pkg.product_id,
-                                "budget": req_pkg.budget.model_dump() if req_pkg.budget else None,
-                                "targeting_overlay": req_pkg.targeting_overlay.model_dump() if req_pkg.targeting_overlay else None,
-                                "creative_ids": req_pkg.creative_ids,
-                                "format_ids_to_provide": req_pkg.format_ids_to_provide,
-                            })
+                            package_config.update(
+                                {
+                                    "product_id": req_pkg.product_id,
+                                    "budget": req_pkg.budget.model_dump() if req_pkg.budget else None,
+                                    "targeting_overlay": (
+                                        req_pkg.targeting_overlay.model_dump() if req_pkg.targeting_overlay else None
+                                    ),
+                                    "creative_ids": req_pkg.creative_ids,
+                                    "format_ids_to_provide": req_pkg.format_ids_to_provide,
+                                }
+                            )
                             break
 
                     db_package = DBMediaPackage(
@@ -5109,11 +5116,9 @@ async def _create_media_buy_impl(
             # Link the workflow step to the media buy so the approval button shows in UI
             with get_db_session() as session:
                 from src.core.database.models import ObjectWorkflowMapping
+
                 mapping = ObjectWorkflowMapping(
-                    object_type="media_buy",
-                    object_id=media_buy_id,
-                    step_id=step.step_id,
-                    action="create"
+                    object_type="media_buy", object_id=media_buy_id, step_id=step.step_id, action="create"
                 )
                 session.add(mapping)
                 session.commit()
@@ -5207,6 +5212,7 @@ async def _create_media_buy_impl(
             for idx, pkg in enumerate(req.packages, 1):
                 # Generate permanent package ID
                 import secrets
+
                 package_id = f"pkg_{pkg.product_id}_{secrets.token_hex(4)}_{idx}"
 
                 # Serialize the full package to include all fields (budget, targeting, etc.)
@@ -5219,13 +5225,15 @@ async def _create_media_buy_impl(
                     pkg_dict = {}
 
                 # Build response with complete package data (matching auto-approval path)
-                response_packages.append({
-                    **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
-                    "package_id": package_id,
-                    "name": f"{pkg.product_id} - Package {idx}",
-                    "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request
-                    "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
-                })
+                response_packages.append(
+                    {
+                        **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
+                        "package_id": package_id,
+                        "name": f"{pkg.product_id} - Package {idx}",
+                        "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request
+                        "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
+                    }
+                )
 
             # Send Slack notification for configuration-based approval requirement
             try:
@@ -5397,15 +5405,16 @@ async def _create_media_buy_impl(
 
             # Generate permanent package ID (not product_id)
             import secrets
+
             package_id = f"pkg_{product.product_id}_{secrets.token_hex(4)}_{idx}"
 
             # Get buyer_ref and budget from matching request package if available
             buyer_ref = None
             budget = None
             if matching_package:
-                if hasattr(matching_package, 'buyer_ref'):
+                if hasattr(matching_package, "buyer_ref"):
                     buyer_ref = matching_package.buyer_ref
-                if hasattr(matching_package, 'budget'):
+                if hasattr(matching_package, "budget"):
                     budget = matching_package.budget
 
             packages.append(
@@ -5416,7 +5425,11 @@ async def _create_media_buy_impl(
                     cpm=cpm,
                     impressions=int(total_budget / cpm * 1000),
                     format_ids=format_ids_to_use,
-                    targeting_overlay=matching_package.targeting_overlay if matching_package and hasattr(matching_package, 'targeting_overlay') else None,
+                    targeting_overlay=(
+                        matching_package.targeting_overlay
+                        if matching_package and hasattr(matching_package, "targeting_overlay")
+                        else None
+                    ),
                     buyer_ref=buyer_ref,
                     product_id=product.product_id,  # Include product_id
                     budget=budget,  # Include budget from request
@@ -5438,7 +5451,9 @@ async def _create_media_buy_impl(
         # Pass package_pricing_info for pricing model support (AdCP PR #88)
         try:
             response = adapter.create_media_buy(req, packages, start_time, end_time, package_pricing_info)
-            logger.info(f"[DEBUG] create_media_buy: Adapter returned response with {len(response.packages) if response.packages else 0} packages")
+            logger.info(
+                f"[DEBUG] create_media_buy: Adapter returned response with {len(response.packages) if response.packages else 0} packages"
+            )
             if response.packages:
                 for i, pkg in enumerate(response.packages):
                     logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg}")
@@ -5501,7 +5516,9 @@ async def _create_media_buy_impl(
                     logger.info(f"[DEBUG] Package {i}: resp_package.get('package_id') = {package_id}")
 
                     if not package_id:
-                        error_msg = f"Adapter did not return package_id for package {i}. This is a critical bug in the adapter."
+                        error_msg = (
+                            f"Adapter did not return package_id for package {i}. This is a critical bug in the adapter."
+                        )
                         logger.error(error_msg)
                         raise ValueError(error_msg)
 
@@ -5528,7 +5545,9 @@ async def _create_media_buy_impl(
                     session.add(db_package)
 
                 session.commit()
-                logger.info(f"Saved {len(packages_to_save)} packages to media_packages table for media_buy {response.media_buy_id}")
+                logger.info(
+                    f"Saved {len(packages_to_save)} packages to media_packages table for media_buy {response.media_buy_id}"
+                )
 
         # Handle creative_ids in packages if provided (immediate association)
         if req.packages:
@@ -5560,10 +5579,7 @@ async def _create_media_buy_impl(
                         error_msg = f"Creative IDs not found: {', '.join(sorted(missing_ids))}"
                         logger.error(error_msg)
                         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                        raise ToolError(
-                            "CREATIVES_NOT_FOUND",
-                            error_msg
-                        )
+                        raise ToolError("CREATIVES_NOT_FOUND", error_msg)
 
                 for i, package in enumerate(req.packages):
                     if package.creative_ids:
@@ -5686,7 +5702,9 @@ async def _create_media_buy_impl(
             # Start with adapter response package (has package_id)
             if i < len(adapter_packages):
                 # Get package_id and other fields from adapter response
-                response_package_dict = adapter_packages[i] if isinstance(adapter_packages[i], dict) else adapter_packages[i].model_dump()
+                response_package_dict = (
+                    adapter_packages[i] if isinstance(adapter_packages[i], dict) else adapter_packages[i].model_dump()
+                )
             else:
                 # Fallback if adapter didn't return enough packages
                 logger.warning(f"Adapter returned fewer packages than request. Using request package {i}")
@@ -5730,7 +5748,7 @@ async def _create_media_buy_impl(
             package_status = TaskStatus.WORKING
             if package.creative_ids and len(package.creative_ids) > 0:
                 package_status = TaskStatus.COMPLETED
-            elif hasattr(package, 'format_ids_to_provide') and package.format_ids_to_provide:
+            elif hasattr(package, "format_ids_to_provide") and package.format_ids_to_provide:
                 package_status = TaskStatus.WORKING
 
             # Add status
@@ -6112,17 +6130,9 @@ def _update_media_buy_impl(
     if flight_end_date and not end_time:
         end_time = flight_end_date
 
-    # Convert flat budget/currency/pacing to Budget object if budget provided
-    budget_obj = None
-    if budget is not None:
-        from src.core.schemas import Budget
-
-        budget_obj = Budget(
-            total=budget,
-            currency=currency or "USD",  # Default to USD if not specified
-            pacing=pacing or "even",  # Default pacing
-            daily_cap=daily_budget,  # Map daily_budget to daily_cap
-        )
+    # Per AdCP v2.2.0 spec, budget is just a number
+    # Currency, pacing, and daily_budget are handled separately (not part of budget field)
+    # Note: currency and pacing parameters are deprecated - they should come from pricing options
 
     # Build request with only valid AdCP fields
     # Note: flight_start_date, flight_end_date are mapped to start_time/end_time above
@@ -6134,7 +6144,7 @@ def _update_media_buy_impl(
         "active": active,
         "start_time": start_time,
         "end_time": end_time,
-        "budget": budget_obj,
+        "budget": budget,  # AdCP v2.2.0: budget is a number, not Budget object
         "packages": packages,
         "push_notification_config": push_notification_config,
     }
@@ -6274,13 +6284,8 @@ def _update_media_buy_impl(
                 if currency_limit.max_daily_package_spend and req.packages:
                     for pkg_update in req.packages:
                         if pkg_update.budget:
-                            # Extract budget amount - handle both Budget object and legacy float
-                            from src.core.schemas import Budget, extract_budget_amount
-                            if isinstance(pkg_update.budget, Budget):
-                                pkg_budget_amount, _ = extract_budget_amount(pkg_update.budget, request_currency)
-                            else:
-                                pkg_budget_amount = float(pkg_update.budget)
-
+                            # Per AdCP v2.2.0, budget is a number
+                            pkg_budget_amount = float(pkg_update.budget)
                             package_budget = Decimal(str(pkg_budget_amount))
                             package_daily = package_budget / Decimal(str(flight_days))
 
@@ -6338,15 +6343,9 @@ def _update_media_buy_impl(
 
             # Handle budget updates
             if pkg_update.budget is not None:
-                # Extract budget amount - handle both Budget object and legacy float
-                from src.core.schemas import Budget, extract_budget_amount
-
-                if isinstance(pkg_update.budget, Budget):
-                    budget_amount, currency = extract_budget_amount(pkg_update.budget, "USD")
-                else:
-                    # Legacy float format
-                    budget_amount = float(pkg_update.budget)
-                    currency = "USD"
+                # Per AdCP v2.2.0, budget is a number
+                budget_amount = float(pkg_update.budget)
+                currency = "USD"  # Currency from pricing option, not budget field
 
                 result = adapter.update_media_buy(
                     media_buy_id=req.media_buy_id,
@@ -6373,12 +6372,7 @@ def _update_media_buy_impl(
                 req._affected_packages.append(
                     {
                         "buyer_package_ref": pkg_update.package_id,
-                        "changes_applied": {
-                            "budget": {
-                                "updated": budget_amount,
-                                "currency": currency
-                            }
-                        },
+                        "changes_applied": {"budget": {"updated": budget_amount, "currency": currency}},
                     }
                 )
 
@@ -6404,16 +6398,14 @@ def _update_media_buy_impl(
                 with get_db_session() as session:
                     # Resolve media_buy_id (might be buyer_ref)
                     mb_stmt = select(MediaBuyModel).where(
-                        MediaBuyModel.media_buy_id == req.media_buy_id,
-                        MediaBuyModel.tenant_id == tenant["tenant_id"]
+                        MediaBuyModel.media_buy_id == req.media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
                     )
                     media_buy_obj = session.scalars(mb_stmt).first()
 
                     # Try buyer_ref if not found
                     if not media_buy_obj:
                         mb_stmt = select(MediaBuyModel).where(
-                            MediaBuyModel.buyer_ref == req.media_buy_id,
-                            MediaBuyModel.tenant_id == tenant["tenant_id"]
+                            MediaBuyModel.buyer_ref == req.media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
                         )
                         media_buy_obj = session.scalars(mb_stmt).first()
 
@@ -6498,13 +6490,11 @@ def _update_media_buy_impl(
                         }
                     )
 
-    # Handle budget updates (Budget object from AdCP spec - v1.8.0 compatible)
+    # Handle budget updates (per AdCP v2.2.0, budget is a number)
     if req.budget is not None:
-        from src.core.schemas import extract_budget_amount
-
-        # For UpdateMediaBuyRequest, budget is always a Budget object (not a float)
-        # The currency comes from the Budget object itself or defaults to USD
-        total_budget, currency = extract_budget_amount(req.budget, "USD")
+        # Per AdCP v2.2.0, budget is a number
+        total_budget = float(req.budget)
+        currency = "USD"  # Currency from pricing option, not budget field
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
@@ -6534,6 +6524,7 @@ def _update_media_buy_impl(
 
                 # Persist top-level budget update to database
                 from sqlalchemy import update
+
                 from src.core.database.models import MediaBuy
 
                 with get_db_session() as db_session:
@@ -6544,13 +6535,15 @@ def _update_media_buy_impl(
                     )
                     db_session.execute(stmt)
                     db_session.commit()
-                    logger.info(f"[update_media_buy] Updated MediaBuy {req.media_buy_id} budget to {total_budget} {currency}")
-                
+                    logger.info(
+                        f"[update_media_buy] Updated MediaBuy {req.media_buy_id} budget to {total_budget} {currency}"
+                    )
+
                 # Track top-level budget update in affected_packages
                 # When top-level budget changes, all packages are affected
                 if not hasattr(req, "_affected_packages"):
                     req._affected_packages = []
-                
+
                 # Get all packages for this media buy to report them as affected
                 if hasattr(existing_req, "packages") and existing_req.packages:
                     for pkg in existing_req.packages:
@@ -6559,12 +6552,7 @@ def _update_media_buy_impl(
                             req._affected_packages.append(
                                 {
                                     "buyer_package_ref": package_ref,
-                                    "changes_applied": {
-                                        "budget": {
-                                            "updated": total_budget,
-                                            "currency": currency
-                                        }
-                                    },
+                                    "changes_applied": {"budget": {"updated": total_budget, "currency": currency}},
                                 }
                             )
 

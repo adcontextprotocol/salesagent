@@ -561,47 +561,27 @@ class Budget(BaseModel):
 
 
 # Budget utility functions for v1.8.0 compatibility
-def extract_budget_amount(budget: "Budget | float | dict | None", default_currency: str = "USD") -> tuple[float, str]:
-    """Extract budget amount and currency from various budget formats (v1.8.0 compatible).
+def extract_budget_amount(budget: float | None, default_currency: str = "USD") -> tuple[float, str]:
+    """Extract budget amount and currency per AdCP v2.2.0 spec.
 
-    Handles:
-    - v1.8.0 format: simple float (currency should be from pricing option)
-    - Legacy format: Budget object with total and currency
-    - Dict format: {'total': float, 'currency': str}
-    - None: returns (0.0, default_currency)
+    Per AdCP v2.2.0 spec, budget is a number. Currency is determined by the
+    pricing_option_id selected in the package, not by the budget field.
 
     Args:
-        budget: Budget in any supported format
-        default_currency: Currency to use for v1.8.0 float budgets.
-                         **IMPORTANT**: This should be the currency from the selected
-                         pricing option, not an arbitrary default.
+        budget: Budget amount as a number (per AdCP v2.2.0 spec)
+        default_currency: Currency to use (should be from pricing option)
 
     Returns:
         Tuple of (amount, currency)
 
-    Note:
-        Per AdCP v1.8.0, currency is determined by the pricing option selected for
-        the package, not by the budget field. The default_currency parameter allows
-        callers to pass the pricing option's currency for v1.8.0 float budgets.
-        For legacy Budget objects, the currency from the object is used instead.
-
     Example:
-        # v1.8.0: currency from package pricing option
+        # AdCP v2.2.0: budget is a number, currency from pricing option
         package_currency = request.packages[0].currency  # From pricing option
         amount, currency = extract_budget_amount(request.budget, package_currency)
-
-        # Legacy: currency from Budget object
-        amount, currency = extract_budget_amount(Budget(total=5000, currency="EUR"))
     """
     if budget is None:
         return (0.0, default_currency)
-    elif isinstance(budget, dict):
-        return (budget.get("total", 0.0), budget.get("currency", default_currency))
-    elif isinstance(budget, int | float):
-        return (float(budget), default_currency)
-    else:
-        # Budget object with .total and .currency attributes
-        return (budget.total, budget.currency)
+    return (float(budget), default_currency)
 
 
 # AdCP Compliance Models
@@ -2117,7 +2097,7 @@ class Package(BaseModel):
     buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this package")
     product_id: str | None = Field(None, description="ID of the product this package is based on (single product)")
     products: list[str] | None = Field(None, description="Array of product IDs to include in this package")
-    budget: Budget | float | None = Field(None, description="Package-specific budget (Budget object or number)")
+    budget: float | None = Field(None, description="Package-specific budget (number per AdCP spec)", ge=0)
     impressions: float | None = Field(None, description="Impression goal for this package", gt=-1)
     targeting_overlay: Targeting | None = Field(None, description="Package-specific targeting")
     creative_ids: list[str] | None = Field(None, description="Creative IDs to assign to this package")
@@ -2229,9 +2209,10 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         ..., description="Campaign start time: ISO 8601 datetime or 'asap' for immediate start (REQUIRED)"
     )
     end_time: datetime = Field(..., description="Campaign end time (ISO 8601) (REQUIRED)")
-    budget: Budget | float = Field(
+    budget: float = Field(
         ...,
-        description="Overall campaign budget (Budget object or number). Currency determined by package pricing options (REQUIRED).",
+        description="Overall campaign budget (number). Currency determined by package pricing options (REQUIRED per AdCP v2.2.0).",
+        ge=0,
     )
 
     # Deprecated fields (for backward compatibility - legacy format conversion only)
@@ -2328,18 +2309,10 @@ class CreateMediaBuyRequest(AdCPBaseModel):
                     end_date = date.fromisoformat(end_date)
                 values["end_time"] = datetime.combine(end_date, time.max, tzinfo=UTC)
 
-        # Convert total_budget to Budget object (only if not None)
+        # Convert total_budget to budget (per AdCP v2.2.0, budget is a number)
         if "total_budget" in values and values["total_budget"] is not None and not values.get("budget"):
-            total_budget = values["total_budget"]
-            pacing = values.get("pacing", "even")
-            daily_cap = values.get("daily_budget")
-
-            values["budget"] = {
-                "total": total_budget,
-                "currency": "USD",  # Default currency
-                "pacing": pacing,
-                "daily_cap": daily_cap,
-            }
+            values["budget"] = float(values["total_budget"])
+            # Note: pacing and daily_budget are handled separately (not part of budget field per AdCP spec)
 
         # buyer_ref is optional and should NOT be auto-generated
         # It's the buyer's identifier, not ours to create
@@ -2376,7 +2349,7 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         return self.end_time.date() if self.end_time else None
 
     def get_total_budget(self) -> float:
-        """Get total budget, handling both new and legacy formats."""
+        """Get total budget (per AdCP v2.2.0, budget is a number)."""
         # AdCP v2.4: Sum budgets from all packages
         if self.packages:
             total = 0.0
@@ -2385,29 +2358,17 @@ class CreateMediaBuyRequest(AdCPBaseModel):
                 if isinstance(package, dict):
                     budget = package.get("budget")
                     if budget:
-                        # Budget can be: dict, number, or Budget object
-                        if isinstance(budget, dict):
-                            total += budget.get("total", 0.0)
-                        elif isinstance(budget, int | float):
-                            total += float(budget)
-                        else:
-                            total += budget.total
+                        total += float(budget)
                 else:
                     # Package object
                     if package.budget:
-                        # Budget can be number or Budget object
-                        if isinstance(package.budget, int | float):
-                            total += float(package.budget)
-                        else:
-                            total += package.budget.total
+                        total += float(package.budget)
             if total > 0:
                 return total
 
-        # Legacy format: top-level budget
+        # Top-level budget (per AdCP v2.2.0, budget is a number)
         if self.budget:
-            if isinstance(self.budget, int | float):
-                return float(self.budget)
-            return self.budget.total
+            return float(self.budget)
         return self.total_budget or 0.0
 
     def get_product_ids(self) -> list[str]:
@@ -2657,8 +2618,8 @@ class MediaPackage(BaseModel):
     impressions: int
     format_ids: list[FormatId]  # FormatId objects per AdCP spec
     targeting_overlay: Optional["Targeting"] = None
-    buyer_ref: Optional[str] = None  # Optional buyer reference from request package
-    product_id: Optional[str] = None  # Product ID for this package
+    buyer_ref: str | None = None  # Optional buyer reference from request package
+    product_id: str | None = None  # Product ID for this package
     budget: Optional["Budget"] = None  # Budget information from request
 
 
@@ -2727,7 +2688,7 @@ class PackageUpdate(BaseModel):
 
     package_id: str
     active: bool | None = None  # True to activate, False to pause
-    budget: Budget | float | None = None  # Budget object (AdCP spec) or legacy float
+    budget: float | None = Field(None, description="Budget amount (number per AdCP spec)", ge=0)
     impressions: int | None = None  # Direct impression goal (overrides budget calculation)
     cpm: float | None = None  # Update CPM rate
     daily_budget: float | None = None  # Daily spend cap
@@ -2757,7 +2718,7 @@ class AdCPPackageUpdate(BaseModel):
 
     package_id: str | None = None
     buyer_ref: str | None = None
-    budget: Budget | None = None
+    budget: float | None = Field(None, description="Budget amount (number per AdCP spec)", ge=0)
     active: bool | None = None
     targeting_overlay: Targeting | None = None
     creative_ids: list[str] | None = None
@@ -2785,7 +2746,7 @@ class UpdateMediaBuyRequest(AdCPBaseModel):
     active: bool | None = None
     start_time: datetime | Literal["asap"] | None = None  # AdCP uses datetime or 'asap', not date
     end_time: datetime | None = None  # AdCP uses datetime, not date
-    budget: Budget | None = None  # Budget object contains currency/pacing
+    budget: float | None = Field(None, description="Updated total budget (number per AdCP spec)", ge=0)
     packages: list[AdCPPackageUpdate] | None = None
     push_notification_config: dict[str, Any] | None = Field(
         None,
