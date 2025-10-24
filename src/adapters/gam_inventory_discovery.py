@@ -372,27 +372,22 @@ class GAMInventoryDiscovery:
 
         Args:
             since: Optional datetime to fetch only items modified since this time (incremental sync)
+                   Note: GAM LabelService doesn't support lastModifiedDateTime filtering,
+                   so we always fetch all labels (they're usually few and rarely change)
         """
-        logger.info(f"Discovering labels (incremental={since is not None})")
+        logger.info(f"Discovering labels (incremental={since is not None}, note: always fetches all labels)")
 
         label_service = self.client.GetService("LabelService")
         discovered_labels = []
 
         statement_builder = ad_manager.StatementBuilder(version="v202505")
 
-        if since:
-            # Ensure timezone-aware datetime for GAM API (use pytz for GAM compatibility)
-            if since.tzinfo is None:
-                import pytz
-                since = pytz.utc.localize(since)
-            else:
-                # Convert to pytz timezone if using datetime.timezone.UTC
-                import pytz
-                since = since.astimezone(pytz.utc)
-
-            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
-                "since", since
-            )
+        # Note: LabelService doesn't support lastModifiedDateTime filtering in GAM API
+        # So we always fetch all labels, even during incremental sync
+        # This is acceptable because:
+        # 1. Labels don't change frequently
+        # 2. There are usually few labels per network
+        # 3. The fetch is fast
 
         while True:
             response = label_service.getLabelsByStatement(statement_builder.ToStatement())
