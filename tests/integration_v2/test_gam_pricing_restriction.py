@@ -146,9 +146,9 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
 @pytest.mark.asyncio
 async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPCV pricing model with clear error."""
-    from unittest.mock import patch
+    from unittest.mock import MagicMock, patch
 
-    from src.adapters.gam.client import GAMClientManager
+    from src.adapters.google_ad_manager import GoogleAdManager
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
@@ -174,8 +174,12 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
         request_timestamp=datetime.now(UTC),
     )
 
-    # Mock GAM client manager to bypass auth check
-    with patch.object(GAMClientManager, "__init__", return_value=None):
+    # Mock get_adapter to return a mock GAM adapter that skips auth
+    # This allows us to test pricing validation without real GAM credentials
+    mock_adapter = MagicMock(spec=GoogleAdManager)
+    mock_adapter.supports_pricing_model.side_effect = lambda model: model.lower() == "cpm"
+
+    with patch("src.core.main.get_adapter", return_value=mock_adapter):
         # This should fail with a clear error about GAM not supporting CPCV
         with pytest.raises(Exception) as exc_info:
             await _create_media_buy_impl(
@@ -204,9 +208,9 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
 @pytest.mark.asyncio
 async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM pricing model."""
-    from unittest.mock import patch
+    from unittest.mock import MagicMock, patch
 
-    from src.adapters.gam.client import GAMClientManager
+    from src.adapters.google_ad_manager import GoogleAdManager
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
@@ -232,8 +236,12 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         request_timestamp=datetime.now(UTC),
     )
 
-    # Mock GAM client manager to bypass auth check
-    with patch.object(GAMClientManager, "__init__", return_value=None):
+    # Mock get_adapter to return a mock GAM adapter that accepts CPM
+    mock_adapter = MagicMock(spec=GoogleAdManager)
+    mock_adapter.supports_pricing_model.side_effect = lambda model: model.lower() == "cpm"
+    mock_adapter.create_media_buy = MagicMock(return_value={"order_id": "123", "line_items": []})
+
+    with patch("src.core.main.get_adapter", return_value=mock_adapter):
         # This should succeed
         response = await _create_media_buy_impl(
             buyer_ref="test-buyer-cpm",
@@ -258,9 +266,9 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
 @pytest.mark.asyncio
 async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPP when buyer chooses it from multi-pricing product."""
-    from unittest.mock import patch
+    from unittest.mock import MagicMock, patch
 
-    from src.adapters.gam.client import GAMClientManager
+    from src.adapters.google_ad_manager import GoogleAdManager
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
@@ -286,8 +294,11 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
         request_timestamp=datetime.now(UTC),
     )
 
-    # Mock GAM client manager to bypass auth check
-    with patch.object(GAMClientManager, "__init__", return_value=None):
+    # Mock get_adapter to return a mock GAM adapter that rejects CPP
+    mock_adapter = MagicMock(spec=GoogleAdManager)
+    mock_adapter.supports_pricing_model.side_effect = lambda model: model.lower() == "cpm"
+
+    with patch("src.core.main.get_adapter", return_value=mock_adapter):
         # This should fail with clear error about GAM not supporting CPP
         with pytest.raises(Exception) as exc_info:
             await _create_media_buy_impl(
@@ -314,9 +325,9 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
 @pytest.mark.asyncio
 async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM when buyer chooses it from multi-pricing product."""
-    from unittest.mock import patch
+    from unittest.mock import MagicMock, patch
 
-    from src.adapters.gam.client import GAMClientManager
+    from src.adapters.google_ad_manager import GoogleAdManager
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
@@ -342,8 +353,12 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
         request_timestamp=datetime.now(UTC),
     )
 
-    # Mock GAM client manager to bypass auth check
-    with patch.object(GAMClientManager, "__init__", return_value=None):
+    # Mock get_adapter to return a mock GAM adapter that accepts CPM
+    mock_adapter = MagicMock(spec=GoogleAdManager)
+    mock_adapter.supports_pricing_model.side_effect = lambda model: model.lower() == "cpm"
+    mock_adapter.create_media_buy = MagicMock(return_value={"order_id": "123", "line_items": []})
+
+    with patch("src.core.main.get_adapter", return_value=mock_adapter):
         # This should succeed - buyer chose CPM from multi-option product
         response = await _create_media_buy_impl(
             buyer_ref="test-buyer-multi-cpm",
