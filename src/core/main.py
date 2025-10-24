@@ -425,15 +425,24 @@ def get_principal_from_context(
     # NOTE: get_http_headers() works via context vars, so it can work even when context=None
     # This allows unauthenticated public discovery endpoints to detect tenant from headers
     # CRITICAL: Use include_all=True to get Host header (excluded by default)
+    import sys
+
     headers = None
     try:
         headers = get_http_headers(include_all=True)
+        print(
+            f"[PRINCIPAL DEBUG] get_http_headers(include_all=True) returned {len(headers) if headers else 0} headers",
+            file=sys.stderr,
+            flush=True,
+        )
         console.print(
             f"[blue]DEBUG: get_http_headers(include_all=True) returned {len(headers) if headers else 0} headers[/blue]"
         )
         if headers:
+            print(f"[PRINCIPAL DEBUG] Header keys: {list(headers.keys())}", file=sys.stderr, flush=True)
             console.print(f"[blue]DEBUG: Header keys: {list(headers.keys())}[/blue]")
     except Exception as e:
+        print(f"[PRINCIPAL DEBUG] get_http_headers() exception: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         console.print(f"[yellow]DEBUG: get_http_headers() exception: {type(e).__name__}: {e}[/yellow]")
         pass  # Will try fallback below
 
@@ -441,28 +450,41 @@ def get_principal_from_context(
     # This is necessary for sync tools where get_http_headers() may not work
     # CRITICAL: get_http_headers() returns {} for sync tools, so we need fallback even for empty dict
     if not headers:  # Handles both None and {}
+        print("[PRINCIPAL DEBUG] get_http_headers() empty, trying fallback methods", file=sys.stderr, flush=True)
+        print(f"[PRINCIPAL DEBUG] context={context}, type={type(context)}", file=sys.stderr, flush=True)
         console.print("[yellow]DEBUG: get_http_headers() empty, trying fallback methods[/yellow]")
         # Only try context fallbacks if context is not None
         if context is not None:
+            print(f"[PRINCIPAL DEBUG] hasattr(context, 'meta')={hasattr(context, 'meta')}", file=sys.stderr, flush=True)
+            if hasattr(context, "meta"):
+                print(f"[PRINCIPAL DEBUG] context.meta={context.meta}", file=sys.stderr, flush=True)
             if hasattr(context, "meta") and context.meta and "headers" in context.meta:
                 headers = context.meta["headers"]
+                print(f"[PRINCIPAL DEBUG] Got {len(headers)} headers from context.meta", file=sys.stderr, flush=True)
                 console.print(f"[blue]DEBUG: Got {len(headers)} headers from context.meta[/blue]")
             # Try other possible attributes
             elif hasattr(context, "headers"):
                 headers = context.headers
+                print(f"[PRINCIPAL DEBUG] Got {len(headers)} headers from context.headers", file=sys.stderr, flush=True)
                 console.print(f"[blue]DEBUG: Got {len(headers)} headers from context.headers[/blue]")
             elif hasattr(context, "_headers"):
                 headers = context._headers
+                print(
+                    f"[PRINCIPAL DEBUG] Got {len(headers)} headers from context._headers", file=sys.stderr, flush=True
+                )
                 console.print(f"[blue]DEBUG: Got {len(headers)} headers from context._headers[/blue]")
             else:
+                print("[PRINCIPAL DEBUG] No fallback attributes available", file=sys.stderr, flush=True)
                 console.print(
                     "[yellow]DEBUG: No fallback attributes available (context provided but no headers)[/yellow]"
                 )
         else:
+            print("[PRINCIPAL DEBUG] context=None", file=sys.stderr, flush=True)
             console.print("[yellow]DEBUG: context=None and get_http_headers() failed - no headers available[/yellow]")
 
     # If still no headers dict available, return None
     if not headers:
+        print("[PRINCIPAL DEBUG] ❌ CRITICAL: No headers available - cannot detect tenant", file=sys.stderr, flush=True)
         console.print("[red]❌ CRITICAL: No headers available - cannot detect tenant[/red]")
         return (None, None)
 
