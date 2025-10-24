@@ -23,6 +23,7 @@ from zeep.helpers import serialize_object
 
 from src.adapters.gam.utils.error_handler import with_retry
 from src.adapters.gam.utils.logging import logger
+from src.adapters.gam.utils.timeout_handler import timeout
 
 
 class AdUnitStatus(Enum):
@@ -306,6 +307,7 @@ class GAMInventoryDiscovery:
         logger.info(f"Discovered {len(discovered_units)} ad units")
         return discovered_units
 
+    @timeout(seconds=600)  # 10 minute timeout for placements (AccuWeather has large dataset)
     @with_retry(operation_name="discover_placements")
     def discover_placements(self, since: datetime | None = None) -> list[Placement]:
         """Discover placements in the GAM network.
@@ -356,6 +358,7 @@ class GAMInventoryDiscovery:
         logger.info(f"Discovered {len(discovered_placements)} placements")
         return discovered_placements
 
+    @timeout(seconds=300)  # 5 minute timeout for labels
     @with_retry(operation_name="discover_labels")
     def discover_labels(self, since: datetime | None = None) -> list[Label]:
         """Discover labels (for competitive exclusion, etc.).
@@ -399,6 +402,7 @@ class GAMInventoryDiscovery:
         logger.info(f"Discovered {len(discovered_labels)} labels")
         return discovered_labels
 
+    @timeout(seconds=600)  # 10 minute timeout for custom targeting (can have 10k+ values per key)
     @with_retry(operation_name="discover_custom_targeting")
     def discover_custom_targeting(
         self, max_values_per_key: int | None = None, fetch_values: bool = True, since: datetime | None = None

@@ -12,6 +12,8 @@ from typing import Any
 
 from googleads import ad_manager
 
+from src.adapters.gam.utils.timeout_handler import timeout
+
 logger = logging.getLogger(__name__)
 
 # Line item type constants for GAM automation
@@ -38,6 +40,7 @@ class GAMOrdersManager:
         self.trafficker_id = trafficker_id
         self.dry_run = dry_run
 
+    @timeout(seconds=60)  # 1 minute timeout for order creation
     def create_order(
         self,
         order_name: str,
@@ -116,6 +119,7 @@ class GAMOrdersManager:
             else:
                 raise Exception("Failed to create order - no orders returned")
 
+    @timeout(seconds=30)  # 30 seconds timeout for status check
     def get_order_status(self, order_id: str) -> str:
         """Get the status of a GAM order.
 
@@ -145,6 +149,7 @@ class GAMOrdersManager:
             logger.error(f"Error getting order status for {order_id}: {e}")
             return "ERROR"
 
+    @timeout(seconds=120)  # 2 minutes timeout for archiving order
     def archive_order(self, order_id: str) -> bool:
         """Archive a GAM order for cleanup purposes.
 
@@ -184,6 +189,7 @@ class GAMOrdersManager:
             logger.error(f"Failed to archive GAM Order {order_id}: {str(e)}")
             return False
 
+    @timeout(seconds=120)  # 2 minutes timeout for fetching line items
     def get_order_line_items(self, order_id: str) -> list[dict]:
         """Get all line items associated with an order.
 
@@ -243,6 +249,7 @@ class GAMOrdersManager:
         statement_builder.WithBindVariable("orderId", order_id)
         return statement_builder.ToStatement()
 
+    @timeout(seconds=300)  # 5 minutes timeout for batch line item creation
     def create_line_items(
         self,
         order_id: str,

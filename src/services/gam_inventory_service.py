@@ -384,31 +384,44 @@ class GAMInventoryService:
 
         # 2. Sync placements (stream and write)
         logger.info("Streaming placements...")
-        placements = discovery.discover_placements()
-        self._write_inventory_batch(tenant_id, "placement", placements, sync_time)
-        counts["placements"] = len(placements)
-        discovery.placements.clear()  # Clear from memory
-        logger.info(f"Synced {counts['placements']} placements")
+        try:
+            placements = discovery.discover_placements()
+            self._write_inventory_batch(tenant_id, "placement", placements, sync_time)
+            counts["placements"] = len(placements)
+            discovery.placements.clear()  # Clear from memory
+            logger.info(f"Synced {counts['placements']} placements")
+        except Exception as e:
+            logger.error(f"⏰ Placements sync timed out or failed: {e}. Continuing with other inventory types...")
+            counts["placements"] = 0
 
         # 3. Sync labels (stream and write)
         logger.info("Streaming labels...")
-        labels = discovery.discover_labels()
-        self._write_inventory_batch(tenant_id, "label", labels, sync_time)
-        counts["labels"] = len(labels)
-        discovery.labels.clear()  # Clear from memory
-        logger.info(f"Synced {counts['labels']} labels")
+        try:
+            labels = discovery.discover_labels()
+            self._write_inventory_batch(tenant_id, "label", labels, sync_time)
+            counts["labels"] = len(labels)
+            discovery.labels.clear()  # Clear from memory
+            logger.info(f"Synced {counts['labels']} labels")
+        except Exception as e:
+            logger.error(f"⏰ Labels sync timed out or failed: {e}. Continuing with other inventory types...")
+            counts["labels"] = 0
 
         # 4. Sync custom targeting KEYS ONLY (values lazy loaded on demand)
         logger.info("Streaming custom targeting keys (values lazy loaded)...")
-        custom_targeting = discovery.discover_custom_targeting(
-            max_values_per_key=None, fetch_values=False  # Don't fetch values  # Lazy load values on demand
-        )
-        self._write_custom_targeting_keys(tenant_id, discovery.custom_targeting_keys.values(), sync_time)
-        counts["custom_targeting_keys"] = len(discovery.custom_targeting_keys)
-        counts["custom_targeting_values"] = custom_targeting.get("total_values", 0)
-        discovery.custom_targeting_keys.clear()  # Clear from memory
-        discovery.custom_targeting_values.clear()  # Clear from memory
-        logger.info(f"Synced {counts['custom_targeting_keys']} custom targeting keys (values lazy loaded)")
+        try:
+            custom_targeting = discovery.discover_custom_targeting(
+                max_values_per_key=None, fetch_values=False  # Don't fetch values  # Lazy load values on demand
+            )
+            self._write_custom_targeting_keys(tenant_id, discovery.custom_targeting_keys.values(), sync_time)
+            counts["custom_targeting_keys"] = len(discovery.custom_targeting_keys)
+            counts["custom_targeting_values"] = custom_targeting.get("total_values", 0)
+            discovery.custom_targeting_keys.clear()  # Clear from memory
+            discovery.custom_targeting_values.clear()  # Clear from memory
+            logger.info(f"Synced {counts['custom_targeting_keys']} custom targeting keys (values lazy loaded)")
+        except Exception as e:
+            logger.error(f"⏰ Custom targeting sync timed out or failed: {e}. Continuing with other inventory types...")
+            counts["custom_targeting_keys"] = 0
+            counts["custom_targeting_values"] = 0
 
         # 5. Sync audience segments (first-party only)
         logger.info("Streaming audience segments...")
