@@ -5394,6 +5394,10 @@ async def _create_media_buy_impl(
         # Pass package_pricing_info for pricing model support (AdCP PR #88)
         try:
             response = adapter.create_media_buy(req, packages, start_time, end_time, package_pricing_info)
+            logger.info(f"[DEBUG] create_media_buy: Adapter returned response with {len(response.packages) if response.packages else 0} packages")
+            if response.packages:
+                for i, pkg in enumerate(response.packages):
+                    logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg}")
         except Exception as adapter_error:
             import traceback
 
@@ -5445,10 +5449,19 @@ async def _create_media_buy_impl(
 
                 # Use response packages if available (has package_ids), otherwise generate from request
                 packages_to_save = response.packages if response.packages else []
+                logger.info(f"[DEBUG] Saving {len(packages_to_save)} packages to media_packages table")
 
                 for i, resp_package in enumerate(packages_to_save):
-                    # Extract package_id from response
-                    package_id = resp_package.get("package_id") or f"{response.media_buy_id}_pkg_{i+1}"
+                    # Extract package_id from response - MUST be present, no fallback allowed
+                    package_id = resp_package.get("package_id")
+                    logger.info(f"[DEBUG] Package {i}: resp_package.get('package_id') = {package_id}")
+
+                    if not package_id:
+                        error_msg = f"Adapter did not return package_id for package {i}. This is a critical bug in the adapter."
+                        logger.error(error_msg)
+                        raise ValueError(error_msg)
+
+                    logger.info(f"[DEBUG] Package {i}: Using package_id = {package_id}")
 
                     # Store full package config as JSON
                     package_config = {
@@ -5510,7 +5523,18 @@ async def _create_media_buy_impl(
 
                 for i, package in enumerate(req.packages):
                     if package.creative_ids:
-                        package_id = f"{response.media_buy_id}_pkg_{i+1}"
+                        # Use package_id from response (matches what's in media_packages table)
+                        # NO FALLBACK - if adapter doesn't return package_id, fail loudly
+                        package_id = None
+                        if response.packages and i < len(response.packages):
+                            package_id = response.packages[i].get("package_id")
+                            logger.info(f"[DEBUG] Package {i}: response.packages[i] = {response.packages[i]}")
+                            logger.info(f"[DEBUG] Package {i}: extracted package_id = {package_id}")
+
+                        if not package_id:
+                            error_msg = f"Cannot assign creatives: Adapter did not return package_id for package {i}"
+                            logger.error(error_msg)
+                            raise ValueError(error_msg)
 
                         # Get platform_line_item_id from response if available
                         platform_line_item_id = None
@@ -5608,48 +5632,66 @@ async def _create_media_buy_impl(
                 )
 
         # Build packages list for response (AdCP v2.4 format)
+        # Use packages from adapter response (has package_ids) merged with request package fields
         response_packages = []
+
+        # Get adapter response packages (have package_ids)
+        adapter_packages = response.packages if response.packages else []
+
         for i, package in enumerate(req.packages):
-            # Serialize the package to dict to handle any nested Pydantic objects
-            # Use model_dump_internal to avoid validation that requires package_id (not set yet on request packages)
-            if hasattr(package, "model_dump_internal"):
-                package_dict = package.model_dump_internal()
-            elif hasattr(package, "model_dump"):
-                # Fallback: use model_dump with exclude_none to avoid validation errors
-                package_dict = package.model_dump(exclude_none=True, mode="python")
+            # Start with adapter response package (has package_id)
+            if i < len(adapter_packages):
+                # Get package_id and other fields from adapter response
+                response_package_dict = adapter_packages[i] if isinstance(adapter_packages[i], dict) else adapter_packages[i].model_dump()
             else:
-                package_dict = package
+                # Fallback if adapter didn't return enough packages
+                logger.warning(f"Adapter returned fewer packages than request. Using request package {i}")
+                response_package_dict = {}
+
+            # CRITICAL: Save package_id from adapter response BEFORE merge
+            adapter_package_id = response_package_dict.get("package_id")
+            logger.info(f"[DEBUG] Package {i}: adapter_package_id from response = {adapter_package_id}")
+
+            # Serialize the request package to get fields like buyer_ref, format_ids
+            if hasattr(package, "model_dump_internal"):
+                request_package_dict = package.model_dump_internal()
+            elif hasattr(package, "model_dump"):
+                request_package_dict = package.model_dump(exclude_none=True, mode="python")
+            else:
+                request_package_dict = package if isinstance(package, dict) else {}
+
+            # Merge: Start with adapter response (has package_id), overlay request fields
+            package_dict = {**response_package_dict, **request_package_dict}
+
+            # CRITICAL: Restore package_id from adapter (merge may have overwritten it with None from request)
+            if adapter_package_id:
+                package_dict["package_id"] = adapter_package_id
+                logger.info(f"[DEBUG] Package {i}: Forced package_id = {adapter_package_id}")
+            else:
+                # NO FALLBACK - adapter MUST return package_id
+                error_msg = f"Adapter did not return package_id for package {i}. Cannot build response."
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
             # Validate and convert format_ids (request field) to format_ids_to_provide (response field)
-            # Per AdCP spec: request has format_ids (array of FormatId), response has format_ids_to_provide (same)
-            # STRICT ENFORCEMENT: Only FormatId objects accepted, must be registered agents, formats must exist
             if "format_ids" in package_dict and package_dict["format_ids"]:
                 validated_format_ids = await _validate_and_convert_format_ids(
                     package_dict["format_ids"], tenant["tenant_id"], i
                 )
                 package_dict["format_ids_to_provide"] = validated_format_ids
-                # Remove format_ids from response (only format_ids_to_provide should be in response)
+                # Remove format_ids from response
                 del package_dict["format_ids"]
 
-            # Determine package status based on whether creatives are assigned
-            # For auto-approved media buys:
-            # - COMPLETED if creatives are assigned and approved
-            # - WORKING if creatives still need to be provided
-            package_status = TaskStatus.WORKING  # Default: still working (needs creatives)
+            # Determine package status
+            package_status = TaskStatus.WORKING
             if package.creative_ids and len(package.creative_ids) > 0:
-                # Creatives are assigned, mark as completed
                 package_status = TaskStatus.COMPLETED
             elif hasattr(package, 'format_ids_to_provide') and package.format_ids_to_provide:
-                # Format IDs requested but no creatives yet - still working
                 package_status = TaskStatus.WORKING
 
-            # Override/add response-specific fields (package_id and status are set by server)
-            response_package = {
-                **package_dict,
-                "package_id": f"{response.media_buy_id}_pkg_{i+1}",
-                "status": package_status,
-            }
-            response_packages.append(response_package)
+            # Add status
+            package_dict["status"] = package_status
+            response_packages.append(package_dict)
 
         # Ensure buyer_ref is set (defensive check)
         buyer_ref_value = req.buyer_ref if req.buyer_ref else buyer_ref
@@ -6188,7 +6230,14 @@ def _update_media_buy_impl(
                 if currency_limit.max_daily_package_spend and req.packages:
                     for pkg_update in req.packages:
                         if pkg_update.budget:
-                            package_budget = Decimal(str(pkg_update.budget))
+                            # Extract budget amount - handle both Budget object and legacy float
+                            from src.core.schemas import Budget, extract_budget_amount
+                            if isinstance(pkg_update.budget, Budget):
+                                pkg_budget_amount, _ = extract_budget_amount(pkg_update.budget, request_currency)
+                            else:
+                                pkg_budget_amount = float(pkg_update.budget)
+
+                            package_budget = Decimal(str(pkg_budget_amount))
                             package_daily = package_budget / Decimal(str(flight_days))
 
                             if package_daily > currency_limit.max_daily_package_spend:
@@ -6245,12 +6294,22 @@ def _update_media_buy_impl(
 
             # Handle budget updates
             if pkg_update.budget is not None:
+                # Extract budget amount - handle both Budget object and legacy float
+                from src.core.schemas import Budget, extract_budget_amount
+
+                if isinstance(pkg_update.budget, Budget):
+                    budget_amount, currency = extract_budget_amount(pkg_update.budget, "USD")
+                else:
+                    # Legacy float format
+                    budget_amount = float(pkg_update.budget)
+                    currency = "USD"
+
                 result = adapter.update_media_buy(
                     media_buy_id=req.media_buy_id,
                     buyer_ref=req.buyer_ref or "",
                     action="update_package_budget",
                     package_id=pkg_update.package_id,
-                    budget=int(pkg_update.budget),
+                    budget=int(budget_amount),
                     today=datetime.combine(today, datetime.min.time()),
                 )
                 if result.errors:
@@ -6263,6 +6322,21 @@ def _update_media_buy_impl(
                         error_message=error_message,
                     )
                     return result
+
+                # Track budget update in affected_packages
+                if not hasattr(req, "_affected_packages"):
+                    req._affected_packages = []
+                req._affected_packages.append(
+                    {
+                        "buyer_package_ref": pkg_update.package_id,
+                        "changes_applied": {
+                            "budget": {
+                                "updated": budget_amount,
+                                "currency": currency
+                            }
+                        },
+                    }
+                )
 
             # Handle creative_ids updates (AdCP v2.2.0+)
             if pkg_update.creative_ids is not None:
@@ -6414,6 +6488,42 @@ def _update_media_buy_impl(
 
                 # Note: media_buys tuple stays as (CreateMediaBuyRequest, principal_id)
 
+                # Persist top-level budget update to database
+                from sqlalchemy import update
+                from src.core.database.models import MediaBuy
+
+                with get_db_session() as db_session:
+                    stmt = (
+                        update(MediaBuy)
+                        .where(MediaBuy.media_buy_id == req.media_buy_id)
+                        .values(budget=total_budget, currency=currency)
+                    )
+                    db_session.execute(stmt)
+                    db_session.commit()
+                    logger.info(f"[update_media_buy] Updated MediaBuy {req.media_buy_id} budget to {total_budget} {currency}")
+                
+                # Track top-level budget update in affected_packages
+                # When top-level budget changes, all packages are affected
+                if not hasattr(req, "_affected_packages"):
+                    req._affected_packages = []
+                
+                # Get all packages for this media buy to report them as affected
+                if hasattr(existing_req, "packages") and existing_req.packages:
+                    for pkg in existing_req.packages:
+                        package_ref = pkg.package_id if hasattr(pkg, "package_id") and pkg.package_id else pkg.buyer_ref
+                        if package_ref:
+                            req._affected_packages.append(
+                                {
+                                    "buyer_package_ref": package_ref,
+                                    "changes_applied": {
+                                        "budget": {
+                                            "updated": total_budget,
+                                            "currency": currency
+                                        }
+                                    },
+                                }
+                            )
+
     # Note: Budget validation already done above (lines 4318-4336)
     # Package-level updates already handled above (lines 4266-4316)
     # Targeting updates are handled via packages (AdCP spec v2.4)
@@ -6450,6 +6560,7 @@ def _update_media_buy_impl(
 
     # Build affected_packages from stored results
     affected_packages = getattr(req, "_affected_packages", [])
+    logger.info(f"[update_media_buy] Final affected_packages before return: {affected_packages}")
 
     return UpdateMediaBuyResponse(
         media_buy_id=req.media_buy_id or "",
