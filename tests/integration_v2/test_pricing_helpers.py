@@ -55,7 +55,7 @@ class TestPricingHelpers:
             # Verify pricing_options relationship
             assert len(product.pricing_options) == 1
             pricing = product.pricing_options[0]
-            assert pricing.pricing_model == "CPM"
+            assert pricing.pricing_model == "cpm"  # Lowercase per v2 pricing model
             assert float(pricing.rate) == 15.0
             assert pricing.is_fixed is True
             assert pricing.currency == "USD"
@@ -86,7 +86,7 @@ class TestPricingHelpers:
             # Verify auction pricing
             assert len(product.pricing_options) == 1
             pricing = product.pricing_options[0]
-            assert pricing.pricing_model == "CPM"
+            assert pricing.pricing_model == "cpm"  # Lowercase per v2 pricing model
             assert float(pricing.rate) == 2.50
             assert pricing.is_fixed is False  # Auction pricing
             assert pricing.currency == "USD"
@@ -116,7 +116,7 @@ class TestPricingHelpers:
             # Verify flat-rate pricing
             assert len(product.pricing_options) == 1
             pricing = product.pricing_options[0]
-            assert pricing.pricing_model == "FLAT_RATE"
+            assert pricing.pricing_model == "flat_rate"  # Lowercase per v2 pricing model
             assert float(pricing.rate) == 5000.0
             assert pricing.is_fixed is True
             assert pricing.currency == "USD"
@@ -194,4 +194,4 @@ class TestPricingHelpers:
 
             assert len(products) == 3
             pricing_models = {p.pricing_options[0].pricing_model for p in products}
-            assert pricing_models == {"CPM", "VCPM", "CPC"}
+            assert pricing_models == {"cpm", "vcpm", "cpc"}  # Lowercase per v2 pricing model
