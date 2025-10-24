@@ -4055,6 +4055,22 @@ def list_authorized_properties(
     Returns:
         ListAuthorizedPropertiesResponse with properties and tag metadata
     """
+    # DEBUG: Log what FastMCP provides
+    console.print("[yellow]DEBUG MCP list_authorized_properties:[/yellow]")
+    console.print(f"[yellow]  context={context}[/yellow]")
+    console.print(f"[yellow]  context type={type(context)}[/yellow]")
+    if context:
+        console.print(f"[yellow]  context.meta={getattr(context, 'meta', 'NO META')}[/yellow]")
+
+    # Try get_http_headers()
+    try:
+        from fastmcp.utilities.context import get_http_headers
+
+        headers = get_http_headers(include_all=True)
+        console.print(f"[yellow]  get_http_headers()={headers}[/yellow]")
+    except Exception as e:
+        console.print(f"[yellow]  get_http_headers() failed: {e}[/yellow]")
+
     return _list_authorized_properties_impl(req, context)
 
 
