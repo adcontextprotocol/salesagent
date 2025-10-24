@@ -6,6 +6,8 @@ pricing_options model instead of legacy Product pricing fields.
 """
 
 import os
+from decimal import Decimal
+from typing import Any
 
 import pytest
 
