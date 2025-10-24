@@ -10,6 +10,7 @@ from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import CurrencyLimit, PricingOption, Principal, Product
+from src.core.schemas import CreateMediaBuyRequest
 from tests.integration_v2.conftest import create_test_product_with_pricing
 from tests.utils.database_helpers import create_tenant_with_timestamps
 

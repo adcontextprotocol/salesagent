@@ -17,6 +17,7 @@ NOTE: These tests require a database connection with PostgreSQL.
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
 from src.core.schemas import Budget, Package, Targeting
