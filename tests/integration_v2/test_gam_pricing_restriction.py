@@ -177,7 +177,7 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
     # Mock get_adapter to return a mock GAM adapter that skips auth
     # This allows us to test pricing validation without real GAM credentials
     mock_adapter = MagicMock(spec=GoogleAdManager)
-    mock_adapter.supports_pricing_model.side_effect = lambda model: model.lower() == "cpm"
+    mock_adapter.get_supported_pricing_models.return_value = ["cpm"]
 
     with patch("src.core.main.get_adapter", return_value=mock_adapter):
         # This should fail with a clear error about GAM not supporting CPCV
@@ -238,7 +238,7 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
 
     # Mock get_adapter to return a mock GAM adapter that accepts CPM
     mock_adapter = MagicMock(spec=GoogleAdManager)
-    mock_adapter.supports_pricing_model.side_effect = lambda model: model.lower() == "cpm"
+    mock_adapter.get_supported_pricing_models.return_value = ["cpm"]
     mock_adapter.create_media_buy = MagicMock(return_value={"order_id": "123", "line_items": []})
 
     with patch("src.core.main.get_adapter", return_value=mock_adapter):
@@ -296,7 +296,7 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
 
     # Mock get_adapter to return a mock GAM adapter that rejects CPP
     mock_adapter = MagicMock(spec=GoogleAdManager)
-    mock_adapter.supports_pricing_model.side_effect = lambda model: model.lower() == "cpm"
+    mock_adapter.get_supported_pricing_models.return_value = ["cpm"]
 
     with patch("src.core.main.get_adapter", return_value=mock_adapter):
         # This should fail with clear error about GAM not supporting CPP
@@ -355,7 +355,7 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
 
     # Mock get_adapter to return a mock GAM adapter that accepts CPM
     mock_adapter = MagicMock(spec=GoogleAdManager)
-    mock_adapter.supports_pricing_model.side_effect = lambda model: model.lower() == "cpm"
+    mock_adapter.get_supported_pricing_models.return_value = ["cpm"]
     mock_adapter.create_media_buy = MagicMock(return_value={"order_id": "123", "line_items": []})
 
     with patch("src.core.main.get_adapter", return_value=mock_adapter):
