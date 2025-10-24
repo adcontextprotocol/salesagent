@@ -528,6 +528,7 @@ def sync_inventory(tenant_id):
 
         # Parse request body
         data = request.get_json() or {}
+        sync_mode = data.get("mode", "incremental")  # Default to incremental (safer)
         sync_types = data.get("types", None)
         custom_targeting_limit = data.get("custom_targeting_limit")
         audience_segment_limit = data.get("audience_segment_limit")
@@ -535,6 +536,7 @@ def sync_inventory(tenant_id):
         # Start background sync
         sync_id = start_inventory_sync_background(
             tenant_id=tenant_id,
+            sync_mode=sync_mode,
             sync_types=sync_types,
             custom_targeting_limit=custom_targeting_limit,
             audience_segment_limit=audience_segment_limit,
