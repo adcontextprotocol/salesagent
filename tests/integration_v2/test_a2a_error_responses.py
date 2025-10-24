@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import Message, MessageSendParams, Role, SkillPart, Task
+from a2a.types import Message, MessageSendParams, Part, Role, Task
 from sqlalchemy import delete
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
@@ -143,12 +143,7 @@ class TestA2AErrorPropagation:
         """Helper to create message with explicit skill invocation."""
         return Message(
             role=Role.user,
-            parts=[
-                SkillPart(
-                    skill=skill_name,
-                    arguments=parameters,
-                )
-            ],
+            parts=[Part(data={"skill": skill_name, "input": parameters})],
         )
 
     async def test_create_media_buy_validation_error_includes_errors_field(self, handler, test_tenant, test_principal):
