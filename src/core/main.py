@@ -1342,8 +1342,6 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
         and advertising_policy.get("require_manual_review", False)
     ):
         # Create a manual review task
-        from src.core.database.database_session import get_db_session
-
         with get_db_session() as session:
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
@@ -1424,7 +1422,6 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
     # Enrich products with dynamic pricing (AdCP PR #79)
     # Calculate floor_cpm, recommended_cpm, estimated_exposures from cached metrics
     try:
-        from src.core.database.database_session import get_db_session
         from src.services.dynamic_pricing_service import DynamicPricingService
 
         # Extract country from request if available (future enhancement: parse from targeting)
