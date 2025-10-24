@@ -4,6 +4,7 @@ Tests that create_media_buy rejects non-existent creative IDs, matching the
 behavior of update_media_buy.
 """
 
+from datetime import UTC
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -122,8 +123,8 @@ async def test_create_media_buy_rejects_missing_creatives(integration_db):
                     "creative_ids": ["nonexistent_creative_1", "nonexistent_creative_2"],
                 }
             ],
-            start_time=datetime(2025, 11, 1),
-            end_time=datetime(2025, 11, 30),
+            start_time=datetime(2025, 11, 1, tzinfo=UTC),
+            end_time=datetime(2025, 11, 30, tzinfo=UTC),
             budget=1000.0,
             context=mock_context,
         )
@@ -268,8 +269,8 @@ async def test_create_media_buy_accepts_existing_creatives(integration_db):
                     "creative_ids": ["creative_1", "creative_2"],
                 }
             ],
-            start_time=datetime(2025, 11, 1),
-            end_time=datetime(2025, 11, 30),
+            start_time=datetime(2025, 11, 1, tzinfo=UTC),
+            end_time=datetime(2025, 11, 30, tzinfo=UTC),
             budget=1000.0,
             context=mock_context,
         )
@@ -402,8 +403,8 @@ async def test_create_media_buy_rejects_partial_missing_creatives(integration_db
                     "creative_ids": ["creative_1", "creative_2"],  # creative_2 doesn't exist
                 }
             ],
-            start_time=datetime(2025, 11, 1),
-            end_time=datetime(2025, 11, 30),
+            start_time=datetime(2025, 11, 1, tzinfo=UTC),
+            end_time=datetime(2025, 11, 30, tzinfo=UTC),
             budget=1000.0,
             context=mock_context,
         )
