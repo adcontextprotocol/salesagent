@@ -119,7 +119,7 @@ async def test_create_media_buy_rejects_missing_creatives(integration_db):
             packages=[
                 {
                     "package_id": "pkg_1",
-                    "products": ["test_product"],
+                    "product_id": "test_product",
                     "impressions": 100000,
                     "creative_ids": ["nonexistent_creative_1", "nonexistent_creative_2"],
                 }
@@ -266,7 +266,7 @@ async def test_create_media_buy_accepts_existing_creatives(integration_db):
             packages=[
                 {
                     "package_id": "pkg_1",
-                    "products": ["test_product"],
+                    "product_id": "test_product",
                     "impressions": 100000,
                     "creative_ids": ["creative_1", "creative_2"],
                 }
@@ -399,12 +399,12 @@ async def test_create_media_buy_rejects_partial_missing_creatives(integration_db
             buyer_ref="buyer_ref_123",
             brand_manifest={"website": "https://example.com"},
             packages=[
-                Package(
-                    package_id="pkg_1",
-                    product_ids=["test_product"],
-                    impressions=100000,
-                    creative_ids=["creative_1", "creative_2"],  # creative_2 doesn't exist
-                )
+                {
+                    "package_id": "pkg_1",
+                    "product_id": "test_product",
+                    "impressions": 100000,
+                    "creative_ids": ["creative_1", "creative_2"],  # creative_2 doesn't exist
+                }
             ],
             start_time=datetime(2025, 11, 1, tzinfo=UTC),
             end_time=datetime(2025, 11, 30, tzinfo=UTC),
