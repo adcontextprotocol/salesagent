@@ -83,6 +83,9 @@ class GAMAuthManager:
 
         Supports both direct JSON string (preferred for cloud deployments)
         and file path (legacy).
+
+        Returns:
+            GoogleCredentialsClient: Wrapped credentials for use with AdManagerClient
         """
         import json
 
@@ -93,8 +96,10 @@ class GAMAuthManager:
                 credentials = google.oauth2.service_account.Credentials.from_service_account_info(
                     key_data, scopes=["https://www.googleapis.com/auth/dfp"]
                 )
+                # Wrap in GoogleCredentialsClient for AdManagerClient compatibility
+                oauth2_client = oauth2.GoogleCredentialsClient(credentials)
                 logger.info("Using service account credentials from JSON string")
-                return credentials
+                return oauth2_client
             except json.JSONDecodeError as e:
                 raise ValueError(f"Invalid service account JSON: {e}") from e
         elif self.key_file:
@@ -102,8 +107,10 @@ class GAMAuthManager:
             credentials = google.oauth2.service_account.Credentials.from_service_account_file(
                 self.key_file, scopes=["https://www.googleapis.com/auth/dfp"]
             )
+            # Wrap in GoogleCredentialsClient for AdManagerClient compatibility
+            oauth2_client = oauth2.GoogleCredentialsClient(credentials)
             logger.info(f"Using service account credentials from file: {self.key_file}")
-            return credentials
+            return oauth2_client
         else:
             raise ValueError("No service account credentials configured")
 
