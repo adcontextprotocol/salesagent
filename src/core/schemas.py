@@ -1364,7 +1364,7 @@ class Creative(BaseModel):
         This property will be removed in a future version.
         """
         warnings.warn(
-            "format_id is deprecated and will be removed in a future version. " "Use format instead.",
+            "format_id is deprecated and will be removed in a future version. Use format instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1378,7 +1378,7 @@ class Creative(BaseModel):
         This property will be removed in a future version.
         """
         warnings.warn(
-            "content_uri is deprecated and will be removed in a future version. " "Use url instead.",
+            "content_uri is deprecated and will be removed in a future version. Use url instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1392,7 +1392,7 @@ class Creative(BaseModel):
         This property will be removed in a future version.
         """
         warnings.warn(
-            "click_through_url is deprecated and will be removed in a future version. " "Use click_url instead.",
+            "click_through_url is deprecated and will be removed in a future version. Use click_url instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -3031,7 +3031,7 @@ class Signal(BaseModel):
         This property will be removed in a future version.
         """
         warnings.warn(
-            "signal_id is deprecated and will be removed in a future version. " "Use signal_agent_segment_id instead.",
+            "signal_id is deprecated and will be removed in a future version. Use signal_agent_segment_id instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -3045,7 +3045,7 @@ class Signal(BaseModel):
         This property will be removed in a future version.
         """
         warnings.warn(
-            "type is deprecated and will be removed in a future version. " "Use signal_type instead.",
+            "type is deprecated and will be removed in a future version. Use signal_type instead.",
             DeprecationWarning,
             stacklevel=2,
         )

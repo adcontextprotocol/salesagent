@@ -6,6 +6,7 @@ Audit E2E tests for quality issues:
 3. Redundant tests
 4. Tests with excessive tool calls
 """
+
 import re
 import sys
 from collections import defaultdict

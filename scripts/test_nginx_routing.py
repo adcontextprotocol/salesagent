@@ -61,12 +61,12 @@ class NginxRoutingTester:
 
     def run_test(self, test: TestCase) -> bool:
         """Run a single test case."""
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"TEST: {test.name}")
         print(f"Domain: {test.domain}{test.path}")
         if test.description:
             print(f"Description: {test.description}")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         # Set headers based on routing path
         if test.via_approximated:
@@ -150,26 +150,26 @@ class NginxRoutingTester:
 
     def print_summary(self):
         """Print test summary."""
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("TEST SUMMARY")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"Passed: {self.passed}")
         print(f"Failed: {self.failed}")
         print(f"Total:  {self.passed + self.failed}")
 
         if self.errors:
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print("FAILURES")
-            print(f"{'='*80}")
+            print(f"{'=' * 80}")
             for error in self.errors:
                 print(error)
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         if self.failed == 0:
             print("✅ ALL TESTS PASSED")
         else:
             print(f"❌ {self.failed} TESTS FAILED")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
 
 def get_test_cases() -> list[TestCase]:

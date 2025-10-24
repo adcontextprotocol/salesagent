@@ -43,7 +43,6 @@ class DeliverySimulator:
         before a server restart. Daemon threads don't survive restarts.
         """
         try:
-
             from sqlalchemy import select
 
             from src.core.database.database_session import get_db_session
@@ -113,7 +112,7 @@ class DeliverySimulator:
                         continue
 
                     logger.info(
-                        f"🚀 Restarting simulation for {media_buy.media_buy_id} " f"(product: {product.product_id})"
+                        f"🚀 Restarting simulation for {media_buy.media_buy_id} (product: {product.product_id})"
                     )
 
                     try:

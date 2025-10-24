@@ -529,7 +529,7 @@ class AdCPRequestHandler(RequestHandler):
                     task.artifacts = task.artifacts or []
                     task.artifacts.append(
                         Artifact(
-                            artifactId=f"skill_result_{i+1}",
+                            artifactId=f"skill_result_{i + 1}",
                             name=f"{'error' if not res['success'] else res['skill']}_result",
                             description=description,  # Human-readable message
                             parts=[Part(type="data", data=artifact_data)],
@@ -2274,7 +2274,9 @@ def main():
                 logger.info("Replaced /.well-known/agent.json with dynamic version")
             elif route.path == "/.well-known/agent-card.json":
                 # Replace with our dynamic endpoint (primary A2A discovery)
-                new_routes.append(Route("/.well-known/agent-card.json", dynamic_agent_discovery, methods=["GET", "OPTIONS"]))
+                new_routes.append(
+                    Route("/.well-known/agent-card.json", dynamic_agent_discovery, methods=["GET", "OPTIONS"])
+                )
                 logger.info("Replaced /.well-known/agent-card.json with dynamic version")
             elif route.path == "/agent.json":
                 # Replace with our dynamic endpoint

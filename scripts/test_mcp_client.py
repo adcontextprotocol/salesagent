@@ -14,9 +14,9 @@ from fastmcp.client.transports import StreamableHttpTransport
 
 async def test_mcp_endpoint(url: str, auth_token: str = None):
     """Test MCP endpoint with actual MCP client."""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Testing MCP endpoint: {url}")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     headers = {}
     if auth_token:
@@ -79,16 +79,16 @@ async def main():
     results = []
 
     for name, url, _needs_auth in test_cases:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"TEST: {name}")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         success = await test_mcp_endpoint(url)
         results.append((name, success))
 
     # Print summary
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("SUMMARY")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     for name, success in results:
         status = "✅ PASS" if success else "❌ FAIL"

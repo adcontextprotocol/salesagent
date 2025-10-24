@@ -147,7 +147,7 @@ class WebhookQueue:
             if len(self.queue) >= self.max_size:
                 self._dropped_count += 1
                 logger.warning(
-                    f"Webhook queue full ({self.max_size}), " f"dropping webhook (total dropped: {self._dropped_count})"
+                    f"Webhook queue full ({self.max_size}), dropping webhook (total dropped: {self._dropped_count})"
                 )
                 return False
 
@@ -394,7 +394,7 @@ class WebhookDeliveryService:
 
                     # Check circuit breaker
                     if not circuit_breaker.can_attempt():
-                        logger.warning(f"⚠️ Circuit breaker OPEN for {config.url}, " f"skipping webhook delivery")
+                        logger.warning(f"⚠️ Circuit breaker OPEN for {config.url}, skipping webhook delivery")
                         continue
 
                     # Add to queue (bounded)
@@ -460,7 +460,7 @@ class WebhookDeliveryService:
 
         if webhook_secret:
             if not self._verify_secret_strength(webhook_secret):
-                logger.warning(f"⚠️ Webhook secret for {config.url} is too weak " f"(min 32 characters required)")
+                logger.warning(f"⚠️ Webhook secret for {config.url} is too weak (min 32 characters required)")
             else:
                 signature = self._generate_hmac_signature(payload, webhook_secret, timestamp)
                 headers["X-ADCP-Signature"] = signature
@@ -476,9 +476,7 @@ class WebhookDeliveryService:
                 if attempt > 0:
                     # Base delay * 2^attempt + random jitter (0-1 seconds)
                     delay = (base_delay * (2**attempt)) + random.uniform(0, 1)
-                    logger.debug(
-                        f"Retrying webhook delivery after {delay:.2f}s " f"(attempt {attempt + 1}/{max_retries})"
-                    )
+                    logger.debug(f"Retrying webhook delivery after {delay:.2f}s (attempt {attempt + 1}/{max_retries})")
                     time.sleep(delay)
 
                 # Send webhook
@@ -490,7 +488,7 @@ class WebhookDeliveryService:
                     )
 
                     if 200 <= response.status_code < 300:
-                        logger.debug(f"Webhook delivered to {config.url} " f"(status: {response.status_code})")
+                        logger.debug(f"Webhook delivered to {config.url} (status: {response.status_code})")
                         circuit_breaker.record_success()
                         return True
 
@@ -501,11 +499,9 @@ class WebhookDeliveryService:
                     )
 
             except httpx.TimeoutException:
-                logger.warning(f"Webhook delivery to {config.url} timed out " f"(attempt: {attempt + 1}/{max_retries})")
+                logger.warning(f"Webhook delivery to {config.url} timed out (attempt: {attempt + 1}/{max_retries})")
             except httpx.RequestError as e:
-                logger.warning(
-                    f"Webhook delivery to {config.url} failed: {e} " f"(attempt: {attempt + 1}/{max_retries})"
-                )
+                logger.warning(f"Webhook delivery to {config.url} failed: {e} (attempt: {attempt + 1}/{max_retries})")
             except Exception as e:
                 logger.error(f"Unexpected error delivering to {config.url}: {e}", exc_info=True)
                 break

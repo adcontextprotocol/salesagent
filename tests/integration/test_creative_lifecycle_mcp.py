@@ -155,7 +155,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             # Call sync_creatives tool (uses default patch=False for full upsert)
             response = core_sync_creatives_tool(creatives=sample_creatives, context=mock_context)
 
@@ -238,7 +237,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             # Upsert with patch=False (default): full replacement
             response = core_sync_creatives_tool(creatives=updated_creative_data, context=mock_context)
 
@@ -272,7 +270,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             # Use spec-compliant assignments dict: creative_id → package_ids
             response = core_sync_creatives_tool(
                 creatives=creative_data,
@@ -308,7 +305,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             # Use spec-compliant assignments dict
             response = core_sync_creatives_tool(
                 creatives=creative_data,
@@ -350,7 +346,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             response = core_sync_creatives_tool(creatives=invalid_creatives, context=mock_context)
 
             # Should sync valid creative but fail on invalid one
@@ -398,7 +393,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             response = core_list_creatives_tool(context=mock_context)
 
             # Verify response structure
@@ -446,7 +440,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             # Test approved filter
             response = core_list_creatives_tool(status="approved", context=mock_context)
             assert len(response.creatives) == 3
@@ -491,7 +484,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             # Test display format filter
             response = core_list_creatives_tool(format="display_300x250", context=mock_context)
             assert len(response.creatives) == 2
@@ -539,7 +531,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             # Test created_after filter
             created_after = (now - timedelta(days=5)).isoformat()
             response = core_list_creatives_tool(created_after=created_after, context=mock_context)
@@ -588,7 +579,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             # Search for "Holiday"
             response = core_list_creatives_tool(search="Holiday", context=mock_context)
             assert len(response.creatives) == 2
@@ -622,7 +612,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             # Test first page
             response = core_list_creatives_tool(page=1, limit=10, context=mock_context)
             assert len(response.creatives) == 10
@@ -690,7 +679,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             # Filter by media_buy_id - should only return assigned creative
             response = core_list_creatives_tool(media_buy_id=self.test_media_buy_id, context=mock_context)
             assert len(response.creatives) == 1
@@ -707,7 +695,6 @@ class TestCreativeLifecycleMCP:
         mock_context = MockContext("invalid-token")
 
         with patch("src.core.main._get_principal_id_from_context", side_effect=Exception("Invalid auth token")):
-
             with pytest.raises(Exception) as exc_info:
                 core_sync_creatives_tool(creatives=sample_creatives, context=mock_context)
 
@@ -738,7 +725,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value=None),
         ):
-
             with pytest.raises(Exception) as exc_info:
                 core_sync_creatives_tool(creatives=sample_creatives, context=mock_context)
 
@@ -751,7 +737,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-
             # Query with filters that match nothing
             response = core_list_creatives_tool(status="rejected", context=mock_context)  # No rejected creatives exist
 

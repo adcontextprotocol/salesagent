@@ -15,27 +15,108 @@ from src.core.retry_utils import api_retry
 from src.core.schemas import (
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
-    CreativeAsset,
-    CreativeDelivery,
-    DeliveryMetrics,
-    HourlyDelivery,
-    MediaBuyDeliveryData,
-    MediaBuyDetails,
-    MediaBuyStatus,
-    PacingAnalysis,
-    Package,
-    PackageStatus,
-    PerformanceAlert,
+    MediaPackage,
     Principal,
     Product,
-    ReportingPeriod,
     extract_budget_amount,
 )
 
+# NOTE: Xandr adapter needs full refactor - it's using old schemas and patterns
+# The other methods (get_media_buy_status, get_media_buy_delivery, etc.) still use old schemas
+# that no longer exist. Only create_media_buy has been updated to match the current API.
 
-# Import the actual MediaBuy model for this adapter's incorrect usage
+
+# Temporary stubs for old schemas until Xandr adapter is properly refactored
 class MediaBuy:
     """Temporary stub for MediaBuy until xandr.py is properly refactored."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class MediaBuyDetails:
+    """Temporary stub for MediaBuyDetails until xandr.py is properly refactored."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class MediaBuyStatus:
+    """Temporary stub for MediaBuyStatus until xandr.py is properly refactored."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class PackageStatus:
+    """Temporary stub for PackageStatus until xandr.py is properly refactored."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class MediaBuyDeliveryData:
+    """Temporary stub for MediaBuyDeliveryData until xandr.py is properly refactored."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class ReportingPeriod:
+    """Temporary stub for ReportingPeriod until xandr.py is properly refactored."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class HourlyDelivery:
+    """Temporary stub for HourlyDelivery until xandr.py is properly refactored."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class CreativeDelivery:
+    """Temporary stub for CreativeDelivery until xandr.py is properly refactored."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class PacingAnalysis:
+    """Temporary stub for PacingAnalysis until xandr.py is properly refactored."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class PerformanceAlert:
+    """Temporary stub for PerformanceAlert until xandr.py is properly refactored."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class DeliveryMetrics:
+    """Temporary stub for DeliveryMetrics until xandr.py is properly refactored."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class CreativeAsset:
+    """Temporary stub for CreativeAsset until xandr.py is properly refactored."""
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
@@ -246,7 +327,14 @@ class XandrAdapter(AdServerAdapter):
             logger.error(f"Error fetching Xandr products: {e}")
             return []
 
-    def create_media_buy(self, request: CreateMediaBuyRequest) -> CreateMediaBuyResponse:
+    def create_media_buy(
+        self,
+        request: CreateMediaBuyRequest,
+        packages: list[MediaPackage],
+        start_time: datetime,
+        end_time: datetime,
+        package_pricing_info: dict[str, dict] | None = None,
+    ) -> CreateMediaBuyResponse:
         """Create insertion order and line items in Xandr."""
         if self._requires_manual_approval("create_media_buy"):
             task_id = self._create_human_task(
@@ -254,38 +342,41 @@ class XandrAdapter(AdServerAdapter):
                 {"request": request.dict(), "principal": self.principal.name, "advertiser_id": self.advertiser_id},
             )
 
-            # Return pending status
-            media_buy = MediaBuy(
+            # Build package responses
+            package_responses = []
+            for package in packages:
+                package_responses.append(
+                    {
+                        "package_id": package.package_id,
+                    }
+                )
+
+            return CreateMediaBuyResponse(
+                buyer_ref=request.buyer_ref,
                 media_buy_id=f"xandr_pending_{task_id}",
-                platform_id=f"pending_{task_id}",
-                order_name=request.order_name,
-                status="pending_approval",
-                details=request,
+                packages=package_responses,
             )
 
-            response = CreateMediaBuyResponse(media_buy=media_buy, packages=[], manual_approval_required=True)
-
-            return response
-
         try:
+            # Extract total budget
+            total_budget, _ = extract_budget_amount(request.budget, request.currency or "USD")
+            days = (end_time.date() - start_time.date()).days
+            if days == 0:
+                days = 1
+
             # Create insertion order
             io_data = {
                 "insertion-order": {
-                    "name": request.order_name,
+                    "name": request.campaign_name or f"AdCP Campaign {request.buyer_ref}",
                     "advertiser_id": int(self.advertiser_id),
-                    "start_date": request.flight_start_date.isoformat(),
-                    "end_date": request.flight_end_date.isoformat(),
+                    "start_date": start_time.date().isoformat(),
+                    "end_date": end_time.date().isoformat(),
                     "budget_intervals": [
                         {
-                            "start_date": request.flight_start_date.isoformat(),
-                            "end_date": request.flight_end_date.isoformat(),
-                            "daily_budget": float(
-                                extract_budget_amount(request.budget, request.currency or "USD")[0]
-                                / (request.flight_end_date - request.flight_start_date).days
-                            ),
-                            "lifetime_budget": float(
-                                extract_budget_amount(request.budget, request.currency or "USD")[0]
-                            ),
+                            "start_date": start_time.date().isoformat(),
+                            "end_date": end_time.date().isoformat(),
+                            "daily_budget": float(total_budget / days),
+                            "lifetime_budget": float(total_budget),
                         }
                     ],
                     "currency": "USD",
@@ -296,66 +387,53 @@ class XandrAdapter(AdServerAdapter):
             io_response = self._make_request("POST", "/insertion-order", io_data)
             io_id = io_response["response"]["insertion-order"]["id"]
 
-            packages = []
+            package_responses = []
 
             # Create line items for each package
-            if request.packages:
-                for package_req in request.packages:
-                    li_data = {
-                        "line-item": {
-                            "name": package_req.name,
-                            "insertion_order_id": io_id,
-                            "advertiser_id": int(self.advertiser_id),
-                            "start_date": request.flight_start_date.isoformat(),
-                            "end_date": request.flight_end_date.isoformat(),
-                            "revenue_type": "cpm",
-                            "revenue_value": package_req.budget / package_req.impressions * 1000,
-                            "lifetime_budget": float(package_req.budget),
-                            "daily_budget": float(
-                                package_req.budget / (request.flight_end_date - request.flight_start_date).days
-                            ),
-                            "currency": "USD",
-                            "state": "inactive",  # Start inactive
-                            "inventory_type": self._map_inventory_type(package_req.product_id),
-                        }
+            for package in packages:
+                li_data = {
+                    "line-item": {
+                        "name": package.name,
+                        "insertion_order_id": io_id,
+                        "advertiser_id": int(self.advertiser_id),
+                        "start_date": start_time.date().isoformat(),
+                        "end_date": end_time.date().isoformat(),
+                        "revenue_type": "cpm",
+                        "revenue_value": package.cpm,
+                        "lifetime_budget": float(package.cpm * package.impressions / 1000),
+                        "daily_budget": float(package.cpm * package.impressions / 1000 / days),
+                        "currency": "USD",
+                        "state": "inactive",  # Start inactive
+                        "inventory_type": "display",
                     }
+                }
 
-                    # Apply targeting
-                    if request.targeting_overlay:
-                        li_data["line-item"]["profile_id"] = self._create_targeting_profile(request.targeting_overlay)
+                # Apply targeting
+                if request.targeting_overlay:
+                    li_data["line-item"]["profile_id"] = self._create_targeting_profile(request.targeting_overlay)
 
-                    li_response = self._make_request("POST", "/line-item", li_data)
-                    li_id = li_response["response"]["line-item"]["id"]
+                li_response = self._make_request("POST", "/line-item", li_data)
+                li_id = li_response["response"]["line-item"]["id"]
 
-                    package = Package(
-                        package_id=f"xandr_li_{li_id}",
-                        platform_id=str(li_id),
-                        name=package_req.name,
-                        product_id=package_req.product_id,
-                        budget=package_req.budget,
-                        impressions=package_req.impressions,
-                        start_date=request.flight_start_date,
-                        end_date=request.flight_end_date,
-                        status=PackageStatus(state="inactive", is_editable=True, delivery_percentage=0.0),
-                    )
-                    packages.append(package)
-
-            media_buy = MediaBuy(
-                media_buy_id=f"xandr_io_{io_id}",
-                platform_id=str(io_id),
-                order_name=request.order_name,
-                status="inactive",
-                details=request,
-            )
-
-            response = CreateMediaBuyResponse(media_buy=media_buy, packages=packages, manual_approval_required=False)
+                # Build package response with package_id and platform_line_item_id
+                package_responses.append(
+                    {
+                        "package_id": package.package_id,
+                        "platform_line_item_id": str(li_id),
+                    }
+                )
 
             # Log the operation
             self._log_operation(
-                "create_media_buy", True, {"insertion_order_id": io_id, "line_item_count": len(packages)}
+                "create_media_buy", True, {"insertion_order_id": io_id, "line_item_count": len(package_responses)}
             )
 
-            return response
+            return CreateMediaBuyResponse(
+                buyer_ref=request.buyer_ref,
+                media_buy_id=f"xandr_io_{io_id}",
+                creative_deadline=datetime.now(UTC) + timedelta(days=2),
+                packages=package_responses,
+            )
 
         except Exception as e:
             logger.error(f"Failed to create Xandr media buy: {e}")
@@ -698,7 +776,7 @@ class XandrAdapter(AdServerAdapter):
             # Also pause all line items
             li_response = self._make_request("GET", f"/line-item?insertion_order_id={io_id}")
             for li in li_response["response"]["line-items"]:
-                self._make_request("PUT", f'/line-item?id={li["id"]}', {"line-item": {"state": "inactive"}})
+                self._make_request("PUT", f"/line-item?id={li['id']}", {"line-item": {"state": "inactive"}})
 
             return True
 
@@ -780,7 +858,7 @@ class XandrAdapter(AdServerAdapter):
                     # Remove existing associations
                     current_creatives = self._make_request("GET", f"/line-item/{li_id}/creative")
                     for creative in current_creatives.get("response", {}).get("creatives", []):
-                        self._make_request("DELETE", f'/line-item/{li_id}/creative/{creative["id"]}')
+                        self._make_request("DELETE", f"/line-item/{li_id}/creative/{creative['id']}")
 
                     # Add new associations
                     for creative_id in package_update["creative_ids"]:
@@ -814,7 +892,7 @@ class XandrAdapter(AdServerAdapter):
             # Also resume all line items
             li_response = self._make_request("GET", f"/line-item?insertion_order_id={io_id}")
             for li in li_response["response"]["line-items"]:
-                self._make_request("PUT", f'/line-item?id={li["id"]}', {"line-item": {"state": "active"}})
+                self._make_request("PUT", f"/line-item?id={li['id']}", {"line-item": {"state": "active"}})
 
             return True
 

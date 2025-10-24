@@ -197,7 +197,6 @@ def sync_orders(tenant_id):
     """Sync GAM orders for a tenant."""
     try:
         with get_db_session() as db_session:
-
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
             if not tenant:

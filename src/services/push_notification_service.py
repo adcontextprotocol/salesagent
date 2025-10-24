@@ -220,7 +220,7 @@ class PushNotificationService:
 
                 except httpx.TimeoutException:
                     logger.warning(
-                        f"Webhook delivery to {config.url} timed out " f"(attempt: {attempt + 1}/{self.max_retries})"
+                        f"Webhook delivery to {config.url} timed out (attempt: {attempt + 1}/{self.max_retries})"
                     )
                 except httpx.RequestError as e:
                     logger.warning(

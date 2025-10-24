@@ -276,7 +276,8 @@ class Kevel(AdServerAdapter):
             campaign_id = campaign_data["Id"]
             self.audit_logger.log_success(f"Created Kevel Campaign ID: {campaign_id}")
 
-            # Create flights for each package
+            # Create flights for each package and track flight IDs
+            package_responses = []
             for package in packages:
                 flight_payload = {
                     "Name": package.name,
@@ -310,15 +311,35 @@ class Kevel(AdServerAdapter):
 
                 flight_response = requests.post(f"{self.base_url}/flight", headers=self.headers, json=flight_payload)
                 flight_response.raise_for_status()
+                flight_data = flight_response.json()
+                flight_id = flight_data.get("Id")
+
+                # Build package response with package_id and platform_flight_id
+                package_responses.append(
+                    {
+                        "package_id": package.package_id,
+                        "platform_line_item_id": str(flight_id) if flight_id else None,
+                    }
+                )
 
             # Use the actual campaign ID from Kevel
             media_buy_id = f"kevel_{campaign_id}"
 
+        # For dry_run, build package responses without flight IDs
+        if self.dry_run:
+            package_responses = []
+            for package in packages:
+                package_responses.append(
+                    {
+                        "package_id": package.package_id,
+                    }
+                )
+
         return CreateMediaBuyResponse(
+            buyer_ref=request.buyer_ref,
             media_buy_id=media_buy_id,
-            status="pending_activation",
-            detail=f"Created Kevel campaign with {len(packages)} flight(s)",
             creative_deadline=datetime.now() + timedelta(days=2),
+            packages=package_responses,
         )
 
     def add_creative_assets(
@@ -344,7 +365,7 @@ class Kevel(AdServerAdapter):
                     self.log("  Creative Payload: {")
                     self.log(f"    'Name': '{asset['name']}',")
                     self.log(
-                        f"    'Body': '<a href=\"{asset['click_url']}\" target=\"_blank\"><img src=\"{asset['media_url']}\"/></a>',"
+                        f'    \'Body\': \'<a href="{asset["click_url"]}" target="_blank"><img src="{asset["media_url"]}"/></a>\','
                     )
                     self.log(f"    'Url': '{asset['click_url']}'")
                     self.log("  }")

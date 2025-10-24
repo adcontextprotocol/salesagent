@@ -240,7 +240,7 @@ def format_validation_error(validation_error: ValidationError, context: str = "r
             )
         elif "string_type" in error_type:
             error_details.append(
-                f"  • {field_path}: Expected string, got {type(input_val).__name__}. " f"Please provide a string value."
+                f"  • {field_path}: Expected string, got {type(input_val).__name__}. Please provide a string value."
             )
         elif "missing" in error_type:
             error_details.append(f"  • {field_path}: Required field is missing")
@@ -1285,7 +1285,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
             logger.error(f"[GET_PRODUCTS] Principal found but no tenant context: principal_id={principal_id}")
             print("❌ [GET_PRODUCTS DEBUG] Principal found but no tenant context", flush=True)
             raise ToolError(
-                f"Authentication succeeded but tenant context missing. " f"This is a bug. principal_id={principal_id}"
+                f"Authentication succeeded but tenant context missing. This is a bug. principal_id={principal_id}"
             )
         # else: No auth provided, which is OK for discovery endpoints
 
@@ -4282,8 +4282,7 @@ def _validate_pricing_model_selection(
         if bid_decimal < floor_price:
             raise ToolError(
                 "PRICING_ERROR",
-                f"Bid price {package.bid_price} is below floor price {floor_price} "
-                f"for {package.pricing_model} pricing",
+                f"Bid price {package.bid_price} is below floor price {floor_price} for {package.pricing_model} pricing",
             )
 
     # Validate fixed pricing has rate
@@ -5093,7 +5092,7 @@ async def _create_media_buy_impl(
                             package_config.update(
                                 {
                                     "product_id": req_pkg.product_id,
-                                    "budget": req_pkg.budget.model_dump() if req_pkg.budget else None,
+                                    "budget": req_pkg.budget,  # Per AdCP v2.2.0, budget is a number
                                     "targeting_overlay": (
                                         req_pkg.targeting_overlay.model_dump() if req_pkg.targeting_overlay else None
                                     ),
@@ -8047,7 +8046,7 @@ if unified_mode:
                         content=f"""
                     <html>
                     <body>
-                    <h1>Welcome to {tenant.get('name', 'AdCP Sales Agent')}</h1>
+                    <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
                     <p>This is a sales agent for advertising inventory.</p>
                     <p>Domain: {apx_host}</p>
                     </body>
@@ -8082,7 +8081,7 @@ if unified_mode:
                                 content=f"""
                             <html>
                             <body>
-                            <h1>Welcome to {tenant.get('name', 'AdCP Sales Agent')}</h1>
+                            <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
                             <p>Subdomain: {apx_host}</p>
                             </body>
                             </html>

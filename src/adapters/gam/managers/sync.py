@@ -61,7 +61,13 @@ class GAMSyncManager:
 
         logger.info(f"Initialized GAMSyncManager for tenant {tenant_id} (dry_run: {dry_run})")
 
-    def sync_inventory(self, db_session: Session, force: bool = False, fetch_custom_targeting_values: bool = False, custom_targeting_limit: int = 1000) -> dict[str, Any]:
+    def sync_inventory(
+        self,
+        db_session: Session,
+        force: bool = False,
+        fetch_custom_targeting_values: bool = False,
+        custom_targeting_limit: int = 1000,
+    ) -> dict[str, Any]:
         """Synchronize inventory data from GAM to database.
 
         Args:
@@ -108,8 +114,7 @@ class GAMSyncManager:
             else:
                 # Perform actual inventory sync with custom targeting parameters
                 summary = self.inventory_manager.sync_all_inventory(
-                    custom_targeting_limit=custom_targeting_limit,
-                    fetch_values=fetch_custom_targeting_values
+                    custom_targeting_limit=custom_targeting_limit, fetch_values=fetch_custom_targeting_values
                 )
 
                 # Save inventory to database - this would be delegated to inventory service
@@ -249,7 +254,9 @@ class GAMSyncManager:
             }
 
             # Sync inventory first with custom targeting limit
-            inventory_result = self.sync_inventory(db_session, force=True, custom_targeting_limit=custom_targeting_limit)
+            inventory_result = self.sync_inventory(
+                db_session, force=True, custom_targeting_limit=custom_targeting_limit
+            )
             combined_summary["inventory"] = inventory_result.get("summary", {})
 
             # Then sync orders

@@ -69,7 +69,7 @@ class TestGeneratedSchemaCompatibility:
             generated = GeneratedGetProductsResponse(**adcp_dict)
             assert generated.products == []
         except Exception as e:
-            pytest.fail(f"GetProductsResponse not compatible: {e}\n" f"AdCP dict keys: {list(adcp_dict.keys())}")
+            pytest.fail(f"GetProductsResponse not compatible: {e}\nAdCP dict keys: {list(adcp_dict.keys())}")
 
     # NOTE: test_sync_creatives_response_compatible removed because SyncCreativesResponse
     # schema diverged from official AdCP spec. Custom schema has: summary, results,
@@ -103,7 +103,7 @@ class TestGeneratedSchemaCompatibility:
             assert generated.query_summary.total_matching == 0
             assert generated.pagination.limit == 50
         except Exception as e:
-            pytest.fail(f"ListCreativesResponse not compatible: {e}\n" f"AdCP dict keys: {list(adcp_dict.keys())}")
+            pytest.fail(f"ListCreativesResponse not compatible: {e}\nAdCP dict keys: {list(adcp_dict.keys())}")
 
     def test_get_media_buy_delivery_response_compatible(self):
         """Test GetMediaBuyDeliveryResponse is compatible with generated schema."""
@@ -135,9 +135,7 @@ class TestGeneratedSchemaCompatibility:
             assert generated.aggregated_totals.media_buy_count == 0
             assert generated.media_buy_deliveries == []
         except Exception as e:
-            pytest.fail(
-                f"GetMediaBuyDeliveryResponse not compatible: {e}\n" f"AdCP dict keys: {list(adcp_dict.keys())}"
-            )
+            pytest.fail(f"GetMediaBuyDeliveryResponse not compatible: {e}\nAdCP dict keys: {list(adcp_dict.keys())}")
 
     def test_list_creative_formats_response_compatible(self):
         """Test ListCreativeFormatsResponse is compatible with generated schema."""
@@ -156,9 +154,7 @@ class TestGeneratedSchemaCompatibility:
             generated = GeneratedListCreativeFormatsResponse(**adcp_dict)
             assert generated.formats == []
         except Exception as e:
-            pytest.fail(
-                f"ListCreativeFormatsResponse not compatible: {e}\n" f"AdCP dict keys: {list(adcp_dict.keys())}"
-            )
+            pytest.fail(f"ListCreativeFormatsResponse not compatible: {e}\nAdCP dict keys: {list(adcp_dict.keys())}")
 
     # NOTE: list_authorized_properties test removed - manual schema uses list[str],
     # generated uses list[PublisherDomain(RootModel[str])]. This is a known schema
@@ -183,4 +179,4 @@ class TestGeneratedSchemaCompatibility:
             assert generated.media_buy_id == "mb_123"
             assert generated.buyer_ref == "test_buyer_ref"
         except Exception as e:
-            pytest.fail(f"UpdateMediaBuyResponse not compatible: {e}\n" f"AdCP dict keys: {list(adcp_dict.keys())}")
+            pytest.fail(f"UpdateMediaBuyResponse not compatible: {e}\nAdCP dict keys: {list(adcp_dict.keys())}")

@@ -172,8 +172,7 @@ class A2AResponseValidator:
             )
         elif not has_str_method:
             warnings.append(
-                f"{class_name} only has .message field, no __str__() method. "
-                f"Consider adding __str__() for consistency."
+                f"{class_name} only has .message field, no __str__() method. Consider adding __str__() for consistency."
             )
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)

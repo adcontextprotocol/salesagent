@@ -328,9 +328,7 @@ class GAMOperationTracker:
         for step in reversed(self.steps):
             if step["rollback_action"]:
                 try:
-                    logger.info(
-                        f"Rolling back {step['step_name']} for {step['resource_type']} " f"{step['resource_id']}"
-                    )
+                    logger.info(f"Rolling back {step['step_name']} for {step['resource_type']} {step['resource_id']}")
 
                     result = step["rollback_action"]()
                     rollback_results.append({"step": step["step_name"], "success": True, "result": result})

@@ -483,13 +483,13 @@ class AIProductConfigurationService:
         Product Description:
         - Name: {description.name}
         - External (buyer-facing): {description.external_description}
-        - Internal details: {description.internal_details or 'None provided'}
+        - Internal details: {description.internal_details or "None provided"}
 
         Inventory Analysis Results:
-        - Premium Level: {inventory_analysis['premium_level']}
-        - Best Matching Placements: {json.dumps(inventory_analysis['matched_placements'][:3], indent=2)}
-        - Suggested CPM Range: ${inventory_analysis['suggested_cpm_range']['min']:.2f} - ${inventory_analysis['suggested_cpm_range']['max']:.2f}
-        - Recommended Ad Sizes: {inventory_analysis['recommended_formats']}
+        - Premium Level: {inventory_analysis["premium_level"]}
+        - Best Matching Placements: {json.dumps(inventory_analysis["matched_placements"][:3], indent=2)}
+        - Suggested CPM Range: ${inventory_analysis["suggested_cpm_range"]["min"]:.2f} - ${inventory_analysis["suggested_cpm_range"]["max"]:.2f}
+        - Recommended Ad Sizes: {inventory_analysis["recommended_formats"]}
 
         Available Ad Server Inventory:
         {json.dumps(inventory.placements[:10], indent=2)}
@@ -498,7 +498,7 @@ class AIProductConfigurationService:
         {json.dumps(inventory.targeting_options, indent=2)}
 
         Creative Formats Available:
-        {json.dumps([f for f in creative_formats if f['type'] in ['display', 'video', 'native']][:20], indent=2)}
+        {json.dumps([f for f in creative_formats if f["type"] in ["display", "video", "native"]][:20], indent=2)}
 
         Generate a product configuration following these guidelines:
         1. Use the matched placements from the analysis as placement_targets

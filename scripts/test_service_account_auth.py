@@ -21,10 +21,11 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from sqlalchemy import select
+
+from src.adapters.gam import build_gam_config_from_adapter
+from src.adapters.google_ad_manager import GoogleAdManager
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
-from src.adapters.google_ad_manager import GoogleAdManager
-from src.adapters.gam import build_gam_config_from_adapter
 from src.core.schemas import Principal
 
 
@@ -132,6 +133,7 @@ def test_service_account_auth(tenant_name: str):
         except Exception as e:
             print(f"❌ Failed to create adapter: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
@@ -153,6 +155,7 @@ def test_service_account_auth(tenant_name: str):
         except Exception as e:
             print(f"❌ Failed to fetch advertisers: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 

@@ -212,9 +212,7 @@ class TestTemplateUrlValidation:
                             url_for(endpoint, **test_params)
                         except BuildError as e:
                             pytest.fail(
-                                f"Navigation link in {template_name} is broken:\n"
-                                f"  url_for('{endpoint}')\n"
-                                f"  Error: {e}"
+                                f"Navigation link in {template_name} is broken:\n  url_for('{endpoint}')\n  Error: {e}"
                             )
 
     def test_ajax_urls_are_valid(self):

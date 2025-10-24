@@ -122,7 +122,7 @@ def test_gam_connection(tenant_id: str) -> dict:
 
         return {
             "success": True,
-            "message": f'Successfully connected to GAM network: {network["displayName"]} (ID: {network["id"]})',
+            "message": f"Successfully connected to GAM network: {network['displayName']} (ID: {network['id']})",
         }
 
     except Exception as e:

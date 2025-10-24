@@ -243,9 +243,9 @@ class PydanticSchemaValidator:
             print()  # Blank line between validations
 
         # Summary
-        print(f"\n{Colors.BOLD}{'='*60}{Colors.RESET}")
+        print(f"\n{Colors.BOLD}{'=' * 60}{Colors.RESET}")
         print(f"{Colors.BOLD}Validation Summary{Colors.RESET}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Models validated: {validated_count}")
         print(f"{Colors.RED}Errors: {len(self.errors)}{Colors.RESET}")
         print(f"{Colors.YELLOW}Warnings: {len(self.warnings)}{Colors.RESET}")

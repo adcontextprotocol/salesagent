@@ -10,7 +10,6 @@ This addresses the pattern identified in issue #161 of reducing mocking at data 
 to improve test coverage and catch real bugs.
 """
 
-
 import pytest
 
 from src.core.database.models import Base, Product, Tenant
@@ -115,9 +114,9 @@ class TestDatabaseHealthIntegration:
             health = check_database_health()
 
             # Should handle error gracefully
-            assert (
-                health["status"] == "error"
-            ), f"Should report error status for database connection failure, got: {health['status']}"
+            assert health["status"] == "error", (
+                f"Should report error status for database connection failure, got: {health['status']}"
+            )
             assert len(health["schema_issues"]) > 0, "Should report schema issues for failed connection"
 
             # Error should be descriptive

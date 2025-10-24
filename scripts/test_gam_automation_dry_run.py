@@ -339,7 +339,7 @@ def main():
         total = len(results)
         failed = total - passed
 
-        print(f"\n{'='*40}")
+        print(f"\n{'=' * 40}")
         print(f"📊 RESULTS: {passed}/{total} tests passed")
 
         if failed == 0:

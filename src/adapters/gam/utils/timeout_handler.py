@@ -59,7 +59,7 @@ def timeout(seconds: int = 300):
                 except concurrent.futures.TimeoutError:
                     # Log timeout for debugging
                     logger.error(
-                        f"⏰ {func.__name__} timed out after {seconds}s. " f"This usually means the GAM API is hanging."
+                        f"⏰ {func.__name__} timed out after {seconds}s. This usually means the GAM API is hanging."
                     )
                     raise TimeoutError(f"{func.__name__} timed out after {seconds} seconds")
 

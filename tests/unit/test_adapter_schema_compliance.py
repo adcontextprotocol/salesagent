@@ -242,4 +242,4 @@ class TestAdapterSchemaCompliance:
                     )
 
         if type_mismatches:
-            pytest.fail(f"{schema_name} has type mismatches:\n" f"{chr(10).join(type_mismatches)}")
+            pytest.fail(f"{schema_name} has type mismatches:\n{chr(10).join(type_mismatches)}")

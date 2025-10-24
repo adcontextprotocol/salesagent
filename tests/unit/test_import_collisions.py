@@ -140,7 +140,7 @@ def test_wildcard_imports_documented():
                         break
 
                 if not has_warning:
-                    issues.append(f"{file_path}:{i+1} - Wildcard import without warning comment")
+                    issues.append(f"{file_path}:{i + 1} - Wildcard import without warning comment")
 
     # This is a warning, not a failure
     if issues:

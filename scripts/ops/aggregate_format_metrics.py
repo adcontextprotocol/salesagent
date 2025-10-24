@@ -51,7 +51,7 @@ def main():
     args = parser.parse_args()
 
     logger.info(
-        f"Starting format metrics aggregation (period_days={args.period_days}, " f"tenant_id={args.tenant_id or 'all'})"
+        f"Starting format metrics aggregation (period_days={args.period_days}, tenant_id={args.tenant_id or 'all'})"
     )
 
     try:
