@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Union
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, RootModel
 
@@ -46,7 +46,7 @@ class SubAsset2(BaseModel):
     ]
 
 
-class SubAsset(RootModel[SubAsset1 | SubAsset2]):
+class SubAsset(RootModel[Union[SubAsset1, SubAsset2]]):
     root: Annotated[
         SubAsset1 | SubAsset2,
         Field(

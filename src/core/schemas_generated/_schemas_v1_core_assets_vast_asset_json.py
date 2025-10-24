@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Union
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, RootModel
 
@@ -82,7 +82,7 @@ class VastAsset2(BaseModel):
     ] = None
 
 
-class VastAsset(RootModel[VastAsset1 | VastAsset2]):
+class VastAsset(RootModel[Union[VastAsset1, VastAsset2]]):
     root: Annotated[
         VastAsset1 | VastAsset2,
         Field(description="VAST (Video Ad Serving Template) tag for third-party video ad serving", title="VAST Asset"),

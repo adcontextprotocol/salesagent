@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Union
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, RootModel
 
@@ -64,7 +64,7 @@ class DaastAsset2(BaseModel):
     companion_ads: Annotated[bool | None, Field(description="Whether companion display ads are included")] = None
 
 
-class DaastAsset(RootModel[DaastAsset1 | DaastAsset2]):
+class DaastAsset(RootModel[Union[DaastAsset1, DaastAsset2]]):
     root: Annotated[
         DaastAsset1 | DaastAsset2,
         Field(

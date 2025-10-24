@@ -5180,6 +5180,19 @@ async def _create_media_buy_impl(
                     creatives_list = session.scalars(creative_stmt).all()
                     creatives_map = {str(c.creative_id): c for c in creatives_list}
 
+                    # Validate all creative IDs exist (consistent with update_media_buy)
+                    found_creative_ids = set(creatives_map.keys())
+                    missing_ids = set(all_creative_ids) - found_creative_ids
+
+                    if missing_ids:
+                        error_msg = f"Creative IDs not found: {', '.join(sorted(missing_ids))}"
+                        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+                        return CreateMediaBuyResponse(
+                            media_buy_id=response.media_buy_id,
+                            buyer_ref=req.buyer_ref or "",
+                            errors=[{"code": "creatives_not_found", "message": error_msg}],
+                        )
+
                 for i, package in enumerate(req.packages):
                     if package.creative_ids:
                         package_id = f"{response.media_buy_id}_pkg_{i+1}"
@@ -5193,14 +5206,8 @@ async def _create_media_buy_impl(
                         platform_creative_ids = []
 
                         for creative_id in package.creative_ids:
-                            # Get creative from batch-loaded map
-                            creative = creatives_map.get(creative_id)
-
-                            if not creative:
-                                logger.warning(
-                                    f"Creative {creative_id} not found for package {package_id}, skipping assignment"
-                                )
-                                continue
+                            # Get creative from batch-loaded map (validated to exist above)
+                            creative = creatives_map[creative_id]
 
                             # Create database assignment (always create, even if not yet uploaded to GAM)
                             # Get platform_creative_id from creative.data JSON
