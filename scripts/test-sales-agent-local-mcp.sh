@@ -4,8 +4,14 @@
 
 set -e
 
+# Check for TEST_LOCAL_SALES_AGENT_KEY environment variable
+if [ -z "$TEST_LOCAL_SALES_AGENT_KEY" ]; then
+  echo "❌ Error: TEST_LOCAL_SALES_AGENT_KEY environment variable is not set"
+  echo "Please set it with: export TEST_LOCAL_SALES_AGENT_KEY=your_key"
+  exit 1
+fi
+
 SALES_AGENT_URL="http://localhost:8108/mcp"
-API_KEY="HVn6P9PWLykPgOKEWVuo5OpMP5fz8nDP"
 
 echo "🔗 Testing Local Sales Agent via MCP"
 echo "Endpoint: $SALES_AGENT_URL"
@@ -13,18 +19,20 @@ echo ""
 
 # Initialize session
 echo "📡 Step 1: Initialize MCP session..."
-SESSION_ID=$(uuidgen)
-echo "Session ID: $SESSION_ID"
 
-INIT_RESPONSE=$(curl -s -X POST "$SALES_AGENT_URL" \
+# Capture both headers and body
+INIT_FULL_RESPONSE=$(curl -s -i -X POST "$SALES_AGENT_URL" \
   -H "Content-Type: application/json" \
-  -H "x-adcp-auth: $API_KEY" \
-  -H "mcp-session-id: $SESSION_ID" \
+  -H "x-adcp-auth: $TEST_LOCAL_SALES_AGENT_KEY" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}')
 
-# Parse SSE response
-INIT_JSON=$(echo "$INIT_RESPONSE" | grep "^data:" | sed 's/^data: //')
+# Extract session ID from response headers
+SESSION_ID=$(echo "$INIT_FULL_RESPONSE" | grep -i "mcp-session-id:" | sed 's/.*: //' | tr -d '\r')
+echo "Session ID: $SESSION_ID"
+
+# Parse SSE response body
+INIT_JSON=$(echo "$INIT_FULL_RESPONSE" | grep "^data:" | sed 's/^data: //')
 
 if ! echo "$INIT_JSON" | jq -e '.result' > /dev/null 2>&1; then
   echo "❌ Failed to initialize"
@@ -33,13 +41,22 @@ if ! echo "$INIT_JSON" | jq -e '.result' > /dev/null 2>&1; then
 fi
 
 echo "✅ Session initialized"
+
+# Send initialized notification (required by MCP spec)
+curl -s -X POST "$SALES_AGENT_URL" \
+  -H "Content-Type: application/json" \
+  -H "x-adcp-auth: $TEST_LOCAL_SALES_AGENT_KEY" \
+  -H "mcp-session-id: $SESSION_ID" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' > /dev/null
+
 echo ""
 
 # List available tools
 echo "📋 Step 2: List available tools..."
 TOOLS_RESPONSE=$(curl -s -X POST "$SALES_AGENT_URL" \
   -H "Content-Type: application/json" \
-  -H "x-adcp-auth: $API_KEY" \
+  -H "x-adcp-auth: $TEST_LOCAL_SALES_AGENT_KEY" \
   -H "mcp-session-id: $SESSION_ID" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')
@@ -59,7 +76,7 @@ echo ""
 echo "📦 Step 3: Call get_products tool..."
 DISCOVER_RESPONSE=$(curl -s -X POST "$SALES_AGENT_URL" \
   -H "Content-Type: application/json" \
-  -H "x-adcp-auth: $API_KEY" \
+  -H "x-adcp-auth: $TEST_LOCAL_SALES_AGENT_KEY" \
   -H "mcp-session-id: $SESSION_ID" \
   -H "Accept: application/json, text/event-stream" \
   -d '{
