@@ -206,7 +206,12 @@ class TestA2AParameterMapping:
 
             # Should reject and list missing required parameters
             assert result["success"] is False, "Should reject request missing required AdCP parameters"
+            # Check message or errors[0].details.required_parameters for missing params
+            error_details = result.get("errors", [{}])[0].get("details", {}) if result.get("errors") else {}
+            required_params = error_details.get("required_parameters", [])
             assert "brand_manifest" in str(result.get("message", "")).lower() or "brand_manifest" in str(
-                result.get("required_parameters", [])
+                required_params
             ), "Error should mention missing 'brand_manifest'"
-            assert "packages" in str(result.get("required_parameters", [])), "Error should mention missing 'packages'"
+            assert "packages" in str(required_params) or "packages" in str(
+                result.get("message", "")
+            ), "Error should mention missing 'packages'"
