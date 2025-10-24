@@ -146,6 +146,9 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
 @pytest.mark.asyncio
 async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPCV pricing model with clear error."""
+    from unittest.mock import MagicMock, patch
+
+    from src.adapters.gam_adapter import GAMAdapter
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
@@ -171,34 +174,39 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
         request_timestamp=datetime.now(UTC),
     )
 
-    # This should fail with a clear error about GAM not supporting CPCV
-    with pytest.raises(Exception) as exc_info:
-        await _create_media_buy_impl(
-            buyer_ref="test-buyer-cpcv",
-            brand_manifest={"name": "https://example.com/product"},
-            packages=[
-                {
-                    "buyer_ref": "pkg_1",
-                    "products": ["prod_gam_cpcv"],
-                    "budget": {"total": 10000.0, "currency": "USD"},
-                }
-            ],
-            budget={"total": 10000.0, "currency": "USD"},
-            start_time=start_time,
-            end_time=end_time,
-            context=context,
-        )
+    # Mock GAM client initialization to bypass auth check
+    with patch.object(GAMAdapter, "_initialize_client", return_value=MagicMock()):
+        # This should fail with a clear error about GAM not supporting CPCV
+        with pytest.raises(Exception) as exc_info:
+            await _create_media_buy_impl(
+                buyer_ref="test-buyer-cpcv",
+                brand_manifest={"name": "https://example.com/product"},
+                packages=[
+                    {
+                        "buyer_ref": "pkg_1",
+                        "products": ["prod_gam_cpcv"],
+                        "budget": {"total": 10000.0, "currency": "USD"},
+                    }
+                ],
+                budget={"total": 10000.0, "currency": "USD"},
+                start_time=start_time,
+                end_time=end_time,
+                context=context,
+            )
 
-    error_msg = str(exc_info.value)
-    # Should mention GAM limitation and CPCV
-    assert "gam" in error_msg.lower() or "google" in error_msg.lower()
-    assert "cpcv" in error_msg.lower() or "pricing" in error_msg.lower()
+        error_msg = str(exc_info.value)
+        # Should mention GAM limitation and CPCV
+        assert "gam" in error_msg.lower() or "google" in error_msg.lower()
+        assert "cpcv" in error_msg.lower() or "pricing" in error_msg.lower()
 
 
 @pytest.mark.requires_db
 @pytest.mark.asyncio
 async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM pricing model."""
+    from unittest.mock import MagicMock, patch
+
+    from src.adapters.gam_adapter import GAMAdapter
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
@@ -224,30 +232,35 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         request_timestamp=datetime.now(UTC),
     )
 
-    # This should succeed
-    response = await _create_media_buy_impl(
-        buyer_ref="test-buyer-cpm",
-        brand_manifest={"name": "https://example.com/product"},
-        packages=[
-            {
-                "buyer_ref": "pkg_1",
-                "products": ["prod_gam_cpm"],
-                "budget": {"total": 10000.0, "currency": "USD"},
-            }
-        ],
-        budget={"total": 10000.0, "currency": "USD"},
-        start_time=start_time,
-        end_time=end_time,
-        context=context,
-    )
+    # Mock GAM client initialization to bypass auth check
+    with patch.object(GAMAdapter, "_initialize_client", return_value=MagicMock()):
+        # This should succeed
+        response = await _create_media_buy_impl(
+            buyer_ref="test-buyer-cpm",
+            brand_manifest={"name": "https://example.com/product"},
+            packages=[
+                {
+                    "buyer_ref": "pkg_1",
+                    "products": ["prod_gam_cpm"],
+                    "budget": {"total": 10000.0, "currency": "USD"},
+                }
+            ],
+            budget={"total": 10000.0, "currency": "USD"},
+            start_time=start_time,
+            end_time=end_time,
+            context=context,
+        )
 
-    assert response.media_buy_id is not None
+        assert response.media_buy_id is not None
 
 
 @pytest.mark.requires_db
 @pytest.mark.asyncio
 async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPP when buyer chooses it from multi-pricing product."""
+    from unittest.mock import MagicMock, patch
+
+    from src.adapters.gam_adapter import GAMAdapter
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
@@ -273,32 +286,37 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
         request_timestamp=datetime.now(UTC),
     )
 
-    # This should fail with clear error about GAM not supporting CPP
-    with pytest.raises(Exception) as exc_info:
-        await _create_media_buy_impl(
-            buyer_ref="test-buyer-cpp",
-            brand_manifest={"name": "https://example.com/product"},
-            packages=[
-                {
-                    "buyer_ref": "pkg_1",
-                    "products": ["prod_gam_multi"],
-                    "budget": {"total": 15000.0, "currency": "USD"},
-                }
-            ],
-            budget={"total": 15000.0, "currency": "USD"},
-            start_time=start_time,
-            end_time=end_time,
-            context=context,
-        )
+    # Mock GAM client initialization to bypass auth check
+    with patch.object(GAMAdapter, "_initialize_client", return_value=MagicMock()):
+        # This should fail with clear error about GAM not supporting CPP
+        with pytest.raises(Exception) as exc_info:
+            await _create_media_buy_impl(
+                buyer_ref="test-buyer-cpp",
+                brand_manifest={"name": "https://example.com/product"},
+                packages=[
+                    {
+                        "buyer_ref": "pkg_1",
+                        "products": ["prod_gam_multi"],
+                        "budget": {"total": 15000.0, "currency": "USD"},
+                    }
+                ],
+                budget={"total": 15000.0, "currency": "USD"},
+                start_time=start_time,
+                end_time=end_time,
+                context=context,
+            )
 
-    error_msg = str(exc_info.value)
-    assert "cpp" in error_msg.lower() or "pricing" in error_msg.lower()
+        error_msg = str(exc_info.value)
+        assert "cpp" in error_msg.lower() or "pricing" in error_msg.lower()
 
 
 @pytest.mark.requires_db
 @pytest.mark.asyncio
 async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM when buyer chooses it from multi-pricing product."""
+    from unittest.mock import MagicMock, patch
+
+    from src.adapters.gam_adapter import GAMAdapter
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
@@ -324,21 +342,23 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
         request_timestamp=datetime.now(UTC),
     )
 
-    # This should succeed - buyer chose CPM from multi-option product
-    response = await _create_media_buy_impl(
-        buyer_ref="test-buyer-multi-cpm",
-        brand_manifest={"name": "https://example.com/product"},
-        packages=[
-            {
-                "buyer_ref": "pkg_1",
-                "products": ["prod_gam_multi"],
-                "budget": {"total": 10000.0, "currency": "USD"},
-            }
-        ],
-        budget={"total": 10000.0, "currency": "USD"},
-        start_time=start_time,
-        end_time=end_time,
-        context=context,
-    )
+    # Mock GAM client initialization to bypass auth check
+    with patch.object(GAMAdapter, "_initialize_client", return_value=MagicMock()):
+        # This should succeed - buyer chose CPM from multi-option product
+        response = await _create_media_buy_impl(
+            buyer_ref="test-buyer-multi-cpm",
+            brand_manifest={"name": "https://example.com/product"},
+            packages=[
+                {
+                    "buyer_ref": "pkg_1",
+                    "products": ["prod_gam_multi"],
+                    "budget": {"total": 10000.0, "currency": "USD"},
+                }
+            ],
+            budget={"total": 10000.0, "currency": "USD"},
+            start_time=start_time,
+            end_time=end_time,
+            context=context,
+        )
 
-    assert response.media_buy_id is not None
+        assert response.media_buy_id is not None
