@@ -50,6 +50,7 @@ def setup_products_with_formatid_objects(integration_db):
         session.add(principal)
 
         # Create products with FormatId-style dicts (how they're stored in DB after AdCP v2.4)
+        # Note: is_fixed_price and cpm are no longer on Product model - pricing moved to PricingOption table
         products = [
             Product(
                 tenant_id="format_id_filter_test",
@@ -62,10 +63,9 @@ def setup_products_with_formatid_objects(integration_db):
                 ],
                 targeting_template={},
                 delivery_type="guaranteed",
-                is_fixed_price=True,
-                cpm=15.0,
                 is_custom=False,
                 countries=["US"],
+                property_tags=["all_inventory"],  # Required by database constraint
             ),
             Product(
                 tenant_id="format_id_filter_test",
@@ -77,10 +77,9 @@ def setup_products_with_formatid_objects(integration_db):
                 ],
                 targeting_template={},
                 delivery_type="guaranteed",
-                is_fixed_price=True,
-                cpm=20.0,
                 is_custom=False,
                 countries=["US"],
+                property_tags=["all_inventory"],  # Required by database constraint
             ),
         ]
         session.add_all(products)

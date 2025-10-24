@@ -2180,6 +2180,18 @@ def main():
         extended_agent_card_url="/agent.json",
     )
 
+    # Add CORS middleware for browser compatibility (must be added early to wrap all responses)
+    from starlette.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Allow all origins for A2A protocol
+        allow_credentials=True,
+        allow_methods=["*"],  # Allow all HTTP methods
+        allow_headers=["*"],  # Allow all headers
+    )
+    logger.info("CORS middleware enabled for browser compatibility")
+
     # Override the agent card endpoints to support tenant-specific URLs
     def create_dynamic_agent_card(request) -> AgentCard:
         """Create agent card with tenant-specific URL from request headers."""
@@ -2230,12 +2242,26 @@ def main():
 
     async def dynamic_agent_discovery(request):
         """Override for /.well-known/agent.json with tenant-specific URL."""
+        from starlette.responses import Response
+
+        # Handle OPTIONS preflight requests (CORS middleware will add headers)
+        if request.method == "OPTIONS":
+            return Response(status_code=204)
+
         dynamic_card = create_dynamic_agent_card(request)
+        # CORS middleware automatically adds CORS headers
         return JSONResponse(dynamic_card.model_dump())
 
     async def dynamic_agent_card_endpoint(request):
         """Override for /agent.json with tenant-specific URL."""
+        from starlette.responses import Response
+
+        # Handle OPTIONS preflight requests (CORS middleware will add headers)
+        if request.method == "OPTIONS":
+            return Response(status_code=204)
+
         dynamic_card = create_dynamic_agent_card(request)
+        # CORS middleware automatically adds CORS headers
         return JSONResponse(dynamic_card.model_dump())
 
     # Find and replace the existing routes to ensure proper A2A specification compliance
@@ -2244,15 +2270,15 @@ def main():
         if hasattr(route, "path"):
             if route.path == "/.well-known/agent.json":
                 # Replace with our dynamic endpoint (legacy compatibility)
-                new_routes.append(Route("/.well-known/agent.json", dynamic_agent_discovery, methods=["GET"]))
+                new_routes.append(Route("/.well-known/agent.json", dynamic_agent_discovery, methods=["GET", "OPTIONS"]))
                 logger.info("Replaced /.well-known/agent.json with dynamic version")
             elif route.path == "/.well-known/agent-card.json":
                 # Replace with our dynamic endpoint (primary A2A discovery)
-                new_routes.append(Route("/.well-known/agent-card.json", dynamic_agent_discovery, methods=["GET"]))
+                new_routes.append(Route("/.well-known/agent-card.json", dynamic_agent_discovery, methods=["GET", "OPTIONS"]))
                 logger.info("Replaced /.well-known/agent-card.json with dynamic version")
             elif route.path == "/agent.json":
                 # Replace with our dynamic endpoint
-                new_routes.append(Route("/agent.json", dynamic_agent_card_endpoint, methods=["GET"]))
+                new_routes.append(Route("/agent.json", dynamic_agent_card_endpoint, methods=["GET", "OPTIONS"]))
                 logger.info("Replaced /agent.json with dynamic version")
             else:
                 new_routes.append(route)

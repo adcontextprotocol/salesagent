@@ -706,10 +706,23 @@ class MockAdServer(AdServerAdapter):
         else:
             self.log(f"Would return: Campaign ID '{media_buy_id}' with status 'pending_creative'")
 
+        # Build packages response with buyer_ref from original request
+        response_packages = []
+        for idx, pkg in enumerate(packages):
+            pkg_dict = pkg.model_dump()
+            self.log(f"[DEBUG] MockAdapter: Package {idx} model_dump() = {pkg_dict}")
+            self.log(f"[DEBUG] MockAdapter: Package {idx} has package_id = {pkg_dict.get('package_id')}")
+            # Add buyer_ref from original request package if available
+            if request.packages and idx < len(request.packages):
+                pkg_dict["buyer_ref"] = request.packages[idx].buyer_ref
+            response_packages.append(pkg_dict)
+
+        self.log(f"[DEBUG] MockAdapter: Returning {len(response_packages)} packages in response")
         return CreateMediaBuyResponse(
             buyer_ref=request.buyer_ref,  # Required field per AdCP spec
             media_buy_id=media_buy_id,
             creative_deadline=datetime.now(UTC) + timedelta(days=2),
+            packages=response_packages,  # Include packages with buyer_ref
             errors=None,  # No errors for successful mock response
         )
 
@@ -1114,6 +1127,34 @@ class MockAdServer(AdServerAdapter):
         budget: int | None,
         today: datetime,
     ) -> UpdateMediaBuyResponse:
+        """Update media buy in database (Mock adapter implementation)."""
+        import logging
+        from sqlalchemy import select
+        from sqlalchemy.orm import attributes
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import MediaBuy, MediaPackage
+
+        logger = logging.getLogger(__name__)
+
+        with get_db_session() as session:
+            if action == "update_package_budget" and package_id and budget is not None:
+                # Update package budget in MediaPackage.package_config JSON
+                stmt = select(MediaPackage).where(
+                    MediaPackage.package_id == package_id,
+                    MediaPackage.media_buy_id == media_buy_id
+                )
+                media_package = session.scalars(stmt).first()
+                if media_package:
+                    # Update budget in package_config JSON
+                    media_package.package_config["budget"] = float(budget)
+                    # Flag the JSON field as modified so SQLAlchemy persists it
+                    attributes.flag_modified(media_package, "package_config")
+                    session.commit()
+                    logger.info(f"[MockAdapter] Updated package {package_id} budget to {budget} in database")
+                else:
+                    logger.warning(f"[MockAdapter] Package {package_id} not found for media buy {media_buy_id}")
+
         return UpdateMediaBuyResponse(media_buy_id=media_buy_id, buyer_ref=buyer_ref)
 
     def get_config_ui_endpoint(self) -> str | None:
