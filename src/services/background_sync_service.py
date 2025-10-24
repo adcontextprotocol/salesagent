@@ -394,13 +394,15 @@ def _mark_sync_complete(sync_id: str, summary: dict[str, Any]):
     """Mark sync as completed with summary."""
     try:
         with get_db_session() as db:
+            import json
+
             stmt = select(SyncJob).where(SyncJob.sync_id == sync_id)
             sync_job = db.scalars(stmt).first()
             if sync_job:
                 sync_job.status = "completed"
                 sync_job.completed_at = datetime.now(UTC)
-                sync_job.duration_seconds = (sync_job.completed_at - sync_job.started_at).total_seconds()
-                sync_job.summary = summary
+                # Convert summary dict to JSON string (summary field is Text, not JSON)
+                sync_job.summary = json.dumps(summary) if summary else None
                 db.commit()
     except Exception as e:
         logger.error(f"Failed to mark sync complete: {e}")
