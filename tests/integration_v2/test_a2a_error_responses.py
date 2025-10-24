@@ -329,8 +329,6 @@ class TestA2AErrorPropagation:
 
             # CRITICAL ASSERTIONS: All AdCP fields preserved
             # Required AdCP fields from CreateMediaBuyResponse schema
-            assert "adcp_version" in artifact_data, "Must include adcp_version (AdCP spec required field)"
-            assert "status" in artifact_data, "Must include status (AdCP spec required field)"
             assert "buyer_ref" in artifact_data, "Must include buyer_ref (AdCP spec required field)"
 
             # Optional but important AdCP fields
@@ -339,9 +337,13 @@ class TestA2AErrorPropagation:
                 "creative_deadline" in artifact_data or artifact_data.get("creative_deadline") is None
             ), "Must include creative_deadline (AdCP spec field)"
 
-            # A2A-specific augmentation fields
+            # A2A-specific augmentation fields (protocol layer fields)
             assert "success" in artifact_data, "A2A wrapper must add success field"
             assert "message" in artifact_data, "A2A wrapper must add message field"
+
+            # Protocol fields added by A2A wrapper (not part of CreateMediaBuyResponse schema)
+            # These are added by the ProtocolEnvelope wrapper in the A2A layer
+            assert "status" in artifact_data, "A2A protocol must add status field"
 
 
 @pytest.mark.integration

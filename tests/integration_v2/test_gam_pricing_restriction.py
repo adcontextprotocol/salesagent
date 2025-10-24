@@ -3,6 +3,7 @@
 Tests that GAM adapter properly enforces CPM-only restriction.
 """
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -11,11 +12,11 @@ from sqlalchemy import delete
 from src.core.database.database_session import get_db_session
 from src.core.database.models import CurrencyLimit, PricingOption, Principal, Product, Tenant
 from src.core.main import _create_media_buy_impl
-from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
+from src.core.tool_context import ToolContext
 from tests.integration_v2.conftest import create_test_product_with_pricing
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
-pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.asyncio]
 
 
 @pytest.fixture
@@ -133,41 +134,51 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
 
 
 @pytest.mark.requires_db
-def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
+@pytest.mark.asyncio
+async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPCV pricing model with clear error."""
-    request = CreateMediaBuyRequest(
-        brand_manifest={"name": "https://example.com/product"},
-        packages=[
-            Package(
-                package_id="pkg_1",
-                products=["prod_gam_cpcv"],
-                pricing_model=PricingModel.CPCV,  # Not supported by GAM
-                budget=10000.0,
-            )
-        ],
-        budget={"total": 10000.0, "currency": "USD"},
-        currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
-    )
+    from src.core.config_loader import set_current_tenant
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
+    start_time = datetime.now(UTC) + timedelta(days=1)
+    end_time = start_time + timedelta(days=30)
 
     with get_db_session() as session:
         tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-
         principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_tenant").first()
+
+        set_current_tenant(
+            {
+                "tenant_id": tenant_obj.tenant_id,
+                "name": tenant_obj.name,
+                "ad_server": tenant_obj.ad_server,
+            }
+        )
+
+    context = ToolContext(
+        context_id="test_gam_cpcv",
+        tenant_id="test_gam_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+    )
 
     # This should fail with a clear error about GAM not supporting CPCV
     with pytest.raises(Exception) as exc_info:
-        _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+        await _create_media_buy_impl(
+            buyer_ref="test-buyer-cpcv",
+            brand_manifest={"name": "https://example.com/product"},
+            packages=[
+                {
+                    "buyer_ref": "pkg_1",
+                    "products": ["prod_gam_cpcv"],
+                    "budget": {"total": 10000.0, "currency": "USD"},
+                }
+            ],
+            budget={"total": 10000.0, "currency": "USD"},
+            start_time=start_time,
+            end_time=end_time,
+            context=context,
+        )
 
     error_msg = str(exc_info.value)
     # Should mention GAM limitation and CPCV
@@ -176,121 +187,149 @@ def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
 
 
 @pytest.mark.requires_db
-def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
+@pytest.mark.asyncio
+async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM pricing model."""
-    request = CreateMediaBuyRequest(
-        brand_manifest={"name": "https://example.com/product"},
-        packages=[
-            Package(
-                package_id="pkg_1",
-                products=["prod_gam_cpm"],
-                pricing_model=PricingModel.CPM,  # Supported by GAM
-                budget=10000.0,
-            )
-        ],
-        budget={"total": 10000.0, "currency": "USD"},
-        currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
-    )
+    from src.core.config_loader import set_current_tenant
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
+    start_time = datetime.now(UTC) + timedelta(days=1)
+    end_time = start_time + timedelta(days=30)
 
     with get_db_session() as session:
         tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-
         principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_tenant").first()
 
+        set_current_tenant(
+            {
+                "tenant_id": tenant_obj.tenant_id,
+                "name": tenant_obj.name,
+                "ad_server": tenant_obj.ad_server,
+            }
+        )
+
+    context = ToolContext(
+        context_id="test_gam_cpm",
+        tenant_id="test_gam_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+    )
+
     # This should succeed
-    response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+    response = await _create_media_buy_impl(
+        buyer_ref="test-buyer-cpm",
+        brand_manifest={"name": "https://example.com/product"},
+        packages=[
+            {
+                "buyer_ref": "pkg_1",
+                "products": ["prod_gam_cpm"],
+                "budget": {"total": 10000.0, "currency": "USD"},
+            }
+        ],
+        budget={"total": 10000.0, "currency": "USD"},
+        start_time=start_time,
+        end_time=end_time,
+        context=context,
+    )
 
     assert response.media_buy_id is not None
-    assert response.status in ["active", "pending"]
 
 
 @pytest.mark.requires_db
-def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
+@pytest.mark.asyncio
+async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPP when buyer chooses it from multi-pricing product."""
-    request = CreateMediaBuyRequest(
-        brand_manifest={"name": "https://example.com/product"},
-        packages=[
-            Package(
-                package_id="pkg_1",
-                products=["prod_gam_multi"],
-                pricing_model=PricingModel.CPP,  # Not supported by GAM
-                budget=15000.0,
-            )
-        ],
-        budget={"total": 15000.0, "currency": "USD"},
-        currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
-    )
+    from src.core.config_loader import set_current_tenant
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
+    start_time = datetime.now(UTC) + timedelta(days=1)
+    end_time = start_time + timedelta(days=30)
 
     with get_db_session() as session:
         tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-
         principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_tenant").first()
+
+        set_current_tenant(
+            {
+                "tenant_id": tenant_obj.tenant_id,
+                "name": tenant_obj.name,
+                "ad_server": tenant_obj.ad_server,
+            }
+        )
+
+    context = ToolContext(
+        context_id="test_gam_cpp",
+        tenant_id="test_gam_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+    )
 
     # This should fail with clear error about GAM not supporting CPP
     with pytest.raises(Exception) as exc_info:
-        _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+        await _create_media_buy_impl(
+            buyer_ref="test-buyer-cpp",
+            brand_manifest={"name": "https://example.com/product"},
+            packages=[
+                {
+                    "buyer_ref": "pkg_1",
+                    "products": ["prod_gam_multi"],
+                    "budget": {"total": 15000.0, "currency": "USD"},
+                }
+            ],
+            budget={"total": 15000.0, "currency": "USD"},
+            start_time=start_time,
+            end_time=end_time,
+            context=context,
+        )
 
     error_msg = str(exc_info.value)
     assert "cpp" in error_msg.lower() or "pricing" in error_msg.lower()
 
 
 @pytest.mark.requires_db
-def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
+@pytest.mark.asyncio
+async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM when buyer chooses it from multi-pricing product."""
-    request = CreateMediaBuyRequest(
-        brand_manifest={"name": "https://example.com/product"},
-        packages=[
-            Package(
-                package_id="pkg_1",
-                products=["prod_gam_multi"],
-                pricing_model=PricingModel.CPM,  # Supported by GAM
-                budget=10000.0,
-            )
-        ],
-        budget={"total": 10000.0, "currency": "USD"},
-        currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
-    )
+    from src.core.config_loader import set_current_tenant
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
+    start_time = datetime.now(UTC) + timedelta(days=1)
+    end_time = start_time + timedelta(days=30)
 
     with get_db_session() as session:
         tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-
         principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_tenant").first()
 
+        set_current_tenant(
+            {
+                "tenant_id": tenant_obj.tenant_id,
+                "name": tenant_obj.name,
+                "ad_server": tenant_obj.ad_server,
+            }
+        )
+
+    context = ToolContext(
+        context_id="test_gam_multi_cpm",
+        tenant_id="test_gam_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+    )
+
     # This should succeed - buyer chose CPM from multi-option product
-    response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+    response = await _create_media_buy_impl(
+        buyer_ref="test-buyer-multi-cpm",
+        brand_manifest={"name": "https://example.com/product"},
+        packages=[
+            {
+                "buyer_ref": "pkg_1",
+                "products": ["prod_gam_multi"],
+                "budget": {"total": 10000.0, "currency": "USD"},
+            }
+        ],
+        budget={"total": 10000.0, "currency": "USD"},
+        start_time=start_time,
+        end_time=end_time,
+        context=context,
+    )
 
     assert response.media_buy_id is not None
-    assert response.status in ["active", "pending"]

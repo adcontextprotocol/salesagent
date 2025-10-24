@@ -22,15 +22,17 @@ from src.core.database.models import CurrencyLimit
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 from src.core.database.models import Tenant as ModelTenant
+from src.core.schemas import CreateMediaBuyResponse, Error
 from src.core.tool_context import ToolContext
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
 from tests.integration_v2.conftest import create_test_product_with_pricing
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
 @pytest.mark.integration
 @pytest.mark.requires_db
+@pytest.mark.asyncio
 class TestCreateMediaBuyErrorPaths:
     """Test error handling in create_media_buy.
 
@@ -132,7 +134,7 @@ class TestCreateMediaBuyErrorPaths:
             session.execute(delete(ModelPrincipal).where(ModelPrincipal.principal_id == "error_test_principal"))
             session.commit()
 
-    def test_missing_principal_returns_authentication_error(self, test_tenant_minimal):
+    async def test_missing_principal_returns_authentication_error(self, test_tenant_minimal):
         """Test that missing principal returns Error response with authentication_error code.
 
         This tests line 3159 in main.py where Error(code="authentication_error") is used.
@@ -150,7 +152,7 @@ class TestCreateMediaBuyErrorPaths:
         future_end = future_start + timedelta(days=7)
 
         # This should return error response, not raise NameError
-        response = create_media_buy_raw(
+        response = await create_media_buy_raw(
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
@@ -178,7 +180,7 @@ class TestCreateMediaBuyErrorPaths:
         assert error.code == "authentication_error"
         assert "principal" in error.message.lower() or "not found" in error.message.lower()
 
-    def test_start_time_in_past_returns_validation_error(self, test_tenant_with_principal):
+    async def test_start_time_in_past_returns_validation_error(self, test_tenant_with_principal):
         """Test that start_time in past returns Error response with validation_error code.
 
         This tests line 3147 in main.py where Error(code="validation_error") is used
@@ -196,7 +198,7 @@ class TestCreateMediaBuyErrorPaths:
         past_end = past_start + timedelta(days=7)
 
         # This should return error response for past start time
-        response = create_media_buy_raw(
+        response = await create_media_buy_raw(
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
@@ -224,7 +226,7 @@ class TestCreateMediaBuyErrorPaths:
         assert error.code == "validation_error"
         assert "past" in error.message.lower() or "start" in error.message.lower()
 
-    def test_end_time_before_start_returns_validation_error(self, test_tenant_with_principal):
+    async def test_end_time_before_start_returns_validation_error(self, test_tenant_with_principal):
         """Test that end_time before start_time returns Error response."""
         context = ToolContext(
             context_id="test_ctx",
@@ -237,7 +239,7 @@ class TestCreateMediaBuyErrorPaths:
         start = datetime.now(UTC) + timedelta(days=7)
         end = start - timedelta(days=1)  # Before start!
 
-        response = create_media_buy_raw(
+        response = await create_media_buy_raw(
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
@@ -263,7 +265,7 @@ class TestCreateMediaBuyErrorPaths:
         assert error.code == "validation_error"
         assert "end" in error.message.lower() or "after" in error.message.lower()
 
-    def test_negative_budget_returns_validation_error(self, test_tenant_with_principal):
+    async def test_negative_budget_returns_validation_error(self, test_tenant_with_principal):
         """Test that negative budget returns Error response."""
         context = ToolContext(
             context_id="test_ctx",
@@ -276,7 +278,7 @@ class TestCreateMediaBuyErrorPaths:
         future_start = datetime.now(UTC) + timedelta(days=1)
         future_end = future_start + timedelta(days=7)
 
-        response = create_media_buy_raw(
+        response = await create_media_buy_raw(
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
@@ -302,7 +304,7 @@ class TestCreateMediaBuyErrorPaths:
         assert error.code == "validation_error"
         assert "budget" in error.message.lower() and "positive" in error.message.lower()
 
-    def test_missing_packages_returns_validation_error(self, test_tenant_with_principal):
+    async def test_missing_packages_returns_validation_error(self, test_tenant_with_principal):
         """Test that missing packages returns Error response."""
         context = ToolContext(
             context_id="test_ctx",
@@ -315,7 +317,7 @@ class TestCreateMediaBuyErrorPaths:
         future_start = datetime.now(UTC) + timedelta(days=1)
         future_end = future_start + timedelta(days=7)
 
-        response = create_media_buy_raw(
+        response = await create_media_buy_raw(
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
@@ -338,10 +340,11 @@ class TestCreateMediaBuyErrorPaths:
 
 @pytest.mark.integration
 @pytest.mark.requires_db
+@pytest.mark.asyncio
 class TestSyncCreativesErrorPaths:
     """Test error handling in sync_creatives."""
 
-    def test_invalid_creative_format_returns_error(self, integration_db):
+    async def test_invalid_creative_format_returns_error(self, integration_db):
         """Test that invalid creative format is handled gracefully."""
         from src.core.config_loader import set_current_tenant
 
@@ -374,7 +377,7 @@ class TestSyncCreativesErrorPaths:
 
         # Should handle gracefully, not crash
         try:
-            response = sync_creatives_raw(
+            response = await sync_creatives_raw(
                 creatives=invalid_creatives,
                 context=context,
             )
@@ -387,10 +390,11 @@ class TestSyncCreativesErrorPaths:
 
 @pytest.mark.integration
 @pytest.mark.requires_db
+@pytest.mark.asyncio
 class TestListCreativesErrorPaths:
     """Test error handling in list_creatives."""
 
-    def test_invalid_date_format_returns_error(self, integration_db):
+    async def test_invalid_date_format_returns_error(self, integration_db):
         """Test that invalid date format is handled with proper error."""
         from src.core.config_loader import set_current_tenant
 
@@ -415,7 +419,7 @@ class TestListCreativesErrorPaths:
         from fastmcp.exceptions import ToolError
 
         with pytest.raises(ToolError) as exc_info:
-            list_creatives_raw(
+            await list_creatives_raw(
                 created_after="not-a-date",  # Invalid format
                 context=context,
             )
