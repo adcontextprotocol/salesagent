@@ -87,6 +87,7 @@ class GoogleAdManager(AdServerAdapter):
         self.trafficker_id = trafficker_id
         self.refresh_token = config.get("refresh_token")
         self.key_file = config.get("service_account_key_file")
+        self.service_account_json = config.get("service_account_json")
         self.principal = principal
 
         # Validate configuration
@@ -106,8 +107,8 @@ class GoogleAdManager(AdServerAdapter):
 
         # advertiser_id is only required for order/campaign operations, not inventory sync
 
-        if not self.key_file and not self.refresh_token:
-            raise ValueError("GAM config requires either 'service_account_key_file' or 'refresh_token'")
+        if not self.key_file and not self.service_account_json and not self.refresh_token:
+            raise ValueError("GAM config requires either 'service_account_key_file', 'service_account_json', or 'refresh_token'")
 
         # Initialize modular components
         if not self.dry_run:
