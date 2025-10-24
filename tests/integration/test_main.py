@@ -114,6 +114,8 @@ class TestAdcpServerV2_3(unittest.TestCase):
                     creative_policy TEXT,
                     properties TEXT,
                     property_tags TEXT DEFAULT '["all_inventory"]',
+                    is_signals_backed BOOLEAN DEFAULT 0,
+                    signals_config TEXT,
                     PRIMARY KEY (product_id, tenant_id)
                 )
             """
