@@ -14,7 +14,8 @@ from src.core.schemas import CreateMediaBuyResponse
 
 
 @pytest.mark.requires_db
-def test_create_media_buy_rejects_missing_creatives(integration_db):
+@pytest.mark.asyncio
+async def test_create_media_buy_rejects_missing_creatives(integration_db):
     """Test that create_media_buy rejects requests with non-existent creative IDs.
 
     This ensures consistency with update_media_buy which also validates creative IDs.
@@ -110,7 +111,7 @@ def test_create_media_buy_rejects_missing_creatives(integration_db):
         mock_ctx_mgr.return_value = mock_ctx_manager_inst
 
         # Call create_media_buy with non-existent creative IDs
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
             buyer_ref="buyer_ref_123",
             brand_manifest={"website": "https://example.com"},
             packages=[
@@ -123,6 +124,7 @@ def test_create_media_buy_rejects_missing_creatives(integration_db):
             ],
             start_time=datetime(2025, 11, 1),
             end_time=datetime(2025, 11, 30),
+            budget=1000.0,
             context=mock_context,
         )
 
@@ -136,7 +138,8 @@ def test_create_media_buy_rejects_missing_creatives(integration_db):
 
 
 @pytest.mark.requires_db
-def test_create_media_buy_accepts_existing_creatives(integration_db):
+@pytest.mark.asyncio
+async def test_create_media_buy_accepts_existing_creatives(integration_db):
     """Test that create_media_buy accepts valid creative IDs."""
     from datetime import datetime
 
@@ -197,6 +200,7 @@ def test_create_media_buy_accepts_existing_creatives(integration_db):
             property_tags=["all_inventory"],
         )
         session.add(product)
+        session.commit()  # Commit before adding creatives (foreign key constraint)
 
         # Create valid creatives
         creative1 = DBCreative(
@@ -253,7 +257,7 @@ def test_create_media_buy_accepts_existing_creatives(integration_db):
         mock_ctx_mgr.return_value = mock_ctx_manager_inst
 
         # Call create_media_buy with valid creative IDs
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
             buyer_ref="buyer_ref_123",
             brand_manifest={"website": "https://example.com"},
             packages=[
@@ -266,6 +270,7 @@ def test_create_media_buy_accepts_existing_creatives(integration_db):
             ],
             start_time=datetime(2025, 11, 1),
             end_time=datetime(2025, 11, 30),
+            budget=1000.0,
             context=mock_context,
         )
 
@@ -276,7 +281,8 @@ def test_create_media_buy_accepts_existing_creatives(integration_db):
 
 
 @pytest.mark.requires_db
-def test_create_media_buy_rejects_partial_missing_creatives(integration_db):
+@pytest.mark.asyncio
+async def test_create_media_buy_rejects_partial_missing_creatives(integration_db):
     """Test that create_media_buy rejects if ANY creative ID is missing.
 
     Even if some creative IDs exist, the entire request should be rejected if
@@ -341,6 +347,7 @@ def test_create_media_buy_rejects_partial_missing_creatives(integration_db):
             property_tags=["all_inventory"],
         )
         session.add(product)
+        session.commit()  # Commit before adding creatives (foreign key constraint)
 
         # Create ONLY ONE creative (creative_1 exists, creative_2 doesn't)
         creative1 = DBCreative(
@@ -384,7 +391,7 @@ def test_create_media_buy_rejects_partial_missing_creatives(integration_db):
         mock_ctx_mgr.return_value = mock_ctx_manager_inst
 
         # Call create_media_buy with mix of existing and non-existent creative IDs
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
             buyer_ref="buyer_ref_123",
             brand_manifest={"website": "https://example.com"},
             packages=[
@@ -397,6 +404,7 @@ def test_create_media_buy_rejects_partial_missing_creatives(integration_db):
             ],
             start_time=datetime(2025, 11, 1),
             end_time=datetime(2025, 11, 30),
+            budget=1000.0,
             context=mock_context,
         )
 
