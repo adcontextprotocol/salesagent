@@ -239,9 +239,10 @@ def _run_sync_thread(
                     .order_by(desc(SyncJob.completed_at))
                 ).first()
 
-                if last_successful_sync and last_successful_sync.completed_at:
-                    last_sync_time = last_successful_sync.completed_at
-                    logger.info(f"[{sync_id}] Incremental sync: using last successful sync time: {last_sync_time}")
+                if last_successful_sync and last_successful_sync.started_at:
+                    # Use started_at (not completed_at) to avoid missing items modified during the sync
+                    last_sync_time = last_successful_sync.started_at
+                    logger.info(f"[{sync_id}] Incremental sync: using last sync start time: {last_sync_time}")
                 else:
                     logger.warning(
                         f"[{sync_id}] Incremental sync requested but no previous successful sync found - falling back to full sync"
