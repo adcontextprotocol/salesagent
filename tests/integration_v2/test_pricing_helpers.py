@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product, Tenant
-from tests.conftest_shared import (
+from tests.integration_v2.conftest import (
     create_auction_product,
     create_flat_rate_product,
     create_test_product_with_pricing,
