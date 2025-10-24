@@ -398,10 +398,20 @@ class MockAdServer(AdServerAdapter):
 
             # Handle question asking (return pending with question)
             if scenario.should_ask_question:
+                # Build package responses with package_ids
+                package_responses = []
+                for package in packages:
+                    package_responses.append(
+                        {
+                            "package_id": package.package_id,
+                        }
+                    )
+
                 return CreateMediaBuyResponse(
                     media_buy_id=f"pending_question_{id(request)}",
                     creative_deadline=None,
                     buyer_ref=request.buyer_ref,
+                    packages=package_responses,
                 )
 
             # Handle async mode
@@ -507,11 +517,21 @@ class MockAdServer(AdServerAdapter):
         else:
             self.log("   Manual completion required - use complete_task tool")
 
+        # Build package responses with package_ids
+        package_responses = []
+        for package in packages:
+            package_responses.append(
+                {
+                    "package_id": package.package_id,
+                }
+            )
+
         # Return pending response
         return CreateMediaBuyResponse(
             buyer_ref=request.buyer_ref,
             media_buy_id=f"pending_{step.step_id}",
             creative_deadline=None,
+            packages=package_responses,
         )
 
     def _create_media_buy_sync_with_delay(
