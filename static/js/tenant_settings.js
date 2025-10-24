@@ -656,7 +656,7 @@ function syncGAMInventory(mode = 'full') {
         button.innerHTML = `⏳ ${syncLabel}${dots}`;
     }, 300);
 
-    const url = `${config.scriptName}/tenant/${config.tenantId}/gam/sync-inventory`;
+    const url = `${config.scriptName}/api/tenant/${config.tenantId}/inventory/sync`;
 
     fetch(url, {
         method: 'POST',
