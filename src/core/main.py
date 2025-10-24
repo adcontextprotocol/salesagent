@@ -4132,29 +4132,23 @@ def list_authorized_properties(
 
     if context:
         try:
-            print(f"[MCP DEBUG] context type={type(context)}", file=sys.stderr, flush=True)
-            print(f"[MCP DEBUG] has request_context={hasattr(context, 'request_context')}", file=sys.stderr, flush=True)
-            logger.info(f"MCP list_authorized_properties: context type={type(context)}")
-            logger.info(f"MCP list_authorized_properties: has request_context={hasattr(context, 'request_context')}")
+            # Log ALL headers received for debugging virtual host issues
+            logger.error("🔍 MCP list_authorized_properties called")
+            logger.error(f"🔍 context type={type(context)}")
 
             # Access raw Starlette request headers via context.request_context.request
             request = context.request_context.request
-            print(
-                f"[MCP DEBUG] request={request}, type={type(request) if request else None}", file=sys.stderr, flush=True
-            )
-            logger.info(f"MCP list_authorized_properties: request={request}, type={type(request) if request else None}")
+            logger.error(f"🔍 request type={type(request) if request else None}")
 
             if request and hasattr(request, "headers"):
                 headers = dict(request.headers)
-                print(f"[MCP DEBUG] Extracted {len(headers)} headers from request", file=sys.stderr, flush=True)
-                print(f"[MCP DEBUG] Host header={headers.get('host')}", file=sys.stderr, flush=True)
-                print(
-                    f"[MCP DEBUG] Apx-Incoming-Host header={headers.get('apx-incoming-host')}",
-                    file=sys.stderr,
-                    flush=True,
+                logger.error(f"🔍 Received {len(headers)} headers:")
+                for key, value in headers.items():
+                    logger.error(f"🔍   {key}: {value}")
+
+                logger.error(
+                    f"🔍 Key headers: Host={headers.get('host')}, Apx-Incoming-Host={headers.get('apx-incoming-host')}"
                 )
-                logger.info(f"MCP list_authorized_properties: Extracted {len(headers)} headers from request")
-                logger.info(f"MCP list_authorized_properties: Host header={headers.get('host')}")
 
                 # Create MinimalContext matching A2A pattern
                 class MinimalContext:
