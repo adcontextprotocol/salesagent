@@ -70,8 +70,10 @@ def test_create_media_buy_rejects_missing_creatives(integration_db):
             product_id="test_product",
             tenant_id="test_tenant",
             name="Test Product",
-            base_price=10.0,
-            currency="USD",
+            description="Test Product Description",
+            formats=[{"format_id": "display_300x250", "name": "Medium Rectangle", "type": "display"}],
+            targeting_template={},
+            delivery_type="guaranteed",
             property_tags=["all_inventory"],
         )
         session.add(product)
@@ -186,8 +188,10 @@ def test_create_media_buy_accepts_existing_creatives(integration_db):
             product_id="test_product",
             tenant_id="test_tenant",
             name="Test Product",
-            base_price=10.0,
-            currency="USD",
+            description="Test Product Description",
+            formats=[{"format_id": "display_300x250", "name": "Medium Rectangle", "type": "display"}],
+            targeting_template={},
+            delivery_type="guaranteed",
             property_tags=["all_inventory"],
         )
         session.add(product)
@@ -325,8 +329,10 @@ def test_create_media_buy_rejects_partial_missing_creatives(integration_db):
             product_id="test_product",
             tenant_id="test_tenant",
             name="Test Product",
-            base_price=10.0,
-            currency="USD",
+            description="Test Product Description",
+            formats=[{"format_id": "display_300x250", "name": "Medium Rectangle", "type": "display"}],
+            targeting_template={},
+            delivery_type="guaranteed",
             property_tags=["all_inventory"],
         )
         session.add(product)
