@@ -24,6 +24,7 @@ _sync_lock = threading.Lock()
 
 def start_inventory_sync_background(
     tenant_id: str,
+    sync_mode: str = "incremental",
     sync_types: list[str] | None = None,
     custom_targeting_limit: int | None = None,
     audience_segment_limit: int | None = None,
@@ -33,6 +34,7 @@ def start_inventory_sync_background(
 
     Args:
         tenant_id: Tenant ID to sync
+        sync_mode: "full" (delete all and resync) or "incremental" (only sync changed items since last successful sync)
         sync_types: Optional list of inventory types to sync
         custom_targeting_limit: Optional limit on custom targeting values
         audience_segment_limit: Optional limit on audience segments
@@ -47,11 +49,39 @@ def start_inventory_sync_background(
     # Create sync job record
     with get_db_session() as db:
         # Check if sync already running
-        stmt = select(SyncJob).where(SyncJob.tenant_id == tenant_id, SyncJob.status == "running")
+        stmt = select(SyncJob).where(
+            SyncJob.tenant_id == tenant_id, SyncJob.status == "running", SyncJob.sync_type == "inventory"
+        )
         existing_sync = db.scalars(stmt).first()
 
         if existing_sync:
-            raise ValueError(f"Sync already running for tenant {tenant_id}: {existing_sync.sync_id}")
+            # Check if sync is stale (running for >1 hour with no progress updates)
+            from datetime import timedelta
+
+            # Make started_at timezone-aware if it's naive (from database)
+            started_at = existing_sync.started_at
+            if started_at.tzinfo is None:
+                started_at = started_at.replace(tzinfo=UTC)
+
+            time_running = datetime.now(UTC) - started_at
+            is_stale = time_running > timedelta(hours=1) and not existing_sync.progress_data
+
+            if is_stale:
+                # Mark stale sync as failed and allow new sync to start
+                existing_sync.status = "failed"
+                existing_sync.completed_at = datetime.now(UTC)
+                existing_sync.error_message = (
+                    "Sync thread died (stale after 1+ hour with no progress) - marked as failed to allow fresh sync"
+                )
+                db.commit()
+                logger.warning(
+                    f"Marked stale sync {existing_sync.sync_id} as failed (running since {existing_sync.started_at}, no progress)"
+                )
+            else:
+                # Sync is actually running, raise error
+                raise ValueError(
+                    f"Sync already running for tenant {tenant_id}: {existing_sync.sync_id} (started {started_at})"
+                )
 
         # Create new sync job
         sync_id = f"sync_{tenant_id}_{int(datetime.now(UTC).timestamp())}"
@@ -78,7 +108,7 @@ def start_inventory_sync_background(
     # Start background thread
     thread = threading.Thread(
         target=_run_sync_thread,
-        args=(tenant_id, sync_id, sync_types, custom_targeting_limit, audience_segment_limit),
+        args=(tenant_id, sync_id, sync_mode, sync_types, custom_targeting_limit, audience_segment_limit),
         daemon=True,
         name=f"sync-{sync_id}",
     )
@@ -95,16 +125,26 @@ def start_inventory_sync_background(
 def _run_sync_thread(
     tenant_id: str,
     sync_id: str,
+    sync_mode: str,
     sync_types: list[str] | None,
     custom_targeting_limit: int | None,
     audience_segment_limit: int | None,
 ):
     """
-    Run the actual sync in a background thread.
+    Run the actual sync in a background thread with detailed phase-by-phase progress.
 
     This function runs in a separate thread and updates the SyncJob record
     as it progresses. If the thread is interrupted (container restart), the
     job will remain in 'running' state until cleaned up.
+
+    Progress tracking:
+    - Phase 0 (full mode only): Deleting existing inventory (1/7)
+    - Phase 1: Discovering Ad Units (2/7 or 1/6)
+    - Phase 2: Discovering Placements (3/7 or 2/6)
+    - Phase 3: Discovering Labels (4/7 or 3/6)
+    - Phase 4: Discovering Custom Targeting (5/7 or 4/6)
+    - Phase 5: Discovering Audience Segments (6/7 or 5/6)
+    - Phase 6: Marking Stale Inventory (7/7 or 6/6)
     """
     try:
         logger.info(f"[{sync_id}] Starting inventory sync for {tenant_id}")
@@ -176,29 +216,145 @@ def _run_sync_thread(
                     oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
                 )
 
-        # Update progress: Starting discovery
-        _update_sync_progress(sync_id, {"phase": "Discovering inventory from GAM", "phase_num": 1, "total_phases": 2})
+        # Get last successful sync time for incremental mode
+        last_sync_time = None
+        if sync_mode == "incremental":
+            with get_db_session() as db:
+                from sqlalchemy import desc
+
+                last_successful_sync = db.scalars(
+                    select(SyncJob)
+                    .where(
+                        SyncJob.tenant_id == tenant_id,
+                        SyncJob.sync_type == "inventory",
+                        SyncJob.status == "completed",
+                    )
+                    .order_by(desc(SyncJob.completed_at))
+                ).first()
+
+                if last_successful_sync and last_successful_sync.completed_at:
+                    last_sync_time = last_successful_sync.completed_at
+                    logger.info(f"[{sync_id}] Incremental sync: using last successful sync time: {last_sync_time}")
+                else:
+                    logger.warning(
+                        f"[{sync_id}] Incremental sync requested but no previous successful sync found - falling back to full sync"
+                    )
+                    sync_mode = "full"
+                    last_sync_time = None
+
+        # Calculate total phases
+        total_phases = 7 if sync_mode == "full" else 6  # Add delete phase for full reset
+        phase_offset = 1 if sync_mode == "full" else 0
 
         # Initialize discovery
         discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
+        start_time = datetime.now()
 
-        # Perform sync
-        if sync_types:
-            result = discovery.sync_selective(
-                sync_types=sync_types,
-                custom_targeting_limit=custom_targeting_limit,
-                audience_segment_limit=audience_segment_limit,
+        # Helper function to update progress
+        def update_progress(phase: str, phase_num: int, count: int = 0):
+            _update_sync_progress(
+                sync_id,
+                {
+                    "phase": phase,
+                    "phase_num": phase_num,
+                    "total_phases": total_phases,
+                    "count": count,
+                    "mode": sync_mode,
+                },
             )
-        else:
-            result = discovery.sync_all()
 
-        # Update progress: Saving to database
-        _update_sync_progress(sync_id, {"phase": "Saving to database", "phase_num": 2, "total_phases": 2})
+        # Phase 0: Full reset - delete all existing inventory (only for full sync)
+        if sync_mode == "full":
+            update_progress("Deleting Existing Inventory", 1)
+            with get_db_session() as db:
+                from sqlalchemy import delete
 
-        # Save to database (fresh session)
+                from src.core.database.models import GAMInventory
+
+                stmt = delete(GAMInventory).where(GAMInventory.tenant_id == tenant_id)
+                db.execute(stmt)
+                db.commit()
+                logger.info(f"[{sync_id}] Full reset: deleted all existing inventory for tenant {tenant_id}")
+
+        # Initialize inventory service for streaming writes
         with get_db_session() as db:
             inventory_service = GAMInventoryService(db)
-            inventory_service._save_inventory_to_db(tenant_id, discovery)
+            sync_time = datetime.now()
+
+            # Phase 1: Ad Units (fetch → write → clear memory)
+            update_progress("Discovering Ad Units", 1 + phase_offset)
+            ad_units = discovery.discover_ad_units(since=last_sync_time)
+            update_progress("Writing Ad Units to DB", 1 + phase_offset, len(ad_units))
+            inventory_service._write_inventory_batch(tenant_id, "ad_unit", ad_units, sync_time)
+            ad_units_count = len(ad_units)
+            discovery.ad_units.clear()  # Clear from memory
+            logger.info(f"[{sync_id}] Wrote {ad_units_count} ad units to database")
+
+            # Phase 2: Placements (fetch → write → clear memory)
+            update_progress("Discovering Placements", 2 + phase_offset)
+            placements = discovery.discover_placements(since=last_sync_time)
+            update_progress("Writing Placements to DB", 2 + phase_offset, len(placements))
+            inventory_service._write_inventory_batch(tenant_id, "placement", placements, sync_time)
+            placements_count = len(placements)
+            discovery.placements.clear()  # Clear from memory
+            logger.info(f"[{sync_id}] Wrote {placements_count} placements to database")
+
+            # Phase 3: Labels (fetch → write → clear memory)
+            update_progress("Discovering Labels", 3 + phase_offset)
+            labels = discovery.discover_labels(since=last_sync_time)
+            update_progress("Writing Labels to DB", 3 + phase_offset, len(labels))
+            inventory_service._write_inventory_batch(tenant_id, "label", labels, sync_time)
+            labels_count = len(labels)
+            discovery.labels.clear()  # Clear from memory
+            logger.info(f"[{sync_id}] Wrote {labels_count} labels to database")
+
+            # Phase 4: Custom Targeting Keys (fetch → write → clear memory)
+            update_progress("Discovering Targeting Keys", 4 + phase_offset)
+            custom_targeting = discovery.discover_custom_targeting(fetch_values=False, since=last_sync_time)
+            update_progress(
+                "Writing Targeting Keys to DB",
+                4 + phase_offset,
+                custom_targeting.get("total_keys", 0),
+            )
+            inventory_service._write_custom_targeting_keys(
+                tenant_id, list(discovery.custom_targeting_keys.values()), sync_time
+            )
+            targeting_count = len(discovery.custom_targeting_keys)
+            discovery.custom_targeting_keys.clear()  # Clear from memory
+            discovery.custom_targeting_values.clear()  # Clear from memory
+            logger.info(f"[{sync_id}] Wrote {targeting_count} targeting keys to database")
+
+            # Phase 5: Audience Segments (fetch → write → clear memory)
+            update_progress("Discovering Audience Segments", 5 + phase_offset)
+            audience_segments = discovery.discover_audience_segments(since=last_sync_time)
+            update_progress("Writing Audience Segments to DB", 5 + phase_offset, len(audience_segments))
+            inventory_service._write_inventory_batch(tenant_id, "audience_segment", audience_segments, sync_time)
+            segments_count = len(audience_segments)
+            discovery.audience_segments.clear()  # Clear from memory
+            logger.info(f"[{sync_id}] Wrote {segments_count} audience segments to database")
+
+            # Phase 6: Mark stale inventory
+            update_progress("Marking Stale Inventory", 6 + phase_offset)
+            inventory_service._mark_stale_inventory(tenant_id, sync_time)
+
+        # Build result summary
+        end_time = datetime.now()
+        result = {
+            "tenant_id": tenant_id,
+            "sync_time": end_time.isoformat(),
+            "duration_seconds": (end_time - start_time).total_seconds(),
+            "mode": sync_mode,
+            "ad_units": {"total": ad_units_count},
+            "placements": {"total": placements_count},
+            "labels": {"total": labels_count},
+            "custom_targeting": {
+                "total_keys": targeting_count,
+                "note": "Values lazy loaded on demand",
+            },
+            "audience_segments": {"total": segments_count},
+            "streaming": True,
+            "memory_optimized": True,
+        }
 
         # Mark complete
         _mark_sync_complete(sync_id, result)
