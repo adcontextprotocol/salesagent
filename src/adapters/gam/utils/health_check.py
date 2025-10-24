@@ -79,11 +79,14 @@ class GAMHealthChecker:
             if not key_file:
                 raise GAMConfigurationError("Missing service_account_key_file in config")
 
-            oauth2_credentials = google.oauth2.service_account.Credentials.from_service_account_file(
+            credentials = google.oauth2.service_account.Credentials.from_service_account_file(
                 key_file, scopes=["https://www.googleapis.com/auth/dfp"]
             )
+            # Wrap in GoogleCredentialsClient for AdManagerClient compatibility
+            from googleads import oauth2
+            oauth2_client = oauth2.GoogleCredentialsClient(credentials)
 
-            self.client = ad_manager.AdManagerClient(oauth2_credentials, self.config.get("network_code"))
+            self.client = ad_manager.AdManagerClient(oauth2_client, "AdCP Health Check", network_code=self.config.get("network_code"))
             return True
 
         except Exception as e:
