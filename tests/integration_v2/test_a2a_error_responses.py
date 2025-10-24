@@ -27,7 +27,7 @@ from src.core.database.models import Product as ModelProduct
 from src.core.database.models import Tenant as ModelTenant
 
 # fmt: on
-from tests.integration_v2.conftest import create_test_product_with_pricing
+from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 pytestmark = pytest.mark.integration
 
@@ -68,6 +68,10 @@ class TestA2AErrorPropagation:
                 updated_at=now,
             )
             session.add(tenant)
+            session.flush()  # Flush to get tenant in DB before adding related records
+
+            # Add required setup data (access control, authorized properties, etc.)
+            add_required_setup_data(session, "a2a_error_test")
 
             # Create product using v2 pricing model
             product = create_test_product_with_pricing(
@@ -85,15 +89,6 @@ class TestA2AErrorPropagation:
                 targeting_template={},
             )
             session.add(product)
-
-            # Add currency limit
-            currency_limit = CurrencyLimit(
-                tenant_id="a2a_error_test",
-                currency_code="USD",
-                min_package_budget=1000.0,
-                max_daily_package_spend=10000.0,
-            )
-            session.add(currency_limit)
 
             session.commit()
 

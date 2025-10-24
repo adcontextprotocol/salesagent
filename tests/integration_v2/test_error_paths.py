@@ -25,7 +25,7 @@ from src.core.database.models import Tenant as ModelTenant
 from src.core.schemas import CreateMediaBuyResponse, Error
 from src.core.tool_context import ToolContext
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
-from tests.integration_v2.conftest import create_test_product_with_pricing
+from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -66,6 +66,10 @@ class TestCreateMediaBuyErrorPaths:
                 updated_at=now,
             )
             session.add(tenant)
+            session.flush()  # Flush to get tenant in DB before adding related records
+
+            # Add required setup data (access control, authorized properties, etc.)
+            add_required_setup_data(session, "error_test_tenant")
 
             # Create product using v2 pricing model
             product = create_test_product_with_pricing(
@@ -84,16 +88,7 @@ class TestCreateMediaBuyErrorPaths:
             )
             session.add(product)
 
-            # Add currency limit
-            currency_limit = CurrencyLimit(
-                tenant_id="error_test_tenant",
-                currency_code="USD",
-                min_package_budget=1000.0,
-                max_daily_package_spend=10000.0,
-            )
-            session.add(currency_limit)
-
-            session.commit()
+            session.commit()  # Currency limit already created by add_required_setup_data
 
             # Set tenant context
             set_current_tenant(

@@ -21,7 +21,7 @@ from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
 from src.core.schemas import Budget, Package, Targeting
-from tests.integration_v2.conftest import create_test_product_with_pricing
+from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.asyncio]
 
@@ -56,6 +56,10 @@ class TestCreateMediaBuyV24Format:
                 updated_at=now,
             )
             session.add(tenant)
+            session.flush()  # Flush to get tenant in DB before adding related records
+
+            # Add required setup data (access control, authorized properties, etc.)
+            add_required_setup_data(session, "test_tenant_v24")
 
             # Create principal
             principal = ModelPrincipal(
@@ -84,15 +88,7 @@ class TestCreateMediaBuyV24Format:
             )
             session.add(product)
 
-            # Add currency limits for USD and EUR
-            currency_limit_usd = CurrencyLimit(
-                tenant_id="test_tenant_v24",
-                currency_code="USD",
-                min_package_budget=1000.0,
-                max_daily_package_spend=10000.0,
-            )
-            session.add(currency_limit_usd)
-
+            # Add additional currency limit for EUR (USD already created by add_required_setup_data)
             currency_limit_eur = CurrencyLimit(
                 tenant_id="test_tenant_v24",
                 currency_code="EUR",

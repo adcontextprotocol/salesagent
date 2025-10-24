@@ -171,7 +171,7 @@ def sample_tenant(integration_db):
     from decimal import Decimal
 
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import CurrencyLimit, PropertyTag, Tenant
+    from src.core.database.models import AuthorizedProperty, CurrencyLimit, PropertyTag, Tenant
     from tests.fixtures import TenantFactory
 
     tenant_data = TenantFactory.create()
@@ -183,6 +183,8 @@ def sample_tenant(integration_db):
             subdomain=tenant_data["subdomain"],
             is_active=tenant_data["is_active"],
             ad_server="mock",
+            # Required: Access control configuration
+            authorized_emails=["test@example.com"],
         )
         session.add(tenant)
 
@@ -203,6 +205,18 @@ def sample_tenant(integration_db):
             description="All available inventory",
         )
         session.add(property_tag)
+
+        # Create required AuthorizedProperty (needed for setup validation)
+        authorized_property = AuthorizedProperty(
+            tenant_id=tenant_data["tenant_id"],
+            property_id="test_property_1",
+            property_type="website",
+            name="Test Property",
+            identifiers=[{"type": "domain", "value": "example.com"}],
+            publisher_domain="example.com",
+            verification_status="verified",
+        )
+        session.add(authorized_property)
 
         session.commit()
 
@@ -296,6 +310,71 @@ def sample_principal(integration_db, sample_tenant):
         session.commit()
 
     return principal_data
+
+
+# ============================================================================
+# Setup Helper Functions
+# ============================================================================
+
+
+def add_required_setup_data(session, tenant_id: str):
+    """Add required setup data for a tenant to pass setup validation.
+
+    This helper ensures tenants have:
+    1. Access control (authorized_emails)
+    2. Authorized property (for AdCP verification)
+    3. Currency limit (for budget validation)
+    4. Property tag (for product configuration)
+
+    Call this in test fixtures to avoid "Setup incomplete" errors.
+    """
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from src.core.database.models import AuthorizedProperty, CurrencyLimit, PropertyTag, Tenant
+
+    # Update tenant with access control
+    stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+    tenant = session.scalars(stmt).first()
+    if tenant and not tenant.authorized_emails:
+        tenant.authorized_emails = ["test@example.com"]
+
+    # Create AuthorizedProperty if not exists
+    stmt = select(AuthorizedProperty).filter_by(tenant_id=tenant_id)
+    if not session.scalars(stmt).first():
+        authorized_property = AuthorizedProperty(
+            tenant_id=tenant_id,
+            property_id=f"{tenant_id}_property_1",
+            property_type="website",
+            name="Test Property",
+            identifiers=[{"type": "domain", "value": "example.com"}],
+            publisher_domain="example.com",
+            verification_status="verified",
+        )
+        session.add(authorized_property)
+
+    # Create CurrencyLimit if not exists
+    stmt = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
+    if not session.scalars(stmt).first():
+        currency_limit = CurrencyLimit(
+            tenant_id=tenant_id,
+            currency_code="USD",
+            min_package_budget=Decimal("1.00"),
+            max_daily_package_spend=Decimal("100000.00"),
+        )
+        session.add(currency_limit)
+
+    # Create PropertyTag if not exists
+    stmt = select(PropertyTag).filter_by(tenant_id=tenant_id, tag_id="all_inventory")
+    if not session.scalars(stmt).first():
+        property_tag = PropertyTag(
+            tenant_id=tenant_id,
+            tag_id="all_inventory",
+            name="All Inventory",
+            description="All available inventory",
+        )
+        session.add(property_tag)
 
 
 # ============================================================================

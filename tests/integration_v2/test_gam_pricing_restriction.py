@@ -13,7 +13,7 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import CurrencyLimit, PricingOption, Principal, Product, Tenant
 from src.core.main import _create_media_buy_impl
 from src.core.tool_context import ToolContext
-from tests.integration_v2.conftest import create_test_product_with_pricing
+from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.asyncio]
@@ -33,13 +33,8 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
         session.add(tenant)
         session.flush()
 
-        # Add currency limit
-        currency_limit = CurrencyLimit(
-            tenant_id="test_gam_tenant",
-            currency_code="USD",
-            max_daily_package_spend=Decimal("50000.00"),
-        )
-        session.add(currency_limit)
+        # Add required setup data (access control, authorized properties, currency limits, etc.)
+        add_required_setup_data(session, "test_gam_tenant")
 
         # Create principal
         principal = Principal(
