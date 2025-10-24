@@ -43,8 +43,7 @@ class GetMediaBuyDeliveryRequest(BaseModel):
         Field(description="Filter by status. Can be a single status or array of statuses"),
     ] = None
     start_date: Annotated[
-        str | None,
-        Field(description="Start date for reporting period (YYYY-MM-DD)", pattern="^\\d{4}-\\d{2}-\\d{2}$"),
+        str | None, Field(description="Start date for reporting period (YYYY-MM-DD)", pattern="^\\d{4}-\\d{2}-\\d{2}$")
     ] = None
     end_date: Annotated[
         str | None, Field(description="End date for reporting period (YYYY-MM-DD)", pattern="^\\d{4}-\\d{2}-\\d{2}$")

@@ -527,7 +527,15 @@ class Product(BaseModel):
     delivery_type: Annotated[DeliveryType, Field(description="Type of inventory delivery", title="Delivery Type")]
     pricing_options: Annotated[
         list[
-            PricingOptions | PricingOptions1 | PricingOptions2 | PricingOptions3 | PricingOptions4 | PricingOptions5 | PricingOptions6 | PricingOptions7 | PricingOptions8
+            PricingOptions
+            | PricingOptions1
+            | PricingOptions2
+            | PricingOptions3
+            | PricingOptions4
+            | PricingOptions5
+            | PricingOptions6
+            | PricingOptions7
+            | PricingOptions8
         ],
         Field(description="Available pricing models for this product", min_length=1),
     ]
@@ -535,8 +543,7 @@ class Product(BaseModel):
         int | None, Field(description="Estimated exposures/impressions for guaranteed products", ge=0)
     ] = None
     measurement: Annotated[
-        Measurement | None,
-        Field(description="Measurement capabilities included with a product", title="Measurement"),
+        Measurement | None, Field(description="Measurement capabilities included with a product", title="Measurement")
     ] = None
     delivery_measurement: Annotated[
         DeliveryMeasurement,

@@ -34,8 +34,7 @@ class Creative(BaseModel):
     ] = None
     warnings: Annotated[list[str] | None, Field(description="Non-fatal warnings about this creative")] = None
     preview_url: Annotated[
-        AnyUrl | None,
-        Field(description="Preview URL for generative creatives (only present for generative formats)"),
+        AnyUrl | None, Field(description="Preview URL for generative creatives (only present for generative formats)")
     ] = None
     expires_at: Annotated[
         AwareDatetime | None,
