@@ -122,7 +122,7 @@ async def test_create_media_buy_rejects_missing_creatives(integration_db):
                     product_ids=["test_product"],
                     impressions=100000,
                     creative_ids=["nonexistent_creative_1", "nonexistent_creative_2"],
-                )
+                ).model_dump()
             ],
             start_time=datetime(2025, 11, 1, tzinfo=UTC),
             end_time=datetime(2025, 11, 30, tzinfo=UTC),
@@ -269,7 +269,7 @@ async def test_create_media_buy_accepts_existing_creatives(integration_db):
                     product_ids=["test_product"],
                     impressions=100000,
                     creative_ids=["creative_1", "creative_2"],
-                )
+                ).model_dump()
             ],
             start_time=datetime(2025, 11, 1, tzinfo=UTC),
             end_time=datetime(2025, 11, 30, tzinfo=UTC),
