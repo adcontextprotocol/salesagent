@@ -59,6 +59,84 @@ def _cleanup_completed_tasks():
             del _ai_review_tasks[task_id]
             logger.debug(f"Cleaned up completed AI review task: {task_id}")
 
+def _call_webhook_for_creative_status(
+    webhook_url: str, creative_id: str, status: str, creative_data: dict = None, tenant_id: str = None
+):
+    """Call webhook to notify about creative status change with retry logic.
+
+    Args:
+        webhook_url: URL to POST notification to
+        creative_id: Creative ID
+        status: New status (approved, rejected, pending)
+        creative_data: Optional creative data to include
+        tenant_id: Optional tenant ID for signature verification
+
+    Returns:
+        bool: True if webhook delivered successfully, False otherwise
+    """
+    from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
+
+    try:
+        # Build payload
+        payload = {
+            "object_type": "creative",
+            "object_id": creative_id,
+            "status": status,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+
+        if creative_data:
+            payload["creative_data"] = creative_data
+
+        headers = {"Content-Type": "application/json"}
+
+        # Get signing secret from tenant
+        signing_secret = None
+        if tenant_id:
+            try:
+                with get_db_session() as db_session:
+                    stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+                    tenant = db_session.scalars(stmt).first()
+                    if tenant and hasattr(tenant, "admin_token") and tenant.admin_token:
+                        signing_secret = tenant.admin_token
+            except Exception as e:
+                logger.warning(f"Could not fetch tenant for signature: {e}")
+
+        # Create delivery configuration
+        delivery = WebhookDelivery(
+            webhook_url=webhook_url,
+            payload=payload,
+            headers=headers,
+            max_retries=3,
+            timeout=10,
+            signing_secret=signing_secret,
+            event_type="creative.status_changed",
+            tenant_id=tenant_id,
+            object_id=creative_id,
+        )
+
+        # Deliver with retry
+        success, result = deliver_webhook_with_retry(delivery)
+
+        if success:
+            logger.info(
+                f"Successfully delivered webhook for creative {creative_id} status={status} "
+                f"(attempts={result['attempts']}, delivery_id={result['delivery_id']})"
+            )
+        else:
+            logger.error(
+                f"Failed to deliver webhook for creative {creative_id} after {result['attempts']} attempts: "
+                f"{result.get('error', 'Unknown error')} (delivery_id={result['delivery_id']})"
+            )
+
+        return success
+
+    except Exception as e:
+        logger.error(f"Error setting up webhook delivery for creative {creative_id}: {e}", exc_info=True)
+        return False
+
+
+
 @creatives_bp.route("/", methods=["GET"])
 @require_tenant_access()
 def index(tenant_id, **kwargs):
@@ -574,8 +652,20 @@ def _ai_review_creative_async(
                     except Exception as slack_e:
                         logger.warning(f"[AI Review Async] Failed to send Slack notification: {slack_e}")
 
-                logger.info(f"[AI Review Async] Protocol webhook enqueued for {creative_id}")
-
+                # Call webhook if configured
+                if webhook_url:
+                    creative_data = {
+                        "creative_id": creative.creative_id,
+                        "name": creative.name,
+                        "format": creative.format,
+                        "status": creative.status,
+                        "ai_review": creative.data.get("ai_review"),
+                    }
+                    _call_webhook_for_creative_status(
+                        webhook_url, creative_id, creative.status, creative_data, tenant_id
+                    )
+                    logger.info(f"[AI Review Async] Webhook called for {creative_id}")
+                    
             else:
                 logger.error(f"[AI Review Async] Creative not found: {creative_id}")
 

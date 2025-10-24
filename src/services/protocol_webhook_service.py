@@ -157,7 +157,6 @@ class ProtocolWebhookService:
     async def close(self):
         """Close HTTP client."""
         await self.http_client.aclose()
-        return None
 
 
 # Global service instance
