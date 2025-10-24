@@ -95,6 +95,7 @@ async def test_create_media_buy_rejects_missing_creatives(integration_db):
         patch("src.core.main.get_principal_object", return_value=principal),
         patch("src.core.main.get_adapter") as mock_get_adapter,
         patch("src.core.main.get_context_manager") as mock_ctx_mgr,
+        patch("src.core.main.validate_setup_complete"),  # Bypass setup checklist validation
     ):
         # Mock adapter
         mock_adapter = MagicMock()
@@ -238,6 +239,7 @@ async def test_create_media_buy_accepts_existing_creatives(integration_db):
         patch("src.core.main.get_principal_object", return_value=principal),
         patch("src.core.main.get_adapter") as mock_get_adapter,
         patch("src.core.main.get_context_manager") as mock_ctx_mgr,
+        patch("src.core.main.validate_setup_complete"),  # Bypass setup checklist validation
     ):
         # Mock adapter
         mock_adapter = MagicMock()
@@ -375,6 +377,7 @@ async def test_create_media_buy_rejects_partial_missing_creatives(integration_db
         patch("src.core.main.get_principal_object", return_value=principal),
         patch("src.core.main.get_adapter") as mock_get_adapter,
         patch("src.core.main.get_context_manager") as mock_ctx_mgr,
+        patch("src.core.main.validate_setup_complete"),  # Bypass setup checklist validation
     ):
         # Mock adapter
         mock_adapter = MagicMock()
