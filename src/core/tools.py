@@ -41,6 +41,19 @@ from src.core.schemas import (
     GetSignalsRequest,
 )
 
+# Import all implementation functions from main.py at the top
+from src.core.main import (
+    _create_media_buy_impl,
+    _get_media_buy_delivery_impl,
+    _get_products_impl,
+    _list_authorized_properties_impl,
+    _list_creative_formats_impl,
+    _list_creatives_impl,
+    _sync_creatives_impl,
+    _update_media_buy_impl,
+    update_performance_index,  # Note: This one doesn't follow _impl pattern yet
+)
+
 
 def get_principal_from_context(context: Context | None) -> str | None:
     """Extract principal ID from the FastMCP context or ToolContext.
@@ -110,8 +123,6 @@ async def get_products_raw(
     Returns:
         GetProductsResponse containing matching products
     """
-    # Use lazy import to avoid circular dependencies
-    from src.core.main import _get_products_impl
     from src.core.schema_helpers import create_get_products_request
 
     # Create request object using helper (handles generated schema variants)
@@ -259,9 +270,6 @@ async def create_media_buy_raw(
     Returns:
         CreateMediaBuyResponse with media buy details
     """
-    # Import here to avoid circular imports
-    from src.core.main import _create_media_buy_impl
-
     # Call the shared implementation
     return await _create_media_buy_impl(
         buyer_ref=buyer_ref,
@@ -315,9 +323,6 @@ def sync_creatives_raw(
     Returns:
         SyncCreativesResponse with synced creatives and assignments
     """
-    # Import here to avoid circular imports
-    from src.core.main import _sync_creatives_impl
-
     return _sync_creatives_impl(
         creatives=creatives,
         patch=patch,
@@ -367,9 +372,6 @@ def list_creatives_raw(
     Returns:
         ListCreativesResponse with filtered creative assets and pagination info
     """
-    # Import here to avoid circular imports
-    from src.core.main import _list_creatives_impl
-
     return _list_creatives_impl(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
@@ -401,8 +403,6 @@ def list_creative_formats_raw(
     Returns:
         ListCreativeFormatsResponse with all available formats
     """
-    from src.core.main import _list_creative_formats_impl
-
     return _list_creative_formats_impl(req, context)
 
 
@@ -413,8 +413,6 @@ def list_authorized_properties_raw(
 
     Delegates to shared implementation in main.py.
     """
-    from src.core.main import _list_authorized_properties_impl
-
     return _list_authorized_properties_impl(req, context)
 
 
@@ -461,9 +459,6 @@ def update_media_buy_raw(
     Returns:
         UpdateMediaBuyResponse
     """
-    # Import here to avoid circular imports
-    from src.core.main import _update_media_buy_impl
-
     return _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
@@ -505,9 +500,6 @@ def get_media_buy_delivery_raw(
     Returns:
         GetMediaBuyDeliveryResponse with delivery metrics
     """
-    # Import here to avoid circular imports
-    from src.core.main import _get_media_buy_delivery_impl
-
     # Create request object
     req = GetMediaBuyDeliveryRequest(
         media_buy_ids=media_buy_ids,
@@ -534,7 +526,4 @@ def update_performance_index_raw(media_buy_id: str, performance_data: list[dict[
     Returns:
         UpdatePerformanceIndexResponse
     """
-    # Import here to avoid circular imports
-    from src.core.main import _update_performance_index_impl
-
-    return _update_performance_index_impl(media_buy_id, performance_data, context)
+    return update_performance_index(media_buy_id, performance_data, webhook_url=None, context=context)

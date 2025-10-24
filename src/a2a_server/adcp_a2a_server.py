@@ -2279,47 +2279,25 @@ def main():
         """Override for /.well-known/agent.json with tenant-specific URL."""
         from starlette.responses import Response
 
-        # Handle OPTIONS preflight requests
+        # Handle OPTIONS preflight requests (CORS middleware will add headers)
         if request.method == "OPTIONS":
-            response = Response(status_code=204)
-            response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "*"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Max-Age"] = "86400"
-            return response
+            return Response(status_code=204)
 
         dynamic_card = create_dynamic_agent_card(request)
-        response = JSONResponse(dynamic_card.model_dump())
-        # Add CORS headers for browser compatibility
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        return response
+        # CORS middleware automatically adds CORS headers
+        return JSONResponse(dynamic_card.model_dump())
 
     async def dynamic_agent_card_endpoint(request):
         """Override for /agent.json with tenant-specific URL."""
         from starlette.responses import Response
 
-        # Handle OPTIONS preflight requests
+        # Handle OPTIONS preflight requests (CORS middleware will add headers)
         if request.method == "OPTIONS":
-            response = Response(status_code=204)
-            response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "*"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Max-Age"] = "86400"
-            return response
+            return Response(status_code=204)
 
         dynamic_card = create_dynamic_agent_card(request)
-        response = JSONResponse(dynamic_card.model_dump())
-        # Add CORS headers for browser compatibility
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        return response
+        # CORS middleware automatically adds CORS headers
+        return JSONResponse(dynamic_card.model_dump())
 
     # Find and replace the existing routes to ensure proper A2A specification compliance
     new_routes = []
