@@ -253,6 +253,7 @@ class GAMInventoryDiscovery:
         self.audience_segments: dict[str, AudienceSegment] = {}
         self.last_sync: datetime | None = None
 
+    @timeout(seconds=600)  # 10 minute timeout for ad units (same as placements)
     @with_retry(operation_name="discover_ad_units")
     def discover_ad_units(self, since: datetime | None = None) -> list[AdUnit]:
         """
