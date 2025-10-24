@@ -33,12 +33,12 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
         session.add(tenant)
         session.flush()
 
-        # Add GAM adapter config with mock credentials to bypass auth check
+        # Add GAM adapter config with mock refresh token to bypass auth check
         adapter_config = AdapterConfig(
             tenant_id="test_gam_tenant",
             adapter_type="google_ad_manager",
             gam_network_code="test_network_123",
-            gam_service_account_json='{"type": "service_account", "project_id": "test", "private_key": "test_key", "client_email": "test@test.iam.gserviceaccount.com"}',
+            gam_refresh_token="mock_refresh_token_for_testing",
         )
         session.add(adapter_config)
         session.flush()
