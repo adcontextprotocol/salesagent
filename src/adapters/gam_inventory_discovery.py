@@ -276,11 +276,14 @@ class GAMInventoryDiscovery:
 
         # Add incremental sync filter if requested
         if since:
-            # Ensure timezone-aware datetime for GAM API
+            # Ensure timezone-aware datetime for GAM API (use pytz for GAM compatibility)
             if since.tzinfo is None:
-                from datetime import UTC
-
-                since = since.replace(tzinfo=UTC)
+                import pytz
+                since = pytz.utc.localize(since)
+            else:
+                # Convert to pytz timezone if using datetime.timezone.UTC
+                import pytz
+                since = since.astimezone(pytz.utc)
 
             statement_builder = (
                 statement_builder.Where("lastModifiedDateTime > :since AND status != :archived")
@@ -329,11 +332,14 @@ class GAMInventoryDiscovery:
         statement_builder = statement_builder.Where("status != :archived").WithBindVariable("archived", "ARCHIVED")
 
         if since:
-            # Ensure timezone-aware datetime for GAM API
+            # Ensure timezone-aware datetime for GAM API (use pytz for GAM compatibility)
             if since.tzinfo is None:
-                from datetime import UTC
-
-                since = since.replace(tzinfo=UTC)
+                import pytz
+                since = pytz.utc.localize(since)
+            else:
+                # Convert to pytz timezone if using datetime.timezone.UTC
+                import pytz
+                since = since.astimezone(pytz.utc)
 
             statement_builder = (
                 statement_builder.Where("lastModifiedDateTime > :since AND status != :archived")
@@ -566,11 +572,14 @@ class GAMInventoryDiscovery:
         statement_builder = statement_builder.Where("type = :type").WithBindVariable("type", "FIRST_PARTY")
 
         if since:
-            # Ensure timezone-aware datetime for GAM API
+            # Ensure timezone-aware datetime for GAM API (use pytz for GAM compatibility)
             if since.tzinfo is None:
-                from datetime import UTC
-
-                since = since.replace(tzinfo=UTC)
+                import pytz
+                since = pytz.utc.localize(since)
+            else:
+                # Convert to pytz timezone if using datetime.timezone.UTC
+                import pytz
+                since = since.astimezone(pytz.utc)
 
             statement_builder = (
                 statement_builder.Where("lastModifiedDateTime > :since AND type = :type")
