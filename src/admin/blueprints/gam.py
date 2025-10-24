@@ -530,8 +530,6 @@ def get_gam_custom_targeting_keys(tenant_id):
                 )
 
             # Create OAuth2 client
-            from googleads import oauth2
-
             oauth2_client = oauth2.GoogleRefreshTokenClient(
                 client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
                 client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
