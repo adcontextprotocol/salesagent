@@ -477,20 +477,9 @@ class GoogleAdManager(AdServerAdapter):
         except Exception as e:
             error_msg = f"Order created but failed to create line items: {str(e)}"
             self.log(f"[red]Error: {error_msg}[/red]")
-
-            # Build package responses even in error case (required for response structure)
-            package_responses = []
-            for package in packages:
-                package_responses.append(
-                    {
-                        "package_id": package.package_id,
-                    }
-                )
-
             return CreateMediaBuyResponse(
                 buyer_ref=request.buyer_ref,
                 media_buy_id=order_id,
-                packages=package_responses,
                 errors=[Error(code="line_item_creation_failed", message=error_msg)],
             )
 

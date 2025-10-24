@@ -322,28 +322,67 @@ function syncInventory() {
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({})  // Send empty JSON object for full sync
+        body: JSON.stringify({ mode: 'full' })
     })
-        .then(response => response.json())
+        .then(response => {
+            if (response.status === 202 || response.ok) {
+                return response.json();
+            }
+            throw new Error(`Server error: ${response.status}`);
+        })
         .then(data => {
             if (data.error) {
                 throw new Error(data.error);
             }
 
-            alert(`Sync completed!\n\nAd Units: ${data.ad_units.total}\n` +
-                  `Placements: ${data.placements.total}\nLabels: ${data.labels.total}`);
+            // Sync started in background
+            if (data.sync_id && data.status === 'running') {
+                alert(`✅ Inventory sync started in background!\n\nSync ID: ${data.sync_id}\n\nThe page will reload automatically when sync completes. This may take a few minutes.`);
 
-            // Reload the page to show new data
-            window.location.reload();
+                // Poll for completion
+                pollInventorySyncStatus(data.sync_id, btn);
+            } else {
+                throw new Error('Unexpected response format');
+            }
         })
         .catch(error => {
             alert('Sync failed: ' + error.message);
             console.error('Sync error:', error);
-        })
-        .finally(() => {
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync All';
         });
+}
+
+function pollInventorySyncStatus(syncId, btn) {
+    const checkStatus = () => {
+        fetch(`{{ script_name }}/tenant/${tenantId}/gam/sync-status/${syncId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'completed') {
+                    // Sync completed - reload page
+                    const summary = data.summary || {};
+                    const adUnitCount = summary.ad_units?.total || 0;
+                    const placementCount = summary.placements?.total || 0;
+                    const labelCount = summary.labels?.total || 0;
+
+                    alert(`✅ Sync completed!\n\nAd Units: ${adUnitCount}\nPlacements: ${placementCount}\nLabels: ${labelCount}`);
+                    window.location.reload();
+                } else if (data.status === 'failed' || data.error) {
+                    throw new Error(data.error || 'Sync failed');
+                } else {
+                    // Still running - check again in 2 seconds
+                    setTimeout(checkStatus, 2000);
+                }
+            })
+            .catch(error => {
+                alert('Sync failed: ' + error.message);
+                console.error('Sync error:', error);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync All';
+            });
+    };
+
+    checkStatus();
 }
 
 function renderAdUnitTree(units, container = null) {

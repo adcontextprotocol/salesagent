@@ -138,20 +138,8 @@ class TritonDigital(AdServerAdapter):
 
             error_msg = f"Unsupported targeting features for Triton Digital: {'; '.join(unsupported_features)}"
             self.log(f"[red]Error: {error_msg}[/red]")
-
-            # Build package responses with package_ids even in error case
-            package_responses = []
-            for package in packages:
-                package_responses.append(
-                    {
-                        "package_id": package.package_id,
-                    }
-                )
-
             return CreateMediaBuyResponse(
-                buyer_ref=request.buyer_ref,
-                packages=package_responses,
-                errors=[Error(code="unsupported_targeting", message=error_msg)],
+                buyer_ref=request.buyer_ref, errors=[Error(code="unsupported_targeting", message=error_msg)]
             )
 
         # Generate a media buy ID
