@@ -51,7 +51,7 @@ class TestSchemaValidationModes:
                 packages=[],
                 start_time="2025-02-15T00:00:00Z",
                 end_time="2025-02-28T23:59:59Z",
-                budget={"total": 5000.0, "currency": "USD"},
+                budget=5000.0,
                 adcp_version="1.8.0",  # Future field from v1.8.0 schema
             )
 
@@ -67,7 +67,7 @@ class TestSchemaValidationModes:
                 packages=[],
                 start_time="2025-02-15T00:00:00Z",
                 end_time="2025-02-28T23:59:59Z",
-                budget={"total": 5000.0, "currency": "USD"},
+                budget=5000.0,
                 future_field="from_v2.0",  # Field that doesn't exist yet
                 another_future_field=123,
             )
@@ -87,7 +87,7 @@ class TestSchemaValidationModes:
                     packages=[],
                     start_time="2025-02-15T00:00:00Z",
                     end_time="2025-02-28T23:59:59Z",
-                    budget={"total": 5000.0, "currency": "USD"},
+                    budget=5000.0,
                     future_field="should_fail",
                 )
 

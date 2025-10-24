@@ -18,7 +18,7 @@ class TestPackageProductExtraction:
             po_number="PO-001",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
+            budget=5000.0,
             packages=[Package(buyer_ref="pkg1", product_id="prod1")],
         )
 
@@ -34,7 +34,7 @@ class TestPackageProductExtraction:
             po_number="PO-002",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
+            budget=5000.0,
             packages=[
                 Package(buyer_ref="pkg1", product_id="prod1"),
                 Package(buyer_ref="pkg2", product_id="prod2"),
@@ -54,7 +54,7 @@ class TestPackageProductExtraction:
             po_number="PO-003",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
+            budget=5000.0,
             packages=[Package(buyer_ref="pkg1")],
         )
 
@@ -69,7 +69,7 @@ class TestPackageProductExtraction:
             po_number="PO-004",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
+            budget=5000.0,
             product_ids=["legacy1", "legacy2"],
         )
 
@@ -84,7 +84,7 @@ class TestPackageProductExtraction:
             po_number="PO-005",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
+            budget=5000.0,
             packages=[Package(buyer_ref="pkg1", product_id="prod1")],
             product_ids=["legacy1", "legacy2"],  # Should be ignored
         )
@@ -103,7 +103,7 @@ class TestPackageProductExtraction:
             po_number="PO-006",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
+            budget=5000.0,
             packages=[
                 Package(buyer_ref="pkg1", product_id="prod1"),
                 Package(buyer_ref="pkg2"),  # No product_id
