@@ -164,15 +164,23 @@ class ProductMatcher:
             prompt = f"""Given this advertising brief: "{brief}"
 
 And these available products:
-{json.dumps([{
-    'id': p['product_id'],
-    'name': p['name'],
-    'description': p['description'],
-    'formats': [f['type'] for f in p['formats']],
-    'targeting': p.get('targeting_template', {}),
-    'price': p.get('cpm') or p.get('price_guidance', {}).get('p50', 'variable'),
-    'special_features': p.get('availability', {})
-} for p in all_products], indent=2)}
+{
+                json.dumps(
+                    [
+                        {
+                            "id": p["product_id"],
+                            "name": p["name"],
+                            "description": p["description"],
+                            "formats": [f["type"] for f in p["formats"]],
+                            "targeting": p.get("targeting_template", {}),
+                            "price": p.get("cpm") or p.get("price_guidance", {}).get("p50", "variable"),
+                            "special_features": p.get("availability", {}),
+                        }
+                        for p in all_products
+                    ],
+                    indent=2,
+                )
+            }
 
 Select the most relevant products (up to 3) and return as JSON:
 {{

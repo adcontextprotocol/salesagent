@@ -1384,7 +1384,7 @@ class Creative(BaseModel):
         This property will be removed in a future version.
         """
         warnings.warn(
-            "format_id is deprecated and will be removed in a future version. " "Use format instead.",
+            "format_id is deprecated and will be removed in a future version. Use format instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1398,7 +1398,7 @@ class Creative(BaseModel):
         This property will be removed in a future version.
         """
         warnings.warn(
-            "content_uri is deprecated and will be removed in a future version. " "Use url instead.",
+            "content_uri is deprecated and will be removed in a future version. Use url instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1412,7 +1412,7 @@ class Creative(BaseModel):
         This property will be removed in a future version.
         """
         warnings.warn(
-            "click_through_url is deprecated and will be removed in a future version. " "Use click_url instead.",
+            "click_through_url is deprecated and will be removed in a future version. Use click_url instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -2657,8 +2657,8 @@ class MediaPackage(BaseModel):
     impressions: int
     format_ids: list[FormatId]  # FormatId objects per AdCP spec
     targeting_overlay: Optional["Targeting"] = None
-    buyer_ref: Optional[str] = None  # Optional buyer reference from request package
-    product_id: Optional[str] = None  # Product ID for this package
+    buyer_ref: str | None = None  # Optional buyer reference from request package
+    product_id: str | None = None  # Product ID for this package
     budget: Optional["Budget"] = None  # Budget information from request
 
 
@@ -3070,7 +3070,7 @@ class Signal(BaseModel):
         This property will be removed in a future version.
         """
         warnings.warn(
-            "signal_id is deprecated and will be removed in a future version. " "Use signal_agent_segment_id instead.",
+            "signal_id is deprecated and will be removed in a future version. Use signal_agent_segment_id instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -3084,7 +3084,7 @@ class Signal(BaseModel):
         This property will be removed in a future version.
         """
         warnings.warn(
-            "type is deprecated and will be removed in a future version. " "Use signal_type instead.",
+            "type is deprecated and will be removed in a future version. Use signal_type instead.",
             DeprecationWarning,
             stacklevel=2,
         )

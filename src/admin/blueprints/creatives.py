@@ -333,15 +333,16 @@ def approve_creative(tenant_id, creative_id, **kwargs):
             # Send webhook notification to principal
             from src.core.database.models import PushNotificationConfig
 
-            stmt_webhook = select(PushNotificationConfig).filter_by(
-                tenant_id=tenant_id,
-                principal_id=creative.principal_id,
-                is_active=True
-            ).order_by(PushNotificationConfig.created_at.desc())
+            stmt_webhook = (
+                select(PushNotificationConfig)
+                .filter_by(tenant_id=tenant_id, principal_id=creative.principal_id, is_active=True)
+                .order_by(PushNotificationConfig.created_at.desc())
+            )
             webhook_config = db_session.scalars(stmt_webhook).first()
 
             if webhook_config:
                 import requests
+
                 webhook_payload = {
                     "event": "creative_approved",
                     "creative_id": creative.creative_id,
@@ -480,15 +481,16 @@ def reject_creative(tenant_id, creative_id, **kwargs):
             # Send webhook notification to principal
             from src.core.database.models import PushNotificationConfig
 
-            stmt_webhook = select(PushNotificationConfig).filter_by(
-                tenant_id=tenant_id,
-                principal_id=creative.principal_id,
-                is_active=True
-            ).order_by(PushNotificationConfig.created_at.desc())
+            stmt_webhook = (
+                select(PushNotificationConfig)
+                .filter_by(tenant_id=tenant_id, principal_id=creative.principal_id, is_active=True)
+                .order_by(PushNotificationConfig.created_at.desc())
+            )
             webhook_config = db_session.scalars(stmt_webhook).first()
 
             if webhook_config:
                 import requests
+
                 webhook_payload = {
                     "event": "creative_rejected",
                     "creative_id": creative.creative_id,

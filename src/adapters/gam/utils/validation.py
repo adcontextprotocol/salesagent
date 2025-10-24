@@ -225,8 +225,7 @@ class GAMValidator:
                 valid_ratios = [16 / 9, 4 / 3, 1 / 1, 9 / 16]  # Common video aspect ratios
                 if not any(abs(aspect_ratio - ratio) < 0.01 for ratio in valid_ratios):
                     issues.append(
-                        f"Video aspect ratio {aspect_ratio:.2f} is not standard. "
-                        f"Recommended: 16:9, 4:3, 1:1, or 9:16"
+                        f"Video aspect ratio {aspect_ratio:.2f} is not standard. Recommended: 16:9, 4:3, 1:1, or 9:16"
                     )
 
         return issues
@@ -322,8 +321,7 @@ class GAMValidator:
         allowed_extensions = self.ALLOWED_EXTENSIONS.get(creative_type, [])
         if not any(file_path.endswith(ext) for ext in allowed_extensions):
             issues.append(
-                f"File extension not allowed for {creative_type} creatives. "
-                f"Allowed: {', '.join(allowed_extensions)}"
+                f"File extension not allowed for {creative_type} creatives. Allowed: {', '.join(allowed_extensions)}"
             )
 
         return issues

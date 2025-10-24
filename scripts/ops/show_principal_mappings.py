@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Show detailed platform mappings for all principals in a tenant."""
+
 import json
 import sys
 
@@ -19,7 +20,7 @@ def show_mappings(tenant_name=None):
             principals = session.query(Principal).all()
 
         for principal in principals:
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print(f"Name: {principal.name}")
             print(f"Principal ID: {principal.principal_id}")
             print(f"Tenant ID: {principal.tenant_id}")

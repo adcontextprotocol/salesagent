@@ -366,6 +366,7 @@ def get_gam_advertisers(tenant_id):
 
                 # Use build_gam_config_from_adapter to handle both OAuth and service account
                 from src.adapters.gam import build_gam_config_from_adapter
+
                 gam_config = build_gam_config_from_adapter(tenant.adapter_config)
 
                 adapter = GoogleAdManager(

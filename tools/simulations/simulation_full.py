@@ -405,7 +405,7 @@ class FullLifecycleSimulation:
             bar = "█" * bar_length
 
             console.print(
-                f"{data['date'].strftime('%m/%d')}: {bar} " f"{data['impressions']:,} imps (${data['spend']:,.0f})"
+                f"{data['date'].strftime('%m/%d')}: {bar} {data['impressions']:,} imps (${data['spend']:,.0f})"
             )
 
     async def _phase_6_optimization(self):

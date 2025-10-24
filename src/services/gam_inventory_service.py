@@ -410,7 +410,8 @@ class GAMInventoryService:
         logger.info("Streaming custom targeting keys (values lazy loaded)...")
         try:
             custom_targeting = discovery.discover_custom_targeting(
-                max_values_per_key=None, fetch_values=False  # Don't fetch values  # Lazy load values on demand
+                max_values_per_key=None,
+                fetch_values=False,  # Don't fetch values  # Lazy load values on demand
             )
             self._write_custom_targeting_keys(tenant_id, discovery.custom_targeting_keys.values(), sync_time)
             counts["custom_targeting_keys"] = len(discovery.custom_targeting_keys)

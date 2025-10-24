@@ -103,9 +103,9 @@ class TestA2AParameterMapping:
             mock_update.assert_called_once()
             call_kwargs = mock_update.call_args.kwargs
 
-            assert (
-                call_kwargs["packages"] == parameters["updates"]["packages"]
-            ), "Should extract packages from legacy 'updates' wrapper"
+            assert call_kwargs["packages"] == parameters["updates"]["packages"], (
+                "Should extract packages from legacy 'updates' wrapper"
+            )
 
     def test_update_media_buy_validates_required_parameters(self):
         """
@@ -135,9 +135,9 @@ class TestA2AParameterMapping:
 
             # Should return error for missing required parameter
             assert result["success"] is False, "Should reject request without media_buy_id or buyer_ref"
-            assert (
-                "media_buy_id" in result["message"].lower() or "buyer_ref" in result["message"].lower()
-            ), "Error message should mention required parameter"
+            assert "media_buy_id" in result["message"].lower() or "buyer_ref" in result["message"].lower(), (
+                "Error message should mention required parameter"
+            )
 
     def test_get_media_buy_delivery_uses_plural_media_buy_ids(self):
         """

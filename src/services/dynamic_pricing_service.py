@@ -72,7 +72,7 @@ class DynamicPricingService:
                 )
 
             except Exception as e:
-                logger.warning(f"Failed to calculate pricing for product {product.product_id}: {e}. " "Using defaults.")
+                logger.warning(f"Failed to calculate pricing for product {product.product_id}: {e}. Using defaults.")
                 # Leave defaults (floor_cpm, recommended_cpm, estimated_exposures remain None)
 
         return products

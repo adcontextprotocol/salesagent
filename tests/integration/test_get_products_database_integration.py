@@ -705,12 +705,12 @@ class TestParallelTestExecution:
                     product_id=f"{test_id}_product_{i}",
                     name=f"Parallel Product {test_id}_{i}",
                     description=f"Product {i} for parallel test {test_id}",
-                    formats=[f"display_{300+i*50}x{250+i*25}"],
+                    formats=[f"display_{300 + i * 50}x{250 + i * 25}"],
                     targeting_template={},
                     delivery_type="non_guaranteed",
                     is_fixed_price=False,
                     cpm=Decimal(f"{5 + i}.00"),
-                    min_spend=Decimal(f"{1000 + i*100}.00"),
+                    min_spend=Decimal(f"{1000 + i * 100}.00"),
                 )
                 session.add(product)
 

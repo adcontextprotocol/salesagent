@@ -872,7 +872,7 @@ class MockAdServer(AdServerAdapter):
         if self.dry_run:
             for i, asset in enumerate(assets):
                 self.log("Would call: MockAdServer.uploadCreative()")
-                self.log(f"  Creative {i+1}:")
+                self.log(f"  Creative {i + 1}:")
                 self.log(f"    'creative_id': '{asset['id']}',")
                 self.log(f"    'name': '{asset['name']}',")
                 self.log(f"    'format': '{asset['format']}',")
@@ -1129,11 +1129,12 @@ class MockAdServer(AdServerAdapter):
     ) -> UpdateMediaBuyResponse:
         """Update media buy in database (Mock adapter implementation)."""
         import logging
+
         from sqlalchemy import select
         from sqlalchemy.orm import attributes
 
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import MediaBuy, MediaPackage
+        from src.core.database.models import MediaPackage
 
         logger = logging.getLogger(__name__)
 
@@ -1141,8 +1142,7 @@ class MockAdServer(AdServerAdapter):
             if action == "update_package_budget" and package_id and budget is not None:
                 # Update package budget in MediaPackage.package_config JSON
                 stmt = select(MediaPackage).where(
-                    MediaPackage.package_id == package_id,
-                    MediaPackage.media_buy_id == media_buy_id
+                    MediaPackage.package_id == package_id, MediaPackage.media_buy_id == media_buy_id
                 )
                 media_package = session.scalars(stmt).first()
                 if media_package:
