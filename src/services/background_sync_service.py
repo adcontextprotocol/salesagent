@@ -347,19 +347,68 @@ def _run_sync_thread(
 
         # Build result summary
         end_time = datetime.now()
+
+        # For incremental sync, also report total counts from database (not just newly synced items)
+        if sync_mode == "incremental":
+            with get_db_session() as db:
+                from sqlalchemy import func
+                from src.core.database.models import GAMInventory, GAMCustomTargetingKey
+
+                # Count total items by inventory_type
+                total_ad_units = db.scalar(
+                    select(func.count())
+                    .select_from(GAMInventory)
+                    .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "ad_unit")
+                ) or 0
+
+                total_placements = db.scalar(
+                    select(func.count())
+                    .select_from(GAMInventory)
+                    .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "placement")
+                ) or 0
+
+                total_labels = db.scalar(
+                    select(func.count())
+                    .select_from(GAMInventory)
+                    .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "label")
+                ) or 0
+
+                total_audience_segments = db.scalar(
+                    select(func.count())
+                    .select_from(GAMInventory)
+                    .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "audience_segment")
+                ) or 0
+
+                total_targeting_keys = db.scalar(
+                    select(func.count())
+                    .select_from(GAMCustomTargetingKey)
+                    .where(GAMCustomTargetingKey.tenant_id == tenant_id)
+                ) or 0
+
+                # For incremental, show both synced count and total count
+                ad_units_summary = {"synced": ad_units_count, "total": total_ad_units}
+                placements_summary = {"synced": placements_count, "total": total_placements}
+                labels_summary = {"synced": labels_count, "total": total_labels}
+                targeting_summary = {"synced": targeting_count, "total_keys": total_targeting_keys, "note": "Values lazy loaded on demand"}
+                segments_summary = {"synced": segments_count, "total": total_audience_segments}
+        else:
+            # For full sync, synced count == total count
+            ad_units_summary = {"total": ad_units_count}
+            placements_summary = {"total": placements_count}
+            labels_summary = {"total": labels_count}
+            targeting_summary = {"total_keys": targeting_count, "note": "Values lazy loaded on demand"}
+            segments_summary = {"total": segments_count}
+
         result = {
             "tenant_id": tenant_id,
             "sync_time": end_time.isoformat(),
             "duration_seconds": (end_time - start_time).total_seconds(),
             "mode": sync_mode,
-            "ad_units": {"total": ad_units_count},
-            "placements": {"total": placements_count},
-            "labels": {"total": labels_count},
-            "custom_targeting": {
-                "total_keys": targeting_count,
-                "note": "Values lazy loaded on demand",
-            },
-            "audience_segments": {"total": segments_count},
+            "ad_units": ad_units_summary,
+            "placements": placements_summary,
+            "labels": labels_summary,
+            "custom_targeting": targeting_summary,
+            "audience_segments": segments_summary,
             "streaming": True,
             "memory_optimized": True,
         }
