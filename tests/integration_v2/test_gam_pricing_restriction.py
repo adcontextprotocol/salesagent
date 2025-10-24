@@ -148,7 +148,7 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
     """Test that GAM adapter rejects CPCV pricing model with clear error."""
     from unittest.mock import MagicMock, patch
 
-    from src.adapters.gam_adapter import GAMAdapter
+    from src.adapters.gam.gam_adapter import GAMAdapter
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
@@ -206,7 +206,7 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
     """Test that GAM adapter accepts CPM pricing model."""
     from unittest.mock import MagicMock, patch
 
-    from src.adapters.gam_adapter import GAMAdapter
+    from src.adapters.gam.gam_adapter import GAMAdapter
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
@@ -260,7 +260,7 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
     """Test that GAM adapter rejects CPP when buyer chooses it from multi-pricing product."""
     from unittest.mock import MagicMock, patch
 
-    from src.adapters.gam_adapter import GAMAdapter
+    from src.adapters.gam.gam_adapter import GAMAdapter
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
@@ -316,7 +316,7 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
     """Test that GAM adapter accepts CPM when buyer chooses it from multi-pricing product."""
     from unittest.mock import MagicMock, patch
 
-    from src.adapters.gam_adapter import GAMAdapter
+    from src.adapters.gam.gam_adapter import GAMAdapter
     from src.core.config_loader import set_current_tenant
 
     start_time = datetime.now(UTC) + timedelta(days=1)
