@@ -364,10 +364,9 @@ def get_gam_advertisers(tenant_id):
                 if not tenant.adapter_config or not tenant.adapter_config.gam_network_code:
                     return jsonify({"error": "GAM network code not configured for this tenant"}), 400
 
-                gam_config = {
-                    "refresh_token": tenant.adapter_config.gam_refresh_token,
-                    "manual_approval_required": tenant.adapter_config.gam_manual_approval_required or False,
-                }
+                # Use build_gam_config_from_adapter to handle both OAuth and service account
+                from src.adapters.gam import build_gam_config_from_adapter
+                gam_config = build_gam_config_from_adapter(tenant.adapter_config)
 
                 adapter = GoogleAdManager(
                     config=gam_config,
