@@ -553,21 +553,25 @@ class WebhookDeliveryService:
 
     def _shutdown(self):
         """Graceful shutdown handler."""
-        logger.info("🛑 WebhookDeliveryService shutting down")
-        with self._lock:
-            active_buys = list(self._sequence_numbers.keys())
-            if active_buys:
-                logger.info(f"📊 Active media buys at shutdown: {active_buys}")
+        try:
+            logger.info("🛑 WebhookDeliveryService shutting down")
+            with self._lock:
+                active_buys = list(self._sequence_numbers.keys())
+                if active_buys:
+                    logger.info(f"📊 Active media buys at shutdown: {active_buys}")
 
-            # Log circuit breaker states
-            open_circuits = [key for key, cb in self._circuit_breakers.items() if cb.state == CircuitState.OPEN]
-            if open_circuits:
-                logger.warning(f"⚠️ Open circuit breakers at shutdown: {open_circuits}")
+                # Log circuit breaker states
+                open_circuits = [key for key, cb in self._circuit_breakers.items() if cb.state == CircuitState.OPEN]
+                if open_circuits:
+                    logger.warning(f"⚠️ Open circuit breakers at shutdown: {open_circuits}")
 
-            # Log queue sizes
-            non_empty_queues = [(key, queue.size()) for key, queue in self._queues.items() if queue.size() > 0]
-            if non_empty_queues:
-                logger.info(f"📦 Non-empty queues at shutdown: {non_empty_queues}")
+                # Log queue sizes
+                non_empty_queues = [(key, queue.size()) for key, queue in self._queues.items() if queue.size() > 0]
+                if non_empty_queues:
+                    logger.info(f"📦 Non-empty queues at shutdown: {non_empty_queues}")
+        except (ValueError, OSError):
+            # Logger stream already closed - this is fine during shutdown
+            pass
 
 
 # Global singleton instance
