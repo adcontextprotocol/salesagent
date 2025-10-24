@@ -39,7 +39,7 @@ class Tenant(Base, JSONValidatorMixin):
 
     tenant_id: Mapped[str] = mapped_column(String(50), primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    subdomain: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    subdomain: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
     virtual_host: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[DateTime] = mapped_column(

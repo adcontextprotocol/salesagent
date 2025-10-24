@@ -320,7 +320,10 @@ def google_callback():
                     flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
 
                     # Redirect to tenant-specific subdomain if accessed via subdomain
+                    # NOTE: Only set tenant.subdomain if DNS is properly configured for *.sales-agent.scope3.com
+                    # Otherwise, leave subdomain=NULL to avoid 404 errors (see SCO-165)
                     if tenant.subdomain and tenant.subdomain != "localhost":
+                        logger.info(f"Redirecting super admin to tenant subdomain: {tenant.subdomain}.sales-agent.scope3.com")
                         return redirect(f"https://{tenant.subdomain}.sales-agent.scope3.com/admin/")
                     else:
                         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
@@ -347,7 +350,10 @@ def google_callback():
                     flash(f"Welcome {user.get('name', email)}!", "success")
 
                     # Redirect to tenant-specific subdomain if accessed via subdomain
+                    # NOTE: Only set tenant.subdomain if DNS is properly configured for *.sales-agent.scope3.com
+                    # Otherwise, leave subdomain=NULL to avoid 404 errors (see SCO-165)
                     if tenant.subdomain and tenant.subdomain != "localhost":
+                        logger.info(f"Redirecting tenant admin to subdomain: {tenant.subdomain}.sales-agent.scope3.com")
                         return redirect(f"https://{tenant.subdomain}.sales-agent.scope3.com/admin/")
                     else:
                         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
@@ -424,9 +430,13 @@ def google_callback():
                 logger.info(f"Redirecting tenant user back to external domain: {external_domain}")
                 return redirect(f"https://{external_domain}/admin/")
             # Redirect to tenant-specific subdomain if accessed via subdomain
+            # NOTE: Only set tenant.subdomain if DNS is properly configured for *.sales-agent.scope3.com
+            # Otherwise, leave subdomain=NULL to avoid 404 errors (see SCO-165)
             elif tenant.subdomain and tenant.subdomain != "localhost" and os.environ.get("PRODUCTION") == "true":
+                logger.info(f"Redirecting to tenant subdomain: {tenant.subdomain}.sales-agent.scope3.com")
                 return redirect(f"https://{tenant.subdomain}.sales-agent.scope3.com/admin/")
             else:
+                # Default: redirect to main admin domain with tenant_id path
                 return redirect(url_for("tenants.dashboard", tenant_id=tenant.tenant_id))
 
         else:
