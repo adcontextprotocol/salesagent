@@ -163,8 +163,8 @@ print(' '.join(map(str, ports)))
         echo "Database adcp_test already exists, continuing..."
     fi
 
-    # Export for tests
-    export DATABASE_URL="postgresql://adcp_user:test_password@localhost:${POSTGRES_PORT}/adcp_test"
+    # Export for tests - MUST match docker-compose.yml POSTGRES_PASSWORD
+    export DATABASE_URL="postgresql://adcp_user:secure_password_change_me@localhost:${POSTGRES_PORT}/adcp_test"
 
     echo -e "${GREEN}✓ Docker stack is ready${NC}"
     echo "  PostgreSQL: localhost:${POSTGRES_PORT}"
