@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import Message, MessageSendParams, Part, Role, Task
+from a2a.types import Message, MessageSendParams, Role, SkillPart, Task
 from sqlalchemy import delete
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
@@ -144,11 +144,9 @@ class TestA2AErrorPropagation:
         return Message(
             role=Role.user,
             parts=[
-                Part(
-                    root={
-                        "type": "skill",
-                        "skill": {"name": skill_name, "arguments": parameters},
-                    }
+                SkillPart(
+                    skill=skill_name,
+                    arguments=parameters,
                 )
             ],
         )

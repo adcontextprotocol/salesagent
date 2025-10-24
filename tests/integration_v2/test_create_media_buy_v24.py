@@ -14,7 +14,7 @@ Key differences from existing tests:
 NOTE: These tests require a database connection with PostgreSQL.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete
