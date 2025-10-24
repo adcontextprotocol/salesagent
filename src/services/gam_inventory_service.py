@@ -653,12 +653,19 @@ class GAMInventoryService:
             raise ValueError(f"Unknown inventory type: {inventory_type}")
 
     def _flush_batch(self, to_insert: list, to_update: list):
-        """Flush a batch of inserts and updates to database.
+        """Flush a batch of inserts and updates to database with timeout.
 
         Args:
             to_insert: List of items to insert
             to_update: List of items to update
         """
+        from src.adapters.gam.utils.timeout_handler import TimeoutError, timeout
+
+        @timeout(seconds=120)  # 2 minute timeout for database operations
+        def _commit_with_timeout():
+            """Commit with timeout to prevent indefinite hangs."""
+            self.db.commit()
+
         try:
             if to_insert:
                 logger.info(f"📝 Starting bulk insert of {len(to_insert)} items...")
@@ -668,9 +675,14 @@ class GAMInventoryService:
                 logger.info(f"📝 Starting bulk update of {len(to_update)} items...")
                 self.db.bulk_update_mappings(GAMInventory, to_update)
                 logger.info(f"✅ Batch updated {len(to_update)} items")
-            logger.info("💾 Committing batch transaction...")
-            self.db.commit()
+            logger.info("💾 Committing batch transaction (120s timeout)...")
+            _commit_with_timeout()
             logger.info("✅ Batch committed successfully")
+        except TimeoutError as e:
+            logger.error(f"⏰ Database commit timed out after 120s: {e}")
+            logger.error(f"   Insert count: {len(to_insert)}, Update count: {len(to_update)}")
+            self.db.rollback()
+            raise TimeoutError("Database commit timed out after 120s - possible lock contention or large transaction")
         except Exception as e:
             logger.error(f"❌ Batch write failed: {e}", exc_info=True)
             logger.error(f"   Insert count: {len(to_insert)}, Update count: {len(to_update)}")
