@@ -670,6 +670,7 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
             adapter_type = config_row.adapter_type
             if adapter_type == "mock":
                 adapter_config["dry_run"] = config_row.mock_dry_run
+                adapter_config["manual_approval_required"] = config_row.mock_manual_approval_required
             elif adapter_type == "google_ad_manager":
                 adapter_config["network_code"] = config_row.gam_network_code
                 adapter_config["refresh_token"] = config_row.gam_refresh_token
@@ -694,6 +695,9 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
                 adapter_config["network_id"] = config_row.kevel_network_id
                 adapter_config["api_key"] = config_row.kevel_api_key
                 adapter_config["manual_approval_required"] = config_row.kevel_manual_approval_required
+            elif adapter_type == "mock":
+                adapter_config["dry_run"] = config_row.mock_dry_run or False
+                adapter_config["manual_approval_required"] = config_row.mock_manual_approval_required or False
             elif adapter_type == "triton":
                 adapter_config["station_id"] = config_row.triton_station_id
                 adapter_config["api_key"] = config_row.triton_api_key
@@ -701,7 +705,8 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
     if not selected_adapter:
         # Default to mock if no adapter specified
         selected_adapter = "mock"
-        adapter_config = {"enabled": True}
+        if not adapter_config:
+            adapter_config = {"enabled": True}
 
     # Create the appropriate adapter instance with tenant_id and testing context
     tenant_id = tenant["tenant_id"]
@@ -1067,12 +1072,19 @@ def _verify_principal(media_buy_id: str, context: Context):
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
 
-    # Query database for media buy
+    # Query database for media buy (try media_buy_id first, then buyer_ref)
     with get_db_session() as session:
         stmt = select(MediaBuyModel).where(
             MediaBuyModel.media_buy_id == media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
         )
         media_buy = session.scalars(stmt).first()
+
+        # If not found by media_buy_id, try buyer_ref (for backwards compatibility)
+        if not media_buy:
+            stmt = select(MediaBuyModel).where(
+                MediaBuyModel.buyer_ref == media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
+            )
+            media_buy = session.scalars(stmt).first()
 
         if not media_buy:
             raise ValueError(f"Media buy '{media_buy_id}' not found.")
@@ -4823,6 +4835,13 @@ async def _create_media_buy_impl(
             adapter.manual_approval_operations if hasattr(adapter, "manual_approval_operations") else []
         )
 
+        # DEBUG: Log manual approval settings
+        logger.info(
+            f"[DEBUG] Manual approval check - required: {manual_approval_required}, "
+            f"operations: {manual_approval_operations}, "
+            f"adapter type: {adapter.__class__.__name__}"
+        )
+
         # Check if auto-creation is disabled in tenant config
         auto_create_enabled = tenant.get("auto_create_media_buys", True)
         product_auto_create = True  # Will be set correctly when we get products later
@@ -4830,7 +4849,9 @@ async def _create_media_buy_impl(
         if manual_approval_required and "create_media_buy" in manual_approval_operations:
             # Update existing workflow step to require approval
             ctx_manager.update_workflow_step(
-                step.step_id, status="requires_approval", step_type="approval", owner="publisher"
+                step.step_id,
+                status="requires_approval",
+                add_comment={"user": "system", "comment": "Manual approval required for media buy creation"}
             )
 
             # Workflow step already created above - no need for separate task
@@ -4879,11 +4900,72 @@ async def _create_media_buy_impl(
             except Exception as e:
                 console.print(f"[yellow]⚠️ Failed to send manual approval Slack notification: {e}[/yellow]")
 
+            # Generate pending package IDs and prepare request with them
+            pending_packages = []
+            raw_request_dict = req.model_dump(mode="json")  # Serialize datetimes to JSON-compatible format
+
+            for idx, pkg in enumerate(req.packages, 1):
+                pending_package_id = f"{pending_media_buy_id}_pkg_{idx}"
+                # Use product_id or buyer_ref for package name since Package schema doesn't have 'name'
+                pkg_name = f"Package {idx}"
+                if pkg.product_id:
+                    pkg_name = f"{pkg.product_id} - Package {idx}"
+                elif pkg.buyer_ref:
+                    pkg_name = f"{pkg.buyer_ref} - Package {idx}"
+
+                pending_packages.append({
+                    "package_id": pending_package_id,
+                    "name": pkg_name,
+                    "status": "pending_approval",
+                })
+
+                # Update the package in raw_request with the generated package_id so UI can find it
+                raw_request_dict["packages"][idx - 1]["package_id"] = pending_package_id
+
+            # Create a pending media buy record in the database so it shows in the UI
+            with get_db_session() as session:
+                pending_buy = MediaBuy(
+                    media_buy_id=pending_media_buy_id,
+                    buyer_ref=req.buyer_ref,
+                    principal_id=principal.principal_id,
+                    tenant_id=tenant["tenant_id"],
+                    status="pending_approval",
+                    order_name=f"Pending Order - {req.buyer_ref}",
+                    advertiser_name=principal.name,
+                    budget=total_budget,
+                    currency=request_currency or "USD",  # Use request_currency from validation above
+                    start_date=start_time.date(),
+                    end_date=end_time.date(),
+                    start_time=start_time,
+                    end_time=end_time,
+                    raw_request=raw_request_dict,  # Now includes package_id in each package
+                    created_at=datetime.now(UTC),
+                )
+                session.add(pending_buy)
+                session.commit()
+                console.print(f"[green]✅ Created pending media buy {pending_media_buy_id} for approval[/green]")
+
+            # Link the workflow step to the media buy so the approval button shows in UI
+            with get_db_session() as session:
+                from src.core.database.models import ObjectWorkflowMapping
+                mapping = ObjectWorkflowMapping(
+                    object_type="media_buy",
+                    object_id=pending_media_buy_id,
+                    step_id=step.step_id,
+                    action="create"
+                )
+                session.add(mapping)
+                session.commit()
+                console.print(f"[green]✅ Linked workflow step {step.step_id} to media buy[/green]")
+
+            # Return success response with pending packages
+            # The workflow_step_id in packages indicates approval is required
             return CreateMediaBuyResponse(
                 buyer_ref=req.buyer_ref,
                 media_buy_id=pending_media_buy_id,
                 creative_deadline=None,
-                errors=[{"code": "APPROVAL_REQUIRED", "message": response_msg}],
+                packages=pending_packages,
+                workflow_step_id=step.step_id,  # Client can track approval via this ID
             )
 
         # Get products for the media buy to check product-level auto-creation settings
@@ -5192,6 +5274,41 @@ async def _create_media_buy_impl(
             )
             session.add(new_media_buy)
             session.commit()
+
+        # Populate media_packages table for structured querying
+        # This enables creative_assignments to work properly
+        if req.packages or (response.packages and len(response.packages) > 0):
+            with get_db_session() as session:
+                from src.core.database.models import MediaPackage as DBMediaPackage
+
+                # Use response packages if available (has package_ids), otherwise generate from request
+                packages_to_save = response.packages if response.packages else []
+
+                for i, resp_package in enumerate(packages_to_save):
+                    # Extract package_id from response
+                    package_id = resp_package.get("package_id") or f"{response.media_buy_id}_pkg_{i+1}"
+
+                    # Store full package config as JSON
+                    package_config = {
+                        "package_id": package_id,
+                        "product_id": resp_package.get("product_id"),
+                        "budget": resp_package.get("budget"),
+                        "targeting_overlay": resp_package.get("targeting_overlay"),
+                        "creative_ids": resp_package.get("creative_ids"),
+                        "creative_assignments": resp_package.get("creative_assignments"),
+                        "format_ids_to_provide": resp_package.get("format_ids_to_provide"),
+                        "status": resp_package.get("status"),
+                    }
+
+                    db_package = DBMediaPackage(
+                        media_buy_id=response.media_buy_id,
+                        package_id=package_id,
+                        package_config=package_config,
+                    )
+                    session.add(db_package)
+
+                session.commit()
+                logger.info(f"Saved {len(packages_to_save)} packages to media_packages table for media_buy {response.media_buy_id}")
 
         # Handle creative_ids in packages if provided (immediate association)
         if req.packages:
@@ -5961,13 +6078,51 @@ def _update_media_buy_impl(
 
             # Handle creative_ids updates (AdCP v2.2.0+)
             if pkg_update.creative_ids is not None:
+                # Validate package_id is provided
+                if not pkg_update.package_id:
+                    error_msg = "package_id is required when updating creative_ids"
+                    ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+                    return UpdateMediaBuyResponse(
+                        media_buy_id=req.media_buy_id or "",
+                        buyer_ref=req.buyer_ref or "",
+                        errors=[{"code": "missing_package_id", "message": error_msg}],
+                    )
+
                 from sqlalchemy import select
 
                 from src.core.database.database_session import get_db_session
                 from src.core.database.models import Creative as DBCreative
                 from src.core.database.models import CreativeAssignment as DBAssignment
+                from src.core.database.models import MediaBuy as MediaBuyModel
 
                 with get_db_session() as session:
+                    # Resolve media_buy_id (might be buyer_ref)
+                    mb_stmt = select(MediaBuyModel).where(
+                        MediaBuyModel.media_buy_id == req.media_buy_id,
+                        MediaBuyModel.tenant_id == tenant["tenant_id"]
+                    )
+                    media_buy_obj = session.scalars(mb_stmt).first()
+
+                    # Try buyer_ref if not found
+                    if not media_buy_obj:
+                        mb_stmt = select(MediaBuyModel).where(
+                            MediaBuyModel.buyer_ref == req.media_buy_id,
+                            MediaBuyModel.tenant_id == tenant["tenant_id"]
+                        )
+                        media_buy_obj = session.scalars(mb_stmt).first()
+
+                    if not media_buy_obj:
+                        error_msg = f"Media buy '{req.media_buy_id}' not found"
+                        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+                        return UpdateMediaBuyResponse(
+                            media_buy_id=req.media_buy_id or "",
+                            buyer_ref=req.buyer_ref or "",
+                            errors=[{"code": "media_buy_not_found", "message": error_msg}],
+                        )
+
+                    # Use the actual internal media_buy_id
+                    actual_media_buy_id = media_buy_obj.media_buy_id
+
                     # Validate all creative IDs exist
                     creative_stmt = select(DBCreative).where(
                         DBCreative.tenant_id == tenant["tenant_id"],
@@ -5989,7 +6144,7 @@ def _update_media_buy_impl(
                     # Get existing assignments for this package
                     assignment_stmt = select(DBAssignment).where(
                         DBAssignment.tenant_id == tenant["tenant_id"],
-                        DBAssignment.media_buy_id == req.media_buy_id,
+                        DBAssignment.media_buy_id == actual_media_buy_id,
                         DBAssignment.package_id == pkg_update.package_id,
                     )
                     existing_assignments = session.scalars(assignment_stmt).all()
@@ -6013,7 +6168,7 @@ def _update_media_buy_impl(
                         assignment = DBAssignment(
                             assignment_id=assignment_id,
                             tenant_id=tenant["tenant_id"],
-                            media_buy_id=req.media_buy_id,
+                            media_buy_id=actual_media_buy_id,
                             package_id=pkg_update.package_id,
                             creative_id=creative_id,
                         )

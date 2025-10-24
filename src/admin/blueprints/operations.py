@@ -296,8 +296,47 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                 )
                 attributes.flag_modified(step, "comments")
 
-                db_session.commit()
-                flash("Media buy approved successfully", "success")
+                # Get the media buy and update status
+                from src.core.database.models import MediaBuy, PushNotificationConfig
+
+                stmt_buy = select(MediaBuy).filter_by(media_buy_id=media_buy_id, tenant_id=tenant_id)
+                media_buy = db_session.scalars(stmt_buy).first()
+
+                if media_buy and media_buy.status == "pending_approval":
+                    # Update media buy status to scheduled
+                    media_buy.status = "scheduled"
+                    media_buy.approved_at = datetime.now(UTC)
+                    media_buy.approved_by = user_email
+                    db_session.commit()
+
+                    # Send webhook notification to buyer
+                    stmt_webhook = select(PushNotificationConfig).filter_by(
+                        tenant_id=tenant_id,
+                        principal_id=media_buy.principal_id,
+                        is_active=True
+                    ).order_by(PushNotificationConfig.created_at.desc())
+                    webhook_config = db_session.scalars(stmt_webhook).first()
+
+                    if webhook_config:
+                        import requests
+                        webhook_payload = {
+                            "event": "media_buy_approved",
+                            "media_buy_id": media_buy_id,
+                            "buyer_ref": media_buy.buyer_ref,
+                            "status": "scheduled",
+                            "approved_at": media_buy.approved_at.isoformat(),
+                            "approved_by": user_email,
+                        }
+                        try:
+                            requests.post(webhook_config.url, json=webhook_payload, timeout=10)
+                            logger.info(f"Sent webhook notification for approved media buy {media_buy_id}")
+                        except Exception as webhook_err:
+                            logger.warning(f"Failed to send webhook notification: {webhook_err}")
+
+                    flash("Media buy approved and scheduled successfully", "success")
+                else:
+                    db_session.commit()
+                    flash("Media buy approved successfully", "success")
 
             elif action == "reject":
                 step.status = "rejected"

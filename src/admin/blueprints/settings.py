@@ -351,9 +351,12 @@ def update_adapter(tenant_id):
             elif new_adapter == "mock":
                 if request.is_json:
                     dry_run = request.json.get("mock_dry_run", False)
+                    manual_approval = request.json.get("mock_manual_approval", False)
                 else:
                     dry_run = request.form.get("mock_dry_run") == "on"
+                    manual_approval = request.form.get("mock_manual_approval") == "on"
                 adapter_config_obj.mock_dry_run = dry_run
+                adapter_config_obj.mock_manual_approval_required = manual_approval
 
             # Update the tenant
             tenant.ad_server = new_adapter
@@ -877,10 +880,18 @@ def update_business_rules(tenant_id):
 
             # Update approval workflow
             if "human_review_required" in data:
-                tenant.human_review_required = data.get("human_review_required") in [True, "true", "on", 1, "1"]
+                manual_approval_value = data.get("human_review_required") in [True, "true", "on", 1, "1"]
+                tenant.human_review_required = manual_approval_value
+
+                # Also update the adapter's manual approval setting if using Mock adapter
+                if tenant.adapter_config and tenant.adapter_config.adapter_type == "mock":
+                    tenant.adapter_config.mock_manual_approval_required = manual_approval_value
             elif not request.is_json:
                 # Checkbox not present in form data means unchecked
                 tenant.human_review_required = False
+                # Also update Mock adapter setting if applicable
+                if tenant.adapter_config and tenant.adapter_config.adapter_type == "mock":
+                    tenant.adapter_config.mock_manual_approval_required = False
 
             # Update creative review settings
             if "approval_mode" in data:
