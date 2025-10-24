@@ -185,17 +185,34 @@ def get_tenant_by_id(tenant_id: str) -> dict[str, Any] | None:
 
 def get_tenant_by_virtual_host(virtual_host: str) -> dict[str, Any] | None:
     """Get tenant by virtual host."""
+    from rich.console import Console
+    console = Console()
+
+    console.print(f"[blue]🔍 get_tenant_by_virtual_host called with: {virtual_host}[/blue]")
     try:
         with get_db_session() as db_session:
             stmt = select(Tenant).filter_by(virtual_host=virtual_host, is_active=True)
+            console.print(f"[blue]  Executing query: {stmt}[/blue]")
             tenant = db_session.scalars(stmt).first()
+            console.print(f"[blue]  Query result: {tenant}[/blue]")
 
             if tenant:
                 from src.core.utils.tenant_utils import serialize_tenant_to_dict
+                result = serialize_tenant_to_dict(tenant)
+                console.print(f"[green]  ✅ Found tenant: {result.get('tenant_id')} (subdomain: {result.get('subdomain')})[/green]")
+                return result
+            console.print(f"[yellow]  ⚠️ No tenant found with virtual_host={virtual_host}[/yellow]")
 
-                return serialize_tenant_to_dict(tenant)
+            # Debug: Check what tenants exist
+            all_tenants_stmt = select(Tenant).where(Tenant.is_active == True)
+            all_tenants = db_session.scalars(all_tenants_stmt).all()
+            console.print(f"[blue]  Total active tenants in database: {len(all_tenants)}[/blue]")
+            for t in all_tenants:
+                console.print(f"[blue]    - {t.subdomain} (virtual_host: {t.virtual_host})[/blue]")
+
             return None
     except Exception as e:
+        console.print(f"[red]  ❌ Exception in get_tenant_by_virtual_host: {type(e).__name__}: {e}[/red]")
         # If table doesn't exist or other DB errors, return None
         if "no such table" in str(e) or "does not exist" in str(e):
             return None
