@@ -47,9 +47,9 @@ class Error(BaseModel):
         str | None, Field(description="Field path associated with the error (e.g., 'packages[0].targeting')")
     ] = None
     suggestion: Annotated[str | None, Field(description="Suggested fix for the error")] = None
-    retry_after: Annotated[
-        float | None, Field(description="Seconds to wait before retrying the operation", ge=0.0)
-    ] = None
+    retry_after: Annotated[float | None, Field(description="Seconds to wait before retrying the operation", ge=0.0)] = (
+        None
+    )
     details: Annotated[Any | None, Field(description="Additional task-specific error details")] = None
 
 
@@ -101,6 +101,5 @@ class ListAuthorizedPropertiesResponse(BaseModel):
         ),
     ] = None
     errors: Annotated[
-        list[Error] | None,
-        Field(description="Task-specific errors and warnings (e.g., property availability issues)"),
+        list[Error] | None, Field(description="Task-specific errors and warnings (e.g., property availability issues)")
     ] = None

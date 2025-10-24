@@ -262,9 +262,7 @@ class Colors(BaseModel):
 class Fonts(BaseModel):
     primary: Annotated[str | None, Field(description="Primary font family name")] = None
     secondary: Annotated[str | None, Field(description="Secondary font family name")] = None
-    font_urls: Annotated[list[AnyUrl] | None, Field(description="URLs to web font files if using custom fonts")] = (
-        None
-    )
+    font_urls: Annotated[list[AnyUrl] | None, Field(description="URLs to web font files if using custom fonts")] = None
 
 
 class AssetType(Enum):
@@ -282,8 +280,7 @@ class Asset(BaseModel):
     asset_type: Annotated[AssetType, Field(description="Type of asset")]
     url: Annotated[AnyUrl, Field(description="URL to CDN-hosted asset file")]
     tags: Annotated[
-        list[str] | None,
-        Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')"),
+        list[str] | None, Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')")
     ] = None
     name: Annotated[str | None, Field(description="Human-readable asset name")] = None
     description: Annotated[str | None, Field(description="Asset description or usage notes")] = None
@@ -319,9 +316,7 @@ class ProductCatalog(BaseModel):
     categories: Annotated[
         list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = (
-        None
-    )
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
     update_frequency: Annotated[
         UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
@@ -343,9 +338,7 @@ class Contact(BaseModel):
 
 class Metadata(BaseModel):
     created_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was created")] = None
-    updated_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was last updated")] = (
-        None
-    )
+    updated_date: Annotated[AwareDatetime | None, Field(description="When this brand manifest was last updated")] = None
     version: Annotated[str | None, Field(description="Brand card version number")] = None
 
 
@@ -385,8 +378,7 @@ class BrandManifest(BaseModel):
         ),
     ] = None
     disclaimers: Annotated[
-        list[Disclaimer] | None,
-        Field(description="Legal disclaimers or required text that must appear in creatives"),
+        list[Disclaimer] | None, Field(description="Legal disclaimers or required text that must appear in creatives")
     ] = None
     industry: Annotated[
         str | None, Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")
@@ -404,8 +396,7 @@ class Asset5(BaseModel):
     asset_type: Annotated[AssetType, Field(description="Type of asset")]
     url: Annotated[AnyUrl, Field(description="URL to CDN-hosted asset file")]
     tags: Annotated[
-        list[str] | None,
-        Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')"),
+        list[str] | None, Field(description="Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')")
     ] = None
     name: Annotated[str | None, Field(description="Human-readable asset name")] = None
     description: Annotated[str | None, Field(description="Asset description or usage notes")] = None
@@ -428,9 +419,7 @@ class ProductCatalog5(BaseModel):
     categories: Annotated[
         list[str] | None, Field(description="Product categories available in the catalog (for filtering)")
     ] = None
-    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = (
-        None
-    )
+    last_updated: Annotated[AwareDatetime | None, Field(description="When the product catalog was last updated")] = None
     update_frequency: Annotated[
         UpdateFrequency | None, Field(description="How frequently the product catalog is updated")
     ] = None
@@ -472,8 +461,7 @@ class BrandManifest4(BaseModel):
         ),
     ] = None
     disclaimers: Annotated[
-        list[Disclaimer] | None,
-        Field(description="Legal disclaimers or required text that must appear in creatives"),
+        list[Disclaimer] | None, Field(description="Legal disclaimers or required text that must appear in creatives")
     ] = None
     industry: Annotated[
         str | None, Field(description="Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')")
@@ -636,7 +624,19 @@ class CreativeAsset(BaseModel):
     assets: Annotated[
         dict[
             str,
-            Assets | Assets1 | Assets2 | Assets3 | Assets4 | Assets5 | Assets6 | Assets7 | Assets8 | Assets9 | Assets10 | Assets11 | Assets12,
+            Assets
+            | Assets1
+            | Assets2
+            | Assets3
+            | Assets4
+            | Assets5
+            | Assets6
+            | Assets7
+            | Assets8
+            | Assets9
+            | Assets10
+            | Assets11
+            | Assets12,
         ],
         Field(description="Assets required by the format, keyed by asset_role"),
     ]
@@ -644,9 +644,7 @@ class CreativeAsset(BaseModel):
         list[Input] | None,
         Field(description="Preview contexts for generative formats - defines what scenarios to generate previews for"),
     ] = None
-    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = (
-        None
-    )
+    tags: Annotated[list[str] | None, Field(description="User-defined tags for organization and searchability")] = None
     approved: Annotated[
         bool | None,
         Field(

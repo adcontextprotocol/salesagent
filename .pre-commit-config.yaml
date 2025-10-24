@@ -238,13 +238,8 @@ repos:
         pass_filenames: false
 
       # Check generated schemas are in sync with JSON schemas
-      - id: check-generated-schemas
-        name: Check generated schemas match JSON schemas
-        entry: uv run python scripts/check_generated_schemas_sync.py
-        language: system
-        files: '^(tests/e2e/schemas/v1/.*\.json|src/core/schemas_generated/.*\.py)$'
-        pass_filenames: false
-        always_run: false  # Only when schemas change
+      # NOTE: Removed this hook - script doesn't exist and check_schema_sync.py
+      # already validates schema alignment (runs on every commit via adcp-schema-sync)
 
       # Test MCP endpoints (requires server running)
       - id: mcp-endpoint-tests
