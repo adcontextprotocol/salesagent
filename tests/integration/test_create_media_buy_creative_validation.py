@@ -52,6 +52,7 @@ def test_create_media_buy_rejects_missing_creatives(integration_db):
             tenant_id="test_tenant",
             tag_id="all_inventory",
             name="All Inventory",
+            description="All available inventory",
         )
         session.add(property_tag)
 
@@ -170,6 +171,7 @@ def test_create_media_buy_accepts_existing_creatives(integration_db):
             tenant_id="test_tenant",
             tag_id="all_inventory",
             name="All Inventory",
+            description="All available inventory",
         )
         session.add(property_tag)
 
@@ -202,8 +204,9 @@ def test_create_media_buy_accepts_existing_creatives(integration_db):
             tenant_id="test_tenant",
             principal_id="test_principal",
             name="Creative 1",
-            creative_type="display",
-            status="ready",
+            format="display_300x250",
+            agent_url="https://creative.adcontextprotocol.org/",
+            status="approved",
             data={"platform_creative_id": "gam_123"},
         )
         creative2 = DBCreative(
@@ -211,8 +214,9 @@ def test_create_media_buy_accepts_existing_creatives(integration_db):
             tenant_id="test_tenant",
             principal_id="test_principal",
             name="Creative 2",
-            creative_type="display",
-            status="ready",
+            format="display_300x250",
+            agent_url="https://creative.adcontextprotocol.org/",
+            status="approved",
             data={"platform_creative_id": "gam_456"},
         )
         session.add_all([creative1, creative2])
@@ -311,6 +315,7 @@ def test_create_media_buy_rejects_partial_missing_creatives(integration_db):
             tenant_id="test_tenant",
             tag_id="all_inventory",
             name="All Inventory",
+            description="All available inventory",
         )
         session.add(property_tag)
 
@@ -343,8 +348,9 @@ def test_create_media_buy_rejects_partial_missing_creatives(integration_db):
             tenant_id="test_tenant",
             principal_id="test_principal",
             name="Creative 1",
-            creative_type="display",
-            status="ready",
+            format="display_300x250",
+            agent_url="https://creative.adcontextprotocol.org/",
+            status="approved",
             data={"platform_creative_id": "gam_123"},
         )
         session.add(creative1)
