@@ -272,4 +272,4 @@ class TestParameterToSchemaMapping:
         assert req.start_time is not None
         assert req.end_time is not None
         assert req.budget is not None
-        assert req.budget.total == 10000.0
+        assert req.budget == 10000.0  # Per AdCP v2.2.0, budget is a number
