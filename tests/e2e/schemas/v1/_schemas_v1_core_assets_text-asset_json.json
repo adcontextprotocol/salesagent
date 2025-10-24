@@ -5,18 +5,9 @@
   "description": "Text content asset",
   "type": "object",
   "properties": {
-    "asset_type": {
-      "type": "string",
-      "const": "text"
-    },
     "content": {
       "type": "string",
       "description": "Text content"
-    },
-    "max_length": {
-      "type": "integer",
-      "description": "Maximum character length constraint",
-      "minimum": 1
     },
     "language": {
       "type": "string",
@@ -24,7 +15,6 @@
     }
   },
   "required": [
-    "asset_type",
     "content"
   ],
   "additionalProperties": false

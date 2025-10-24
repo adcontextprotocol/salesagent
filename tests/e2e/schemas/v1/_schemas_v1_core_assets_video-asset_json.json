@@ -5,10 +5,6 @@
   "description": "Video asset with URL and specifications",
   "type": "object",
   "properties": {
-    "asset_type": {
-      "type": "string",
-      "const": "video"
-    },
     "url": {
       "type": "string",
       "format": "uri",
@@ -40,7 +36,6 @@
     }
   },
   "required": [
-    "asset_type",
     "url"
   ],
   "additionalProperties": false

@@ -5,10 +5,6 @@
   "description": "HTML content asset",
   "type": "object",
   "properties": {
-    "asset_type": {
-      "type": "string",
-      "const": "html"
-    },
     "content": {
       "type": "string",
       "description": "HTML content"
@@ -19,7 +15,6 @@
     }
   },
   "required": [
-    "asset_type",
     "content"
   ],
   "additionalProperties": false

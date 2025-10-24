@@ -5,10 +5,6 @@
   "description": "CSS stylesheet asset",
   "type": "object",
   "properties": {
-    "asset_type": {
-      "type": "string",
-      "const": "css"
-    },
     "content": {
       "type": "string",
       "description": "CSS content"
@@ -19,7 +15,6 @@
     }
   },
   "required": [
-    "asset_type",
     "content"
   ],
   "additionalProperties": false

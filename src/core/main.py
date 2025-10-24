@@ -75,6 +75,7 @@ from src.core.schema_adapters import (
 )
 from src.core.schema_helpers import create_get_products_request
 from src.core.schemas import (
+    Budget,
     CreateHumanTaskResponse,
     CreateMediaBuyRequest,
     Creative,
@@ -83,6 +84,7 @@ from src.core.schemas import (
     CreativeStatus,
     DeliveryTotals,
     Error,
+    FormatId,
     GetMediaBuyDeliveryRequest,
     GetSignalsRequest,
     HumanTask,
@@ -5460,6 +5462,42 @@ async def _create_media_buy_impl(
                     else:
                         package_budget = float(budget)
 
+                # Convert format_ids to FormatId objects if needed (E2E test compatibility)
+                # MediaPackage expects list[FormatId], but request may contain strings or dicts
+                format_ids_for_package = []
+                for fmt in format_ids_to_use:
+                    if isinstance(fmt, FormatId):
+                        # Already a FormatId object
+                        format_ids_for_package.append(fmt)
+                    elif isinstance(fmt, dict):
+                        # Dict from JSON - convert to FormatId
+                        format_ids_for_package.append(FormatId(**fmt))
+                    elif isinstance(fmt, str):
+                        # Legacy string format - convert to FormatId with default agent_url
+                        # Use current tenant's URL as agent_url
+                        agent_url = tenant.get("virtual_host", "http://localhost:8001")
+                        format_ids_for_package.append(FormatId(agent_url=agent_url, id=fmt))
+                    else:
+                        # Unknown type - try to extract fields
+                        agent_url = getattr(fmt, "agent_url", None)
+                        format_id = getattr(fmt, "id", None) or getattr(fmt, "format_id", None)
+                        if agent_url and format_id:
+                            format_ids_for_package.append(FormatId(agent_url=agent_url, id=format_id))
+
+                # Convert budget to Budget object if needed (E2E test compatibility)
+                # MediaPackage expects Optional[Budget], but request may contain float or dict
+                budget_for_package = None
+                if budget:
+                    if isinstance(budget, Budget):
+                        # Already a Budget object
+                        budget_for_package = budget
+                    elif isinstance(budget, dict):
+                        # Dict from JSON - convert to Budget
+                        budget_for_package = Budget(**budget)
+                    elif isinstance(budget, int | float):
+                        # Plain number - convert to Budget with request currency
+                        budget_for_package = Budget(total=float(budget), currency=request_currency)
+
                 packages.append(
                     MediaPackage(
                         package_id=package_id,
@@ -5467,11 +5505,11 @@ async def _create_media_buy_impl(
                         delivery_type=product.delivery_type,
                         cpm=cpm,
                         impressions=int(package_budget / cpm * 1000),
-                        format_ids=format_ids_to_use,
+                        format_ids=format_ids_for_package,
                         targeting_overlay=targeting_overlay,
                         buyer_ref=buyer_ref,
                         product_id=product.product_id,  # Include product_id
-                        budget=budget,  # Include budget from request
+                        budget=budget_for_package,  # Include budget from request
                     )
                 )
         else:
@@ -5492,6 +5530,22 @@ async def _create_media_buy_impl(
 
                 package_id = f"pkg_{product.product_id}_{secrets.token_hex(4)}_{idx}"
 
+                # Convert format_ids to FormatId objects if needed (E2E test compatibility)
+                format_ids_for_package = []
+                for fmt in format_ids_to_use:
+                    if isinstance(fmt, FormatId):
+                        format_ids_for_package.append(fmt)
+                    elif isinstance(fmt, dict):
+                        format_ids_for_package.append(FormatId(**fmt))
+                    elif isinstance(fmt, str):
+                        agent_url = tenant.get("virtual_host", "http://localhost:8001")
+                        format_ids_for_package.append(FormatId(agent_url=agent_url, id=fmt))
+                    else:
+                        agent_url = getattr(fmt, "agent_url", None)
+                        format_id = getattr(fmt, "id", None) or getattr(fmt, "format_id", None)
+                        if agent_url and format_id:
+                            format_ids_for_package.append(FormatId(agent_url=agent_url, id=format_id))
+
                 packages.append(
                     MediaPackage(
                         package_id=package_id,
@@ -5499,7 +5553,7 @@ async def _create_media_buy_impl(
                         delivery_type=product.delivery_type,
                         cpm=cpm,
                         impressions=int(total_budget / cpm * 1000),
-                        format_ids=format_ids_to_use,
+                        format_ids=format_ids_for_package,
                         targeting_overlay=None,
                         buyer_ref=None,
                         product_id=product.product_id,
@@ -7424,6 +7478,18 @@ def complete_task(req, context):
                             if first_option.rate:
                                 cpm = float(first_option.rate)
 
+                        # Convert format_id to FormatId object if needed
+                        format_ids_for_package = []
+                        if first_format_id:
+                            if isinstance(first_format_id, FormatId):
+                                format_ids_for_package.append(first_format_id)
+                            elif isinstance(first_format_id, dict):
+                                format_ids_for_package.append(FormatId(**first_format_id))
+                            elif isinstance(first_format_id, str):
+                                tenant = get_current_tenant()
+                                agent_url = tenant.get("virtual_host", "http://localhost:8001")
+                                format_ids_for_package.append(FormatId(agent_url=agent_url, id=first_format_id))
+
                         packages.append(
                             MediaPackage(
                                 package_id=product.product_id,
@@ -7431,7 +7497,7 @@ def complete_task(req, context):
                                 delivery_type=product.delivery_type,
                                 cpm=cpm,
                                 impressions=int(original_req.total_budget / cpm * 1000),
-                                format_ids=[first_format_id] if first_format_id else [],
+                                format_ids=format_ids_for_package,
                             )
                         )
 

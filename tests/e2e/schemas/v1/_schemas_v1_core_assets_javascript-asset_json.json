@@ -5,10 +5,6 @@
   "description": "JavaScript code asset",
   "type": "object",
   "properties": {
-    "asset_type": {
-      "type": "string",
-      "const": "javascript"
-    },
     "content": {
       "type": "string",
       "description": "JavaScript content"
@@ -24,7 +20,6 @@
     }
   },
   "required": [
-    "asset_type",
     "content"
   ],
   "additionalProperties": false
