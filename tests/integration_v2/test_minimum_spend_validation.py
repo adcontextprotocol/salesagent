@@ -158,6 +158,23 @@ class TestMinimumSpendValidation:
                 delivery_type="guaranteed",
             )
 
+            # Create product with GBP pricing (for test_no_minimum_when_not_set)
+            product_gbp = create_test_product_with_pricing(
+                session=session,
+                tenant_id="test_minspend_tenant",
+                product_id="prod_global_gbp",
+                name="Product With GBP Pricing",
+                description="Uses GBP pricing, no minimum override",
+                pricing_model="CPM",
+                rate="8.00",
+                is_fixed=True,
+                currency="GBP",
+                min_spend_per_package=None,  # No override, will use currency limit (which has no minimum for GBP)
+                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                targeting_template={},
+                delivery_type="guaranteed",
+            )
+
             session.commit()
 
             # Set current tenant
@@ -407,7 +424,7 @@ class TestMinimumSpendValidation:
             packages=[
                 Package(
                     buyer_ref="minspend_test_7",
-                    product_id="prod_global",
+                    product_id="prod_global_gbp",  # Use GBP product
                     budget=Budget(total=100.0, currency="GBP"),  # Low budget, but no minimum for GBP
                 )
             ],
