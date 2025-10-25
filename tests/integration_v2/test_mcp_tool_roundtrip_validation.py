@@ -32,6 +32,7 @@ from src.core.testing_hooks import TestingContext, apply_testing_hooks
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
+@pytest.mark.requires_db
 class TestMCPToolRoundtripValidation:
     """Test MCP tools with real objects to catch roundtrip conversion bugs."""
 
