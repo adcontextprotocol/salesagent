@@ -69,6 +69,7 @@ def main():
             # Write back to file
             with open(schema_file, "w") as f:
                 json.dump(schema, f, indent=2)
+                f.write("\n")  # Add trailing newline for pre-commit compatibility
 
             total_changed += 1
             print("    ✅ Updated\n")

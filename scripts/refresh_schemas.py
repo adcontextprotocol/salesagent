@@ -48,6 +48,7 @@ def download_schema(url: str, output_path: Path) -> bool:
         # Save to cache
         with open(output_path, "w") as f:
             json.dump(schema, f, indent=2)
+            f.write("\n")  # Add trailing newline for pre-commit compatibility
 
         return True
 
