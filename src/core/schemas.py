@@ -2219,7 +2219,9 @@ class Package(BaseModel):
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(AdCPBaseModel):
     # Required AdCP v2.2.0 fields (per https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
-    buyer_ref: str = Field(..., description="Buyer reference for tracking (REQUIRED per AdCP spec)")
+    buyer_ref: str | None = Field(
+        None, description="Buyer reference for tracking (optional, buyer-provided identifier)"
+    )
     brand_manifest: "BrandManifest | str" = Field(
         ...,
         description="Brand information manifest (inline object or URL string). REQUIRED per AdCP v2.2.0 spec.",
@@ -2305,7 +2307,7 @@ class CreateMediaBuyRequest(AdCPBaseModel):
                     {
                         "package_id": f"pkg_{i}_{package_uuid}",  # Server-generated per AdCP spec
                         # buyer_ref is NOT auto-generated - it's the buyer's identifier
-                        "products": [pid],
+                        "product_id": pid,  # Use product_id (singular) per current validation
                         "status": "draft",  # Server sets initial status per AdCP package schema
                     }
                 )

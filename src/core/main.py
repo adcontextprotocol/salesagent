@@ -867,7 +867,9 @@ context_mgr = ContextManager()
 
 # --- Adapter Configuration ---
 # Get adapter from config, fallback to mock
-SELECTED_ADAPTER = ((config.get("ad_server", {}).get("adapter") or "mock") if config else "mock").lower()  # noqa: F841 - used below for adapter selection
+SELECTED_ADAPTER = (
+    (config.get("ad_server", {}).get("adapter") or "mock") if config else "mock"
+).lower()  # noqa: F841 - used below for adapter selection
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
 # --- In-Memory State (already initialized above, just adding context_map) ---
@@ -3809,19 +3811,9 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
     if req.max_results:
         signals = signals[: req.max_results]
 
-    # Generate message (required field in adapter schema)
-    count = len(signals)
-    if count == 0:
-        message = "No signals matched your query."
-    elif count == 1:
-        message = "Found 1 signal matching your query."
-    else:
-        message = f"Found {count} signals matching your query."
-
-    # Generate context_id (required field)
-    context_id = f"signals_{uuid.uuid4().hex[:12]}"
-
-    return GetSignalsResponse(message=message, context_id=context_id, signals=signals)
+    # Return response with domain data only
+    # Protocol fields (message, context_id) are added by protocol layer per AdCP PR #113
+    return GetSignalsResponse(signals=signals)
 
 
 @mcp.tool()
@@ -5091,9 +5083,9 @@ async def _create_media_buy_impl(
                                 {
                                     "product_id": req_pkg.product_id,
                                     "budget": req_pkg.budget.model_dump() if req_pkg.budget else None,
-                                    "targeting_overlay": req_pkg.targeting_overlay.model_dump()
-                                    if req_pkg.targeting_overlay
-                                    else None,
+                                    "targeting_overlay": (
+                                        req_pkg.targeting_overlay.model_dump() if req_pkg.targeting_overlay else None
+                                    ),
                                     "creative_ids": req_pkg.creative_ids,
                                     "format_ids_to_provide": req_pkg.format_ids_to_provide,
                                 }
@@ -5422,9 +5414,11 @@ async def _create_media_buy_impl(
                     cpm=cpm,
                     impressions=int(total_budget / cpm * 1000),
                     format_ids=format_ids_to_use,
-                    targeting_overlay=matching_package.targeting_overlay
-                    if matching_package and hasattr(matching_package, "targeting_overlay")
-                    else None,
+                    targeting_overlay=(
+                        matching_package.targeting_overlay
+                        if matching_package and hasattr(matching_package, "targeting_overlay")
+                        else None
+                    ),
                     buyer_ref=buyer_ref,
                     product_id=product.product_id,  # Include product_id
                     budget=budget,  # Include budget from request

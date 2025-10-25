@@ -367,7 +367,7 @@ class TestA2ASkillInvocation:
                 "packages": [
                     {
                         "buyer_ref": f"pkg_{sample_products[0]}",
-                        "products": [sample_products[0]],
+                        "product_id": sample_products[0],  # Use product_id per AdCP spec
                         "budget": {"total": 10000.0, "currency": "USD"},
                     }
                 ],
@@ -617,6 +617,32 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_update_media_buy_skill(self, handler, sample_tenant, sample_principal, sample_products, validator):
         """Test update_media_buy skill invocation."""
+        # Create a media buy in database first
+        from datetime import UTC, datetime, timedelta
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import MediaBuy
+
+        start_date = datetime.now(UTC) + timedelta(days=1)
+        end_date = start_date + timedelta(days=30)
+
+        with get_db_session() as session:
+            media_buy = MediaBuy(
+                media_buy_id="mb_test_123",
+                tenant_id=sample_tenant["tenant_id"],
+                principal_id=sample_principal["principal_id"],
+                buyer_ref="test_buyer_ref",
+                status="active",
+                brand_manifest={"name": "Test Brand"},
+                start_date=start_date,
+                end_date=end_date,
+                budget=10000.0,
+                currency="USD",
+                packages=[],
+            )
+            session.add(media_buy)
+            session.commit()
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         # Mock tenant detection - provide Host header so real functions can find tenant in database
@@ -637,13 +663,13 @@ class TestA2ASkillInvocation:
             # Create skill invocation
             skill_params = {
                 "media_buy_id": "mb_test_123",
-                "budget": 15000.0,
+                "budget": {"total": 15000.0, "currency": "USD"},
                 "active": True,
             }
             message = create_a2a_message_with_skill("update_media_buy", skill_params)
             params = MessageSendParams(message=message)
 
-            # This will fail because media_buy doesn't exist, but it tests the code path
+            # Process the message
             result = await handler.on_message_send(params)
 
             # Verify the skill was invoked
@@ -692,22 +718,36 @@ class TestA2ASkillInvocation:
     async def test_list_authorized_properties_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test list_authorized_properties skill invocation."""
         # Create authorized properties for the tenant
+        import uuid
+
+        from sqlalchemy import select
+
         from src.core.database.database_session import get_db_session
         from src.core.database.models import AuthorizedProperty
 
+        # Generate unique property_id to avoid conflicts
+        unique_property_id = f"test_property_{uuid.uuid4().hex[:8]}"
+
         with get_db_session() as session:
-            prop = AuthorizedProperty(
-                property_id="test_property_1",
-                tenant_id=sample_tenant["tenant_id"],
-                property_type="website",
-                name="Test Site",
-                identifiers=[{"type": "domain", "value": "example.com"}],
-                tags=["test"],
-                publisher_domain="example.com",
-                verification_status="verified",
+            # Check if property already exists, create if not
+            stmt = select(AuthorizedProperty).filter_by(
+                property_id=unique_property_id, tenant_id=sample_tenant["tenant_id"]
             )
-            session.add(prop)
-            session.commit()
+            existing_prop = session.scalars(stmt).first()
+
+            if not existing_prop:
+                prop = AuthorizedProperty(
+                    property_id=unique_property_id,
+                    tenant_id=sample_tenant["tenant_id"],
+                    property_type="website",
+                    name="Test Site",
+                    identifiers=[{"type": "domain", "value": "example.com"}],
+                    tags=["test"],
+                    publisher_domain="example.com",
+                    verification_status="verified",
+                )
+                session.add(prop)
+                session.commit()
 
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 

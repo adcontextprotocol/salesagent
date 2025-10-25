@@ -688,18 +688,26 @@ class GetMediaBuyDeliveryResponse(AdCPBaseModel):
 
 
 class GetSignalsResponse(AdCPBaseModel):
-    """Adapter for GetSignalsResponse - adds __str__()."""
+    """Adapter for GetSignalsResponse - adds __str__().
+
+    Per AdCP PR #113 and official schema, protocol fields (message, context_id)
+    are added by the protocol layer, not the domain response.
+    """
 
     model_config = {"arbitrary_types_allowed": True}
 
-    message: str = Field(..., description="Human-readable summary")
-    context_id: str = Field(..., description="Session continuity identifier")
     signals: list[Any] = Field(..., description="Array of matching signals")
     errors: list[Any] | None = None
 
     def __str__(self) -> str:
-        """Return message field (it's in the spec for this one)."""
-        return self.message
+        """Return human-readable summary of signals."""
+        count = len(self.signals)
+        if count == 0:
+            return "No signals found matching your criteria."
+        elif count == 1:
+            return "Found 1 signal matching your criteria."
+        else:
+            return f"Found {count} signals matching your criteria."
 
 
 # ============================================================================
