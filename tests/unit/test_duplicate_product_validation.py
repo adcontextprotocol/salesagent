@@ -41,13 +41,12 @@ class TestDuplicateProductValidation:
         # Mock tenant for get_principal_from_context return
         mock_tenant = {"tenant_id": "test_tenant", "subdomain": "test", "ad_server": "mock"}
 
-        # Mock the dependencies
+        # Mock the dependencies (get_db_session is auto-mocked by conftest)
         with (
             patch(
                 "src.core.auth.get_principal_from_context",
                 return_value=("test_principal", mock_tenant),
             ),
-            patch("src.core.database.database_session.get_db_session"),
             patch(
                 "src.core.tools.media_buy_create.get_current_tenant",
                 return_value=mock_tenant,
@@ -116,13 +115,12 @@ class TestDuplicateProductValidation:
         # Mock tenant for get_principal_from_context return
         mock_tenant = {"tenant_id": "test_tenant", "subdomain": "test", "ad_server": "mock"}
 
-        # Mock the dependencies
+        # Mock the dependencies (get_db_session is auto-mocked by conftest)
         with (
             patch(
                 "src.core.auth.get_principal_from_context",
                 return_value=("test_principal", mock_tenant),
             ),
-            patch("src.core.database.database_session.get_db_session"),
             patch(
                 "src.core.tools.media_buy_create.get_current_tenant",
                 return_value=mock_tenant,
