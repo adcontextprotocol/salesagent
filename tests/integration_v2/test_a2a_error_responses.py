@@ -10,12 +10,11 @@ through the A2A wrapper layer, including:
 """
 
 import logging
-import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import DataPart, Message, MessageSendParams, Part, Role, Task
+from a2a.types import Message, MessageSendParams, Task
 from sqlalchemy import delete
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
@@ -32,6 +31,7 @@ from tests.integration_v2.conftest import (
     add_required_setup_data,
     create_test_product_with_pricing,
 )
+from tests.utils.a2a_helpers import create_a2a_message_with_skill
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
@@ -141,27 +141,8 @@ class TestA2AErrorPropagation:
         return AdCPRequestHandler()
 
     def create_message_with_skill(self, skill_name: str, parameters: dict) -> Message:
-        """Helper to create message with explicit skill invocation.
-
-        Uses DataPart with structured data to trigger explicit skill invocation path
-        in the A2A server (as opposed to natural language processing).
-
-        The server expects: part.data["skill"] and part.data["parameters"]
-        """
-        return Message(
-            message_id=str(uuid.uuid4()),
-            role=Role.user,
-            parts=[
-                Part(
-                    root=DataPart(
-                        data={
-                            "skill": skill_name,
-                            "parameters": parameters,  # A2A spec also supports "input"
-                        }
-                    )
-                )
-            ],
-        )
+        """Helper to create message with explicit skill invocation."""
+        return create_a2a_message_with_skill(skill_name, parameters)
 
     async def test_create_media_buy_validation_error_includes_errors_field(self, handler, test_tenant, test_principal):
         """Test that validation errors include errors field in A2A response."""
