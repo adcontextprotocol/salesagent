@@ -17,6 +17,7 @@ from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
+from src.core.audit_logger import get_audit_logger
 from src.core.auth import get_principal_from_context
 from src.core.config_loader import get_current_tenant, set_current_tenant
 from src.core.database.database_session import get_db_session

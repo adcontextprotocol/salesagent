@@ -17,8 +17,10 @@ from typing import Any
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from pydantic import ValidationError
+from rich.console import Console
 
 logger = logging.getLogger(__name__)
+console = Console()
 
 # Tool-specific imports
 from src.core.audit_logger import get_audit_logger

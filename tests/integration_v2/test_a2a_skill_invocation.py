@@ -653,7 +653,7 @@ class TestA2ASkillInvocation:
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
             patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
-            patch("src.core.main.get_adapter") as mock_get_adapter,
+            patch("src.core.helpers.adapter_helpers.get_adapter") as mock_get_adapter,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
             # Mock request headers to provide Host header for subdomain detection

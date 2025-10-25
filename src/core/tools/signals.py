@@ -182,19 +182,9 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
     if req.max_results:
         signals = signals[: req.max_results]
 
-    # Generate message (required field in adapter schema)
-    count = len(signals)
-    if count == 0:
-        message = "No signals matched your query."
-    elif count == 1:
-        message = "Found 1 signal matching your query."
-    else:
-        message = f"Found {count} signals matching your query."
-
-    # Generate context_id (required field)
-    context_id = f"signals_{uuid.uuid4().hex[:12]}"
-
-    return GetSignalsResponse(message=message, context_id=context_id, signals=signals)
+    # Per AdCP PR #113 and official schema, protocol fields (message, context_id)
+    # are added by the protocol layer, not the domain response.
+    return GetSignalsResponse(signals=signals)
 
 
 async def activate_signal(
