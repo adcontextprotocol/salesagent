@@ -1,5 +1,8 @@
 """Integration tests for AdCP v2.4 create_media_buy format with nested objects.
 
+⚠️ DEPRECATED: This file uses legacy Product pricing fields (is_fixed_price, cpm, min_spend).
+   Migrated version: tests/integration_v2/test_create_media_buy_v24.py
+
 These tests specifically verify that packages containing nested Pydantic objects
 (Budget, Targeting) are properly serialized in responses. This catches bugs like
 the 'dict' object has no attribute 'model_dump' error that occurred when nested

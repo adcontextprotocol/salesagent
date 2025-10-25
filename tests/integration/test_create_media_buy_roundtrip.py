@@ -12,6 +12,10 @@ validation failed.
 The fix: Filter out non-schema fields before reconstruction (main.py:3747-3760).
 
 This test ensures the fix works and prevents regression.
+
+DEPRECATED: This file uses legacy Product pricing fields (is_fixed_price, cpm, min_spend).
+             Use tests/integration_v2/test_create_media_buy_roundtrip.py instead, which uses
+             the new pricing_options model (PricingOption table with pricing_model, rate, is_fixed).
 """
 
 import pytest

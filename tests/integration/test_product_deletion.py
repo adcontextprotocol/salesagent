@@ -1,4 +1,10 @@
-"""Integration tests for product deletion functionality."""
+"""Integration tests for product deletion functionality.
+
+⚠️ DEPRECATION NOTICE: This file uses legacy pricing fields (is_fixed_price, cpm, min_spend).
+The migrated version using the new pricing_options model is in tests/integration_v2/test_product_deletion.py
+
+DO NOT ADD NEW TESTS HERE. Use tests/integration_v2/test_product_deletion.py instead.
+"""
 
 from datetime import date
 from unittest.mock import patch

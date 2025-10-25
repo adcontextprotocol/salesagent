@@ -3,6 +3,9 @@ Integration tests for GAM automatic order activation feature (simplified).
 
 Tests the implementation of Issue #116: automatic activation for non-guaranteed GAM orders.
 Focused integration tests using real database connections and minimal mocking.
+
+DEPRECATED: This file uses legacy Product pricing fields (is_fixed_price, cpm).
+Use tests/integration_v2/test_gam_automation_focused.py instead (uses pricing_options model).
 """
 
 from datetime import datetime

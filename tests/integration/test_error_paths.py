@@ -1,5 +1,10 @@
 """Comprehensive error path testing for AdCP tools.
 
+⚠️ DEPRECATION NOTICE: This file uses legacy pricing fields (is_fixed_price, cpm, min_spend).
+The migrated version using the new pricing_options model is in tests/integration_v2/test_error_paths.py
+
+DO NOT ADD NEW TESTS HERE. Use tests/integration_v2/test_error_paths.py instead.
+
 This test suite systematically exercises error handling paths that were previously
 untested, ensuring:
 1. Error responses are actually constructible (no NameErrors)

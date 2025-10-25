@@ -1,4 +1,9 @@
-"""Integration tests for signals agent workflow."""
+"""Integration tests for signals agent workflow.
+
+DEPRECATED: This file uses legacy Product pricing fields (is_fixed_price, cpm, min_spend).
+             Use tests/integration_v2/test_signals_agent_workflow.py instead, which uses
+             the new pricing_options model (PricingOption table with pricing_model, rate, is_fixed).
+"""
 
 from collections.abc import Callable
 from typing import Any

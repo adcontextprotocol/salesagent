@@ -4,6 +4,9 @@ This test verifies that the format_ids filter in ProductFilters correctly handle
 FormatId objects with .id attribute (not .format_id).
 
 Regression test for: "unhashable type: 'FormatReference'" bug.
+
+DEPRECATED: This file doesn't create pricing_options for products (incomplete setup).
+Use tests/integration_v2/test_get_products_format_id_filter.py instead (proper pricing setup).
 """
 
 from unittest.mock import Mock

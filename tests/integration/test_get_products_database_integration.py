@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 """
+🚨 DEPRECATED: This test file uses legacy pricing fields (is_fixed_price, cpm) that no longer exist.
+
+MIGRATION: Tests have been migrated to tests/integration_v2/test_get_products_database_integration.py
+which uses the new pricing_options table.
+
+DO NOT UPDATE THIS FILE. It is kept for reference only and will be deleted once migration is complete.
+
+Original Purpose:
+----------------
 Database Integration Tests for get_products - Real Database Tests
 
 These tests validate the actual database-to-schema transformation with real ORM models
@@ -7,6 +16,8 @@ to catch field access bugs that mocks would miss.
 
 This addresses the gap identified in issue #161 where a 'Product' object has no attribute 'pricing'
 error reached production because tests over-mocked the database layer.
+
+Migration Status: MIGRATED to integration_v2/ on 2025-10-25
 """
 
 from typing import Any
@@ -19,7 +30,8 @@ from src.core.database.models import Product as ProductModel
 from src.core.database.models import Tenant
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
+# DEPRECATED: Tests use legacy pricing fields that no longer exist
+# All tests have been migrated to tests/integration_v2/test_get_products_database_integration.py
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.skip_ci]
 
 

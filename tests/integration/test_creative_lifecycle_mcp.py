@@ -1,4 +1,11 @@
-"""Integration tests for creative lifecycle MCP tools.
+"""
+⚠️ DEPRECATION NOTICE: This file is deprecated and will be removed in a future release.
+⚠️ Use tests/integration_v2/test_creative_lifecycle_mcp.py instead.
+⚠️
+⚠️ This file has been migrated to use pricing_options (PricingOption table)
+⚠️ instead of legacy Product pricing fields (is_fixed_price, cpm, min_spend).
+
+Integration tests for creative lifecycle MCP tools.
 
 Tests sync_creatives and list_creatives MCP tools with real database operations.
 These tests verify the integration between FastMCP tool definitions and database persistence,
@@ -791,6 +798,7 @@ class TestCreativeLifecycleMCP:
             mock_adapter_instance.manual_approval_required = False
 
             # Mock product catalog
+            from src.core.schemas import PriceGuidance, PricingOption
             from src.core.schemas import Product as SchemaProduct
 
             mock_catalog.return_value = [
@@ -800,8 +808,18 @@ class TestCreativeLifecycleMCP:
                     description="Test",
                     formats=[],
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    price_guidance={"floor": 5.0, "p50": 10.0, "p90": 15.0},
+                    is_custom=False,
+                    property_tags=["all_inventory"],
+                    pricing_options=[
+                        PricingOption(
+                            pricing_option_id="cpm_usd_auction",
+                            pricing_model="cpm",
+                            rate=10.0,
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance=PriceGuidance(floor=5.0, p50=10.0, p75=12.0, p90=15.0),
+                        )
+                    ],
                 )
             ]
 

@@ -1,4 +1,9 @@
-"""Test standardized session management and JSON validation."""
+"""Test standardized session management and JSON validation.
+
+⚠️ DEPRECATION NOTICE: This test uses legacy pricing fields (cpm, is_fixed_price).
+   Migrated version: tests/integration_v2/test_session_json_validation.py
+   This file will be removed after pricing model migration is complete.
+"""
 
 from datetime import UTC, datetime
 

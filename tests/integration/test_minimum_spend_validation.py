@@ -2,6 +2,9 @@
 
 Tests the per-currency minimum/maximum spend limits and per-product override
 functionality for media buy creation.
+
+DEPRECATED: This file uses legacy Product pricing fields (is_fixed_price, cpm, min_spend).
+Use tests/integration_v2/test_minimum_spend_validation.py instead (uses pricing_options model).
 """
 
 from datetime import UTC, datetime, timedelta

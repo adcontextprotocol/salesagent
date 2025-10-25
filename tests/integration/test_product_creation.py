@@ -1,4 +1,9 @@
-"""Integration tests for product creation via UI and API."""
+"""Integration tests for product creation via UI and API.
+
+⚠️ DEPRECATION NOTICE: This test uses legacy pricing fields (cpm, is_fixed_price, min_spend).
+   Migrated version: tests/integration_v2/test_product_creation.py
+   This file will be removed after pricing model migration is complete.
+"""
 
 import pytest
 from sqlalchemy import delete, select

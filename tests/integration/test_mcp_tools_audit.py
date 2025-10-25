@@ -2,6 +2,11 @@
 """
 MCP Tools Audit for Roundtrip Conversion Issues
 
+⚠️ DEPRECATION NOTICE: This file uses legacy pricing fields (is_fixed_price, cpm, min_spend).
+The migrated version using the new pricing_options model is in tests/integration_v2/test_mcp_tools_audit.py
+
+DO NOT ADD NEW TESTS HERE. Use tests/integration_v2/test_mcp_tools_audit.py instead.
+
 This audit systematically tests all MCP tools that use the roundtrip pattern:
 Object → model_dump*() → apply_testing_hooks() → Object(**dict)
 
@@ -222,9 +227,9 @@ class TestMCPToolsAudit:
                 if field_name in internal_dict:
                     internal_value = internal_dict[field_name]
                     # Values should be compatible (allowing for type conversions)
-                    assert type(external_value) is type(internal_value), (
-                        f"Field '{field_name}' type mismatch: {type(external_value)} vs {type(internal_value)}"
-                    )
+                    assert type(external_value) is type(
+                        internal_value
+                    ), f"Field '{field_name}' type mismatch: {type(external_value)} vs {type(internal_value)}"
         else:
             # MediaBuyDeliveryData doesn't have model_dump_internal, so model_dump() is used
             # This means we need to ensure model_dump() produces reconstruction-compatible output
@@ -460,8 +465,8 @@ class TestMCPToolsAudit:
                         else:
                             assert modified_value == original_value, f"Date value changed for '{key}'"
                     else:
-                        assert modified_value == original_value, (
-                            f"Value changed for '{key}': {original_value} → {modified_value}"
-                        )
+                        assert (
+                            modified_value == original_value
+                        ), f"Value changed for '{key}': {original_value} → {modified_value}"
 
         print("✅ Testing hooks preserve essential data correctly")

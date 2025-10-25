@@ -1,5 +1,8 @@
 """Comprehensive integration tests for MCP endpoints.
 
+⚠️ DEPRECATED: This file uses legacy Product pricing fields (is_fixed_price, cpm).
+   Migrated version: tests/integration_v2/test_mcp_endpoints_comprehensive.py
+
 This test file ensures all MCP tools work correctly with proper authentication
 and data validation. It tests the actual server endpoints, not mocks.
 """

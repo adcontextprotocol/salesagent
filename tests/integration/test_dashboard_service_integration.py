@@ -2,6 +2,9 @@
 
 Replaces over-mocked unit tests with integration tests that use real database
 connections and actual ORM objects to catch schema and field access bugs.
+
+DEPRECATED: This file uses legacy Product pricing fields (is_fixed_price, cpm, min_spend).
+Use tests/integration_v2/test_dashboard_service_integration.py instead (uses pricing_options model).
 """
 
 import pytest

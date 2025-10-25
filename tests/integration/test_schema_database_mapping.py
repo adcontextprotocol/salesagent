@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+⚠️ DEPRECATED: This file has been migrated to tests/integration_v2/
+
 Schema-Database Field Mapping Validation Tests
 
 These tests validate that all Pydantic schema fields have corresponding database fields
@@ -8,6 +10,8 @@ and catch invalid field access patterns that could cause AttributeError at runti
 This directly addresses the issue #161 root cause: missing validation that schema
 fields map to valid database fields, allowing 'Product' object has no attribute 'pricing'
 errors to reach production.
+
+MIGRATION STATUS: Complete - moved to integration_v2 with pricing_options model support
 """
 
 import pytest
@@ -214,9 +218,9 @@ class TestSchemaFieldMapping:
             db_columns = {column.name for column in model_class.__table__.columns}
 
             for field in required_fields:
-                assert field in db_columns, (
-                    f"Required field '{field}' missing from {model_class.__name__} database model"
-                )
+                assert (
+                    field in db_columns
+                ), f"Required field '{field}' missing from {model_class.__name__} database model"
 
     def test_pydantic_model_field_access_patterns(self):
         """Test patterns for safely accessing Pydantic model fields."""

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 """
+⚠️ DEPRECATION NOTICE: This file is deprecated and will be removed in a future release.
+⚠️ Use tests/integration_v2/test_schema_roundtrip_patterns.py instead.
+⚠️
+⚠️ This file has been migrated to use pricing_options (PricingOption table)
+⚠️ instead of legacy Product pricing fields (is_fixed_price, cpm, min_spend).
+
 Schema Roundtrip Test Patterns for All MCP Tools
 
 This module provides reusable test patterns to validate schema roundtrip conversions
@@ -96,9 +102,9 @@ class SchemaRoundtripValidator:
                 assert reconstructed_value == original_value, f"Field '{field_name}' value changed during roundtrip"
             elif isinstance(original_value, Decimal):
                 # Handle Decimal to float conversions
-                assert float(reconstructed_value) == float(original_value), (
-                    f"Field '{field_name}' numeric value changed during roundtrip"
-                )
+                assert float(reconstructed_value) == float(
+                    original_value
+                ), f"Field '{field_name}' numeric value changed during roundtrip"
             else:
                 assert reconstructed_value == original_value, f"Field '{field_name}' value changed during roundtrip"
 
@@ -541,6 +547,6 @@ class TestRoundtripErrorScenarios:
         for field_name, original_value in original_internal.items():
             assert field_name in reconstructed_internal, f"Field '{field_name}' was lost during roundtrip"
             reconstructed_value = reconstructed_internal[field_name]
-            assert reconstructed_value == original_value, (
-                f"Field '{field_name}' value changed during roundtrip: {original_value} → {reconstructed_value}"
-            )
+            assert (
+                reconstructed_value == original_value
+            ), f"Field '{field_name}' value changed during roundtrip: {original_value} → {reconstructed_value}"
