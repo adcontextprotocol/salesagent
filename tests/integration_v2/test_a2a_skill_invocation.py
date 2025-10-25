@@ -13,7 +13,7 @@ import pytest
 from a2a.types import DataPart, Message, MessageSendParams, Part, Role, Task, TaskStatus
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
-from src.core.database.tenant_context import set_current_tenant
+from src.core.config_loader import set_current_tenant
 from tests.utils.a2a_helpers import create_a2a_message_with_skill, create_a2a_text_message
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
