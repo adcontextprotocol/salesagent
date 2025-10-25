@@ -558,10 +558,15 @@ def _update_media_buy_impl(
             if not hasattr(req, "_affected_packages"):
                 req._affected_packages = []
 
-            # Get all packages for this media buy to report them as affected
-            if hasattr(existing_req, "packages") and existing_req.packages:
-                for pkg in existing_req.packages:
-                    package_ref = pkg.package_id if hasattr(pkg, "package_id") and pkg.package_id else pkg.buyer_ref
+            # Get all packages for this media buy from database to report them as affected
+            from src.core.database.models import MediaPackage as MediaPackageModel
+
+            with get_db_session() as db_session:
+                stmt_packages = select(MediaPackageModel).filter_by(media_buy_id=req.media_buy_id)
+                packages = db_session.scalars(stmt_packages).all()
+
+                for pkg in packages:
+                    package_ref = pkg.package_id if pkg.package_id else pkg.buyer_ref
                     if package_ref:
                         req._affected_packages.append(
                             {
