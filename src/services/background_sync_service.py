@@ -353,44 +353,66 @@ def _run_sync_thread(
             with get_db_session() as db:
                 # Import here to avoid circular imports
                 from sqlalchemy import func
+
                 from src.core.database.models import GAMInventory
 
                 # Count total items by inventory_type
-                total_ad_units = db.scalar(
-                    select(func.count())
-                    .select_from(GAMInventory)
-                    .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "ad_unit")
-                ) or 0
+                total_ad_units = (
+                    db.scalar(
+                        select(func.count())
+                        .select_from(GAMInventory)
+                        .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "ad_unit")
+                    )
+                    or 0
+                )
 
-                total_placements = db.scalar(
-                    select(func.count())
-                    .select_from(GAMInventory)
-                    .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "placement")
-                ) or 0
+                total_placements = (
+                    db.scalar(
+                        select(func.count())
+                        .select_from(GAMInventory)
+                        .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "placement")
+                    )
+                    or 0
+                )
 
-                total_labels = db.scalar(
-                    select(func.count())
-                    .select_from(GAMInventory)
-                    .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "label")
-                ) or 0
+                total_labels = (
+                    db.scalar(
+                        select(func.count())
+                        .select_from(GAMInventory)
+                        .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "label")
+                    )
+                    or 0
+                )
 
-                total_audience_segments = db.scalar(
-                    select(func.count())
-                    .select_from(GAMInventory)
-                    .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "audience_segment")
-                ) or 0
+                total_audience_segments = (
+                    db.scalar(
+                        select(func.count())
+                        .select_from(GAMInventory)
+                        .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "audience_segment")
+                    )
+                    or 0
+                )
 
-                total_targeting_keys = db.scalar(
-                    select(func.count())
-                    .select_from(GAMInventory)
-                    .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "custom_targeting_key")
-                ) or 0
+                total_targeting_keys = (
+                    db.scalar(
+                        select(func.count())
+                        .select_from(GAMInventory)
+                        .where(
+                            GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "custom_targeting_key"
+                        )
+                    )
+                    or 0
+                )
 
                 # For incremental, show both synced count and total count
                 ad_units_summary = {"synced": ad_units_count, "total": total_ad_units}
                 placements_summary = {"synced": placements_count, "total": total_placements}
                 labels_summary = {"synced": labels_count, "total": total_labels}
-                targeting_summary = {"synced": targeting_count, "total_keys": total_targeting_keys, "note": "Values lazy loaded on demand"}
+                targeting_summary = {
+                    "synced": targeting_count,
+                    "total_keys": total_targeting_keys,
+                    "note": "Values lazy loaded on demand",
+                }
                 segments_summary = {"synced": segments_count, "total": total_audience_segments}
         else:
             # For full sync, synced count == total count
