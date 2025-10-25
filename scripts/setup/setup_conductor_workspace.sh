@@ -402,27 +402,52 @@ fi
 
 echo "✓ Workspace environment activated"
 
-# Generate AdCP schemas from official spec
+# Download/refresh AdCP schemas from official registry
 echo ""
-echo "Generating AdCP schemas from official spec..."
+echo "📥 Downloading AdCP schemas from official registry..."
+echo "   Source: https://adcontextprotocol.org/schemas/v1/"
+if command -v uv &> /dev/null && [ -f "scripts/refresh_adcp_schemas.py" ]; then
+    # Run schema refresh to ensure we have latest schemas
+    if uv run python scripts/refresh_adcp_schemas.py 2>&1 | grep -E "✅|📥|📦"; then
+        echo "✓ AdCP schemas downloaded/refreshed successfully"
+    else
+        echo "⚠️  Warning: Schema download may have had issues"
+        echo "   Checking if cached schemas exist..."
+        if [ -f "schemas/v1/index.json" ]; then
+            echo "✓ Cached schemas found, continuing with setup"
+        else
+            echo "✗ No schemas available! This may cause validation issues."
+        fi
+    fi
+else
+    if ! command -v uv &> /dev/null; then
+        echo "✗ Warning: uv not found, skipping schema download"
+    elif [ ! -f "scripts/refresh_adcp_schemas.py" ]; then
+        echo "✗ Warning: schema refresh script not found, skipping"
+    fi
+fi
+
+# Generate AdCP Pydantic schemas from downloaded JSON schemas
+echo ""
+echo "🔧 Generating Pydantic schemas from AdCP spec..."
 if command -v uv &> /dev/null && [ -f "scripts/generate_schemas.py" ]; then
     if uv run python scripts/generate_schemas.py 2>&1 | grep -E "✅|📂|🔧"; then
-        echo "✓ AdCP schemas generated successfully"
+        echo "✓ Pydantic schemas generated successfully"
     else
-        echo "⚠️  Warning: Schema generation may have had issues"
+        echo "⚠️  Warning: Pydantic schema generation may have had issues"
         echo "   Continuing with setup..."
     fi
 else
     if ! command -v uv &> /dev/null; then
-        echo "✗ Warning: uv not found, skipping schema generation"
+        echo "✗ Warning: uv not found, skipping Pydantic schema generation"
     elif [ ! -f "scripts/generate_schemas.py" ]; then
-        echo "✗ Warning: schema generation script not found, skipping"
+        echo "✗ Warning: Pydantic schema generation script not found, skipping"
     fi
 fi
 
 # Check AdCP schema sync
 echo ""
-echo "Checking AdCP schema sync..."
+echo "🔍 Verifying AdCP schema sync..."
 if command -v uv &> /dev/null && [ -f "scripts/check_schema_sync.py" ]; then
     # Run schema sync check (but don't fail setup if schemas are out of sync)
     if uv run python scripts/check_schema_sync.py 2>&1 | tee /tmp/schema_check_output.txt; then
@@ -434,7 +459,7 @@ if command -v uv &> /dev/null && [ -f "scripts/check_schema_sync.py" ]; then
         echo ""
         echo "   To update schemas, run:"
         echo "   uv run python scripts/check_schema_sync.py --update"
-        echo "   git add tests/e2e/schemas/"
+        echo "   git add schemas/"
         echo "   git commit -m 'Update AdCP schemas to latest from registry'"
         echo ""
         echo "   Continuing with setup..."

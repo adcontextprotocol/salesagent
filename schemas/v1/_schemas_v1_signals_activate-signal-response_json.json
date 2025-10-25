@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/signals/activate-signal-response.json",
+  "title": "Activate Signal Response",
+  "description": "Response payload for activate_signal task",
+  "type": "object",
+  "properties": {
+    "decisioning_platform_segment_id": {
+      "type": "string",
+      "description": "The platform-specific ID to use once activated"
+    },
+    "estimated_activation_duration_minutes": {
+      "type": "number",
+      "description": "Estimated time to complete (optional)",
+      "minimum": 0
+    },
+    "deployed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when activation completed (optional)"
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., activation failures, platform issues)",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

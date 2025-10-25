@@ -4,7 +4,7 @@ This document describes how to keep our locally cached AdCP schemas synchronized
 
 ## Overview
 
-We maintain local cached copies of AdCP schemas in `tests/e2e/schemas/v1/` for:
+We maintain local cached copies of AdCP schemas in `schemas/v1/` for:
 - Offline development and testing
 - Schema validation in CI
 - Pydantic model generation via `scripts/generate_schemas.py`
@@ -60,7 +60,7 @@ uv run python scripts/check_schema_sync.py
 uv run python scripts/generate_schemas.py
 
 # Commit changes
-git add tests/e2e/schemas/ src/core/schemas_generated/
+git add schemas/ src/core/schemas_generated/
 git commit -m "Update AdCP schemas to latest from registry"
 ```
 
@@ -71,14 +71,14 @@ If you need to update a specific schema:
 ```bash
 # Download specific schema
 curl -s https://adcontextprotocol.org/schemas/v1/media-buy/package-request.json > \
-  tests/e2e/schemas/v1/_schemas_v1_media-buy_package-request_json.json
+  schemas/v1/_schemas_v1_media-buy_package-request_json.json
 
 # Download dependencies (e.g., format-id.json)
 curl -s https://adcontextprotocol.org/schemas/v1/core/format-id.json > \
-  tests/e2e/schemas/v1/_schemas_v1_core_format-id_json.json
+  schemas/v1/_schemas_v1_core_format-id_json.json
 
 # Verify schema structure
-cat tests/e2e/schemas/v1/_schemas_v1_media-buy_package-request_json.json | \
+cat schemas/v1/_schemas_v1_media-buy_package-request_json.json | \
   jq '.properties.format_ids.items'
 
 # Should show: {"$ref": "/schemas/v1/core/format-id.json"}
@@ -137,7 +137,7 @@ uv run python scripts/check_schema_sync.py --update
 uv run python scripts/generate_schemas.py
 
 # Commit both schema cache and generated code
-git add tests/e2e/schemas/ src/core/schemas_generated/
+git add schemas/ src/core/schemas_generated/
 git commit -m "Update AdCP schemas to v{version}"
 ```
 
@@ -150,7 +150,7 @@ git commit -m "Update AdCP schemas to v{version}"
 **Fix:**
 ```bash
 # 1. Verify cached schema has $ref
-cat tests/e2e/schemas/v1/_schemas_v1_media-buy_package-request_json.json | \
+cat schemas/v1/_schemas_v1_media-buy_package-request_json.json | \
   jq '.properties.format_ids.items'
 
 # Should output: {"$ref": "/schemas/v1/core/format-id.json"}
@@ -172,11 +172,11 @@ This means the cached `package-request.json` is outdated.
 ```bash
 # Download latest schema
 curl -s https://adcontextprotocol.org/schemas/v1/media-buy/package-request.json > \
-  tests/e2e/schemas/v1/_schemas_v1_media-buy_package-request_json.json
+  schemas/v1/_schemas_v1_media-buy_package-request_json.json
 
 # Download format-id definition
 curl -s https://adcontextprotocol.org/schemas/v1/core/format-id.json > \
-  tests/e2e/schemas/v1/_schemas_v1_core_format-id_json.json
+  schemas/v1/_schemas_v1_core_format-id_json.json
 
 # Regenerate models
 uv run python scripts/generate_schemas.py
@@ -213,7 +213,7 @@ graph TD
 - **AdCP GitHub:** https://github.com/adcontextprotocol/adcp
 - **Schema Checker:** `scripts/check_schema_sync.py`
 - **Schema Generator:** `scripts/generate_schemas.py`
-- **Cached Schemas:** `tests/e2e/schemas/v1/`
+- **Cached Schemas:** `schemas/v1/`
 - **Generated Models:** `src/core/schemas_generated/`
 
 ## Recent Changes

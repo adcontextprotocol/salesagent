@@ -50,7 +50,7 @@ class SchemaSyncChecker:
         self.updates_applied: list[str] = []
 
         # Local schema cache directory
-        self.cache_dir = Path("tests/e2e/schemas/v1")
+        self.cache_dir = Path("schemas/v1")
 
         # HTTP client for fetching live schemas
         self.http_client = httpx.AsyncClient(timeout=30.0)

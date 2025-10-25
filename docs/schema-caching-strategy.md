@@ -86,7 +86,7 @@ else:
 ### File Organization
 
 ```
-tests/e2e/schemas/v1/
+schemas/v1/
 ├── index.json                    # Schema registry
 ├── index.json.meta              # ETag metadata for index
 ├── _schemas_v1_core_package_json.json       # Schema content
@@ -264,10 +264,10 @@ pytest tests/e2e/ --offline-schemas
 ### Cache inconsistencies
 ```bash
 # Check metadata files
-ls -la tests/e2e/schemas/v1/*.meta
+ls -la schemas/v1/*.meta
 
 # View ETag for specific schema
-cat tests/e2e/schemas/v1/index.json.meta
+cat schemas/v1/index.json.meta
 ```
 
 ### Debugging ETag behavior
