@@ -1,4 +1,8 @@
-"""Integration tests for get_products filtering behavior.
+"""Integration tests for get_products filtering behavior (LEGACY - uses old pricing model).
+
+⚠️ DEPRECATED: These tests use the legacy Product pricing fields (is_fixed_price, cpm).
+   For new tests, use tests/integration_v2/test_get_products_filters.py which uses
+   the new pricing_options model.
 
 Tests that AdCP filters parameter correctly filters products from database.
 This tests the actual filter logic implementation in main.py, not just schema validation.
@@ -9,7 +13,8 @@ import pytest
 from src.core.database.database_session import get_db_session
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
+# NOTE: Skipped in CI - migrated to integration_v2/test_get_products_filters.py
+# These tests use legacy pricing model and are kept for reference only
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires_db]
 
 
