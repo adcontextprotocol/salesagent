@@ -108,6 +108,7 @@ class TestMinimumSpendValidation:
             session.flush()
 
             # Create product WITHOUT override (will use currency limit)
+            # Note: This product supports both USD and EUR currencies
             product_no_override = create_test_product_with_pricing(
                 session=session,
                 tenant_id="test_minspend_tenant",
@@ -123,6 +124,21 @@ class TestMinimumSpendValidation:
                 targeting_template={},
                 delivery_type="guaranteed",
             )
+
+            # Add EUR pricing option to prod_global (multi-currency support)
+            from src.core.database.models import PricingOption
+
+            eur_pricing = PricingOption(
+                tenant_id="test_minspend_tenant",
+                product_id="prod_global",
+                pricing_model="CPM",
+                rate=Decimal("10.00"),
+                is_fixed=True,
+                currency="EUR",
+                min_spend_per_package=None,  # No override, uses EUR currency limit (€900)
+            )
+            session.add(eur_pricing)
+            session.flush()
 
             # Create product WITH override (higher than currency limit)
             product_high_override = create_test_product_with_pricing(
