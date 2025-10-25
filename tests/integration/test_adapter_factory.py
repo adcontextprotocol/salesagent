@@ -14,7 +14,7 @@ from sqlalchemy import delete, select
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Tenant as ModelTenant
-from src.core.main import get_adapter
+from src.core.helpers import get_adapter
 from src.core.schemas import Principal
 
 
