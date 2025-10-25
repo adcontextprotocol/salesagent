@@ -13,6 +13,7 @@ import pytest
 from a2a.types import DataPart, Message, MessageSendParams, Part, Role, Task, TaskStatus
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
+from src.core.database.tenant_context import set_current_tenant
 from tests.utils.a2a_helpers import create_a2a_message_with_skill, create_a2a_text_message
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -178,13 +179,12 @@ class TestA2ASkillInvocation:
         # Mock authentication token
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock get_principal_from_token and get_current_tenant to return test data
-        with (
-            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
-        ):
+        # Set tenant context for this request
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
+        # Mock get_principal_from_token to return test data
+        with patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal:
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
             # Create natural language message
             message = create_a2a_text_message("What video products do you have available?")
@@ -390,6 +390,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_hybrid_invocation(self, handler, sample_tenant, sample_principal, sample_products, validator):
         """Test hybrid invocation with both text and skill."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         # Mock authentication token
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
@@ -431,6 +433,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_multiple_skill_invocations(self, handler, sample_tenant, sample_principal, sample_products):
         """Test multiple skill invocations in a single message."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         # Mock authentication token
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
@@ -599,6 +603,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_update_media_buy_skill(self, handler, sample_tenant, sample_principal, sample_products, validator):
         """Test update_media_buy skill invocation."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
@@ -688,8 +694,6 @@ class TestA2ASkillInvocation:
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         # Set up tenant context before test
-        from src.core.config_loader import set_current_tenant
-
         tenant_dict = {
             "tenant_id": sample_tenant["tenant_id"],
             "name": sample_tenant["name"],
@@ -726,6 +730,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_sync_creatives_skill(self, handler, sample_tenant, sample_principal, sample_products, validator):
         """Test sync_creatives skill invocation."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
@@ -765,6 +771,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_list_creatives_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test list_creatives skill invocation."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
@@ -795,6 +803,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_update_performance_index_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test update_performance_index skill invocation."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
@@ -823,6 +833,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_get_media_buy_delivery_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test get_media_buy_delivery skill invocation."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
@@ -851,6 +863,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_get_pricing_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test get_pricing skill invocation."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
@@ -877,6 +891,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_get_targeting_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test get_targeting skill invocation."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
@@ -903,6 +919,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_search_signals_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test search_signals skill invocation."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
@@ -931,6 +949,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_approve_creative_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test approve_creative skill invocation."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
@@ -958,6 +978,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_get_media_buy_status_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test get_media_buy_status skill invocation."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
@@ -985,6 +1007,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_optimize_media_buy_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test optimize_media_buy skill invocation."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
@@ -1012,6 +1036,8 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_get_signals_explicit_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test get_signals skill invocation with explicit parameters."""
+        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with (
