@@ -13,7 +13,6 @@ import pytest
 from a2a.types import DataPart, Message, MessageSendParams, Part, Role, Task, TaskStatus
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
-from src.core.config_loader import set_current_tenant
 from tests.utils.a2a_helpers import create_a2a_message_with_skill, create_a2a_text_message
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -179,12 +178,28 @@ class TestA2ASkillInvocation:
         # Mock authentication token
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Set tenant context for this request
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
 
-        # Mock get_principal_from_token to return test data
-        with patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal:
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
+        ):
             mock_get_principal.return_value = sample_principal["principal_id"]
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create natural language message
             message = create_a2a_text_message("What video products do you have available?")
@@ -226,13 +241,28 @@ class TestA2ASkillInvocation:
         # Mock authentication token
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock get_principal_from_token and get_current_tenant to return test data
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create explicit skill invocation message
             skill_params = {
@@ -279,13 +309,28 @@ class TestA2ASkillInvocation:
         # Mock authentication token
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock get_principal_from_token and get_current_tenant to return test data
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create explicit skill invocation message using A2A spec 'input' field
             skill_params = {
@@ -336,13 +381,28 @@ class TestA2ASkillInvocation:
         # Mock authentication token
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock ONLY authentication - use real adapter and implementation
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create explicit skill invocation message using AdCP spec format
             from datetime import UTC, datetime, timedelta
@@ -390,18 +450,31 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_hybrid_invocation(self, handler, sample_tenant, sample_principal, sample_products, validator):
         """Test hybrid invocation with both text and skill."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         # Mock authentication token
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock external dependencies
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create hybrid message (text + explicit skill)
             skill_params = {"brief": "Sports video advertising", "brand_manifest": {"name": "Sports brand"}}
@@ -433,18 +506,31 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_multiple_skill_invocations(self, handler, sample_tenant, sample_principal, sample_products):
         """Test multiple skill invocations in a single message."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         # Mock authentication token
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock external dependencies
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create message with multiple skill invocations
             message = Message(
@@ -603,17 +689,28 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_update_media_buy_skill(self, handler, sample_tenant, sample_principal, sample_products, validator):
         """Test update_media_buy skill invocation."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.a2a_server.adcp_a2a_server.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.a2a_server.adcp_a2a_server.get_tenant_by_virtual_host") as mock_tenant_host,
+            patch("src.a2a_server.adcp_a2a_server.get_tenant_by_id") as mock_tenant_id,
             patch("src.core.main.get_adapter") as mock_get_adapter,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Mock tenant detection to return test tenant (simulates header detection)
+            mock_tenant_subdomain.return_value = tenant_dict
+            mock_tenant_host.return_value = tenant_dict
+            mock_tenant_id.return_value = tenant_dict
 
             # Mock adapter
             mock_adapter = MagicMock()
@@ -644,12 +741,28 @@ class TestA2ASkillInvocation:
         """Test list_creative_formats skill invocation."""
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation
             skill_params = {"brief": "display formats"}
@@ -693,20 +806,28 @@ class TestA2ASkillInvocation:
 
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Set up tenant context before test
+        # Prepare tenant context
         tenant_dict = {
             "tenant_id": sample_tenant["tenant_id"],
             "name": sample_tenant["name"],
             "subdomain": "test",
         }
-        set_current_tenant(tenant_dict)
 
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.core.main.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = tenant_dict
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation
             skill_params = {}
@@ -730,16 +851,30 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_sync_creatives_skill(self, handler, sample_tenant, sample_principal, sample_products, validator):
         """Test sync_creatives skill invocation."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation with creatives
             skill_params = {
@@ -771,16 +906,30 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_list_creatives_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test list_creatives skill invocation."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation
             skill_params = {}
@@ -803,16 +952,30 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_update_performance_index_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test update_performance_index skill invocation."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation
             skill_params = {
@@ -833,16 +996,30 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_get_media_buy_delivery_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test get_media_buy_delivery skill invocation."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation
             skill_params = {
@@ -863,16 +1040,30 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_get_pricing_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test get_pricing skill invocation."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation
             skill_params = {}
@@ -891,16 +1082,30 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_get_targeting_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test get_targeting skill invocation."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation
             skill_params = {}
@@ -919,16 +1124,30 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_search_signals_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test search_signals skill invocation."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation
             skill_params = {
@@ -949,16 +1168,30 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_approve_creative_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test approve_creative skill invocation."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation
             skill_params = {
@@ -978,16 +1211,30 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_get_media_buy_status_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test get_media_buy_status skill invocation."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation
             skill_params = {
@@ -1007,16 +1254,30 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_optimize_media_buy_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test optimize_media_buy skill invocation."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation
             skill_params = {
@@ -1036,16 +1297,30 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_get_signals_explicit_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test get_signals skill invocation with explicit parameters."""
-        set_current_tenant({"tenant_id": sample_tenant["tenant_id"]})
-
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
+        # Prepare tenant context
+        tenant_dict = {
+            "tenant_id": sample_tenant["tenant_id"],
+            "name": sample_tenant["name"],
+            "subdomain": "test",
+        }
+
+        # Mock tenant detection functions to return test tenant
+        # Note: Handler checks headers then falls back to get_current_tenant()
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_current_tenant") as mock_get_current,
+            patch("src.a2a_server.adcp_a2a_server._request_context") as mock_request_ctx,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+            # Subdomain lookup returns tenant (simulates header-based routing)
+            mock_tenant_subdomain.return_value = tenant_dict
+            # Fallback for when handler calls get_current_tenant() after auth
+            mock_get_current.return_value = tenant_dict
+            # Mock request headers to provide Host header for subdomain detection
+            mock_request_ctx.request_headers = {"host": "test.example.com"}
 
             # Create skill invocation with proper AdCP parameters
             skill_params = {
