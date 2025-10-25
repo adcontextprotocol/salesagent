@@ -51,6 +51,7 @@ from src.core.database.models import (
     AuthorizedProperty,
     MediaBuy,
     PropertyTag,
+    SignalsAgent,
     Tenant,
     WorkflowStep,
 )
@@ -1415,8 +1416,6 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
         and advertising_policy.get("require_manual_review", False)
     ):
         # Create a manual review task
-        from src.core.database.database_session import get_db_session
-
         with get_db_session() as session:
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
@@ -1446,33 +1445,28 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
     # Determine product catalog configuration based on tenant's signals discovery settings
     catalog_config = {"provider": "database", "config": {}}  # Default to database provider
 
-    # Check if signals discovery is configured for this tenant
-    if hasattr(tenant, "signals_agent_config") and tenant.get("signals_agent_config"):
-        signals_config = tenant["signals_agent_config"]
+    # Check if tenant has any enabled signals agents (new registry-based approach)
+    with get_db_session() as session:
+        stmt = select(SignalsAgent).filter_by(tenant_id=tenant["tenant_id"], enabled=True)
+        has_signals_agents = session.scalars(stmt).first() is not None
 
-        # Parse signals config if it's a string (SQLite) vs dict (PostgreSQL JSONB)
-        if isinstance(signals_config, str):
-            import json
-
-            try:
-                signals_config = json.loads(signals_config)
-            except json.JSONDecodeError:
-                logger.error(f"Invalid signals_agent_config JSON for tenant {tenant['tenant_id']}")
-                signals_config = {}
-
-        # If signals discovery is enabled, use hybrid provider
-        if isinstance(signals_config, dict) and signals_config.get("enabled", False):
-            logger.info(f"Using hybrid provider with signals discovery for tenant {tenant['tenant_id']}")
-            catalog_config = {
-                "provider": "hybrid",
-                "config": {
-                    "database": {},  # Use database provider defaults
-                    "signals_discovery": signals_config,
-                    "ranking_strategy": "signals_first",  # Prioritize signals-enhanced products
-                    "max_products": 20,
-                    "deduplicate": True,
+    # If signals agents are configured, use hybrid provider
+    if has_signals_agents:
+        logger.info(f"Using hybrid provider with signals discovery for tenant {tenant['tenant_id']}")
+        catalog_config = {
+            "provider": "hybrid",
+            "config": {
+                "database": {},  # Use database provider defaults
+                "signals_discovery": {
+                    "tenant_id": tenant["tenant_id"],
+                    "fallback_to_database": True,
+                    "max_signal_products": 10,
                 },
-            }
+                "ranking_strategy": "signals_first",  # Prioritize signals-enhanced products
+                "max_products": 20,
+                "deduplicate": True,
+            },
+        }
 
     # Get the product catalog provider for this tenant
     provider = await get_product_catalog_provider(
@@ -1502,7 +1496,6 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
     # Enrich products with dynamic pricing (AdCP PR #79)
     # Calculate floor_cpm, recommended_cpm, estimated_exposures from cached metrics
     try:
-        from src.core.database.database_session import get_db_session
         from src.services.dynamic_pricing_service import DynamicPricingService
 
         # Extract country from request if available (future enhancement: parse from targeting)
