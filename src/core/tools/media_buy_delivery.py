@@ -17,9 +17,9 @@ from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
-from src.adapters import get_adapter
 from src.core.auth import get_principal_object
 from src.core.helpers import get_principal_id_from_context
+from src.core.helpers.adapter_helpers import get_adapter
 from src.core.schema_adapters import GetMediaBuyDeliveryResponse
 from src.core.schemas import (
     DeliveryTotals,

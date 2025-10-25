@@ -1521,6 +1521,8 @@ def _list_creatives_impl(
     # Unlike discovery endpoints (list_creative_formats), this returns actual creative assets
     # which are principal-specific and must be access-controlled
     principal_id = get_principal_id_from_context(context)
+    if not principal_id:
+        raise ToolError("Missing x-adcp-auth header")
 
     # Get tenant information
     tenant = get_current_tenant()

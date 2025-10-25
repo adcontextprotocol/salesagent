@@ -14,12 +14,12 @@ import pytest
 from src.core.schemas import Budget, Package
 
 
-@pytest.mark.unit
+@pytest.mark.requires_db
 class TestDuplicateProductValidation:
     """Test that duplicate products in packages are rejected."""
 
     @pytest.mark.asyncio
-    async def test_duplicate_product_in_packages_rejected(self):
+    async def test_duplicate_product_in_packages_rejected(self, integration_db):
         """Test that duplicate product_ids in packages are rejected."""
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
@@ -41,7 +41,7 @@ class TestDuplicateProductValidation:
         # Mock tenant for get_principal_from_context return
         mock_tenant = {"tenant_id": "test_tenant", "subdomain": "test", "ad_server": "mock"}
 
-        # Mock the dependencies (get_db_session is auto-mocked by conftest)
+        # Mock the dependencies
         with (
             patch(
                 "src.core.auth.get_principal_from_context",
@@ -93,7 +93,7 @@ class TestDuplicateProductValidation:
             ), f"Error should say 'each product can only be used once': {error_msg}"
 
     @pytest.mark.asyncio
-    async def test_multiple_duplicate_products_all_listed(self):
+    async def test_multiple_duplicate_products_all_listed(self, integration_db):
         """Test that all duplicate product_ids are listed in error message."""
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
@@ -115,7 +115,7 @@ class TestDuplicateProductValidation:
         # Mock tenant for get_principal_from_context return
         mock_tenant = {"tenant_id": "test_tenant", "subdomain": "test", "ad_server": "mock"}
 
-        # Mock the dependencies (get_db_session is auto-mocked by conftest)
+        # Mock the dependencies
         with (
             patch(
                 "src.core.auth.get_principal_from_context",

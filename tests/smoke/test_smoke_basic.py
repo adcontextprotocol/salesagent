@@ -99,7 +99,7 @@ class TestCriticalPaths:
     @pytest.mark.smoke
     def test_principal_auth_logic(self):
         """Test principal authentication logic exists."""
-        from src.core.main import get_principal_from_token
+        from src.core.auth import get_principal_from_token
 
         # Function should exist and be callable
         assert callable(get_principal_from_token)
