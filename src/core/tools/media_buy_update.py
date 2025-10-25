@@ -71,6 +71,8 @@ def _verify_principal(media_buy_id: str, context: Context):
 
         if media_buy.principal_id != principal_id:
             # Log security violation
+            # Note: principal_id guaranteed to be str here (checked by get_principal_id_from_context)
+            assert principal_id is not None, "principal_id should be set at this point"
             security_logger = get_audit_logger("AdCP", tenant["tenant_id"])
             security_logger.log_security_violation(
                 operation="access_media_buy",
@@ -83,21 +85,21 @@ def _verify_principal(media_buy_id: str, context: Context):
 
 def _update_media_buy_impl(
     media_buy_id: str,
-    buyer_ref: str = None,
-    active: bool = None,
-    flight_start_date: str = None,
-    flight_end_date: str = None,
-    budget: float = None,
-    currency: str = None,
-    targeting_overlay: dict = None,
-    start_time: str = None,
-    end_time: str = None,
-    pacing: str = None,
-    daily_budget: float = None,
-    packages: list = None,
-    creatives: list = None,
+    buyer_ref: str | None = None,
+    active: bool | None = None,
+    flight_start_date: str | None = None,
+    flight_end_date: str | None = None,
+    budget: float | None = None,
+    currency: str | None = None,
+    targeting_overlay: dict | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    pacing: str | None = None,
+    daily_budget: float | None = None,
+    packages: list | None = None,
+    creatives: list | None = None,
     push_notification_config: dict | None = None,
-    context: Context = None,
+    context: Context | None = None,
 ) -> UpdateMediaBuyResponse:
     """Shared implementation for update_media_buy (used by both MCP and A2A).
 
