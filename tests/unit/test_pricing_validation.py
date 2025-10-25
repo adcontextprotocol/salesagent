@@ -6,8 +6,8 @@ from unittest.mock import Mock
 import pytest
 from fastmcp.exceptions import ToolError
 
-from src.core.main import _validate_pricing_model_selection
 from src.core.schemas import Package, PricingModel
+from src.core.tools.media_buy_create import _validate_pricing_model_selection
 
 
 class TestPricingValidation:

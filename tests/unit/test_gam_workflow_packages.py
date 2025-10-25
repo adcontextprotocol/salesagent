@@ -124,9 +124,9 @@ class TestGAMManualApprovalPath:
                 # Assert - Package IDs must match input packages
                 returned_ids = {pkg["package_id"] for pkg in response.packages}
                 expected_ids = {pkg.package_id for pkg in sample_packages}
-                assert returned_ids == expected_ids, (
-                    f"Package IDs don't match. Got {returned_ids}, expected {expected_ids}"
-                )
+                assert (
+                    returned_ids == expected_ids
+                ), f"Package IDs don't match. Got {returned_ids}, expected {expected_ids}"
 
                 # Assert - Other required fields
                 assert response.buyer_ref == sample_request.buyer_ref, "buyer_ref must be preserved"
@@ -256,9 +256,9 @@ class TestGAMActivationWorkflowPath:
             # Assert - Line item IDs must match mocked IDs
             returned_line_item_ids = [pkg["platform_line_item_id"] for pkg in response.packages]
             expected_line_item_ids = [str(lid) for lid in mock_line_item_ids]
-            assert returned_line_item_ids == expected_line_item_ids, (
-                f"Line item IDs don't match. Got {returned_line_item_ids}, expected {expected_line_item_ids}"
-            )
+            assert (
+                returned_line_item_ids == expected_line_item_ids
+            ), f"Line item IDs don't match. Got {returned_line_item_ids}, expected {expected_line_item_ids}"
 
             # Assert - Other required fields
             assert response.buyer_ref == sample_request.buyer_ref, "buyer_ref must be preserved"

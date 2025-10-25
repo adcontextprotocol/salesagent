@@ -287,9 +287,9 @@ class TestA2AErrorPropagation:
 
             # CRITICAL ASSERTIONS: Success response
             assert artifact_data["success"] is True, "success must be True for successful operation"
-            assert artifact_data.get("errors") is None or len(artifact_data.get("errors", [])) == 0, (
-                "errors field must be None or empty array for success"
-            )
+            assert (
+                artifact_data.get("errors") is None or len(artifact_data.get("errors", [])) == 0
+            ), "errors field must be None or empty array for success"
             assert "media_buy_id" in artifact_data, "Success response must include media_buy_id"
             assert artifact_data["media_buy_id"] is not None, "media_buy_id must not be None for success"
 
@@ -340,9 +340,9 @@ class TestA2AErrorPropagation:
 
             # Optional but important AdCP fields
             assert "packages" in artifact_data, "Must include packages (AdCP spec field)"
-            assert "creative_deadline" in artifact_data or artifact_data.get("creative_deadline") is None, (
-                "Must include creative_deadline (AdCP spec field)"
-            )
+            assert (
+                "creative_deadline" in artifact_data or artifact_data.get("creative_deadline") is None
+            ), "Must include creative_deadline (AdCP spec field)"
 
             # A2A-specific augmentation fields
             assert "success" in artifact_data, "A2A wrapper must add success field"

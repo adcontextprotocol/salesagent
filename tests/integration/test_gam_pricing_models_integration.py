@@ -206,6 +206,8 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
 @pytest.mark.requires_db
 def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_with_all_pricing_models):
     """Test CPM guaranteed creates STANDARD line item with priority 8."""
+    from src.core.tools.media_buy_create import _create_media_buy_impl
+
     request = CreateMediaBuyRequest(
         brand_manifest={"name": "https://example.com/product"},
         packages=[
@@ -254,6 +256,8 @@ def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_with_all
 @pytest.mark.requires_db
 def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_gam_tenant_with_all_pricing_models):
     """Test CPC creates PRICE_PRIORITY line item with CLICKS goal unit."""
+    from src.core.tools.media_buy_create import _create_media_buy_impl
+
     request = CreateMediaBuyRequest(
         brand_manifest={"name": "https://example.com/product"},
         packages=[
@@ -303,6 +307,8 @@ def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_gam_ten
 @pytest.mark.requires_db
 def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(setup_gam_tenant_with_all_pricing_models):
     """Test VCPM creates STANDARD line item with VIEWABLE_IMPRESSIONS goal."""
+    from src.core.tools.media_buy_create import _create_media_buy_impl
+
     request = CreateMediaBuyRequest(
         brand_manifest={"name": "https://example.com/product"},
         packages=[
@@ -352,6 +358,8 @@ def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(setup_gam
 @pytest.mark.requires_db
 def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_pricing_models):
     """Test FLAT_RATE converts to CPD (cost per day) correctly."""
+    from src.core.tools.media_buy_create import _create_media_buy_impl
+
     # 10 day campaign: $5000 total = $500/day
     request = CreateMediaBuyRequest(
         brand_manifest={"name": "https://example.com/product"},
@@ -402,6 +410,8 @@ def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_pricin
 @pytest.mark.requires_db
 def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_pricing_models):
     """Test creating media buy with multiple packages using different pricing models."""
+    from src.core.tools.media_buy_create import _create_media_buy_impl
+
     request = CreateMediaBuyRequest(
         brand_manifest={"name": "https://example.com/campaign"},
         packages=[
@@ -462,6 +472,8 @@ def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_pricin
 @pytest.mark.requires_db
 def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_pricing_models):
     """Test auction-based CPC (non-fixed) creates PRICE_PRIORITY line item."""
+    from src.core.tools.media_buy_create import _create_media_buy_impl
+
     # Add auction CPC pricing option
     with get_db_session() as session:
         pricing_auction = PricingOption(

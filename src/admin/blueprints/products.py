@@ -317,9 +317,7 @@ def list_products(tenant_id):
                 formats_data = (
                     product.formats
                     if isinstance(product.formats, list)
-                    else json.loads(product.formats)
-                    if product.formats
-                    else []
+                    else json.loads(product.formats) if product.formats else []
                 )
 
                 # Debug: Log raw formats data
@@ -439,16 +437,12 @@ def list_products(tenant_id):
                     "countries": (
                         product.countries
                         if isinstance(product.countries, list)
-                        else json.loads(product.countries)
-                        if product.countries
-                        else []
+                        else json.loads(product.countries) if product.countries else []
                     ),
                     "implementation_config": (
                         product.implementation_config
                         if isinstance(product.implementation_config, dict)
-                        else json.loads(product.implementation_config)
-                        if product.implementation_config
-                        else {}
+                        else json.loads(product.implementation_config) if product.implementation_config else {}
                     ),
                     "created_at": product.created_at if hasattr(product, "created_at") else None,
                 }
@@ -1101,23 +1095,17 @@ def edit_product(tenant_id, product_id):
                 "formats": (
                     product.formats
                     if isinstance(product.formats, list)
-                    else json.loads(product.formats)
-                    if product.formats
-                    else []
+                    else json.loads(product.formats) if product.formats else []
                 ),
                 "countries": (
                     product.countries
                     if isinstance(product.countries, list)
-                    else json.loads(product.countries)
-                    if product.countries
-                    else []
+                    else json.loads(product.countries) if product.countries else []
                 ),
                 "implementation_config": (
                     product.implementation_config
                     if isinstance(product.implementation_config, dict)
-                    else json.loads(product.implementation_config)
-                    if product.implementation_config
-                    else {}
+                    else json.loads(product.implementation_config) if product.implementation_config else {}
                 ),
             }
 

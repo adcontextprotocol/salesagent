@@ -7,8 +7,8 @@ from sqlalchemy import select
 
 from src.core.database.models import Creative as DBCreative
 from src.core.database.models import CreativeAssignment as DBAssignment
-from src.core.main import _update_media_buy_impl
 from src.core.schemas import UpdateMediaBuyResponse
+from src.core.tools.media_buy_update import _update_media_buy_impl
 
 
 @pytest.mark.requires_db

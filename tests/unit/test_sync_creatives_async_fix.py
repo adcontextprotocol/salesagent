@@ -12,7 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.core.main import _sync_creatives_impl, run_async_in_sync_context
+from src.core.tools.creatives import _sync_creatives_impl
+from src.core.validation_helpers import run_async_in_sync_context
 
 
 class TestRunAsyncInSyncContext:
@@ -82,14 +83,17 @@ class TestSyncCreativesErrorHandling:
             # Missing required fields like name, format_id
         }
 
-        with patch("src.core.main.get_db_session") as mock_get_db:
+        with patch("src.core.tools.creatives.get_db_session") as mock_get_db:
             mock_get_db.return_value.__enter__.return_value = mock_session
             mock_get_db.return_value.__exit__.return_value = None
 
-            with patch("src.core.main.get_current_tenant", return_value=mock_tenant):
-                with patch("src.core.main._get_principal_id_from_context", return_value="test_principal"):
+            with patch("src.core.tools.creatives.get_current_tenant", return_value=mock_tenant):
+                with patch(
+                    "src.core.helpers.context_helpers.get_principal_from_context",
+                    return_value=("test_principal", mock_tenant),
+                ):
                     # Mock the Creative schema to raise ValidationError
-                    with patch("src.core.main.Creative") as mock_creative_class:
+                    with patch("src.core.schemas.Creative") as mock_creative_class:
                         from pydantic import ValidationError
 
                         # Simulate validation error
@@ -135,12 +139,15 @@ class TestSyncCreativesErrorHandling:
             "assets": {"banner_image": {"url": "https://example.com/image.png"}},
         }
 
-        with patch("src.core.main.get_db_session") as mock_get_db:
+        with patch("src.core.tools.creatives.get_db_session") as mock_get_db:
             mock_get_db.return_value.__enter__.return_value = mock_session
             mock_get_db.return_value.__exit__.return_value = None
 
-            with patch("src.core.main.get_current_tenant", return_value=mock_tenant):
-                with patch("src.core.main._get_principal_id_from_context", return_value="test_principal"):
+            with patch("src.core.tools.creatives.get_current_tenant", return_value=mock_tenant):
+                with patch(
+                    "src.core.helpers.context_helpers.get_principal_from_context",
+                    return_value=("test_principal", mock_tenant),
+                ):
                     # Mock the creative agent registry to return no previews
                     with patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry:
                         mock_reg_instance = MagicMock()
@@ -207,12 +214,15 @@ class TestSyncCreativesAsyncScenario:
             "assets": {"banner_image": {"url": "https://example.com/image.png"}},
         }
 
-        with patch("src.core.main.get_db_session") as mock_get_db:
+        with patch("src.core.tools.creatives.get_db_session") as mock_get_db:
             mock_get_db.return_value.__enter__.return_value = mock_session
             mock_get_db.return_value.__exit__.return_value = None
 
-            with patch("src.core.main.get_current_tenant", return_value=mock_tenant):
-                with patch("src.core.main._get_principal_id_from_context", return_value="test_principal"):
+            with patch("src.core.tools.creatives.get_current_tenant", return_value=mock_tenant):
+                with patch(
+                    "src.core.helpers.context_helpers.get_principal_from_context",
+                    return_value=("test_principal", mock_tenant),
+                ):
                     with patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry:
                         mock_reg_instance = MagicMock()
                         mock_registry.return_value = mock_reg_instance

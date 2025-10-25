@@ -12,8 +12,8 @@ from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import CurrencyLimit, MediaBuy, Principal, Product, Tenant
-from src.core.main import _create_media_buy_impl
 from src.core.schemas import Budget, TaskStatus
+from src.core.tools.media_buy_create import _create_media_buy_impl
 
 
 @pytest.mark.integration
