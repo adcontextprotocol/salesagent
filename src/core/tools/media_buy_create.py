@@ -1,7 +1,11 @@
-"""AdCP tool implementation.
+"""Create Media Buy tool implementation.
 
-This module contains tool implementations following the MCP/A2A shared
-implementation pattern from CLAUDE.md.
+Handles media buy creation including:
+- Product selection and validation
+- Package configuration with pricing
+- Creative assignment
+- Ad server order provisioning
+- Budget validation
 """
 
 import logging
@@ -19,13 +23,13 @@ logger = logging.getLogger(__name__)
 # Tool-specific imports
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import (
-    get_principal_from_context,
     get_principal_object,
 )
-from src.core.config_loader import get_current_tenant, set_current_tenant
+from src.core.config_loader import get_current_tenant
 from src.core.context_manager import get_context_manager
 from src.core.database.models import MediaBuy
 from src.core.database.models import Product as ModelProduct
+from src.core.helpers import get_principal_id_from_context, log_tool_activity
 from src.core.schema_adapters import CreateMediaBuyResponse
 from src.core.schemas import (
     CreateMediaBuyRequest,
@@ -40,24 +44,6 @@ from src.core.validation_helpers import format_validation_error
 from src.services import activity_feed
 
 # --- Helper Functions ---
-
-
-def _get_principal_id_from_context(context: Context | None) -> str | None:
-    """Extract principal ID from context.
-
-    Wrapper around get_principal_from_context that returns just the principal_id.
-
-    Args:
-        context: FastMCP context
-
-    Returns:
-        Principal ID string, or None if not authenticated
-    """
-    principal_id, tenant = get_principal_from_context(context)
-    # Set tenant context if found (get_principal_from_context returns it but doesn't set it)
-    if tenant:
-        set_current_tenant(tenant)
-    return principal_id
 
 
 def _validate_pricing_model_selection(
@@ -386,7 +372,7 @@ async def _create_media_buy_impl(
     testing_ctx = get_testing_context(context)
 
     # Authentication and tenant setup
-    principal_id = _get_principal_id_from_context(context)
+    principal_id = get_principal_id_from_context(context)
     tenant = get_current_tenant()
 
     # Validate setup completion (only in production, skip for testing)
@@ -1634,7 +1620,7 @@ async def _create_media_buy_impl(
         )
 
         # Log activity
-        from src.core.main import log_tool_activity  # Lazy import to avoid circular dependency
+        # Activity logging imported at module level
 
         log_tool_activity(context, "create_media_buy", request_start_time)
 

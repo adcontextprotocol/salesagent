@@ -1,7 +1,10 @@
-"""AdCP tool implementation.
+"""Creative Sync and Listing tool implementations.
 
-This module contains tool implementations following the MCP/A2A shared
-implementation pattern from CLAUDE.md.
+Handles creative operations including:
+- Creative synchronization from buyer creative agents
+- Creative asset validation and format conversion
+- Creative library management
+- Creative discovery and filtering
 """
 
 import logging
@@ -17,34 +20,17 @@ from sqlalchemy import select
 logger = logging.getLogger(__name__)
 
 from src.core.audit_logger import get_audit_logger
-from src.core.auth import get_principal_from_context
-from src.core.config_loader import get_current_tenant, set_current_tenant
+from src.core.config_loader import get_current_tenant
 from src.core.database.database_session import get_db_session
 from src.core.helpers import (
     _extract_format_namespace,
     _validate_creative_assets,
+    get_principal_id_from_context,
+    log_tool_activity,
 )
 from src.core.schema_adapters import ListCreativesResponse, SyncCreativesResponse
 from src.core.schemas import Creative, SyncCreativeResult
 from src.core.validation_helpers import format_validation_error, run_async_in_sync_context
-
-
-def _get_principal_id_from_context(context: Context | None) -> str | None:
-    """Extract principal ID from context.
-
-    Wrapper around get_principal_from_context that returns just the principal_id.
-
-    Args:
-        context: FastMCP context
-
-    Returns:
-        Principal ID string, or None if not authenticated
-    """
-    principal_id, tenant = get_principal_from_context(context)
-    # Set tenant context if found (get_principal_from_context returns it but doesn't set it)
-    if tenant:
-        set_current_tenant(tenant)
-    return principal_id
 
 
 def _sync_creatives_impl(
@@ -87,7 +73,7 @@ def _sync_creatives_impl(
     start_time = time.time()
 
     # Authentication
-    principal_id = _get_principal_id_from_context(context)
+    principal_id = get_principal_id_from_context(context)
 
     # Get tenant information
     # If context is ToolContext (A2A), tenant is already set, but verify it matches
@@ -1333,7 +1319,7 @@ def _sync_creatives_impl(
     )
 
     # Log activity
-    from src.core.main import log_tool_activity  # Lazy import to avoid circular dependency
+    # Activity logging imported at module level
 
     log_tool_activity(context, "sync_creatives", start_time)
 
@@ -1534,7 +1520,7 @@ def _list_creatives_impl(
     # Authentication - REQUIRED (creatives contain sensitive data)
     # Unlike discovery endpoints (list_creative_formats), this returns actual creative assets
     # which are principal-specific and must be access-controlled
-    principal_id = _get_principal_id_from_context(context)
+    principal_id = get_principal_id_from_context(context)
 
     # Get tenant information
     tenant = get_current_tenant()
@@ -1683,7 +1669,7 @@ def _list_creatives_impl(
     )
 
     # Log activity
-    from src.core.main import log_tool_activity  # Lazy import to avoid circular dependency
+    # Activity logging imported at module level
 
     log_tool_activity(context, "list_creatives", start_time)
 

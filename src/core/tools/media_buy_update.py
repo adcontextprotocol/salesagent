@@ -1,7 +1,11 @@
-"""AdCP tool implementation.
+"""Update Media Buy tool implementation.
 
-This module contains tool implementations following the MCP/A2A shared
-implementation pattern from CLAUDE.md.
+Handles media buy updates including:
+- Campaign-level budget and date changes
+- Package-level budget adjustments
+- Creative assignments per package
+- Activation/pause controls
+- Currency limit validation
 """
 
 import logging
@@ -17,32 +21,14 @@ logger = logging.getLogger(__name__)
 from src.adapters import get_adapter
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import (
-    get_principal_from_context,
     get_principal_object,
 )
-from src.core.config_loader import get_current_tenant, set_current_tenant
+from src.core.config_loader import get_current_tenant
 from src.core.database.database_session import get_db_session
+from src.core.helpers import get_principal_id_from_context
 from src.core.schema_adapters import UpdateMediaBuyResponse
 from src.core.schemas import UpdateMediaBuyRequest
 from src.core.validation_helpers import format_validation_error
-
-
-def _get_principal_id_from_context(context: Context | None) -> str | None:
-    """Extract principal ID from context.
-
-    Wrapper around get_principal_from_context that returns just the principal_id.
-
-    Args:
-        context: FastMCP context
-
-    Returns:
-        Principal ID string, or None if not authenticated
-    """
-    principal_id, tenant = get_principal_from_context(context)
-    # Set tenant context if found (get_principal_from_context returns it but doesn't set it)
-    if tenant:
-        set_current_tenant(tenant)
-    return principal_id
 
 
 def _verify_principal(media_buy_id: str, context: Context):
@@ -61,7 +47,7 @@ def _verify_principal(media_buy_id: str, context: Context):
 
     from src.core.database.models import MediaBuy as MediaBuyModel
 
-    principal_id = _get_principal_id_from_context(context)
+    principal_id = get_principal_id_from_context(context)
     tenant = get_current_tenant()
 
     # Query database for media buy (try media_buy_id first, then buyer_ref)
@@ -185,7 +171,7 @@ def _update_media_buy_impl(
         raise ValueError("media_buy_id is required (buyer_ref lookup not yet implemented)")
 
     _verify_principal(req.media_buy_id, context)
-    principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
+    principal_id = get_principal_id_from_context(context)  # Already verified by _verify_principal
     tenant = get_current_tenant()
 
     # Create or get persistent context

@@ -88,31 +88,31 @@ class TestSyncCreativesErrorHandling:
             mock_get_db.return_value.__exit__.return_value = None
 
             with patch("src.core.tools.creatives.get_current_tenant", return_value=mock_tenant):
-                with patch("src.core.tools.creatives.set_current_tenant"):  # Mock set_current_tenant as no-op
-                    with patch(
-                        "src.core.tools.creatives._get_principal_id_from_context", return_value="test_principal"
-                    ):
-                        # Mock the Creative schema to raise ValidationError
-                        with patch("src.core.schemas.Creative") as mock_creative_class:
-                            from pydantic import ValidationError
+                with patch(
+                    "src.core.helpers.context_helpers.get_principal_from_context",
+                    return_value=("test_principal", mock_tenant),
+                ):
+                    # Mock the Creative schema to raise ValidationError
+                    with patch("src.core.schemas.Creative") as mock_creative_class:
+                        from pydantic import ValidationError
 
-                            # Simulate validation error
-                            mock_creative_class.side_effect = ValidationError.from_exception_data(
-                                "Creative", [{"type": "missing", "loc": ("name",), "msg": "Field required"}]
-                            )
+                        # Simulate validation error
+                        mock_creative_class.side_effect = ValidationError.from_exception_data(
+                            "Creative", [{"type": "missing", "loc": ("name",), "msg": "Field required"}]
+                        )
 
-                            # This should NOT raise "cannot access local variable 'creative_id'"
-                            # Instead, it should handle the error gracefully
-                            result = _sync_creatives_impl(
-                                creatives=[invalid_creative],
-                                context=mock_context,
-                            )
+                        # This should NOT raise "cannot access local variable 'creative_id'"
+                        # Instead, it should handle the error gracefully
+                        result = _sync_creatives_impl(
+                            creatives=[invalid_creative],
+                            context=mock_context,
+                        )
 
-                            # Verify the error was captured with the correct creative_id
-                            assert len(result.creatives) == 1
-                            assert result.creatives[0].creative_id == "test_creative_123"
-                            assert result.creatives[0].action == "failed"
-                            assert len(result.creatives[0].errors) > 0
+                        # Verify the error was captured with the correct creative_id
+                        assert len(result.creatives) == 1
+                        assert result.creatives[0].creative_id == "test_creative_123"
+                        assert result.creatives[0].action == "failed"
+                        assert len(result.creatives[0].errors) > 0
 
     @pytest.mark.asyncio
     async def test_creative_id_in_preview_failure_path(self):
@@ -144,45 +144,45 @@ class TestSyncCreativesErrorHandling:
             mock_get_db.return_value.__exit__.return_value = None
 
             with patch("src.core.tools.creatives.get_current_tenant", return_value=mock_tenant):
-                with patch("src.core.tools.creatives.set_current_tenant"):  # Mock set_current_tenant as no-op
-                    with patch(
-                        "src.core.tools.creatives._get_principal_id_from_context", return_value="test_principal"
-                    ):
-                        # Mock the creative agent registry to return no previews
-                        with patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry:
-                            mock_reg_instance = MagicMock()
-                            mock_registry.return_value = mock_reg_instance
+                with patch(
+                    "src.core.helpers.context_helpers.get_principal_from_context",
+                    return_value=("test_principal", mock_tenant),
+                ):
+                    # Mock the creative agent registry to return no previews
+                    with patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry:
+                        mock_reg_instance = MagicMock()
+                        mock_registry.return_value = mock_reg_instance
 
-                            # Mock list_all_formats to return a matching format
-                            async def mock_list_formats(*args, **kwargs):
-                                mock_format = MagicMock()
-                                mock_format.format_id = {"agent_url": "https://example.com", "id": "display_300x250"}
-                                mock_format.agent_url = "https://example.com"
-                                mock_format.output_format_ids = None  # Not generative
-                                return [mock_format]
+                        # Mock list_all_formats to return a matching format
+                        async def mock_list_formats(*args, **kwargs):
+                            mock_format = MagicMock()
+                            mock_format.format_id = {"agent_url": "https://example.com", "id": "display_300x250"}
+                            mock_format.agent_url = "https://example.com"
+                            mock_format.output_format_ids = None  # Not generative
+                            return [mock_format]
 
-                            mock_reg_instance.list_all_formats = mock_list_formats
+                        mock_reg_instance.list_all_formats = mock_list_formats
 
-                            # Mock preview_creative to return empty previews (failure case)
-                            async def mock_preview(*args, **kwargs):
-                                return {"previews": []}  # No previews = validation failure
+                        # Mock preview_creative to return empty previews (failure case)
+                        async def mock_preview(*args, **kwargs):
+                            return {"previews": []}  # No previews = validation failure
 
-                            mock_reg_instance.preview_creative = mock_preview
+                        mock_reg_instance.preview_creative = mock_preview
 
-                            # Mock session.scalars().first() to return None (new creative)
-                            mock_session.scalars.return_value.first.return_value = None
+                        # Mock session.scalars().first() to return None (new creative)
+                        mock_session.scalars.return_value.first.return_value = None
 
-                            # This should handle the error gracefully with creative_id available
-                            result = _sync_creatives_impl(
-                                creatives=[creative],
-                                context=mock_context,
-                            )
+                        # This should handle the error gracefully with creative_id available
+                        result = _sync_creatives_impl(
+                            creatives=[creative],
+                            context=mock_context,
+                        )
 
-                            # Verify error was captured with correct creative_id
-                            assert len(result.creatives) == 1
-                            assert result.creatives[0].creative_id == "test_creative_456"
-                            assert result.creatives[0].action == "failed"
-                            assert any("preview" in err.lower() for err in result.creatives[0].errors)
+                        # Verify error was captured with correct creative_id
+                        assert len(result.creatives) == 1
+                        assert result.creatives[0].creative_id == "test_creative_456"
+                        assert result.creatives[0].action == "failed"
+                        assert any("preview" in err.lower() for err in result.creatives[0].errors)
 
 
 class TestSyncCreativesAsyncScenario:
@@ -219,55 +219,55 @@ class TestSyncCreativesAsyncScenario:
             mock_get_db.return_value.__exit__.return_value = None
 
             with patch("src.core.tools.creatives.get_current_tenant", return_value=mock_tenant):
-                with patch("src.core.tools.creatives.set_current_tenant"):  # Mock set_current_tenant as no-op
-                    with patch(
-                        "src.core.tools.creatives._get_principal_id_from_context", return_value="test_principal"
-                    ):
-                        with patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry:
-                            mock_reg_instance = MagicMock()
-                            mock_registry.return_value = mock_reg_instance
+                with patch(
+                    "src.core.helpers.context_helpers.get_principal_from_context",
+                    return_value=("test_principal", mock_tenant),
+                ):
+                    with patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry:
+                        mock_reg_instance = MagicMock()
+                        mock_registry.return_value = mock_reg_instance
 
-                            # Mock async methods
-                            async def mock_list_formats(*args, **kwargs):
-                                # Simulate work
-                                await asyncio.sleep(0.001)
-                                mock_format = MagicMock()
-                                mock_format.format_id = {"agent_url": "https://example.com", "id": "display_300x250"}
-                                mock_format.agent_url = "https://example.com"
-                                mock_format.output_format_ids = None
-                                return [mock_format]
+                        # Mock async methods
+                        async def mock_list_formats(*args, **kwargs):
+                            # Simulate work
+                            await asyncio.sleep(0.001)
+                            mock_format = MagicMock()
+                            mock_format.format_id = {"agent_url": "https://example.com", "id": "display_300x250"}
+                            mock_format.agent_url = "https://example.com"
+                            mock_format.output_format_ids = None
+                            return [mock_format]
 
-                            async def mock_preview(*args, **kwargs):
-                                await asyncio.sleep(0.001)
-                                return {
-                                    "previews": [
-                                        {
-                                            "renders": [
-                                                {
-                                                    "preview_url": "https://example.com/preview.png",
-                                                    "dimensions": {"width": 300, "height": 250},
-                                                }
-                                            ]
-                                        }
-                                    ]
-                                }
+                        async def mock_preview(*args, **kwargs):
+                            await asyncio.sleep(0.001)
+                            return {
+                                "previews": [
+                                    {
+                                        "renders": [
+                                            {
+                                                "preview_url": "https://example.com/preview.png",
+                                                "dimensions": {"width": 300, "height": 250},
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
 
-                            mock_reg_instance.list_all_formats = mock_list_formats
-                            mock_reg_instance.preview_creative = mock_preview
-                            mock_session.scalars.return_value.first.return_value = None
+                        mock_reg_instance.list_all_formats = mock_list_formats
+                        mock_reg_instance.preview_creative = mock_preview
+                        mock_session.scalars.return_value.first.return_value = None
 
-                            # Mock session.begin_nested for savepoint
-                            mock_session.begin_nested.return_value.__enter__.return_value = None
-                            mock_session.begin_nested.return_value.__exit__.return_value = None
+                        # Mock session.begin_nested for savepoint
+                        mock_session.begin_nested.return_value.__enter__.return_value = None
+                        mock_session.begin_nested.return_value.__exit__.return_value = None
 
-                            # This is the critical test: calling from async context should work
-                            # Before the fix, this would raise RuntimeError about asyncio.run()
-                            result = _sync_creatives_impl(
-                                creatives=[creative],
-                                context=mock_context,
-                            )
+                        # This is the critical test: calling from async context should work
+                        # Before the fix, this would raise RuntimeError about asyncio.run()
+                        result = _sync_creatives_impl(
+                            creatives=[creative],
+                            context=mock_context,
+                        )
 
-                            # Verify it succeeded
-                            assert result is not None
-                            assert len(result.creatives) >= 1
-                            # May succeed or fail depending on mocks, but should NOT crash with asyncio error
+                        # Verify it succeeded
+                        assert result is not None
+                        assert len(result.creatives) >= 1
+                        # May succeed or fail depending on mocks, but should NOT crash with asyncio error

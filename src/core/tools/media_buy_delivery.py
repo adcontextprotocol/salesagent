@@ -1,7 +1,11 @@
-"""AdCP tool implementation.
+"""Get Media Buy Delivery tool implementation.
 
-This module contains tool implementations following the MCP/A2A shared
-implementation pattern from CLAUDE.md.
+Handles delivery metrics reporting including:
+- Campaign delivery totals (impressions, spend)
+- Package-level delivery breakdown
+- Status filtering (active, paused, completed)
+- Date range reporting
+- Testing mode simulation
 """
 
 import logging
@@ -14,11 +18,8 @@ from pydantic import ValidationError
 logger = logging.getLogger(__name__)
 
 from src.adapters import get_adapter
-from src.core.auth import (
-    get_principal_from_context,
-    get_principal_object,
-)
-from src.core.config_loader import set_current_tenant
+from src.core.auth import get_principal_object
+from src.core.helpers import get_principal_id_from_context
 from src.core.schema_adapters import GetMediaBuyDeliveryResponse
 from src.core.schemas import (
     DeliveryTotals,
@@ -31,24 +32,6 @@ from src.core.testing_hooks import DeliverySimulator, TimeSimulator, apply_testi
 from src.core.validation_helpers import format_validation_error
 
 
-def _get_principal_id_from_context(context: Context | None) -> str | None:
-    """Extract principal ID from context.
-
-    Wrapper around get_principal_from_context that returns just the principal_id.
-
-    Args:
-        context: FastMCP context
-
-    Returns:
-        Principal ID string, or None if not authenticated
-    """
-    principal_id, tenant = get_principal_from_context(context)
-    # Set tenant context if found (get_principal_from_context returns it but doesn't set it)
-    if tenant:
-        set_current_tenant(tenant)
-    return principal_id
-
-
 def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
     """Get delivery data for one or more media buys.
 
@@ -59,7 +42,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
     # Extract testing context for time simulation and event jumping
     testing_ctx = get_testing_context(context)
 
-    principal_id = _get_principal_id_from_context(context)
+    principal_id = get_principal_id_from_context(context)
 
     # Get the Principal object
     principal = get_principal_object(principal_id)
@@ -377,8 +360,6 @@ def get_media_buy_delivery_raw(
 
 def _require_admin(context: Context) -> None:
     """Verify the request is from an admin user."""
-    principal_id, tenant = get_principal_from_context(context)
-    if tenant:
-        set_current_tenant(tenant)
+    principal_id = get_principal_id_from_context(context)
     if principal_id != "admin":
         raise PermissionError("This operation requires admin privileges")

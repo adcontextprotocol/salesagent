@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -17,7 +16,6 @@ from src.core.auth import (
     get_principal_from_context,
 )
 from src.landing import generate_tenant_landing_page
-from src.services.activity_feed import activity_feed
 
 logger = logging.getLogger(__name__)
 
@@ -77,62 +75,8 @@ class ApproveAdaptationResponse(BaseModel):
 # --- Helper Functions ---
 
 
-def log_tool_activity(context: Context, tool_name: str, start_time: float = None):
-    """Log tool activity to the activity feed."""
-    try:
-        # Get principal and tenant context
-        principal_id, tenant = get_principal_from_context(context)
-
-        # Set tenant context if returned
-        if tenant:
-            set_current_tenant(tenant)
-        else:
-            tenant = get_current_tenant()
-
-        if not tenant:
-            return
-        principal_name = "Unknown"
-
-        if principal_id:
-            with get_db_session() as session:
-                stmt = select(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
-                principal = session.scalars(stmt).first()
-                if principal:
-                    principal_name = principal.name
-
-        # Calculate response time if start_time provided
-        response_time_ms = None
-        if start_time:
-            response_time_ms = int((time.time() - start_time) * 1000)
-
-        # Log to activity feed (for WebSocket real-time updates)
-        activity_feed.log_api_call(
-            tenant_id=tenant["tenant_id"],
-            principal_name=principal_name,
-            method=tool_name,
-            status_code=200,
-            response_time_ms=response_time_ms,
-        )
-
-        # Also log to audit logs (for persistent dashboard activity feed)
-        from src.core.audit_logger import get_audit_logger
-
-        audit_logger = get_audit_logger("MCP", tenant["tenant_id"])
-        details = {"tool": tool_name, "status": "success"}
-        if response_time_ms:
-            details["response_time_ms"] = response_time_ms
-
-        audit_logger.log_operation(
-            operation=tool_name,
-            principal_name=principal_name,
-            principal_id=principal_id or "anonymous",
-            adapter_id="mcp_server",
-            success=True,
-            details=details,
-        )
-    except Exception as e:
-        logger.debug(f"Error logging tool activity: {e}")
-
+# --- Helper Functions ---
+# Helper functions moved to src/core/helpers/ modules and imported above
 
 # --- Authentication ---
 # Auth functions moved to src/core/auth.py and imported above

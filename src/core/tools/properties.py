@@ -1,7 +1,10 @@
-"""AdCP tool implementation.
+"""List Authorized Properties tool implementation.
 
-This module contains tool implementations following the MCP/A2A shared
-implementation pattern from CLAUDE.md.
+Handles property discovery including:
+- Publisher domain enumeration
+- Property tag filtering
+- Advertising policy disclosure
+- Virtual host routing
 """
 
 import logging
@@ -18,6 +21,7 @@ from src.core.auth import get_principal_from_context
 from src.core.config_loader import get_current_tenant, set_current_tenant
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AuthorizedProperty, PropertyTag
+from src.core.helpers import log_tool_activity
 from src.core.schema_adapters import ListAuthorizedPropertiesRequest, ListAuthorizedPropertiesResponse
 from src.core.schemas import Property, PropertyIdentifier, PropertyTagMetadata
 
@@ -81,7 +85,7 @@ def _list_authorized_properties_impl(
     # For list_authorized_properties, we don't modify data, so we can skip this call
     # The testing_context is used later if needed
 
-    from src.core.main import log_tool_activity  # Lazy import to avoid circular dependency
+    # Activity logging imported at module level
 
     log_tool_activity(context, "list_authorized_properties", start_time)
 
