@@ -15,9 +15,11 @@ from datetime import UTC, datetime
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from pydantic import ValidationError
+from rich.console import Console
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
+console = Console()
 
 from src.core.audit_logger import get_audit_logger
 from src.core.config_loader import get_current_tenant
