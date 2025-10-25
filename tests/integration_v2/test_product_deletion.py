@@ -14,7 +14,7 @@ from src.admin.app import create_app
 
 app, _ = create_app()
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, PricingOption, Product, Tenant, TenantManagementConfig
+from src.core.database.models import MediaBuy, PricingOption, Principal, Product, Tenant, TenantManagementConfig
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 
@@ -39,6 +39,7 @@ def test_tenant_and_products(integration_db):
             session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == "test_delete"))
             session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_delete"))
             session.execute(delete(Product).where(Product.tenant_id == "test_delete"))
+            session.execute(delete(Principal).where(Principal.tenant_id == "test_delete"))
             session.execute(delete(Tenant).where(Tenant.tenant_id == "test_delete"))
             session.commit()
         except:
@@ -57,6 +58,17 @@ def test_tenant_and_products(integration_db):
 
         # Add required setup data (currency limits, property tags)
         add_required_setup_data(session, "test_delete")
+
+        # Create test principal (required for media buys)
+        principal = Principal(
+            tenant_id="test_delete",
+            principal_id="test_principal",
+            name="Test Principal",
+            platform="adcp",
+            is_active=True,
+        )
+        session.add(principal)
+        session.commit()
 
         # Create test products using new pricing_options model
         product1 = create_test_product_with_pricing(
@@ -102,6 +114,7 @@ def test_tenant_and_products(integration_db):
             session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == "test_delete"))
             session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_delete"))
             session.execute(delete(Product).where(Product.tenant_id == "test_delete"))
+            session.execute(delete(Principal).where(Principal.tenant_id == "test_delete"))
             session.execute(delete(Tenant).where(Tenant.tenant_id == "test_delete"))
             session.commit()
         except:

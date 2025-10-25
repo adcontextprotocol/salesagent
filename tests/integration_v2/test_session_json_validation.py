@@ -292,7 +292,16 @@ class TestJSONValidation:
     def test_workflow_step_comments(self, test_db):
         """Test WorkflowStep comments validation."""
         with get_db_session() as session:
-            # Create context first
+            # Create tenant and principal first (required for foreign key)
+            tenant = Tenant(tenant_id="test", name="Test Tenant", subdomain="test", ad_server="mock", is_active=True)
+            session.add(tenant)
+            principal = Principal(
+                tenant_id="test", principal_id="test", name="Test Principal", platform="adcp", is_active=True
+            )
+            session.add(principal)
+            session.commit()
+
+            # Create context
             context = Context(context_id="ctx_test", tenant_id="test", principal_id="test", conversation_history=[])
             session.add(context)
 
@@ -395,7 +404,7 @@ class TestIntegration:
             p = session.scalars(select(Product).filter_by(product_id="prod_1")).first()
             assert p is not None
             assert len(p.formats) == 1
-            assert p.formats[0] == "display_300x250"  # Format now stored as string ID
+            assert p.formats[0]["format_id"] == "display_300x250"  # Format stored as dict with format_id
             assert p.targeting_template["geo_targets"] == ["US", "CA"]
 
             # Check principal
