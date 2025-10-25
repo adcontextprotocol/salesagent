@@ -424,31 +424,8 @@ class TestA2ASkillInvocation:
             # Verify we got products from database
             assert len(products) > 0
 
-    @pytest.mark.asyncio
-    @pytest.mark.skip_ci
-    async def test_unknown_skill_error(self, handler, sample_tenant, sample_principal):
-        """Test error handling for unknown skill."""
-        # TODO: Re-enable once we understand how A2A server handles unknown skills
-        # Mock authentication token
-        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-
-        # Mock external dependencies
-        with (
-            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
-        ):
-            mock_get_principal.return_value = sample_principal["principal_id"]
-            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
-
-            # Create message with unknown skill
-            skill_params = {"some_param": "some_value"}
-            message = create_a2a_message_with_skill("unknown_skill", skill_params)
-            params = MessageSendParams(message=message)
-
-            # Process the message - should raise error (exact error type TBD)
-            # with pytest.raises(ServerError) as exc_info:
-            #     await handler.on_message_send(params)
-            pass
+    # TODO: Add test_unknown_skill_error once we understand how A2A server handles unknown skills
+    # TODO: Needs investigation of proper error handling approach (ServerError not in current a2a library)
 
     @pytest.mark.asyncio
     async def test_multiple_skill_invocations(self, handler, sample_tenant, sample_principal, sample_products):
@@ -510,22 +487,8 @@ class TestA2ASkillInvocation:
             for artifact in result.artifacts:
                 assert artifact.parts[0].root.data is not None
 
-    @pytest.mark.asyncio
-    @pytest.mark.skip_ci
-    async def test_missing_authentication(self, handler):
-        """Test error handling for missing authentication."""
-        # TODO: Re-enable once we understand how A2A server handles auth errors
-        # Mock missing authentication token
-        handler._get_auth_token = MagicMock(return_value=None)
-
-        # Create any message
-        message = create_a2a_text_message("test query")
-        params = MessageSendParams(message=message)
-
-        # Process the message - should raise error (exact error type TBD)
-        # with pytest.raises(ServerError) as exc_info:
-        #     await handler.on_message_send(params)
-        pass
+    # TODO: Add test_missing_authentication once we understand how A2A server handles auth errors
+    # TODO: Needs investigation of proper error handling approach (ServerError not in current a2a library)
 
     @pytest.mark.asyncio
     async def test_adcp_schema_validation_integration(self, validator):
