@@ -44,7 +44,7 @@ class TestDuplicateProductValidation:
         # Mock the dependencies
         with (
             patch(
-                "src.core.tools.media_buy_create.get_principal_from_context",
+                "src.core.auth.get_principal_from_context",
                 return_value=("test_principal", mock_tenant),
             ),
             patch("src.core.database.database_session.get_db_session"),
@@ -119,7 +119,7 @@ class TestDuplicateProductValidation:
         # Mock the dependencies
         with (
             patch(
-                "src.core.tools.media_buy_create.get_principal_from_context",
+                "src.core.auth.get_principal_from_context",
                 return_value=("test_principal", mock_tenant),
             ),
             patch("src.core.database.database_session.get_db_session"),
