@@ -27,10 +27,15 @@ class TestMCPToolImports:
         This specifically checks for the create_get_products_request bug
         that wasn't caught by other unit tests.
         """
-        from src.core import main
+        from src.core import schema_helpers
 
-        # Check that the function exists in the module namespace
-        assert hasattr(main, "create_get_products_request"), "create_get_products_request not imported in main module"
+        # Check that the function exists in the schema_helpers module
+        assert hasattr(
+            schema_helpers, "create_get_products_request"
+        ), "create_get_products_request not found in schema_helpers module"
+
+        # Verify it's callable
+        assert callable(schema_helpers.create_get_products_request), "create_get_products_request should be callable"
 
     def test_mcp_instance_exists(self):
         """Test that the MCP server instance exists."""

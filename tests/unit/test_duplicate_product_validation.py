@@ -21,7 +21,7 @@ class TestDuplicateProductValidation:
     @pytest.mark.asyncio
     async def test_duplicate_product_in_packages_rejected(self):
         """Test that duplicate product_ids in packages are rejected."""
-        from src.core.main import _create_media_buy_impl
+        from src.core.tools.media_buy_create import _create_media_buy_impl
 
         # Create a mock context with auth header
         mock_context = MagicMock()
@@ -38,17 +38,23 @@ class TestDuplicateProductValidation:
         mock_persistent_ctx = MagicMock()
         mock_ctx_manager.get_context.return_value = mock_persistent_ctx
 
+        # Mock tenant for get_principal_from_context return
+        mock_tenant = {"tenant_id": "test_tenant", "subdomain": "test", "ad_server": "mock"}
+
         # Mock the dependencies
         with (
-            patch("src.core.main._get_principal_id_from_context", return_value="test_principal"),
-            patch("src.core.main.get_db_session"),
             patch(
-                "src.core.main.get_current_tenant",
-                return_value={"tenant_id": "test_tenant", "subdomain": "test", "ad_server": "mock"},
+                "src.core.tools.media_buy_create.get_principal_from_context",
+                return_value=("test_principal", mock_tenant),
             ),
-            patch("src.core.main.validate_setup_complete"),
-            patch("src.core.main.get_testing_context", return_value=mock_testing_ctx),
-            patch("src.core.main.get_context_manager", return_value=mock_ctx_manager),
+            patch("src.core.database.database_session.get_db_session"),
+            patch(
+                "src.core.tools.media_buy_create.get_current_tenant",
+                return_value=mock_tenant,
+            ),
+            patch("src.core.tools.media_buy_create.validate_setup_complete"),
+            patch("src.core.tools.media_buy_create.get_testing_context", return_value=mock_testing_ctx),
+            patch("src.core.tools.media_buy_create.get_context_manager", return_value=mock_ctx_manager),
         ):
             # Create packages with duplicate product_id
             packages = [
@@ -83,14 +89,14 @@ class TestDuplicateProductValidation:
             error_msg = result.errors[0].message
             assert "duplicate" in error_msg.lower(), f"Error should mention 'duplicate': {error_msg}"
             assert "prod_test_1" in error_msg, f"Error should mention 'prod_test_1': {error_msg}"
-            assert "each product can only be used once" in error_msg.lower(), (
-                f"Error should say 'each product can only be used once': {error_msg}"
-            )
+            assert (
+                "each product can only be used once" in error_msg.lower()
+            ), f"Error should say 'each product can only be used once': {error_msg}"
 
     @pytest.mark.asyncio
     async def test_multiple_duplicate_products_all_listed(self):
         """Test that all duplicate product_ids are listed in error message."""
-        from src.core.main import _create_media_buy_impl
+        from src.core.tools.media_buy_create import _create_media_buy_impl
 
         # Create a mock context with auth header
         mock_context = MagicMock()
@@ -107,17 +113,23 @@ class TestDuplicateProductValidation:
         mock_persistent_ctx = MagicMock()
         mock_ctx_manager.get_context.return_value = mock_persistent_ctx
 
+        # Mock tenant for get_principal_from_context return
+        mock_tenant = {"tenant_id": "test_tenant", "subdomain": "test", "ad_server": "mock"}
+
         # Mock the dependencies
         with (
-            patch("src.core.main._get_principal_id_from_context", return_value="test_principal"),
-            patch("src.core.main.get_db_session"),
             patch(
-                "src.core.main.get_current_tenant",
-                return_value={"tenant_id": "test_tenant", "subdomain": "test", "ad_server": "mock"},
+                "src.core.tools.media_buy_create.get_principal_from_context",
+                return_value=("test_principal", mock_tenant),
             ),
-            patch("src.core.main.validate_setup_complete"),
-            patch("src.core.main.get_testing_context", return_value=mock_testing_ctx),
-            patch("src.core.main.get_context_manager", return_value=mock_ctx_manager),
+            patch("src.core.database.database_session.get_db_session"),
+            patch(
+                "src.core.tools.media_buy_create.get_current_tenant",
+                return_value=mock_tenant,
+            ),
+            patch("src.core.tools.media_buy_create.validate_setup_complete"),
+            patch("src.core.tools.media_buy_create.get_testing_context", return_value=mock_testing_ctx),
+            patch("src.core.tools.media_buy_create.get_context_manager", return_value=mock_ctx_manager),
         ):
             # Create packages with multiple duplicates
             packages = [
@@ -166,16 +178,16 @@ class TestDuplicateProductValidation:
     @pytest.mark.asyncio
     async def test_no_duplicates_validation_passes(self):
         """Test that packages with unique product_ids pass validation."""
-        from src.core.main import _create_media_buy_impl
+        from src.core.tools.media_buy_create import _create_media_buy_impl
 
         # Mock ALL the dependencies to get past validation
         with (
-            patch("src.core.main.get_db_session") as mock_session_context,
+            patch("src.core.database.database_session.get_db_session") as mock_session_context,
             patch(
-                "src.core.main.get_current_tenant",
+                "src.core.tools.media_buy_create.get_current_tenant",
                 return_value={"tenant_id": "test_tenant", "subdomain": "test", "ad_server": "mock"},
             ),
-            patch("src.core.main.activity_feed") as mock_activity,
+            patch("src.core.tools.media_buy_create.activity_feed") as mock_activity,
         ):
             # Create a mock session
             mock_session = MagicMock()

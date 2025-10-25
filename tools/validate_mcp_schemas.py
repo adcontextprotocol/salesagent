@@ -215,7 +215,7 @@ class ToolSchemaValidator:
         print("🔍 Validating MCP and A2A tool-schema alignment...\n")
 
         main_py_path = Path(__file__).parent.parent / "src" / "core" / "main.py"
-        tools_py_path = Path(__file__).parent.parent / "src" / "core" / "tools.py"
+        tools_py_path = Path(__file__).parent.parent / "src" / "core" / "tools" / "__init__.py"
 
         tools_in_main = self.parse_main_py_for_tools(main_py_path)
         tools_in_tools_py = self.parse_tools_py_for_raw_functions(tools_py_path)

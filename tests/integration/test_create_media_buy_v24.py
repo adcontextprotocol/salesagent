@@ -131,8 +131,8 @@ class TestCreateMediaBuyV24Format:
         Before the fix, this would fail when building response_packages because Budget objects
         weren't being serialized to dicts properly.
         """
-        from src.core.main import _create_media_buy_impl
         from src.core.tool_context import ToolContext
+        from src.core.tools.media_buy_create import _create_media_buy_impl
 
         # Create Package with nested Budget object
         packages = [
@@ -180,8 +180,8 @@ class TestCreateMediaBuyV24Format:
 
         This tests another potential serialization issue with nested Pydantic objects.
         """
-        from src.core.main import _create_media_buy_impl
         from src.core.tool_context import ToolContext
+        from src.core.tools.media_buy_create import _create_media_buy_impl
 
         # Create Package with nested Targeting object
         packages = [
@@ -230,8 +230,8 @@ class TestCreateMediaBuyV24Format:
 
         This tests the iteration over packages in response construction.
         """
-        from src.core.main import _create_media_buy_impl
         from src.core.tool_context import ToolContext
+        from src.core.tools.media_buy_create import _create_media_buy_impl
 
         packages = [
             Package(
@@ -282,8 +282,8 @@ class TestCreateMediaBuyV24Format:
 
         This verifies the A2A → tools.py → _impl path also handles nested objects correctly.
         """
-        from src.core.main import _create_media_buy_impl
         from src.core.tool_context import ToolContext
+        from src.core.tools.media_buy_create import _create_media_buy_impl
 
         # Create Package with nested Budget object
         packages = [
@@ -326,8 +326,8 @@ class TestCreateMediaBuyV24Format:
 
         This ensures backward compatibility wasn't broken by v2.4 changes.
         """
-        from src.core.main import _create_media_buy_impl
         from src.core.tool_context import ToolContext
+        from src.core.tools.media_buy_create import _create_media_buy_impl
 
         context = ToolContext(
             context_id="test_ctx_v24_legacy",

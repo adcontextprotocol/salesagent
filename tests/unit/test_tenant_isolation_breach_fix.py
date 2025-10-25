@@ -50,7 +50,7 @@ def test_get_principal_from_context_uses_global_lookup_when_no_tenant_detected()
     - Cross-tenant token usage is blocked (if wonderstruck subdomain detected, test-agent token rejected)
     - But if NO subdomain detected (e.g., through proxy), we look up which tenant the token belongs to
     """
-    from src.core.main import get_principal_from_context
+    from src.core.auth import get_principal_from_context
 
     # Create mock context with auth token but no tenant detection possible
     context = Mock()
@@ -65,11 +65,11 @@ def test_get_principal_from_context_uses_global_lookup_when_no_tenant_detected()
     # Mock get_principal_from_token and get_current_tenant to simulate successful global lookup
     mock_tenant = {"tenant_id": "tenant_test", "subdomain": "test"}
     with (
-        patch("src.core.main.get_http_headers", return_value={}),
-        patch("src.core.main.get_tenant_by_virtual_host", return_value=None),  # localhost not a virtual host
-        patch("src.core.main.get_tenant_by_subdomain", return_value=None),  # localhost not a subdomain
-        patch("src.core.main.get_principal_from_token") as mock_get_principal,
-        patch("src.core.main.get_current_tenant", return_value=mock_tenant),
+        patch("src.core.auth.get_http_headers", return_value={}),
+        patch("src.core.auth.get_tenant_by_virtual_host", return_value=None),  # localhost not a virtual host
+        patch("src.core.auth.get_tenant_by_subdomain", return_value=None),  # localhost not a subdomain
+        patch("src.core.auth.get_principal_from_token") as mock_get_principal,
+        patch("src.core.auth.get_current_tenant", return_value=mock_tenant),
     ):
         # Global lookup should succeed and return principal_id
         mock_get_principal.return_value = "principal_abc123"

@@ -97,7 +97,7 @@ def test_extract_format_namespace():
     Note: This function is used internally and expects already-upgraded FormatId objects.
     For string upgrade, use upgrade_legacy_format_id() first.
     """
-    from src.core.main import _extract_format_namespace
+    from src.core.helpers.creative_helpers import _extract_format_namespace
 
     # Dict format with agent_url
     agent_url, format_id = _extract_format_namespace({"agent_url": "https://example.com", "id": "display_300x250"})
@@ -117,7 +117,7 @@ def test_extract_format_namespace():
 
 def test_normalize_format_value():
     """Test _normalize_format_value helper function (legacy compatibility)."""
-    from src.core.main import _normalize_format_value
+    from src.core.helpers.creative_helpers import _normalize_format_value
 
     # Dict format
     assert _normalize_format_value({"agent_url": "https://example.com", "id": "display_300x250"}) == "display_300x250"

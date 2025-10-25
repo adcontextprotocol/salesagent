@@ -13,12 +13,12 @@ class TestAuthRemovalChanges:
     def test_get_principal_from_context_returns_none_without_auth(self):
         """Test that get_principal_from_context returns None when no auth provided."""
         # Lazy import to avoid triggering load_config() at module import time
-        from src.core.main import get_principal_from_context
+        from src.core.auth import get_principal_from_context
 
         context = Mock(spec=["meta"])  # Limit to only meta attribute
         context.meta = {}  # Empty meta, no headers
 
-        with patch("src.core.main.get_http_headers", return_value={}):  # No x-adcp-auth header
+        with patch("src.core.auth.get_http_headers", return_value={}):  # No x-adcp-auth header
             principal_id, tenant = get_principal_from_context(context)
             assert principal_id is None
             assert tenant is None
@@ -26,7 +26,7 @@ class TestAuthRemovalChanges:
     def test_get_principal_from_context_works_with_auth(self):
         """Test that get_principal_from_context still works with auth."""
         # Lazy import to avoid triggering load_config() at module import time
-        from src.core.main import get_principal_from_context
+        from src.core.auth import get_principal_from_context
 
         context = Mock(spec=["meta"])  # Limit to only meta attribute
         # Must include Host header for tenant detection (security fix)
@@ -38,23 +38,23 @@ class TestAuthRemovalChanges:
         }
 
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "test-token",
                 "host": "test-tenant.sales-agent.scope3.com",
             },
         ):
             # Mock virtual host lookup to fail (not a virtual host)
-            with patch("src.core.main.get_tenant_by_virtual_host", return_value=None):
+            with patch("src.core.auth.get_tenant_by_virtual_host", return_value=None):
                 # Mock subdomain lookup to succeed
-                with patch("src.core.main.get_tenant_by_subdomain") as mock_tenant_lookup:
+                with patch("src.core.auth.get_tenant_by_subdomain") as mock_tenant_lookup:
                     mock_tenant_lookup.return_value = {
                         "tenant_id": "tenant_test",
                         "subdomain": "test-tenant",
                         "name": "Test Tenant",
                     }
-                    with patch("src.core.main.set_current_tenant"):
-                        with patch("src.core.main.get_principal_from_token", return_value="test_principal"):
+                    with patch("src.core.auth.set_current_tenant"):
+                        with patch("src.core.auth.get_principal_from_token", return_value="test_principal"):
                             principal_id, tenant = get_principal_from_context(context)
                             assert principal_id == "test_principal"
                             assert tenant == {
@@ -79,18 +79,31 @@ class TestAuthRemovalChanges:
 
     def test_discovery_endpoints_use_optional_auth_pattern(self):
         """Verify the source code uses the optional auth pattern."""
-        # Simple source code check - much easier than complex mocking
-        with open("src/core/main.py") as f:
-            source = f.read()
+        # Simple source code check - tools now split across multiple files
+        tool_files = [
+            "src/core/tools/products.py",
+            "src/core/tools/properties.py",
+            "src/core/auth.py",
+        ]
+
+        sources = []
+        for tool_file in tool_files:
+            try:
+                with open(tool_file) as f:
+                    sources.append(f.read())
+            except FileNotFoundError:
+                continue
+
+        combined_source = "\n".join(sources)
 
         # Key changes should be present - tuple return after ContextVar fix
         # Updated to accept new require_valid_token parameter for discovery endpoints
         assert (
-            "get_principal_from_context(context)  # Returns (None, None) if no auth" in source
-            or "get_principal_from_context(context)  # Returns None if no auth" in source
-            or "require_valid_token=False" in source  # New pattern for discovery endpoints
-        )
-        assert 'principal_id or "anonymous"' in source
+            "get_principal_from_context(context)  # Returns (None, None) if no auth" in combined_source
+            or "get_principal_from_context(context)  # Returns None if no auth" in combined_source
+            or "require_valid_token=False" in combined_source  # New pattern for discovery endpoints
+        ), "Optional auth pattern not found in tool files"
+        assert 'principal_id or "anonymous"' in combined_source, "Anonymous user pattern not found"
 
     def test_pricing_filtering_for_anonymous_users(self):
         """Test that pricing data is filtered for anonymous users."""
