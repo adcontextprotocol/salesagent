@@ -296,6 +296,7 @@ class TestMCPProtocol:
             assert result2 is not None
 
 
+@pytest.mark.requires_db
 class TestMCPTestPage:
     """Test the MCP test page functionality."""
 
