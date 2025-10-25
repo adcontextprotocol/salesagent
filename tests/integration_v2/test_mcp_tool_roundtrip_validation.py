@@ -21,7 +21,8 @@ Key Testing Principles:
 from contextlib import nullcontext
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
+from sqlalchemy.orm import joinedload
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ProductModel
@@ -144,11 +145,16 @@ class TestMCPToolRoundtripValidation:
 
             session.commit()
 
-            # Refresh to get actual database objects
-            for product in created_products:
-                session.refresh(product)
+            # Eager load pricing_options to avoid DetachedInstanceError
+            product_ids = [p.product_id for p in created_products]
+            stmt = (
+                select(ProductModel)
+                .options(joinedload(ProductModel.pricing_options))
+                .where(ProductModel.product_id.in_(product_ids))
+            )
+            loaded_products = session.scalars(stmt).unique().all()
 
-        return created_products
+        return loaded_products
 
     def test_get_products_real_object_roundtrip_conversion_isolated(
         self, integration_db, test_tenant_id, real_products_in_db
@@ -173,25 +179,53 @@ class TestMCPToolRoundtripValidation:
         for db_product in products:
             # NEW: Access pricing via pricing_options relationship
             pricing_option = db_product.pricing_options[0] if db_product.pricing_options else None
+
+            # Generate pricing_option_id from pricing_model, currency, and is_fixed
+            if pricing_option:
+                pricing_type = "fixed" if pricing_option.is_fixed else "auction"
+                pricing_option_id = f"{pricing_option.pricing_model}_{pricing_option.currency.lower()}_{pricing_type}"
+            else:
+                pricing_option_id = "cpm_usd_fixed"
+
+            # Build pricing_options with proper validation
+            pricing_kwargs = {
+                "pricing_option_id": pricing_option_id,
+                "pricing_model": pricing_option.pricing_model if pricing_option else "cpm",
+                "currency": pricing_option.currency if pricing_option else "USD",
+                "is_fixed": pricing_option.is_fixed if pricing_option else True,
+            }
+
+            # Add rate or price_guidance based on is_fixed
+            if pricing_option:
+                if pricing_option.is_fixed:
+                    pricing_kwargs["rate"] = float(pricing_option.rate) if pricing_option.rate else 10.0
+                else:
+                    # For auction pricing, price_guidance is required
+                    pricing_kwargs["price_guidance"] = pricing_option.price_guidance or PriceGuidance(
+                        floor=5.0, p50=10.0, p75=15.0
+                    )
+            else:
+                pricing_kwargs["rate"] = 10.0
+
+            # Extract format IDs from FormatId objects (db_product.formats may be list of dicts or FormatId objects)
+            formats = db_product.formats
+            if formats and isinstance(formats[0], dict):
+                # Extract just the 'id' field from each format dict
+                format_ids = [f["id"] if isinstance(f, dict) else f.id for f in formats]
+            else:
+                format_ids = formats
+
             product_data = {
                 "product_id": db_product.product_id,
                 "name": db_product.name,
                 "description": db_product.description or "",
-                "formats": db_product.formats,  # Internal field name
+                "formats": format_ids,  # Internal field name (list of strings)
                 "delivery_type": db_product.delivery_type,
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
                 "is_custom": db_product.is_custom or False,
                 "property_tags": getattr(db_product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
-                "pricing_options": [
-                    PricingOption(
-                        pricing_option_id=pricing_option.pricing_option_id if pricing_option else "cpm_usd_fixed",
-                        pricing_model=pricing_option.pricing_model if pricing_option else "cpm",
-                        rate=float(pricing_option.rate) if pricing_option and pricing_option.rate else 10.0,
-                        currency=pricing_option.currency if pricing_option else "USD",
-                        is_fixed=pricing_option.is_fixed if pricing_option else True,
-                    )
-                ],
+                "pricing_options": [PricingOption(**pricing_kwargs)],
             }
             schema_product = ProductSchema(**product_data)
             schema_products.append(schema_product)
@@ -254,25 +288,53 @@ class TestMCPToolRoundtripValidation:
         for db_product in products:
             # NEW: Access pricing via pricing_options relationship
             pricing_option = db_product.pricing_options[0] if db_product.pricing_options else None
+
+            # Generate pricing_option_id from pricing_model, currency, and is_fixed
+            if pricing_option:
+                pricing_type = "fixed" if pricing_option.is_fixed else "auction"
+                pricing_option_id = f"{pricing_option.pricing_model}_{pricing_option.currency.lower()}_{pricing_type}"
+            else:
+                pricing_option_id = "cpm_usd_fixed"
+
+            # Build pricing_options with proper validation
+            pricing_kwargs = {
+                "pricing_option_id": pricing_option_id,
+                "pricing_model": pricing_option.pricing_model if pricing_option else "cpm",
+                "currency": pricing_option.currency if pricing_option else "USD",
+                "is_fixed": pricing_option.is_fixed if pricing_option else True,
+            }
+
+            # Add rate or price_guidance based on is_fixed
+            if pricing_option:
+                if pricing_option.is_fixed:
+                    pricing_kwargs["rate"] = float(pricing_option.rate) if pricing_option.rate else 10.0
+                else:
+                    # For auction pricing, price_guidance is required
+                    pricing_kwargs["price_guidance"] = pricing_option.price_guidance or PriceGuidance(
+                        floor=5.0, p50=10.0, p75=15.0
+                    )
+            else:
+                pricing_kwargs["rate"] = 10.0
+
+            # Extract format IDs from FormatId objects (db_product.formats may be list of dicts or FormatId objects)
+            formats = db_product.formats
+            if formats and isinstance(formats[0], dict):
+                # Extract just the 'id' field from each format dict
+                format_ids = [f["id"] if isinstance(f, dict) else f.id for f in formats]
+            else:
+                format_ids = formats
+
             product_data = {
                 "product_id": db_product.product_id,
                 "name": db_product.name,
                 "description": db_product.description or "",
-                "formats": db_product.formats,  # Internal field name
+                "formats": format_ids,  # Internal field name (list of strings)
                 "delivery_type": db_product.delivery_type,
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
                 "is_custom": db_product.is_custom or False,
                 "property_tags": getattr(db_product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
-                "pricing_options": [
-                    PricingOption(
-                        pricing_option_id=pricing_option.pricing_option_id if pricing_option else "cpm_usd_fixed",
-                        pricing_model=pricing_option.pricing_model if pricing_option else "cpm",
-                        rate=float(pricing_option.rate) if pricing_option and pricing_option.rate else 10.0,
-                        currency=pricing_option.currency if pricing_option else "USD",
-                        is_fixed=pricing_option.is_fixed if pricing_option else True,
-                    )
-                ],
+                "pricing_options": [PricingOption(**pricing_kwargs)],
             }
             schema_product = ProductSchema(**product_data)
             schema_products.append(schema_product)

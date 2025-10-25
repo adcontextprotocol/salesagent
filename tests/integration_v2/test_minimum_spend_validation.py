@@ -16,7 +16,7 @@ from sqlalchemy import delete
 from src.core.database.database_session import get_db_session
 from src.core.database.models import CurrencyLimit, MediaBuy, Principal, Product, Tenant
 from src.core.main import _create_media_buy_impl
-from src.core.schemas import Budget, TaskStatus
+from src.core.schemas import Budget, Package, TaskStatus
 from tests.integration_v2.conftest import create_test_product_with_pricing
 
 
@@ -143,7 +143,7 @@ class TestMinimumSpendValidation:
             session.execute(delete(Tenant).where(Tenant.tenant_id == "test_minspend_tenant"))
             session.commit()
 
-    def test_currency_minimum_spend_enforced(self, setup_test_data):
+    async def test_currency_minimum_spend_enforced(self, setup_test_data):
         """Test that currency-specific minimum spend is enforced."""
         from unittest.mock import MagicMock
 
@@ -155,13 +155,19 @@ class TestMinimumSpendValidation:
         start_time = datetime.now(UTC) + timedelta(days=1)
         end_time = start_time + timedelta(days=7)
 
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="minspend_test_1",
             brand_manifest={"name": "Test Campaign"},
-            product_ids=["prod_global"],
+            packages=[
+                Package(
+                    buyer_ref="minspend_test_1",
+                    products=["prod_global"],
+                    budget=Budget(total=500.0, currency="USD"),  # Below $1000 minimum
+                )
+            ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            total_budget=500.0,  # Below $1000 minimum
-            budget=Budget(amount=500.0, currency="USD"),  # Explicit USD
+            budget=Budget(total=500.0, currency="USD"),  # Explicit USD
             context=context,
         )
 
@@ -171,7 +177,7 @@ class TestMinimumSpendValidation:
         assert "1000" in response.detail
         assert "USD" in response.detail
 
-    def test_product_override_enforced(self, setup_test_data):
+    async def test_product_override_enforced(self, setup_test_data):
         """Test that product-specific minimum spend override is enforced."""
         from unittest.mock import MagicMock
 
@@ -182,13 +188,19 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         # Try to create media buy below product override ($5000)
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="minspend_test_2",
             brand_manifest={"name": "Test Campaign"},
-            product_ids=["prod_high"],
+            packages=[
+                Package(
+                    buyer_ref="minspend_test_2",
+                    products=["prod_high"],
+                    budget=Budget(total=3000.0, currency="USD"),  # Below $5000 product minimum
+                )
+            ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            total_budget=3000.0,  # Below $5000 product minimum
-            budget=Budget(amount=3000.0, currency="USD"),
+            budget=Budget(total=3000.0, currency="USD"),
             context=context,
         )
 
@@ -198,7 +210,7 @@ class TestMinimumSpendValidation:
         assert "5000" in response.detail
         assert "USD" in response.detail
 
-    def test_lower_override_allows_smaller_spend(self, setup_test_data):
+    async def test_lower_override_allows_smaller_spend(self, setup_test_data):
         """Test that lower product override allows smaller spend than currency limit."""
         from unittest.mock import MagicMock
 
@@ -209,20 +221,26 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         # Create media buy above product minimum ($500) but below currency limit ($1000)
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="minspend_test_3",
             brand_manifest={"name": "Test Campaign"},
-            product_ids=["prod_low"],
+            packages=[
+                Package(
+                    buyer_ref="minspend_test_3",
+                    products=["prod_low"],
+                    budget=Budget(total=750.0, currency="USD"),  # Above $500 product min, below $1000 currency limit
+                )
+            ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            total_budget=750.0,  # Above $500 product min, below $1000 currency limit
-            budget=Budget(amount=750.0, currency="USD"),
+            budget=Budget(total=750.0, currency="USD"),
             context=context,
         )
 
         # Should succeed because product override is lower
         assert response.status != TaskStatus.FAILED
 
-    def test_minimum_spend_met_success(self, setup_test_data):
+    async def test_minimum_spend_met_success(self, setup_test_data):
         """Test that media buy succeeds when minimum spend is met."""
         from unittest.mock import MagicMock
 
@@ -233,13 +251,19 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         # Create media buy above minimum
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="minspend_test_4",
             brand_manifest={"name": "Test Campaign"},
-            product_ids=["prod_global"],
+            packages=[
+                Package(
+                    buyer_ref="minspend_test_4",
+                    products=["prod_global"],
+                    budget=Budget(total=2000.0, currency="USD"),  # Above $1000 minimum
+                )
+            ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            total_budget=2000.0,  # Above $1000 minimum
-            budget=Budget(amount=2000.0, currency="USD"),
+            budget=Budget(total=2000.0, currency="USD"),
             context=context,
         )
 
@@ -247,7 +271,7 @@ class TestMinimumSpendValidation:
         assert response.status != TaskStatus.FAILED
         assert response.media_buy_id
 
-    def test_unsupported_currency_rejected(self, setup_test_data):
+    async def test_unsupported_currency_rejected(self, setup_test_data):
         """Test that unsupported currencies are rejected."""
         from unittest.mock import MagicMock
 
@@ -258,13 +282,19 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         # Try to create media buy with unsupported currency (JPY)
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="minspend_test_5",
             brand_manifest={"name": "Test Campaign"},
-            product_ids=["prod_global"],
+            packages=[
+                Package(
+                    buyer_ref="minspend_test_5",
+                    products=["prod_global"],
+                    budget=Budget(total=100000.0, currency="JPY"),  # Not configured
+                )
+            ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            total_budget=100000.0,  # ¥100,000
-            budget=Budget(amount=100000.0, currency="JPY"),  # Not configured
+            budget=Budget(total=100000.0, currency="JPY"),  # ¥100,000
             context=context,
         )
 
@@ -274,7 +304,7 @@ class TestMinimumSpendValidation:
         assert "not supported" in response.detail.lower()
         assert "JPY" in response.detail
 
-    def test_different_currency_different_minimum(self, setup_test_data):
+    async def test_different_currency_different_minimum(self, setup_test_data):
         """Test that different currencies have different minimums."""
         from unittest.mock import MagicMock
 
@@ -286,13 +316,19 @@ class TestMinimumSpendValidation:
 
         # €950 should fail (below €900 minimum... wait, that should pass)
         # Let's try €800 which should fail
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="minspend_test_6",
             brand_manifest={"name": "Test Campaign"},
-            product_ids=["prod_global"],
+            packages=[
+                Package(
+                    buyer_ref="minspend_test_6",
+                    products=["prod_global"],
+                    budget=Budget(total=800.0, currency="EUR"),  # Below €900 minimum
+                )
+            ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            total_budget=800.0,  # Below €900 minimum
-            budget=Budget(amount=800.0, currency="EUR"),
+            budget=Budget(total=800.0, currency="EUR"),
             context=context,
         )
 
@@ -302,7 +338,7 @@ class TestMinimumSpendValidation:
         assert "900" in response.detail
         assert "EUR" in response.detail
 
-    def test_no_minimum_when_not_set(self, setup_test_data):
+    async def test_no_minimum_when_not_set(self, setup_test_data):
         """Test that media buys with no minimum set in currency limit are allowed."""
         from unittest.mock import MagicMock
 
@@ -324,13 +360,19 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         # Create media buy with low budget in GBP (should succeed - no minimum)
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="minspend_test_7",
             brand_manifest={"name": "Test Campaign"},
-            product_ids=["prod_global"],
+            packages=[
+                Package(
+                    buyer_ref="minspend_test_7",
+                    products=["prod_global"],
+                    budget=Budget(total=100.0, currency="GBP"),  # Low budget, but no minimum for GBP
+                )
+            ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            total_budget=100.0,  # Low budget, but no minimum for GBP
-            budget=Budget(amount=100.0, currency="GBP"),
+            budget=Budget(total=100.0, currency="GBP"),
             context=context,
         )
 
