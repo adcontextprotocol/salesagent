@@ -13,7 +13,7 @@ from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Product, Tenant
-from src.services.dashboard_service import DashboardService
+from src.services.dashboard_service import DashboardService  # type: ignore[import-not-found]
 from tests.integration_v2.conftest import create_test_product_with_pricing
 from tests.utils.database_helpers import create_tenant_with_timestamps
 

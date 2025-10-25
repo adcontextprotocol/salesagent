@@ -10,11 +10,12 @@ through the A2A wrapper layer, including:
 """
 
 import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import Message, MessageSendParams, Part, Role, Task
+from a2a.types import Message, MessageSendParams, Part, Role, Task, TextPart
 from sqlalchemy import delete
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
@@ -142,13 +143,14 @@ class TestA2AErrorPropagation:
     def create_message_with_skill(self, skill_name: str, parameters: dict) -> Message:
         """Helper to create message with explicit skill invocation."""
         return Message(
+            message_id=str(uuid.uuid4()),
             role=Role.user,
             parts=[
                 Part(
-                    root={
-                        "type": "skill",
-                        "skill": {"name": skill_name, "arguments": parameters},
-                    }
+                    root=TextPart(
+                        text=f"skill:{skill_name}",
+                        metadata={"skill": {"name": skill_name, "arguments": parameters}},
+                    )
                 )
             ],
         )

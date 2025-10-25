@@ -44,8 +44,9 @@ class TestSignalsAgentWorkflow:
 
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-            tenant.signals_agent_config = signals_config
-            db_session.commit()
+            if tenant:
+                tenant.signals_agent_config = signals_config
+                db_session.commit()
 
         return tenant_data
 
