@@ -273,7 +273,7 @@ async def _validate_and_convert_format_ids(
     return validated_format_ids
 
 
-from src.adapters import get_adapter
+from src.core.helpers.adapter_helpers import get_adapter
 from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
 from src.services.slack_notifier import get_slack_notifier
 
