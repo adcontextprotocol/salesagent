@@ -701,9 +701,9 @@ class TestA2ASkillInvocation:
         # Mock tenant detection functions to return test tenant
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_tenant_by_subdomain") as mock_tenant_subdomain,
-            patch("src.a2a_server.adcp_a2a_server.get_tenant_by_virtual_host") as mock_tenant_host,
-            patch("src.a2a_server.adcp_a2a_server.get_tenant_by_id") as mock_tenant_id,
+            patch("src.core.config_loader.get_tenant_by_subdomain") as mock_tenant_subdomain,
+            patch("src.core.config_loader.get_tenant_by_virtual_host") as mock_tenant_host,
+            patch("src.core.config_loader.get_tenant_by_id") as mock_tenant_id,
             patch("src.core.main.get_adapter") as mock_get_adapter,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
