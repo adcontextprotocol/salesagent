@@ -171,7 +171,7 @@ class TestCreativeAssignment:
 
             print(f"   📋 Sync response: {json.dumps(sync_data, indent=2)}")
 
-            assert "results" in sync_data, "Response must contain results"
+            assert "creatives" in sync_data, "Response must contain creatives (AdCP spec field)"
             print(f"   ✓ Synced creative: {creative_id}")
 
             # Check if assignment was successful
@@ -401,8 +401,8 @@ class TestCreativeAssignment:
             sync_result = await client.call_tool("sync_creatives", sync_request)
             sync_data = json.loads(sync_result.content[0].text)
 
-            assert "results" in sync_data, "Response must contain results"
-            assert len(sync_data["results"]) == 3, "Should sync 3 creatives"
+            assert "creatives" in sync_data, "Response must contain creatives (AdCP spec field)"
+            assert len(sync_data["creatives"]) == 3, "Should sync 3 creatives"
             print("   ✓ Synced 3 creatives with assignments")
 
             # ================================================================
