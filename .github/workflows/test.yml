@@ -167,7 +167,7 @@ jobs:
         uv run pytest tests/unit/ -v --tb=short --cov=. --cov-report=term-missing
 
   integration-tests:
-    name: Integration Tests
+    name: Integration Tests (Legacy - 174 passing)
     runs-on: ubuntu-latest
     needs: [schema-sync]
 
@@ -235,6 +235,73 @@ jobs:
           --ignore=tests/integration/test_a2a_error_responses.py \
           --ignore=tests/integration/test_a2a_skill_invocation.py \
           --ignore=tests/integration/test_get_products_format_id_filter.py
+
+  integration-tests-v2:
+    name: Integration Tests V2 (Pricing Migration Fixed)
+    runs-on: ubuntu-latest
+    needs: [schema-sync]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: adcp_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: adcp_test_v2
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Cache uv dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/uv
+          .venv
+        key: ${{ runner.os }}-uv-${{ hashFiles('**/uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+
+    - name: Install dependencies
+      run: |
+        uv sync --extra dev
+        # Clear Python bytecode cache to prevent stale imports
+        find . -type d -name __pycache__ -exec rm -rf {} + || true
+        find . -type f -name '*.pyc' -delete || true
+
+    - name: Run database migrations
+      env:
+        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test_v2
+      run: |
+        uv run python scripts/ops/migrate.py
+
+    - name: Run integration V2 tests
+      env:
+        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test_v2
+        GEMINI_API_KEY: test_key_for_mocking
+        GOOGLE_CLIENT_ID: test_client_id
+        GOOGLE_CLIENT_SECRET: test_client_secret
+        SUPER_ADMIN_EMAILS: test@example.com
+        ADCP_TESTING: true
+      run: |
+        uv run pytest tests/integration_v2/ -v --tb=short --cov=. --cov-report=term-missing -m "not requires_server and not skip_ci"
 
   e2e-tests:
     name: E2E Tests
@@ -346,15 +413,15 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [smoke-tests, unit-tests, integration-tests, e2e-tests]
+    needs: [smoke-tests, unit-tests, integration-tests, integration-tests-v2, e2e-tests]
     if: always()
 
     steps:
     - name: Check test results
       run: |
-        if [ "${{ needs.unit-tests.result }}" = "failure" ] || [ "${{ needs.integration-tests.result }}" = "failure" ] || [ "${{ needs.e2e-tests.result }}" = "failure" ]; then
+        if [ "${{ needs.unit-tests.result }}" = "failure" ] || [ "${{ needs.integration-tests.result }}" = "failure" ] || [ "${{ needs.integration-tests-v2.result }}" = "failure" ] || [ "${{ needs.e2e-tests.result }}" = "failure" ]; then
           echo "❌ Tests failed"
           exit 1
         else
-          echo "✅ All tests passed (smoke, unit, integration, e2e)"
+          echo "✅ All tests passed (smoke, unit, integration, integration-v2, e2e)"
         fi
