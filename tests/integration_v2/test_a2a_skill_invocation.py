@@ -659,9 +659,16 @@ class TestA2ASkillInvocation:
             # Mock request headers to provide Host header for subdomain detection
             mock_request_ctx.request_headers = {"host": f"{sample_tenant['subdomain']}.example.com"}
 
-            # Mock adapter
+            # Mock adapter - must return UpdateMediaBuyResponse, not dict
+            from src.core.schemas import UpdateMediaBuyResponse
+
             mock_adapter = MagicMock()
-            mock_adapter.update_media_buy.return_value = {"status": "accepted"}
+            mock_adapter.update_media_buy.return_value = UpdateMediaBuyResponse(
+                media_buy_id="mb_test_123",
+                buyer_ref="test_buyer_ref",
+                affected_packages=[],
+                errors=None,
+            )
             mock_get_adapter.return_value = mock_adapter
 
             # Create skill invocation
