@@ -136,7 +136,7 @@ class TestListCreativesAuthentication:
         mock_context = MockContext(auth_token=None)
 
         # Mock get_http_headers to return empty headers (no auth)
-        with patch("src.core.main.get_http_headers", return_value={}):
+        with patch("src.core.auth.get_http_headers", return_value={}):
             # This should raise ToolError due to missing authentication
             from fastmcp.exceptions import ToolError
 
@@ -156,7 +156,7 @@ class TestListCreativesAuthentication:
 
         # Mock get_http_headers to return auth + host headers for tenant detection
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-a",
                 "host": "auth-test.sales-agent.scope3.com",
@@ -188,7 +188,7 @@ class TestListCreativesAuthentication:
 
         # Mock get_http_headers to return auth + host headers for tenant detection
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-b",
                 "host": "auth-test.sales-agent.scope3.com",
@@ -220,7 +220,7 @@ class TestListCreativesAuthentication:
 
         # Mock get_http_headers to return auth + host headers for tenant detection
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "invalid-token-xyz",
                 "host": "auth-test.sales-agent.scope3.com",

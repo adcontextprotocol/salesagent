@@ -148,7 +148,7 @@ class TestCrossPrincipalSecurity:
         mock_context_b = MockContext(auth_token="token-advertiser-b")
 
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-b",
                 "host": "security-test.sales-agent.scope3.com",
@@ -174,7 +174,7 @@ class TestCrossPrincipalSecurity:
 
         # Principal B tries to update Principal A's media buy
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-b",
                 "host": "security-test.sales-agent.scope3.com",
@@ -213,7 +213,7 @@ class TestCrossPrincipalSecurity:
         )
 
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-b",
                 "host": "security-test.sales-agent.scope3.com",
@@ -280,7 +280,7 @@ class TestCrossPrincipalSecurity:
         mock_context_a = MockContext(auth_token="token-advertiser-a")
 
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-a",
                 "host": "security-test.sales-agent.scope3.com",
