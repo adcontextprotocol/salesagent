@@ -2,8 +2,12 @@
 """
 Remove adcp_version field from cached AdCP schemas.
 
-The adcp_version field was removed from the official AdCP spec but our
-cached schemas still have it. This script removes it from all affected files.
+LEGACY SCRIPT: This was a one-time cleanup tool used when the adcp_version
+field was removed from the official AdCP spec. Our cached schemas no longer
+have this field - it only appears in index.json (which is correct).
+
+This script is kept for historical reference and in case we need to run
+similar cleanup operations in the future.
 """
 
 import json
