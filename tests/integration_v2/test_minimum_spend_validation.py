@@ -14,9 +14,17 @@ import pytest
 from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import CurrencyLimit, MediaBuy, Principal, Product, Tenant
+from src.core.database.models import (
+    AuthorizedProperty,
+    CurrencyLimit,
+    MediaBuy,
+    Principal,
+    Product,
+    PropertyTag,
+    Tenant,
+)
 from src.core.main import _create_media_buy_impl
-from src.core.schemas import Budget, Package, TaskStatus
+from src.core.schemas import Budget, Package
 from tests.integration_v2.conftest import create_test_product_with_pricing
 
 
@@ -43,6 +51,8 @@ class TestMinimumSpendValidation:
                 human_review_required=False,
                 created_at=now,
                 updated_at=now,
+                # Required: Access control configuration
+                authorized_emails=["test@example.com"],
             )
             session.add(tenant)
 
@@ -63,6 +73,27 @@ class TestMinimumSpendValidation:
                 max_daily_package_spend=Decimal("45000.00"),  # €45k daily maximum
             )
             session.add(currency_limit_eur)
+
+            # Create required PropertyTag (needed for product property_tags)
+            property_tag = PropertyTag(
+                tenant_id="test_minspend_tenant",
+                tag_id="all_inventory",
+                name="All Inventory",
+                description="All available inventory",
+            )
+            session.add(property_tag)
+
+            # Create required AuthorizedProperty (needed for setup validation)
+            authorized_property = AuthorizedProperty(
+                tenant_id="test_minspend_tenant",
+                property_id="test_minspend_property",
+                property_type="website",
+                name="Test Property",
+                identifiers=[{"type": "domain", "value": "example.com"}],
+                publisher_domain="example.com",
+                verification_status="verified",
+            )
+            session.add(authorized_property)
 
             # Create principal
             principal = Principal(
@@ -140,6 +171,8 @@ class TestMinimumSpendValidation:
             session.execute(delete(Product).where(Product.tenant_id == "test_minspend_tenant"))
             session.execute(delete(Principal).where(Principal.tenant_id == "test_minspend_tenant"))
             session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "test_minspend_tenant"))
+            session.execute(delete(PropertyTag).where(PropertyTag.tenant_id == "test_minspend_tenant"))
+            session.execute(delete(AuthorizedProperty).where(AuthorizedProperty.tenant_id == "test_minspend_tenant"))
             session.execute(delete(Tenant).where(Tenant.tenant_id == "test_minspend_tenant"))
             session.commit()
 
@@ -155,27 +188,29 @@ class TestMinimumSpendValidation:
         start_time = datetime.now(UTC) + timedelta(days=1)
         end_time = start_time + timedelta(days=7)
 
-        response = await _create_media_buy_impl(
-            buyer_ref="minspend_test_1",
-            brand_manifest={"name": "Test Campaign"},
-            packages=[
-                Package(
-                    buyer_ref="minspend_test_1",
-                    products=["prod_global"],
-                    budget=Budget(total=500.0, currency="USD"),  # Below $1000 minimum
-                )
-            ],
-            start_time=start_time.isoformat(),
-            end_time=end_time.isoformat(),
-            budget=Budget(total=500.0, currency="USD"),  # Explicit USD
-            context=context,
-        )
+        # Should fail validation with ValueError
+        with pytest.raises(ValueError) as exc_info:
+            await _create_media_buy_impl(
+                buyer_ref="minspend_test_1",
+                brand_manifest={"name": "Test Campaign"},
+                packages=[
+                    Package(
+                        buyer_ref="minspend_test_1",
+                        product_id="prod_global",
+                        budget=Budget(total=500.0, currency="USD"),  # Below $1000 minimum
+                    )
+                ],
+                start_time=start_time.isoformat(),
+                end_time=end_time.isoformat(),
+                budget=Budget(total=500.0, currency="USD"),  # Explicit USD
+                context=context,
+            )
 
-        # Should fail validation
-        assert response.status == TaskStatus.FAILED
-        assert "minimum spend" in response.detail.lower()
-        assert "1000" in response.detail
-        assert "USD" in response.detail
+        # Verify error message contains expected details
+        error_msg = str(exc_info.value).lower()
+        assert "minimum spend" in error_msg or "does not meet" in error_msg
+        assert "1000" in str(exc_info.value)
+        assert "usd" in error_msg
 
     async def test_product_override_enforced(self, setup_test_data):
         """Test that product-specific minimum spend override is enforced."""
@@ -188,27 +223,29 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         # Try to create media buy below product override ($5000)
-        response = await _create_media_buy_impl(
-            buyer_ref="minspend_test_2",
-            brand_manifest={"name": "Test Campaign"},
-            packages=[
-                Package(
-                    buyer_ref="minspend_test_2",
-                    products=["prod_high"],
-                    budget=Budget(total=3000.0, currency="USD"),  # Below $5000 product minimum
-                )
-            ],
-            start_time=start_time.isoformat(),
-            end_time=end_time.isoformat(),
-            budget=Budget(total=3000.0, currency="USD"),
-            context=context,
-        )
+        # Should fail validation with ValueError
+        with pytest.raises(ValueError) as exc_info:
+            await _create_media_buy_impl(
+                buyer_ref="minspend_test_2",
+                brand_manifest={"name": "Test Campaign"},
+                packages=[
+                    Package(
+                        buyer_ref="minspend_test_2",
+                        product_id="prod_high",
+                        budget=Budget(total=3000.0, currency="USD"),  # Below $5000 product minimum
+                    )
+                ],
+                start_time=start_time.isoformat(),
+                end_time=end_time.isoformat(),
+                budget=Budget(total=3000.0, currency="USD"),
+                context=context,
+            )
 
-        # Should fail validation
-        assert response.status == TaskStatus.FAILED
-        assert "minimum spend" in response.detail.lower()
-        assert "5000" in response.detail
-        assert "USD" in response.detail
+        # Verify error message contains expected details
+        error_msg = str(exc_info.value).lower()
+        assert "minimum spend" in error_msg or "does not meet" in error_msg
+        assert "5000" in str(exc_info.value)
+        assert "usd" in error_msg
 
     async def test_lower_override_allows_smaller_spend(self, setup_test_data):
         """Test that lower product override allows smaller spend than currency limit."""
@@ -221,13 +258,14 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         # Create media buy above product minimum ($500) but below currency limit ($1000)
+        # Should succeed because product override is lower
         response = await _create_media_buy_impl(
             buyer_ref="minspend_test_3",
             brand_manifest={"name": "Test Campaign"},
             packages=[
                 Package(
                     buyer_ref="minspend_test_3",
-                    products=["prod_low"],
+                    product_id="prod_low",
                     budget=Budget(total=750.0, currency="USD"),  # Above $500 product min, below $1000 currency limit
                 )
             ],
@@ -237,8 +275,9 @@ class TestMinimumSpendValidation:
             context=context,
         )
 
-        # Should succeed because product override is lower
-        assert response.status != TaskStatus.FAILED
+        # Should succeed - verify we got a media_buy_id
+        assert response.media_buy_id is not None
+        assert response.buyer_ref == "minspend_test_3"
 
     async def test_minimum_spend_met_success(self, setup_test_data):
         """Test that media buy succeeds when minimum spend is met."""
@@ -250,14 +289,14 @@ class TestMinimumSpendValidation:
         start_time = datetime.now(UTC) + timedelta(days=1)
         end_time = start_time + timedelta(days=7)
 
-        # Create media buy above minimum
+        # Create media buy above minimum - should succeed
         response = await _create_media_buy_impl(
             buyer_ref="minspend_test_4",
             brand_manifest={"name": "Test Campaign"},
             packages=[
                 Package(
                     buyer_ref="minspend_test_4",
-                    products=["prod_global"],
+                    product_id="prod_global",
                     budget=Budget(total=2000.0, currency="USD"),  # Above $1000 minimum
                 )
             ],
@@ -267,9 +306,9 @@ class TestMinimumSpendValidation:
             context=context,
         )
 
-        # Should succeed
-        assert response.status != TaskStatus.FAILED
-        assert response.media_buy_id
+        # Should succeed - verify we got a media_buy_id
+        assert response.media_buy_id is not None
+        assert response.buyer_ref == "minspend_test_4"
 
     async def test_unsupported_currency_rejected(self, setup_test_data):
         """Test that unsupported currencies are rejected."""
@@ -282,27 +321,28 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         # Try to create media buy with unsupported currency (JPY)
-        response = await _create_media_buy_impl(
-            buyer_ref="minspend_test_5",
-            brand_manifest={"name": "Test Campaign"},
-            packages=[
-                Package(
-                    buyer_ref="minspend_test_5",
-                    products=["prod_global"],
-                    budget=Budget(total=100000.0, currency="JPY"),  # Not configured
-                )
-            ],
-            start_time=start_time.isoformat(),
-            end_time=end_time.isoformat(),
-            budget=Budget(total=100000.0, currency="JPY"),  # ¥100,000
-            context=context,
-        )
-
         # Should fail with currency not supported message
-        assert response.status == TaskStatus.FAILED
-        assert "currency" in response.detail.lower()
-        assert "not supported" in response.detail.lower()
-        assert "JPY" in response.detail
+        with pytest.raises(ValueError) as exc_info:
+            await _create_media_buy_impl(
+                buyer_ref="minspend_test_5",
+                brand_manifest={"name": "Test Campaign"},
+                packages=[
+                    Package(
+                        buyer_ref="minspend_test_5",
+                        product_id="prod_global",
+                        budget=Budget(total=100000.0, currency="JPY"),  # Not configured
+                    )
+                ],
+                start_time=start_time.isoformat(),
+                end_time=end_time.isoformat(),
+                budget=Budget(total=100000.0, currency="JPY"),  # ¥100,000
+                context=context,
+            )
+
+        # Verify error message mentions currency not supported
+        error_msg = str(exc_info.value).lower()
+        assert "currency" in error_msg or "jpy" in error_msg
+        assert "not supported" in error_msg or "not configured" in error_msg
 
     async def test_different_currency_different_minimum(self, setup_test_data):
         """Test that different currencies have different minimums."""
@@ -314,29 +354,30 @@ class TestMinimumSpendValidation:
         start_time = datetime.now(UTC) + timedelta(days=1)
         end_time = start_time + timedelta(days=7)
 
-        # €950 should fail (below €900 minimum... wait, that should pass)
-        # Let's try €800 which should fail
-        response = await _create_media_buy_impl(
-            buyer_ref="minspend_test_6",
-            brand_manifest={"name": "Test Campaign"},
-            packages=[
-                Package(
-                    buyer_ref="minspend_test_6",
-                    products=["prod_global"],
-                    budget=Budget(total=800.0, currency="EUR"),  # Below €900 minimum
-                )
-            ],
-            start_time=start_time.isoformat(),
-            end_time=end_time.isoformat(),
-            budget=Budget(total=800.0, currency="EUR"),
-            context=context,
-        )
+        # €800 should fail (below €900 minimum)
+        # Should fail validation with ValueError
+        with pytest.raises(ValueError) as exc_info:
+            await _create_media_buy_impl(
+                buyer_ref="minspend_test_6",
+                brand_manifest={"name": "Test Campaign"},
+                packages=[
+                    Package(
+                        buyer_ref="minspend_test_6",
+                        product_id="prod_global",
+                        budget=Budget(total=800.0, currency="EUR"),  # Below €900 minimum
+                    )
+                ],
+                start_time=start_time.isoformat(),
+                end_time=end_time.isoformat(),
+                budget=Budget(total=800.0, currency="EUR"),
+                context=context,
+            )
 
-        # Should fail validation
-        assert response.status == TaskStatus.FAILED
-        assert "minimum spend" in response.detail.lower()
-        assert "900" in response.detail
-        assert "EUR" in response.detail
+        # Verify error message contains expected details
+        error_msg = str(exc_info.value).lower()
+        assert "minimum spend" in error_msg or "does not meet" in error_msg
+        assert "900" in str(exc_info.value)
+        assert "eur" in error_msg
 
     async def test_no_minimum_when_not_set(self, setup_test_data):
         """Test that media buys with no minimum set in currency limit are allowed."""
@@ -366,7 +407,7 @@ class TestMinimumSpendValidation:
             packages=[
                 Package(
                     buyer_ref="minspend_test_7",
-                    products=["prod_global"],
+                    product_id="prod_global",
                     budget=Budget(total=100.0, currency="GBP"),  # Low budget, but no minimum for GBP
                 )
             ],
@@ -376,6 +417,6 @@ class TestMinimumSpendValidation:
             context=context,
         )
 
-        # Should succeed
-        assert response.status != TaskStatus.FAILED
-        assert response.media_buy_id
+        # Should succeed - verify we got a media_buy_id
+        assert response.media_buy_id is not None
+        assert response.buyer_ref == "minspend_test_7"

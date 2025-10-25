@@ -391,9 +391,10 @@ class TestA2ASkillInvocation:
 
             # Extract response data
             artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
-            assert "success" in artifact_data
-            assert artifact_data["success"] is True
+            # Per AdCP spec, CreateMediaBuyResponse has buyer_ref, media_buy_id, packages, etc.
+            # No 'success' field in the spec - that's a protocol-level field
             assert "media_buy_id" in artifact_data
+            assert "buyer_ref" in artifact_data
 
             # Verify packages are properly serialized (this would have caught the bug!)
             assert "packages" in artifact_data
@@ -633,12 +634,15 @@ class TestA2ASkillInvocation:
                 principal_id=sample_principal["principal_id"],
                 buyer_ref="test_buyer_ref",
                 status="active",
-                brand_manifest={"name": "Test Brand"},
-                start_date=start_date,
-                end_date=end_date,
+                order_name="Test Campaign",
+                advertiser_name="Test Brand",
+                start_date=start_date.date(),
+                end_date=end_date.date(),
+                start_time=start_date,  # Add start_time for flight days calculation
+                end_time=end_date,  # Add end_time for flight days calculation
                 budget=10000.0,
                 currency="USD",
-                packages=[],
+                raw_request={"brand_manifest": {"name": "Test Brand"}, "packages": []},
             )
             session.add(media_buy)
             session.commit()
@@ -661,9 +665,10 @@ class TestA2ASkillInvocation:
             mock_get_adapter.return_value = mock_adapter
 
             # Create skill invocation
+            # Per AdCP spec, budget is a float, not a Budget object in update_media_buy
             skill_params = {
                 "media_buy_id": "mb_test_123",
-                "budget": {"total": 15000.0, "currency": "USD"},
+                "budget": 15000.0,  # Float per AdCP spec, not Budget object
                 "active": True,
             }
             message = create_a2a_message_with_skill("update_media_buy", skill_params)
