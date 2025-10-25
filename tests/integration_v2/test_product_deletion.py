@@ -60,12 +60,14 @@ def test_tenant_and_products(integration_db):
         add_required_setup_data(session, "test_delete")
 
         # Create test principal (required for media buys)
+        import uuid
+
         principal = Principal(
             tenant_id="test_delete",
             principal_id="test_principal",
             name="Test Principal",
-            platform="adcp",
-            is_active=True,
+            platform_mappings={"mock": {"advertiser_id": "test_principal"}},  # Use valid platform key (mock)
+            access_token=str(uuid.uuid4()),  # Required field
         )
         session.add(principal)
         session.commit()

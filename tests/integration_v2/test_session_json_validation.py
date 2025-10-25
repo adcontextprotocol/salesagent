@@ -293,10 +293,16 @@ class TestJSONValidation:
         """Test WorkflowStep comments validation."""
         with get_db_session() as session:
             # Create tenant and principal first (required for foreign key)
+            import uuid
+
             tenant = Tenant(tenant_id="test", name="Test Tenant", subdomain="test", ad_server="mock", is_active=True)
             session.add(tenant)
             principal = Principal(
-                tenant_id="test", principal_id="test", name="Test Principal", platform="adcp", is_active=True
+                tenant_id="test",
+                principal_id="test",
+                name="Test Principal",
+                platform_mappings={"mock": {"advertiser_id": "test"}},  # Use valid platform mapping
+                access_token=str(uuid.uuid4()),  # Required field
             )
             session.add(principal)
             session.commit()
