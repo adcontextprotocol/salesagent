@@ -31,9 +31,9 @@ async def refresh_schemas(adcp_version: str = "v1", dry_run: bool = False):
         adcp_version: AdCP version to download (e.g., "v1")
         dry_run: If True, show what would be deleted without actually deleting
     """
-    # Determine cache directory
-    test_dir = Path(__file__).parent.parent / "tests" / "e2e"
-    cache_dir = test_dir / "schemas" / adcp_version
+    # Determine cache directory (schemas moved to project root in #614)
+    project_root = Path(__file__).parent.parent
+    cache_dir = project_root / "schemas" / adcp_version
 
     print("🔍 AdCP Schema Refresh Tool")
     print(f"Version: {adcp_version}")
