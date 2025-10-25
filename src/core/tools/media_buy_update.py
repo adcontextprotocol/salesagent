@@ -29,6 +29,7 @@ from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.schema_adapters import UpdateMediaBuyResponse
 from src.core.schemas import UpdateMediaBuyRequest
+from src.core.testing_hooks import get_testing_context
 from src.core.validation_helpers import format_validation_error
 
 
@@ -205,7 +206,10 @@ def _update_media_buy_impl(
             errors=[{"code": "principal_not_found", "message": error_msg}],
         )
 
-    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
+    # Extract testing context for dry_run and testing_context parameters
+    testing_ctx = get_testing_context(context)
+
+    adapter = get_adapter(principal, dry_run=testing_ctx.dry_run, testing_context=testing_ctx)
     today = req.today or date.today()
 
     # Check if manual approval is required
@@ -527,56 +531,42 @@ def _update_media_buy_impl(
                 errors=[{"code": "invalid_budget", "message": error_msg}],
             )
 
-        # Store budget update in media buy (update CreateMediaBuyRequest in place)
-        if req.media_buy_id in media_buys:
-            buy_data = media_buys[req.media_buy_id]
-            if isinstance(buy_data, tuple) and len(buy_data) >= 2:
-                # buy_data[0] is CreateMediaBuyRequest object - update it in place
-                existing_req = buy_data[0]
+        # Persist top-level budget update to database
+        # Note: In-memory media_buys dict removed after refactor
+        # Media buys are persisted in database, not in-memory state
+        if req.budget:
+            from sqlalchemy import update
 
-                # Update total_budget field (legacy field on CreateMediaBuyRequest)
-                if hasattr(existing_req, "total_budget"):
-                    existing_req.total_budget = total_budget
+            from src.core.database.models import MediaBuy
 
-                # Update buyer_ref if provided
-                if req.buyer_ref and hasattr(existing_req, "buyer_ref"):
-                    existing_req.buyer_ref = req.buyer_ref
+            with get_db_session() as db_session:
+                stmt = (
+                    update(MediaBuy)
+                    .where(MediaBuy.media_buy_id == req.media_buy_id)
+                    .values(budget=total_budget, currency=currency)
+                )
+                db_session.execute(stmt)
+                db_session.commit()
+                logger.info(
+                    f"[update_media_buy] Updated MediaBuy {req.media_buy_id} budget to {total_budget} {currency}"
+                )
 
-                # Note: media_buys tuple stays as (CreateMediaBuyRequest, principal_id)
+            # Track top-level budget update in affected_packages
+            # When top-level budget changes, all packages are affected
+            if not hasattr(req, "_affected_packages"):
+                req._affected_packages = []
 
-                # Persist top-level budget update to database
-                from sqlalchemy import update
-
-                from src.core.database.models import MediaBuy
-
-                with get_db_session() as db_session:
-                    stmt = (
-                        update(MediaBuy)
-                        .where(MediaBuy.media_buy_id == req.media_buy_id)
-                        .values(budget=total_budget, currency=currency)
-                    )
-                    db_session.execute(stmt)
-                    db_session.commit()
-                    logger.info(
-                        f"[update_media_buy] Updated MediaBuy {req.media_buy_id} budget to {total_budget} {currency}"
-                    )
-
-                # Track top-level budget update in affected_packages
-                # When top-level budget changes, all packages are affected
-                if not hasattr(req, "_affected_packages"):
-                    req._affected_packages = []
-
-                # Get all packages for this media buy to report them as affected
-                if hasattr(existing_req, "packages") and existing_req.packages:
-                    for pkg in existing_req.packages:
-                        package_ref = pkg.package_id if hasattr(pkg, "package_id") and pkg.package_id else pkg.buyer_ref
-                        if package_ref:
-                            req._affected_packages.append(
-                                {
-                                    "buyer_package_ref": package_ref,
-                                    "changes_applied": {"budget": {"updated": total_budget, "currency": currency}},
-                                }
-                            )
+            # Get all packages for this media buy to report them as affected
+            if hasattr(existing_req, "packages") and existing_req.packages:
+                for pkg in existing_req.packages:
+                    package_ref = pkg.package_id if hasattr(pkg, "package_id") and pkg.package_id else pkg.buyer_ref
+                    if package_ref:
+                        req._affected_packages.append(
+                            {
+                                "buyer_package_ref": package_ref,
+                                "changes_applied": {"budget": {"updated": total_budget, "currency": currency}},
+                            }
+                        )
 
     # Note: Budget validation already done above (lines 4318-4336)
     # Package-level updates already handled above (lines 4266-4316)

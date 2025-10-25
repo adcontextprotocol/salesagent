@@ -1319,8 +1319,8 @@ async def _create_media_buy_impl(
             logger.error(f"Adapter create_media_buy failed with traceback:\n{error_traceback}")
             raise
 
-        # Store the media buy in memory (for backward compatibility)
-        media_buys[response.media_buy_id] = (req, principal_id)
+        # Note: In-memory media_buys dict removed after refactor
+        # Media buys are persisted in database, not in-memory state
 
         # Determine initial status based on flight dates
         now = datetime.now(UTC)
