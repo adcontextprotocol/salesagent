@@ -67,7 +67,7 @@ class AdCPSchemaValidator:
         Initialize the schema validator.
 
         Args:
-            cache_dir: Directory to cache schemas. Defaults to tests/e2e/schemas/{version}
+            cache_dir: Directory to cache schemas. Defaults to schemas/{version}
             offline_mode: If True, only use cached schemas (no downloads)
             adcp_version: AdCP schema version to use (e.g., "v1", "v2")
         """
@@ -76,8 +76,8 @@ class AdCPSchemaValidator:
 
         # Set up versioned cache directory
         if cache_dir is None:
-            test_dir = Path(__file__).parent
-            cache_dir = test_dir / "schemas" / adcp_version
+            project_root = Path(__file__).parent.parent.parent
+            cache_dir = project_root / "schemas" / adcp_version
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 

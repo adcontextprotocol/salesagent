@@ -3,7 +3,7 @@
 Refresh all cached AdCP schemas from the official website.
 
 This script downloads the latest schemas from adcontextprotocol.org
-and updates our cached copies in tests/e2e/schemas/v1/.
+and updates our cached copies in schemas/v1/.
 """
 
 import json
@@ -57,7 +57,7 @@ def download_schema(url: str, output_path: Path) -> bool:
 
 
 def main():
-    schema_dir = Path("tests/e2e/schemas/v1")
+    schema_dir = Path("schemas/v1")
 
     if not schema_dir.exists():
         print(f"❌ Schema directory not found: {schema_dir}", file=sys.stderr)

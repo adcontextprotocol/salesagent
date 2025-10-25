@@ -3,7 +3,7 @@
 Generate Pydantic models from AdCP JSON schemas.
 
 This script uses datamodel-code-generator to auto-generate Pydantic models
-from the official AdCP JSON schemas cached in tests/e2e/schemas/v1/.
+from the official AdCP JSON schemas cached in schemas/v1/.
 
 The script handles $ref resolution by creating a custom loader that maps
 the official $ref paths to our flattened file structure.
@@ -335,7 +335,7 @@ Auto-generated Pydantic models from AdCP JSON schemas.
 
 ⚠️  DO NOT EDIT FILES IN THIS DIRECTORY MANUALLY!
 
-Generated from: tests/e2e/schemas/v1/
+Generated from: schemas/v1/
 Generator: scripts/generate_schemas.py
 Tool: datamodel-code-generator + custom $ref resolution
 
@@ -375,8 +375,8 @@ def main():
     parser.add_argument(
         "--schema-dir",
         type=Path,
-        default=Path("tests/e2e/schemas/v1"),
-        help="Directory containing JSON schemas (default: tests/e2e/schemas/v1)",
+        default=Path("schemas/v1"),
+        help="Directory containing JSON schemas (default: schemas/v1)",
     )
     args = parser.parse_args()
 

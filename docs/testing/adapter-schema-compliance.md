@@ -8,7 +8,7 @@ This document explains how we ensure `schema_adapters.py` stays in sync with the
 
 We have three schema layers:
 
-1. **Official AdCP JSON Schemas** (`tests/e2e/schemas/v1/*.json`) - Source of truth from https://adcontextprotocol.org
+1. **Official AdCP JSON Schemas** (`schemas/v1/*.json`) - Source of truth from https://adcontextprotocol.org
 2. **Base Pydantic Schemas** (`src/core/schemas.py`) - Generated from JSON schemas, domain data only
 3. **Adapter Schemas** (`src/core/schema_adapters.py`) - Wrap base schemas, add `__str__()` for protocol abstraction
 
@@ -66,7 +66,7 @@ def test_list_authorized_properties_response_matches_spec(self):
   name: Validate adapter schemas match AdCP spec
   entry: uv run pytest tests/unit/test_adapter_schema_compliance.py -v --tb=short
   language: system
-  files: '^(src/core/schema_adapters\.py|tests/e2e/schemas/v1/.*\.json)$'
+  files: '^(src/core/schema_adapters\.py|schemas/v1/.*\.json)$'
   pass_filenames: false
   always_run: true
 ```
@@ -251,7 +251,7 @@ class MyModel(Base):
 1. **Verify field exists in official AdCP spec first:**
    ```bash
    # Check cached schema
-   cat tests/e2e/schemas/v1/_schemas_v1_media-buy_list-authorized-properties-response_json.json
+   cat schemas/v1/_schemas_v1_media-buy_list-authorized-properties-response_json.json
    ```
 
 2. **Add field to adapter schema:**
@@ -290,7 +290,7 @@ Missing: implementation_date (required=False)
 ```
 
 **How to fix:**
-1. Check official schema: `tests/e2e/schemas/v1/_schemas_v1_media-buy_update-media-buy-response_json.json`
+1. Check official schema: `schemas/v1/_schemas_v1_media-buy_update-media-buy-response_json.json`
 2. Verify field is in spec (lines 60-65 show `implementation_date`)
 3. Add field to `schema_adapters.py`:
    ```python
@@ -323,7 +323,7 @@ Generate adapter schemas from JSON schemas:
 ```bash
 # Generate adapter schema from official spec
 python scripts/generate_adapter_schema.py \
-    --spec tests/e2e/schemas/v1/_schemas_v1_media-buy_list-authorized-properties-response_json.json \
+    --spec schemas/v1/_schemas_v1_media-buy_list-authorized-properties-response_json.json \
     --output src/core/schema_adapters.py \
     --class-name ListAuthorizedPropertiesResponse
 ```
