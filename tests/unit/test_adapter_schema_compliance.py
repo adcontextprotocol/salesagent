@@ -40,7 +40,8 @@ class TestAdapterSchemaCompliance:
     @staticmethod
     def load_official_schema(schema_name: str) -> dict[str, Any]:
         """Load cached official AdCP JSON schema."""
-        schema_dir = Path(__file__).parent.parent / "e2e" / "schemas" / "v1"
+        project_root = Path(__file__).parent.parent.parent
+        schema_dir = project_root / "schemas" / "v1"
 
         # Map response names to schema file names
         schema_files = {

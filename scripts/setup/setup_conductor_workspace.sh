@@ -434,7 +434,7 @@ if command -v uv &> /dev/null && [ -f "scripts/check_schema_sync.py" ]; then
         echo ""
         echo "   To update schemas, run:"
         echo "   uv run python scripts/check_schema_sync.py --update"
-        echo "   git add tests/e2e/schemas/"
+        echo "   git add schemas/"
         echo "   git commit -m 'Update AdCP schemas to latest from registry'"
         echo ""
         echo "   Continuing with setup..."

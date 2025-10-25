@@ -9,7 +9,7 @@ This project now supports **automatic generation of Pydantic models** from the o
 ### 1. Schema Resolution
 
 The generation script handles the AdCP schema structure:
-- **Cached Schemas**: Uses locally cached schemas from `tests/e2e/schemas/v1/`
+- **Cached Schemas**: Uses locally cached schemas from `schemas/v1/`
 - **Flattened Naming**: Handles the flattened file naming (e.g., `_schemas_v1_core_budget_json.json`)
 - **$ref Resolution**: Automatically resolves JSON Schema `$ref` references
 - **Auto-Download**: Downloads missing schemas from https://adcontextprotocol.org/schemas/v1/
@@ -24,7 +24,7 @@ python scripts/generate_schemas.py
 ```
 
 The script:
-1. Loads all JSON schemas from `tests/e2e/schemas/v1/`
+1. Loads all JSON schemas from `schemas/v1/`
 2. Downloads any missing referenced schemas from AdCP website
 3. Resolves all `$ref` references recursively
 4. Generates clean Pydantic v2 models using `datamodel-code-generator`

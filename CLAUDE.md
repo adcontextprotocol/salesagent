@@ -7,7 +7,7 @@
 
 **Schema Hierarchy:**
 1. **Official Spec** (https://adcontextprotocol.org/schemas/v1/) - Primary source of truth
-2. **Cached Schemas** (`tests/e2e/schemas/v1/`) - Checked into git for offline validation
+2. **Cached Schemas** (`schemas/v1/`) - Checked into git for offline validation
 3. **Pydantic Schemas** (`src/core/schemas.py`) - MUST match official spec exactly
 
 **Rules:**
@@ -33,7 +33,7 @@ pytest tests/e2e/test_adcp_compliance.py -v
 pytest tests/unit/test_adcp_contract.py -v
 
 # If schemas are out of date, cached files are auto-updated on next run
-# Commit any schema file changes that appear in tests/e2e/schemas/v1/
+# Commit any schema file changes that appear in schemas/v1/
 ```
 
 **Current Schema Version:**
