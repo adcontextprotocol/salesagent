@@ -74,58 +74,73 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
     # Determine reference date for status calculations (use end_date or current date)
     reference_date = end_dt.date() if req.end_date else date.today()
 
-    # Determine which media buys to fetch
+    # Determine which media buys to fetch from database
+    from sqlalchemy import select
+
+    from src.core.config_loader import get_current_tenant
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import MediaBuy
+
+    tenant = get_current_tenant()
     target_media_buys = []
 
-    if req.media_buy_ids:
-        # Specific media buy IDs requested
-        for media_buy_id in req.media_buy_ids:
-            if media_buy_id in media_buys:
-                buy_request, buy_principal_id = media_buys[media_buy_id]
-                if buy_principal_id == principal_id:
-                    target_media_buys.append((media_buy_id, buy_request))
-                else:
-                    console.print(f"[yellow]Skipping {media_buy_id} - not owned by principal[/yellow]")
-            else:
-                console.print(f"[yellow]Media buy {media_buy_id} not found[/yellow]")
-    elif req.buyer_refs:
-        # Buyer references requested
-        for media_buy_id, (buy_request, buy_principal_id) in media_buys.items():
-            if (
-                buy_principal_id == principal_id
-                and hasattr(buy_request, "buyer_ref")
-                and buy_request.buyer_ref in req.buyer_refs
-            ):
-                target_media_buys.append((media_buy_id, buy_request))
-    else:
-        # Use status_filter to determine which buys to fetch
-        valid_statuses = ["active", "ready", "paused", "completed", "failed"]
-        filter_statuses = []
+    with get_db_session() as session:
+        if req.media_buy_ids:
+            # Specific media buy IDs requested
+            stmt = select(MediaBuy).where(
+                MediaBuy.tenant_id == tenant["tenant_id"],
+                MediaBuy.principal_id == principal_id,
+                MediaBuy.media_buy_id.in_(req.media_buy_ids),
+            )
+            buys = session.scalars(stmt).all()
+            target_media_buys = [(buy.media_buy_id, buy) for buy in buys]
 
-        if req.status_filter:
-            if isinstance(req.status_filter, str):
-                if req.status_filter == "all":
-                    filter_statuses = valid_statuses
-                else:
-                    filter_statuses = [req.status_filter]
-            elif isinstance(req.status_filter, list):
-                filter_statuses = req.status_filter
+        elif req.buyer_refs:
+            # Buyer references requested
+            stmt = select(MediaBuy).where(
+                MediaBuy.tenant_id == tenant["tenant_id"],
+                MediaBuy.principal_id == principal_id,
+                MediaBuy.buyer_ref.in_(req.buyer_refs),
+            )
+            buys = session.scalars(stmt).all()
+            target_media_buys = [(buy.media_buy_id, buy) for buy in buys]
+
         else:
-            # Default to active
-            filter_statuses = ["active"]
+            # Use status_filter to determine which buys to fetch
+            valid_statuses = ["active", "ready", "paused", "completed", "failed"]
+            filter_statuses = []
 
-        for media_buy_id, (buy_request, buy_principal_id) in media_buys.items():
-            if buy_principal_id == principal_id:
-                # Determine current status
-                if reference_date < buy_request.flight_start_date:
+            if req.status_filter:
+                if isinstance(req.status_filter, str):
+                    if req.status_filter == "all":
+                        filter_statuses = valid_statuses
+                    else:
+                        filter_statuses = [req.status_filter]
+                elif isinstance(req.status_filter, list):
+                    filter_statuses = req.status_filter
+            else:
+                # Default to active
+                filter_statuses = ["active"]
+
+            # Fetch all media buys for this principal
+            stmt = select(MediaBuy).where(
+                MediaBuy.tenant_id == tenant["tenant_id"],
+                MediaBuy.principal_id == principal_id,
+            )
+            all_buys = session.scalars(stmt).all()
+
+            # Filter by status based on date ranges
+            for buy in all_buys:
+                # Determine current status based on dates
+                if reference_date < buy.start_time.date():
                     current_status = "ready"
-                elif reference_date > buy_request.flight_end_date:
+                elif reference_date > buy.end_time.date():
                     current_status = "completed"
                 else:
                     current_status = "active"
 
                 if current_status in filter_statuses:
-                    target_media_buys.append((media_buy_id, buy_request))
+                    target_media_buys.append((buy.media_buy_id, buy))
 
     # Collect delivery data for each media buy
     deliveries = []
@@ -133,7 +148,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
     total_impressions = 0
     media_buy_count = 0
 
-    for media_buy_id, buy_request in target_media_buys:
+    for media_buy_id, buy in target_media_buys:
         try:
             # Apply time simulation from testing context
             simulation_datetime = end_dt
@@ -143,14 +158,14 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                 # Calculate time based on event
                 simulation_datetime = TimeSimulator.jump_to_event_time(
                     testing_ctx.jump_to_event,
-                    datetime.combine(buy_request.flight_start_date, datetime.min.time()),
-                    datetime.combine(buy_request.flight_end_date, datetime.min.time()),
+                    datetime.combine(buy.start_date, datetime.min.time()),
+                    datetime.combine(buy.end_date, datetime.min.time()),
                 )
 
             # Determine status
-            if simulation_datetime.date() < buy_request.flight_start_date:
+            if simulation_datetime.date() < buy.start_date:
                 status = "ready"
-            elif simulation_datetime.date() > buy_request.flight_end_date:
+            elif simulation_datetime.date() > buy.end_date:
                 status = "completed"
             else:
                 status = "active"
@@ -160,12 +175,12 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                 [testing_ctx.dry_run, testing_ctx.mock_time, testing_ctx.jump_to_event, testing_ctx.test_session_id]
             ):
                 # Use simulation for testing
-                start_dt = datetime.combine(buy_request.flight_start_date, datetime.min.time())
-                end_dt_campaign = datetime.combine(buy_request.flight_end_date, datetime.min.time())
+                start_dt = datetime.combine(buy.start_date, datetime.min.time())
+                end_dt_campaign = datetime.combine(buy.end_date, datetime.min.time())
                 progress = TimeSimulator.calculate_campaign_progress(start_dt, end_dt_campaign, simulation_datetime)
 
                 simulated_metrics = DeliverySimulator.calculate_simulated_metrics(
-                    buy_request.total_budget, progress, testing_ctx
+                    float(buy.budget) if buy.budget else 0.0, progress, testing_ctx
                 )
 
                 spend = simulated_metrics["spend"]
