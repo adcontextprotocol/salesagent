@@ -352,7 +352,7 @@ def _run_sync_thread(
         if sync_mode == "incremental":
             with get_db_session() as db:
                 from sqlalchemy import func
-                from src.core.database.models import GAMInventory, GAMCustomTargetingKey
+                from src.core.database.models import GAMInventory
 
                 # Count total items by inventory_type
                 total_ad_units = db.scalar(
@@ -381,8 +381,8 @@ def _run_sync_thread(
 
                 total_targeting_keys = db.scalar(
                     select(func.count())
-                    .select_from(GAMCustomTargetingKey)
-                    .where(GAMCustomTargetingKey.tenant_id == tenant_id)
+                    .select_from(GAMInventory)
+                    .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == "custom_targeting_key")
                 ) or 0
 
                 # For incremental, show both synced count and total count
