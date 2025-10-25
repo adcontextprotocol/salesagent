@@ -96,9 +96,9 @@ class SchemaRoundtripValidator:
                 assert reconstructed_value == original_value, f"Field '{field_name}' value changed during roundtrip"
             elif isinstance(original_value, Decimal):
                 # Handle Decimal to float conversions
-                assert float(reconstructed_value) == float(original_value), (
-                    f"Field '{field_name}' numeric value changed during roundtrip"
-                )
+                assert float(reconstructed_value) == float(
+                    original_value
+                ), f"Field '{field_name}' numeric value changed during roundtrip"
             else:
                 assert reconstructed_value == original_value, f"Field '{field_name}' value changed during roundtrip"
 
@@ -122,6 +122,7 @@ class SchemaRoundtripValidator:
                 assert field not in adcp_dict, f"Internal field '{field}' should not appear in AdCP output"
 
 
+@pytest.mark.requires_db
 class TestProductSchemaRoundtrip:
     """Comprehensive Product schema roundtrip tests."""
 
@@ -541,6 +542,6 @@ class TestRoundtripErrorScenarios:
         for field_name, original_value in original_internal.items():
             assert field_name in reconstructed_internal, f"Field '{field_name}' was lost during roundtrip"
             reconstructed_value = reconstructed_internal[field_name]
-            assert reconstructed_value == original_value, (
-                f"Field '{field_name}' value changed during roundtrip: {original_value} → {reconstructed_value}"
-            )
+            assert (
+                reconstructed_value == original_value
+            ), f"Field '{field_name}' value changed during roundtrip: {original_value} → {reconstructed_value}"

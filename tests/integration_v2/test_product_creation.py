@@ -7,7 +7,11 @@ from src.admin.app import create_app
 
 app, _ = create_app()
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Product, Tenant
+from src.core.database.models import PricingOption, Product, Tenant
+from tests.integration_v2.conftest import (
+    add_required_setup_data,
+    create_test_product_with_pricing,
+)
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
@@ -32,6 +36,7 @@ def test_tenant(integration_db):
         try:
             from src.core.database.models import CreativeFormat
 
+            session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_product_tenant"))
             session.execute(delete(Product).where(Product.tenant_id == "test_product_tenant"))
             session.execute(delete(Tenant).where(Tenant.tenant_id == "test_product_tenant"))
             session.execute(
@@ -41,7 +46,7 @@ def test_tenant(integration_db):
         except Exception:
             session.rollback()  # Ignore errors if tables don't exist yet
 
-        # Create test tenant
+        # Create test tenant with required setup data
         from src.core.database.models import CreativeFormat
 
         tenant = create_tenant_with_timestamps(
@@ -83,9 +88,14 @@ def test_tenant(integration_db):
 
         session.commit()
 
+        # Add required setup data (CurrencyLimit, PropertyTag)
+        add_required_setup_data(session, "test_product_tenant")
+        session.commit()
+
         yield tenant
 
         # Cleanup
+        session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_product_tenant"))
         session.execute(delete(Product).where(Product.tenant_id == "test_product_tenant"))
         session.execute(delete(Tenant).where(Tenant.tenant_id == "test_product_tenant"))
         session.execute(
@@ -293,8 +303,7 @@ def test_add_product_postgresql_validation(client, test_tenant):
                 name="Bad JSON Product",
                 formats='"["display_300x250"]"',  # Double-encoded string
                 countries='"["US"]"',  # Double-encoded string
-                pricing_model="cpm",
-                guaranteed=False,
+                delivery_type="guaranteed",
             )
             session.add(bad_product)
             session.commit()
@@ -333,23 +342,25 @@ def test_list_products_json_parsing(client, test_tenant, integration_db):
             session.add(user)
             session.commit()
 
-    # Create a product with JSON fields
+    # Create a product with JSON fields using new pricing model
     with get_db_session() as session:
-        product = Product(
+        product = create_test_product_with_pricing(
+            session=session,
             tenant_id=tenant_id,
             product_id="test_list_json",
             name="Test List JSON",
+            pricing_model="CPM",
+            rate="10.00",
+            is_fixed=False,
             formats=[
                 {"format_id": "display_300x250", "name": "Display 300x250", "type": "display"},
                 {"format_id": "video_16x9", "name": "Video 16:9", "type": "video"},
             ],
             countries=["US", "CA"],
             price_guidance={"min": 10.0, "max": 20.0},
-            is_fixed_price=False,
             delivery_type="guaranteed",
             targeting_template={"geo_country_any_of": ["US", "CA"]},
         )
-        session.add(product)
         session.commit()
 
     with client.session_transaction() as sess:

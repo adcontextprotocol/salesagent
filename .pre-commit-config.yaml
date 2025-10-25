@@ -33,6 +33,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # integration_v2 tests cannot be skipped at all (no skip, no skip_ci)
+      - id: no-skip-integration-v2
+        name: integration_v2 tests cannot be skipped (no skip or skip_ci)
+        entry: sh -c 'if grep -r "@pytest\.mark\.skip" --include="test_*.py" tests/integration_v2/; then echo "❌ integration_v2 tests cannot use @pytest.mark.skip or @pytest.mark.skip_ci! All v2 tests must run in CI."; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
       # Prevent over-mocking (mocking internal implementation instead of external I/O)
       - id: no-excessive-mocking
         name: Prevent excessive mocking in tests

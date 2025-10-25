@@ -12,17 +12,30 @@ validation failed.
 The fix: Filter out non-schema fields before reconstruction (main.py:3747-3760).
 
 This test ensures the fix works and prevents regression.
+
+MIGRATED: Uses new pricing_options model instead of legacy Product pricing fields.
 """
 
-import pytest
+from datetime import UTC, datetime, timedelta
 
+import pytest
+from sqlalchemy import delete
+
+from src.core.database.database_session import get_db_session
+from src.core.database.models import CurrencyLimit
+from src.core.database.models import Principal as ModelPrincipal
+from src.core.database.models import Product as ModelProduct
+from src.core.database.models import Tenant as ModelTenant
+from src.core.schemas import CreateMediaBuyResponse
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
+from tests.integration_v2.conftest import create_test_product_with_pricing
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires_db]
 
 
 @pytest.mark.integration
+@pytest.mark.requires_db
 class TestCreateMediaBuyRoundtrip:
     """Test create_media_buy response roundtrip through testing hooks."""
 
@@ -54,20 +67,22 @@ class TestCreateMediaBuyRoundtrip:
             )
             session.add(principal)
 
-            # Create product
-            product = ModelProduct(
+            # Create product using new pricing_options model
+            product = create_test_product_with_pricing(
+                session=session,
                 tenant_id="test_roundtrip_tenant",
                 product_id="prod_roundtrip",
                 name="Test Roundtrip Product",
                 description="Product for roundtrip testing",
-                formats=["display_300x250"],
-                delivery_type="guaranteed",
-                cpm=10.0,
-                min_spend=1000.0,
+                pricing_model="CPM",
+                rate="10.0",
+                is_fixed=True,
+                currency="USD",
+                min_spend_per_package="1000.0",
+                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 targeting_template={},
-                is_fixed_price=True,
+                delivery_type="guaranteed",
             )
-            session.add(product)
 
             # Add currency limit
             currency_limit = CurrencyLimit(

@@ -19,7 +19,6 @@ Key Testing Principles:
 """
 
 from contextlib import nullcontext
-from decimal import Decimal
 
 import pytest
 from sqlalchemy import delete
@@ -33,6 +32,7 @@ from src.core.testing_hooks import TestingContext, apply_testing_hooks
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
+@pytest.mark.requires_db
 class TestMCPToolRoundtripValidation:
     """Test MCP tools with real objects to catch roundtrip conversion bugs."""
 
@@ -63,71 +63,85 @@ class TestMCPToolRoundtripValidation:
     @pytest.fixture
     def real_products_in_db(self, test_tenant_id) -> list[ProductModel]:
         """Create real Product objects in database to test actual conversion paths."""
-        products_data = [
-            {
-                "product_id": "roundtrip_test_display",
-                "name": "Display Banner Product - Roundtrip Test",
-                "description": "Display advertising product for roundtrip validation",
-                "formats": ["display_300x250", "display_728x90"],  # Internal field name
-                "targeting_template": {"geo": ["US"], "device": ["desktop", "mobile"]},
-                "delivery_type": "guaranteed",
-                "is_fixed_price": True,
-                "cpm": Decimal("12.50"),
-                "min_spend": Decimal("2000.00"),
-                "measurement": {
+        from tests.integration_v2.conftest import create_test_product_with_pricing
+
+        created_products = []
+        with get_db_session() as session:
+            # Product 1: Display banner with fixed pricing
+            product1 = create_test_product_with_pricing(
+                session=session,
+                tenant_id=test_tenant_id,
+                product_id="roundtrip_test_display",
+                name="Display Banner Product - Roundtrip Test",
+                description="Display advertising product for roundtrip validation",
+                formats=[
+                    {"agent_url": "https://test.com", "id": "display_300x250"},
+                    {"agent_url": "https://test.com", "id": "display_728x90"},
+                ],
+                targeting_template={"geo": ["US"], "device": ["desktop", "mobile"]},
+                delivery_type="guaranteed",
+                pricing_model="CPM",
+                rate="12.50",
+                is_fixed=True,
+                min_spend_per_package="2000.00",
+                measurement={
                     "type": "brand_lift",
                     "attribution": "deterministic_purchase",
                     "reporting": "weekly_dashboard",
                     "viewability": True,
                     "brand_safety": True,
                 },
-                "creative_policy": {
+                creative_policy={
                     "co_branding": "optional",
                     "landing_page": "any",
                     "templates_available": True,
                     "max_file_size": "10MB",
                     "formats": ["jpg", "png", "gif"],
                 },
-                "is_custom": False,
-                "expires_at": None,
-                "countries": ["US", "CA"],
-                "implementation_config": {"gam_placement_id": "67890"},
-            },
-            {
-                "product_id": "roundtrip_test_video",
-                "name": "Video Ad Product - Roundtrip Test",
-                "description": "Video advertising product for roundtrip validation",
-                "formats": ["video_15s", "video_30s"],  # Internal field name
-                "targeting_template": {"geo": ["US", "UK"], "device": ["mobile", "tablet"]},
-                "delivery_type": "non_guaranteed",
-                "is_fixed_price": False,
-                "cpm": None,  # Test null handling
-                "min_spend": Decimal("5000.00"),
-                "measurement": {
+                is_custom=False,
+                expires_at=None,
+                countries=["US", "CA"],
+                implementation_config={"gam_placement_id": "67890"},
+            )
+            created_products.append(product1)
+
+            # Product 2: Video with auction pricing
+            product2 = create_test_product_with_pricing(
+                session=session,
+                tenant_id=test_tenant_id,
+                product_id="roundtrip_test_video",
+                name="Video Ad Product - Roundtrip Test",
+                description="Video advertising product for roundtrip validation",
+                formats=[
+                    {"agent_url": "https://test.com", "id": "video_15s"},
+                    {"agent_url": "https://test.com", "id": "video_30s"},
+                ],
+                targeting_template={"geo": ["US", "UK"], "device": ["mobile", "tablet"]},
+                delivery_type="non_guaranteed",
+                pricing_model="CPM",
+                rate="10.00",  # Floor for auction
+                is_fixed=False,
+                min_spend_per_package="5000.00",
+                price_guidance={"floor": 10.0, "p50": 15.0, "p75": 20.0, "p90": 25.0},
+                measurement={
                     "type": "incremental_sales_lift",
                     "attribution": "probabilistic",
                     "reporting": "real_time_api",
                     "completion_rate": True,
                 },
-                "creative_policy": {
+                creative_policy={
                     "co_branding": "none",
                     "landing_page": "retailer_site_only",
                     "templates_available": False,
                     "duration_max": 30,
                 },
-                "is_custom": True,
-                "expires_at": None,
-                "countries": ["US", "UK", "DE"],
-                "implementation_config": {"video_formats": ["mp4", "webm"]},
-            },
-        ]
+                is_custom=True,
+                expires_at=None,
+                countries=["US", "UK", "DE"],
+                implementation_config={"video_formats": ["mp4", "webm"]},
+            )
+            created_products.append(product2)
 
-        created_products = []
-        with get_db_session() as session:
-            for product_data in products_data:
-                db_product = ProductModel(tenant_id=test_tenant_id, **product_data)
-                session.add(db_product)
-                created_products.append(db_product)
             session.commit()
 
             # Refresh to get actual database objects
@@ -157,6 +171,8 @@ class TestMCPToolRoundtripValidation:
         # Convert database models to schema objects (this mimics what get_products does)
         schema_products = []
         for db_product in products:
+            # NEW: Access pricing via pricing_options relationship
+            pricing_option = db_product.pricing_options[0] if db_product.pricing_options else None
             product_data = {
                 "product_id": db_product.product_id,
                 "name": db_product.name,
@@ -169,11 +185,11 @@ class TestMCPToolRoundtripValidation:
                 "property_tags": getattr(db_product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
                 "pricing_options": [
                     PricingOption(
-                        pricing_option_id="cpm_usd_fixed",
-                        pricing_model="cpm",
-                        rate=float(db_product.cpm) if db_product.cpm else 10.0,
-                        currency="USD",
-                        is_fixed=db_product.is_fixed_price if hasattr(db_product, "is_fixed_price") else True,
+                        pricing_option_id=pricing_option.pricing_option_id if pricing_option else "cpm_usd_fixed",
+                        pricing_model=pricing_option.pricing_model if pricing_option else "cpm",
+                        rate=float(pricing_option.rate) if pricing_option and pricing_option.rate else 10.0,
+                        currency=pricing_option.currency if pricing_option else "USD",
+                        is_fixed=pricing_option.is_fixed if pricing_option else True,
                     )
                 ],
             }
@@ -236,6 +252,8 @@ class TestMCPToolRoundtripValidation:
         # Convert database models to schema objects (this mimics what get_products does)
         schema_products = []
         for db_product in products:
+            # NEW: Access pricing via pricing_options relationship
+            pricing_option = db_product.pricing_options[0] if db_product.pricing_options else None
             product_data = {
                 "product_id": db_product.product_id,
                 "name": db_product.name,
@@ -248,11 +266,11 @@ class TestMCPToolRoundtripValidation:
                 "property_tags": getattr(db_product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
                 "pricing_options": [
                     PricingOption(
-                        pricing_option_id="cpm_usd_fixed",
-                        pricing_model="cpm",
-                        rate=float(db_product.cpm) if db_product.cpm else 10.0,
-                        currency="USD",
-                        is_fixed=db_product.is_fixed_price if hasattr(db_product, "is_fixed_price") else True,
+                        pricing_option_id=pricing_option.pricing_option_id if pricing_option else "cpm_usd_fixed",
+                        pricing_model=pricing_option.pricing_model if pricing_option else "cpm",
+                        rate=float(pricing_option.rate) if pricing_option and pricing_option.rate else 10.0,
+                        currency=pricing_option.currency if pricing_option else "USD",
+                        is_fixed=pricing_option.is_fixed if pricing_option else True,
                     )
                 ],
             }

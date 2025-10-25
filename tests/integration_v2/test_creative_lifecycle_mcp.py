@@ -23,6 +23,7 @@ class MockContext:
             self.meta = {"headers": {"x-adcp-auth": auth_token}}
 
 
+@pytest.mark.requires_db
 class TestCreativeLifecycleMCP:
     """Integration tests for creative lifecycle MCP tools."""
 
@@ -791,6 +792,7 @@ class TestCreativeLifecycleMCP:
             mock_adapter_instance.manual_approval_required = False
 
             # Mock product catalog
+            from src.core.schemas import PriceGuidance, PricingOption
             from src.core.schemas import Product as SchemaProduct
 
             mock_catalog.return_value = [
@@ -800,8 +802,18 @@ class TestCreativeLifecycleMCP:
                     description="Test",
                     formats=[],
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    price_guidance={"floor": 5.0, "p50": 10.0, "p90": 15.0},
+                    is_custom=False,
+                    property_tags=["all_inventory"],
+                    pricing_options=[
+                        PricingOption(
+                            pricing_option_id="cpm_usd_auction",
+                            pricing_model="cpm",
+                            rate=10.0,
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance=PriceGuidance(floor=5.0, p50=10.0, p75=12.0, p90=15.0),
+                        )
+                    ],
                 )
             ]
 

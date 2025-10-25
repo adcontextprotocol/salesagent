@@ -4,6 +4,8 @@ This test verifies that the format_ids filter in ProductFilters correctly handle
 FormatId objects with .id attribute (not .format_id).
 
 Regression test for: "unhashable type: 'FormatReference'" bug.
+
+MIGRATED: Uses new pricing_options model instead of legacy Product pricing fields.
 """
 
 from unittest.mock import Mock
@@ -11,8 +13,9 @@ from unittest.mock import Mock
 import pytest
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Principal, Product
+from src.core.database.models import Principal
 from src.core.schemas import FormatId, GetProductsRequest, ProductFilters
+from tests.integration_v2.conftest import create_test_product_with_pricing
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -48,41 +51,50 @@ def setup_products_with_formatid_objects(integration_db):
             created_at=get_utc_now(),
         )
         session.add(principal)
+        session.flush()
 
-        # Create products with FormatId-style dicts (how they're stored in DB after AdCP v2.4)
-        # Note: is_fixed_price and cpm are no longer on Product model - pricing moved to PricingOption table
-        products = [
-            Product(
-                tenant_id="format_id_filter_test",
-                product_id="display_product",
-                name="Display Product",
-                description="Has display formats",
-                formats=[
-                    {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250"},
-                    {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_728x90"},
-                ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                is_custom=False,
-                countries=["US"],
-                property_tags=["all_inventory"],  # Required by database constraint
-            ),
-            Product(
-                tenant_id="format_id_filter_test",
-                product_id="video_product",
-                name="Video Product",
-                description="Has video formats",
-                formats=[
-                    {"agent_url": "https://creatives.adcontextprotocol.org", "id": "video_1280x720"},
-                ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                is_custom=False,
-                countries=["US"],
-                property_tags=["all_inventory"],  # Required by database constraint
-            ),
-        ]
-        session.add_all(products)
+        # Create products with FormatId-style dicts and proper pricing
+        display_product = create_test_product_with_pricing(
+            session=session,
+            tenant_id="format_id_filter_test",
+            product_id="display_product",
+            name="Display Product",
+            description="Has display formats",
+            pricing_model="CPM",
+            rate="15.00",
+            is_fixed=True,
+            currency="USD",
+            formats=[
+                {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_728x90"},
+            ],
+            targeting_template={},
+            delivery_type="guaranteed",
+            is_custom=False,
+            countries=["US"],
+            property_tags=["all_inventory"],
+        )
+
+        video_product = create_test_product_with_pricing(
+            session=session,
+            tenant_id="format_id_filter_test",
+            product_id="video_product",
+            name="Video Product",
+            description="Has video formats",
+            pricing_model="CPM",
+            rate="20.00",
+            is_fixed=True,
+            currency="USD",
+            formats=[
+                {"agent_url": "https://creatives.adcontextprotocol.org", "id": "video_1280x720"},
+            ],
+            targeting_template={},
+            delivery_type="guaranteed",
+            is_custom=False,
+            countries=["US"],
+            property_tags=["all_inventory"],
+        )
+
         session.commit()
 
 

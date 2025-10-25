@@ -4,7 +4,7 @@ Check that all advertised A2A skills have integration tests.
 
 Compares:
 - Skills advertised in agent card (from src/a2a_server/adcp_a2a_server.py)
-- Test methods in tests/integration/test_a2a_skill_invocation.py
+- Test methods in tests/integration_v2/test_a2a_skill_invocation.py
 
 Exit codes:
 - 0: 100% skill coverage
@@ -35,7 +35,7 @@ def get_advertised_skills() -> set[str]:
 
 def get_tested_skills() -> set[str]:
     """Extract skill names that have test methods."""
-    test_file = Path("tests/integration/test_a2a_skill_invocation.py")
+    test_file = Path("tests/integration_v2/test_a2a_skill_invocation.py")
     if not test_file.exists():
         print(f"❌ Could not find {test_file}")
         sys.exit(1)
@@ -73,8 +73,8 @@ def get_tested_skills() -> set[str]:
             skills.add(match)
 
     # Also check for skills in test data
-    # Look for create_message_with_skill("skill_name", ...)
-    skill_invocation_pattern = r'create_message_with_skill\(\s*["\']([^"\']+)["\']'
+    # Look for create_a2a_message_with_skill("skill_name", ...) or create_message_with_skill("skill_name", ...)
+    skill_invocation_pattern = r'create_(?:a2a_)?message_with_skill\(\s*["\']([^"\']+)["\']'
     invoked_skills = set(re.findall(skill_invocation_pattern, content))
     skills.update(invoked_skills)
 

@@ -1,5 +1,8 @@
 """Comprehensive error path testing for AdCP tools.
 
+⚠️ MIGRATION NOTICE: This test has been migrated to tests/integration_v2/ to use the new
+pricing_options model. The original file in tests/integration/ is deprecated.
+
 This test suite systematically exercises error handling paths that were previously
 untested, ensuring:
 1. Error responses are actually constructible (no NameErrors)
@@ -12,9 +15,20 @@ used in error responses. These tests prevent regression by actually executing
 those error paths.
 """
 
-import pytest
+from datetime import UTC, datetime, timedelta
 
+import pytest
+from sqlalchemy import delete
+
+from src.core.database.database_session import get_db_session
+from src.core.database.models import CurrencyLimit
+from src.core.database.models import Principal as ModelPrincipal
+from src.core.database.models import Product as ModelProduct
+from src.core.database.models import Tenant as ModelTenant
+from src.core.schemas import CreateMediaBuyResponse, Error
+from src.core.tool_context import ToolContext
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
+from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
@@ -55,30 +69,24 @@ class TestCreateMediaBuyErrorPaths:
                 updated_at=now,
             )
             session.add(tenant)
+            session.commit()
 
-            # Create product
-            product = ModelProduct(
+            # Add required setup data (currency limits, property tags)
+            add_required_setup_data(session, "error_test_tenant")
+
+            # Create product using new pricing_options model
+            product = create_test_product_with_pricing(
+                session=session,
                 tenant_id="error_test_tenant",
                 product_id="error_test_product",
                 name="Error Test Product",
                 description="Product for error testing",
-                formats=["display_300x250"],
-                delivery_type="guaranteed",
-                cpm=10.0,
-                min_spend=1000.0,
-                targeting_template={},
-                is_fixed_price=True,
+                pricing_model="CPM",
+                rate="10.00",
+                is_fixed=True,
+                min_spend_per_package="1000.00",
+                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
             )
-            session.add(product)
-
-            # Add currency limit
-            currency_limit = CurrencyLimit(
-                tenant_id="error_test_tenant",
-                currency_code="USD",
-                min_package_budget=1000.0,
-                max_daily_package_spend=10000.0,
-            )
-            session.add(currency_limit)
 
             session.commit()
 

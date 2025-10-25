@@ -2,6 +2,9 @@
 
 Tests the per-currency minimum/maximum spend limits and per-product override
 functionality for media buy creation.
+
+MIGRATED: Uses new pricing_options model instead of legacy Product pricing fields.
+Product.min_spend → PricingOption.min_spend_per_package
 """
 
 from datetime import UTC, datetime, timedelta
@@ -14,9 +17,11 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import CurrencyLimit, MediaBuy, Principal, Product, Tenant
 from src.core.main import _create_media_buy_impl
 from src.core.schemas import Budget, TaskStatus
+from tests.integration_v2.conftest import create_test_product_with_pricing
 
 
 @pytest.mark.integration
+@pytest.mark.requires_db
 class TestMinimumSpendValidation:
     """Test minimum spend validation for media buys."""
 
@@ -69,51 +74,58 @@ class TestMinimumSpendValidation:
                 created_at=now,
             )
             session.add(principal)
+            session.flush()
 
             # Create product WITHOUT override (will use currency limit)
-            product_no_override = Product(
+            product_no_override = create_test_product_with_pricing(
+                session=session,
                 tenant_id="test_minspend_tenant",
                 product_id="prod_global",
                 name="Product Using Currency Minimum",
                 description="Uses currency-specific minimum",
+                pricing_model="CPM",
+                rate="10.00",
+                is_fixed=True,
+                currency="USD",
+                min_spend_per_package=None,  # No override, uses currency limit
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="guaranteed",
-                is_fixed_price=True,
-                cpm=Decimal("10.00"),
-                min_spend=None,  # No override, uses currency limit
             )
-            session.add(product_no_override)
 
             # Create product WITH override (higher than currency limit)
-            product_high_override = Product(
+            product_high_override = create_test_product_with_pricing(
+                session=session,
                 tenant_id="test_minspend_tenant",
                 product_id="prod_high",
                 name="Product With High Override",
                 description="Has $5000 minimum override",
+                pricing_model="CPM",
+                rate="10.00",
+                is_fixed=True,
+                currency="USD",
+                min_spend_per_package="5000.00",  # Product-specific override
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="guaranteed",
-                is_fixed_price=True,
-                cpm=Decimal("10.00"),
-                min_spend=Decimal("5000.00"),  # Product-specific override
             )
-            session.add(product_high_override)
 
             # Create product WITH override (lower than currency limit)
-            product_low_override = Product(
+            product_low_override = create_test_product_with_pricing(
+                session=session,
                 tenant_id="test_minspend_tenant",
                 product_id="prod_low",
                 name="Product With Low Override",
                 description="Has $500 minimum override",
+                pricing_model="CPM",
+                rate="10.00",
+                is_fixed=True,
+                currency="USD",
+                min_spend_per_package="500.00",  # Lower override
                 formats=["display_300x250"],
                 targeting_template={},
                 delivery_type="guaranteed",
-                is_fixed_price=True,
-                cpm=Decimal("10.00"),
-                min_spend=Decimal("500.00"),  # Lower override
             )
-            session.add(product_low_override)
 
             session.commit()
 

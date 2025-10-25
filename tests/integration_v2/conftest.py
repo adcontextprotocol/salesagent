@@ -332,8 +332,8 @@ def add_required_setup_data(session, tenant_id: str):
         tenant.authorized_emails = ["test@example.com"]
 
     # Create AuthorizedProperty if not exists
-    stmt = select(AuthorizedProperty).filter_by(tenant_id=tenant_id)
-    if not session.scalars(stmt).first():
+    stmt_property = select(AuthorizedProperty).filter_by(tenant_id=tenant_id)
+    if not session.scalars(stmt_property).first():
         authorized_property = AuthorizedProperty(
             tenant_id=tenant_id,
             property_id=f"{tenant_id}_property_1",
@@ -346,8 +346,8 @@ def add_required_setup_data(session, tenant_id: str):
         session.add(authorized_property)
 
     # Create CurrencyLimit if not exists
-    stmt = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
-    if not session.scalars(stmt).first():
+    stmt_currency = select(CurrencyLimit).filter_by(tenant_id=tenant_id, currency_code="USD")
+    if not session.scalars(stmt_currency).first():
         currency_limit = CurrencyLimit(
             tenant_id=tenant_id,
             currency_code="USD",
@@ -357,8 +357,8 @@ def add_required_setup_data(session, tenant_id: str):
         session.add(currency_limit)
 
     # Create PropertyTag if not exists
-    stmt = select(PropertyTag).filter_by(tenant_id=tenant_id, tag_id="all_inventory")
-    if not session.scalars(stmt).first():
+    stmt_tag = select(PropertyTag).filter_by(tenant_id=tenant_id, tag_id="all_inventory")
+    if not session.scalars(stmt_tag).first():
         property_tag = PropertyTag(
             tenant_id=tenant_id,
             tag_id="all_inventory",
