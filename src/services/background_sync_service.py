@@ -48,6 +48,13 @@ def start_inventory_sync_background(
 
     # Create sync job record
     with get_db_session() as db:
+        # Get adapter type for the tenant
+        from src.core.database.models import AdapterConfig
+
+        adapter_config_stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
+        adapter_config = db.scalars(adapter_config_stmt).first()
+        adapter_type = adapter_config.adapter_type if adapter_config else "mock"
+
         # Check if sync already running
         stmt = select(SyncJob).where(
             SyncJob.tenant_id == tenant_id, SyncJob.status == "running", SyncJob.sync_type == "inventory"
@@ -64,7 +71,7 @@ def start_inventory_sync_background(
                 started_at = started_at.replace(tzinfo=UTC)
 
             time_running = datetime.now(UTC) - started_at
-            is_stale = time_running > timedelta(hours=1) and not existing_sync.progress_data
+            is_stale = time_running > timedelta(hours=1) and not existing_sync.progress
 
             if is_stale:
                 # Mark stale sync as failed and allow new sync to start
@@ -89,13 +96,13 @@ def start_inventory_sync_background(
         sync_job = SyncJob(
             sync_id=sync_id,
             tenant_id=tenant_id,
+            adapter_type=adapter_type,
             sync_type="inventory",
             status="running",
             started_at=datetime.now(UTC),
             triggered_by="admin_ui",
             triggered_by_id="system",
-            progress=0,
-            progress_data={
+            progress={
                 "phase": "Starting",
                 "sync_types": sync_types,
                 "custom_targeting_limit": custom_targeting_limit,
@@ -377,7 +384,7 @@ def _update_sync_progress(sync_id: str, progress_data: dict[str, Any]):
             stmt = select(SyncJob).where(SyncJob.sync_id == sync_id)
             sync_job = db.scalars(stmt).first()
             if sync_job:
-                sync_job.progress_data = progress_data
+                sync_job.progress = progress_data
                 db.commit()
     except Exception as e:
         logger.warning(f"Failed to update sync progress: {e}")
@@ -387,13 +394,15 @@ def _mark_sync_complete(sync_id: str, summary: dict[str, Any]):
     """Mark sync as completed with summary."""
     try:
         with get_db_session() as db:
+            import json
+
             stmt = select(SyncJob).where(SyncJob.sync_id == sync_id)
             sync_job = db.scalars(stmt).first()
             if sync_job:
                 sync_job.status = "completed"
                 sync_job.completed_at = datetime.now(UTC)
-                sync_job.duration_seconds = (sync_job.completed_at - sync_job.started_at).total_seconds()
-                sync_job.summary = summary
+                # Convert summary dict to JSON string (summary field is Text, not JSON)
+                sync_job.summary = json.dumps(summary) if summary else None
                 db.commit()
     except Exception as e:
         logger.error(f"Failed to mark sync complete: {e}")
