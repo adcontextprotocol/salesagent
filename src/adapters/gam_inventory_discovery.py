@@ -418,11 +418,14 @@ class GAMInventoryDiscovery:
             max_values_per_key: Optional limit on number of values to fetch per key (only if fetch_values=True)
             fetch_values: Whether to fetch values for each key. Set to False for faster sync (lazy load values later)
             since: Optional datetime to fetch only items modified since this time (incremental sync)
+                   Note: GAM CustomTargetingService doesn't support lastModifiedDateTime filtering,
+                   so we always fetch all keys (acceptable as keys are few and small)
         """
         logger.info(
             "Discovering custom targeting keys"
             + (" and values" if fetch_values else " (values will be lazy loaded)")
             + (f" (max {max_values_per_key} values per key)" if fetch_values and max_values_per_key else "")
+            + (" (note: always fetches all keys)" if since else "")
         )
 
         custom_targeting_service = self.client.GetService("CustomTargetingService")
@@ -431,19 +434,13 @@ class GAMInventoryDiscovery:
         # Discover keys first
         statement_builder = ad_manager.StatementBuilder(version="v202505")
 
-        if since:
-            # Ensure timezone-aware datetime for GAM API (use pytz for GAM compatibility)
-            if since.tzinfo is None:
-                import pytz
-                since = pytz.utc.localize(since)
-            else:
-                # Convert to pytz timezone if using datetime.timezone.UTC
-                import pytz
-                since = since.astimezone(pytz.utc)
-
-            statement_builder = statement_builder.Where("lastModifiedDateTime > :since").WithBindVariable(
-                "since", since
-            )
+        # Note: CustomTargetingService doesn't support lastModifiedDateTime filtering in GAM API
+        # So we always fetch all keys, even during incremental sync
+        # This is acceptable because:
+        # 1. Custom targeting keys don't change frequently
+        # 2. There are usually a modest number of keys per network (<1000)
+        # 3. The fetch is reasonably fast
+        # 4. Keys are small objects
 
         while True:
             response = custom_targeting_service.getCustomTargetingKeysByStatement(statement_builder.ToStatement())
