@@ -15,6 +15,7 @@ from src.core.database.models import PricingOption, Product
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires_db]
 
 
+@pytest.mark.requires_db
 class TestProductsDataValidation:
     """Validate that products list shows correct data without duplicates."""
 

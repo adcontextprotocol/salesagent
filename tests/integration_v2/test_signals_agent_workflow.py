@@ -22,6 +22,7 @@ from tests.integration_v2.conftest import create_test_product_with_pricing
 
 @pytest.mark.requires_server
 @pytest.mark.asyncio
+@pytest.mark.requires_db
 class TestSignalsAgentWorkflow:
     """Integration tests for signals agent workflow with real database."""
 

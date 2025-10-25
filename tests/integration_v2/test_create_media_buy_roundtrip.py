@@ -35,6 +35,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires
 
 
 @pytest.mark.integration
+@pytest.mark.requires_db
 class TestCreateMediaBuyRoundtrip:
     """Test create_media_buy response roundtrip through testing hooks."""
 

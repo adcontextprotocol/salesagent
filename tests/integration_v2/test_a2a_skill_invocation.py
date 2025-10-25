@@ -136,6 +136,7 @@ class A2AAdCPValidator:
         return result
 
 
+@pytest.mark.requires_db
 class TestA2ASkillInvocation:
     """Test both natural language and explicit skill invocation patterns."""
 

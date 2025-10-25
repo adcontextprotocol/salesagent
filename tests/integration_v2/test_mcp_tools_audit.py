@@ -43,6 +43,7 @@ from tests.integration_v2.conftest import add_required_setup_data, create_test_p
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
+@pytest.mark.requires_db
 class TestMCPToolsAudit:
     """Audit all MCP tools for roundtrip conversion vulnerabilities."""
 

@@ -47,6 +47,7 @@ def mock_context_edge_case():
     return context
 
 
+@pytest.mark.requires_db
 class TestGetProductsFilterBehavior:
     """Test that filters actually filter products correctly with real database."""
 

@@ -141,6 +141,7 @@ def setup_super_admin_config():
         session.commit()
 
 
+@pytest.mark.requires_db
 class TestProductDeletion:
     """Test suite for product deletion functionality."""
 

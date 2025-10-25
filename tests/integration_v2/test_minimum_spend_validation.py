@@ -21,6 +21,7 @@ from tests.integration_v2.conftest import create_test_product_with_pricing
 
 
 @pytest.mark.integration
+@pytest.mark.requires_db
 class TestMinimumSpendValidation:
     """Test minimum spend validation for media buys."""
 

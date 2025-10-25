@@ -32,6 +32,7 @@ def test_db(integration_db):
     yield get_engine()
 
 
+@pytest.mark.requires_db
 class TestSessionManagement:
     """Test standardized session management patterns."""
 

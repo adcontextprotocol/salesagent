@@ -30,6 +30,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires
 
 
 @pytest.mark.integration
+@pytest.mark.requires_db
 class TestCreateMediaBuyV24Format:
     """Test create_media_buy with AdCP v2.4 packages containing nested objects."""
 

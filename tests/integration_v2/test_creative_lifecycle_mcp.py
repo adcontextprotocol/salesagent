@@ -23,6 +23,7 @@ class MockContext:
             self.meta = {"headers": {"x-adcp-auth": auth_token}}
 
 
+@pytest.mark.requires_db
 class TestCreativeLifecycleMCP:
     """Integration tests for creative lifecycle MCP tools."""
 

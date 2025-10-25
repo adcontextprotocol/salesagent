@@ -24,6 +24,7 @@ from tests.utils.database_helpers import (
 )
 
 
+@pytest.mark.requires_db
 class TestSchemaFieldMapping:
     """Test that schema fields map correctly to database fields."""
 
