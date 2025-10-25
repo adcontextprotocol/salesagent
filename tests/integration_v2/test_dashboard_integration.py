@@ -1,5 +1,8 @@
 """Integration tests for dashboard with real database."""
 
+import json
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from src.core.database.database_session import DatabaseConfig
@@ -55,8 +58,8 @@ def test_db(integration_db):
         conn.execute(
             text(
                 """
-            INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, created_at, updated_at)
+            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """
             ),
             {
@@ -65,14 +68,15 @@ def test_db(integration_db):
                 "subdomain": "test-dashboard",
                 "is_active": True,
                 "ad_server": "mock",
+                "billing_plan": "standard",
             },
         )
     else:
         conn.execute(
             text(
                 """
-            INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, created_at, updated_at)
+            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT (tenant_id) DO NOTHING
         """
             ),
@@ -82,6 +86,7 @@ def test_db(integration_db):
                 "subdomain": "test-dashboard",
                 "is_active": True,
                 "ad_server": "mock",
+                "billing_plan": "standard",
             },
         )
 
@@ -514,8 +519,8 @@ class TestDashboardErrorCases:
             test_db.execute(
                 text(
                     """
-                INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, created_at, updated_at)
+                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """
                 ),
                 {
@@ -524,14 +529,15 @@ class TestDashboardErrorCases:
                     "subdomain": "empty",
                     "is_active": True,
                     "ad_server": "mock",
+                    "billing_plan": "standard",
                 },
             )
         else:
             test_db.execute(
                 text(
                     """
-                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, created_at, updated_at)
+                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (tenant_id) DO NOTHING
             """
                 ),
@@ -541,6 +547,7 @@ class TestDashboardErrorCases:
                     "subdomain": "empty",
                     "is_active": True,
                     "ad_server": "mock",
+                    "billing_plan": "standard",
                 },
             )
         test_db.commit()

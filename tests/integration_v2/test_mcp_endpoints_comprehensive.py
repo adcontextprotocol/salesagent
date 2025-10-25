@@ -117,12 +117,6 @@ class TestMCPEndpointsComprehensive:
             # Explicitly close connections to ensure data is flushed to disk
             session.close()
 
-        # Close the global session factory to ensure all connections are closed
-        from src.core.database import database_session
-
-        if database_session.db_session:
-            database_session.db_session.remove()
-
         # Store data for tests
         self.test_token = "test_mcp_token_12345"
         self.tenant_id = "test_mcp"

@@ -27,7 +27,7 @@ class TestSignalsAgentWorkflow:
     """Integration tests for signals agent workflow with real database."""
 
     @pytest.fixture
-    async def tenant_with_signals_config(self) -> dict[str, Any]:
+    async def tenant_with_signals_config(self, integration_db) -> dict[str, Any]:
         """Create a test tenant with signals discovery configured."""
         tenant_data = await create_test_tenant_with_principal()
         tenant_id = tenant_data["tenant"]["tenant_id"]
@@ -52,7 +52,7 @@ class TestSignalsAgentWorkflow:
         return tenant_data
 
     @pytest.fixture
-    async def tenant_without_signals_config(self) -> dict[str, Any]:
+    async def tenant_without_signals_config(self, integration_db) -> dict[str, Any]:
         """Create a test tenant without signals discovery."""
         return await create_test_tenant_with_principal()
 
