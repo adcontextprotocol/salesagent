@@ -1,8 +1,21 @@
 #!/usr/bin/env python3
 """
-Refresh all cached AdCP schemas from the official website.
+DEPRECATED: Use refresh_adcp_schemas.py instead.
 
-This script downloads the latest schemas from adcontextprotocol.org
+This is a legacy script that downloads schemas without ETag caching.
+It always re-downloads all schemas and doesn't preserve .meta files.
+
+Use this instead:
+    python scripts/refresh_adcp_schemas.py
+
+For more features (incremental updates, ETag caching, dry-run mode),
+see refresh_adcp_schemas.py which is used by workspace setup.
+
+---
+
+Legacy functionality:
+Refresh all cached AdCP schemas from the official website.
+Downloads the latest schemas from adcontextprotocol.org
 and updates our cached copies in schemas/v1/.
 """
 
@@ -58,6 +71,10 @@ def download_schema(url: str, output_path: Path) -> bool:
 
 
 def main():
+    print("⚠️  DEPRECATION WARNING: This script is deprecated.")
+    print("    Use 'python scripts/refresh_adcp_schemas.py' instead.")
+    print("    (Continuing with legacy behavior...)\n")
+
     schema_dir = Path("schemas/v1")
 
     if not schema_dir.exists():
