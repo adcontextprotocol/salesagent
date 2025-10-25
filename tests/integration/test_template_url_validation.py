@@ -78,6 +78,8 @@ class TestTemplateUrlValidation:
                             test_params["config_id"] = "test_config"
                         if "agent_id" in params:
                             test_params["agent_id"] = 1  # Integer ID for signals/creative agents
+                        if "filename" in params:
+                            test_params["filename"] = "test.js"  # For static file routes
 
                         # Try to build the URL
                         url = url_for(endpoint, **test_params)
