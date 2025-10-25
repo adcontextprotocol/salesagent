@@ -785,7 +785,7 @@ async def _create_media_buy_impl(
 
     try:
         # Get the appropriate adapter with testing context
-        adapter = get_adapter(principal, dry_run=DRY_RUN_MODE or testing_ctx.dry_run, testing_context=testing_ctx)
+        adapter = get_adapter(principal, dry_run=testing_ctx.dry_run, testing_context=testing_ctx)
 
         # Check if manual approval is required
         manual_approval_required = (
