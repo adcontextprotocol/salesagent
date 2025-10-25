@@ -32,9 +32,6 @@ from src.core.context_manager import get_context_manager
 from src.core.database.models import MediaBuy
 from src.core.database.models import Product as ModelProduct
 from src.core.helpers import get_principal_id_from_context, log_tool_activity
-
-# Import get_product_catalog from main (after refactor)
-from src.core.main import get_product_catalog
 from src.core.schema_adapters import CreateMediaBuyResponse
 from src.core.schemas import (
     CreateMediaBuyRequest,
@@ -45,6 +42,9 @@ from src.core.schemas import (
     TaskStatus,
 )
 from src.core.testing_hooks import apply_testing_hooks, get_testing_context
+
+# Import get_product_catalog from main (after refactor)
+from src.core.tools.products import get_product_catalog
 from src.core.validation_helpers import format_validation_error
 from src.services import activity_feed
 
