@@ -22,7 +22,6 @@ def test_simplified_context(integration_db):
     ctx_manager = ContextManager()
 
     try:
-
         # Test 1: Create a simple context for async operation
         console.print("\n[yellow]Test 1: Creating context for async operation[/yellow]")
         ctx = ctx_manager.create_context(

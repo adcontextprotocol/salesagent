@@ -330,22 +330,21 @@ def approve_creative(tenant_id, creative_id, **kwargs):
 
             db_session.commit()
 
-            # Find webhook_url from workflow step if it exists
-            from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
+            # Send webhook notification to principal
+            from src.core.database.models import PushNotificationConfig
 
-            stmt = select(ObjectWorkflowMapping).filter_by(object_type="creative", object_id=creative_id)
-            mapping = db_session.scalars(stmt).first()
+            stmt_webhook = (
+                select(PushNotificationConfig)
+                .filter_by(tenant_id=tenant_id, principal_id=creative.principal_id, is_active=True)
+                .order_by(PushNotificationConfig.created_at.desc())
+            )
+            webhook_config = db_session.scalars(stmt_webhook).first()
 
-            webhook_url = None
-            if mapping:
-                stmt = select(WorkflowStep).filter_by(step_id=mapping.step_id)
-                workflow_step = db_session.scalars(stmt).first()
-                if workflow_step and workflow_step.request_data:
-                    webhook_url = workflow_step.request_data.get("webhook_url")
+            if webhook_config:
+                import requests
 
-            # Call webhook if configured
-            if webhook_url:
-                creative_data = {
+                webhook_payload = {
+                    "event": "creative_approved",
                     "creative_id": creative.creative_id,
                     "name": creative.name,
                     "format": creative.format,
@@ -353,7 +352,11 @@ def approve_creative(tenant_id, creative_id, **kwargs):
                     "approved_by": approved_by,
                     "approved_at": creative.approved_at.isoformat(),
                 }
-                _call_webhook_for_creative_status(webhook_url, creative_id, "approved", creative_data, tenant_id)
+                try:
+                    requests.post(webhook_config.url, json=webhook_payload, timeout=10)
+                    logger.info(f"Sent webhook notification for approved creative {creative_id}")
+                except Exception as webhook_err:
+                    logger.warning(f"Failed to send creative approval webhook: {webhook_err}")
 
             # Send Slack notification if configured
             stmt_tenant = select(Tenant).filter_by(tenant_id=tenant_id)
@@ -475,22 +478,21 @@ def reject_creative(tenant_id, creative_id, **kwargs):
 
             db_session.commit()
 
-            # Find webhook_url from workflow step if it exists
-            from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
+            # Send webhook notification to principal
+            from src.core.database.models import PushNotificationConfig
 
-            stmt = select(ObjectWorkflowMapping).filter_by(object_type="creative", object_id=creative_id)
-            mapping = db_session.scalars(stmt).first()
+            stmt_webhook = (
+                select(PushNotificationConfig)
+                .filter_by(tenant_id=tenant_id, principal_id=creative.principal_id, is_active=True)
+                .order_by(PushNotificationConfig.created_at.desc())
+            )
+            webhook_config = db_session.scalars(stmt_webhook).first()
 
-            webhook_url = None
-            if mapping:
-                stmt = select(WorkflowStep).filter_by(step_id=mapping.step_id)
-                workflow_step = db_session.scalars(stmt).first()
-                if workflow_step and workflow_step.request_data:
-                    webhook_url = workflow_step.request_data.get("webhook_url")
+            if webhook_config:
+                import requests
 
-            # Call webhook if configured
-            if webhook_url:
-                creative_data = {
+                webhook_payload = {
+                    "event": "creative_rejected",
                     "creative_id": creative.creative_id,
                     "name": creative.name,
                     "format": creative.format,
@@ -499,7 +501,11 @@ def reject_creative(tenant_id, creative_id, **kwargs):
                     "rejection_reason": rejection_reason,
                     "rejected_at": creative.data["rejected_at"],
                 }
-                _call_webhook_for_creative_status(webhook_url, creative_id, "rejected", creative_data, tenant_id)
+                try:
+                    requests.post(webhook_config.url, json=webhook_payload, timeout=10)
+                    logger.info(f"Sent webhook notification for rejected creative {creative_id}")
+                except Exception as webhook_err:
+                    logger.warning(f"Failed to send creative rejection webhook: {webhook_err}")
 
             # Send Slack notification if configured
             stmt_tenant = select(Tenant).filter_by(tenant_id=tenant_id)

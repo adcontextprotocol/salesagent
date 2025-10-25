@@ -169,8 +169,7 @@ class GAMInventoryManager:
 
         discovery = self._get_discovery()
         return discovery.sync_all(
-            fetch_custom_targeting_values=fetch_values,
-            max_custom_targeting_values_per_key=custom_targeting_limit
+            fetch_custom_targeting_values=fetch_values, max_custom_targeting_values_per_key=custom_targeting_limit
         )
 
     def build_ad_unit_tree(self) -> dict[str, Any]:

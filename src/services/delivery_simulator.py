@@ -43,11 +43,10 @@ class DeliverySimulator:
         before a server restart. Daemon threads don't survive restarts.
         """
         try:
-
             from sqlalchemy import select
 
             from src.core.database.database_session import get_db_session
-            from src.core.database.models import MediaBuy, Product, PushNotificationConfig
+            from src.core.database.models import MediaBuy, Product, PushNotificationConfig, Tenant
 
             logger.info("🔄 Checking for active media buys to restart simulations...")
 
@@ -94,8 +93,14 @@ class DeliverySimulator:
                     if not product:
                         continue
 
-                    # Only restart for mock adapter products
-                    if product.adapter_type != "mock":
+                    # Get tenant to check adapter type (adapter is configured at tenant level, not product level)
+                    tenant_stmt = select(Tenant).where(Tenant.tenant_id == media_buy.tenant_id)
+                    tenant = session.scalars(tenant_stmt).first()
+                    if not tenant:
+                        continue
+
+                    # Only restart for mock adapter tenants (simulations only run with mock adapter)
+                    if tenant.adapter_type != "mock":
                         continue
 
                     # Get simulation config from product
@@ -107,7 +112,7 @@ class DeliverySimulator:
                         continue
 
                     logger.info(
-                        f"🚀 Restarting simulation for {media_buy.media_buy_id} " f"(product: {product.product_id})"
+                        f"🚀 Restarting simulation for {media_buy.media_buy_id} (product: {product.product_id})"
                     )
 
                     try:

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Quick script to get tokens from the database."""
 
-
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Tenant
 

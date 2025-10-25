@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Integration tests for AdCP spec compliance verification."""
 
-
 import pytest
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport

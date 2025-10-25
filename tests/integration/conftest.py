@@ -60,8 +60,7 @@ def integration_db():
     else:
         # Fallback to defaults if URL parsing fails
         pytest.fail(
-            f"Failed to parse DATABASE_URL: {postgres_url}\n"
-            f"Expected format: postgresql://user:pass@host:port/dbname"
+            f"Failed to parse DATABASE_URL: {postgres_url}\nExpected format: postgresql://user:pass@host:port/dbname"
         )
         user, password, host, postgres_port = "adcp_user", "test_password", "localhost", 5432
 

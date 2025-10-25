@@ -217,6 +217,34 @@ def oauth_status():
         )
 
 
+@api_bp.route("/tenant/<tenant_id>/products", methods=["GET"])
+@require_auth()
+def get_tenant_products(tenant_id):
+    """API endpoint to list all products for a tenant."""
+    try:
+        with get_db_session() as db_session:
+            from sqlalchemy import select
+            from src.core.database.models import Product
+
+            stmt = select(Product).filter_by(tenant_id=tenant_id).order_by(Product.name)
+            products = db_session.scalars(stmt).all()
+
+            products_data = []
+            for product in products:
+                products_data.append({
+                    "product_id": product.product_id,
+                    "name": product.name,
+                    "description": product.description or "",
+                    "delivery_type": product.delivery_type,
+                })
+
+            return jsonify({"products": products_data})
+
+    except Exception as e:
+        logger.error(f"Error getting products for tenant {tenant_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @api_bp.route("/tenant/<tenant_id>/products/suggestions", methods=["GET"])
 @require_auth()
 def get_product_suggestions(tenant_id):

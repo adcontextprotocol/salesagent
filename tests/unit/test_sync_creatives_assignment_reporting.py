@@ -6,7 +6,6 @@ Verifies that when creatives are assigned to packages, the response properly
 reports which packages each creative was assigned to via the assigned_to field.
 """
 
-
 import pytest
 
 from src.core.schemas import SyncCreativeResult

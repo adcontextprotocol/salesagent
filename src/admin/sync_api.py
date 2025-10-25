@@ -179,24 +179,12 @@ def trigger_sync(tenant_id: str):
             # Use the sync manager to perform the sync
             if sync_type == "full":
                 # Pass custom targeting limit to prevent timeouts
-                result = adapter.sync_full(
-                    db_session,
-                    force=force,
-                    custom_targeting_limit=custom_targeting_limit
-                )
+                result = adapter.sync_full(db_session, force=force, custom_targeting_limit=custom_targeting_limit)
             elif sync_type == "inventory":
-                result = adapter.sync_inventory(
-                    db_session,
-                    force=force,
-                    custom_targeting_limit=custom_targeting_limit
-                )
+                result = adapter.sync_inventory(db_session, force=force, custom_targeting_limit=custom_targeting_limit)
             elif sync_type == "targeting":
                 # Targeting sync can be mapped to inventory sync for now
-                result = adapter.sync_inventory(
-                    db_session,
-                    force=force,
-                    custom_targeting_limit=custom_targeting_limit
-                )
+                result = adapter.sync_inventory(db_session, force=force, custom_targeting_limit=custom_targeting_limit)
             elif sync_type == "selective":
                 # Selective sync - only sync specified inventory types
                 if not sync_types:
@@ -205,7 +193,7 @@ def trigger_sync(tenant_id: str):
                     db_session,
                     sync_types=sync_types,
                     custom_targeting_limit=custom_targeting_limit,
-                    audience_segment_limit=audience_segment_limit
+                    audience_segment_limit=audience_segment_limit,
                 )
             else:
                 raise ValueError(f"Unsupported sync type: {sync_type}")
@@ -483,7 +471,6 @@ def sync_tenant_orders(tenant_id):
     """Trigger orders and line items sync for a tenant."""
     db_session.remove()  # Clean start
     try:
-
         # Get tenant and adapter config
         stmt = select(Tenant).filter_by(tenant_id=tenant_id)
         tenant = db_session.scalars(stmt).first()
@@ -600,7 +587,7 @@ def get_tenant_orders(tenant_id):
             # Validate status is one of allowed values
             valid_statuses = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PAUSED", "CANCELED", "DELETED"]
             if status not in valid_statuses:
-                return jsonify({"error": f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
+                return jsonify({"error": f"Invalid status. Must be one of: {', '.join(valid_statuses)}"}), 400
             filters["status"] = status
 
         advertiser_id = request.args.get("advertiser_id")

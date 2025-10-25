@@ -2,6 +2,7 @@
 """
 Simple HTTP proxy for Fly.io deployment to route between MCP server and Admin UI
 """
+
 import asyncio
 import logging
 

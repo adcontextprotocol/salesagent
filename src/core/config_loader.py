@@ -186,6 +186,7 @@ def get_tenant_by_id(tenant_id: str) -> dict[str, Any] | None:
 def get_tenant_by_virtual_host(virtual_host: str) -> dict[str, Any] | None:
     """Get tenant by virtual host."""
     from rich.console import Console
+
     console = Console()
 
     console.print(f"[blue]🔍 get_tenant_by_virtual_host called with: {virtual_host}[/blue]")
@@ -198,13 +199,16 @@ def get_tenant_by_virtual_host(virtual_host: str) -> dict[str, Any] | None:
 
             if tenant:
                 from src.core.utils.tenant_utils import serialize_tenant_to_dict
+
                 result = serialize_tenant_to_dict(tenant)
-                console.print(f"[green]  ✅ Found tenant: {result.get('tenant_id')} (subdomain: {result.get('subdomain')})[/green]")
+                console.print(
+                    f"[green]  ✅ Found tenant: {result.get('tenant_id')} (subdomain: {result.get('subdomain')})[/green]"
+                )
                 return result
             console.print(f"[yellow]  ⚠️ No tenant found with virtual_host={virtual_host}[/yellow]")
 
             # Debug: Check what tenants exist
-            all_tenants_stmt = select(Tenant).where(Tenant.is_active == True)
+            all_tenants_stmt = select(Tenant).where(Tenant.is_active)
             all_tenants = db_session.scalars(all_tenants_stmt).all()
             console.print(f"[blue]  Total active tenants in database: {len(all_tenants)}[/blue]")
             for t in all_tenants:

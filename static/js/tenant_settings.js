@@ -503,14 +503,27 @@ function saveBusinessRules() {
 
     fetch(`${config.scriptName}/tenant/${config.tenantId}/settings/business-rules`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        redirect: 'manual'  // Don't follow redirects automatically
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
+    .then(response => {
+        // Server returns 302 redirect on success, or 200/400 with JSON on error
+        if (response.type === 'opaqueredirect' || response.status === 302) {
+            // Success - redirect was initiated
             alert('Business rules saved successfully!');
+            window.location.reload();
+        } else if (response.ok) {
+            // Try to parse as JSON if not a redirect
+            return response.json().then(data => {
+                if (data.success) {
+                    alert('Business rules saved successfully!');
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + (data.error || data.message || 'Unknown error'));
+                }
+            });
         } else {
-            alert('Error: ' + (data.error || data.message || 'Unknown error'));
+            throw new Error(`Server returned status ${response.status}`);
         }
     })
     .catch(error => {
@@ -643,7 +656,7 @@ function syncGAMInventory(mode = 'full') {
         button.innerHTML = `⏳ ${syncLabel}${dots}`;
     }, 300);
 
-    const url = `${config.scriptName}/tenant/${config.tenantId}/gam/sync-inventory`;
+    const url = `${config.scriptName}/api/tenant/${config.tenantId}/inventory/sync`;
 
     fetch(url, {
         method: 'POST',
@@ -653,21 +666,19 @@ function syncGAMInventory(mode = 'full') {
         body: JSON.stringify({ mode: mode })
     })
     .then(response => {
-        // Handle both success and 409 (conflict) responses
-        if (response.ok || response.status === 409) {
+        // Handle 202 Accepted (sync started) or 400/409 (already running/error)
+        if (response.status === 202 || response.ok || response.status === 409 || response.status === 400) {
             return response.json();
         }
         throw new Error(`Server error: ${response.status}`);
     })
     .then(data => {
-        if (data.success && data.sync_id) {
-            // Sync started in background - poll for status
+        // New response format: {sync_id, status, message} or {error, sync_id}
+        if (data.sync_id && (data.status === 'running' || data.status === 'in_progress')) {
+            // Sync started or already running - poll for status
             pollSyncStatus(data.sync_id, button, originalText, loadingInterval);
-        } else if (data.in_progress) {
-            // Already syncing - poll existing job
-            pollSyncStatus(data.sync_id, button, originalText, loadingInterval);
-        } else {
-            // Immediate error
+        } else if (data.error) {
+            // Error response
             clearInterval(loadingInterval);
 
             // Re-enable both buttons
@@ -675,7 +686,17 @@ function syncGAMInventory(mode = 'full') {
             allButtons.forEach(btn => btn.disabled = false);
 
             button.innerHTML = originalText;
-            alert('❌ Sync failed: ' + (data.error || data.message || 'Unknown error'));
+            alert('❌ Sync failed: ' + data.error);
+        } else {
+            // Unexpected response format
+            clearInterval(loadingInterval);
+
+            // Re-enable both buttons
+            const allButtons = document.querySelectorAll('button[onclick*="syncGAMInventory"]');
+            allButtons.forEach(btn => btn.disabled = false);
+
+            button.innerHTML = originalText;
+            alert('❌ Sync failed: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(error => {
@@ -737,11 +758,11 @@ function pollSyncStatus(syncId, button, originalText, loadingInterval) {
 
                     // Show success message with summary
                     const summary = data.summary || {};
-                    const adUnitCount = (summary.ad_units || {}).total || 0;
-                    const placementCount = (summary.placements || {}).total || 0;
-                    const labelCount = (summary.labels || {}).total || 0;
-                    const targetingKeyCount = (summary.custom_targeting || {}).total_keys || 0;
-                    const audienceCount = (summary.audience_segments || {}).total || 0;
+                    const adUnitCount = summary.ad_units?.total || 0;
+                    const placementCount = summary.placements?.total || 0;
+                    const labelCount = summary.labels?.total || 0;
+                    const targetingKeyCount = summary.custom_targeting?.total_keys || 0;
+                    const audienceCount = summary.audience_segments?.total || 0;
 
                     let message = `✅ Inventory synced successfully!\n\n`;
                     if (adUnitCount > 0) message += `• ${adUnitCount} ad units\n`;

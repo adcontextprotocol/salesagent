@@ -148,7 +148,7 @@ Currencies: USD, EUR, GBP (configured, no minimum budget)
    {f"Login as {admin_email} to manage this publisher" if admin_email else "Login with your Google account to manage this publisher"}
 
 📝 Next Steps:
-1. {'Access the Admin UI with your admin account' if admin_email else 'Access the Admin UI to complete setup'}
+1. {"Access the Admin UI with your admin account" if admin_email else "Access the Admin UI to complete setup"}
 2. Configure your ad server integration (if not done)
 3. Add more authorized domains/emails in the Users & Access section
 4. Create principals for each advertiser who will buy inventory

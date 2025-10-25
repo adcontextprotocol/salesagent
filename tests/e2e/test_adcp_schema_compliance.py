@@ -155,12 +155,12 @@ class TestAdCPSchemaCompliance:
         for i, request in enumerate(valid_requests):
             try:
                 await schema_validator.validate_request("get-products", request)
-                compliance_report.add_result("get-products", f"request-{i+1}", "pass", "Valid request structure")
+                compliance_report.add_result("get-products", f"request-{i + 1}", "pass", "Valid request structure")
             except SchemaValidationError as e:
                 error_details = f"{str(e)} | Errors: {'; '.join(e.validation_errors)}"
-                compliance_report.add_result("get-products", f"request-{i+1}", "fail", error_details)
+                compliance_report.add_result("get-products", f"request-{i + 1}", "fail", error_details)
             except Exception as e:
-                compliance_report.add_result("get-products", f"request-{i+1}", "warning", f"Validation error: {e}")
+                compliance_report.add_result("get-products", f"request-{i + 1}", "warning", f"Validation error: {e}")
 
         # Test valid response patterns per AdCP schema (only 'products' field allowed)
         valid_responses = [
@@ -182,12 +182,12 @@ class TestAdCPSchemaCompliance:
         for i, response in enumerate(valid_responses):
             try:
                 await schema_validator.validate_response("get-products", response)
-                compliance_report.add_result("get-products", f"response-{i+1}", "pass", "Valid response structure")
+                compliance_report.add_result("get-products", f"response-{i + 1}", "pass", "Valid response structure")
             except SchemaValidationError as e:
                 error_details = f"{str(e)} | Errors: {'; '.join(e.validation_errors)}"
-                compliance_report.add_result("get-products", f"response-{i+1}", "fail", error_details)
+                compliance_report.add_result("get-products", f"response-{i + 1}", "fail", error_details)
             except Exception as e:
-                compliance_report.add_result("get-products", f"response-{i+1}", "warning", f"Validation error: {e}")
+                compliance_report.add_result("get-products", f"response-{i + 1}", "warning", f"Validation error: {e}")
 
     @pytest.mark.asyncio
     async def test_create_media_buy_compliance(
@@ -238,11 +238,11 @@ class TestAdCPSchemaCompliance:
 
             try:
                 await schema_validator.validate_request("create-media-buy", request_with_targeting)
-                compliance_report.add_result("targeting", f"example-{i+1}", "pass", "Valid targeting structure")
+                compliance_report.add_result("targeting", f"example-{i + 1}", "pass", "Valid targeting structure")
             except SchemaValidationError as e:
-                compliance_report.add_result("targeting", f"example-{i+1}", "fail", str(e))
+                compliance_report.add_result("targeting", f"example-{i + 1}", "fail", str(e))
             except Exception as e:
-                compliance_report.add_result("targeting", f"example-{i+1}", "warning", f"Validation error: {e}")
+                compliance_report.add_result("targeting", f"example-{i + 1}", "warning", f"Validation error: {e}")
 
     @pytest.mark.asyncio
     async def test_format_compliance(
@@ -299,14 +299,14 @@ class TestAdCPSchemaCompliance:
             try:
                 await schema_validator.validate_request("create-media-buy", invalid_request)
                 compliance_report.add_result(
-                    "error-handling", f"invalid-{i+1}", "fail", "Should have failed validation"
+                    "error-handling", f"invalid-{i + 1}", "fail", "Should have failed validation"
                 )
             except SchemaValidationError:
                 compliance_report.add_result(
-                    "error-handling", f"invalid-{i+1}", "pass", "Correctly rejected invalid request"
+                    "error-handling", f"invalid-{i + 1}", "pass", "Correctly rejected invalid request"
                 )
             except Exception as e:
-                compliance_report.add_result("error-handling", f"invalid-{i+1}", "warning", f"Unexpected error: {e}")
+                compliance_report.add_result("error-handling", f"invalid-{i + 1}", "warning", f"Unexpected error: {e}")
 
     @pytest.mark.asyncio
     async def test_required_fields_compliance(
@@ -325,15 +325,15 @@ class TestAdCPSchemaCompliance:
             try:
                 await schema_validator.validate_request("create-media-buy", incomplete)
                 compliance_report.add_result(
-                    "required-fields", f"incomplete-{i+1}", "fail", "Should require missing fields"
+                    "required-fields", f"incomplete-{i + 1}", "fail", "Should require missing fields"
                 )
             except SchemaValidationError:
                 compliance_report.add_result(
-                    "required-fields", f"incomplete-{i+1}", "pass", "Correctly required missing fields"
+                    "required-fields", f"incomplete-{i + 1}", "pass", "Correctly required missing fields"
                 )
             except Exception as e:
                 compliance_report.add_result(
-                    "required-fields", f"incomplete-{i+1}", "warning", f"Validation error: {e}"
+                    "required-fields", f"incomplete-{i + 1}", "warning", f"Validation error: {e}"
                 )
 
     @pytest.mark.asyncio

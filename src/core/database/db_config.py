@@ -39,8 +39,7 @@ class DatabaseConfig:
 
         if parsed.scheme not in ["postgres", "postgresql"]:
             raise ValueError(
-                f"Unsupported database scheme: {parsed.scheme}. "
-                f"Only PostgreSQL is supported. Use 'postgresql://' URLs."
+                f"Unsupported database scheme: {parsed.scheme}. Only PostgreSQL is supported. Use 'postgresql://' URLs."
             )
 
         return {
@@ -64,10 +63,7 @@ class DatabaseConfig:
         else:
             auth = config["user"]
 
-        return (
-            f"postgresql://{auth}@{config['host']}:{config['port']}"
-            f"/{config['database']}?sslmode={config['sslmode']}"
-        )
+        return f"postgresql://{auth}@{config['host']}:{config['port']}/{config['database']}?sslmode={config['sslmode']}"
 
 
 class DatabaseConnection:

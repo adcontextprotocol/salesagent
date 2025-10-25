@@ -160,7 +160,15 @@ def media_buy_detail(tenant_id, media_buy_id):
 
     from src.core.context_manager import ContextManager
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import Creative, CreativeAssignment, MediaBuy, Principal, WorkflowStep
+    from src.core.database.models import (
+        Creative,
+        CreativeAssignment,
+        MediaBuy,
+        MediaPackage,
+        Principal,
+        Product,
+        WorkflowStep,
+    )
 
     try:
         with get_db_session() as db_session:
@@ -176,6 +184,26 @@ def media_buy_detail(tenant_id, media_buy_id):
             if media_buy.principal_id:
                 stmt = select(Principal).filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id)
                 principal = db_session.scalars(stmt).first()
+
+            # Get packages for this media buy from MediaPackage table
+            stmt = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            media_packages = db_session.scalars(stmt).all()
+
+            packages = []
+            for media_pkg in media_packages:
+                # Extract product_id from package_config JSONB
+                product_id = media_pkg.package_config.get("product_id")
+                product = None
+                if product_id:
+                    stmt = select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)
+                    product = db_session.scalars(stmt).first()
+
+                packages.append(
+                    {
+                        "package": media_pkg,
+                        "product": product,
+                    }
+                )
 
             # Get creative assignments for this media buy
             stmt = (
@@ -213,6 +241,12 @@ def media_buy_detail(tenant_id, media_buy_id):
                     pending_approval_step = db_session.scalars(stmt).first()
                     break
 
+            # Get computed readiness state (not just raw database status)
+            from src.admin.services.media_buy_readiness_service import MediaBuyReadinessService
+
+            readiness = MediaBuyReadinessService.get_readiness_state(media_buy_id, tenant_id, db_session)
+            computed_state = readiness["state"]
+
             # Determine status message
             status_message = None
             if pending_approval_step:
@@ -232,10 +266,13 @@ def media_buy_detail(tenant_id, media_buy_id):
                 tenant_id=tenant_id,
                 media_buy=media_buy,
                 principal=principal,
+                packages=packages,
                 workflow_steps=workflow_steps,
                 pending_approval_step=pending_approval_step,
                 status_message=status_message,
                 creative_assignments_by_package=creative_assignments_by_package,
+                computed_state=computed_state,
+                readiness=readiness,
             )
     except Exception as e:
         logger.error(f"Error viewing media buy: {e}", exc_info=True)
@@ -296,8 +333,79 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                 )
                 attributes.flag_modified(step, "comments")
 
-                db_session.commit()
-                flash("Media buy approved successfully", "success")
+                # Get the media buy and update status
+                from src.core.database.models import MediaBuy, PushNotificationConfig
+
+                stmt_buy = select(MediaBuy).filter_by(media_buy_id=media_buy_id, tenant_id=tenant_id)
+                media_buy = db_session.scalars(stmt_buy).first()
+
+                if media_buy and media_buy.status == "pending_approval":
+                    # Check if all creatives are approved before moving to scheduled
+                    from src.core.database.models import Creative, CreativeAssignment
+
+                    stmt_assignments = select(CreativeAssignment).filter_by(
+                        tenant_id=tenant_id, media_buy_id=media_buy_id
+                    )
+                    assignments = db_session.scalars(stmt_assignments).all()
+
+                    all_creatives_approved = True
+                    if assignments:
+                        creative_ids = [a.creative_id for a in assignments]
+                        stmt_creatives = select(Creative).filter(
+                            Creative.tenant_id == tenant_id, Creative.creative_id.in_(creative_ids)
+                        )
+                        creatives = db_session.scalars(stmt_creatives).all()
+
+                        # Check if any creatives are not approved
+                        for creative in creatives:
+                            if creative.status != "approved":
+                                all_creatives_approved = False
+                                break
+                    else:
+                        # No creatives assigned yet
+                        all_creatives_approved = False
+
+                    # Update status based on creative approval state
+                    if all_creatives_approved:
+                        media_buy.status = "scheduled"
+                    else:
+                        # Keep it in a state that shows it needs creative approval
+                        # Use "draft" which will be displayed as "needs_approval" or "needs_creatives" by readiness service
+                        media_buy.status = "draft"
+
+                    media_buy.approved_at = datetime.now(UTC)
+                    media_buy.approved_by = user_email
+                    db_session.commit()
+
+                    # Send webhook notification to buyer
+                    stmt_webhook = (
+                        select(PushNotificationConfig)
+                        .filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id, is_active=True)
+                        .order_by(PushNotificationConfig.created_at.desc())
+                    )
+                    webhook_config = db_session.scalars(stmt_webhook).first()
+
+                    if webhook_config:
+                        import requests
+
+                        webhook_payload = {
+                            "event": "media_buy_approved",
+                            "media_buy_id": media_buy_id,
+                            "buyer_ref": media_buy.buyer_ref,
+                            "status": "scheduled",
+                            "approved_at": media_buy.approved_at.isoformat(),
+                            "approved_by": user_email,
+                        }
+                        try:
+                            requests.post(webhook_config.url, json=webhook_payload, timeout=10)
+                            logger.info(f"Sent webhook notification for approved media buy {media_buy_id}")
+                        except Exception as webhook_err:
+                            logger.warning(f"Failed to send webhook notification: {webhook_err}")
+
+                    flash("Media buy approved and scheduled successfully", "success")
+                else:
+                    db_session.commit()
+                    flash("Media buy approved successfully", "success")
 
             elif action == "reject":
                 step.status = "rejected"

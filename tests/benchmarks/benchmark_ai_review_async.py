@@ -50,7 +50,7 @@ def benchmark_sync_mode(creative_count: int) -> dict:
 
     results = []
     for i in range(creative_count):
-        creative_id = f"creative_{i+1}"
+        creative_id = f"creative_{i + 1}"
         print(f"  Processing {creative_id}...", end=" ", flush=True)
         result = simulate_ai_review_sync(creative_id)
         results.append(result)
@@ -61,8 +61,8 @@ def benchmark_sync_mode(creative_count: int) -> dict:
 
     print("\n📊 Results:")
     print(f"  Total time: {total_time:.2f}s")
-    print(f"  Average per creative: {total_time/creative_count:.2f}s")
-    print(f"  Throughput: {creative_count/total_time:.1f} creatives/second")
+    print(f"  Average per creative: {total_time / creative_count:.2f}s")
+    print(f"  Throughput: {creative_count / total_time:.1f} creatives/second")
 
     # Check for timeout (>120 seconds is typical API timeout)
     timeout_threshold = 60.0  # 60 seconds for demo (120s in real system)
@@ -86,7 +86,7 @@ def benchmark_async_mode(creative_count: int) -> dict:
     # Submit all reviews (non-blocking)
     tasks = []
     for i in range(creative_count):
-        creative_id = f"creative_{i+1}"
+        creative_id = f"creative_{i + 1}"
         result = simulate_ai_review_async(creative_id, executor)
         tasks.append(result)
 

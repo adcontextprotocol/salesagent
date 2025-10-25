@@ -629,6 +629,27 @@ class MediaBuy(Base):
     )
 
 
+class MediaPackage(Base):
+    """Media package model for structured querying of media buy packages.
+
+    Stores packages separately from MediaBuy.raw_request for efficient lookups
+    by package_id, which is needed for creative assignments.
+    """
+
+    __tablename__ = "media_packages"
+
+    media_buy_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("media_buys.media_buy_id"), primary_key=True, nullable=False
+    )
+    package_id: Mapped[str] = mapped_column(String(100), primary_key=True, nullable=False)
+    package_config: Mapped[dict] = mapped_column(JSONType, nullable=False)
+
+    __table_args__ = (
+        Index("idx_media_packages_media_buy", "media_buy_id"),
+        Index("idx_media_packages_package", "package_id"),
+    )
+
+
 # DEPRECATED: Task and HumanTask models removed - replaced by WorkflowStep system
 # Tables may still exist in database for backward compatibility but are not used by application
 # Dashboard now uses only audit_logs table for activity tracking
@@ -719,6 +740,9 @@ class AdapterConfig(Base):
     kevel_network_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     kevel_api_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
     kevel_manual_approval_required: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Mock
+    mock_manual_approval_required: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Triton
     triton_station_id: Mapped[str | None] = mapped_column(String(50), nullable=True)

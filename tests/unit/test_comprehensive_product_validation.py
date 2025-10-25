@@ -105,12 +105,12 @@ async def test_all_providers():
                         assert product_dict[field] is not None, f"Product {i} has null required field: {field}"
 
                     # Check that formats field was converted to format_ids
-                    assert (
-                        "format_ids" in product_dict
-                    ), f"Product {i} missing format_ids field (should be converted from formats)"
-                    assert isinstance(
-                        product_dict["format_ids"], list
-                    ), f"Product {i} format_ids is not a list: {type(product_dict['format_ids'])}"
+                    assert "format_ids" in product_dict, (
+                        f"Product {i} missing format_ids field (should be converted from formats)"
+                    )
+                    assert isinstance(product_dict["format_ids"], list), (
+                        f"Product {i} format_ids is not a list: {type(product_dict['format_ids'])}"
+                    )
 
                     # Check that internal fields are not present
                     internal_fields = [
@@ -125,17 +125,17 @@ async def test_all_providers():
 
                     # Check format_ids are valid strings
                     for format_id in product_dict["format_ids"]:
-                        assert isinstance(
-                            format_id, str
-                        ), f"Product {i} has non-string format_id: {format_id} ({type(format_id)})"
+                        assert isinstance(format_id, str), (
+                            f"Product {i} has non-string format_id: {format_id} ({type(format_id)})"
+                        )
                         assert format_id.strip(), f"Product {i} has empty format_id"
 
                     # Verify there are no unexpected audio format fields as top-level keys
                     unexpected_audio_fields = ["audio_15s", "audio_30s", "audio_60s"]
                     for field in unexpected_audio_fields:
-                        assert (
-                            field not in product_dict
-                        ), f"Product {i} has unexpected audio field as top-level key: {field}"
+                        assert field not in product_dict, (
+                            f"Product {i} has unexpected audio field as top-level key: {field}"
+                        )
 
                     print(f"   ✅ Product {i} ({product.product_id}) validation passed")
 
@@ -154,12 +154,12 @@ async def test_all_providers():
             traceback.print_exc()
             all_passed = False
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     if all_passed:
         print("🎉 ALL TESTS PASSED! All product catalog providers create valid Product objects.")
     else:
         print("💥 SOME TESTS FAILED! There are Product validation issues.")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     return all_passed
 

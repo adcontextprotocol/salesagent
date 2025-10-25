@@ -241,7 +241,7 @@ def format_validation_error(validation_error: ValidationError, context: str = "r
             )
         elif "string_type" in error_type:
             error_details.append(
-                f"  • {field_path}: Expected string, got {type(input_val).__name__}. " f"Please provide a string value."
+                f"  • {field_path}: Expected string, got {type(input_val).__name__}. Please provide a string value."
             )
         elif "missing" in error_type:
             error_details.append(f"  • {field_path}: Required field is missing")
@@ -287,15 +287,7 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                     # Also check if it's the admin token for this specific tenant
                     stmt = select(Tenant).filter_by(tenant_id=tenant_id, is_active=True)
                     tenant = session.scalars(stmt).first()
-                    if tenant and token == tenant.admin_token:
-                        console.print(f"[green]Token matches admin token for tenant '{tenant_id}'[/green]")
-                        # Set tenant context for admin token
-                        from src.core.utils.tenant_utils import serialize_tenant_to_dict
-
-                        tenant_dict = serialize_tenant_to_dict(tenant)
-                        set_current_tenant(tenant_dict)
-                        return f"{tenant_id}_admin"
-                    console.print(f"[red]Token not found in tenant '{tenant_id}' and doesn't match admin token[/red]")
+                    console.print(f"[red]Token not found in tenant '{tenant_id}'[/red]")
                     return None
                 else:
                     console.print(f"[green]Found principal '{principal.principal_id}' in tenant '{tenant_id}'[/green]")
@@ -335,17 +327,6 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                     console.print(
                         f"[bold green]Set tenant context to '{tenant.tenant_id}' (from principal)[/bold green]"
                     )
-
-                    # Check if this is the admin token for the tenant
-                    if token == tenant.admin_token:
-                        return f"{tenant.tenant_id}_admin"
-            else:
-                # Tenant was already set by caller - just check admin token
-                stmt = select(Tenant).filter_by(tenant_id=tenant_id, is_active=True)
-                tenant = session.scalars(stmt).first()
-                if tenant and token == tenant.admin_token:
-                    console.print(f"[green]Token is admin token for tenant '{tenant_id}'[/green]")
-                    return f"{tenant_id}_admin"
 
             return principal.principal_id
 
@@ -426,15 +407,43 @@ def get_principal_from_context(
     # NOTE: get_http_headers() works via context vars, so it can work even when context=None
     # This allows unauthenticated public discovery endpoints to detect tenant from headers
     # CRITICAL: Use include_all=True to get Host header (excluded by default)
+    import logging as log_module
+    import sys
+
+    # URGENT DEBUG: Use logger.error() to ensure visibility in production logs
+    debug_logger = log_module.getLogger(__name__)
+    debug_logger.error(f"🔍 get_principal_from_context called: context={context}, type={type(context)}")
+    if context:
+        debug_logger.error(f"🔍 context attributes: {dir(context)[:10]}...")  # First 10 attrs
+        if hasattr(context, "meta"):
+            debug_logger.error(f"🔍 context.meta exists: {context.meta}")
+        if hasattr(context, "headers"):
+            try:
+                headers_len = len(context.headers) if context.headers else 0
+                debug_logger.error(f"🔍 context.headers exists: {headers_len} headers")
+            except (TypeError, AttributeError):
+                debug_logger.error(f"🔍 context.headers exists but not iterable: {type(context.headers)}")
+
     headers = None
     try:
         headers = get_http_headers(include_all=True)
+        debug_logger.error(f"🔍 get_http_headers() returned: {len(headers) if headers else 0} headers")
+        if headers:
+            debug_logger.error(f"🔍 Header keys: {list(headers.keys())}")
+        print(
+            f"[PRINCIPAL DEBUG] get_http_headers(include_all=True) returned {len(headers) if headers else 0} headers",
+            file=sys.stderr,
+            flush=True,
+        )
         console.print(
             f"[blue]DEBUG: get_http_headers(include_all=True) returned {len(headers) if headers else 0} headers[/blue]"
         )
         if headers:
+            print(f"[PRINCIPAL DEBUG] Header keys: {list(headers.keys())}", file=sys.stderr, flush=True)
             console.print(f"[blue]DEBUG: Header keys: {list(headers.keys())}[/blue]")
     except Exception as e:
+        debug_logger.error(f"🔍 get_http_headers() exception: {type(e).__name__}: {e}")
+        print(f"[PRINCIPAL DEBUG] get_http_headers() exception: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         console.print(f"[yellow]DEBUG: get_http_headers() exception: {type(e).__name__}: {e}[/yellow]")
         pass  # Will try fallback below
 
@@ -442,29 +451,69 @@ def get_principal_from_context(
     # This is necessary for sync tools where get_http_headers() may not work
     # CRITICAL: get_http_headers() returns {} for sync tools, so we need fallback even for empty dict
     if not headers:  # Handles both None and {}
+        debug_logger.error(f"🔍 get_http_headers() empty, trying fallback - context is {type(context)}")
+        print("[PRINCIPAL DEBUG] get_http_headers() empty, trying fallback methods", file=sys.stderr, flush=True)
+        print(f"[PRINCIPAL DEBUG] context={context}, type={type(context)}", file=sys.stderr, flush=True)
         console.print("[yellow]DEBUG: get_http_headers() empty, trying fallback methods[/yellow]")
-        if hasattr(context, "meta") and context.meta and "headers" in context.meta:
-            headers = context.meta["headers"]
-            console.print(f"[blue]DEBUG: Got {len(headers)} headers from context.meta[/blue]")
-        # Try other possible attributes
-        elif hasattr(context, "headers"):
-            headers = context.headers
-            console.print(f"[blue]DEBUG: Got {len(headers)} headers from context.headers[/blue]")
-        elif hasattr(context, "_headers"):
-            headers = context._headers
-            console.print(f"[blue]DEBUG: Got {len(headers)} headers from context._headers[/blue]")
+        # Only try context fallbacks if context is not None
+        if context is not None:
+            print(f"[PRINCIPAL DEBUG] hasattr(context, 'meta')={hasattr(context, 'meta')}", file=sys.stderr, flush=True)
+            if hasattr(context, "meta"):
+                print(f"[PRINCIPAL DEBUG] context.meta={context.meta}", file=sys.stderr, flush=True)
+                debug_logger.error(f"🔍 context.meta={context.meta}")
+            if hasattr(context, "meta") and context.meta and "headers" in context.meta:
+                headers = context.meta["headers"]
+                debug_logger.error(f"🔍 ✅ Got {len(headers)} headers from context.meta!")
+                print(f"[PRINCIPAL DEBUG] Got {len(headers)} headers from context.meta", file=sys.stderr, flush=True)
+                console.print(f"[blue]DEBUG: Got {len(headers)} headers from context.meta[/blue]")
+            # Try other possible attributes
+            elif hasattr(context, "headers"):
+                headers = context.headers
+                debug_logger.error(f"🔍 ✅ Got {len(headers)} headers from context.headers!")
+                print(f"[PRINCIPAL DEBUG] Got {len(headers)} headers from context.headers", file=sys.stderr, flush=True)
+                console.print(f"[blue]DEBUG: Got {len(headers)} headers from context.headers[/blue]")
+            elif hasattr(context, "_headers"):
+                headers = context._headers
+                debug_logger.error(f"🔍 ✅ Got {len(headers)} headers from context._headers!")
+                print(
+                    f"[PRINCIPAL DEBUG] Got {len(headers)} headers from context._headers", file=sys.stderr, flush=True
+                )
+                console.print(f"[blue]DEBUG: Got {len(headers)} headers from context._headers[/blue]")
+            else:
+                debug_logger.error("🔍 ❌ No fallback attributes (meta/headers/_headers) available on context")
+                print("[PRINCIPAL DEBUG] No fallback attributes available", file=sys.stderr, flush=True)
+                console.print(
+                    "[yellow]DEBUG: No fallback attributes available (context provided but no headers)[/yellow]"
+                )
         else:
-            console.print("[yellow]DEBUG: No fallback attributes available[/yellow]")
+            debug_logger.error("🔍 ❌ context=None and get_http_headers() failed")
+            print("[PRINCIPAL DEBUG] context=None", file=sys.stderr, flush=True)
+            console.print("[yellow]DEBUG: context=None and get_http_headers() failed - no headers available[/yellow]")
 
     # If still no headers dict available, return None
     if not headers:
+        debug_logger.error("🔍 ❌ FINAL: No headers available - cannot detect tenant - returning (None, None)")
+        print("[PRINCIPAL DEBUG] ❌ CRITICAL: No headers available - cannot detect tenant", file=sys.stderr, flush=True)
         console.print("[red]❌ CRITICAL: No headers available - cannot detect tenant[/red]")
         return (None, None)
 
     # Log all relevant headers for debugging
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     host_header = _get_header_case_insensitive(headers, "host")
     apx_host_header = _get_header_case_insensitive(headers, "apx-incoming-host")
     tenant_header = _get_header_case_insensitive(headers, "x-adcp-tenant")
+
+    logger.info("=" * 80)
+    logger.info("TENANT DETECTION - Auth Headers Debug:")
+    logger.info(f"  Host: {host_header}")
+    logger.info(f"  Apx-Incoming-Host: {apx_host_header}")
+    logger.info(f"  x-adcp-tenant: {tenant_header}")
+    logger.info(f"  Total headers available: {len(headers)}")
+    logger.info("=" * 80)
+
     console.print("[blue]Auth Headers Debug:[/blue]")
     console.print(f"  Host: {host_header}")
     console.print(f"  Apx-Incoming-Host: {apx_host_header}")
@@ -475,34 +524,48 @@ def get_principal_from_context(
     tenant_context = None
     detection_method = None
 
-    # 1. Check host header for subdomain FIRST (most common case)
+    # 1. Check host header - try virtual host FIRST, then fall back to subdomain
     if not requested_tenant_id:
         host = _get_header_case_insensitive(headers, "host") or ""
-        subdomain = host.split(".")[0] if "." in host else None
-        console.print(f"[blue]Extracted subdomain from Host header: {subdomain}[/blue]")
-        if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www", "admin"]:
-            # Look up tenant by subdomain to get actual tenant_id
-            console.print(f"[blue]Looking up tenant by subdomain: {subdomain}[/blue]")
-            tenant_context = get_tenant_by_subdomain(subdomain)
-            if tenant_context:
-                requested_tenant_id = tenant_context["tenant_id"]
-                detection_method = "subdomain"
-                set_current_tenant(tenant_context)
-                console.print(
-                    f"[green]Tenant detected from subdomain: {subdomain} → tenant_id: {requested_tenant_id}[/green]"
-                )
-            else:
-                console.print(f"[yellow]No tenant found for subdomain: {subdomain}[/yellow]")
-                # If subdomain lookup failed, try virtual host lookup with full hostname
-                console.print(f"[blue]Trying virtual host lookup for full hostname: {host}[/blue]")
-                tenant_context = get_tenant_by_virtual_host(host)
+        apx_host = _get_header_case_insensitive(headers, "apx-incoming-host")
+
+        # Log ALL headers for debugging
+        logger.error("🔍 TENANT DETECTION - Received headers:")
+        for k, v in headers.items():
+            logger.error(f"🔍   {k}: {v}")
+        logger.error(f"🔍 Host header: {host}")
+        logger.error(f"🔍 Apx-Incoming-Host header: {apx_host}")
+
+        console.print(f"[blue]Checking Host header: {host}[/blue]")
+
+        # CRITICAL: Try virtual host lookup FIRST before extracting subdomain
+        # This prevents issues where a subdomain happens to match a virtual host
+        # (e.g., "test-agent" subdomain vs "test-agent.adcontextprotocol.org" virtual host)
+        tenant_context = get_tenant_by_virtual_host(host)
+        if tenant_context:
+            requested_tenant_id = tenant_context["tenant_id"]
+            detection_method = "host header (virtual host)"
+            set_current_tenant(tenant_context)
+            console.print(
+                f"[green]Tenant detected from Host header virtual host: {host} → tenant_id: {requested_tenant_id}[/green]"
+            )
+        else:
+            # Fallback to subdomain extraction if virtual host lookup failed
+            subdomain = host.split(".")[0] if "." in host else None
+            console.print(f"[blue]No virtual host match, extracting subdomain from Host header: {subdomain}[/blue]")
+            if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www", "admin"]:
+                # Look up tenant by subdomain to get actual tenant_id
+                console.print(f"[blue]Looking up tenant by subdomain: {subdomain}[/blue]")
+                tenant_context = get_tenant_by_subdomain(subdomain)
                 if tenant_context:
                     requested_tenant_id = tenant_context["tenant_id"]
-                    detection_method = "host header (virtual host)"
+                    detection_method = "subdomain"
                     set_current_tenant(tenant_context)
                     console.print(
-                        f"[green]Tenant detected from Host header virtual host: {host} → tenant_id: {requested_tenant_id}[/green]"
+                        f"[green]Tenant detected from subdomain: {subdomain} → tenant_id: {requested_tenant_id}[/green]"
                     )
+                else:
+                    console.print(f"[yellow]No tenant found for subdomain: {subdomain}[/yellow]")
 
     # 2. Check x-adcp-tenant header (set by nginx for path-based routing)
     if not requested_tenant_id:
@@ -665,6 +728,7 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
             adapter_type = config_row.adapter_type
             if adapter_type == "mock":
                 adapter_config["dry_run"] = config_row.mock_dry_run
+                adapter_config["manual_approval_required"] = config_row.mock_manual_approval_required
             elif adapter_type == "google_ad_manager":
                 adapter_config["network_code"] = config_row.gam_network_code
                 adapter_config["refresh_token"] = config_row.gam_refresh_token
@@ -689,6 +753,9 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
                 adapter_config["network_id"] = config_row.kevel_network_id
                 adapter_config["api_key"] = config_row.kevel_api_key
                 adapter_config["manual_approval_required"] = config_row.kevel_manual_approval_required
+            elif adapter_type == "mock":
+                adapter_config["dry_run"] = config_row.mock_dry_run or False
+                adapter_config["manual_approval_required"] = config_row.mock_manual_approval_required or False
             elif adapter_type == "triton":
                 adapter_config["station_id"] = config_row.triton_station_id
                 adapter_config["api_key"] = config_row.triton_api_key
@@ -696,7 +763,8 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
     if not selected_adapter:
         # Default to mock if no adapter specified
         selected_adapter = "mock"
-        adapter_config = {"enabled": True}
+        if not adapter_config:
+            adapter_config = {"enabled": True}
 
     # Create the appropriate adapter instance with tenant_id and testing context
     tenant_id = tenant["tenant_id"]
@@ -747,8 +815,9 @@ except (RuntimeError, Exception) as e:
 
 mcp = FastMCP(
     name="AdCPSalesAgent",
-    # Use stateless HTTP mode to avoid session requirements
-    stateless_http=True,
+    # Enable sessions to allow proper HTTP context for header access
+    # This is needed for tenant detection via headers in unauthenticated calls
+    stateless_http=False,
 )
 
 # Initialize creative engine with minimal config (will be tenant-specific later)
@@ -799,9 +868,7 @@ context_mgr = ContextManager()
 
 # --- Adapter Configuration ---
 # Get adapter from config, fallback to mock
-SELECTED_ADAPTER = (
-    (config.get("ad_server", {}).get("adapter") or "mock") if config else "mock"
-).lower()  # noqa: F841 - used below for adapter selection
+SELECTED_ADAPTER = ((config.get("ad_server", {}).get("adapter") or "mock") if config else "mock").lower()  # noqa: F841 - used below for adapter selection
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
 # --- In-Memory State (already initialized above, just adding context_map) ---
@@ -1061,12 +1128,19 @@ def _verify_principal(media_buy_id: str, context: Context):
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
 
-    # Query database for media buy
+    # Query database for media buy (try media_buy_id first, then buyer_ref)
     with get_db_session() as session:
         stmt = select(MediaBuyModel).where(
             MediaBuyModel.media_buy_id == media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
         )
         media_buy = session.scalars(stmt).first()
+
+        # If not found by media_buy_id, try buyer_ref (for backwards compatibility)
+        if not media_buy:
+            stmt = select(MediaBuyModel).where(
+                MediaBuyModel.buyer_ref == media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
+            )
+            media_buy = session.scalars(stmt).first()
 
         if not media_buy:
             raise ValueError(f"Media buy '{media_buy_id}' not found.")
@@ -1210,7 +1284,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
             logger.error(f"[GET_PRODUCTS] Principal found but no tenant context: principal_id={principal_id}")
             print("❌ [GET_PRODUCTS DEBUG] Principal found but no tenant context", flush=True)
             raise ToolError(
-                f"Authentication succeeded but tenant context missing. " f"This is a bug. principal_id={principal_id}"
+                f"Authentication succeeded but tenant context missing. This is a bug. principal_id={principal_id}"
             )
         # else: No auth provided, which is OK for discovery endpoints
 
@@ -2375,25 +2449,35 @@ def _sync_creatives_impl(
                                             f"variants={len(preview_result.get('previews', []))}"
                                         )
                                     else:
-                                        # Preview generation failed for update - creative is invalid
-                                        error_msg = f"Creative validation failed: preview_creative returned no previews for update of {existing_creative.creative_id}"
-                                        logger.error(f"[sync_creatives] {error_msg}")
-                                        failed_creatives.append(
-                                            {
-                                                "creative_id": existing_creative.creative_id,
-                                                "error": error_msg,
-                                                "format": creative_format,
-                                            }
-                                        )
-                                        failed_count += 1
-                                        results.append(
-                                            SyncCreativeResult(
-                                                creative_id=existing_creative.creative_id,
-                                                action="failed",
-                                                errors=[error_msg],
+                                        # Preview generation returned no previews
+                                        # Only acceptable if creative has a media_url (direct URL to creative asset)
+                                        has_media_url = bool(creative.get("url") or data.get("url"))
+
+                                        if has_media_url:
+                                            # Static creatives with media_url don't need previews
+                                            warning_msg = f"Preview generation returned no previews for {existing_creative.creative_id} (static creative with media_url)"
+                                            logger.warning(f"[sync_creatives] {warning_msg}")
+                                            # Continue with update - preview is optional for static creatives
+                                        else:
+                                            # Creative agent should have generated previews but didn't
+                                            error_msg = f"Preview generation failed for {existing_creative.creative_id}: no previews returned and no media_url provided"
+                                            logger.error(f"[sync_creatives] {error_msg}")
+                                            failed_creatives.append(
+                                                {
+                                                    "creative_id": existing_creative.creative_id,
+                                                    "error": error_msg,
+                                                    "format": creative_format,
+                                                }
                                             )
-                                        )
-                                        continue  # Skip this creative update
+                                            failed_count += 1
+                                            results.append(
+                                                SyncCreativeResult(
+                                                    creative_id=existing_creative.creative_id,
+                                                    action="failed",
+                                                    errors=[error_msg],
+                                                )
+                                            )
+                                            continue  # Skip this creative, move to next
 
                                 except Exception as validation_error:
                                     # Creative agent validation failed for update (network error, agent down, etc.)
@@ -2705,25 +2789,35 @@ def _sync_creatives_impl(
                                             f"variants={len(preview_result.get('previews', []))}"
                                         )
                                     else:
-                                        # Preview generation failed - creative is invalid
-                                        error_msg = f"Creative validation failed: preview_creative returned no previews for {creative_id}"
-                                        logger.error(f"[sync_creatives] {error_msg}")
-                                        failed_creatives.append(
-                                            {
-                                                "creative_id": creative_id,
-                                                "error": error_msg,
-                                                "format": creative_format,
-                                            }
-                                        )
-                                        failed_count += 1
-                                        results.append(
-                                            SyncCreativeResult(
-                                                creative_id=creative_id,
-                                                action="failed",
-                                                errors=[error_msg],
+                                        # Preview generation returned no previews
+                                        # Only acceptable if creative has a media_url (direct URL to creative asset)
+                                        has_media_url = bool(creative.get("url") or data.get("url"))
+
+                                        if has_media_url:
+                                            # Static creatives with media_url don't need previews
+                                            warning_msg = f"Preview generation returned no previews for {creative_id} (static creative with media_url)"
+                                            logger.warning(f"[sync_creatives] {warning_msg}")
+                                            # Continue with creative creation - preview is optional for static creatives
+                                        else:
+                                            # Creative agent should have generated previews but didn't
+                                            error_msg = f"Preview generation failed for {creative_id}: no previews returned and no media_url provided"
+                                            logger.error(f"[sync_creatives] {error_msg}")
+                                            failed_creatives.append(
+                                                {
+                                                    "creative_id": creative_id,
+                                                    "error": error_msg,
+                                                    "format": creative_format,
+                                                }
                                             )
-                                        )
-                                        continue  # Skip this creative
+                                            failed_count += 1
+                                            results.append(
+                                                SyncCreativeResult(
+                                                    creative_id=creative_id,
+                                                    action="failed",
+                                                    errors=[error_msg],
+                                                )
+                                            )
+                                            continue  # Skip this creative, move to next
 
                             except Exception as validation_error:
                                 # Creative agent validation failed (network error, agent down, etc.)
@@ -4041,7 +4135,60 @@ def list_authorized_properties(
     Returns:
         ListAuthorizedPropertiesResponse with properties and tag metadata
     """
-    return _list_authorized_properties_impl(req, context)
+    # FIX: Create MinimalContext with headers from FastMCP request (like A2A does)
+    # This ensures tenant detection works the same way for both MCP and A2A
+    import logging
+    import sys
+
+    logger = logging.getLogger(__name__)
+    tool_context = None
+
+    if context:
+        try:
+            # Log ALL headers received for debugging virtual host issues
+            logger.error("🔍 MCP list_authorized_properties called")
+            logger.error(f"🔍 context type={type(context)}")
+
+            # Access raw Starlette request headers via context.request_context.request
+            request = context.request_context.request
+            logger.error(f"🔍 request type={type(request) if request else None}")
+
+            if request and hasattr(request, "headers"):
+                headers = dict(request.headers)
+                logger.error(f"🔍 Received {len(headers)} headers:")
+                for key, value in headers.items():
+                    logger.error(f"🔍   {key}: {value}")
+
+                logger.error(
+                    f"🔍 Key headers: Host={headers.get('host')}, Apx-Incoming-Host={headers.get('apx-incoming-host')}"
+                )
+
+                # Create MinimalContext matching A2A pattern
+                class MinimalContext:
+                    def __init__(self, headers):
+                        self.meta = {"headers": headers}
+                        self.headers = headers
+
+                tool_context = MinimalContext(headers)
+                print("[MCP DEBUG] Created MinimalContext successfully", file=sys.stderr, flush=True)
+                logger.info("MCP list_authorized_properties: Created MinimalContext successfully")
+            else:
+                print("[MCP DEBUG] request has no headers attribute", file=sys.stderr, flush=True)
+                logger.warning("MCP list_authorized_properties: request has no headers attribute")
+                tool_context = context
+        except Exception as e:
+            # Fallback to passing context as-is
+            print(f"[MCP DEBUG] Exception extracting headers: {e}", file=sys.stderr, flush=True)
+            logger.error(
+                f"MCP list_authorized_properties: Could not extract headers from FastMCP context: {e}", exc_info=True
+            )
+            tool_context = context
+    else:
+        print("[MCP DEBUG] No context provided", file=sys.stderr, flush=True)
+        logger.info("MCP list_authorized_properties: No context provided")
+        tool_context = context
+
+    return _list_authorized_properties_impl(req, tool_context)
 
 
 def _validate_pricing_model_selection(
@@ -4126,8 +4273,7 @@ def _validate_pricing_model_selection(
         if bid_decimal < floor_price:
             raise ToolError(
                 "PRICING_ERROR",
-                f"Bid price {package.bid_price} is below floor price {floor_price} "
-                f"for {package.pricing_model} pricing",
+                f"Bid price {package.bid_price} is below floor price {floor_price} for {package.pricing_model} pricing",
             )
 
     # Validate fixed pricing has rate
@@ -4787,6 +4933,13 @@ async def _create_media_buy_impl(
             adapter.manual_approval_operations if hasattr(adapter, "manual_approval_operations") else []
         )
 
+        # DEBUG: Log manual approval settings
+        logger.info(
+            f"[DEBUG] Manual approval check - required: {manual_approval_required}, "
+            f"operations: {manual_approval_operations}, "
+            f"adapter type: {adapter.__class__.__name__}"
+        )
+
         # Check if auto-creation is disabled in tenant config
         auto_create_enabled = tenant.get("auto_create_media_buys", True)
         product_auto_create = True  # Will be set correctly when we get products later
@@ -4794,11 +4947,15 @@ async def _create_media_buy_impl(
         if manual_approval_required and "create_media_buy" in manual_approval_operations:
             # Update existing workflow step to require approval
             ctx_manager.update_workflow_step(
-                step.step_id, status="requires_approval", step_type="approval", owner="publisher"
+                step.step_id,
+                status="requires_approval",
+                add_comment={"user": "system", "comment": "Manual approval required for media buy creation"},
             )
 
             # Workflow step already created above - no need for separate task
-            pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
+            # Generate permanent media buy ID (not "pending_xxx")
+            # This ID will be used whether pending or approved - only status changes
+            media_buy_id = f"mb_{uuid.uuid4().hex[:12]}"
 
             response_msg = (
                 f"Manual approval required. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
@@ -4832,7 +4989,7 @@ async def _create_media_buy_impl(
 
                 slack_notifier.notify_media_buy_event(
                     event_type="approval_required",
-                    media_buy_id=pending_media_buy_id,
+                    media_buy_id=media_buy_id,
                     principal_name=principal_name,
                     details=notification_details,
                     tenant_name=tenant.get("name", "Unknown"),
@@ -4843,11 +5000,128 @@ async def _create_media_buy_impl(
             except Exception as e:
                 console.print(f"[yellow]⚠️ Failed to send manual approval Slack notification: {e}[/yellow]")
 
+            # Generate permanent package IDs (not dependent on media buy ID)
+            # These IDs will be used whether the media buy is pending or approved
+            pending_packages = []
+            raw_request_dict = req.model_dump(mode="json")  # Serialize datetimes to JSON-compatible format
+
+            for idx, pkg in enumerate(req.packages, 1):
+                # Generate permanent package ID using product_id and index
+                # Format: pkg_{product_id}_{timestamp_part}_{idx}
+                import secrets
+
+                package_id = f"pkg_{pkg.product_id}_{secrets.token_hex(4)}_{idx}"
+
+                # Use product_id or buyer_ref for package name since Package schema doesn't have 'name'
+                pkg_name = f"Package {idx}"
+                if pkg.product_id:
+                    pkg_name = f"{pkg.product_id} - Package {idx}"
+                elif pkg.buyer_ref:
+                    pkg_name = f"{pkg.buyer_ref} - Package {idx}"
+
+                # Serialize the full package to include all fields (budget, targeting, etc.)
+                # Use model_dump_internal to get complete package data
+                if hasattr(pkg, "model_dump_internal"):
+                    pkg_dict = pkg.model_dump_internal()
+                elif hasattr(pkg, "model_dump"):
+                    pkg_dict = pkg.model_dump(exclude_none=True, mode="python")
+                else:
+                    pkg_dict = {}
+
+                # Build response with complete package data (matching auto-approval path)
+                pending_packages.append(
+                    {
+                        **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
+                        "package_id": package_id,
+                        "name": pkg_name,
+                        "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request package
+                        "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
+                    }
+                )
+
+                # Update the package in raw_request with the generated package_id so UI can find it
+                raw_request_dict["packages"][idx - 1]["package_id"] = package_id
+
+            # Create media buy record in the database with permanent ID
+            # Status is "pending_approval" but the ID is final
+            with get_db_session() as session:
+                pending_buy = MediaBuy(
+                    media_buy_id=media_buy_id,
+                    buyer_ref=req.buyer_ref,
+                    principal_id=principal.principal_id,
+                    tenant_id=tenant["tenant_id"],
+                    status="pending_approval",
+                    order_name=f"{req.buyer_ref} - {start_time.strftime('%Y-%m-%d')}",
+                    advertiser_name=principal.name,
+                    budget=total_budget,
+                    currency=request_currency or "USD",  # Use request_currency from validation above
+                    start_date=start_time.date(),
+                    end_date=end_time.date(),
+                    start_time=start_time,
+                    end_time=end_time,
+                    raw_request=raw_request_dict,  # Now includes package_id in each package
+                    created_at=datetime.now(UTC),
+                )
+                session.add(pending_buy)
+                session.commit()
+                console.print(f"[green]✅ Created media buy {media_buy_id} with status=pending_approval[/green]")
+
+            # Create MediaPackage records for structured querying
+            # This enables the UI to display packages and creative assignments to work properly
+            with get_db_session() as session:
+                from src.core.database.models import MediaPackage as DBMediaPackage
+
+                for pkg_data in pending_packages:
+                    package_config = {
+                        "package_id": pkg_data["package_id"],
+                        "name": pkg_data.get("name"),
+                        "status": pkg_data.get("status"),
+                    }
+                    # Add full package data from raw_request
+                    for idx, req_pkg in enumerate(req.packages):
+                        if idx == pending_packages.index(pkg_data):
+                            package_config.update(
+                                {
+                                    "product_id": req_pkg.product_id,
+                                    "budget": req_pkg.budget.model_dump() if req_pkg.budget else None,
+                                    "targeting_overlay": req_pkg.targeting_overlay.model_dump()
+                                    if req_pkg.targeting_overlay
+                                    else None,
+                                    "creative_ids": req_pkg.creative_ids,
+                                    "format_ids_to_provide": req_pkg.format_ids_to_provide,
+                                }
+                            )
+                            break
+
+                    db_package = DBMediaPackage(
+                        media_buy_id=media_buy_id,
+                        package_id=pkg_data["package_id"],
+                        package_config=package_config,
+                    )
+                    session.add(db_package)
+
+                session.commit()
+                console.print(f"[green]✅ Created {len(pending_packages)} MediaPackage records[/green]")
+
+            # Link the workflow step to the media buy so the approval button shows in UI
+            with get_db_session() as session:
+                from src.core.database.models import ObjectWorkflowMapping
+
+                mapping = ObjectWorkflowMapping(
+                    object_type="media_buy", object_id=media_buy_id, step_id=step.step_id, action="create"
+                )
+                session.add(mapping)
+                session.commit()
+                console.print(f"[green]✅ Linked workflow step {step.step_id} to media buy[/green]")
+
+            # Return success response with packages awaiting approval
+            # The workflow_step_id in packages indicates approval is required
             return CreateMediaBuyResponse(
                 buyer_ref=req.buyer_ref,
-                media_buy_id=pending_media_buy_id,
+                media_buy_id=media_buy_id,
                 creative_deadline=None,
-                errors=[{"code": "APPROVAL_REQUIRED", "message": response_msg}],
+                packages=pending_packages,
+                workflow_step_id=step.step_id,  # Client can track approval via this ID
             )
 
         # Get products for the media buy to check product-level auto-creation settings
@@ -4917,10 +5191,39 @@ async def _create_media_buy_impl(
             )
 
             # Workflow step already created above - no need for separate task
-            pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
+            # Generate permanent media buy ID (not "pending_xxx")
+            media_buy_id = f"mb_{uuid.uuid4().hex[:12]}"
 
             response_msg = f"Media buy requires approval due to {reason.lower()}. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
             ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
+
+            # Generate permanent package IDs and prepare response packages
+            response_packages = []
+            for idx, pkg in enumerate(req.packages, 1):
+                # Generate permanent package ID
+                import secrets
+
+                package_id = f"pkg_{pkg.product_id}_{secrets.token_hex(4)}_{idx}"
+
+                # Serialize the full package to include all fields (budget, targeting, etc.)
+                # Use model_dump_internal to get complete package data
+                if hasattr(pkg, "model_dump_internal"):
+                    pkg_dict = pkg.model_dump_internal()
+                elif hasattr(pkg, "model_dump"):
+                    pkg_dict = pkg.model_dump(exclude_none=True, mode="python")
+                else:
+                    pkg_dict = {}
+
+                # Build response with complete package data (matching auto-approval path)
+                response_packages.append(
+                    {
+                        **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
+                        "package_id": package_id,
+                        "name": f"{pkg.product_id} - Package {idx}",
+                        "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request
+                        "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
+                    }
+                )
 
             # Send Slack notification for configuration-based approval requirement
             try:
@@ -4952,7 +5255,7 @@ async def _create_media_buy_impl(
 
                 slack_notifier.notify_media_buy_event(
                     event_type="config_approval_required",
-                    media_buy_id=pending_media_buy_id,
+                    media_buy_id=media_buy_id,
                     principal_name=principal_name,
                     details=notification_details,
                     tenant_name=tenant.get("name", "Unknown"),
@@ -4965,6 +5268,8 @@ async def _create_media_buy_impl(
 
             return CreateMediaBuyResponse(
                 buyer_ref=req.buyer_ref,
+                media_buy_id=media_buy_id,
+                packages=response_packages,  # Include packages with buyer_ref
                 workflow_step_id=step.step_id,
             )
 
@@ -4981,14 +5286,14 @@ async def _create_media_buy_impl(
         # Convert products to MediaPackages
         # If req.packages provided, use format_ids from request; otherwise use product.formats
         packages = []
-        for product in products_in_buy:
+        for idx, product in enumerate(products_in_buy, 1):
             # Determine format_ids to use
             format_ids_to_use = []
 
             # Check if this product has a corresponding package in the request with format_ids
+            matching_package = None
             if req.packages:
                 # Find the package for this product
-                matching_package = None
                 for pkg in req.packages:
                     if pkg.product_id == product.product_id:
                         matching_package = pkg
@@ -5088,14 +5393,34 @@ async def _create_media_buy_impl(
                 if first_option.rate:
                     cpm = float(first_option.rate)
 
+            # Generate permanent package ID (not product_id)
+            import secrets
+
+            package_id = f"pkg_{product.product_id}_{secrets.token_hex(4)}_{idx}"
+
+            # Get buyer_ref and budget from matching request package if available
+            buyer_ref = None
+            budget = None
+            if matching_package:
+                if hasattr(matching_package, "buyer_ref"):
+                    buyer_ref = matching_package.buyer_ref
+                if hasattr(matching_package, "budget"):
+                    budget = matching_package.budget
+
             packages.append(
                 MediaPackage(
-                    package_id=product.product_id,
+                    package_id=package_id,
                     name=product.name,
                     delivery_type=product.delivery_type,
                     cpm=cpm,
                     impressions=int(total_budget / cpm * 1000),
                     format_ids=format_ids_to_use,
+                    targeting_overlay=matching_package.targeting_overlay
+                    if matching_package and hasattr(matching_package, "targeting_overlay")
+                    else None,
+                    buyer_ref=buyer_ref,
+                    product_id=product.product_id,  # Include product_id
+                    budget=budget,  # Include budget from request
                 )
             )
 
@@ -5114,6 +5439,12 @@ async def _create_media_buy_impl(
         # Pass package_pricing_info for pricing model support (AdCP PR #88)
         try:
             response = adapter.create_media_buy(req, packages, start_time, end_time, package_pricing_info)
+            logger.info(
+                f"[DEBUG] create_media_buy: Adapter returned response with {len(response.packages) if response.packages else 0} packages"
+            )
+            if response.packages:
+                for i, pkg in enumerate(response.packages):
+                    logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg}")
         except Exception as adapter_error:
             import traceback
 
@@ -5157,6 +5488,55 @@ async def _create_media_buy_impl(
             session.add(new_media_buy)
             session.commit()
 
+        # Populate media_packages table for structured querying
+        # This enables creative_assignments to work properly
+        if req.packages or (response.packages and len(response.packages) > 0):
+            with get_db_session() as session:
+                from src.core.database.models import MediaPackage as DBMediaPackage
+
+                # Use response packages if available (has package_ids), otherwise generate from request
+                packages_to_save = response.packages if response.packages else []
+                logger.info(f"[DEBUG] Saving {len(packages_to_save)} packages to media_packages table")
+
+                for i, resp_package in enumerate(packages_to_save):
+                    # Extract package_id from response - MUST be present, no fallback allowed
+                    package_id = resp_package.get("package_id")
+                    logger.info(f"[DEBUG] Package {i}: resp_package.get('package_id') = {package_id}")
+
+                    if not package_id:
+                        error_msg = (
+                            f"Adapter did not return package_id for package {i}. This is a critical bug in the adapter."
+                        )
+                        logger.error(error_msg)
+                        raise ValueError(error_msg)
+
+                    logger.info(f"[DEBUG] Package {i}: Using package_id = {package_id}")
+
+                    # Store full package config as JSON
+                    package_config = {
+                        "package_id": package_id,
+                        "name": resp_package.get("name"),  # Include package name from adapter response
+                        "product_id": resp_package.get("product_id"),
+                        "budget": resp_package.get("budget"),
+                        "targeting_overlay": resp_package.get("targeting_overlay"),
+                        "creative_ids": resp_package.get("creative_ids"),
+                        "creative_assignments": resp_package.get("creative_assignments"),
+                        "format_ids_to_provide": resp_package.get("format_ids_to_provide"),
+                        "status": resp_package.get("status"),
+                    }
+
+                    db_package = DBMediaPackage(
+                        media_buy_id=response.media_buy_id,
+                        package_id=package_id,
+                        package_config=package_config,
+                    )
+                    session.add(db_package)
+
+                session.commit()
+                logger.info(
+                    f"Saved {len(packages_to_save)} packages to media_packages table for media_buy {response.media_buy_id}"
+                )
+
         # Handle creative_ids in packages if provided (immediate association)
         if req.packages:
             with get_db_session() as session:
@@ -5178,9 +5558,31 @@ async def _create_media_buy_impl(
                     creatives_list = session.scalars(creative_stmt).all()
                     creatives_map = {str(c.creative_id): c for c in creatives_list}
 
+                    # Validate all creative IDs exist (match update_media_buy behavior)
+                    found_creative_ids = set(creatives_map.keys())
+                    requested_creative_ids = set(all_creative_ids)
+                    missing_ids = requested_creative_ids - found_creative_ids
+
+                    if missing_ids:
+                        error_msg = f"Creative IDs not found: {', '.join(sorted(missing_ids))}"
+                        logger.error(error_msg)
+                        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+                        raise ToolError("CREATIVES_NOT_FOUND", error_msg)
+
                 for i, package in enumerate(req.packages):
                     if package.creative_ids:
-                        package_id = f"{response.media_buy_id}_pkg_{i+1}"
+                        # Use package_id from response (matches what's in media_packages table)
+                        # NO FALLBACK - if adapter doesn't return package_id, fail loudly
+                        package_id = None
+                        if response.packages and i < len(response.packages):
+                            package_id = response.packages[i].get("package_id")
+                            logger.info(f"[DEBUG] Package {i}: response.packages[i] = {response.packages[i]}")
+                            logger.info(f"[DEBUG] Package {i}: extracted package_id = {package_id}")
+
+                        if not package_id:
+                            error_msg = f"Cannot assign creatives: Adapter did not return package_id for package {i}"
+                            logger.error(error_msg)
+                            raise ValueError(error_msg)
 
                         # Get platform_line_item_id from response if available
                         platform_line_item_id = None
@@ -5194,10 +5596,9 @@ async def _create_media_buy_impl(
                             # Get creative from batch-loaded map
                             creative = creatives_map.get(creative_id)
 
+                            # This should never happen now due to validation above
                             if not creative:
-                                logger.warning(
-                                    f"Creative {creative_id} not found for package {package_id}, skipping assignment"
-                                )
+                                logger.error(f"Creative {creative_id} not in map despite validation - this is a bug")
                                 continue
 
                             # Create database assignment (always create, even if not yet uploaded to GAM)
@@ -5279,36 +5680,68 @@ async def _create_media_buy_impl(
                 )
 
         # Build packages list for response (AdCP v2.4 format)
+        # Use packages from adapter response (has package_ids) merged with request package fields
         response_packages = []
+
+        # Get adapter response packages (have package_ids)
+        adapter_packages = response.packages if response.packages else []
+
         for i, package in enumerate(req.packages):
-            # Serialize the package to dict to handle any nested Pydantic objects
-            # Use model_dump_internal to avoid validation that requires package_id (not set yet on request packages)
-            if hasattr(package, "model_dump_internal"):
-                package_dict = package.model_dump_internal()
-            elif hasattr(package, "model_dump"):
-                # Fallback: use model_dump with exclude_none to avoid validation errors
-                package_dict = package.model_dump(exclude_none=True, mode="python")
+            # Start with adapter response package (has package_id)
+            if i < len(adapter_packages):
+                # Get package_id and other fields from adapter response
+                response_package_dict = (
+                    adapter_packages[i] if isinstance(adapter_packages[i], dict) else adapter_packages[i].model_dump()
+                )
             else:
-                package_dict = package
+                # Fallback if adapter didn't return enough packages
+                logger.warning(f"Adapter returned fewer packages than request. Using request package {i}")
+                response_package_dict = {}
+
+            # CRITICAL: Save package_id from adapter response BEFORE merge
+            adapter_package_id = response_package_dict.get("package_id")
+            logger.info(f"[DEBUG] Package {i}: adapter_package_id from response = {adapter_package_id}")
+
+            # Serialize the request package to get fields like buyer_ref, format_ids
+            if hasattr(package, "model_dump_internal"):
+                request_package_dict = package.model_dump_internal()
+            elif hasattr(package, "model_dump"):
+                request_package_dict = package.model_dump(exclude_none=True, mode="python")
+            else:
+                request_package_dict = package if isinstance(package, dict) else {}
+
+            # Merge: Start with adapter response (has package_id), overlay request fields
+            package_dict = {**response_package_dict, **request_package_dict}
+
+            # CRITICAL: Restore package_id from adapter (merge may have overwritten it with None from request)
+            if adapter_package_id:
+                package_dict["package_id"] = adapter_package_id
+                logger.info(f"[DEBUG] Package {i}: Forced package_id = {adapter_package_id}")
+            else:
+                # NO FALLBACK - adapter MUST return package_id
+                error_msg = f"Adapter did not return package_id for package {i}. Cannot build response."
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
             # Validate and convert format_ids (request field) to format_ids_to_provide (response field)
-            # Per AdCP spec: request has format_ids (array of FormatId), response has format_ids_to_provide (same)
-            # STRICT ENFORCEMENT: Only FormatId objects accepted, must be registered agents, formats must exist
             if "format_ids" in package_dict and package_dict["format_ids"]:
                 validated_format_ids = await _validate_and_convert_format_ids(
                     package_dict["format_ids"], tenant["tenant_id"], i
                 )
                 package_dict["format_ids_to_provide"] = validated_format_ids
-                # Remove format_ids from response (only format_ids_to_provide should be in response)
+                # Remove format_ids from response
                 del package_dict["format_ids"]
 
-            # Override/add response-specific fields (package_id and status are set by server)
-            response_package = {
-                **package_dict,
-                "package_id": f"{response.media_buy_id}_pkg_{i+1}",
-                "status": TaskStatus.WORKING,
-            }
-            response_packages.append(response_package)
+            # Determine package status
+            package_status = TaskStatus.WORKING
+            if package.creative_ids and len(package.creative_ids) > 0:
+                package_status = TaskStatus.COMPLETED
+            elif hasattr(package, "format_ids_to_provide") and package.format_ids_to_provide:
+                package_status = TaskStatus.WORKING
+
+            # Add status
+            package_dict["status"] = package_status
+            response_packages.append(package_dict)
 
         # Ensure buyer_ref is set (defensive check)
         buyer_ref_value = req.buyer_ref if req.buyer_ref else buyer_ref
@@ -5847,7 +6280,15 @@ def _update_media_buy_impl(
                 if currency_limit.max_daily_package_spend and req.packages:
                     for pkg_update in req.packages:
                         if pkg_update.budget:
-                            package_budget = Decimal(str(pkg_update.budget))
+                            # Extract budget amount - handle both Budget object and legacy float
+                            from src.core.schemas import Budget, extract_budget_amount
+
+                            if isinstance(pkg_update.budget, Budget):
+                                pkg_budget_amount, _ = extract_budget_amount(pkg_update.budget, request_currency)
+                            else:
+                                pkg_budget_amount = float(pkg_update.budget)
+
+                            package_budget = Decimal(str(pkg_budget_amount))
                             package_daily = package_budget / Decimal(str(flight_days))
 
                             if package_daily > currency_limit.max_daily_package_spend:
@@ -5904,12 +6345,22 @@ def _update_media_buy_impl(
 
             # Handle budget updates
             if pkg_update.budget is not None:
+                # Extract budget amount - handle both Budget object and legacy float
+                from src.core.schemas import Budget, extract_budget_amount
+
+                if isinstance(pkg_update.budget, Budget):
+                    budget_amount, currency = extract_budget_amount(pkg_update.budget, "USD")
+                else:
+                    # Legacy float format
+                    budget_amount = float(pkg_update.budget)
+                    currency = "USD"
+
                 result = adapter.update_media_buy(
                     media_buy_id=req.media_buy_id,
                     buyer_ref=req.buyer_ref or "",
                     action="update_package_budget",
                     package_id=pkg_update.package_id,
-                    budget=int(pkg_update.budget),
+                    budget=int(budget_amount),
                     today=datetime.combine(today, datetime.min.time()),
                 )
                 if result.errors:
@@ -5923,15 +6374,61 @@ def _update_media_buy_impl(
                     )
                     return result
 
+                # Track budget update in affected_packages
+                if not hasattr(req, "_affected_packages"):
+                    req._affected_packages = []
+                req._affected_packages.append(
+                    {
+                        "buyer_package_ref": pkg_update.package_id,
+                        "changes_applied": {"budget": {"updated": budget_amount, "currency": currency}},
+                    }
+                )
+
             # Handle creative_ids updates (AdCP v2.2.0+)
             if pkg_update.creative_ids is not None:
+                # Validate package_id is provided
+                if not pkg_update.package_id:
+                    error_msg = "package_id is required when updating creative_ids"
+                    ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+                    return UpdateMediaBuyResponse(
+                        media_buy_id=req.media_buy_id or "",
+                        buyer_ref=req.buyer_ref or "",
+                        errors=[{"code": "missing_package_id", "message": error_msg}],
+                    )
+
                 from sqlalchemy import select
 
                 from src.core.database.database_session import get_db_session
                 from src.core.database.models import Creative as DBCreative
                 from src.core.database.models import CreativeAssignment as DBAssignment
+                from src.core.database.models import MediaBuy as MediaBuyModel
 
                 with get_db_session() as session:
+                    # Resolve media_buy_id (might be buyer_ref)
+                    mb_stmt = select(MediaBuyModel).where(
+                        MediaBuyModel.media_buy_id == req.media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
+                    )
+                    media_buy_obj = session.scalars(mb_stmt).first()
+
+                    # Try buyer_ref if not found
+                    if not media_buy_obj:
+                        mb_stmt = select(MediaBuyModel).where(
+                            MediaBuyModel.buyer_ref == req.media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
+                        )
+                        media_buy_obj = session.scalars(mb_stmt).first()
+
+                    if not media_buy_obj:
+                        error_msg = f"Media buy '{req.media_buy_id}' not found"
+                        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+                        return UpdateMediaBuyResponse(
+                            media_buy_id=req.media_buy_id or "",
+                            buyer_ref=req.buyer_ref or "",
+                            errors=[{"code": "media_buy_not_found", "message": error_msg}],
+                        )
+
+                    # Use the actual internal media_buy_id
+                    actual_media_buy_id = media_buy_obj.media_buy_id
+
                     # Validate all creative IDs exist
                     creative_stmt = select(DBCreative).where(
                         DBCreative.tenant_id == tenant["tenant_id"],
@@ -5953,7 +6450,7 @@ def _update_media_buy_impl(
                     # Get existing assignments for this package
                     assignment_stmt = select(DBAssignment).where(
                         DBAssignment.tenant_id == tenant["tenant_id"],
-                        DBAssignment.media_buy_id == req.media_buy_id,
+                        DBAssignment.media_buy_id == actual_media_buy_id,
                         DBAssignment.package_id == pkg_update.package_id,
                     )
                     existing_assignments = session.scalars(assignment_stmt).all()
@@ -5977,7 +6474,7 @@ def _update_media_buy_impl(
                         assignment = DBAssignment(
                             assignment_id=assignment_id,
                             tenant_id=tenant["tenant_id"],
-                            media_buy_id=req.media_buy_id,
+                            media_buy_id=actual_media_buy_id,
                             package_id=pkg_update.package_id,
                             creative_id=creative_id,
                         )
@@ -6035,6 +6532,40 @@ def _update_media_buy_impl(
 
                 # Note: media_buys tuple stays as (CreateMediaBuyRequest, principal_id)
 
+                # Persist top-level budget update to database
+                from sqlalchemy import update
+
+                from src.core.database.models import MediaBuy
+
+                with get_db_session() as db_session:
+                    stmt = (
+                        update(MediaBuy)
+                        .where(MediaBuy.media_buy_id == req.media_buy_id)
+                        .values(budget=total_budget, currency=currency)
+                    )
+                    db_session.execute(stmt)
+                    db_session.commit()
+                    logger.info(
+                        f"[update_media_buy] Updated MediaBuy {req.media_buy_id} budget to {total_budget} {currency}"
+                    )
+
+                # Track top-level budget update in affected_packages
+                # When top-level budget changes, all packages are affected
+                if not hasattr(req, "_affected_packages"):
+                    req._affected_packages = []
+
+                # Get all packages for this media buy to report them as affected
+                if hasattr(existing_req, "packages") and existing_req.packages:
+                    for pkg in existing_req.packages:
+                        package_ref = pkg.package_id if hasattr(pkg, "package_id") and pkg.package_id else pkg.buyer_ref
+                        if package_ref:
+                            req._affected_packages.append(
+                                {
+                                    "buyer_package_ref": package_ref,
+                                    "changes_applied": {"budget": {"updated": total_budget, "currency": currency}},
+                                }
+                            )
+
     # Note: Budget validation already done above (lines 4318-4336)
     # Package-level updates already handled above (lines 4266-4316)
     # Targeting updates are handled via packages (AdCP spec v2.4)
@@ -6071,6 +6602,7 @@ def _update_media_buy_impl(
 
     # Build affected_packages from stored results
     affected_packages = getattr(req, "_affected_packages", [])
+    logger.info(f"[update_media_buy] Final affected_packages before return: {affected_packages}")
 
     return UpdateMediaBuyResponse(
         media_buy_id=req.media_buy_id or "",
@@ -7525,7 +8057,7 @@ if unified_mode:
                         content=f"""
                     <html>
                     <body>
-                    <h1>Welcome to {tenant.get('name', 'AdCP Sales Agent')}</h1>
+                    <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
                     <p>This is a sales agent for advertising inventory.</p>
                     <p>Domain: {apx_host}</p>
                     </body>
@@ -7560,7 +8092,7 @@ if unified_mode:
                                 content=f"""
                             <html>
                             <body>
-                            <h1>Welcome to {tenant.get('name', 'AdCP Sales Agent')}</h1>
+                            <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
                             <p>Subdomain: {apx_host}</p>
                             </body>
                             </html>

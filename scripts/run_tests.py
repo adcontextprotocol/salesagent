@@ -123,7 +123,7 @@ def run_tests(categories, verbose=False, failfast=False, coverage=False, specifi
             print(f"Available categories: {', '.join(TEST_CATEGORIES.keys())}")
             continue
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Running {category} tests: {TEST_CATEGORIES[category]['description']}")
         print("=" * 60)
 
@@ -155,7 +155,7 @@ def run_tests(categories, verbose=False, failfast=False, coverage=False, specifi
                 break
 
     # Summary
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("TEST SUMMARY")
     print("=" * 60)
     print(f"✅ Passed: {len(passed_categories)} categories")

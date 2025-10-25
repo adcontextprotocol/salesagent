@@ -227,7 +227,9 @@ class DebugTestClient(AdCPTestClient):
                         else:
                             artifact_status = f" [red]✗ Expected '{expected_artifact}'[/red]"
 
-                    console.print(f"[cyan]Artifact {i+1}:[/cyan] {artifact_name} ({len(parts)} parts){artifact_status}")
+                    console.print(
+                        f"[cyan]Artifact {i + 1}:[/cyan] {artifact_name} ({len(parts)} parts){artifact_status}"
+                    )
 
                     # Show first 2 parts with intelligent summaries
                     for j, part in enumerate(parts[:2]):
@@ -237,7 +239,7 @@ class DebugTestClient(AdCPTestClient):
                                 product_count = (
                                     len(part_data["products"]) if isinstance(part_data["products"], list) else "unknown"
                                 )
-                                console.print(f"  [green]Part {j+1}:[/green] Contains {product_count} products")
+                                console.print(f"  [green]Part {j + 1}:[/green] Contains {product_count} products")
 
                                 # Show first product as example
                                 if isinstance(part_data["products"], list) and len(part_data["products"]) > 0:
@@ -251,14 +253,16 @@ class DebugTestClient(AdCPTestClient):
                                             f"    [dim]Product IDs:[/dim] {', '.join(part_data['products'][:3])}"
                                         )
                             elif "media_buy_id" in part_data:
-                                console.print(f"  [green]Part {j+1}:[/green] Media buy ID: {part_data['media_buy_id']}")
+                                console.print(
+                                    f"  [green]Part {j + 1}:[/green] Media buy ID: {part_data['media_buy_id']}"
+                                )
                             elif "message" in part_data:
                                 message = part_data["message"]
                                 truncated = message[:100] + "..." if len(message) > 100 else message
-                                console.print(f"  [green]Part {j+1}:[/green] Message - {truncated}")
+                                console.print(f"  [green]Part {j + 1}:[/green] Message - {truncated}")
                             else:
                                 key_count = len(part_data.keys()) if hasattr(part_data, "keys") else 0
-                                console.print(f"  [green]Part {j+1}:[/green] Data object with {key_count} keys")
+                                console.print(f"  [green]Part {j + 1}:[/green] Data object with {key_count} keys")
 
             return response_data
 
@@ -302,7 +306,6 @@ async def run_debug_test(server_url: str = None, skip_a2a: bool = False, skip_mc
     console.print(f"[green]✅ Token ready: {auth_token[:8]}...[/green]\n")
 
     async with DebugTestClient(mcp_url, a2a_url, auth_token, dry_run=True) as client:
-
         try:
             # Collect results for comparison
             mcp_products = None
