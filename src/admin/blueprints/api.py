@@ -224,6 +224,7 @@ def get_tenant_products(tenant_id):
     try:
         with get_db_session() as db_session:
             from sqlalchemy import select
+
             from src.core.database.models import Product
 
             stmt = select(Product).filter_by(tenant_id=tenant_id).order_by(Product.name)
@@ -231,12 +232,14 @@ def get_tenant_products(tenant_id):
 
             products_data = []
             for product in products:
-                products_data.append({
-                    "product_id": product.product_id,
-                    "name": product.name,
-                    "description": product.description or "",
-                    "delivery_type": product.delivery_type,
-                })
+                products_data.append(
+                    {
+                        "product_id": product.product_id,
+                        "name": product.name,
+                        "description": product.description or "",
+                        "delivery_type": product.delivery_type,
+                    }
+                )
 
             return jsonify({"products": products_data})
 

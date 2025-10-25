@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from src.core.main import format_validation_error
 from src.core.schemas import BrandManifest, CreateMediaBuyRequest
+from src.core.validation_helpers import format_validation_error
 
 
 def test_brand_manifest_target_audience_must_be_string():

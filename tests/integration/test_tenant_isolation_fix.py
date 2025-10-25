@@ -71,7 +71,7 @@ def test_tenant_isolation_with_subdomain_and_cross_tenant_token(integration_db):
     }
 
     # Mock get_http_headers to return the headers
-    with patch("src.core.main.get_http_headers") as mock_get_headers:
+    with patch("src.core.auth.get_http_headers") as mock_get_headers:
         mock_get_headers.return_value = mock_context.meta["headers"]
 
         # Call get_principal_from_context
@@ -130,7 +130,7 @@ def test_global_token_lookup_sets_tenant_from_principal(integration_db):
     # Clear any existing tenant context
     set_current_tenant(None)
 
-    with patch("src.core.main.get_http_headers") as mock_get_headers:
+    with patch("src.core.auth.get_http_headers") as mock_get_headers:
         mock_get_headers.return_value = mock_context.meta["headers"]
 
         # Call get_principal_from_context
@@ -174,7 +174,7 @@ def test_admin_token_with_subdomain_preserves_tenant_context(integration_db):
         }
     }
 
-    with patch("src.core.main.get_http_headers") as mock_get_headers:
+    with patch("src.core.auth.get_http_headers") as mock_get_headers:
         mock_get_headers.return_value = mock_context.meta["headers"]
 
         # Call get_principal_from_context

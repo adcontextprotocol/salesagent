@@ -8,7 +8,7 @@ correctly through the creative conversion pipeline to the GAM adapter.
 from datetime import UTC, datetime
 from unittest.mock import patch
 
-from src.core.main import _convert_creative_to_adapter_asset
+from src.core.helpers import _convert_creative_to_adapter_asset
 from src.core.schemas import Creative
 
 

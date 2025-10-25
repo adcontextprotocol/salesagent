@@ -14,7 +14,7 @@ from sqlalchemy import delete, select
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Tenant as ModelTenant
-from src.core.main import get_adapter
+from src.core.helpers import get_adapter
 from src.core.schemas import Principal
 
 
@@ -252,9 +252,9 @@ class TestAdapterFactory:
 
                     # Verify correct adapter type
                     expected_class = adapter_type_map[adapter_type]
-                    assert isinstance(adapter, expected_class), (
-                        f"Expected {expected_class.__name__}, got {type(adapter).__name__}"
-                    )
+                    assert isinstance(
+                        adapter, expected_class
+                    ), f"Expected {expected_class.__name__}, got {type(adapter).__name__}"
 
                     # Verify dry_run mode was set
                     assert adapter.dry_run is True, f"dry_run not set correctly for {adapter_type}"
@@ -311,9 +311,9 @@ class TestAdapterFactory:
             # Verify it's actually a GAM adapter, not mock fallback
             from src.adapters.google_ad_manager import GoogleAdManager
 
-            assert isinstance(adapter, GoogleAdManager), (
-                f"Expected GAM adapter, got {type(adapter).__name__}. Check tenant/adapter_config setup."
-            )
+            assert isinstance(
+                adapter, GoogleAdManager
+            ), f"Expected GAM adapter, got {type(adapter).__name__}. Check tenant/adapter_config setup."
 
             # Verify network_code was passed correctly
             assert hasattr(adapter, "network_code"), "GAM adapter missing network_code attribute"

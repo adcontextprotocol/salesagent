@@ -2448,6 +2448,7 @@ class TestAdCPContract:
         assert "signals" in adcp_response
 
         # Verify field count (signals is required, errors is optional)
+        # Per AdCP PR #113, protocol fields removed from domain responses
         assert (
             len(adcp_response) >= 1
         ), f"GetSignalsResponse should have at least 1 core field (signals), got {len(adcp_response)}"

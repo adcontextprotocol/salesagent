@@ -356,20 +356,27 @@ class TestRealFilesIntegration:
         assert "media_buy_deliveries" in delivery_schema.required
 
     def test_find_real_constructor_calls(self):
-        """Test parsing actual main.py."""
-        impl_file = Path("src/core/main.py")
-
-        if not impl_file.exists():
-            pytest.skip("main.py not found in expected location")
+        """Test parsing actual tool implementation files."""
+        # Tools have been split into separate modules
+        tool_files = [
+            Path("src/core/tools/media_buy_delivery.py"),
+            Path("src/core/tools/media_buy_create.py"),
+        ]
 
         adapter_classes = {"GetMediaBuyDeliveryResponse", "CreateMediaBuyResponse"}
-        calls = find_response_constructors(impl_file, adapter_classes)
+        all_calls = []
+
+        for impl_file in tool_files:
+            if not impl_file.exists():
+                continue
+            calls = find_response_constructors(impl_file, adapter_classes)
+            all_calls.extend(calls)
 
         # Should find actual constructor calls
-        assert len(calls) > 0
+        assert len(all_calls) > 0, f"No constructor calls found in {[str(f) for f in tool_files]}"
 
         # Verify structure
-        for call in calls:
+        for call in all_calls:
             assert call.class_name in adapter_classes
             # Note: Some calls might have 0 fields if using **kwargs pattern
             # That's okay - validation script will flag missing required fields

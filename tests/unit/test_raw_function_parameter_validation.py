@@ -52,9 +52,9 @@ class TestRawFunctionParameterValidation:
         # Verify all should-be-in-helper params are actually in helper
         missing_in_helper = should_be_in_helper - helper_params
 
-        assert not missing_in_helper, (
-            f"get_products_raw has parameters not in helper and not documented as valid: {missing_in_helper}"
-        )
+        assert (
+            not missing_in_helper
+        ), f"get_products_raw has parameters not in helper and not documented as valid: {missing_in_helper}"
 
     def test_all_raw_functions_have_context_parameter(self):
         """All _raw functions should accept a context parameter."""
@@ -77,7 +77,7 @@ class TestRawFunctionParameterValidation:
 
         This would catch bugs like accepting adcp_version but not using it.
         """
-        tools_path = Path(__file__).parent.parent.parent / "src" / "core" / "tools.py"
+        tools_path = Path(__file__).parent.parent.parent / "src" / "core" / "tools" / "__init__.py"
         with open(tools_path) as f:
             content = f.read()
 
@@ -144,7 +144,7 @@ class TestRawFunctionParameterValidation:
 
         This is the exact bug we fixed - passing adcp_version to create_get_products_request.
         """
-        tools_path = Path(__file__).parent.parent.parent / "src" / "core" / "tools.py"
+        tools_path = Path(__file__).parent.parent.parent / "src" / "core" / "tools" / "__init__.py"
         with open(tools_path) as f:
             content = f.read()
 

@@ -100,7 +100,7 @@ def setup_products_with_formatid_objects(integration_db):
 
 def _import_get_products_impl():
     """Import the actual implementation function."""
-    from src.core.main import _get_products_impl
+    from src.core.tools.products import _get_products_impl
 
     return _get_products_impl
 

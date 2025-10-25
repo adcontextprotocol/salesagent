@@ -143,12 +143,12 @@ class TestCrossPrincipalSecurity:
 
         SECURITY: Principal B should NOT see Principal A's creatives.
         """
-        from src.core.main import _list_creatives_impl
+        from src.core.tools.creatives import _list_creatives_impl
 
         mock_context_b = MockContext(auth_token="token-advertiser-b")
 
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-b",
                 "host": "security-test.sales-agent.scope3.com",
@@ -168,13 +168,13 @@ class TestCrossPrincipalSecurity:
         SECURITY: Principal B should NOT be able to update Principal A's media buy.
         """
 
-        from src.core.main import _update_media_buy_impl
+        from src.core.tools.media_buy_update import _update_media_buy_impl
 
         mock_context_b = MockContext(auth_token="token-advertiser-b")
 
         # Principal B tries to update Principal A's media buy
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-b",
                 "host": "security-test.sales-agent.scope3.com",
@@ -203,8 +203,8 @@ class TestCrossPrincipalSecurity:
 
         SECURITY: Principal B should NOT see Principal A's media buy delivery data.
         """
-        from src.core.main import _get_media_buy_delivery_impl
         from src.core.schemas import GetMediaBuyDeliveryRequest
+        from src.core.tools.media_buy_delivery import _get_media_buy_delivery_impl
 
         mock_context_b = MockContext(auth_token="token-advertiser-b")
 
@@ -213,7 +213,7 @@ class TestCrossPrincipalSecurity:
         )
 
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-b",
                 "host": "security-test.sales-agent.scope3.com",
@@ -275,12 +275,12 @@ class TestCrossPrincipalSecurity:
         scoped.remove()
 
         # Principal A (from first tenant) tries to access creative from second tenant
-        from src.core.main import _list_creatives_impl
+        from src.core.tools.creatives import _list_creatives_impl
 
         mock_context_a = MockContext(auth_token="token-advertiser-a")
 
         with patch(
-            "src.core.main.get_http_headers",
+            "src.core.auth.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-a",
                 "host": "security-test.sales-agent.scope3.com",

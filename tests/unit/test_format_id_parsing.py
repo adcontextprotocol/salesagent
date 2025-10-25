@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.core.main import _extract_format_namespace, _normalize_format_value
+from src.core.helpers import _extract_format_namespace, _normalize_format_value
 from src.core.schemas import FormatId
 
 

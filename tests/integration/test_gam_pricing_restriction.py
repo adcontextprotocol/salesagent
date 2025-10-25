@@ -177,6 +177,8 @@ def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
 
+    from src.core.tools.media_buy_create import _create_media_buy_impl
+
     with get_db_session() as session:
         tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_tenant").first()
         tenant = {
@@ -201,6 +203,8 @@ def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
 @pytest.mark.requires_db
 def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM pricing model."""
+    from src.core.tools.media_buy_create import _create_media_buy_impl
+
     request = CreateMediaBuyRequest(
         brand_manifest={"name": "https://example.com/product"},
         packages=[
@@ -241,6 +245,8 @@ def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
 @pytest.mark.requires_db
 def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPP when buyer chooses it from multi-pricing product."""
+    from src.core.tools.media_buy_create import _create_media_buy_impl
+
     request = CreateMediaBuyRequest(
         brand_manifest={"name": "https://example.com/product"},
         packages=[
@@ -282,6 +288,8 @@ def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cp
 @pytest.mark.requires_db
 def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM when buyer chooses it from multi-pricing product."""
+    from src.core.tools.media_buy_create import _create_media_buy_impl
+
     request = CreateMediaBuyRequest(
         brand_manifest={"name": "https://example.com/product"},
         packages=[

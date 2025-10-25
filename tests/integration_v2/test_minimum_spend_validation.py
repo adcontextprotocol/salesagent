@@ -23,8 +23,8 @@ from src.core.database.models import (
     PropertyTag,
     Tenant,
 )
-from src.core.main import _create_media_buy_impl
 from src.core.schemas import Budget, Package
+from src.core.tools.media_buy_create import _create_media_buy_impl
 from tests.integration_v2.conftest import create_test_product_with_pricing
 
 

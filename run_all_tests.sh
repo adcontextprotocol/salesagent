@@ -199,7 +199,7 @@ if [ "$MODE" == "quick" ]; then
         exit 1
     fi
 
-    if ! uv run python -c "from src.core.main import _get_products_impl, _create_media_buy_impl" 2>/dev/null; then
+    if ! uv run python -c "from src.core.tools.products import _get_products_impl; from src.core.tools.media_buy_create import _create_media_buy_impl" 2>/dev/null; then
         echo -e "${RED}❌ Import validation failed!${NC}"
         echo "One or more shared implementation functions cannot be imported."
         exit 1
@@ -253,7 +253,8 @@ if [ "$MODE" == "ci" ]; then
         exit 1
     fi
 
-    if ! env -u DATABASE_URL uv run python -c "from src.core.main import _get_products_impl, _create_media_buy_impl, _get_media_buy_delivery_impl, _sync_creatives_impl, _list_creatives_impl, _list_creative_formats_impl, _list_authorized_properties_impl" 2>/dev/null; then
+    # Check implementation functions can be imported from their respective modules
+    if ! env -u DATABASE_URL uv run python -c "from src.core.tools.products import _get_products_impl; from src.core.tools.media_buy_create import _create_media_buy_impl; from src.core.tools.media_buy_delivery import _get_media_buy_delivery_impl; from src.core.tools.creatives import _sync_creatives_impl, _list_creatives_impl; from src.core.tools.creative_formats import _list_creative_formats_impl; from src.core.tools.properties import _list_authorized_properties_impl" 2>/dev/null; then
         echo -e "${RED}❌ Import validation failed!${NC}"
         exit 1
     fi

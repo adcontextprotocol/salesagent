@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.core.main import _validate_creative_assets
+from src.core.helpers import _validate_creative_assets
 
 
 def test_validate_assets_valid_dict():
