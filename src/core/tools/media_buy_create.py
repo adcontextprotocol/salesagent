@@ -662,9 +662,12 @@ async def _create_media_buy_impl(
                     # Use product pricing_options min_spend if set, otherwise use currency limit minimum
                     min_spend = currency_limit.min_package_budget
                     if product.pricing_options and len(product.pricing_options) > 0:
-                        first_option = product.pricing_options[0]
-                        if first_option.min_spend_per_package is not None:
-                            min_spend = first_option.min_spend_per_package
+                        # Find pricing option matching the request currency (not just first option)
+                        matching_option = next(
+                            (po for po in product.pricing_options if po.currency == request_currency), None
+                        )
+                        if matching_option and matching_option.min_spend_per_package is not None:
+                            min_spend = matching_option.min_spend_per_package
                     if min_spend is not None:
                         product_min_spends[product.product_id] = Decimal(str(min_spend))
 
