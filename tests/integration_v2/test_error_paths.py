@@ -31,7 +31,7 @@ from src.core.tool_context import ToolContext
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
-pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.asyncio]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 @pytest.mark.integration
@@ -344,7 +344,8 @@ class TestCreateMediaBuyErrorPaths:
 class TestSyncCreativesErrorPaths:
     """Test error handling in sync_creatives."""
 
-    def test_invalid_creative_format_returns_error(self, integration_db):
+    @pytest.mark.asyncio
+    async def test_invalid_creative_format_returns_error(self, integration_db):
         """Test that invalid creative format is handled gracefully."""
         from src.core.config_loader import set_current_tenant
 
@@ -377,7 +378,7 @@ class TestSyncCreativesErrorPaths:
 
         # Should handle gracefully, not crash
         try:
-            response = sync_creatives_raw(
+            response = await sync_creatives_raw(
                 creatives=invalid_creatives,
                 context=context,
             )
@@ -393,7 +394,8 @@ class TestSyncCreativesErrorPaths:
 class TestListCreativesErrorPaths:
     """Test error handling in list_creatives."""
 
-    def test_invalid_date_format_returns_error(self, integration_db):
+    @pytest.mark.asyncio
+    async def test_invalid_date_format_returns_error(self, integration_db):
         """Test that invalid date format is handled with proper error."""
         from src.core.config_loader import set_current_tenant
 
@@ -418,7 +420,7 @@ class TestListCreativesErrorPaths:
         from fastmcp.exceptions import ToolError
 
         with pytest.raises(ToolError) as exc_info:
-            list_creatives_raw(
+            await list_creatives_raw(
                 created_after="not-a-date",  # Invalid format
                 context=context,
             )

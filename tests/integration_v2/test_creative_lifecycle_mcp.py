@@ -61,7 +61,7 @@ class TestCreativeLifecycleMCP:
     def setup_test_data(self, integration_db):
         """Create test tenant, principal, and media buy for creative tests."""
         with get_db_session() as session:
-            # Create test tenant
+            # Create test tenant with auto-approve mode to avoid creative approval workflows
             tenant = create_tenant_with_timestamps(
                 tenant_id="creative_test",
                 name="Creative Test Tenant",
@@ -73,6 +73,7 @@ class TestCreativeLifecycleMCP:
                 authorized_domains=[],
                 auto_approve_formats=["display_300x250", "display_728x90"],
                 human_review_required=False,
+                approval_mode="auto-approve",  # Auto-approve creatives to avoid workflow blocking
             )
             session.add(tenant)
 
@@ -135,12 +136,16 @@ class TestCreativeLifecycleMCP:
 
     @pytest.fixture
     def sample_creatives(self):
-        """Sample creative data for testing."""
+        """Sample creative data for testing.
+
+        NOTE: Uses structured format objects with agent_url to avoid deprecated string format_ids.
+        Available formats from creative agent: display_300x250, display_728x90, video_640x480, etc.
+        """
         return [
             {
                 "creative_id": "creative_display_1",
                 "name": "Banner Ad 300x250",
-                "format": "display_300x250",
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
                 "url": "https://example.com/banner.jpg",
                 "click_url": "https://advertiser.com/landing",
                 "width": 300,
@@ -149,21 +154,21 @@ class TestCreativeLifecycleMCP:
             {
                 "creative_id": "creative_video_1",
                 "name": "Video Ad 30sec",
-                "format": "video_pre_roll",
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_640x480"},
                 "url": "https://example.com/video.mp4",
                 "click_url": "https://advertiser.com/video-landing",
                 "width": 640,
-                "height": 360,
+                "height": 480,
                 "duration": 30.0,
             },
             {
-                "creative_id": "creative_native_1",
-                "name": "Native Ad with Snippet",
-                "format": "native_content",
-                "snippet": "<script>window.adTag = 'native';</script>",
-                "snippet_type": "javascript",
-                "template_variables": {"headline": "Amazing Product!", "cta": "Learn More"},
-                "click_url": "https://advertiser.com/native-landing",
+                "creative_id": "creative_display_2",
+                "name": "Leaderboard Ad 728x90",
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+                "url": "https://example.com/leaderboard.jpg",
+                "click_url": "https://advertiser.com/landing2",
+                "width": 728,
+                "height": 90,
             },
         ]
 
@@ -202,22 +207,18 @@ class TestCreativeLifecycleMCP:
                 assert display_creative.data.get("url") == "https://example.com/banner.jpg"
                 assert display_creative.data.get("width") == 300
                 assert display_creative.data.get("height") == 250
-                assert display_creative.status == "pending"
+                assert display_creative.status == "approved"  # Auto-approved due to approval_mode setting
 
                 # Verify video creative
-                video_creative = next((c for c in db_creatives if c.format == "video_pre_roll"), None)
+                video_creative = next((c for c in db_creatives if c.format == "video_640x480"), None)
                 assert video_creative is not None
                 assert video_creative.data.get("duration") == 30.0
 
-                # Verify native creative with snippet
-                native_creative = next((c for c in db_creatives if c.format == "native_content"), None)
-                assert native_creative is not None
-                assert native_creative.data.get("snippet") == "<script>window.adTag = 'native';</script>"
-                assert native_creative.data.get("snippet_type") == "javascript"
-                assert native_creative.data.get("template_variables") == {
-                    "headline": "Amazing Product!",
-                    "cta": "Learn More",
-                }
+                # Verify leaderboard creative
+                leaderboard_creative = next((c for c in db_creatives if c.format == "display_728x90"), None)
+                assert leaderboard_creative is not None
+                assert leaderboard_creative.data.get("width") == 728
+                assert leaderboard_creative.data.get("height") == 90
 
     def test_sync_creatives_upsert_existing_creative(self, mock_context):
         """Test sync_creatives updates existing creative (default patch=False behavior)."""
@@ -229,7 +230,7 @@ class TestCreativeLifecycleMCP:
                 creative_id="creative_update_test",
                 principal_id=self.test_principal_id,
                 name="Old Creative Name",
-                agent_url="https://test.com",
+                agent_url="https://creative.adcontextprotocol.org",
                 format="display_300x250",
                 status="pending",
                 data={
@@ -246,7 +247,7 @@ class TestCreativeLifecycleMCP:
             {
                 "creative_id": "creative_update_test",
                 "name": "Updated Creative Name",
-                "format": "display_300x250",
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
                 "url": "https://example.com/updated.jpg",
                 "click_url": "https://advertiser.com/updated-landing",
                 "width": 300,
@@ -353,13 +354,13 @@ class TestCreativeLifecycleMCP:
             {
                 "creative_id": "valid_creative",
                 "name": "Valid Creative",
-                "format": "display_300x250",
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
                 "url": "https://example.com/valid.jpg",
             },
             {
                 "creative_id": "invalid_creative",
                 "name": "",  # Invalid: empty name
-                "format": "display_300x250",
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
             },
         ]
 
@@ -388,7 +389,6 @@ class TestCreativeLifecycleMCP:
     def test_list_creatives_no_filters(self, mock_context):
         """Test list_creatives returns all creatives when no filters applied."""
         _, core_list_creatives_tool = self._import_mcp_tools()
-        _, core_list_creatives_tool = self._import_mcp_tools()
         # Create test creatives in database
         with get_db_session() as session:
             creatives = [
@@ -397,7 +397,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"list_test_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Test Creative {i}",
-                    agent_url="https://test.com",
+                    agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
                     status="approved" if i % 2 == 0 else "pending",
                     data={
@@ -440,7 +440,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"status_test_approved_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Approved Creative {i}",
-                    agent_url="https://test.com",
+                    agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
                     status="approved",
                 )
@@ -451,7 +451,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"status_test_pending_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Pending Creative {i}",
-                    agent_url="https://test.com",
+                    agent_url="https://creative.adcontextprotocol.org",
                     format="display_728x90",
                     status="pending",
                 )
@@ -485,7 +485,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"format_test_300x250_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Banner {i}",
-                    agent_url="https://test.com",
+                    agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
                     status="approved",
                 )
@@ -496,8 +496,8 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"format_test_video_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Video {i}",
-                    agent_url="https://test.com",
-                    format="video_pre_roll",
+                    agent_url="https://creative.adcontextprotocol.org",
+                    format="video_640x480",
                     status="approved",
                     data={"duration": 15.0},
                 )
@@ -516,9 +516,9 @@ class TestCreativeLifecycleMCP:
             assert all(c.format == "display_300x250" for c in response.creatives)
 
             # Test video format filter
-            response = core_list_creatives_tool(format="video_pre_roll", context=mock_context)
+            response = core_list_creatives_tool(format="video_640x480", context=mock_context)
             assert len(response.creatives) == 3
-            assert all(c.format == "video_pre_roll" for c in response.creatives)
+            assert all(c.format == "video_640x480" for c in response.creatives)
 
     def test_list_creatives_with_date_filters(self, mock_context):
         """Test list_creatives filters by creation date range."""
@@ -533,7 +533,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"date_test_old_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Old Creative {i}",
-                    agent_url="https://test.com",
+                    agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
                     status="approved",
                     created_at=now - timedelta(days=10 + i),  # 10+ days ago
@@ -545,7 +545,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"date_test_recent_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Recent Creative {i}",
-                    agent_url="https://test.com",
+                    agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
                     status="approved",
                     created_at=now - timedelta(days=2 + i),  # 2-3 days ago
@@ -580,7 +580,7 @@ class TestCreativeLifecycleMCP:
                     creative_id="search_test_banner_1",
                     principal_id=self.test_principal_id,
                     name="Holiday Banner Ad",
-                    agent_url="https://test.com",
+                    agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
                     status="approved",
                 ),
@@ -589,7 +589,7 @@ class TestCreativeLifecycleMCP:
                     creative_id="search_test_video_1",
                     principal_id=self.test_principal_id,
                     name="Holiday Video Ad",
-                    agent_url="https://test.com",
+                    agent_url="https://creative.adcontextprotocol.org",
                     format="video_pre_roll",
                     status="approved",
                 ),
@@ -598,7 +598,7 @@ class TestCreativeLifecycleMCP:
                     creative_id="search_test_summer_1",
                     principal_id=self.test_principal_id,
                     name="Summer Sale Banner",
-                    agent_url="https://test.com",
+                    agent_url="https://creative.adcontextprotocol.org",
                     format="display_728x90",
                     status="approved",
                 ),
@@ -631,7 +631,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"page_test_{i:02d}",
                     principal_id=self.test_principal_id,
                     name=f"Creative {i:02d}",
-                    agent_url="https://test.com",
+                    agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
                     status="approved",
                 )
@@ -682,7 +682,7 @@ class TestCreativeLifecycleMCP:
                 creative_id="assignment_test_1",
                 principal_id=self.test_principal_id,
                 name="Assigned Creative 1",
-                agent_url="https://test.com",
+                agent_url="https://creative.adcontextprotocol.org",
                 format="display_300x250",
                 status="approved",
             )
@@ -691,7 +691,7 @@ class TestCreativeLifecycleMCP:
                 creative_id="assignment_test_2",
                 principal_id=self.test_principal_id,
                 name="Unassigned Creative",
-                agent_url="https://test.com",
+                agent_url="https://creative.adcontextprotocol.org",
                 format="display_300x250",
                 status="approved",
             )

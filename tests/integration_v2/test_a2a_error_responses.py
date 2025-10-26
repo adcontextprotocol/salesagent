@@ -296,7 +296,16 @@ class TestA2AErrorPropagation:
             assert artifact_data["media_buy_id"] is not None, "media_buy_id must not be None for success"
 
     async def test_create_media_buy_response_includes_all_adcp_fields(self, handler, test_tenant, test_principal):
-        """Test that A2A response includes all AdCP response fields (not just cherry-picked ones)."""
+        """Test that A2A response includes all AdCP domain fields (not just cherry-picked ones).
+
+        Per AdCP v2.4 spec and PR #113:
+        - Domain responses contain ONLY domain fields (buyer_ref, media_buy_id, packages, errors)
+        - Protocol fields (status, message, task_id, context_id) are added by ProtocolEnvelope wrapper
+        - adcp_version is NOT included in individual responses (indicated by schema URL path)
+
+        This test verifies that all domain fields from CreateMediaBuyResponse schema are preserved
+        when wrapped by the A2A handler.
+        """
         # Mock authentication
         handler._get_auth_token = MagicMock(return_value=test_principal["access_token"])
 
@@ -338,21 +347,25 @@ class TestA2AErrorPropagation:
                 else {}
             )
 
-            # CRITICAL ASSERTIONS: All AdCP fields preserved
-            # Required AdCP fields from CreateMediaBuyResponse schema
-            assert "adcp_version" in artifact_data, "Must include adcp_version (AdCP spec required field)"
-            assert "status" in artifact_data, "Must include status (AdCP spec required field)"
-            assert "buyer_ref" in artifact_data, "Must include buyer_ref (AdCP spec required field)"
+            # CRITICAL ASSERTIONS: All AdCP domain fields from CreateMediaBuyResponse schema
+            # Required AdCP domain field
+            assert "buyer_ref" in artifact_data, "Must include buyer_ref (AdCP spec required domain field)"
 
-            # Optional but important AdCP fields
-            assert "packages" in artifact_data, "Must include packages (AdCP spec field)"
-            assert (
-                "creative_deadline" in artifact_data or artifact_data.get("creative_deadline") is None
-            ), "Must include creative_deadline (AdCP spec field)"
+            # Optional AdCP domain fields
+            assert "media_buy_id" in artifact_data, "Must include media_buy_id (AdCP spec domain field)"
+            assert "packages" in artifact_data, "Must include packages (AdCP spec domain field)"
+            assert "creative_deadline" in artifact_data, "Must include creative_deadline (AdCP spec domain field)"
 
-            # A2A-specific augmentation fields
+            # errors field should be present (None or empty for success, populated for errors)
+            assert "errors" in artifact_data, "Must include errors field (AdCP spec domain field)"
+
+            # A2A-specific augmentation fields (added by wrapper layer)
             assert "success" in artifact_data, "A2A wrapper must add success field"
             assert "message" in artifact_data, "A2A wrapper must add message field"
+
+            # Verify success case
+            assert artifact_data["success"] is True, "Success should be True for successful operation"
+            assert artifact_data["media_buy_id"] is not None, "media_buy_id must not be None for success"
 
 
 @pytest.mark.integration
