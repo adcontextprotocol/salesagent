@@ -223,6 +223,6 @@ def get_tenant_by_virtual_host(virtual_host: str) -> dict[str, Any] | None:
         raise
 
 
-def get_secret(key: str, default: str = None) -> str:
+def get_secret(key: str, default: str | None = None) -> str | None:
     """Get a secret from environment or config."""
     return os.environ.get(key, default)
