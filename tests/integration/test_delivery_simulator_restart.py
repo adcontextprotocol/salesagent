@@ -27,7 +27,7 @@ class TestDeliverySimulatorRestart:
                 tenant_id="test_tenant_restart",
                 name="Test Tenant for Restart",
                 subdomain="test-restart",
-                adapter_type="mock",  # Required for delivery simulator
+                ad_server="mock",  # Required for delivery simulator
             )
             session.add(tenant)
             session.commit()

@@ -100,7 +100,7 @@ class DeliverySimulator:
                         continue
 
                     # Only restart for mock adapter tenants (simulations only run with mock adapter)
-                    if tenant.adapter_type != "mock":
+                    if tenant.ad_server != "mock":
                         continue
 
                     # Get simulation config from product
