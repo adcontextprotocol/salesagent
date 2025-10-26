@@ -1428,10 +1428,15 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 response_data = response.model_dump()
 
-            # Add A2A protocol fields (message for human readability)
-            # Use __str__() method which all response types implement
+            # Add A2A protocol fields
+            # Check for errors in response
+            has_errors = response_data.get("errors") and len(response_data.get("errors", [])) > 0
+
+            response_data["success"] = not has_errors
             response_data["message"] = (
-                str(response) if not isinstance(response, dict) else "Creatives synced successfully"
+                "Creatives synced with errors"
+                if has_errors
+                else str(response) if not isinstance(response, dict) else "Creatives synced successfully"
             )
 
             return response_data

@@ -53,8 +53,11 @@ class TestDeliverySimulatorRestart:
     @pytest.fixture
     def test_webhook_config(self, test_tenant, test_principal):
         """Create test push notification config."""
+        import uuid
+
         with get_db_session() as session:
             config = PushNotificationConfig(
+                id=f"config_{uuid.uuid4().hex[:16]}",  # Required primary key
                 tenant_id=test_tenant,
                 principal_id=test_principal,
                 session_id=None,  # Principal-level config

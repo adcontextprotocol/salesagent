@@ -61,6 +61,7 @@ class TestGenerativeCreatives:
                 tenant_id=tenant.tenant_id,
                 principal_id=principal.principal_id,
                 buyer_ref="buyer-gen-001",
+                order_name="Test Order",  # Required field
                 status="pending",
                 start_date=datetime.now(UTC),
                 end_date=datetime.now(UTC),
