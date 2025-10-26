@@ -87,8 +87,9 @@ def test_database_queries():
             cursor.execute(
                 """
                 SELECT COUNT(*) as pending_workflow_steps
-                FROM workflow_steps
-                WHERE tenant_id = %s AND status = 'requires_approval'
+                FROM workflow_steps ws
+                JOIN contexts c ON ws.context_id = c.context_id
+                WHERE c.tenant_id = %s AND ws.status = 'requires_approval'
             """,
                 ("default",),
             )
