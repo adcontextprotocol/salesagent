@@ -36,8 +36,8 @@ def test_db(integration_db):
     conn.execute(
         text(
             """
-            INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, created_at, updated_at)
-            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, enable_axe_signals, created_at, updated_at)
+            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, :enable_axe_signals, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT (tenant_id) DO NOTHING
         """
         ),
@@ -48,6 +48,7 @@ def test_db(integration_db):
             "is_active": True,
             "ad_server": "mock",
             "billing_plan": "standard",
+            "enable_axe_signals": False,
         },
     )
 
@@ -438,8 +439,8 @@ class TestDashboardErrorCases:
         test_db.execute(
             text(
                 """
-                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, created_at, updated_at)
-                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, enable_axe_signals, created_at, updated_at)
+                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, :enable_axe_signals, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (tenant_id) DO NOTHING
             """
             ),
@@ -450,6 +451,7 @@ class TestDashboardErrorCases:
                 "is_active": True,
                 "ad_server": "mock",
                 "billing_plan": "standard",
+                "enable_axe_signals": False,
             },
         )
         test_db.commit()

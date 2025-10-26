@@ -121,8 +121,6 @@ class TestA2AErrorPropagation:
                 principal_id="a2a_error_principal",
                 name="A2A Error Test Principal",
                 access_token="a2a_error_token_123",
-                advertiser_name="A2A Error Advertiser",
-                is_active=True,
                 platform_mappings={"mock": {"advertiser_id": "mock_adv_123"}},
             )
             session.add(principal)
