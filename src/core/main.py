@@ -796,8 +796,8 @@ if unified_mode:
             formatted_tasks = []
             for task in tasks:
                 # Get associated objects
-                stmt = select(ObjectWorkflowMapping).filter_by(step_id=task.step_id)
-                mappings = session.scalars(stmt).all()
+                mapping_stmt = select(ObjectWorkflowMapping).filter_by(step_id=task.step_id)
+                mappings = session.scalars(mapping_stmt).all()
 
                 formatted_task = {
                     "task_id": task.step_id,
@@ -837,7 +837,7 @@ if unified_mode:
                 "total": total,
                 "offset": offset,
                 "limit": limit,
-                "has_more": offset + limit < total,
+                "has_more": offset + limit < total if total is not None else False,
             }
 
     @mcp.tool
@@ -869,8 +869,8 @@ if unified_mode:
                 raise ValueError(f"Task {task_id} not found")
 
             # Get associated objects
-            stmt = select(ObjectWorkflowMapping).filter_by(step_id=task_id)
-            mappings = session.scalars(stmt).all()
+            mapping_stmt2 = select(ObjectWorkflowMapping).filter_by(step_id=task_id)
+            mappings = session.scalars(mapping_stmt2).all()
 
             # Build detailed response
             task_detail = {

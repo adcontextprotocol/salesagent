@@ -31,7 +31,7 @@ def oauth_retry(config: OAuthRetryConfig = None):
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args, **kwargs) -> T:
-            last_exception = None
+            last_exception: Exception | None = None
 
             for attempt in range(config.max_retries + 1):
                 try:
@@ -72,7 +72,10 @@ def oauth_retry(config: OAuthRetryConfig = None):
                     time.sleep(delay)
 
             # If we get here, all retries failed
-            raise last_exception
+            if last_exception is not None:
+                raise last_exception
+            # This should never happen, but satisfy mypy
+            raise RuntimeError("Unexpected: no result and no exception")
 
         return wrapper
 

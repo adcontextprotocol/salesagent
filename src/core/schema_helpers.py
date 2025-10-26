@@ -95,7 +95,6 @@ def create_get_products_request(
 
 def create_get_products_response(
     products: list[Product | dict[str, Any]],
-    status: str = "completed",
     errors: list | None = None,
 ) -> GetProductsResponse:
     """Create GetProductsResponse.
@@ -105,7 +104,6 @@ def create_get_products_response(
 
     Args:
         products: List of matching products
-        status: Response status (default: "completed")
         errors: List of errors (if any)
 
     Returns:
@@ -113,7 +111,6 @@ def create_get_products_response(
     """
     return GetProductsResponse(
         products=products,  # type: ignore[arg-type]
-        status=status,  # type: ignore[arg-type]
         errors=errors,
     )
 
