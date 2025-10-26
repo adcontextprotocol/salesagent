@@ -36,7 +36,6 @@ class TestListAuthorizedPropertiesContext:
                 tenant_id="test_tenant_ctx",
                 name="Test Tenant",
                 subdomain="test-ctx",
-                access_token="test_token_ctx",
             )
             session.add(tenant)
             session.flush()
@@ -84,7 +83,6 @@ class TestListAuthorizedPropertiesContext:
                 tenant_id="test_tenant_mcp",
                 name="Test Tenant MCP",
                 subdomain="test-mcp",
-                access_token="test_token_mcp",
             )
             session.add(tenant)
             session.flush()
@@ -130,7 +128,6 @@ class TestListAuthorizedPropertiesContext:
                 tenant_id="test_tenant_none",
                 name="Test Tenant None",
                 subdomain="test-none",
-                access_token="test_token_none",
             )
             session.add(tenant)
             session.flush()
@@ -200,7 +197,6 @@ class TestListAuthorizedPropertiesContext:
                 tenant_id="test_tenant_headers",
                 name="Test Tenant Headers",
                 subdomain="test-headers",
-                access_token="test_token_headers",
             )
             session.add(tenant)
             session.flush()
