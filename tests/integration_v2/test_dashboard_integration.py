@@ -1,4 +1,8 @@
-"""Integration tests for dashboard with real database."""
+"""Integration tests for dashboard with real database.
+
+NOTE: This file uses PostgreSQL-only SQL syntax (INTERVAL, COALESCE, etc.).
+No SQLite support - aligns with codebase PostgreSQL-only architecture.
+"""
 
 import json
 from datetime import UTC, datetime, timedelta
