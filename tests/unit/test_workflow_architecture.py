@@ -5,12 +5,14 @@ import sys
 import uuid
 from datetime import UTC, datetime
 
+import pytest
 from rich.console import Console
 from rich.table import Table
 
 console = Console()
 
 
+@pytest.mark.requires_db
 def test_workflow_architecture():
     """Test the new workflow architecture."""
     console.print("\n[bold cyan]Testing New Workflow Architecture[/bold cyan]")
