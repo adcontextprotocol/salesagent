@@ -121,7 +121,7 @@ class ContextManager(DatabaseManager):
             stmt = select(Context).filter_by(context_id=context_id)
             context = self.session.scalars(stmt).first()
             if context:
-                context.last_activity_at = datetime.now(UTC)
+                context.last_activity_at = datetime.now(UTC)  # type: ignore[assignment]
                 self.session.commit()
         finally:
             # DatabaseManager handles session cleanup differently
@@ -185,7 +185,7 @@ class ContextManager(DatabaseManager):
         )
 
         if status == "completed":
-            step.completed_at = datetime.now(UTC)
+            step.completed_at = datetime.now(UTC)  # type: ignore[assignment]
 
         session = self.session
         try:
@@ -246,7 +246,7 @@ class ContextManager(DatabaseManager):
                 if status:
                     step.status = status
                     if status in ["completed", "failed"] and not step.completed_at:
-                        step.completed_at = datetime.now(UTC)
+                        step.completed_at = datetime.now(UTC)  # type: ignore[assignment]
 
                 if response_data is not None:
                     step.response_data = response_data
@@ -355,7 +355,7 @@ class ContextManager(DatabaseManager):
             # Detach all from session
             for step in steps:
                 session.expunge(step)
-            return steps
+            return list(steps)
         finally:
             session.close()
 
@@ -381,9 +381,9 @@ class ContextManager(DatabaseManager):
 
             lifecycle = []
             for mapping in mappings:
-                stmt = select(WorkflowStep).filter_by(step_id=mapping.step_id)
+                step_stmt = select(WorkflowStep).filter_by(step_id=mapping.step_id)
 
-                step = session.scalars(stmt).first()
+                step = session.scalars(step_stmt).first()
                 if step:
                     lifecycle.append(
                         {

@@ -9,7 +9,7 @@ client-side validation.
 from typing import Any
 from urllib.parse import urljoin
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class SchemaMetadata(BaseModel):
@@ -25,14 +25,15 @@ class SchemaMetadata(BaseModel):
 class ResponseWithSchema(BaseModel):
     """Base response model that can include schema validation metadata."""
 
+    model_config = ConfigDict(
+        # Don't include schema metadata in model dump by default
+        # It will be added separately to avoid polluting the core response
+        exclude={"_schema"}
+    )
+
     # Core response data (this will be populated by subclasses)
     # Schema metadata (optional)
     _schema: SchemaMetadata = None
-
-    class Config:
-        # Don't include schema metadata in model dump by default
-        # It will be added separately to avoid polluting the core response
-        exclude = {"_schema"}
 
 
 def get_model_schema(model_class: type[BaseModel]) -> dict[str, Any]:

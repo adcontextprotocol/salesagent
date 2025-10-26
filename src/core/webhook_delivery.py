@@ -328,7 +328,7 @@ def _update_delivery_record(
             if record:
                 record.status = status
                 record.attempts = attempts
-                record.last_attempt_at = datetime.now(UTC)
+                record.last_attempt_at = datetime.now(UTC)  # type: ignore[assignment]
 
                 if response_code is not None:
                     record.response_code = response_code
@@ -337,7 +337,7 @@ def _update_delivery_record(
                     record.last_error = last_error
 
                 if delivered_at:
-                    record.delivered_at = delivered_at
+                    record.delivered_at = delivered_at  # type: ignore[assignment]
 
                 session.commit()
                 logger.debug(f"[Webhook Delivery] Updated delivery record: {delivery_id} status={status}")

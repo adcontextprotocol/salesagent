@@ -552,16 +552,10 @@ class WebhookDeliveryService:
         return (CircuitState.CLOSED, 0)
 
     def _shutdown(self):
-        """Graceful shutdown handler with error handling for closed logger."""
+        """Graceful shutdown handler."""
         try:
             logger.info("🛑 WebhookDeliveryService shutting down")
-        except ValueError:
-            # Logger file handle may already be closed during shutdown
-            # This is expected and safe to ignore
-            pass
-
-        with self._lock:
-            try:
+            with self._lock:
                 active_buys = list(self._sequence_numbers.keys())
                 if active_buys:
                     logger.info(f"📊 Active media buys at shutdown: {active_buys}")
@@ -575,10 +569,9 @@ class WebhookDeliveryService:
                 non_empty_queues = [(key, queue.size()) for key, queue in self._queues.items() if queue.size() > 0]
                 if non_empty_queues:
                     logger.info(f"📦 Non-empty queues at shutdown: {non_empty_queues}")
-            except ValueError:
-                # Logger file handle may already be closed during shutdown
-                # This is expected and safe to ignore
-                pass
+        except (ValueError, OSError):
+            # Logging stream may be closed during interpreter shutdown
+            pass
 
 
 # Global singleton instance

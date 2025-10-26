@@ -237,7 +237,10 @@ class StrategyManager:
         elif action == "reset":
             return sim_context.reset()
         elif action == "set_scenario":
-            return sim_context.set_scenario(parameters.get("scenario"))
+            scenario = parameters.get("scenario")
+            if not isinstance(scenario, str):
+                raise SimulationError("set_scenario requires 'scenario' parameter to be a string")
+            return sim_context.set_scenario(scenario)
         else:
             raise SimulationError(f"Unknown simulation action: {action}")
 

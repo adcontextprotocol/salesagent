@@ -346,17 +346,21 @@ class DeliverySimulator:
 
     def _shutdown(self):
         """Graceful shutdown handler."""
-        logger.info("🛑 DeliverySimulator shutting down")
-        with self._lock:
-            # Signal all active simulations to stop
-            for media_buy_id, stop_signal in self._stop_signals.items():
-                stop_signal.set()
-                logger.info(f"   Stopping simulation for {media_buy_id}")
+        try:
+            logger.info("🛑 DeliverySimulator shutting down")
+            with self._lock:
+                # Signal all active simulations to stop
+                for media_buy_id, stop_signal in self._stop_signals.items():
+                    stop_signal.set()
+                    logger.info(f"   Stopping simulation for {media_buy_id}")
 
-            # Wait briefly for threads to finish
-            import time
+                # Wait briefly for threads to finish
+                import time
 
-            time.sleep(0.5)
+                time.sleep(0.5)
+        except (ValueError, OSError):
+            # Logging stream may be closed during interpreter shutdown
+            pass
 
 
 # Global singleton instance
