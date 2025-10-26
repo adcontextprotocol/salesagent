@@ -53,10 +53,15 @@ class TestListAuthorizedPropertiesContext:
             session.add(prop)
             session.commit()
 
-        # Create ToolContext with testing_context
+        # Create ToolContext with all required fields and testing_context
+        from datetime import datetime
+
         context = ToolContext(
+            context_id="test_ctx_001",
             tenant_id="test_tenant_ctx",
             principal_id="test_principal",
+            tool_name="list_authorized_properties",
+            request_timestamp=datetime.now(),
             testing_context={"dry_run": True, "test_session_id": "test_123"},
         )
 
