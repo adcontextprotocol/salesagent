@@ -835,7 +835,7 @@ class TestCreativeLifecycleMCP:
             assert response.query_summary.returned == 0
             assert response.pagination.has_more is False
 
-    def test_create_media_buy_with_creative_ids(self, mock_context, sample_creatives):
+    async def test_create_media_buy_with_creative_ids(self, mock_context, sample_creatives):
         """Test create_media_buy accepts creative_ids in packages."""
         # First, sync creatives to have IDs to reference
         core_sync_creatives_tool, _ = self._import_mcp_tools()
@@ -856,9 +856,10 @@ class TestCreativeLifecycleMCP:
         with (
             patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
-            patch("src.core.main.get_principal_object") as mock_principal,
-            patch("src.core.main.get_adapter") as mock_adapter,
-            patch("src.core.main.get_product_catalog") as mock_catalog,
+            patch("src.core.tools.media_buy_create.get_principal_object") as mock_principal,
+            patch("src.core.tools.media_buy_create.get_adapter") as mock_adapter,
+            patch("src.core.tools.media_buy_create.get_product_catalog") as mock_catalog,
+            patch("src.core.tools.media_buy_create.validate_setup_complete"),
         ):
             # Mock principal
             from src.core.schemas import Principal as SchemaPrincipal
@@ -870,13 +871,20 @@ class TestCreativeLifecycleMCP:
             )
 
             # Mock adapter
-            from src.core.schemas import CreateMediaBuyResponse, TaskStatus
+            from src.core.schema_adapters import CreateMediaBuyResponse
 
             mock_adapter_instance = mock_adapter.return_value
             mock_adapter_instance.create_media_buy.return_value = CreateMediaBuyResponse(
+                buyer_ref="test_buyer",
                 media_buy_id="test_buy_123",
-                status=TaskStatus.WORKING,
-                message="Media buy created",
+                packages=[
+                    {
+                        "buyer_ref": "pkg_1",
+                        "package_id": "pkg_123",
+                        "product_id": "prod_1",
+                        "budget": {"total": 5000.0, "currency": "USD"},
+                    }
+                ],
             )
             mock_adapter_instance.manual_approval_required = False
 
@@ -910,19 +918,21 @@ class TestCreativeLifecycleMCP:
             packages = [
                 Package(
                     buyer_ref="pkg_1",
-                    products=["prod_1"],
+                    product_id="prod_1",
+                    budget=Budget(total=5000.0, currency="USD"),
                     creative_ids=creative_ids,  # NEW: Provide creative_ids
                 )
             ]
 
             # Call create_media_buy with packages containing creative_ids
-            response = create_media_buy_raw(
-                po_number="PO-TEST-123",
+            response = await create_media_buy_raw(
+                buyer_ref="test_buyer",
                 brand_manifest={"name": "Test Campaign"},
                 packages=packages,
                 start_time=datetime.now(UTC) + timedelta(days=1),
                 end_time=datetime.now(UTC) + timedelta(days=30),
                 budget=Budget(total=5000.0, currency="USD"),
+                po_number="PO-TEST-123",
                 context=mock_context,
             )
 
