@@ -95,7 +95,7 @@ def test_filtering_by_type(integration_db, sample_tenant):
     # Mock tenant resolution and format registry
     with (
         patch("src.core.main.get_current_tenant", return_value=sample_tenant),
-        patch("src.core.tools.creative_formats.get_creative_agent_registry") as mock_registry,
+        patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry,
     ):
         # Configure mock registry to return mock formats
 
@@ -160,7 +160,7 @@ def test_filtering_by_standard_only(integration_db, sample_tenant):
     # Mock tenant resolution and format registry
     with (
         patch("src.core.main.get_current_tenant", return_value=sample_tenant),
-        patch("src.core.tools.creative_formats.get_creative_agent_registry") as mock_registry,
+        patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry,
     ):
         # Configure mock registry to return mock formats
 
@@ -232,7 +232,7 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
     # Mock tenant resolution and format registry
     with (
         patch("src.core.main.get_current_tenant", return_value=sample_tenant),
-        patch("src.core.tools.creative_formats.get_creative_agent_registry") as mock_registry,
+        patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry,
     ):
         # Configure mock registry to return mock formats
 
@@ -311,7 +311,7 @@ def test_filtering_combined(integration_db, sample_tenant):
     # Mock tenant resolution and format registry
     with (
         patch("src.core.main.get_current_tenant", return_value=sample_tenant),
-        patch("src.core.tools.creative_formats.get_creative_agent_registry") as mock_registry,
+        patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry,
     ):
         # Configure mock registry to return mock formats
 
