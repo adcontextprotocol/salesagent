@@ -237,15 +237,12 @@ def test_workflow_architecture():
             console.print("6. Comments array enables collaboration on steps")
             console.print("7. No more tasks table - everything in workflow_steps")
 
-            # If we reach here, all operations succeeded
-            return True
-
         except Exception as e:
             console.print(f"\n[bold red]❌ Test failed: {e}[/bold red]")
             import traceback
 
             traceback.print_exc()
-            return False
+            raise
 
 
 if __name__ == "__main__":

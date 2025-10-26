@@ -109,7 +109,13 @@ class ActivityFeed:
         if response_time_ms:
             activity["details"]["secondary"] = f"{response_time_ms}ms"
 
-        asyncio.create_task(self.broadcast_activity(tenant_id, activity))
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.create_task(self.broadcast_activity(tenant_id, activity))
+        except RuntimeError:
+            # No event loop running (e.g., in tests or synchronous context)
+            # Silently skip broadcasting - this is expected behavior
+            pass
 
     def log_media_buy(
         self,
@@ -133,7 +139,12 @@ class ActivityFeed:
         if duration_days:
             activity["details"]["secondary"] = f"{duration_days} days"
 
-        asyncio.create_task(self.broadcast_activity(tenant_id, activity))
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.create_task(self.broadcast_activity(tenant_id, activity))
+        except RuntimeError:
+            # No event loop running (e.g., in tests or synchronous context)
+            pass
 
     def log_creative(
         self,
@@ -156,7 +167,12 @@ class ActivityFeed:
         if status:
             activity["details"]["secondary"] = status
 
-        asyncio.create_task(self.broadcast_activity(tenant_id, activity))
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.create_task(self.broadcast_activity(tenant_id, activity))
+        except RuntimeError:
+            # No event loop running (e.g., in tests or synchronous context)
+            pass
 
     def log_error(self, tenant_id: str, principal_name: str, error_message: str, error_code: str | None = None):
         """Log an error activity."""
@@ -170,7 +186,12 @@ class ActivityFeed:
         if error_code:
             activity["details"]["primary"] = f"Error {error_code}"
 
-        asyncio.create_task(self.broadcast_activity(tenant_id, activity))
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.create_task(self.broadcast_activity(tenant_id, activity))
+        except RuntimeError:
+            # No event loop running (e.g., in tests or synchronous context)
+            pass
 
     def _get_relative_time(self, timestamp: str) -> str:
         """Convert timestamp to relative time string."""

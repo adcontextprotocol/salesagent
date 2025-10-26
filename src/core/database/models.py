@@ -103,6 +103,11 @@ class Tenant(Base, JSONValidatorMixin):
         back_populates="tenant",
         cascade="all, delete-orphan",
     )
+    push_notification_configs = relationship(
+        "PushNotificationConfig",
+        cascade="all, delete-orphan",
+        foreign_keys="[PushNotificationConfig.tenant_id]",
+    )
 
     __table_args__ = (
         Index("idx_subdomain", "subdomain"),
@@ -288,6 +293,12 @@ class Principal(Base, JSONValidatorMixin):
     tenant = relationship("Tenant", back_populates="principals")
     media_buys = relationship("MediaBuy", back_populates="principal", overlaps="media_buys")
     strategies = relationship("Strategy", back_populates="principal", overlaps="strategies")
+    push_notification_configs = relationship(
+        "PushNotificationConfig",
+        back_populates="principal",
+        overlaps="push_notification_configs,tenant",
+        foreign_keys="[PushNotificationConfig.tenant_id, PushNotificationConfig.principal_id]",
+    )
 
     __table_args__ = (
         Index("idx_principals_tenant", "tenant_id"),
@@ -1254,9 +1265,14 @@ class PushNotificationConfig(Base, JSONValidatorMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Relationships
-    tenant = relationship("Tenant", backref="push_notification_configs")
+    tenant = relationship(
+        "Tenant", foreign_keys="[PushNotificationConfig.tenant_id]", overlaps="push_notification_configs"
+    )
     principal = relationship(
-        "Principal", backref="push_notification_configs", overlaps="push_notification_configs,tenant"
+        "Principal",
+        back_populates="push_notification_configs",
+        foreign_keys="[PushNotificationConfig.tenant_id, PushNotificationConfig.principal_id]",
+        overlaps="push_notification_configs,tenant",
     )
 
     __table_args__ = (

@@ -1,7 +1,7 @@
 """Integration tests for generative creative support.
 
 Tests the flow where sync_creatives detects generative formats (those with output_format_ids)
-and calls build_creative instead of preview_creative, using the Gemini API key.
+and calls build_creative instead of preview_creative, using mocked Gemini API.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,8 +10,7 @@ import pytest
 
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires_db]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 class MockContext:
