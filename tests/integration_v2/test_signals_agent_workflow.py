@@ -13,9 +13,8 @@ from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
-from src.core.main import get_products
-from src.core.schema_adapters import GetProductsRequest
 from src.core.schemas import Signal
+from src.core.tools.products import get_products
 from tests.fixtures.builders import create_test_tenant_with_principal
 from tests.integration_v2.conftest import create_test_product_with_pricing
 
@@ -59,24 +58,46 @@ class TestSignalsAgentWorkflow:
     @pytest.fixture
     def mock_signals_response(self):
         """Mock signals response from upstream agent."""
+        from src.core.schemas import SignalDeployment, SignalPricing
+
         return [
             Signal(
-                signal_id="sports_enthusiasts",
+                signal_agent_segment_id="sports_enthusiasts",
                 name="Sports Enthusiasts",
                 description="Users interested in sports content",
-                type="audience",
-                category="sports",
-                reach=8.5,
-                cpm_uplift=2.5,
+                signal_type="marketplace",
+                data_provider="Test Provider",
+                coverage_percentage=85.0,
+                deployments=[
+                    SignalDeployment(
+                        platform="test_platform",
+                        account=None,
+                        is_live=True,
+                        scope="platform-wide",
+                        decisioning_platform_segment_id="seg_123",
+                        estimated_activation_duration_minutes=None,
+                    )
+                ],
+                pricing=SignalPricing(cpm=2.5, currency="USD"),
             ),
             Signal(
-                signal_id="automotive_intenders",
+                signal_agent_segment_id="automotive_intenders",
                 name="Automotive Intenders",
                 description="Users researching car purchases",
-                type="audience",
-                category="automotive",
-                reach=4.2,
-                cpm_uplift=3.0,
+                signal_type="marketplace",
+                data_provider="Test Provider",
+                coverage_percentage=42.0,
+                deployments=[
+                    SignalDeployment(
+                        platform="test_platform",
+                        account=None,
+                        is_live=True,
+                        scope="platform-wide",
+                        decisioning_platform_segment_id="seg_456",
+                        estimated_activation_duration_minutes=None,
+                    )
+                ],
+                pricing=SignalPricing(cpm=3.0, currency="USD"),
             ),
         ]
 
@@ -100,21 +121,24 @@ class TestSignalsAgentWorkflow:
         # Add test products to real database
         await self._add_test_products(tenant_id)
 
-        request = GetProductsRequest(
-            brief="sports car advertising campaign", brand_manifest={"name": "BMW M3 2025 sports sedan"}
-        )
         context = test_context_factory()
 
         # Use single context patch with real tenant data
         with self._mock_auth_context(tenant_data):
-            response = await get_products(request, context)
+            # Call get_products with correct parameters (not GetProductsRequest object)
+            response = await get_products(
+                brand_manifest={"name": "BMW M3 2025 sports sedan"},
+                brief="sports car advertising campaign",
+                filters=None,
+                context=context,
+            )
 
             # Should return database products only
             assert len(response.products) > 0
 
-            # Verify no signals products
+            # Verify no signals products (signals products have is_custom=True)
             for product in response.products:
-                assert product.metadata.get("created_by") != "signals_discovery"
+                assert not product.is_custom, f"Product {product.product_id} should not be a custom signals product"
 
     async def test_get_products_with_signals_success(
         self, tenant_with_signals_config, test_context_factory, mock_signals_response
@@ -125,10 +149,6 @@ class TestSignalsAgentWorkflow:
 
         await self._add_test_products(tenant_id)
 
-        request = GetProductsRequest(
-            brief="luxury sports car advertising for wealthy professionals",
-            brand_manifest={"name": "Porsche 911 Turbo S 2025"},
-        )
         context = test_context_factory()
 
         # Mock only external signals API call
@@ -141,14 +161,20 @@ class TestSignalsAgentWorkflow:
             )
 
             with self._mock_auth_context(tenant_data):
-                response = await get_products(request, context)
+                # Call get_products with correct parameters
+                response = await get_products(
+                    brand_manifest={"name": "Porsche 911 Turbo S 2025"},
+                    brief="luxury sports car advertising for wealthy professionals",
+                    filters=None,
+                    context=context,
+                )
 
                 # Should return both signals and database products
                 assert len(response.products) > 0
 
-                # Verify signals products are included
-                signals_products = [p for p in response.products if p.metadata.get("created_by") == "signals_discovery"]
-                assert len(signals_products) > 0
+                # Verify signals products are included (signals products have is_custom=True)
+                signals_products = [p for p in response.products if p.is_custom]
+                assert len(signals_products) > 0, "Expected at least one custom signals product"
 
                 # Verify signals call was made
                 mock_client.call_tool.assert_called_once()
@@ -162,9 +188,6 @@ class TestSignalsAgentWorkflow:
 
         await self._add_test_products(tenant_id)
 
-        request = GetProductsRequest(
-            brief="test brief for failure scenario", brand_manifest={"name": "Test Product 2025"}
-        )
         context = test_context_factory()
 
         # Mock upstream failure
@@ -175,14 +198,20 @@ class TestSignalsAgentWorkflow:
             mock_client.call_tool = AsyncMock(side_effect=Exception("Connection timeout"))
 
             with self._mock_auth_context(tenant_data):
-                response = await get_products(request, context)
+                # Call get_products with correct parameters
+                response = await get_products(
+                    brand_manifest={"name": "Test Product 2025"},
+                    brief="test brief for failure scenario",
+                    filters=None,
+                    context=context,
+                )
 
                 # Should still return database products due to fallback
                 assert len(response.products) > 0
 
-                # All products should be from database (no signals products)
-                signals_products = [p for p in response.products if p.metadata.get("created_by") == "signals_discovery"]
-                assert len(signals_products) == 0
+                # All products should be from database (no signals products with is_custom=True)
+                signals_products = [p for p in response.products if p.is_custom]
+                assert len(signals_products) == 0, "Should not have custom signals products after failure"
 
     async def test_get_products_no_brief_optimization(self, tenant_with_signals_config, test_context_factory):
         """Test that no signals call is made when brief is empty (optimization)."""
@@ -191,7 +220,6 @@ class TestSignalsAgentWorkflow:
 
         await self._add_test_products(tenant_id)
 
-        request = GetProductsRequest(brief="", brand_manifest={"name": "Generic Product 2025"})
         context = test_context_factory()
 
         # Mock signals client to verify it's not called
@@ -202,7 +230,13 @@ class TestSignalsAgentWorkflow:
             mock_client.call_tool = AsyncMock()
 
             with self._mock_auth_context(tenant_data):
-                response = await get_products(request, context)
+                # Call get_products with correct parameters (empty brief)
+                response = await get_products(
+                    brand_manifest={"name": "Generic Product 2025"},
+                    brief="",
+                    filters=None,
+                    context=context,
+                )
 
                 # Should return products but no signals call
                 assert len(response.products) > 0
@@ -211,14 +245,39 @@ class TestSignalsAgentWorkflow:
                 mock_client.call_tool.assert_not_called()
 
     def _mock_auth_context(self, tenant_data):
-        """Helper to create authentication context patches."""
-        return patch.multiple(
-            "src.core.main",
-            _get_principal_id_from_context=Mock(return_value=tenant_data["principal"].principal_id),
-            get_current_tenant=Mock(return_value={"tenant_id": tenant_data["tenant"]["tenant_id"]}),
-            get_principal_object=Mock(return_value=tenant_data["principal"]),
-            PolicyCheckService=Mock(return_value=self._create_mock_policy_service()),
+        """Helper to create authentication context patches.
+
+        Returns ExitStack with all patches applied.
+        """
+        from contextlib import ExitStack
+
+        stack = ExitStack()
+
+        # Patch auth functions in src.core.tools.products where they're imported at module level
+        # get_principal_from_context returns tuple (principal_id, tenant_dict)
+        stack.enter_context(
+            patch.multiple(
+                "src.core.tools.products",
+                get_principal_from_context=Mock(
+                    return_value=(
+                        tenant_data["principal"].principal_id,
+                        {"tenant_id": tenant_data["tenant"]["tenant_id"]},
+                    )
+                ),
+                get_principal_object=Mock(return_value=tenant_data["principal"]),
+                PolicyCheckService=Mock(return_value=self._create_mock_policy_service()),
+            )
         )
+
+        # Patch get_current_tenant in src.core.config_loader where it's defined (lazy import in products.py)
+        stack.enter_context(
+            patch(
+                "src.core.config_loader.get_current_tenant",
+                Mock(return_value={"tenant_id": tenant_data["tenant"]["tenant_id"]}),
+            )
+        )
+
+        return stack
 
     def _create_mock_policy_service(self):
         """Create a mock policy service that approves everything."""
