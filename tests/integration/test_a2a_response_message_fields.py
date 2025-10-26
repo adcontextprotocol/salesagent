@@ -52,7 +52,7 @@ class TestA2AMessageFieldValidation:
             # Only mock get_principal_from_token - let real tenant lookups happen
             # since sample_tenant fixture created the tenant in the database
             return patch(
-                "src.core.config_loader.get_principal_from_token",
+                "src.core.auth_utils.get_principal_from_token",
                 return_value=sample_principal["principal_id"],
             )
 

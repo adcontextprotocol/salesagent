@@ -227,6 +227,8 @@ class TestDatabaseHealthIntegration:
 
         # At minimum, should check for tenant table existence
         # (This is a core table that must exist for the system to function)
+        from src.core.database.database_session import get_db_session
+
         with get_db_session() as session:
             # This should not raise an exception if schema is correct
             tenant_table_exists = True
