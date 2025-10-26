@@ -377,10 +377,10 @@ class TestMCPEndpointsComprehensive:
             )
 
             status_content = safe_get_content(status_result)
-            # Response contains deliveries array per AdCP spec
-            assert "deliveries" in status_content
+            # Response contains media_buy_deliveries array per AdCP spec
+            assert "media_buy_deliveries" in status_content
             # Newly created media buy might not have delivery data yet
-            assert isinstance(status_content["deliveries"], list)
+            assert isinstance(status_content["media_buy_deliveries"], list)
             # But should have aggregated totals
             assert "aggregated_totals" in status_content
             assert "currency" in status_content
