@@ -71,17 +71,15 @@ def _list_authorized_properties_impl(
     tenant_id = tenant["tenant_id"]
 
     # Apply testing hooks
-    from src.core.testing_hooks import AdCPTestContext
+    from src.core.testing_hooks import AdCPTestContext, get_testing_context
     from src.core.tool_context import ToolContext
 
     if isinstance(context, ToolContext):
         # ToolContext has testing_context field directly
         testing_context = AdCPTestContext(**context.testing_context) if context.testing_context else AdCPTestContext()
-        headers = {}
     else:
-        # FastMCP Context has meta.headers
-        headers = context.meta.get("headers", {}) if context and hasattr(context, "meta") and context.meta else {}
-        testing_context = get_testing_context(headers)
+        # FastMCP Context - use get_testing_context
+        testing_context = get_testing_context(context) if context else AdCPTestContext()
 
     # Note: apply_testing_hooks signature is (data, testing_ctx, operation, campaign_info)
     # For list_authorized_properties, we don't modify data, so we can skip this call
