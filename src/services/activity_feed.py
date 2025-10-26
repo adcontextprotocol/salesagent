@@ -109,12 +109,12 @@ class ActivityFeed:
         if response_time_ms:
             activity["details"]["secondary"] = f"{response_time_ms}ms"
 
+        # Try to create task if event loop is running, otherwise skip
         try:
-            loop = asyncio.get_running_loop()
             asyncio.create_task(self.broadcast_activity(tenant_id, activity))
         except RuntimeError:
-            # No event loop running (e.g., in tests or synchronous context)
-            # Silently skip broadcasting - this is expected behavior
+            # No event loop running - skip broadcast (not in async context)
+            logger.debug(f"Skipping activity broadcast - no event loop available for {method}")
             pass
 
     def log_media_buy(
@@ -139,11 +139,12 @@ class ActivityFeed:
         if duration_days:
             activity["details"]["secondary"] = f"{duration_days} days"
 
+        # Try to create task if event loop is running, otherwise skip
         try:
-            loop = asyncio.get_running_loop()
             asyncio.create_task(self.broadcast_activity(tenant_id, activity))
         except RuntimeError:
-            # No event loop running (e.g., in tests or synchronous context)
+            # No event loop running - skip broadcast (not in async context)
+            logger.debug(f"Skipping activity broadcast - no event loop available for media buy {media_buy_id}")
             pass
 
     def log_creative(
@@ -167,11 +168,12 @@ class ActivityFeed:
         if status:
             activity["details"]["secondary"] = status
 
+        # Try to create task if event loop is running, otherwise skip
         try:
-            loop = asyncio.get_running_loop()
             asyncio.create_task(self.broadcast_activity(tenant_id, activity))
         except RuntimeError:
-            # No event loop running (e.g., in tests or synchronous context)
+            # No event loop running - skip broadcast (not in async context)
+            logger.debug(f"Skipping activity broadcast - no event loop available for creative {creative_id}")
             pass
 
     def log_error(self, tenant_id: str, principal_name: str, error_message: str, error_code: str | None = None):
@@ -186,11 +188,12 @@ class ActivityFeed:
         if error_code:
             activity["details"]["primary"] = f"Error {error_code}"
 
+        # Try to create task if event loop is running, otherwise skip
         try:
-            loop = asyncio.get_running_loop()
             asyncio.create_task(self.broadcast_activity(tenant_id, activity))
         except RuntimeError:
-            # No event loop running (e.g., in tests or synchronous context)
+            # No event loop running - skip broadcast (not in async context)
+            logger.debug(f"Skipping activity broadcast - no event loop available for error: {error_message}")
             pass
 
     def _get_relative_time(self, timestamp: str) -> str:
