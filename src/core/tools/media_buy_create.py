@@ -691,6 +691,20 @@ async def _create_media_buy_impl(
                             )
                             package_budget = Decimal(str(package_budget_amount))
 
+                            # Validate that package currency is supported (check currency limit exists)
+                            stmt_pkg_currency_check = select(CurrencyLimit).where(
+                                CurrencyLimit.tenant_id == tenant["tenant_id"],
+                                CurrencyLimit.currency_code == package_currency,
+                            )
+                            pkg_currency_limit_check = session.scalars(stmt_pkg_currency_check).first()
+
+                            if not pkg_currency_limit_check:
+                                error_msg = (
+                                    f"Currency {package_currency} is not supported by this publisher. "
+                                    f"Contact the publisher to add support for this currency."
+                                )
+                                raise ValueError(error_msg)
+
                             # Get the product for this package
                             package_product_ids = [package.product_id] if package.product_id else []
 

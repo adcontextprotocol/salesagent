@@ -198,8 +198,13 @@ class TestMinimumSpendValidation:
 
         yield
 
-        # Cleanup
+        # Cleanup (order matters - delete children before parents due to foreign keys)
+        from src.core.database.models import MediaPackage as MediaPackageModel
+
         with get_db_session() as session:
+            # Delete media packages first (references media_buys)
+            session.execute(delete(MediaPackageModel).where(MediaPackageModel.tenant_id == "test_minspend_tenant"))
+            # Now safe to delete media_buys
             session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == "test_minspend_tenant"))
             session.execute(delete(Product).where(Product.tenant_id == "test_minspend_tenant"))
             session.execute(delete(Principal).where(Principal.tenant_id == "test_minspend_tenant"))
