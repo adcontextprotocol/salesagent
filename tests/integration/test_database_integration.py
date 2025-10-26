@@ -121,21 +121,21 @@ def test_settings_queries(integration_db):
             print(f"   ❌ ERROR: {e}")
             errors.append(f"Principals query: {e}")
 
-        # Test 6: Human tasks query
-        print("\n6. Testing human tasks query...")
+        # Test 6: Workflow steps query (human_tasks table was deprecated)
+        print("\n6. Testing workflow steps query...")
         try:
             cursor.execute(
                 """
-                SELECT COUNT(*) FROM human_tasks
+                SELECT COUNT(*) FROM workflow_steps
                 WHERE tenant_id = %s AND status IN ('pending', 'in_progress')
             """,
                 (tenant_id,),
             )
             count = cursor.fetchone()[0]
-            print(f"   ✓ Open tasks: {count}")
+            print(f"   ✓ Open workflow steps: {count}")
         except Exception as e:
             print(f"   ❌ ERROR: {e}")
-            errors.append(f"Human tasks query: {e}")
+            errors.append(f"Workflow steps query: {e}")
 
         conn.close()
 

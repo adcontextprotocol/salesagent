@@ -70,8 +70,31 @@ def test_filtering_by_type(integration_db, sample_tenant):
         testing_context={},
     )
 
-    # Mock tenant resolution to return our test tenant
-    with patch("src.core.main.get_current_tenant", return_value=sample_tenant):
+    # Mock format data - create sample formats
+    mock_formats = [
+        Format(
+            format_id="video_16x9",
+            type="video",
+            name="Video 16:9",
+            is_standard=True,
+            asset_schema={"type": "object"},
+            agent_url="https://creative.adcontextprotocol.org",
+        ),
+        Format(
+            format_id="display_300x250",
+            type="display",
+            name="Display 300x250",
+            is_standard=True,
+            asset_schema={"type": "object"},
+            agent_url="https://creative.adcontextprotocol.org",
+        ),
+    ]
+
+    # Mock tenant resolution and format registry
+    with (
+        patch("src.core.main.get_current_tenant", return_value=sample_tenant),
+        patch("src.core.main.FORMAT_REGISTRY.get_all_formats", return_value=mock_formats),
+    ):
         # Test filtering by type
         req = ListCreativeFormatsRequest(type="video")
         response = list_creative_formats_raw(req, context)
@@ -103,8 +126,31 @@ def test_filtering_by_standard_only(integration_db, sample_tenant):
         testing_context={},
     )
 
-    # Mock tenant resolution to return our test tenant
-    with patch("src.core.main.get_current_tenant", return_value=sample_tenant):
+    # Mock format data
+    mock_formats = [
+        Format(
+            format_id="display_300x250",
+            type="display",
+            name="Display 300x250",
+            is_standard=True,
+            asset_schema={"type": "object"},
+            agent_url="https://creative.adcontextprotocol.org",
+        ),
+        Format(
+            format_id="custom_banner",
+            type="display",
+            name="Custom Banner",
+            is_standard=False,
+            asset_schema={"type": "object"},
+            agent_url="https://custom.example.com",
+        ),
+    ]
+
+    # Mock tenant resolution and format registry
+    with (
+        patch("src.core.main.get_current_tenant", return_value=sample_tenant),
+        patch("src.core.main.FORMAT_REGISTRY.get_all_formats", return_value=mock_formats),
+    ):
         # Test filtering by standard_only
         req = ListCreativeFormatsRequest(standard_only=True)
         response = list_creative_formats_raw(req, context)
@@ -137,8 +183,39 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
         testing_context={},
     )
 
-    # Mock tenant resolution to return our test tenant
-    with patch("src.core.main.get_current_tenant", return_value=sample_tenant):
+    # Mock format data
+    mock_formats = [
+        Format(
+            format_id="display_300x250",
+            type="display",
+            name="Display 300x250",
+            is_standard=True,
+            asset_schema={"type": "object"},
+            agent_url="https://creative.adcontextprotocol.org",
+        ),
+        Format(
+            format_id="display_728x90",
+            type="display",
+            name="Display 728x90",
+            is_standard=True,
+            asset_schema={"type": "object"},
+            agent_url="https://creative.adcontextprotocol.org",
+        ),
+        Format(
+            format_id="video_16x9",
+            type="video",
+            name="Video 16:9",
+            is_standard=True,
+            asset_schema={"type": "object"},
+            agent_url="https://creative.adcontextprotocol.org",
+        ),
+    ]
+
+    # Mock tenant resolution and format registry
+    with (
+        patch("src.core.main.get_current_tenant", return_value=sample_tenant),
+        patch("src.core.main.FORMAT_REGISTRY.get_all_formats", return_value=mock_formats),
+    ):
         # Test filtering by specific format IDs (using FormatId objects per AdCP v2.4)
         target_format_ids = [
             FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
@@ -176,8 +253,39 @@ def test_filtering_combined(integration_db, sample_tenant):
         testing_context={},
     )
 
-    # Mock tenant resolution to return our test tenant
-    with patch("src.core.main.get_current_tenant", return_value=sample_tenant):
+    # Mock format data
+    mock_formats = [
+        Format(
+            format_id="display_300x250",
+            type="display",
+            name="Display 300x250",
+            is_standard=True,
+            asset_schema={"type": "object"},
+            agent_url="https://creative.adcontextprotocol.org",
+        ),
+        Format(
+            format_id="display_custom",
+            type="display",
+            name="Display Custom",
+            is_standard=False,
+            asset_schema={"type": "object"},
+            agent_url="https://custom.example.com",
+        ),
+        Format(
+            format_id="video_16x9",
+            type="video",
+            name="Video 16:9",
+            is_standard=True,
+            asset_schema={"type": "object"},
+            agent_url="https://creative.adcontextprotocol.org",
+        ),
+    ]
+
+    # Mock tenant resolution and format registry
+    with (
+        patch("src.core.main.get_current_tenant", return_value=sample_tenant),
+        patch("src.core.main.FORMAT_REGISTRY.get_all_formats", return_value=mock_formats),
+    ):
         # Test combining type and standard_only filters
         req = ListCreativeFormatsRequest(type="display", standard_only=True)
         response = list_creative_formats_raw(req, context)

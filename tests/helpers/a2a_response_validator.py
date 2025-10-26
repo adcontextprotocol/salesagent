@@ -51,7 +51,7 @@ class A2AResponseValidator:
 
     # Skill-specific required fields (domain fields only - protocol fields added by handlers)
     SKILL_REQUIRED_FIELDS = {
-        "create_media_buy": {"media_buy_id"},  # Removed 'status' (protocol) and 'packages' (optional in spec)
+        "create_media_buy": set(),  # media_buy_id is optional per schema, removed as required
         "sync_creatives": {"creatives"},  # Removed 'status' (protocol), 'results' -> 'creatives' per spec
         "get_products": {"products"},
         "list_creatives": {"creatives", "query_summary", "pagination"},  # Per AdCP spec structure

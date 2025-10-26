@@ -8,9 +8,12 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
+from src.core.database.models import Creative as DBCreative
 from src.core.database.models import MediaBuy, Principal
+from src.core.schemas import SyncCreativesResponse
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -62,9 +65,11 @@ class TestGenerativeCreatives:
                 principal_id=principal.principal_id,
                 buyer_ref="buyer-gen-001",
                 order_name="Test Order",  # Required field
+                advertiser_name="Test Advertiser",  # Required field
                 status="pending",
                 start_date=datetime.now(UTC),
                 end_date=datetime.now(UTC),
+                raw_request={},  # Required field
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
             )
