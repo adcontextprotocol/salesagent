@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.core.schemas import Format, ListCreativeFormatsRequest
+from src.core.schemas import Format, FormatId, ListCreativeFormatsRequest
 from src.core.tool_context import ToolContext
 from src.core.tools import list_creative_formats_raw
 
@@ -95,8 +95,15 @@ def test_filtering_by_type(integration_db, sample_tenant):
     # Mock tenant resolution and format registry
     with (
         patch("src.core.main.get_current_tenant", return_value=sample_tenant),
-        patch("src.core.main.FORMAT_REGISTRY.get_all_formats", return_value=mock_formats),
+        patch("src.core.tools.creative_formats.get_creative_agent_registry") as mock_registry,
     ):
+        # Configure mock registry to return mock formats
+
+        async def mock_list_formats(tenant_id):
+            return mock_formats
+
+        mock_registry.return_value.list_all_formats = mock_list_formats
+
         # Test filtering by type
         req = ListCreativeFormatsRequest(type="video")
         response = list_creative_formats_raw(req, context)
@@ -153,8 +160,15 @@ def test_filtering_by_standard_only(integration_db, sample_tenant):
     # Mock tenant resolution and format registry
     with (
         patch("src.core.main.get_current_tenant", return_value=sample_tenant),
-        patch("src.core.main.FORMAT_REGISTRY.get_all_formats", return_value=mock_formats),
+        patch("src.core.tools.creative_formats.get_creative_agent_registry") as mock_registry,
     ):
+        # Configure mock registry to return mock formats
+
+        async def mock_list_formats(tenant_id):
+            return mock_formats
+
+        mock_registry.return_value.list_all_formats = mock_list_formats
+
         # Test filtering by standard_only
         req = ListCreativeFormatsRequest(standard_only=True)
         response = list_creative_formats_raw(req, context)
@@ -218,8 +232,15 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
     # Mock tenant resolution and format registry
     with (
         patch("src.core.main.get_current_tenant", return_value=sample_tenant),
-        patch("src.core.main.FORMAT_REGISTRY.get_all_formats", return_value=mock_formats),
+        patch("src.core.tools.creative_formats.get_creative_agent_registry") as mock_registry,
     ):
+        # Configure mock registry to return mock formats
+
+        async def mock_list_formats(tenant_id):
+            return mock_formats
+
+        mock_registry.return_value.list_all_formats = mock_list_formats
+
         # Test filtering by specific format IDs (using FormatId objects per AdCP v2.4)
         target_format_ids = [
             FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
@@ -290,8 +311,15 @@ def test_filtering_combined(integration_db, sample_tenant):
     # Mock tenant resolution and format registry
     with (
         patch("src.core.main.get_current_tenant", return_value=sample_tenant),
-        patch("src.core.main.FORMAT_REGISTRY.get_all_formats", return_value=mock_formats),
+        patch("src.core.tools.creative_formats.get_creative_agent_registry") as mock_registry,
     ):
+        # Configure mock registry to return mock formats
+
+        async def mock_list_formats(tenant_id):
+            return mock_formats
+
+        mock_registry.return_value.list_all_formats = mock_list_formats
+
         # Test combining type and standard_only filters
         req = ListCreativeFormatsRequest(type="display", standard_only=True)
         response = list_creative_formats_raw(req, context)
