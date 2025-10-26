@@ -12,7 +12,7 @@ from sqlalchemy import select
 from src.adapters.gam.utils.constants import GAM_API_VERSION
 from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
 from src.adapters.gam_reporting_service import GAMReportingService
-from src.admin.utils import require_tenant_access
+from src.admin.utils import require_tenant_access  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import GAMLineItem, GAMOrder, Tenant

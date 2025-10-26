@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Test script for simplified context persistence."""
 
+from datetime import UTC, datetime
+
 import pytest
 from rich.console import Console
 
 from src.core.context_manager import ContextManager
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires_db]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 console = Console()
 
@@ -17,6 +18,26 @@ def test_simplified_context(integration_db):
 
     console.print("[bold blue]Testing Simplified Context Persistence[/bold blue]")
     console.print("=" * 50)
+
+    # Setup: Create tenant and principal in database
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Principal, Tenant
+
+    with get_db_session() as session:
+        # Create tenant
+        tenant = Tenant(tenant_id="test_tenant", name="Test Tenant", subdomain="test-tenant")
+        session.add(tenant)
+
+        # Create principal
+        principal = Principal(
+            tenant_id="test_tenant",
+            principal_id="test_principal",
+            name="Test Principal",
+            access_token="test_token",
+            platform_mappings={"mock": {}},  # At least one platform required
+        )
+        session.add(principal)
+        session.commit()
 
     # Initialize context manager (will use the integration_db fixture)
     ctx_manager = ContextManager()
@@ -140,6 +161,24 @@ def test_simplified_context(integration_db):
         # Clean up context manager
         if "ctx_manager" in locals():
             ctx_manager.close()
+
+        # Cleanup: Delete test data
+        from sqlalchemy import select
+
+        with get_db_session() as session:
+            # Delete principal
+            stmt = select(Principal).filter_by(tenant_id="test_tenant", principal_id="test_principal")
+            principal = session.scalars(stmt).first()
+            if principal:
+                session.delete(principal)
+
+            # Delete tenant (cascade will delete context)
+            stmt = select(Tenant).filter_by(tenant_id="test_tenant")
+            tenant = session.scalars(stmt).first()
+            if tenant:
+                session.delete(tenant)
+
+            session.commit()
 
 
 if __name__ == "__main__":

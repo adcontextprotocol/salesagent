@@ -7,8 +7,9 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from flask import Blueprint, Response, jsonify, request
+from sqlalchemy import select
 
-from src.admin.utils import require_tenant_access
+from src.admin.utils import require_tenant_access  # type: ignore[attr-defined]
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AuditLog
 
@@ -19,8 +20,8 @@ activity_stream_bp = Blueprint("activity_stream", __name__)
 
 # Rate limiting for SSE connections
 MAX_CONNECTIONS_PER_TENANT = 10
-connection_counts = defaultdict(int)
-connection_timestamps = defaultdict(list)
+connection_counts: dict[str, int] = defaultdict(int)
+connection_timestamps: dict[str, list[float]] = defaultdict(list)
 
 
 def format_activity_from_audit_log(audit_log: AuditLog) -> dict:
@@ -53,7 +54,11 @@ def format_activity_from_audit_log(audit_log: AuditLog) -> dict:
     parsed_details = {}
     if audit_log.details:
         try:
-            parsed_details = json.loads(audit_log.details)
+            # details is already a dict from JSONType, not a string
+            if isinstance(audit_log.details, dict):
+                parsed_details = audit_log.details
+            else:
+                parsed_details = json.loads(audit_log.details)
         except (json.JSONDecodeError, TypeError):
             parsed_details = {}
 
@@ -124,12 +129,15 @@ def format_activity_from_audit_log(audit_log: AuditLog) -> dict:
                     break
 
     # Calculate relative time
+    from typing import cast
+
     now = datetime.now(UTC)
-    if audit_log.timestamp.tzinfo is None:
+    timestamp = cast(datetime, audit_log.timestamp)
+    if timestamp.tzinfo is None:
         # Handle naive datetime (assume UTC)
-        audit_timestamp = audit_log.timestamp.replace(tzinfo=UTC)
+        audit_timestamp = timestamp.replace(tzinfo=UTC)
     else:
-        audit_timestamp = audit_log.timestamp
+        audit_timestamp = timestamp
 
     delta = now - audit_timestamp
     if delta.days > 0:
@@ -148,7 +156,7 @@ def format_activity_from_audit_log(audit_log: AuditLog) -> dict:
         "action": f"Called {method}",
         "details": details,
         "full_details": full_details,
-        "timestamp": audit_log.timestamp.isoformat(),
+        "timestamp": timestamp.isoformat(),
         "time_relative": time_relative,
         "action_required": action_required,
         "operation": audit_log.operation,
@@ -183,7 +191,7 @@ def get_recent_activities(tenant_id: str, since: datetime = None, limit: int = 5
                     activity = format_activity_from_audit_log(audit_log)
                     activities.append(activity)
                 except Exception as e:
-                    logger.warning(f"Failed to format activity from audit log {audit_log.id}: {e}")
+                    logger.warning(f"Failed to format activity from audit log {audit_log.log_id}: {e}")
 
             return activities
 

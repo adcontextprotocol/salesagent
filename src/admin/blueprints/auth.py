@@ -8,7 +8,7 @@ from authlib.integrations.flask_client import OAuth
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
 from sqlalchemy import select
 
-from src.admin.utils import is_super_admin
+from src.admin.utils import is_super_admin  # type: ignore[attr-defined]
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant, User
 

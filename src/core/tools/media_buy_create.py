@@ -30,8 +30,10 @@ from src.core.auth import (
 from src.core.config_loader import get_current_tenant
 from src.core.context_manager import get_context_manager
 from src.core.database.models import MediaBuy
+from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 from src.core.helpers import get_principal_id_from_context, log_tool_activity
+from src.core.helpers.creative_helpers import _convert_creative_to_adapter_asset
 from src.core.schema_adapters import CreateMediaBuyResponse
 from src.core.schemas import (
     CreateMediaBuyRequest,
@@ -571,12 +573,12 @@ async def _create_media_buy_impl(
             # Get products from database
             from sqlalchemy.orm import selectinload
 
-            stmt = (
+            products_stmt = (
                 select(ProductModel)
                 .where(ProductModel.tenant_id == tenant["tenant_id"], ProductModel.product_id.in_(product_ids))
                 .options(selectinload(ProductModel.pricing_options))
             )
-            products = session.scalars(stmt).all()
+            products = session.scalars(products_stmt).all()
 
             # Build product lookup map
             product_map = {p.product_id: p for p in products}
@@ -626,10 +628,10 @@ async def _create_media_buy_impl(
                 request_currency = "USD"
 
             # Get currency limits for this tenant and currency
-            stmt = select(CurrencyLimit).where(
+            currency_stmt = select(CurrencyLimit).where(
                 CurrencyLimit.tenant_id == tenant["tenant_id"], CurrencyLimit.currency_code == request_currency
             )
-            currency_limit = session.scalars(stmt).first()
+            currency_limit = session.scalars(currency_stmt).first()
 
             # Check if tenant supports this currency
             if not currency_limit:
@@ -1572,6 +1574,7 @@ async def _create_media_buy_impl(
                             )
 
         # Handle creatives if provided
+        creative_statuses: dict[str, CreativeStatus] = {}
         if req.creatives:
             # Convert Creative objects to format expected by adapter
             assets = []

@@ -61,16 +61,16 @@ TARGETING_CAPABILITIES: dict[str, TargetingCapability] = {
         dimension="key_value_pairs",
         access="managed_only",
         description="Key-value pairs for AEE signal integration",
-        aee_signal=True,
+        axe_signal=True,
     ),
     "aee_segment": TargetingCapability(
-        dimension="aee_segment", access="managed_only", description="AEE-computed audience segments", aee_signal=True
+        dimension="aee_segment", access="managed_only", description="AEE-computed audience segments", axe_signal=True
     ),
     "aee_score": TargetingCapability(
-        dimension="aee_score", access="managed_only", description="AEE effectiveness scores", aee_signal=True
+        dimension="aee_score", access="managed_only", description="AEE effectiveness scores", axe_signal=True
     ),
     "aee_context": TargetingCapability(
-        dimension="aee_context", access="managed_only", description="AEE contextual signals", aee_signal=True
+        dimension="aee_context", access="managed_only", description="AEE contextual signals", axe_signal=True
     ),
     # Platform-specific - both overlay and managed
     "custom": TargetingCapability(dimension="custom", access="both", description="Platform-specific custom targeting"),
@@ -89,7 +89,7 @@ def get_managed_only_dimensions() -> list[str]:
 
 def get_aee_signal_dimensions() -> list[str]:
     """Get list of dimensions used for AEE signals."""
-    return [name for name, cap in TARGETING_CAPABILITIES.items() if cap.aee_signal]
+    return [name for name, cap in TARGETING_CAPABILITIES.items() if cap.axe_signal]
 
 
 def validate_overlay_targeting(targeting: dict[str, Any]) -> list[str]:

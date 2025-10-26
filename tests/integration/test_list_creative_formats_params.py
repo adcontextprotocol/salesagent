@@ -9,12 +9,16 @@ These are integration tests because they:
 Per architecture guidelines: "Integration over Mocking - Use real DB, mock only external services"
 """
 
+from datetime import UTC, datetime
+from unittest.mock import patch
+
 import pytest
 
+from src.core.schemas import Format, ListCreativeFormatsRequest
+from src.core.tool_context import ToolContext
 from src.core.tools import list_creative_formats_raw
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires_db]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 def test_list_creative_formats_request_minimal():

@@ -448,7 +448,7 @@ class SlackNotifier:
 
         return success_delivery
 
-    def _format_details(self, details: dict[str, Any]) -> str:
+    def _format_details(self, details: dict[str, Any]) -> str | None:
         """Format task details for Slack message."""
         formatted_parts = []
 
@@ -477,7 +477,7 @@ class SlackNotifier:
 
         return "\n".join(formatted_parts) if formatted_parts else None
 
-    def _format_audit_details(self, details: dict[str, Any]) -> str:
+    def _format_audit_details(self, details: dict[str, Any]) -> str | None:
         """Format audit details for Slack message."""
         formatted_parts = []
 

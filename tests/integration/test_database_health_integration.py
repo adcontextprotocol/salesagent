@@ -10,12 +10,15 @@ This addresses the pattern identified in issue #161 of reducing mocking at data 
 to improve test coverage and catch real bugs.
 """
 
-import pytest
+from unittest.mock import patch
 
+import pytest
+from sqlalchemy import text
+
+from src.core.database.health_check import check_database_health
 from src.core.database.models import Base, Product, Tenant
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration]
 
 
 class TestDatabaseHealthIntegration:
@@ -53,7 +56,6 @@ class TestDatabaseHealthIntegration:
     def test_health_check_with_missing_tables(self, integration_db):
         """Test health check detects missing tables correctly."""
         # Use a mock to simulate missing tables without actually dropping them
-        from unittest.mock import patch
 
         mock_tables = [
             "tenants",
@@ -100,7 +102,7 @@ class TestDatabaseHealthIntegration:
     def test_health_check_database_access_errors(self, integration_db):
         """Test health check handles database access errors gracefully."""
         # Mock the database session to raise a connection error
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from sqlalchemy.exc import OperationalError
 

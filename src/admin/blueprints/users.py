@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from sqlalchemy import select
 
-from src.admin.utils import require_tenant_access
+from src.admin.utils import require_tenant_access  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant, User

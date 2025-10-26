@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 import google.generativeai as genai
@@ -30,7 +30,7 @@ class PolicyCheckResult(BaseModel):
     reason: str | None = None
     restrictions: list[str] | None = Field(default_factory=list)
     warnings: list[str] | None = Field(default_factory=list)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class PolicyCheckService:

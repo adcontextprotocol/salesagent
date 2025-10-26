@@ -76,7 +76,7 @@ class ProtocolWebhookService:
         credentials = auth_config.get("credentials")
 
         # Build notification payload (AdCP standard format)
-        payload = {
+        payload: dict[str, Any] = {
             "task_id": task_id,
             "status": status,
             "timestamp": datetime.now(UTC).isoformat(),
@@ -94,7 +94,6 @@ class ProtocolWebhookService:
         # Apply authentication based on schemes
         if "HMAC-SHA256" in schemes and credentials:
             # Sign payload with HMAC-SHA256
-            payload_str = httpx._utils.to_bytes(payload, "utf-8") if isinstance(payload, dict) else payload
             import json
 
             payload_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")

@@ -7,6 +7,7 @@ shared implementation pattern from CLAUDE.md.
 import logging
 import os
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from fastmcp.exceptions import ToolError
@@ -20,7 +21,7 @@ from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import set_current_tenant
 from src.core.schema_adapters import GetProductsResponse
 from src.core.schema_helpers import create_get_products_request
-from src.core.schemas import Product, TaskStatus
+from src.core.schemas import Product
 from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
     GetProductsRequest as GetProductsRequestGenerated,
 )
@@ -156,8 +157,10 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
                     brand_manifest_dict = req.brand_manifest  # URL string
 
             try:
+                # Ensure brief is not None for policy check
+                brief_text = req.brief if req.brief else ""
                 policy_result = await policy_service.check_brief_compliance(
-                    brief=req.brief,
+                    brief=brief_text,
                     promoted_offering=offering,  # Use extracted offering from brand_manifest
                     brand_manifest=brand_manifest_dict,
                     tenant_policies=tenant_policies if tenant_policies else None,
@@ -172,7 +175,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
                     adapter_id="policy_service",
                     success=policy_result.status != PolicyStatus.BLOCKED,
                     details={
-                        "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
+                        "brief": brief_text[:100] + "..." if len(brief_text) > 100 else brief_text,
                         "brand_name": offering[:100] + "..." if offering and len(offering) > 100 else offering,
                         "policy_status": policy_result.status,
                         "reason": policy_result.reason,
@@ -193,7 +196,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
                     details={
                         "error": str(e),
                         "error_type": type(e).__name__,
-                        "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
+                        "brief": brief_text[:100] + "..." if len(brief_text) > 100 else brief_text,
                     },
                 )
 
@@ -493,13 +496,8 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
         for product in modified_products:
             product.pricing_options = []
 
-    # Set status based on operation result
-    status = TaskStatus.from_operation_state(
-        operation_type="discovery", has_errors=False, requires_approval=False, requires_auth=principal_id is None
-    )
-
     # Response __str__() will generate appropriate message based on content
-    return GetProductsResponse(products=modified_products, status=status)
+    return GetProductsResponse(products=modified_products)
 
 
 async def get_products(

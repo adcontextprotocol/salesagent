@@ -1,0 +1,116 @@
+src/adapters/gam/utils/__init__.py:45: note: In module imported here:
+src/adapters/gam/utils/formatters.py: note: In function "format_targeting_for_display":
+src/adapters/gam/utils/formatters.py:107:49: error: Incompatible types in assignment (expression has type "int", target has type "list[Any]")  [assignment]
+src/adapters/gam/utils/formatters.py:113:49: error: Incompatible types in assignment (expression has type "int", target has type "list[Any]")  [assignment]
+src/adapters/gam/utils/formatters.py:148:33: error: Incompatible types in assignment (expression has type "dict[str, str]", target has type "dict[str, list[Any]]")  [assignment]
+src/adapters/gam/utils/formatters.py:161:35: error: Incompatible types in assignment (expression has type "list[str]", target has type "dict[str, list[Any]]")  [assignment]
+src/adapters/gam/utils/__init__.py:25: note: In module imported here:
+src/adapters/gam/utils/error_handler.py: note: In function "with_retry":
+src/adapters/gam/utils/error_handler.py:282:13: error: Exception must be derived from BaseException  [misc]
+src/adapters/gam/managers/__init__.py:21: note: In module imported here,
+src/adapters/google_ad_manager.py:25: note: ... from here,
+src/core/helpers/adapter_helpers.py:5: note: ... from here:
+src/adapters/gam/managers/targeting.py: note: In member "validate_targeting" of class "GAMTargetingManager":
+src/adapters/gam/managers/targeting.py:88:9: error: Need type annotation for "unsupported" (hint: "unsupported: list[<type>] = ...")  [var-annotated]
+src/adapters/gam/managers/targeting.py: note: In member "build_targeting" of class "GAMTargetingManager":
+src/adapters/gam/managers/targeting.py:137:9: error: Need type annotation for "geo_targeting" (hint: "geo_targeting: dict[<type>, <type>] = ...")  [var-annotated]
+src/adapters/gam/managers/targeting.py:321:60: error: Incompatible types in assignment (expression has type "str", target has type "dict[Any, Any]")  [assignment]
+src/adapters/google_ad_manager.py:161: note: In module imported here,
+src/core/helpers/adapter_helpers.py:5: note: ... from here:
+src/adapters/gam/utils/validation.py: note: In member "validate_media_data" of class "GAMValidator":
+src/adapters/gam/utils/validation.py:111:9: error: Need type annotation for "issues" (hint: "issues: list[<type>] = ...")  [var-annotated]
+src/adapters/gam/utils/validation.py: note: In member "_validate_file_extension" of class "GAMValidator":
+src/adapters/gam/utils/validation.py:301:9: error: Need type annotation for "issues" (hint: "issues: list[<type>] = ...")  [var-annotated]
+src/adapters/gam/utils/validation.py: note: In member "_get_creative_type_from_asset" of class "GAMValidator":
+src/adapters/gam/utils/validation.py:346:21: error: Item "None" of "Any | None" has no attribute "lower"  [union-attr]
+src/adapters/gam/utils/validation.py:351:22: error: Item "None" of "Any | None" has no attribute "lower"  [union-attr]
+src/core/helpers/activity_helpers.py:13: note: In module imported here:
+src/services/activity_feed.py: note: In member "__init__" of class "ActivityFeed":
+src/services/activity_feed.py:19:9: note: By default the bodies of untyped functions are not checked, consider using --check-untyped-defs  [annotation-unchecked]
+src/services/activity_feed.py:21:9: note: By default the bodies of untyped functions are not checked, consider using --check-untyped-defs  [annotation-unchecked]
+src/core/database/database_session.py: note: In member "__init__" of class "DatabaseManager":
+src/core/database/database_session.py:175:9: note: By default the bodies of untyped functions are not checked, consider using --check-untyped-defs  [annotation-unchecked]
+src/adapters/gam/client.py:14: note: In module imported here,
+src/adapters/google_ad_manager.py:24: note: ... from here,
+src/core/helpers/adapter_helpers.py:5: note: ... from here:
+src/adapters/gam/utils/health_check.py: note: In class "HealthCheckResult":
+src/adapters/gam/utils/health_check.py:43:27: error: Incompatible types in assignment (expression has type "None", variable has type "datetime")  [assignment]
+src/adapters/gam/utils/health_check.py: note: In member "__init__" of class "GAMHealthChecker":
+src/adapters/gam/utils/health_check.py:69:9: error: Need type annotation for "last_results" (hint: "last_results: list[<type>] = ...")  [var-annotated]
+src/adapters/gam/utils/health_check.py: note: In member "check_authentication" of class "GAMHealthChecker":
+src/adapters/gam/utils/health_check.py:115:31: error: "None" has no attribute "GetService"  [attr-defined]
+src/adapters/gam/utils/health_check.py: note: In member "check_permissions" of class "GAMHealthChecker":
+src/adapters/gam/utils/health_check.py:153:31: error: "None" has no attribute "GetService"  [attr-defined]
+src/adapters/gam/utils/health_check.py:170:28: error: "None" has no attribute "GetService"  [attr-defined]
+src/adapters/gam/utils/health_check.py: note: In member "check_inventory_access" of class "GAMHealthChecker":
+src/adapters/gam/utils/health_check.py:276:33: error: "None" has no attribute "GetService"  [attr-defined]
+src/adapters/gam/utils/health_check.py: note: In member "check_service_availability" of class "GAMHealthChecker":
+src/adapters/gam/utils/health_check.py:360:21: error: "None" has no attribute "GetService"  [attr-defined]
+src/adapters/gam/utils/health_check.py: note: In member "run_all_checks" of class "GAMHealthChecker":
+src/adapters/gam/utils/health_check.py:433:32: error: Incompatible types in assignment (expression has type "datetime", variable has type "None")  [assignment]
+src/admin/blueprints/gam.py:13: note: In module imported here,
+src/admin/app.py:21: note: ... from here,
+src/core/main.py:648: note: ... from here:
+src/adapters/gam_inventory_discovery.py: note: In function "build_ad_unit_tree":
+src/adapters/gam_inventory_discovery.py:635:21: error: Item "bool" of "bool | list[dict[str, int]] | str" has no attribute "append"  [union-attr]
+src/adapters/gam_inventory_discovery.py:635:21: error: Item "str" of "bool | list[dict[str, int]] | str" has no attribute "append"  [union-attr]
+src/adapters/gam_inventory_discovery.py: note: In member "suggest_ad_units_for_product" of class "GAMInventoryDiscovery":
+src/adapters/gam_inventory_discovery.py:757:30: error: Argument "key" to "sort" of "list" has incompatible type "Callable[[dict[str, object]], object]"; expected "Callable[[dict[str, object]], SupportsDunderLT[Any] | SupportsDunderGT[Any]]"  [arg-type]
+src/adapters/gam_inventory_discovery.py: note: In function "suggest_ad_units_for_product":
+src/adapters/gam_inventory_discovery.py:757:40: error: Incompatible return value type (got "object", expected "SupportsDunderLT[Any] | SupportsDunderGT[Any]")  [return-value]
+src/adapters/gam_inventory_discovery.py: note: In member "sync_selective" of class "GAMInventoryDiscovery":
+src/adapters/gam_inventory_discovery.py:870:35: error: Incompatible types in assignment (expression has type "dict[str, int]", target has type "Sequence[str]")  [assignment]
+src/adapters/gam_inventory_discovery.py:880:37: error: Incompatible types in assignment (expression has type "dict[str, int]", target has type "Sequence[str]")  [assignment]
+src/adapters/gam_inventory_discovery.py:889:33: error: Incompatible types in assignment (expression has type "dict[str, int]", target has type "Sequence[str]")  [assignment]
+src/adapters/gam_inventory_discovery.py:896:43: error: Incompatible types in assignment (expression has type "dict[str, Any]", target has type "Sequence[str]")  [assignment]
+src/adapters/gam_inventory_discovery.py:903:17: error: Unsupported target for indexed assignment ("Sequence[str]")  [index]
+src/adapters/gam_inventory_discovery.py:909:44: error: Incompatible types in assignment (expression has type "dict[str, int]", target has type "Sequence[str]")  [assignment]
+src/adapters/gam_inventory_discovery.py:915:17: error: Unsupported target for indexed assignment ("Sequence[str]")  [index]
+src/adapters/gam_inventory_discovery.py:918:39: error: Incompatible types in assignment (expression has type "float", target has type "Sequence[str]")  [assignment]
+src/adapters/mock_ad_server.py:355: note: In module imported here,
+src/core/helpers/adapter_helpers.py:7: note: ... from here:
+src/adapters/ai_test_orchestrator.py: note: In class "TestScenario":
+src/adapters/ai_test_orchestrator.py:35:36: error: Incompatible types in assignment (expression has type "None", variable has type "list[dict[Any, Any]]")  [assignment]
+src/adapters/google_ad_manager.py:24: note: In module imported here,
+src/core/helpers/adapter_helpers.py:5: note: ... from here:
+src/adapters/gam/client.py: note: In member "from_existing_client" of class "GAMClientManager":
+src/adapters/gam/client.py:201:32: error: Incompatible types in assignment (expression has type "None", variable has type "GAMAuthManager")  [assignment]
+src/core/tools/media_buy_create.py:818: note: In module imported here:
+src/services/targeting_capabilities.py:60:24: error: Unexpected keyword argument "aee_signal" for "TargetingCapability"; did you mean "axe_signal"?  [call-arg]
+src/core/schemas.py: note: "TargetingCapability" defined here
+src/services/targeting_capabilities.py:66:20: error: Unexpected keyword argument "aee_signal" for "TargetingCapability"; did you mean "axe_signal"?  [call-arg]
+src/services/targeting_capabilities.py:69:18: error: Unexpected keyword argument "aee_signal" for "TargetingCapability"; did you mean "axe_signal"?  [call-arg]
+src/services/targeting_capabilities.py:72:20: error: Unexpected keyword argument "aee_signal" for "TargetingCapability"; did you mean "axe_signal"?  [call-arg]
+src/services/targeting_capabilities.py: note: In function "get_aee_signal_dimensions":
+src/services/targeting_capabilities.py:92:69: error: "TargetingCapability" has no attribute "aee_signal"; maybe "axe_signal"?  [attr-defined]
+src/core/schema_validation.py: note: In class "SchemaMetadata":
+src/core/schema_validation.py:18:23: error: Incompatible types in assignment (expression has type "None", variable has type "str")  [assignment]
+src/core/schema_validation.py:21:26: error: Incompatible types in assignment (expression has type "None", variable has type "str")  [assignment]
+src/core/schema_validation.py: note: In class "ResponseWithSchema":
+src/core/schema_validation.py:28:20: error: Extra key "exclude" for TypedDict "ConfigDict"  [typeddict-unknown-key]
+src/core/schema_validation.py:36:31: error: Incompatible types in assignment (expression has type "None", variable has type "SchemaMetadata")  [assignment]
+src/core/schema_validation.py: note: In function "create_schema_registry":
+src/core/schema_validation.py:216:57: error: Argument 1 to "get_model_schema" has incompatible type "ModelMetaclass"; expected "type[BaseModel]"  [arg-type]
+src/core/helpers/creative_helpers.py: note: In function "_convert_creative_to_adapter_asset":
+src/core/helpers/creative_helpers.py:135:39: error: Incompatible types in assignment (expression has type "dict[str, Any]", target has type "Sequence[str]")  [assignment]
+src/core/helpers/creative_helpers.py:152:26: error: Incompatible types in assignment (expression has type "int", target has type "Sequence[str]")  [assignment]
+src/core/helpers/creative_helpers.py:154:27: error: Incompatible types in assignment (expression has type "int", target has type "Sequence[str]")  [assignment]
+src/core/helpers/creative_helpers.py:156:29: error: Incompatible types in assignment (expression has type "float", target has type "Sequence[str]")  [assignment]
+src/core/helpers/creative_helpers.py:161:38: error: Incompatible types in assignment (expression has type "dict[str, Any]", target has type "Sequence[str]")  [assignment]
+src/adapters/gam/managers/__init__.py:17: note: In module imported here,
+src/adapters/google_ad_manager.py:25: note: ... from here,
+src/core/helpers/adapter_helpers.py:5: note: ... from here:
+src/adapters/gam/managers/inventory.py: note: In member "_get_discovery" of class "GAMInventoryManager":
+src/adapters/gam/managers/inventory.py:56:35: error: Incompatible types in assignment (expression has type "MockGAMInventoryDiscovery", variable has type "None")  [assignment]
+src/adapters/gam/managers/inventory.py:59:35: error: Incompatible types in assignment (expression has type "GAMInventoryDiscovery", variable has type "None")  [assignment]
+src/adapters/gam/managers/inventory.py:60:16: error: Incompatible return value type (got "None", expected "GAMInventoryDiscovery")  [return-value]
+src/adapters/gam/managers/inventory.py: note: In member "__init__" of class "MockGAMInventoryDiscovery":
+src/adapters/gam/managers/inventory.py:340:9: error: Need type annotation for "ad_units" (hint: "ad_units: dict[<type>, <type>] = ...")  [var-annotated]
+src/adapters/gam/managers/inventory.py:341:9: error: Need type annotation for "placements" (hint: "placements: dict[<type>, <type>] = ...")  [var-annotated]
+src/adapters/gam/managers/inventory.py:342:9: error: Need type annotation for "labels" (hint: "labels: dict[<type>, <type>] = ...")  [var-annotated]
+src/adapters/gam/managers/inventory.py:343:9: error: Need type annotation for "custom_targeting_keys" (hint: "custom_targeting_keys: dict[<type>, <type>] = ...")  [var-annotated]
+src/adapters/gam/managers/inventory.py:344:9: error: Need type annotation for "custom_targeting_values" (hint: "custom_targeting_values: dict[<type>, <type>] = ...")  [var-annotated]
+src/adapters/gam/managers/inventory.py:345:9: error: Need type annotation for "audience_segments" (hint: "audience_segments: dict[<type>, <type>] = ...")  [var-annotated]
+src/core/main.py:13: note: In module imported here:
+src/adapters/mock_creative_engine.py: note: In member "process_creatives" of class "MockCreativeEngine":
+src/adapters/mock_creative_engine.py:88:28: error: Argument "status" to "CreativeStatus" has incompatible type "str"; expected "Literal['pending_review', 'approved', 'rejected', 'adaptation_required']"  [arg-type]

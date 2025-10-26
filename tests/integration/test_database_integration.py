@@ -14,21 +14,43 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://adcp_user:secure_pas
 
 @pytest.mark.integration
 @pytest.mark.requires_db
-def test_settings_queries():
+def test_settings_queries(integration_db):
     """Test the actual SQL queries used in the settings page."""
 
     print(f"\n{'=' * 60}")
     print("TESTING REAL DATABASE QUERIES")
     print(f"{'=' * 60}\n")
 
-    print(f"Database: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else DATABASE_URL}\n")
+    # Get DATABASE_URL from environment (set by integration_db fixture)
+    database_url = os.environ.get("DATABASE_URL")
+    print(f"Database: {database_url.split('@')[1] if '@' in database_url else database_url}\n")
 
     errors = []
     tenant_id = "default"
 
+    # Create test data first
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Principal, Tenant
+
+    with get_db_session() as session:
+        # Create tenant
+        tenant = Tenant(tenant_id=tenant_id, name="Test Tenant", subdomain="test-tenant")
+        session.add(tenant)
+
+        # Create principal
+        principal = Principal(
+            tenant_id=tenant_id,
+            principal_id="test_principal",
+            name="Test Principal",
+            access_token="test_token",
+            platform_mappings={"mock": {}},  # At least one platform required
+        )
+        session.add(principal)
+        session.commit()
+
     try:
         # Connect to real database
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
+        conn = psycopg2.connect(database_url, cursor_factory=DictCursor)
         cursor = conn.cursor()
 
         # Test 1: Check if tenant exists

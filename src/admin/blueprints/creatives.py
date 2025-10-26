@@ -6,6 +6,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from typing import Any
 
 # TODO: Missing module - these functions need to be implemented
 # from creative_formats import discover_creative_formats_from_url, parse_creative_spec
@@ -25,7 +26,7 @@ def discover_creative_formats_from_url(url):
 from flask import Blueprint, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import select
 
-from src.admin.utils import require_tenant_access
+from src.admin.utils import require_tenant_access  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
@@ -40,7 +41,7 @@ creatives_bp = Blueprint("creatives", __name__)
 
 # Global ThreadPoolExecutor for async AI review (managed lifecycle)
 _ai_review_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ai_review_")
-_ai_review_tasks = {}  # task_id -> Future mapping
+_ai_review_tasks: dict[str, Any] = {}  # task_id -> Future mapping
 _ai_review_lock = threading.Lock()  # Protect _ai_review_tasks dict
 
 

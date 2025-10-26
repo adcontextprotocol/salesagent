@@ -347,12 +347,10 @@ class DeliverySimulator:
     def _shutdown(self):
         """Graceful shutdown handler."""
         try:
-            logger.info("🛑 DeliverySimulator shutting down")
             with self._lock:
                 # Signal all active simulations to stop
-                for media_buy_id, stop_signal in self._stop_signals.items():
+                for _media_buy_id, stop_signal in self._stop_signals.items():
                     stop_signal.set()
-                    logger.info(f"   Stopping simulation for {media_buy_id}")
 
                 # Wait briefly for threads to finish
                 import time

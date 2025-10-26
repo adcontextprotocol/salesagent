@@ -17,7 +17,6 @@ from src.core.audit_logger import get_audit_logger
 from src.core.auth import get_principal_from_context
 from src.core.config_loader import get_current_tenant, set_current_tenant
 from src.core.schema_adapters import ListCreativeFormatsRequest, ListCreativeFormatsResponse
-from src.core.schemas import TaskStatus
 from src.core.validation_helpers import format_validation_error
 
 
@@ -114,13 +113,8 @@ def _list_creative_formats_impl(
         },
     )
 
-    # Set status based on operation result
-    status = TaskStatus.from_operation_state(
-        operation_type="discovery", has_errors=False, requires_approval=False, requires_auth=principal_id is None
-    )
-
     # Create response (no message/specification_version - not in adapter schema)
-    response = ListCreativeFormatsResponse(formats=formats, status=status)
+    response = ListCreativeFormatsResponse(formats=formats)
 
     # Add schema validation metadata for client validation
     from src.core.schema_validation import INCLUDE_SCHEMAS_IN_RESPONSES, enhance_mcp_response_with_schema

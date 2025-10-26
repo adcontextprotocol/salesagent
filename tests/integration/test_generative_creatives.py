@@ -4,6 +4,7 @@ Tests the flow where sync_creatives detects generative formats (those with outpu
 and calls build_creative instead of preview_creative, using mocked Gemini API.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,8 +13,7 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
-# TODO: Fix generative creative tests - complex mock setup needs debugging
-pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 class MockContext:
@@ -50,7 +50,8 @@ class TestGenerativeCreatives:
                 principal_id="test-principal-gen",
                 tenant_id=tenant.tenant_id,
                 name="Test Principal Gen",
-                token="test-token-123",
+                access_token="test-token-123",
+                platform_mappings={"mock": {}},  # At least one platform required
             )
             session.add(principal)
 

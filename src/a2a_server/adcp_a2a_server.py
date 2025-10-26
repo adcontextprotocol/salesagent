@@ -118,11 +118,13 @@ class AdCPRequestHandler(RequestHandler):
         """Extract Bearer token from current request context."""
         return getattr(_request_context, "auth_token", None)
 
-    def _create_tool_context_from_a2a(self, auth_token: str, tool_name: str, context_id: str = None) -> ToolContext:
+    def _create_tool_context_from_a2a(
+        self, auth_token: str | None, tool_name: str, context_id: str | None = None
+    ) -> ToolContext:
         """Create a ToolContext from A2A authentication information.
 
         Args:
-            auth_token: Bearer token from Authorization header
+            auth_token: Bearer token from Authorization header (optional)
             tool_name: Name of the tool being called
             context_id: Optional context ID for conversation tracking
 
@@ -433,7 +435,7 @@ class AdCPRequestHandler(RequestHandler):
                 )
 
         # Prepare task metadata with both invocation types
-        task_metadata = {
+        task_metadata: dict[str, Any] = {
             "request_text": combined_text,
             "invocation_type": "explicit_skill" if skill_invocations else "natural_language",
         }
@@ -530,7 +532,7 @@ class AdCPRequestHandler(RequestHandler):
                     task.artifacts = task.artifacts or []
                     task.artifacts.append(
                         Artifact(
-                            artifactId=f"skill_result_{i + 1}",
+                            artifact_id=f"skill_result_{i + 1}",
                             name=f"{'error' if not res['success'] else res['skill']}_result",
                             description=description,  # Human-readable message
                             parts=[Part(root=DataPart(data=artifact_data))],
@@ -618,7 +620,9 @@ class AdCPRequestHandler(RequestHandler):
                 )
                 task.artifacts = [
                     Artifact(
-                        artifactId="product_catalog_1", name="product_catalog", parts=[Part(root=DataPart(data=result))]
+                        artifact_id="product_catalog_1",
+                        name="product_catalog",
+                        parts=[Part(root=DataPart(data=result))],
                     )
                 ]
             elif any(word in combined_text for word in ["price", "pricing", "cost", "cpm", "budget"]):
@@ -645,7 +649,7 @@ class AdCPRequestHandler(RequestHandler):
                 )
                 task.artifacts = [
                     Artifact(
-                        artifactId="pricing_info_1",
+                        artifact_id="pricing_info_1",
                         name="pricing_information",
                         parts=[Part(root=DataPart(data=result))],
                     )
@@ -676,7 +680,7 @@ class AdCPRequestHandler(RequestHandler):
                 )
                 task.artifacts = [
                     Artifact(
-                        artifactId="targeting_opts_1",
+                        artifact_id="targeting_opts_1",
                         name="targeting_options",
                         parts=[Part(root=DataPart(data=result))],
                     )
@@ -704,13 +708,15 @@ class AdCPRequestHandler(RequestHandler):
                 if result.get("success"):
                     task.artifacts = [
                         Artifact(
-                            artifactId="media_buy_1", name="media_buy_created", parts=[Part(root=DataPart(data=result))]
+                            artifact_id="media_buy_1",
+                            name="media_buy_created",
+                            parts=[Part(root=DataPart(data=result))],
                         )
                     ]
                 else:
                     task.artifacts = [
                         Artifact(
-                            artifactId="media_buy_error_1",
+                            artifact_id="media_buy_error_1",
                             name="media_buy_error",
                             parts=[Part(root=DataPart(data=result))],
                         )
@@ -750,7 +756,9 @@ class AdCPRequestHandler(RequestHandler):
                 )
                 task.artifacts = [
                     Artifact(
-                        artifactId="capabilities_1", name="capabilities", parts=[Part(root=DataPart(data=capabilities))]
+                        artifact_id="capabilities_1",
+                        name="capabilities",
+                        parts=[Part(root=DataPart(data=capabilities))],
                     )
                 ]
 
@@ -1174,7 +1182,7 @@ class AdCPRequestHandler(RequestHandler):
             logger.error(f"Error deleting push notification config: {e}")
             raise ServerError(InternalError(message=f"Failed to delete push notification config: {str(e)}"))
 
-    async def _handle_explicit_skill(self, skill_name: str, parameters: dict, auth_token: str) -> dict:
+    async def _handle_explicit_skill(self, skill_name: str, parameters: dict, auth_token: str | None) -> dict:
         """Handle explicit AdCP skill invocations.
 
         Maps skill names to appropriate handlers and validates parameters.
@@ -1876,7 +1884,7 @@ class AdCPRequestHandler(RequestHandler):
             logger.error(f"Error in update_performance_index skill: {e}")
             raise ServerError(InternalError(message=f"Unable to update performance index: {str(e)}"))
 
-    async def _get_products(self, query: str, auth_token: str) -> dict:
+    async def _get_products(self, query: str, auth_token: str | None) -> dict:
         """Get available advertising products by calling core functions directly.
 
         Args:
@@ -2018,7 +2026,7 @@ class AdCPRequestHandler(RequestHandler):
             }
         }
 
-    async def _create_media_buy(self, request: str, auth_token: str) -> dict:
+    async def _create_media_buy(self, request: str, auth_token: str | None) -> dict:
         """Create a media buy based on the request.
 
         Args:

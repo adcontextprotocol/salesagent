@@ -7,6 +7,7 @@ table for activity data, eliminating dependencies on workflow_steps, tasks, etc.
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from src.admin.services.business_activity_service import get_business_activities
 from src.admin.services.media_buy_readiness_service import MediaBuyReadinessService
@@ -21,7 +22,7 @@ class DashboardService:
 
     def __init__(self, tenant_id: str):
         self.tenant_id = tenant_id
-        self._tenant = None
+        self._tenant: Tenant | None = None
         self._validate_tenant_id()
 
     def _validate_tenant_id(self):
@@ -39,7 +40,7 @@ class DashboardService:
                 self._tenant = db_session.scalars(stmt).first()
         return self._tenant
 
-    def get_dashboard_metrics(self) -> dict[str, any]:
+    def get_dashboard_metrics(self) -> dict[str, Any]:
         """Get all dashboard metrics using single data source pattern.
 
         Returns:
@@ -163,7 +164,7 @@ class DashboardService:
                     media_buy.is_ready = readiness["is_ready_to_activate"]
                     media_buy.readiness_details = readiness
 
-                return recent_buys
+                return list(recent_buys)
 
         except (ValueError, TypeError) as e:
             logger.error(f"Data validation error getting media buys for {self.tenant_id}: {e}")
@@ -172,7 +173,7 @@ class DashboardService:
             logger.error(f"Database error getting recent media buys for {self.tenant_id}: {e}", exc_info=True)
             return []
 
-    def _calculate_revenue_trend(self, db_session, days: int = 30) -> list[dict[str, any]]:
+    def _calculate_revenue_trend(self, db_session, days: int = 30) -> list[dict[str, Any]]:
         """Calculate daily revenue for the last N days."""
         today = datetime.now(UTC).date()
         revenue_data = []
@@ -203,7 +204,7 @@ class DashboardService:
 
         return revenue_data
 
-    def _calculate_revenue_change(self, revenue_data: list[dict[str, any]]) -> float:
+    def _calculate_revenue_change(self, revenue_data: list[dict[str, Any]]) -> float:
         """Calculate revenue change percentage (last 7 vs previous 7 days)."""
         if len(revenue_data) < 14:
             return 0.0
@@ -299,12 +300,14 @@ class DashboardService:
         return {"labels": [d["date"] for d in revenue_data], "data": [d["revenue"] for d in revenue_data]}
 
     @staticmethod
-    def health_check() -> dict[str, any]:
+    def health_check() -> dict[str, Any]:
         """Check dashboard service health."""
         try:
             # Test database connection
+            from sqlalchemy import text
+
             with get_db_session() as db_session:
-                db_session.execute("SELECT 1").scalar()
+                db_session.execute(text("SELECT 1")).scalar()
 
             # Test audit logs table (our single data source)
             test_activities = get_business_activities("health_check", limit=1)

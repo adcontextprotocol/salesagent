@@ -3,12 +3,16 @@
 Tests the critical join logic between MediaBuy and PushNotificationConfig tables.
 """
 
-import pytest
+from datetime import UTC, datetime, timedelta
 
+import pytest
+from sqlalchemy import select
+
+from src.core.database.database_session import get_db_session
+from src.core.database.models import MediaBuy, Principal, PushNotificationConfig, Tenant
 from src.services.delivery_simulator import delivery_simulator
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration]
 
 
 @pytest.mark.requires_db
@@ -19,9 +23,7 @@ class TestDeliverySimulatorRestart:
     def test_tenant(self, integration_db):
         """Create test tenant."""
         with get_db_session() as session:
-            tenant = Tenant(
-                tenant_id="test_tenant_restart", name="Test Tenant for Restart", subdomain="test-restart", config={}
-            )
+            tenant = Tenant(tenant_id="test_tenant_restart", name="Test Tenant for Restart", subdomain="test-restart")
             session.add(tenant)
             session.commit()
             yield tenant.tenant_id
@@ -42,7 +44,7 @@ class TestDeliverySimulatorRestart:
                 principal_id="test_principal_restart",
                 name="Test Principal",
                 access_token="test_token_restart",
-                platform_mappings={},
+                platform_mappings={"mock": {}},  # At least one platform required
             )
             session.add(principal)
             session.commit()
@@ -132,7 +134,7 @@ class TestDeliverySimulatorRestart:
                 principal_id="principal_no_webhook",
                 name="Principal Without Webhook",
                 access_token="token_no_webhook",
-                platform_mappings={},
+                platform_mappings={"mock": {}},  # At least one platform required
             )
             session.add(principal_no_webhook)
 
