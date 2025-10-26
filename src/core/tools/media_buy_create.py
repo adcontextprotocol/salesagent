@@ -17,8 +17,10 @@ from typing import Any
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from pydantic import ValidationError
+from rich.console import Console
 
 logger = logging.getLogger(__name__)
+console = Console()
 
 # Tool-specific imports
 from src.core.audit_logger import get_audit_logger
@@ -40,6 +42,9 @@ from src.core.schemas import (
     TaskStatus,
 )
 from src.core.testing_hooks import apply_testing_hooks, get_testing_context
+
+# Import get_product_catalog from main (after refactor)
+from src.core.tools.products import get_product_catalog
 from src.core.validation_helpers import format_validation_error
 from src.services import activity_feed
 
@@ -271,7 +276,7 @@ async def _validate_and_convert_format_ids(
     return validated_format_ids
 
 
-from src.adapters import get_adapter
+from src.core.helpers.adapter_helpers import get_adapter
 from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
 from src.services.slack_notifier import get_slack_notifier
 
@@ -657,9 +662,12 @@ async def _create_media_buy_impl(
                     # Use product pricing_options min_spend if set, otherwise use currency limit minimum
                     min_spend = currency_limit.min_package_budget
                     if product.pricing_options and len(product.pricing_options) > 0:
-                        first_option = product.pricing_options[0]
-                        if first_option.min_spend_per_package is not None:
-                            min_spend = first_option.min_spend_per_package
+                        # Find pricing option matching the request currency (not just first option)
+                        matching_option = next(
+                            (po for po in product.pricing_options if po.currency == request_currency), None
+                        )
+                        if matching_option and matching_option.min_spend_per_package is not None:
+                            min_spend = matching_option.min_spend_per_package
                     if min_spend is not None:
                         product_min_spends[product.product_id] = Decimal(str(min_spend))
 
@@ -675,26 +683,69 @@ async def _create_media_buy_impl(
                             if not package.budget:
                                 continue
 
-                            # Get the minimum spend requirement for product in this package (AdCP spec: single product)
+                            # Extract budget amount and currency from package (each package can have different currency)
+                            from src.core.schemas import extract_budget_amount
+
+                            package_budget_amount, package_currency = extract_budget_amount(
+                                package.budget, request_currency
+                            )
+                            package_budget = Decimal(str(package_budget_amount))
+
+                            # Validate that package currency is supported (check currency limit exists)
+                            stmt_pkg_currency_check = select(CurrencyLimit).where(
+                                CurrencyLimit.tenant_id == tenant["tenant_id"],
+                                CurrencyLimit.currency_code == package_currency,
+                            )
+                            pkg_currency_limit_check = session.scalars(stmt_pkg_currency_check).first()
+
+                            if not pkg_currency_limit_check:
+                                error_msg = (
+                                    f"Currency {package_currency} is not supported by this publisher. "
+                                    f"Contact the publisher to add support for this currency."
+                                )
+                                raise ValueError(error_msg)
+
+                            # Get the product for this package
                             package_product_ids = [package.product_id] if package.product_id else []
 
-                            applicable_min_spends = [
-                                product_min_spends[pid] for pid in package_product_ids if pid in product_min_spends
-                            ]
+                            if not package_product_ids:
+                                continue
 
-                            if applicable_min_spends:
-                                # Use the highest minimum spend among all products in package
-                                required_min_spend = max(applicable_min_spends)
-                                # Extract budget amount (v1.8.0 compatible)
-                                from src.core.schemas import extract_budget_amount
+                            # Look up minimum spend for this package's currency
+                            for product_id in package_product_ids:
+                                if product_id not in product_map:
+                                    continue
 
-                                package_budget_amount, _ = extract_budget_amount(package.budget, request_currency)
-                                package_budget = Decimal(str(package_budget_amount))
+                                product = product_map[product_id]
 
-                                if package_budget < required_min_spend:
+                                # Find minimum spend for this package's currency
+                                min_spend = None
+
+                                # First check if product has pricing option for this currency
+                                if product.pricing_options:
+                                    matching_option = next(
+                                        (po for po in product.pricing_options if po.currency == package_currency), None
+                                    )
+                                    if matching_option and matching_option.min_spend_per_package is not None:
+                                        min_spend = Decimal(str(matching_option.min_spend_per_package))
+
+                                # If no product override, check currency limit
+                                if min_spend is None:
+                                    # Get currency limit for package's currency
+                                    stmt_pkg_currency = select(CurrencyLimit).where(
+                                        CurrencyLimit.tenant_id == tenant["tenant_id"],
+                                        CurrencyLimit.currency_code == package_currency,
+                                    )
+                                    pkg_currency_limit = session.scalars(stmt_pkg_currency).first()
+
+                                    if pkg_currency_limit and pkg_currency_limit.min_package_budget:
+                                        min_spend = Decimal(str(pkg_currency_limit.min_package_budget))
+
+                                # Validate if minimum spend is set
+                                if min_spend and package_budget < min_spend:
                                     error_msg = (
-                                        f"Package budget ({package_budget} {request_currency}) does not meet minimum spend requirement "
-                                        f"({required_min_spend} {request_currency}) for products in this package"
+                                        f"Package budget ({package_budget} {package_currency}) does not meet minimum spend requirement "
+                                        f"({min_spend} {package_currency}) for products in this package"
                                     )
                                     raise ValueError(error_msg)
                     else:
@@ -783,7 +834,7 @@ async def _create_media_buy_impl(
 
     try:
         # Get the appropriate adapter with testing context
-        adapter = get_adapter(principal, dry_run=DRY_RUN_MODE or testing_ctx.dry_run, testing_context=testing_ctx)
+        adapter = get_adapter(principal, dry_run=testing_ctx.dry_run, testing_context=testing_ctx)
 
         # Check if manual approval is required
         manual_approval_required = (
@@ -1314,8 +1365,8 @@ async def _create_media_buy_impl(
             logger.error(f"Adapter create_media_buy failed with traceback:\n{error_traceback}")
             raise
 
-        # Store the media buy in memory (for backward compatibility)
-        media_buys[response.media_buy_id] = (req, principal_id)
+        # Note: In-memory media_buys dict removed after refactor
+        # Media buys are persisted in database, not in-memory state
 
         # Determine initial status based on flight dates
         now = datetime.now(UTC)

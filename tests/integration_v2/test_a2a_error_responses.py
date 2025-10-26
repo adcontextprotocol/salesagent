@@ -14,19 +14,24 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import Message, MessageSendParams, Part, Role, Task
+from a2a.types import Message, MessageSendParams, Task
 from sqlalchemy import delete
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from src.core.database.database_session import get_db_session
 
 # fmt: off
-from src.core.database.models import CurrencyLimit
+from src.core.database.models import CurrencyLimit, PricingOption
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 from src.core.database.models import Tenant as ModelTenant
 
 # fmt: on
+from tests.integration_v2.conftest import (
+    add_required_setup_data,
+    create_test_product_with_pricing,
+)
+from tests.utils.a2a_helpers import create_a2a_message_with_skill
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
@@ -51,6 +56,7 @@ class TestA2AErrorPropagation:
             now = datetime.now(UTC)
 
             # Clean up existing test data
+            session.execute(delete(PricingOption).where(PricingOption.tenant_id == "a2a_error_test"))
             session.execute(delete(ModelPrincipal).where(ModelPrincipal.tenant_id == "a2a_error_test"))
             session.execute(delete(ModelProduct).where(ModelProduct.tenant_id == "a2a_error_test"))
             session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "a2a_error_test"))
@@ -69,29 +75,24 @@ class TestA2AErrorPropagation:
             )
             session.add(tenant)
 
-            # Create product
-            product = ModelProduct(
+            # Add required setup data before creating product
+            add_required_setup_data(session, "a2a_error_test")
+
+            # Create product using new pricing model
+            product = create_test_product_with_pricing(
+                session=session,
                 tenant_id="a2a_error_test",
                 product_id="a2a_error_product",
                 name="A2A Error Test Product",
                 description="Product for error testing",
+                pricing_model="CPM",
+                rate="10.0",
+                is_fixed=True,
+                min_spend_per_package="1000.0",
                 formats=["display_300x250"],
                 delivery_type="guaranteed",
-                cpm=10.0,
-                min_spend=1000.0,
                 targeting_template={},
-                is_fixed_price=True,
             )
-            session.add(product)
-
-            # Add currency limit
-            currency_limit = CurrencyLimit(
-                tenant_id="a2a_error_test",
-                currency_code="USD",
-                min_package_budget=1000.0,
-                max_daily_package_spend=10000.0,
-            )
-            session.add(currency_limit)
 
             session.commit()
 
@@ -141,17 +142,7 @@ class TestA2AErrorPropagation:
 
     def create_message_with_skill(self, skill_name: str, parameters: dict) -> Message:
         """Helper to create message with explicit skill invocation."""
-        return Message(
-            role=Role.user,
-            parts=[
-                Part(
-                    root={
-                        "type": "skill",
-                        "skill": {"name": skill_name, "arguments": parameters},
-                    }
-                )
-            ],
-        )
+        return create_a2a_message_with_skill(skill_name, parameters)
 
     async def test_create_media_buy_validation_error_includes_errors_field(self, handler, test_tenant, test_principal):
         """Test that validation errors include errors field in A2A response."""

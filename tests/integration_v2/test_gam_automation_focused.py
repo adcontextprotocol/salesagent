@@ -3,6 +3,8 @@ Integration tests for GAM automatic order activation feature (simplified).
 
 Tests the implementation of Issue #116: automatic activation for non-guaranteed GAM orders.
 Focused integration tests using real database connections and minimal mocking.
+
+MIGRATED: Uses new pricing_options model instead of legacy Product pricing fields.
 """
 
 from datetime import datetime
@@ -14,6 +16,7 @@ from src.adapters.google_ad_manager import GUARANTEED_LINE_ITEM_TYPES, NON_GUARA
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product, Tenant
 from src.core.schemas import FormatId, MediaPackage, Principal
+from tests.integration_v2.conftest import create_test_product_with_pricing
 
 # Default agent URL for creating FormatId objects
 DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"
@@ -43,7 +46,6 @@ class TestGAMAutomationBasics:
         assert not (GUARANTEED_LINE_ITEM_TYPES & NON_GUARANTEED_LINE_ITEM_TYPES)
 
 
-@pytest.mark.skip_ci
 @pytest.mark.requires_db
 class TestGAMProductConfiguration:
     """Test database-backed product configuration for automation."""
@@ -63,18 +65,21 @@ class TestGAMProductConfiguration:
                 updated_at=datetime.now(),
             )
             db_session.add(test_tenant)
+            db_session.flush()
 
             # Non-guaranteed product with automatic activation
-            product_auto = Product(
+            product_auto = create_test_product_with_pricing(
+                session=db_session,
                 tenant_id=tenant_id,
                 product_id="test_product_auto",
                 name="Auto Network Product",
+                pricing_model="CPM",
+                rate="2.50",
+                is_fixed=True,
+                currency="USD",
                 formats=[{"format_id": "display_300x250", "name": "Display 300x250", "type": "display"}],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=True,
-                cpm=2.50,
-                # JSONType expects dict, not json.dumps() string
                 implementation_config={
                     "line_item_type": "NETWORK",
                     "non_guaranteed_automation": "automatic",
@@ -83,16 +88,18 @@ class TestGAMProductConfiguration:
             )
 
             # Non-guaranteed product requiring confirmation
-            product_conf = Product(
+            product_conf = create_test_product_with_pricing(
+                session=db_session,
                 tenant_id=tenant_id,
                 product_id="test_product_confirm",
                 name="Confirmation House Product",
+                pricing_model="CPM",
+                rate="1.00",
+                is_fixed=True,
+                currency="USD",
                 formats=[{"format_id": "display_728x90", "name": "Leaderboard 728x90", "type": "display"}],
                 targeting_template={},
                 delivery_type="non_guaranteed",
-                is_fixed_price=True,
-                cpm=1.00,
-                # JSONType expects dict, not json.dumps() string
                 implementation_config={
                     "line_item_type": "HOUSE",
                     "non_guaranteed_automation": "confirmation_required",
@@ -100,7 +107,6 @@ class TestGAMProductConfiguration:
                 },
             )
 
-            db_session.add_all([product_auto, product_conf])
             db_session.commit()
 
             # Get IDs before session closes to avoid DetachedInstanceError

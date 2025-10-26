@@ -15,6 +15,7 @@ from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative, MediaBuy, Principal, Tenant
+from src.core.database.models import PricingOption as DBPricingOption
 from src.core.database.models import Product as ProductModel
 from src.core.schemas import PricingOption, Product
 from src.core.schemas import Principal as PrincipalSchema
@@ -23,6 +24,7 @@ from tests.utils.database_helpers import (
 )
 
 
+@pytest.mark.requires_db
 class TestSchemaFieldMapping:
     """Test that schema fields map correctly to database fields."""
 
@@ -78,6 +80,7 @@ class TestSchemaFieldMapping:
         tenant_id = "test_field_access"
         with get_db_session() as session:
             # Clean up any existing test data
+            session.execute(delete(DBPricingOption).where(DBPricingOption.tenant_id == tenant_id))
             session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
             session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
 
@@ -146,6 +149,7 @@ class TestSchemaFieldMapping:
 
         with get_db_session() as session:
             # Create test data
+            session.execute(delete(DBPricingOption).where(DBPricingOption.tenant_id == tenant_id))
             session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
             session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
 
@@ -272,6 +276,7 @@ class TestSchemaFieldMapping:
 
         with get_db_session() as session:
             # Cleanup
+            session.execute(delete(DBPricingOption).where(DBPricingOption.tenant_id == tenant_id))
             session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
             session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
 
@@ -324,6 +329,7 @@ class TestSchemaFieldMapping:
 
         with get_db_session() as session:
             # Cleanup
+            session.execute(delete(DBPricingOption).where(DBPricingOption.tenant_id == tenant_id))
             session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
             session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
 

@@ -122,6 +122,7 @@ class SchemaRoundtripValidator:
                 assert field not in adcp_dict, f"Internal field '{field}' should not appear in AdCP output"
 
 
+@pytest.mark.requires_db
 class TestProductSchemaRoundtrip:
     """Comprehensive Product schema roundtrip tests."""
 

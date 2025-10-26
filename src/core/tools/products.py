@@ -597,3 +597,103 @@ async def get_products_raw(
 
     # Call shared implementation
     return await _get_products_impl(req, context)
+
+
+def get_product_catalog() -> list[Product]:
+    """Get products for the current tenant.
+
+    Helper function to retrieve all products for the current tenant with their
+    pricing options. Used by other tools that need product data.
+
+    Returns:
+        List of Product objects with full pricing options
+    """
+    import json
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from src.core.config_loader import get_current_tenant
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Product as ModelProduct
+    from src.core.schemas import PricingOption as PricingOptionSchema
+
+    tenant = get_current_tenant()
+
+    with get_db_session() as session:
+        stmt = (
+            select(ModelProduct)
+            .filter_by(tenant_id=tenant["tenant_id"])
+            .options(selectinload(ModelProduct.pricing_options))
+        )
+        products = session.scalars(stmt).all()
+
+        loaded_products = []
+        for product in products:
+            # Convert ORM model to Pydantic schema
+            # Parse JSON fields that might be strings (SQLite) or dicts (PostgreSQL)
+            def safe_json_parse(value):
+                if isinstance(value, str):
+                    try:
+                        return json.loads(value)
+                    except (json.JSONDecodeError, TypeError):
+                        return value
+                return value
+
+            # Parse formats - now stored as strings by the validator
+            format_ids = safe_json_parse(product.formats) or []
+            # Ensure it's a list of strings (validator guarantees this)
+            if not isinstance(format_ids, list):
+                format_ids = []
+
+            # Convert pricing_options ORM objects to Pydantic objects
+            pricing_options = []
+            for po in product.pricing_options:
+                pricing_option_data = {
+                    "pricing_option_id": f"{po.pricing_model}_{po.currency}_{po.id}",
+                    "pricing_model": po.pricing_model,
+                    "rate": float(po.rate) if po.rate else None,
+                    "currency": po.currency,
+                    "is_fixed": po.is_fixed,
+                    "price_guidance": safe_json_parse(po.price_guidance) if po.price_guidance else None,
+                    "parameters": safe_json_parse(po.parameters) if po.parameters else None,
+                    "min_spend_per_package": float(po.min_spend_per_package) if po.min_spend_per_package else None,
+                }
+                pricing_options.append(PricingOptionSchema(**pricing_option_data))
+
+            product_data = {
+                "product_id": product.product_id,
+                "name": product.name,
+                "description": product.description,
+                "formats": format_ids,
+                "delivery_type": product.delivery_type,
+                "pricing_options": pricing_options,
+                "measurement": (
+                    safe_json_parse(product.measurement)
+                    if hasattr(product, "measurement") and product.measurement
+                    else None
+                ),
+                "creative_policy": (
+                    safe_json_parse(product.creative_policy)
+                    if hasattr(product, "creative_policy") and product.creative_policy
+                    else None
+                ),
+                "is_custom": product.is_custom,
+                "expires_at": product.expires_at,
+                # Note: brief_relevance is populated dynamically when brief is provided
+                "implementation_config": safe_json_parse(product.implementation_config),
+                # Required per AdCP spec: either properties OR property_tags
+                "properties": (
+                    safe_json_parse(product.properties)
+                    if hasattr(product, "properties") and product.properties
+                    else None
+                ),
+                "property_tags": (
+                    safe_json_parse(product.property_tags)
+                    if hasattr(product, "property_tags") and product.property_tags
+                    else ["all_inventory"]  # Default required per AdCP spec
+                ),
+            }
+            loaded_products.append(Product(**product_data))
+
+    return loaded_products

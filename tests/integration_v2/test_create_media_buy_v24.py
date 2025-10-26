@@ -12,31 +12,34 @@ Key differences from existing tests:
 - Uses integration-level mocking (real DB, mock adapter only)
 
 NOTE: These tests require a database connection. Run with:
-    env TEST_DATABASE_URL="sqlite:///:memory:" pytest tests/integration/test_create_media_buy_v24.py
+    env TEST_DATABASE_URL="sqlite:///:memory:" pytest tests/integration_v2/test_create_media_buy_v24.py
 or with Docker Compose running for PostgreSQL.
 """
 
-import pytest
+from datetime import UTC, datetime, timedelta
 
+import pytest
+from sqlalchemy import delete
+
+from src.core.database.database_session import get_db_session
 from src.core.schemas import Budget, Package, Targeting
+from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires_db]
 
 
 @pytest.mark.integration
+@pytest.mark.requires_db
 class TestCreateMediaBuyV24Format:
     """Test create_media_buy with AdCP v2.4 packages containing nested objects."""
 
     @pytest.fixture
     def setup_test_tenant(self, integration_db):
         """Set up test tenant with product."""
-        from datetime import datetime
-
         from src.core.config_loader import set_current_tenant
         from src.core.database.models import CurrencyLimit
         from src.core.database.models import Principal as ModelPrincipal
-        from src.core.database.models import Product as ModelProduct
         from src.core.database.models import Tenant as ModelTenant
 
         with get_db_session() as session:
@@ -64,30 +67,27 @@ class TestCreateMediaBuyV24Format:
             )
             session.add(principal)
 
-            # Create product
-            product = ModelProduct(
+            # Add required setup data (access control, currency limits, property tags)
+            add_required_setup_data(session, "test_tenant_v24")
+
+            # Create product with new pricing model
+            product = create_test_product_with_pricing(
+                session=session,
                 tenant_id="test_tenant_v24",
                 product_id="prod_test_v24",
                 name="Test Product V24",
                 description="Test product for v2.4 format",
-                formats=["display_300x250"],
+                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 delivery_type="guaranteed",
-                cpm=10.0,
-                min_spend=1000.0,
-                targeting_template={},  # Required field
-                is_fixed_price=True,  # Required field
+                pricing_model="CPM",
+                rate="10.0",
+                is_fixed=True,
+                currency="USD",
+                min_spend_per_package="1000.0",
+                targeting_template={},
             )
-            session.add(product)
 
-            # Add currency limits for USD and EUR
-            currency_limit_usd = CurrencyLimit(
-                tenant_id="test_tenant_v24",
-                currency_code="USD",
-                min_package_budget=1000.0,
-                max_daily_package_spend=10000.0,
-            )
-            session.add(currency_limit_usd)
-
+            # Add additional currency limits for EUR
             currency_limit_eur = CurrencyLimit(
                 tenant_id="test_tenant_v24",
                 currency_code="EUR",
@@ -95,6 +95,15 @@ class TestCreateMediaBuyV24Format:
                 max_daily_package_spend=10000.0,
             )
             session.add(currency_limit_eur)
+
+            # Add GBP for multi-currency test
+            currency_limit_gbp = CurrencyLimit(
+                tenant_id="test_tenant_v24",
+                currency_code="GBP",
+                min_package_budget=1000.0,
+                max_daily_package_spend=10000.0,
+            )
+            session.add(currency_limit_gbp)
 
             session.commit()
 
@@ -115,9 +124,19 @@ class TestCreateMediaBuyV24Format:
             }
 
             # Cleanup
-            session.execute(delete(ModelProduct).where(ModelProduct.tenant_id == "test_tenant_v24"))
+            from src.core.database.models import (
+                AuthorizedProperty,
+                PricingOption,
+                Product,
+                PropertyTag,
+            )
+
+            session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_tenant_v24"))
+            session.execute(delete(Product).where(Product.tenant_id == "test_tenant_v24"))
             session.execute(delete(ModelPrincipal).where(ModelPrincipal.tenant_id == "test_tenant_v24"))
             session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "test_tenant_v24"))
+            session.execute(delete(PropertyTag).where(PropertyTag.tenant_id == "test_tenant_v24"))
+            session.execute(delete(AuthorizedProperty).where(AuthorizedProperty.tenant_id == "test_tenant_v24"))
             session.execute(delete(ModelTenant).where(ModelTenant.tenant_id == "test_tenant_v24"))
             session.commit()
 

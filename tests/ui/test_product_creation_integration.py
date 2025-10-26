@@ -7,7 +7,11 @@ from src.admin.app import create_app
 
 app, _ = create_app()
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Product, Tenant
+from src.core.database.models import PricingOption, Product, Tenant
+from tests.integration_v2.conftest import (
+    add_required_setup_data,
+    create_test_product_with_pricing,
+)
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
@@ -30,67 +34,38 @@ def test_tenant(integration_db):
     with get_db_session() as session:
         # Clean up any existing test tenant (in case of test reruns)
         try:
-            from src.core.database.models import CreativeFormat
-
+            session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_product_tenant"))
             session.execute(delete(Product).where(Product.tenant_id == "test_product_tenant"))
             session.execute(delete(Tenant).where(Tenant.tenant_id == "test_product_tenant"))
-            session.execute(
-                delete(CreativeFormat).where(CreativeFormat.format_id.in_(["display_300x250", "display_728x90"]))
-            )
             session.commit()
         except Exception:
             session.rollback()  # Ignore errors if tables don't exist yet
 
-        # Create test tenant
-        from src.core.database.models import CreativeFormat
-
+        # Create test tenant with required setup data
         tenant = create_tenant_with_timestamps(
             tenant_id="test_product_tenant",
             name="Test Product Tenant",
             subdomain="test-product",
             ad_server="mock",
             enable_axe_signals=True,
-            auto_approve_formats=["display_300x250"],
+            auto_approve_formats=[],  # Formats now come from creative agents, not local database
             human_review_required=False,
             billing_plan="basic",
             is_active=True,
         )
         session.add(tenant)
+        session.commit()
 
-        # Create test creative formats
-        formats = [
-            CreativeFormat(
-                format_id="display_300x250",
-                name="Display 300x250",
-                type="display",
-                width=300,
-                height=250,
-                description="Medium Rectangle display ad",
-                specs={"width": 300, "height": 250},
-            ),
-            CreativeFormat(
-                format_id="display_728x90",
-                name="Display 728x90",
-                type="display",
-                width=728,
-                height=90,
-                description="Leaderboard display ad",
-                specs={"width": 728, "height": 90},
-            ),
-        ]
-        for fmt in formats:
-            session.add(fmt)
-
+        # Add required setup data (CurrencyLimit, PropertyTag)
+        add_required_setup_data(session, "test_product_tenant")
         session.commit()
 
         yield tenant
 
         # Cleanup
+        session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_product_tenant"))
         session.execute(delete(Product).where(Product.tenant_id == "test_product_tenant"))
         session.execute(delete(Tenant).where(Tenant.tenant_id == "test_product_tenant"))
-        session.execute(
-            delete(CreativeFormat).where(CreativeFormat.format_id.in_(["display_300x250", "display_728x90"]))
-        )
         session.commit()
 
 
@@ -129,18 +104,24 @@ def test_add_product_json_encoding(client, test_tenant, integration_db):
         sess["role"] = "tenant_admin"
 
     # Product data with JSON fields - using werkzeug's MultiDict for multiple values
+    import json
+
     from werkzeug.datastructures import MultiDict
+
+    # Note: Formats are now fetched from creative agents via AdCP protocol (not local DB)
+    # This test focuses on JSON encoding of countries and other JSON fields
+    pricing_option = {"pricing_model": "CPM", "rate": 10.0, "currency_code": "USD", "auction": False}
 
     product_data = MultiDict(
         [
             ("product_id", "test_product_json"),
             ("name", "Test Product JSON"),
             ("description", "Test product for JSON encoding"),
-            ("formats", "display_300x250"),  # First format
-            ("formats", "display_728x90"),  # Second format
+            # Removed format IDs - formats now come from creative agents
             ("countries", "US"),  # First country
             ("countries", "GB"),  # Second country
             ("delivery_type", "non_guaranteed"),  # Required field
+            ("pricing_options", json.dumps([pricing_option])),  # Required: at least one pricing option
             ("price_guidance_min", "5.0"),
             ("price_guidance_max", "15.0"),
             ("min_spend", "1000"),
@@ -168,11 +149,8 @@ def test_add_product_json_encoding(client, test_tenant, integration_db):
         assert product.name == "Test Product JSON"
 
         # Check JSON fields are properly stored as arrays/objects, not strings
-        assert isinstance(product.formats, list)
-        format_ids = [f["format_id"] if isinstance(f, dict) else f for f in product.formats]
-        assert "display_300x250" in format_ids
-        assert "display_728x90" in format_ids
-
+        # Formats removed - formats now come from creative agents via AdCP protocol
+        # Test focuses on countries and other JSON fields
         assert isinstance(product.countries, list)
         assert "US" in product.countries
         assert "GB" in product.countries
@@ -293,8 +271,7 @@ def test_add_product_postgresql_validation(client, test_tenant):
                 name="Bad JSON Product",
                 formats='"["display_300x250"]"',  # Double-encoded string
                 countries='"["US"]"',  # Double-encoded string
-                pricing_model="cpm",
-                guaranteed=False,
+                delivery_type="guaranteed",
             )
             session.add(bad_product)
             session.commit()
@@ -333,23 +310,25 @@ def test_list_products_json_parsing(client, test_tenant, integration_db):
             session.add(user)
             session.commit()
 
-    # Create a product with JSON fields
+    # Create a product with JSON fields using new pricing model
     with get_db_session() as session:
-        product = Product(
+        product = create_test_product_with_pricing(
+            session=session,
             tenant_id=tenant_id,
             product_id="test_list_json",
             name="Test List JSON",
+            pricing_model="CPM",
+            rate="10.00",
+            is_fixed=False,
             formats=[
                 {"format_id": "display_300x250", "name": "Display 300x250", "type": "display"},
                 {"format_id": "video_16x9", "name": "Video 16:9", "type": "video"},
             ],
             countries=["US", "CA"],
             price_guidance={"min": 10.0, "max": 20.0},
-            is_fixed_price=False,
             delivery_type="guaranteed",
             targeting_template={"geo_country_any_of": ["US", "CA"]},
         )
-        session.add(product)
         session.commit()
 
     with client.session_transaction() as sess:

@@ -15,6 +15,7 @@ from src.core.database.models import PricingOption, Product
 pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires_db]
 
 
+@pytest.mark.requires_db
 class TestProductsDataValidation:
     """Validate that products list shows correct data without duplicates."""
 
@@ -138,26 +139,27 @@ class TestProductsDataValidation:
     ):
         """Test that products without pricing_options still render correctly."""
         from src.core.database.database_session import get_db_session
+        from tests.integration_v2.conftest import create_test_product_with_pricing
 
         tenant_id = test_tenant_with_data["tenant_id"]
 
-        # Create product with NO pricing options
+        # Create product using new pricing_options model
         with get_db_session() as db_session:
-            product = Product(
+            product = create_test_product_with_pricing(
+                session=db_session,
                 tenant_id=tenant_id,
                 product_id="test_product_no_pricing",
                 name="Product Without Pricing Options",
-                description="Legacy product with old pricing fields only",
+                description="Product with pricing options",
+                pricing_model="CPM",
+                rate="15.0",
+                is_fixed=True,
                 delivery_type="guaranteed",
                 countries=["US"],
                 formats=[],
                 targeting_template={},
                 property_tags=["all_inventory"],  # Required per AdCP spec
-                # Legacy pricing fields (no pricing_options relationship)
-                is_fixed_price=True,
-                cpm=15.0,
             )
-            db_session.add(product)
             db_session.commit()
 
         # Request products page

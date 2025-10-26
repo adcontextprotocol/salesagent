@@ -1,4 +1,7 @@
-"""Integration tests for signals agent workflow."""
+"""Integration tests for signals agent workflow.
+
+MIGRATED: Uses new pricing_options model instead of legacy Product pricing fields.
+"""
 
 from collections.abc import Callable
 from typing import Any
@@ -9,21 +12,22 @@ from fastmcp.server.context import Context
 from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Product as ModelProduct
 from src.core.database.models import Tenant
 from src.core.main import get_products
 from src.core.schema_adapters import GetProductsRequest
 from src.core.schemas import Signal
 from tests.fixtures.builders import create_test_tenant_with_principal
+from tests.integration_v2.conftest import create_test_product_with_pricing
 
 
 @pytest.mark.requires_server
 @pytest.mark.asyncio
+@pytest.mark.requires_db
 class TestSignalsAgentWorkflow:
     """Integration tests for signals agent workflow with real database."""
 
     @pytest.fixture
-    async def tenant_with_signals_config(self) -> dict[str, Any]:
+    async def tenant_with_signals_config(self, integration_db) -> dict[str, Any]:
         """Create a test tenant with signals discovery configured."""
         tenant_data = await create_test_tenant_with_principal()
         tenant_id = tenant_data["tenant"]["tenant_id"]
@@ -41,13 +45,14 @@ class TestSignalsAgentWorkflow:
 
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-            tenant.signals_agent_config = signals_config
-            db_session.commit()
+            if tenant:
+                tenant.signals_agent_config = signals_config
+                db_session.commit()
 
         return tenant_data
 
     @pytest.fixture
-    async def tenant_without_signals_config(self) -> dict[str, Any]:
+    async def tenant_without_signals_config(self, integration_db) -> dict[str, Any]:
         """Create a test tenant without signals discovery."""
         return await create_test_tenant_with_principal()
 
@@ -223,37 +228,48 @@ class TestSignalsAgentWorkflow:
         return mock_policy
 
     async def _add_test_products(self, tenant_id: str):
-        """Helper to add test products to the real database."""
+        """Helper to add test products to the real database using new pricing_options model."""
         with get_db_session() as db_session:
-            products = [
-                ModelProduct(
-                    product_id="test_db_1",
-                    tenant_id=tenant_id,
-                    name="Database Sports Package",
-                    description="Sports content advertising package",
-                    delivery_type="non_guaranteed",
-                    is_fixed_price=True,
-                    formats=["display_300x250", "display_728x90"],
-                    cpm=4.50,
-                    min_spend=500.0,
-                    countries=["US", "CA"],
-                    targeting_template={},
-                ),
-                ModelProduct(
-                    product_id="test_db_2",
-                    tenant_id=tenant_id,
-                    name="Database Automotive Package",
-                    description="Automotive content advertising package",
-                    delivery_type="non_guaranteed",
-                    is_fixed_price=True,
-                    formats=["display_300x250", "video_pre_roll"],
-                    cpm=5.25,
-                    min_spend=750.0,
-                    countries=["US"],
-                    targeting_template={},
-                ),
-            ]
+            # Sports package with CPM pricing
+            create_test_product_with_pricing(
+                session=db_session,
+                tenant_id=tenant_id,
+                product_id="test_db_1",
+                name="Database Sports Package",
+                description="Sports content advertising package",
+                pricing_model="CPM",
+                rate="4.50",
+                is_fixed=True,
+                currency="USD",
+                min_spend_per_package="500.0",
+                formats=[
+                    {"agent_url": "https://test.com", "id": "display_300x250"},
+                    {"agent_url": "https://test.com", "id": "display_728x90"},
+                ],
+                targeting_template={},
+                delivery_type="non_guaranteed",
+                countries=["US", "CA"],
+            )
 
-            for product in products:
-                db_session.add(product)
+            # Automotive package with CPM pricing
+            create_test_product_with_pricing(
+                session=db_session,
+                tenant_id=tenant_id,
+                product_id="test_db_2",
+                name="Database Automotive Package",
+                description="Automotive content advertising package",
+                pricing_model="CPM",
+                rate="5.25",
+                is_fixed=True,
+                currency="USD",
+                min_spend_per_package="750.0",
+                formats=[
+                    {"agent_url": "https://test.com", "id": "display_300x250"},
+                    {"agent_url": "https://test.com", "id": "video_pre_roll"},
+                ],
+                targeting_template={},
+                delivery_type="non_guaranteed",
+                countries=["US"],
+            )
+
             db_session.commit()

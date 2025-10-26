@@ -5,8 +5,23 @@ These tests verify the integration between FastMCP tool definitions and database
 without mocking the core business logic or database operations.
 """
 
-import pytest
+import uuid
+from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
+import pytest
+from sqlalchemy import select
+
+from src.core.database.database_session import get_db_session
+from src.core.database.models import (
+    Creative as DBCreative,
+)
+from src.core.database.models import (
+    CreativeAssignment,
+    MediaBuy,
+    Principal,
+)
+from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 # TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
@@ -23,6 +38,7 @@ class MockContext:
             self.meta = {"headers": {"x-adcp-auth": auth_token}}
 
 
+@pytest.mark.requires_db
 class TestCreativeLifecycleMCP:
     """Integration tests for creative lifecycle MCP tools."""
 
@@ -791,6 +807,7 @@ class TestCreativeLifecycleMCP:
             mock_adapter_instance.manual_approval_required = False
 
             # Mock product catalog
+            from src.core.schemas import PriceGuidance, PricingOption
             from src.core.schemas import Product as SchemaProduct
 
             mock_catalog.return_value = [
@@ -800,8 +817,18 @@ class TestCreativeLifecycleMCP:
                     description="Test",
                     formats=[],
                     delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    price_guidance={"floor": 5.0, "p50": 10.0, "p90": 15.0},
+                    is_custom=False,
+                    property_tags=["all_inventory"],
+                    pricing_options=[
+                        PricingOption(
+                            pricing_option_id="cpm_usd_auction",
+                            pricing_model="cpm",
+                            rate=10.0,
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance=PriceGuidance(floor=5.0, p50=10.0, p75=12.0, p90=15.0),
+                        )
+                    ],
                 )
             ]
 

@@ -11,7 +11,8 @@ from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Principal, Product
+from src.core.database.models import Principal
+from tests.integration_v2.conftest import create_test_product_with_pricing
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 
@@ -26,6 +27,7 @@ def safe_get_content(result):
     return result if isinstance(result, dict) else {}
 
 
+@pytest.mark.requires_db
 class TestMCPEndpointsComprehensive:
     """Comprehensive tests for all MCP endpoints."""
 
@@ -64,62 +66,56 @@ class TestMCPEndpointsComprehensive:
             )
             session.add(principal)
 
-            # Create test products with all required fields
-            products = [
-                Product(
-                    tenant_id="test_mcp",
-                    product_id="display_news",
-                    name="Display Ads - News Sites",
-                    description="Premium display advertising on news websites",
-                    formats=[
-                        {
-                            "format_id": "display_300x250",
-                            "name": "Medium Rectangle",
-                            "type": "display",
-                            "width": 300,
-                            "height": 250,
-                        }
-                    ],
-                    targeting_template={"geo_country": {"values": ["US", "CA"], "required": False}},
-                    delivery_type="guaranteed",
-                    is_fixed_price=True,
-                    cpm=10.0,
-                    is_custom=False,
-                    countries=["US", "CA"],
-                ),
-                Product(
-                    tenant_id="test_mcp",
-                    product_id="video_sports",
-                    name="Video Ads - Sports Content",
-                    description="In-stream video ads on sports content",
-                    formats=[
-                        {
-                            "format_id": "video_15s",
-                            "name": "15 Second Video",
-                            "type": "video",
-                            "duration": 15,
-                        }
-                    ],
-                    targeting_template={"content_category": {"values": ["sports"], "required": True}},
-                    delivery_type="non_guaranteed",
-                    is_fixed_price=False,
-                    is_custom=False,
-                    countries=["US"],
-                ),
-            ]
-            for product in products:
-                session.add(product)
+            # Create test products with new pricing model
+            product1 = create_test_product_with_pricing(
+                session=session,
+                tenant_id="test_mcp",
+                product_id="display_news",
+                name="Display Ads - News Sites",
+                description="Premium display advertising on news websites",
+                formats=[
+                    {
+                        "agent_url": "https://test.com",
+                        "id": "display_300x250",
+                    }
+                ],
+                targeting_template={"geo_country": {"values": ["US", "CA"], "required": False}},
+                delivery_type="guaranteed",
+                pricing_model="CPM",
+                rate="10.0",
+                is_fixed=True,
+                currency="USD",
+                countries=["US", "CA"],
+                is_custom=False,
+            )
+
+            product2 = create_test_product_with_pricing(
+                session=session,
+                tenant_id="test_mcp",
+                product_id="video_sports",
+                name="Video Ads - Sports Content",
+                description="In-stream video ads on sports content",
+                formats=[
+                    {
+                        "agent_url": "https://test.com",
+                        "id": "video_15s",
+                    }
+                ],
+                targeting_template={"content_category": {"values": ["sports"], "required": True}},
+                delivery_type="non_guaranteed",
+                pricing_model="CPM",
+                rate="1.0",  # Non-guaranteed typically has lower floor
+                is_fixed=False,
+                currency="USD",
+                countries=["US"],
+                is_custom=False,
+                price_guidance={"floor": 1.0, "p50": 5.0, "p75": 8.0, "p90": 12.0},
+            )
 
             session.commit()
 
             # Explicitly close connections to ensure data is flushed to disk
             session.close()
-
-        # Close the global session factory to ensure all connections are closed
-        from src.core.database import database_session
-
-        if database_session.db_session:
-            database_session.db_session.remove()
 
         # Store data for tests
         self.test_token = "test_mcp_token_12345"
@@ -165,10 +161,13 @@ class TestMCPEndpointsComprehensive:
                 assert "formats" in product
                 assert "delivery_type" in product
                 assert product["delivery_type"] in ["guaranteed", "non_guaranteed"]
-                assert "is_fixed_price" in product
-                # cpm should be present for fixed-price products
-                if product["is_fixed_price"]:
-                    assert "cpm" in product
+                # Pricing options should be included
+                assert "pricing_options" in product
+                assert len(product["pricing_options"]) > 0
+                # Verify pricing option structure
+                pricing = product["pricing_options"][0]
+                assert "pricing_model" in pricing
+                assert "is_fixed" in pricing
 
     @pytest.mark.requires_server
     async def test_get_products_filtering(self, mcp_client):
@@ -205,7 +204,7 @@ class TestMCPEndpointsComprehensive:
 
     def test_schema_backward_compatibility(self):
         """Test that AdCP v2.4 schema maintains backward compatibility."""
-        from datetime import date, datetime, timedelta
+        from datetime import date
 
         from src.core.schemas import Budget, CreateMediaBuyRequest, Package
 

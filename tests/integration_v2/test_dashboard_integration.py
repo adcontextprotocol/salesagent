@@ -1,5 +1,8 @@
 """Integration tests for dashboard with real database."""
 
+import json
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from src.core.database.database_session import DatabaseConfig
@@ -55,8 +58,8 @@ def test_db(integration_db):
         conn.execute(
             text(
                 """
-            INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, created_at, updated_at)
+            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """
             ),
             {
@@ -65,14 +68,15 @@ def test_db(integration_db):
                 "subdomain": "test-dashboard",
                 "is_active": True,
                 "ad_server": "mock",
+                "billing_plan": "standard",
             },
         )
     else:
         conn.execute(
             text(
                 """
-            INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, created_at, updated_at)
+            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT (tenant_id) DO NOTHING
         """
             ),
@@ -82,6 +86,7 @@ def test_db(integration_db):
                 "subdomain": "test-dashboard",
                 "is_active": True,
                 "ad_server": "mock",
+                "billing_plan": "standard",
             },
         )
 
@@ -242,42 +247,36 @@ def test_db(integration_db):
 
     # Skip second task insert - tasks table removed
 
-    # Insert test products with required fields
-    conn.execute(
-        text(
-            """
-        INSERT INTO products (product_id, tenant_id, name, formats, targeting_template, delivery_type, is_fixed_price)
-        VALUES (:product_id, :tenant_id, :name, :formats, :targeting_template, :delivery_type, :is_fixed_price)
-    """
-        ),
-        {
-            "product_id": "prod_001",
-            "tenant_id": "test_dashboard",
-            "name": "Test Product 1",
-            "formats": '["display_300x250"]',
-            "targeting_template": "{}",
-            "delivery_type": "guaranteed",
-            "is_fixed_price": True,
-        },
-    )
+    # Insert test products using ORM + helper function (NEW: uses pricing_options)
+    from src.core.database.database_session import get_db_session
+    from tests.integration_v2.conftest import create_test_product_with_pricing
 
-    conn.execute(
-        text(
-            """
-        INSERT INTO products (product_id, tenant_id, name, formats, targeting_template, delivery_type, is_fixed_price)
-        VALUES (:product_id, :tenant_id, :name, :formats, :targeting_template, :delivery_type, :is_fixed_price)
-    """
-        ),
-        {
-            "product_id": "prod_002",
-            "tenant_id": "test_dashboard",
-            "name": "Test Product 2",
-            "formats": '["video_16x9"]',
-            "targeting_template": "{}",
-            "delivery_type": "guaranteed",
-            "is_fixed_price": True,
-        },
-    )
+    with get_db_session() as session:
+        create_test_product_with_pricing(
+            session=session,
+            tenant_id="test_dashboard",
+            product_id="prod_001",
+            name="Test Product 1",
+            formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+            targeting_template={},
+            delivery_type="guaranteed",
+            pricing_model="CPM",
+            rate="15.0",
+            is_fixed=True,
+        )
+        create_test_product_with_pricing(
+            session=session,
+            tenant_id="test_dashboard",
+            product_id="prod_002",
+            name="Test Product 2",
+            formats=[{"agent_url": "https://test.com", "id": "video_16x9"}],
+            targeting_template={},
+            delivery_type="guaranteed",
+            pricing_model="CPM",
+            rate="15.0",
+            is_fixed=True,
+        )
+        session.commit()
 
     conn.commit()
 
@@ -520,8 +519,8 @@ class TestDashboardErrorCases:
             test_db.execute(
                 text(
                     """
-                INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, created_at, updated_at)
+                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """
                 ),
                 {
@@ -530,14 +529,15 @@ class TestDashboardErrorCases:
                     "subdomain": "empty",
                     "is_active": True,
                     "ad_server": "mock",
+                    "billing_plan": "standard",
                 },
             )
         else:
             test_db.execute(
                 text(
                     """
-                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, created_at, updated_at)
+                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (tenant_id) DO NOTHING
             """
                 ),
@@ -547,6 +547,7 @@ class TestDashboardErrorCases:
                     "subdomain": "empty",
                     "is_active": True,
                     "ad_server": "mock",
+                    "billing_plan": "standard",
                 },
             )
         test_db.commit()

@@ -15,6 +15,10 @@ from src.core.json_validators import (
     ensure_json_array,
     ensure_json_object,
 )
+from tests.integration_v2.conftest import (
+    add_required_setup_data,
+    create_test_product_with_pricing,
+)
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
@@ -28,6 +32,7 @@ def test_db(integration_db):
     yield get_engine()
 
 
+@pytest.mark.requires_db
 class TestSessionManagement:
     """Test standardized session management patterns."""
 
@@ -287,7 +292,22 @@ class TestJSONValidation:
     def test_workflow_step_comments(self, test_db):
         """Test WorkflowStep comments validation."""
         with get_db_session() as session:
-            # Create context first
+            # Create tenant and principal first (required for foreign key)
+            import uuid
+
+            tenant = Tenant(tenant_id="test", name="Test Tenant", subdomain="test", ad_server="mock", is_active=True)
+            session.add(tenant)
+            principal = Principal(
+                tenant_id="test",
+                principal_id="test",
+                name="Test Principal",
+                platform_mappings={"mock": {"advertiser_id": "test"}},  # Use valid platform mapping
+                access_token=str(uuid.uuid4()),  # Required field
+            )
+            session.add(principal)
+            session.commit()
+
+            # Create context
             context = Context(context_id="ctx_test", tenant_id="test", principal_id="test", conversation_history=[])
             session.add(context)
 
@@ -333,12 +353,19 @@ class TestIntegration:
                 )
                 self.session.add(tenant)
 
-                # Create product with validated formats
-                product = Product(
+                # Add required setup data before creating products
+                add_required_setup_data(self.session, "workflow_test")
+
+                # Create product with validated formats using new pricing model
+                product = create_test_product_with_pricing(
+                    session=self.session,
                     tenant_id="workflow_test",
                     product_id="prod_1",
                     name="Test Product",
                     description="Test product description",
+                    pricing_model="CPM",
+                    rate="10.0",
+                    is_fixed=True,
                     formats=[
                         {
                             "format_id": "display_300x250",
@@ -351,11 +378,8 @@ class TestIntegration:
                     ],
                     targeting_template={"geo_targets": ["US", "CA"], "device_targets": ["desktop", "mobile"]},
                     delivery_type="guaranteed",
-                    is_fixed_price=True,
-                    cpm=10.0,
                     countries=["US", "CA"],
                 )
-                self.session.add(product)
 
                 # Create principal
                 principal = Principal(
@@ -386,7 +410,7 @@ class TestIntegration:
             p = session.scalars(select(Product).filter_by(product_id="prod_1")).first()
             assert p is not None
             assert len(p.formats) == 1
-            assert p.formats[0] == "display_300x250"  # Format now stored as string ID
+            assert p.formats[0]["format_id"] == "display_300x250"  # Format stored as dict with format_id
             assert p.targeting_template["geo_targets"] == ["US", "CA"]
 
             # Check principal

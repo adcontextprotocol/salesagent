@@ -1,4 +1,8 @@
-"""Integration tests for product deletion functionality."""
+"""Integration tests for product deletion functionality.
+
+⚠️ MIGRATION NOTICE: This test has been migrated to tests/integration_v2/ to use the new
+pricing_options model. The original file in tests/integration/ is deprecated.
+"""
 
 from datetime import date
 from unittest.mock import patch
@@ -10,7 +14,8 @@ from src.admin.app import create_app
 
 app, _ = create_app()
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Product, Tenant, TenantManagementConfig
+from src.core.database.models import MediaBuy, PricingOption, Principal, Product, Tenant, TenantManagementConfig
+from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 
 @pytest.fixture
@@ -32,13 +37,15 @@ def test_tenant_and_products(integration_db):
         # Clean up any existing test data
         try:
             session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == "test_delete"))
+            session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_delete"))
             session.execute(delete(Product).where(Product.tenant_id == "test_delete"))
+            session.execute(delete(Principal).where(Principal.tenant_id == "test_delete"))
             session.execute(delete(Tenant).where(Tenant.tenant_id == "test_delete"))
             session.commit()
         except:
             session.rollback()
 
-        # Create test tenant
+        # Create test tenant with required setup
         tenant = Tenant(
             tenant_id="test_delete",
             name="Test Delete Tenant",
@@ -47,40 +54,59 @@ def test_tenant_and_products(integration_db):
             is_active=True,
         )
         session.add(tenant)
+        session.commit()
 
-        # Create test products
-        product1 = Product(
+        # Add required setup data (currency limits, property tags)
+        add_required_setup_data(session, "test_delete")
+
+        # Create test principal (required for media buys)
+        import uuid
+
+        principal = Principal(
+            tenant_id="test_delete",
+            principal_id="test_principal",
+            name="Test Principal",
+            platform_mappings={"mock": {"advertiser_id": "test_principal"}},  # Use valid platform key (mock)
+            access_token=str(uuid.uuid4()),  # Required field
+        )
+        session.add(principal)
+        session.commit()
+
+        # Create test products using new pricing_options model
+        product1 = create_test_product_with_pricing(
+            session=session,
             tenant_id="test_delete",
             product_id="test_product_1",
             name="Test Product 1",
-            formats=["display_300x250"],
-            targeting_template={},
-            delivery_type="programmatic",
-            is_fixed_price=False,
+            pricing_model="CPM",
+            rate="10.00",
+            is_fixed=False,
+            formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
         )
 
-        product2 = Product(
+        product2 = create_test_product_with_pricing(
+            session=session,
             tenant_id="test_delete",
             product_id="test_product_2",
             name="Test Product 2",
-            formats=["video_30s"],
-            targeting_template={},
-            delivery_type="programmatic",
-            is_fixed_price=False,
+            pricing_model="CPM",
+            rate="15.00",
+            is_fixed=False,
+            formats=[{"agent_url": "https://test.com", "id": "video_30s"}],
         )
 
         # Product with invalid format data (for pattern validation testing)
-        product3 = Product(
+        product3 = create_test_product_with_pricing(
+            session=session,
             tenant_id="test_delete",
             product_id="test_product_invalid",
             name="Test Product Invalid Format",
+            pricing_model="CPM",
+            rate="20.00",
+            is_fixed=False,
             formats='[{"format_id": "test", "type": "invalid_type"}]',  # Invalid type for testing
-            targeting_template={},
-            delivery_type="programmatic",
-            is_fixed_price=False,
         )
 
-        session.add_all([product1, product2, product3])
         session.commit()
 
         yield {"tenant": tenant, "products": [product1, product2, product3]}
@@ -88,7 +114,9 @@ def test_tenant_and_products(integration_db):
         # Cleanup
         try:
             session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == "test_delete"))
+            session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_delete"))
             session.execute(delete(Product).where(Product.tenant_id == "test_delete"))
+            session.execute(delete(Principal).where(Principal.tenant_id == "test_delete"))
             session.execute(delete(Tenant).where(Tenant.tenant_id == "test_delete"))
             session.commit()
         except:
@@ -128,6 +156,7 @@ def setup_super_admin_config():
         session.commit()
 
 
+@pytest.mark.requires_db
 class TestProductDeletion:
     """Test suite for product deletion functionality."""
 

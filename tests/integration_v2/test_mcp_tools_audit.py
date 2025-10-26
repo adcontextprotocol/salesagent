@@ -2,6 +2,9 @@
 """
 MCP Tools Audit for Roundtrip Conversion Issues
 
+⚠️ MIGRATION NOTICE: This test has been migrated to tests/integration_v2/ to use the new
+pricing_options model. The original file in tests/integration/ is deprecated.
+
 This audit systematically tests all MCP tools that use the roundtrip pattern:
 Object → model_dump*() → apply_testing_hooks() → Object(**dict)
 
@@ -27,8 +30,8 @@ from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy as MediaBuyModel
+from src.core.database.models import PricingOption, Tenant
 from src.core.database.models import Product as ProductModel
-from src.core.database.models import Tenant
 from src.core.schemas import (
     Budget,
     DeliveryTotals,
@@ -36,9 +39,11 @@ from src.core.schemas import (
     PackageDelivery,
 )
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
+from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
+@pytest.mark.requires_db
 class TestMCPToolsAudit:
     """Audit all MCP tools for roundtrip conversion vulnerabilities."""
 
@@ -49,6 +54,7 @@ class TestMCPToolsAudit:
         with get_db_session() as session:
             # Clean up any existing test data
             session.execute(delete(MediaBuyModel).where(MediaBuyModel.tenant_id == tenant_id))
+            session.execute(delete(PricingOption).where(PricingOption.tenant_id == tenant_id))
             session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
             # Clean up principals
             from src.core.database.models import Principal as PrincipalModel
@@ -63,11 +69,15 @@ class TestMCPToolsAudit:
             session.add(tenant)
             session.commit()
 
+            # Add required setup data (currency limits, property tags)
+            add_required_setup_data(session, tenant_id)
+
         yield tenant_id
 
         # Cleanup
         with get_db_session() as session:
             session.execute(delete(MediaBuyModel).where(MediaBuyModel.tenant_id == tenant_id))
+            session.execute(delete(PricingOption).where(PricingOption.tenant_id == tenant_id))
             session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
             # Clean up principals
             from src.core.database.models import Principal as PrincipalModel
@@ -114,19 +124,18 @@ class TestMCPToolsAudit:
             )
             session.add(principal)
 
-            # Create test product
-            product = ProductModel(
+            # Create test product using new pricing_options model
+            product = create_test_product_with_pricing(
+                session=session,
                 tenant_id=test_tenant_id,
                 product_id="audit_test_product",
                 name="Audit Test Product",
                 description="Product for audit testing",
-                formats=["display_300x250"],
-                targeting_template={},
-                delivery_type="non_guaranteed",
-                is_fixed_price=False,
-                is_custom=False,
+                pricing_model="CPM",
+                rate="10.00",
+                is_fixed=False,
+                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
             )
-            session.add(product)
 
             # Create test media buy
             media_buy = MediaBuyModel(tenant_id=test_tenant_id, **media_buy_data)
