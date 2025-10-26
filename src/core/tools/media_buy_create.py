@@ -393,6 +393,16 @@ async def _create_media_buy_impl(
             )
             raise ToolError(error_msg)
 
+    # Validate principal exists BEFORE creating context (foreign key constraint)
+    principal = get_principal_object(principal_id)
+    if not principal:
+        error_msg = f"Principal {principal_id} not found"
+        # Cannot create context or workflow step without valid principal
+        return CreateMediaBuyResponse(
+            buyer_ref=buyer_ref or "unknown",
+            errors=[Error(code="authentication_error", message=error_msg, details=None)],
+        )
+
     # Context management and workflow step creation - create workflow step FIRST
     ctx_manager = get_context_manager()
     ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
@@ -405,7 +415,7 @@ async def _create_media_buy_impl(
         if ctx_id:
             persistent_ctx = ctx_manager.get_context(ctx_id)
 
-        # Create new context if needed
+        # Create new context if needed (principal already validated above)
         if not persistent_ctx:
             persistent_ctx = ctx_manager.create_context(tenant_id=tenant["tenant_id"], principal_id=principal_id)
 
@@ -822,15 +832,7 @@ async def _create_media_buy_impl(
             errors=[Error(code="validation_error", message=str(e), details=None)],
         )
 
-    # Get the Principal object (needed for adapter)
-    principal = get_principal_object(principal_id)
-    if not principal:
-        error_msg = f"Principal {principal_id} not found"
-        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-        return CreateMediaBuyResponse(
-            buyer_ref=buyer_ref or "unknown",
-            errors=[Error(code="authentication_error", message=error_msg, details=None)],
-        )
+    # Principal already validated earlier (before context creation) to avoid foreign key errors
 
     try:
         # Get the appropriate adapter with testing context

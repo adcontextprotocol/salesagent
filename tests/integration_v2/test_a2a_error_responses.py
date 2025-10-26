@@ -79,6 +79,7 @@ class TestA2AErrorPropagation:
             add_required_setup_data(session, "a2a_error_test")
 
             # Create product using new pricing model
+            # NOTE: formats must be structured FormatId objects with agent_url, not strings
             product = create_test_product_with_pricing(
                 session=session,
                 tenant_id="a2a_error_test",
@@ -89,7 +90,7 @@ class TestA2AErrorPropagation:
                 rate="10.0",
                 is_fixed=True,
                 min_spend_per_package="1000.0",
-                formats=["display_300x250"],
+                formats=[{"id": "display_300x250", "agent_url": "https://test.example.com"}],
                 delivery_type="guaranteed",
                 targeting_template={},
             )
@@ -172,7 +173,11 @@ class TestA2AErrorPropagation:
 
             # Extract response data
             artifact = result.artifacts[0]
-            artifact_data = artifact.parts[0].data if hasattr(artifact.parts[0], "data") else {}
+            artifact_data = (
+                artifact.parts[0].root.data
+                if hasattr(artifact.parts[0], "root") and hasattr(artifact.parts[0].root, "data")
+                else {}
+            )
 
             # CRITICAL ASSERTIONS: Error propagation
             assert "success" in artifact_data, "Response must include 'success' field"
@@ -207,7 +212,7 @@ class TestA2AErrorPropagation:
                 "packages": [
                     {
                         "buyer_ref": "pkg_1",
-                        "products": ["a2a_error_product"],
+                        "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
                         "budget": {"total": 10000.0, "currency": "USD"},
                     }
                 ],
@@ -223,7 +228,11 @@ class TestA2AErrorPropagation:
 
             # Extract response data
             artifact = result.artifacts[0]
-            artifact_data = artifact.parts[0].data if hasattr(artifact.parts[0], "data") else {}
+            artifact_data = (
+                artifact.parts[0].root.data
+                if hasattr(artifact.parts[0], "root") and hasattr(artifact.parts[0].root, "data")
+                else {}
+            )
 
             # CRITICAL ASSERTIONS: Error propagation for auth failures
             assert artifact_data["success"] is False, "success must be False for auth errors"
@@ -256,7 +265,7 @@ class TestA2AErrorPropagation:
                 "packages": [
                     {
                         "buyer_ref": "pkg_1",
-                        "products": ["a2a_error_product"],
+                        "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
                         "budget": {"total": 10000.0, "currency": "USD"},
                     }
                 ],
@@ -272,7 +281,11 @@ class TestA2AErrorPropagation:
 
             # Extract response data
             artifact = result.artifacts[0]
-            artifact_data = artifact.parts[0].data if hasattr(artifact.parts[0], "data") else {}
+            artifact_data = (
+                artifact.parts[0].root.data
+                if hasattr(artifact.parts[0], "root") and hasattr(artifact.parts[0].root, "data")
+                else {}
+            )
 
             # CRITICAL ASSERTIONS: Success response
             assert artifact_data["success"] is True, "success must be True for successful operation"
@@ -303,7 +316,7 @@ class TestA2AErrorPropagation:
                 "packages": [
                     {
                         "buyer_ref": "pkg_1",
-                        "products": ["a2a_error_product"],
+                        "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
                         "budget": {"total": 10000.0, "currency": "USD"},
                     }
                 ],
@@ -319,7 +332,11 @@ class TestA2AErrorPropagation:
 
             # Extract response data
             artifact = result.artifacts[0]
-            artifact_data = artifact.parts[0].data if hasattr(artifact.parts[0], "data") else {}
+            artifact_data = (
+                artifact.parts[0].root.data
+                if hasattr(artifact.parts[0], "root") and hasattr(artifact.parts[0].root, "data")
+                else {}
+            )
 
             # CRITICAL ASSERTIONS: All AdCP fields preserved
             # Required AdCP fields from CreateMediaBuyResponse schema

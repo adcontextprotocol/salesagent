@@ -229,7 +229,13 @@ class TestSignalsAgentWorkflow:
 
     async def _add_test_products(self, tenant_id: str):
         """Helper to add test products to the real database using new pricing_options model."""
+        from tests.integration_v2.conftest import add_required_setup_data
+
         with get_db_session() as db_session:
+            # Add required setup data (CurrencyLimit, PropertyTag, AuthorizedProperty)
+            add_required_setup_data(db_session, tenant_id)
+            db_session.flush()  # Ensure setup data is committed before creating products
+
             # Sports package with CPM pricing
             create_test_product_with_pricing(
                 session=db_session,

@@ -127,9 +127,10 @@ class TestCreateMediaBuyRoundtrip:
         """
         # Step 1: Create a valid CreateMediaBuyResponse (simulates what adapter returns)
         # NOTE: status and adcp_version are protocol fields (added by ProtocolEnvelope), not domain fields
+        # NOTE: media_buy_id starts with "test_" to prevent testing hooks from adding another "test_" prefix
         original_response = CreateMediaBuyResponse(
             buyer_ref="test-buyer-ref-123",
-            media_buy_id="mb_test_12345",
+            media_buy_id="test_mb_12345",
             packages=[
                 {
                     "package_id": "pkg_1",
@@ -194,7 +195,7 @@ class TestCreateMediaBuyRoundtrip:
 
         # Step 5: Verify reconstruction succeeded
         assert reconstructed_response.buyer_ref == "test-buyer-ref-123"
-        assert reconstructed_response.media_buy_id == "mb_test_12345"
+        assert reconstructed_response.media_buy_id == "test_mb_12345"
         assert len(reconstructed_response.packages) == 1
 
     def test_create_media_buy_response_roundtrip_without_hooks(self, setup_test_tenant):
@@ -225,9 +226,10 @@ class TestCreateMediaBuyRoundtrip:
         Verifies that extra fields added by testing hooks are properly filtered out
         and don't appear in the final CreateMediaBuyResponse object.
         """
+        # NOTE: media_buy_id starts with "test_" to prevent testing hooks from adding another "test_" prefix
         original_response = CreateMediaBuyResponse(
             buyer_ref="filter-test",
-            media_buy_id="mb_filter",
+            media_buy_id="test_mb_filter",
         )
 
         response_data = original_response.model_dump_internal()

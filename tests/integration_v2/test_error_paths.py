@@ -25,7 +25,8 @@ from src.core.database.models import CurrencyLimit
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 from src.core.database.models import Tenant as ModelTenant
-from src.core.schemas import CreateMediaBuyResponse, Error
+from src.core.schema_adapters import CreateMediaBuyResponse
+from src.core.schemas import Error
 from src.core.tool_context import ToolContext
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
@@ -453,7 +454,8 @@ class TestImportValidation:
 
         Protocol fields (adcp_version, status) removed in protocol envelope migration.
         """
-        from src.core.schemas import CreateMediaBuyResponse, Error
+        from src.core.schema_adapters import CreateMediaBuyResponse
+        from src.core.schemas import Error
 
         response = CreateMediaBuyResponse(
             buyer_ref="test",
