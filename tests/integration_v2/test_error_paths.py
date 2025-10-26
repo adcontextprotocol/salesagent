@@ -438,6 +438,16 @@ class TestImportValidation:
         assert error.code == "test_code"
         assert error.message == "test message"
 
+    def test_error_class_imported_in_main(self):
+        """Verify Error class is imported in main.py (regression test for PR #332)."""
+        import src.core.main
+        from src.core.schemas import Error
+
+        # Verify Error is accessible from main module
+        assert hasattr(src.core.main, "Error")
+        # Verify it's the same class
+        assert src.core.main.Error is Error
+
     def test_create_media_buy_response_with_errors(self):
         """Verify CreateMediaBuyResponse can contain Error objects.
 

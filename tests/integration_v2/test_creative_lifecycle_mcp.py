@@ -3,6 +3,11 @@
 Tests sync_creatives and list_creatives MCP tools with real database operations.
 These tests verify the integration between FastMCP tool definitions and database persistence,
 without mocking the core business logic or database operations.
+
+NOTE: All Creative instances require agent_url field (added in schema migration).
+This field is required by the database schema (NOT NULL constraint) and AdCP v2.4 spec
+for creative format namespacing - each creative format is associated with an agent URL.
+Test creatives use "https://test.com" as a default value.
 """
 
 import uuid

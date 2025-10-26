@@ -1708,19 +1708,7 @@ async def _create_media_buy_impl(
             else adcp_response.model_dump()
         )
 
-        # Debug: Check if buyer_ref is in response_data before testing hooks
-        if "buyer_ref" not in response_data:
-            logger.error(f"🚨 buyer_ref MISSING after model_dump_internal! Keys: {list(response_data.keys())}")
-        else:
-            logger.info(f"✅ buyer_ref present after model_dump_internal: {response_data['buyer_ref']}")
-
         response_data = apply_testing_hooks(response_data, testing_ctx, "create_media_buy", campaign_info)
-
-        # Debug: Check if buyer_ref is in response_data after testing hooks
-        if "buyer_ref" not in response_data:
-            logger.error(f"🚨 buyer_ref MISSING after apply_testing_hooks! Keys: {list(response_data.keys())}")
-        else:
-            logger.info(f"✅ buyer_ref present after apply_testing_hooks: {response_data['buyer_ref']}")
 
         # Reconstruct response from modified data
         # Filter out testing hook fields that aren't part of CreateMediaBuyResponse schema
@@ -1734,15 +1722,6 @@ async def _create_media_buy_impl(
             "workflow_step_id",
         }
         filtered_data = {k: v for k, v in response_data.items() if k in valid_fields}
-
-        # Debug: Check if buyer_ref is in filtered_data
-        if "buyer_ref" not in filtered_data:
-            logger.error(f"🚨 buyer_ref MISSING after filtering! filtered_data keys: {list(filtered_data.keys())}")
-            logger.error(f"🚨 response_data keys: {list(response_data.keys())}")
-            # Add buyer_ref back if it's somehow missing
-            filtered_data["buyer_ref"] = buyer_ref_value
-        else:
-            logger.info(f"✅ buyer_ref present in filtered_data: {filtered_data['buyer_ref']}")
 
         # Ensure required fields are present (validator compliance)
         if "status" not in filtered_data:
