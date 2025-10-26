@@ -37,11 +37,11 @@ class TestGenerativeCreatives:
         with get_db_session() as session:
             # Create test tenant
             tenant = create_tenant_with_timestamps(
-                session,
                 tenant_id="test-tenant-gen",
                 name="Test Tenant Generative",
                 subdomain="test-gen",
             )
+            session.add(tenant)
 
             # Create principal
             principal = Principal(
