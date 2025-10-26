@@ -51,6 +51,29 @@ class TestDeliverySimulatorRestart:
             yield principal.principal_id
 
     @pytest.fixture
+    def test_product(self, test_tenant):
+        """Create test product with mock adapter."""
+        from src.core.database.models import Product
+
+        product_id = "test_product_delivery_sim"
+        with get_db_session() as session:
+            product = Product(
+                tenant_id=test_tenant,
+                product_id=product_id,
+                name="Test Product",
+                description="Test product for delivery simulator",
+                adapter_type="mock",
+                format_type="display",
+                pricing_model="cpm",
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+            session.add(product)
+            session.commit()
+
+        yield product_id
+
+    @pytest.fixture
     def test_webhook_config(self, test_tenant, test_principal):
         """Create test push notification config."""
         import uuid
@@ -82,7 +105,9 @@ class TestDeliverySimulatorRestart:
                 session.delete(config)
                 session.commit()
 
-    def test_restart_finds_media_buys_with_principal_webhook(self, test_tenant, test_principal, test_webhook_config):
+    def test_restart_finds_media_buys_with_principal_webhook(
+        self, test_tenant, test_principal, test_product, test_webhook_config
+    ):
         """Test that restart_active_simulations correctly joins MediaBuy with PushNotificationConfig via principal_id."""
         # Create multiple media buys for same principal
         media_buy_ids = []
@@ -100,7 +125,7 @@ class TestDeliverySimulatorRestart:
                     start_date=now,
                     end_date=now + timedelta(days=7),
                     budget=1000.0,
-                    raw_request={},
+                    raw_request={"packages": [{"product_id": test_product}]},
                     created_at=now,
                     updated_at=now,
                 )

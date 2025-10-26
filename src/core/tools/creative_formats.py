@@ -93,7 +93,10 @@ def _list_creative_formats_impl(
         # Filter to only the specified format IDs
         # Extract the 'id' field from each FormatId object
         format_ids_set = {fmt.id for fmt in req.format_ids}
-        formats = [f for f in formats if f.format_id in format_ids_set]
+        # Compare format_id.id (handle both FormatId objects and strings)
+        formats = [
+            f for f in formats if (f.format_id.id if hasattr(f.format_id, "id") else f.format_id) in format_ids_set
+        ]
 
     # Sort formats by type and name for consistent ordering
     formats.sort(key=lambda f: (f.type, f.name))
