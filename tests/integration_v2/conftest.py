@@ -331,6 +331,7 @@ def add_required_setup_data(session, tenant_id: str):
     tenant = session.scalars(stmt).first()
     if tenant and not tenant.authorized_emails:
         tenant.authorized_emails = ["test@example.com"]
+        session.flush()  # Ensure changes are persisted immediately
 
     # Create AuthorizedProperty if not exists
     stmt_property = select(AuthorizedProperty).filter_by(tenant_id=tenant_id)
