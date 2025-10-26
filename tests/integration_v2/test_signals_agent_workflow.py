@@ -48,6 +48,9 @@ class TestSignalsAgentWorkflow:
                 tenant.signals_agent_config = signals_config
                 db_session.commit()
 
+        # Update tenant_data to include signals_agent_config
+        tenant_data["tenant"]["signals_agent_config"] = signals_config
+
         return tenant_data
 
     @pytest.fixture
@@ -253,6 +256,12 @@ class TestSignalsAgentWorkflow:
 
         stack = ExitStack()
 
+        # Build full tenant dict including signals_agent_config
+        tenant_dict = {
+            "tenant_id": tenant_data["tenant"]["tenant_id"],
+            "signals_agent_config": tenant_data["tenant"].get("signals_agent_config"),
+        }
+
         # Patch auth functions in src.core.tools.products where they're imported at module level
         # get_principal_from_context returns tuple (principal_id, tenant_dict)
         stack.enter_context(
@@ -261,7 +270,7 @@ class TestSignalsAgentWorkflow:
                 get_principal_from_context=Mock(
                     return_value=(
                         tenant_data["principal"].principal_id,
-                        {"tenant_id": tenant_data["tenant"]["tenant_id"]},
+                        tenant_dict,
                     )
                 ),
                 get_principal_object=Mock(return_value=tenant_data["principal"]),
@@ -273,7 +282,7 @@ class TestSignalsAgentWorkflow:
         stack.enter_context(
             patch(
                 "src.core.config_loader.get_current_tenant",
-                Mock(return_value={"tenant_id": tenant_data["tenant"]["tenant_id"]}),
+                Mock(return_value=tenant_dict),
             )
         )
 

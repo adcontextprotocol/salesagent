@@ -96,7 +96,13 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
             raise ToolError(
                 f"Authentication succeeded but tenant context missing. This is a bug. principal_id={principal_id}"
             )
-        # else: No auth provided, which is OK for discovery endpoints
+        else:
+            # No tenant context and no principal - cannot determine which tenant's products to return
+            logger.error("[GET_PRODUCTS] No tenant context available - cannot determine which products to return")
+            print("❌ [GET_PRODUCTS DEBUG] No tenant context available", flush=True)
+            raise ToolError(
+                "Cannot determine tenant context. Please provide valid authentication or ensure tenant can be identified from request headers."
+            )
 
     # Get the Principal object with ad server mappings
     principal = get_principal_object(principal_id) if principal_id else None
@@ -257,7 +263,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
     catalog_config = {"provider": "database", "config": {}}  # Default to database provider
 
     # Check if signals discovery is configured for this tenant
-    if hasattr(tenant, "signals_agent_config") and tenant.get("signals_agent_config"):
+    if tenant.get("signals_agent_config"):
         signals_config = tenant["signals_agent_config"]
 
         # Parse signals config if it's a string (SQLite) vs dict (PostgreSQL JSONB)
@@ -285,9 +291,11 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
             }
 
     # Get the product catalog provider for this tenant
+    # Factory expects a dict with "product_catalog" key, not the catalog_config directly
+    tenant_config_for_factory = {"product_catalog": catalog_config}
     provider = await get_product_catalog_provider(
         tenant["tenant_id"],
-        catalog_config,
+        tenant_config_for_factory,
     )
 
     # Query products using the brief, including context for signals forwarding
