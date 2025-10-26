@@ -250,7 +250,6 @@ def test_product(db_session, test_tenant):
         formats=["display_300x250"],
         targeting_template={},
         delivery_type="guaranteed",
-        is_fixed_price=True,
     )
     db_session.add(product)
     db_session.commit()

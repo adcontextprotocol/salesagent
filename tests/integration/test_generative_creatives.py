@@ -51,7 +51,7 @@ class TestGenerativeCreatives:
                 tenant_id=tenant.tenant_id,
                 name="Test Principal Gen",
                 access_token="test-token-123",
-                platform_mappings={"mock": {}},  # At least one platform required
+                platform_mappings={"mock": {"advertiser_id": "test-advertiser"}},
             )
             session.add(principal)
 
