@@ -129,8 +129,10 @@ class TestDeliverySimulatorRestart:
                     status="active",  # Active status
                     order_name=f"Test Order {i}",
                     advertiser_name="Test Advertiser",
-                    start_date=now,
-                    end_date=now + timedelta(days=7),
+                    start_date=now.date(),
+                    end_date=(now + timedelta(days=7)).date(),
+                    start_time=now,  # Required for delivery simulator
+                    end_time=now + timedelta(days=7),  # Required for delivery simulator
                     budget=1000.0,
                     raw_request={"packages": [{"product_id": test_product}]},
                     created_at=now,

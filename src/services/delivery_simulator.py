@@ -122,7 +122,7 @@ class DeliverySimulator:
                             principal_id=media_buy.principal_id,
                             start_time=media_buy.start_time,
                             end_time=media_buy.end_time,
-                            total_budget=float(media_buy.total_budget),
+                            total_budget=float(media_buy.budget) if media_buy.budget else 0.0,
                             time_acceleration=delivery_sim_config.get("time_acceleration", 3600),
                             update_interval_seconds=delivery_sim_config.get("update_interval_seconds", 1.0),
                         )
