@@ -115,7 +115,6 @@ class TestGenerativeCreatives:
 
         result = sync_fn(
             context=context,
-            media_buy_id=self.media_buy_id,
             creatives=[
                 {
                     "creative_id": "gen-creative-001",
@@ -184,7 +183,6 @@ class TestGenerativeCreatives:
 
         result = sync_fn(
             context=context,
-            media_buy_id=self.media_buy_id,
             creatives=[
                 {
                     "creative_id": "static-creative-001",
