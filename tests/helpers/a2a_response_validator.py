@@ -49,13 +49,13 @@ class A2AResponseValidator:
         "metadata",
     }
 
-    # Skill-specific required fields
+    # Skill-specific required fields (domain fields only - protocol fields added by handlers)
     SKILL_REQUIRED_FIELDS = {
-        "create_media_buy": {"media_buy_id", "status", "packages"},
-        "sync_creatives": {"status", "results"},
+        "create_media_buy": {"media_buy_id"},  # Removed 'status' (protocol) and 'packages' (optional in spec)
+        "sync_creatives": {"creatives"},  # Removed 'status' (protocol), 'results' -> 'creatives' per spec
         "get_products": {"products"},
-        "list_creatives": {"creatives", "total_count", "page", "limit"},
-        "list_creative_formats": {"formats", "total_count"},
+        "list_creatives": {"creatives", "query_summary", "pagination"},  # Per AdCP spec structure
+        "list_creative_formats": {"formats"},  # Removed 'total_count' (not in spec)
         "get_signals": {"signals"},
     }
 

@@ -1275,12 +1275,19 @@ class AdCPRequestHandler(RequestHandler):
                 brief=brief, promoted_offering=promoted_offering, context=tool_context
             )
 
-            # Return spec-compliant response (no extra fields)
-            # Per AdCP spec: products, available_currencies, errors
+            # Convert response to dict
             if isinstance(response, dict):
-                return response
+                response_data = response
             else:
-                return response.model_dump()
+                response_data = response.model_dump()
+
+            # Add A2A protocol fields (message for human readability)
+            # Use __str__() method which all response types implement
+            response_data["message"] = (
+                str(response) if not isinstance(response, dict) else "Products retrieved successfully"
+            )
+
+            return response_data
 
         except Exception as e:
             logger.error(f"Error in get_products skill: {e}")
@@ -1415,12 +1422,19 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Return spec-compliant response (no extra fields)
-            # Per AdCP spec: creatives (array of results), dry_run (boolean)
+            # Convert response to dict
             if isinstance(response, dict):
-                return response
+                response_data = response
             else:
-                return response.model_dump()
+                response_data = response.model_dump()
+
+            # Add A2A protocol fields (message for human readability)
+            # Use __str__() method which all response types implement
+            response_data["message"] = (
+                str(response) if not isinstance(response, dict) else "Creatives synced successfully"
+            )
+
+            return response_data
 
         except Exception as e:
             logger.error(f"Error in sync_creatives skill: {e}")
@@ -1452,12 +1466,19 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Return spec-compliant response (no extra fields)
-            # Per AdCP spec: query_summary, pagination, creatives (+ optional format_summary, status_summary)
+            # Convert response to dict
             if isinstance(response, dict):
-                return response
+                response_data = response
             else:
-                return response.model_dump()
+                response_data = response.model_dump()
+
+            # Add A2A protocol fields (message for human readability)
+            # Use __str__() method which all response types implement
+            response_data["message"] = (
+                str(response) if not isinstance(response, dict) else "Creatives listed successfully"
+            )
+
+            return response_data
 
         except Exception as e:
             logger.error(f"Error in list_creatives skill: {e}")
@@ -1689,12 +1710,19 @@ class AdCPRequestHandler(RequestHandler):
             # Call core function with request
             response = core_list_creative_formats_tool(req=req, context=tool_context)
 
-            # Return spec-compliant response (no extra fields)
-            # Per AdCP spec: formats (required), creative_agents (optional), errors (optional)
+            # Convert response to dict
             if isinstance(response, dict):
-                return response
+                response_data = response
             else:
-                return response.model_dump()
+                response_data = response.model_dump()
+
+            # Add A2A protocol fields (message for human readability)
+            # Use __str__() method which all response types implement
+            response_data["message"] = (
+                str(response) if not isinstance(response, dict) else "Creative formats retrieved successfully"
+            )
+
+            return response_data
 
         except Exception as e:
             logger.error(f"Error in list_creative_formats skill: {e}")
