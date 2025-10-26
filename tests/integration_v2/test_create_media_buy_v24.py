@@ -25,8 +25,7 @@ from src.core.database.database_session import get_db_session
 from src.core.schemas import Budget, Package, Targeting
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci, pytest.mark.requires_db]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 @pytest.mark.integration

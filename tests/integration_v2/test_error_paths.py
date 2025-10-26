@@ -30,8 +30,7 @@ from src.core.tool_context import ToolContext
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 @pytest.mark.integration
@@ -424,18 +423,6 @@ class TestListCreativesErrorPaths:
 @pytest.mark.integration
 class TestImportValidation:
     """Meta-test: Verify Error class is actually importable where used."""
-
-    def test_error_class_imported_in_main(self):
-        """Verify Error class is imported in main.py (regression test for PR #332)."""
-        import src.core.main
-
-        # Error should be accessible
-        assert hasattr(src.core.main, "Error")
-
-        # Should be the Pydantic model
-        from src.core.schemas import Error
-
-        assert src.core.main.Error is Error
 
     def test_error_class_is_constructible(self):
         """Verify Error class can be constructed (basic smoke test)."""

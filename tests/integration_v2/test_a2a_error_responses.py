@@ -33,8 +33,7 @@ from tests.integration_v2.conftest import (
 )
 from tests.utils.a2a_helpers import create_a2a_message_with_skill
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 # Configure logging for tests
 logging.basicConfig(level=logging.DEBUG)
