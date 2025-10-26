@@ -62,11 +62,17 @@ class TestDeliverySimulatorRestart:
                 product_id=product_id,
                 name="Test Product",
                 description="Test product for delivery simulator",
-                adapter_type="mock",
-                format_type="display",
-                pricing_model="cpm",
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
+                formats=[{"agent_url": "https://example.com", "id": "display_300x250"}],
+                targeting_template={},
+                delivery_type="guaranteed",
+                property_tags=["all_inventory"],
+                implementation_config={
+                    "delivery_simulation": {
+                        "enabled": True,
+                        "time_acceleration": 3600,
+                        "update_interval_seconds": 1.0
+                    }
+                },
             )
             session.add(product)
             session.commit()
