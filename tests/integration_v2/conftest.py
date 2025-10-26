@@ -592,3 +592,84 @@ def create_flat_rate_product(
 # ============================================================================
 # End Pricing Helper Functions
 # ============================================================================
+
+
+# ============================================================================
+# Admin UI Test Fixtures
+# ============================================================================
+
+
+@pytest.fixture
+def admin_client(integration_db):
+    """Create a test client for the admin Flask app."""
+    admin_app.config["TESTING"] = True
+    admin_app.config["WTF_CSRF_ENABLED"] = False
+    return admin_app.test_client()
+
+
+@pytest.fixture
+def authenticated_admin_session(admin_client, integration_db):
+    """Create an authenticated session for admin UI testing."""
+    import os
+
+    # Set up super admin configuration in database
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import TenantManagementConfig
+
+    with get_db_session() as db_session:
+        # Add tenant management admin email configuration
+        email_config = TenantManagementConfig(config_key="super_admin_emails", config_value="test@example.com")
+        db_session.add(email_config)
+        db_session.commit()
+
+    # Enable test mode for authentication
+    os.environ["ADCP_AUTH_TEST_MODE"] = "true"
+
+    with admin_client.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["role"] = "super_admin"
+        sess["email"] = "test@example.com"
+        sess["user"] = {"email": "test@example.com", "role": "super_admin"}  # Required by require_auth decorator
+        sess["is_super_admin"] = True  # Blueprint sets this
+
+    yield admin_client
+
+    # Cleanup: Disable test mode after test
+    if "ADCP_AUTH_TEST_MODE" in os.environ:
+        del os.environ["ADCP_AUTH_TEST_MODE"]
+
+
+@pytest.fixture
+def test_tenant_with_data(integration_db):
+    """Create a test tenant in the database with proper configuration."""
+    from datetime import UTC, datetime
+
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Tenant
+    from tests.fixtures import TenantFactory
+
+    tenant_data = TenantFactory.create()
+    now = datetime.now(UTC)
+
+    with get_db_session() as db_session:
+        tenant = Tenant(
+            tenant_id=tenant_data["tenant_id"],
+            name=tenant_data["name"],
+            subdomain=tenant_data["subdomain"],
+            is_active=tenant_data["is_active"],
+            ad_server="mock",
+            auto_approve_formats=[],  # JSONType expects list, not json.dumps()
+            human_review_required=False,
+            policy_settings={},  # JSONType expects dict, not json.dumps()
+            created_at=now,
+            updated_at=now,
+        )
+        db_session.add(tenant)
+        db_session.commit()
+
+    return tenant_data
+
+
+# ============================================================================
+# End Admin UI Test Fixtures
+# ============================================================================

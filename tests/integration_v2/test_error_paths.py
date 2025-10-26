@@ -89,19 +89,22 @@ class TestCreateMediaBuyErrorPaths:
 
             session.commit()
 
-            # Set tenant context
-            set_current_tenant(
-                {
-                    "tenant_id": "error_test_tenant",
-                    "name": "Error Test Tenant",
-                    "subdomain": "errortest",
-                    "ad_server": "mock",
-                }
-            )
+        # Session closed here - data persists in database
 
-            yield
+        # Set tenant context
+        set_current_tenant(
+            {
+                "tenant_id": "error_test_tenant",
+                "name": "Error Test Tenant",
+                "subdomain": "errortest",
+                "ad_server": "mock",
+            }
+        )
 
-            # Cleanup
+        yield
+
+        # Cleanup with new session
+        with get_db_session() as session:
             session.execute(delete(ModelPrincipal).where(ModelPrincipal.tenant_id == "error_test_tenant"))
             session.execute(delete(ModelProduct).where(ModelProduct.tenant_id == "error_test_tenant"))
             session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "error_test_tenant"))
@@ -122,9 +125,12 @@ class TestCreateMediaBuyErrorPaths:
             session.add(principal)
             session.commit()
 
-            yield
+        # Session closed here - principal persists in database
 
-            # Cleanup principal
+        yield
+
+        # Cleanup principal with new session
+        with get_db_session() as session:
             session.execute(delete(ModelPrincipal).where(ModelPrincipal.principal_id == "error_test_principal"))
             session.commit()
 

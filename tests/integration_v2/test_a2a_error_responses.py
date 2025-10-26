@@ -113,7 +113,7 @@ class TestA2AErrorPropagation:
             }
 
     @pytest.fixture
-    def test_principal(self, test_tenant):
+    def test_principal(self, integration_db, test_tenant):
         """Create test principal."""
         with get_db_session() as session:
             principal = ModelPrincipal(
@@ -350,7 +350,7 @@ class TestA2AErrorResponseStructure:
         """Create A2A handler instance."""
         return AdCPRequestHandler()
 
-    async def test_error_response_has_consistent_structure(self, handler):
+    async def test_error_response_has_consistent_structure(self, integration_db, handler):
         """Test that all error responses have consistent field structure."""
         # Mock minimal auth
         handler._get_auth_token = MagicMock(return_value="test_token")
@@ -375,7 +375,7 @@ class TestA2AErrorResponseStructure:
             assert "message" in result, "Error response must have message field"
             assert "required_parameters" in result, "Validation error must list required parameters"
 
-    async def test_errors_field_structure_from_validation_error(self, handler):
+    async def test_errors_field_structure_from_validation_error(self, integration_db, handler):
         """Test that validation errors produce properly structured errors field."""
         handler._get_auth_token = MagicMock(return_value="test_token")
 
