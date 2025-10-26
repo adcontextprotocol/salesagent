@@ -25,7 +25,7 @@ from src.core.database.database_session import get_db_session
 from src.core.schemas import Budget, Package, Targeting
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
-pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.asyncio]
 
 
 @pytest.mark.integration
@@ -142,14 +142,14 @@ class TestCreateMediaBuyV24Format:
             # Clear global tenant context to avoid polluting other tests
             set_current_tenant(None)
 
-    def test_create_media_buy_with_package_budget_mcp(self, setup_test_tenant):
+    async def test_create_media_buy_with_package_budget_mcp(self, setup_test_tenant):
         """Test MCP path with packages containing Budget objects.
 
         This test specifically exercises the bug fix for 'dict' object has no attribute 'model_dump'.
         Before the fix, this would fail when building response_packages because Budget objects
         weren't being serialized to dicts properly.
         """
-        from src.core.tool_context import ToolContext
+        from src.core.context import Context
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
         # Create Package with nested Budget object
@@ -161,7 +161,7 @@ class TestCreateMediaBuyV24Format:
             )
         ]
 
-        context = ToolContext(
+        context = Context(
             context_id="test_ctx_v24_budget",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
@@ -171,12 +171,15 @@ class TestCreateMediaBuyV24Format:
 
         # Call _impl with individual parameters (not a request object)
         # This exercises the FULL serialization path including response_packages construction
-        response = _create_media_buy_impl(
+        # NOTE: _create_media_buy_impl now requires buyer_ref and budget as REQUIRED arguments per AdCP v2.2.0 spec
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_v24",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
-            po_number="TEST-V24-001",
             packages=[p.model_dump_internal() for p in packages],  # Use internal to skip package_id validation
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
+            budget=Budget(total=5000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
+            po_number="TEST-V24-001",
             context=context,
         )
 
@@ -193,12 +196,12 @@ class TestCreateMediaBuyV24Format:
         # Verify nested budget was serialized correctly
         assert "budget" in package or "products" in package  # Either field structure is fine
 
-    def test_create_media_buy_with_targeting_overlay_mcp(self, setup_test_tenant):
+    async def test_create_media_buy_with_targeting_overlay_mcp(self, setup_test_tenant):
         """Test MCP path with packages containing Targeting objects.
 
         This tests another potential serialization issue with nested Pydantic objects.
         """
-        from src.core.tool_context import ToolContext
+        from src.core.context import Context
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
         # Create Package with nested Targeting object
@@ -214,7 +217,7 @@ class TestCreateMediaBuyV24Format:
             )
         ]
 
-        context = ToolContext(
+        context = Context(
             context_id="test_ctx_v24_targeting",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
@@ -222,12 +225,14 @@ class TestCreateMediaBuyV24Format:
             request_timestamp=datetime.now(UTC),
         )
 
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_v24_targeting",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Adidas UltraBoost 2025 running shoes"},
-            po_number="TEST-V24-002",
             packages=[p.model_dump_internal() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
+            budget=Budget(total=8000.0, currency="EUR"),  # REQUIRED per AdCP v2.2.0
+            po_number="TEST-V24-002",
             context=context,
         )
 
@@ -243,12 +248,12 @@ class TestCreateMediaBuyV24Format:
         # Verify nested targeting was serialized (if present in response)
         # Note: targeting_overlay may or may not be included in response depending on impl
 
-    def test_create_media_buy_multiple_packages_with_budgets_mcp(self, setup_test_tenant):
+    async def test_create_media_buy_multiple_packages_with_budgets_mcp(self, setup_test_tenant):
         """Test MCP path with multiple packages, each with different budgets.
 
         This tests the iteration over packages in response construction.
         """
-        from src.core.tool_context import ToolContext
+        from src.core.context import Context
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
         packages = [
@@ -269,7 +274,7 @@ class TestCreateMediaBuyV24Format:
             ),
         ]
 
-        context = ToolContext(
+        context = Context(
             context_id="test_ctx_v24_multi",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
@@ -277,12 +282,17 @@ class TestCreateMediaBuyV24Format:
             request_timestamp=datetime.now(UTC),
         )
 
-        response = _create_media_buy_impl(
+        # Total budget is sum of all package budgets
+        total_budget_value = sum(pkg.budget.total for pkg in packages)
+
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_v24_multi",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Puma RS-X 2025 training shoes"},
-            po_number="TEST-V24-003",
             packages=[p.model_dump_internal() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
+            budget=Budget(total=total_budget_value, currency="USD"),  # REQUIRED per AdCP v2.2.0
+            po_number="TEST-V24-003",
             context=context,
         )
 
@@ -295,12 +305,12 @@ class TestCreateMediaBuyV24Format:
         assert "pkg_eur" in buyer_refs
         assert "pkg_gbp" in buyer_refs
 
-    def test_create_media_buy_with_package_budget_a2a(self, setup_test_tenant):
+    async def test_create_media_buy_with_package_budget_a2a(self, setup_test_tenant):
         """Test A2A path with packages containing Budget objects.
 
         This verifies the A2A → tools.py → _impl path also handles nested objects correctly.
         """
-        from src.core.tool_context import ToolContext
+        from src.core.context import Context
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
         # Create Package with nested Budget object
@@ -312,8 +322,8 @@ class TestCreateMediaBuyV24Format:
             )
         ]
 
-        # A2A path also goes through _impl with ToolContext
-        context = ToolContext(
+        # A2A path also goes through _impl with Context
+        context = Context(
             context_id="test_ctx_v24_a2a",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
@@ -321,12 +331,14 @@ class TestCreateMediaBuyV24Format:
             request_timestamp=datetime.now(UTC),
         )
 
-        response = _create_media_buy_impl(
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_v24_a2a",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Reebok Nano 2025 cross-training shoes"},
-            po_number="TEST-V24-A2A-001",
             packages=[p.model_dump_internal() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
+            budget=Budget(total=6000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
+            po_number="TEST-V24-A2A-001",
             context=context,
         )
 
@@ -339,15 +351,15 @@ class TestCreateMediaBuyV24Format:
         assert isinstance(package, dict), "Package must be serialized to dict"
         assert package["buyer_ref"] == "pkg_a2a_test"
 
-    def test_create_media_buy_legacy_format_still_works(self, setup_test_tenant):
+    async def test_create_media_buy_legacy_format_still_works(self, setup_test_tenant):
         """Verify legacy format (product_ids + total_budget) still works.
 
         This ensures backward compatibility wasn't broken by v2.4 changes.
         """
-        from src.core.tool_context import ToolContext
+        from src.core.context import Context
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        context = ToolContext(
+        context = Context(
             context_id="test_ctx_v24_legacy",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
@@ -356,13 +368,20 @@ class TestCreateMediaBuyV24Format:
         )
 
         # Legacy format using individual parameters
-        response = _create_media_buy_impl(
+        # NOTE: Even legacy format now requires buyer_ref, packages, start_time, end_time, budget per AdCP v2.2.0
+        # The legacy parameters (product_ids, total_budget, start_date, end_date) are converted internally
+        response = await _create_media_buy_impl(
+            buyer_ref="test_buyer_v24_legacy",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Under Armour HOVR 2025 running shoes"},
+            packages=[],  # Empty packages - will be auto-created from product_ids
+            start_time=datetime.now(UTC) + timedelta(days=1),
+            end_time=datetime.now(UTC) + timedelta(days=31),
+            budget=Budget(total=4000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-LEGACY-001",
-            product_ids=[setup_test_tenant["product_id"]],
-            total_budget=4000.0,
-            start_date=(datetime.now(UTC) + timedelta(days=1)).date(),
-            end_date=(datetime.now(UTC) + timedelta(days=31)).date(),
+            product_ids=[setup_test_tenant["product_id"]],  # Legacy parameter
+            total_budget=4000.0,  # Legacy parameter
+            start_date=(datetime.now(UTC) + timedelta(days=1)).date(),  # Legacy parameter
+            end_date=(datetime.now(UTC) + timedelta(days=31)).date(),  # Legacy parameter
             context=context,
         )
 

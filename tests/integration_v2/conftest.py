@@ -316,6 +316,7 @@ def add_required_setup_data(session, tenant_id: str):
     2. Authorized property (for AdCP verification)
     3. Currency limit (for budget validation)
     4. Property tag (for product configuration)
+    5. Principal (advertiser) (for setup completion validation)
 
     Call this in test fixtures to avoid "Setup incomplete" errors.
     """
@@ -323,7 +324,7 @@ def add_required_setup_data(session, tenant_id: str):
 
     from sqlalchemy import select
 
-    from src.core.database.models import AuthorizedProperty, CurrencyLimit, PropertyTag, Tenant
+    from src.core.database.models import AuthorizedProperty, CurrencyLimit, Principal, PropertyTag, Tenant
 
     # Update tenant with access control
     stmt = select(Tenant).filter_by(tenant_id=tenant_id)
@@ -366,6 +367,18 @@ def add_required_setup_data(session, tenant_id: str):
             description="All available inventory",
         )
         session.add(property_tag)
+
+    # Create Principal (advertiser) if not exists - CRITICAL for setup validation
+    stmt_principal = select(Principal).filter_by(tenant_id=tenant_id)
+    if not session.scalars(stmt_principal).first():
+        principal = Principal(
+            tenant_id=tenant_id,
+            principal_id=f"{tenant_id}_default_principal",
+            name="Default Test Principal",
+            access_token=f"{tenant_id}_default_token",
+            platform_mappings={"mock": {"advertiser_id": f"mock_adv_{tenant_id}"}},
+        )
+        session.add(principal)
 
 
 # ============================================================================

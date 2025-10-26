@@ -1724,10 +1724,9 @@ async def _create_media_buy_impl(
 
         # Reconstruct response from modified data
         # Filter out testing hook fields that aren't part of CreateMediaBuyResponse schema
+        # Domain fields only (status/adcp_version are protocol fields, added by ProtocolEnvelope)
         valid_fields = {
-            "status",
             "buyer_ref",
-            "task_id",
             "media_buy_id",
             "creative_deadline",
             "packages",
