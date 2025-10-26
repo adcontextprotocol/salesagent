@@ -1254,7 +1254,7 @@ class PushNotificationConfig(Base, JSONValidatorMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Relationships
-    tenant = relationship("Tenant", backref="push_notification_configs")
+    tenant = relationship("Tenant", backref="push_notification_configs", overlaps="principal")
     principal = relationship(
         "Principal", backref="push_notification_configs", overlaps="push_notification_configs,tenant"
     )
