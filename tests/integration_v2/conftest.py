@@ -324,13 +324,17 @@ def add_required_setup_data(session, tenant_id: str):
 
     from sqlalchemy import select
 
+    # Update tenant with access control
+    from sqlalchemy.orm import attributes
+
     from src.core.database.models import AuthorizedProperty, CurrencyLimit, Principal, PropertyTag, Tenant
 
-    # Update tenant with access control
     stmt = select(Tenant).filter_by(tenant_id=tenant_id)
     tenant = session.scalars(stmt).first()
     if tenant and not tenant.authorized_emails:
         tenant.authorized_emails = ["test@example.com"]
+        # CRITICAL: Mark JSON field as modified so SQLAlchemy persists the change
+        attributes.flag_modified(tenant, "authorized_emails")
         session.flush()  # Ensure changes are persisted immediately
 
     # Create AuthorizedProperty if not exists

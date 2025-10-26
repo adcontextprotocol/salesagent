@@ -73,6 +73,7 @@ class TestA2AErrorPropagation:
                 updated_at=now,
             )
             session.add(tenant)
+            session.flush()  # Ensure tenant exists in database before add_required_setup_data queries it
 
             # Add required setup data before creating product
             add_required_setup_data(session, "a2a_error_test")
