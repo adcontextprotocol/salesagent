@@ -36,8 +36,8 @@ def test_db(integration_db):
     conn.execute(
         text(
             """
-            INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, enable_axe_signals, human_review_required, created_at, updated_at)
-            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, :enable_axe_signals, :human_review_required, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, enable_axe_signals, human_review_required, approval_mode, created_at, updated_at)
+            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, :enable_axe_signals, :human_review_required, :approval_mode, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT (tenant_id) DO NOTHING
         """
         ),
@@ -50,6 +50,7 @@ def test_db(integration_db):
             "billing_plan": "standard",
             "enable_axe_signals": False,
             "human_review_required": False,
+            "approval_mode": "auto",
         },
     )
 
@@ -440,8 +441,8 @@ class TestDashboardErrorCases:
         test_db.execute(
             text(
                 """
-                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, enable_axe_signals, human_review_required, created_at, updated_at)
-                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, :enable_axe_signals, :human_review_required, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, billing_plan, enable_axe_signals, human_review_required, approval_mode, created_at, updated_at)
+                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, :billing_plan, :enable_axe_signals, :human_review_required, :approval_mode, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (tenant_id) DO NOTHING
             """
             ),
@@ -454,6 +455,7 @@ class TestDashboardErrorCases:
                 "billing_plan": "standard",
                 "enable_axe_signals": False,
                 "human_review_required": False,
+                "approval_mode": "auto",
             },
         )
         test_db.commit()
