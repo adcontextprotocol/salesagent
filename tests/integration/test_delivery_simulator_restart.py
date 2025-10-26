@@ -21,9 +21,14 @@ class TestDeliverySimulatorRestart:
 
     @pytest.fixture
     def test_tenant(self, integration_db):
-        """Create test tenant."""
+        """Create test tenant with mock adapter for delivery simulator."""
         with get_db_session() as session:
-            tenant = Tenant(tenant_id="test_tenant_restart", name="Test Tenant for Restart", subdomain="test-restart")
+            tenant = Tenant(
+                tenant_id="test_tenant_restart",
+                name="Test Tenant for Restart",
+                subdomain="test-restart",
+                adapter_type="mock",  # Required for delivery simulator
+            )
             session.add(tenant)
             session.commit()
             yield tenant.tenant_id
@@ -67,11 +72,7 @@ class TestDeliverySimulatorRestart:
                 delivery_type="guaranteed",
                 property_tags=["all_inventory"],
                 implementation_config={
-                    "delivery_simulation": {
-                        "enabled": True,
-                        "time_acceleration": 3600,
-                        "update_interval_seconds": 1.0
-                    }
+                    "delivery_simulation": {"enabled": True, "time_acceleration": 3600, "update_interval_seconds": 1.0}
                 },
             )
             session.add(product)
