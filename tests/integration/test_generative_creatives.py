@@ -81,7 +81,7 @@ class TestGenerativeCreatives:
             self.media_buy_id = media_buy.media_buy_id
 
     @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.config.get_config")
     def test_generative_format_detection_calls_build_creative(self, mock_get_config, mock_get_registry):
         """Test that generative formats (with output_format_ids) call build_creative."""
         # Setup mocks
@@ -151,7 +151,7 @@ class TestGenerativeCreatives:
             assert creative.data.get("url") == "https://example.com/generated.html"
 
     @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.config.get_config")
     def test_static_format_calls_preview_creative(self, mock_get_config, mock_get_registry):
         """Test that static formats (without output_format_ids) call preview_creative."""
         # Mock format without output_format_ids (static)
@@ -204,7 +204,7 @@ class TestGenerativeCreatives:
         assert result.created_count == 1
 
     @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.config.get_config")
     def test_missing_gemini_api_key_raises_error(self, mock_get_config, mock_get_registry):
         """Test that missing GEMINI_API_KEY raises clear error for generative formats."""
         # Setup mocks - no API key
@@ -241,7 +241,7 @@ class TestGenerativeCreatives:
             )
 
     @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.config.get_config")
     def test_message_extraction_from_assets(self, mock_get_config, mock_get_registry):
         """Test that message is correctly extracted from various asset roles."""
         mock_config = MagicMock()
@@ -285,7 +285,7 @@ class TestGenerativeCreatives:
         assert call_args[1]["message"] == "Message from brief"
 
     @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.config.get_config")
     def test_message_fallback_to_creative_name(self, mock_get_config, mock_get_registry):
         """Test that creative name is used as fallback when no message provided."""
         mock_config = MagicMock()
@@ -329,7 +329,7 @@ class TestGenerativeCreatives:
         assert call_args[1]["message"] == "Create a creative for: Eco-Friendly Products Banner"
 
     @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.config.get_config")
     def test_context_id_reuse_for_refinement(self, mock_get_config, mock_get_registry):
         """Test that context_id is reused for iterative refinement."""
         mock_config = MagicMock()
@@ -397,7 +397,7 @@ class TestGenerativeCreatives:
         assert call_args[1]["message"] == "Refined message"
 
     @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.config.get_config")
     def test_promoted_offerings_extraction(self, mock_get_config, mock_get_registry):
         """Test that promoted_offerings are extracted from assets."""
         mock_config = MagicMock()

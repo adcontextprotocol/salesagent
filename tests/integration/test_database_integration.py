@@ -127,9 +127,8 @@ def test_settings_queries(integration_db):
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM workflow_steps
-                WHERE tenant_id = %s AND status IN ('pending', 'in_progress')
-            """,
-                (tenant_id,),
+                WHERE status IN ('pending', 'in_progress')
+            """
             )
             count = cursor.fetchone()[0]
             print(f"   ✓ Open workflow steps: {count}")

@@ -55,9 +55,10 @@ class TestDeliverySimulatorRestart:
         """Create test push notification config."""
         import uuid
 
+        config_id = f"config_{uuid.uuid4().hex[:16]}"
         with get_db_session() as session:
             config = PushNotificationConfig(
-                id=f"config_{uuid.uuid4().hex[:16]}",  # Required primary key
+                id=config_id,  # Required primary key
                 tenant_id=test_tenant,
                 principal_id=test_principal,
                 session_id=None,  # Principal-level config
@@ -70,7 +71,16 @@ class TestDeliverySimulatorRestart:
             )
             session.add(config)
             session.commit()
-            yield config.id
+
+        yield config_id
+
+        # Cleanup: Delete config before tenant/principal cleanup
+        with get_db_session() as session:
+            stmt = select(PushNotificationConfig).filter_by(id=config_id)
+            config = session.scalars(stmt).first()
+            if config:
+                session.delete(config)
+                session.commit()
 
     def test_restart_finds_media_buys_with_principal_webhook(self, test_tenant, test_principal, test_webhook_config):
         """Test that restart_active_simulations correctly joins MediaBuy with PushNotificationConfig via principal_id."""

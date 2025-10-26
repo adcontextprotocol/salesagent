@@ -59,6 +59,8 @@ def test_list_creative_formats_request_with_all_params():
 
 def test_filtering_by_type(integration_db, sample_tenant):
     """Test that type filter works correctly."""
+    from src.core.schemas import FormatId
+
     # Create real ToolContext
     context = ToolContext(
         context_id="test",
@@ -73,7 +75,7 @@ def test_filtering_by_type(integration_db, sample_tenant):
     # Mock format data - create sample formats
     mock_formats = [
         Format(
-            format_id="video_16x9",
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
             type="video",
             name="Video 16:9",
             is_standard=True,
@@ -81,7 +83,7 @@ def test_filtering_by_type(integration_db, sample_tenant):
             agent_url="https://creative.adcontextprotocol.org",
         ),
         Format(
-            format_id="display_300x250",
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
             type="display",
             name="Display 300x250",
             is_standard=True,
@@ -115,6 +117,8 @@ def test_filtering_by_type(integration_db, sample_tenant):
 
 def test_filtering_by_standard_only(integration_db, sample_tenant):
     """Test that standard_only filter works correctly."""
+    from src.core.schemas import FormatId
+
     # Create real ToolContext
     context = ToolContext(
         context_id="test",
@@ -129,7 +133,7 @@ def test_filtering_by_standard_only(integration_db, sample_tenant):
     # Mock format data
     mock_formats = [
         Format(
-            format_id="display_300x250",
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
             type="display",
             name="Display 300x250",
             is_standard=True,
@@ -137,7 +141,7 @@ def test_filtering_by_standard_only(integration_db, sample_tenant):
             agent_url="https://creative.adcontextprotocol.org",
         ),
         Format(
-            format_id="custom_banner",
+            format_id=FormatId(agent_url="https://custom.example.com", id="custom_banner"),
             type="display",
             name="Custom Banner",
             is_standard=False,
@@ -186,7 +190,7 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
     # Mock format data
     mock_formats = [
         Format(
-            format_id="display_300x250",
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
             type="display",
             name="Display 300x250",
             is_standard=True,
@@ -194,7 +198,7 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
             agent_url="https://creative.adcontextprotocol.org",
         ),
         Format(
-            format_id="display_728x90",
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
             type="display",
             name="Display 728x90",
             is_standard=True,
@@ -202,7 +206,7 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
             agent_url="https://creative.adcontextprotocol.org",
         ),
         Format(
-            format_id="video_16x9",
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
             type="video",
             name="Video 16:9",
             is_standard=True,
@@ -234,8 +238,10 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
 
         # Should only return the requested formats (that exist)
         target_ids = ["display_300x250", "display_728x90"]
-        returned_ids = [f.format_id for f in formats]
-        assert all(f.format_id in target_ids for f in formats), "All formats should be in target list"
+        returned_ids = [f.format_id.id if hasattr(f.format_id, "id") else f.format_id for f in formats]
+        assert all(
+            (f.format_id.id if hasattr(f.format_id, "id") else f.format_id) in target_ids for f in formats
+        ), "All formats should be in target list"
         # At least one of the target formats should exist
         assert len(formats) > 0, "Should return at least one format if they exist"
 
@@ -256,7 +262,7 @@ def test_filtering_combined(integration_db, sample_tenant):
     # Mock format data
     mock_formats = [
         Format(
-            format_id="display_300x250",
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
             type="display",
             name="Display 300x250",
             is_standard=True,
@@ -264,7 +270,7 @@ def test_filtering_combined(integration_db, sample_tenant):
             agent_url="https://creative.adcontextprotocol.org",
         ),
         Format(
-            format_id="display_custom",
+            format_id=FormatId(agent_url="https://custom.example.com", id="display_custom"),
             type="display",
             name="Display Custom",
             is_standard=False,
@@ -272,7 +278,7 @@ def test_filtering_combined(integration_db, sample_tenant):
             agent_url="https://custom.example.com",
         ),
         Format(
-            format_id="video_16x9",
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
             type="video",
             name="Video 16:9",
             is_standard=True,
