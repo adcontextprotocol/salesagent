@@ -691,3 +691,132 @@ def test_tenant_with_data(integration_db):
 # ============================================================================
 # End Admin UI Test Fixtures
 # ============================================================================
+
+
+# ============================================================================
+# MCP Server Test Fixture
+# ============================================================================
+
+
+@pytest.fixture(scope="function")
+def mcp_server(integration_db):
+    """Start a real MCP server for integration testing using the test database."""
+    import socket
+    import subprocess
+    import sys
+    import time
+
+    # Find an available port
+    def get_free_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("", 0))
+            s.listen(1)
+            port = s.getsockname()[1]
+        return port
+
+    port = get_free_port()
+
+    # Use the integration_db (PostgreSQL database name - returned by integration_db fixture in integration_v2)
+    # Note: integration_v2's integration_db doesn't return db_name, so we need to extract it from DATABASE_URL
+    db_url = os.environ.get("DATABASE_URL", "")
+    if not db_url or not db_url.startswith("postgresql://"):
+        raise RuntimeError("mcp_server fixture requires PostgreSQL DATABASE_URL")
+
+    import re
+
+    pattern = r"postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)"
+    match = re.match(pattern, db_url)
+    if match:
+        user, password, host, port_str, db_name = match.groups()
+        postgres_port = int(port_str)
+        server_db_url = f"postgresql://{user}:{password}@{host}:{postgres_port}/{db_name}"
+    else:
+        raise RuntimeError(f"Failed to parse DATABASE_URL: {db_url}")
+
+    env = os.environ.copy()
+    env["ADCP_SALES_PORT"] = str(port)
+    env["DATABASE_URL"] = server_db_url
+    env["DB_TYPE"] = "postgresql"
+    env["ADCP_TESTING"] = "true"
+    env["PYTHONUNBUFFERED"] = "1"  # Force unbuffered output for better debugging
+
+    # Start the server process using mcp.run() instead of uvicorn directly
+    server_script = f"""
+import sys
+sys.path.insert(0, '.')
+from src.core.main import mcp
+mcp.run(transport='http', host='0.0.0.0', port={port})
+"""
+
+    process = subprocess.Popen(
+        [sys.executable, "-c", server_script],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=1,  # Line buffered
+    )
+
+    # Wait for server to be ready
+    max_wait = 20  # seconds (increased for server initialization)
+    start_time = time.time()
+    server_ready = False
+
+    while time.time() - start_time < max_wait:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1)
+                s.connect(("localhost", port))
+                server_ready = True
+                break
+        except (ConnectionRefusedError, OSError):
+            # Check if process has died
+            if process.poll() is not None:
+                stdout, stderr = process.communicate()
+                raise RuntimeError(
+                    f"MCP server process died unexpectedly.\n"
+                    f"STDOUT: {stdout.decode() if stdout else 'N/A'}\n"
+                    f"STDERR: {stderr.decode() if stderr else 'N/A'}"
+                )
+            time.sleep(0.3)
+
+    if not server_ready:
+        # Capture output for debugging
+        try:
+            stdout, stderr = process.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+
+        process.terminate()
+        process.wait(timeout=5)
+        raise RuntimeError(
+            f"MCP server failed to start on port {port} within {max_wait}s.\n"
+            f"STDOUT: {stdout.decode() if stdout else 'N/A'}\n"
+            f"STDERR: {stderr.decode() if stderr else 'N/A'}"
+        )
+
+    # Return server info
+    class ServerInfo:
+        def __init__(self, port, process, db_name):
+            self.port = port
+            self.process = process
+            self.db_name = db_name
+
+    server = ServerInfo(port, process, db_name)
+
+    yield server
+
+    # Cleanup
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+    # Don't remove db_name - the PostgreSQL database is managed by integration_db fixture
+
+
+# ============================================================================
+# End MCP Server Test Fixture
+# ============================================================================

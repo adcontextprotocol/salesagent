@@ -384,9 +384,12 @@ class TestSyncCreativesErrorPaths:
             )
             # If it returns, check for errors
             assert response is not None
-        except Exception as e:
-            # Should be a validation error, not NameError
-            assert "Error" not in str(type(e))
+        except NameError:
+            # ❌ FAIL: NameError means Error class wasn't imported
+            pytest.fail("sync_creatives_raw raised NameError - Error class not imported")
+        except Exception:
+            # ✅ Other exceptions are fine (validation errors, etc.)
+            pass
 
 
 @pytest.mark.integration
