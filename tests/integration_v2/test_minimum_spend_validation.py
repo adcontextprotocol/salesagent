@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import (
@@ -203,7 +203,14 @@ class TestMinimumSpendValidation:
 
         with get_db_session() as session:
             # Delete media packages first (references media_buys)
-            session.execute(delete(MediaPackageModel).where(MediaPackageModel.tenant_id == "test_minspend_tenant"))
+            # MediaPackage doesn't have tenant_id, so use subquery through MediaBuy
+            session.execute(
+                delete(MediaPackageModel).where(
+                    MediaPackageModel.media_buy_id.in_(
+                        select(MediaBuy.media_buy_id).where(MediaBuy.tenant_id == "test_minspend_tenant")
+                    )
+                )
+            )
             # Now safe to delete media_buys
             session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == "test_minspend_tenant"))
             session.execute(delete(Product).where(Product.tenant_id == "test_minspend_tenant"))
