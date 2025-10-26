@@ -469,9 +469,12 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
     # Annotate pricing options with adapter support (AdCP PR #88)
     if principal and modified_products:
         try:
-            from src.adapters import get_adapter
+            # Use correct get_adapter from adapter_helpers (accepts Principal and dry_run)
+            from src.core.helpers.adapter_helpers import get_adapter
 
+            # Get adapter in dry-run mode (no actual ad server calls)
             adapter = get_adapter(principal, dry_run=True)
+
             supported_models = adapter.get_supported_pricing_models()
 
             for product in modified_products:

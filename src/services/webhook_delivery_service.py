@@ -552,22 +552,33 @@ class WebhookDeliveryService:
         return (CircuitState.CLOSED, 0)
 
     def _shutdown(self):
-        """Graceful shutdown handler."""
-        logger.info("🛑 WebhookDeliveryService shutting down")
+        """Graceful shutdown handler with error handling for closed logger."""
+        try:
+            logger.info("🛑 WebhookDeliveryService shutting down")
+        except ValueError:
+            # Logger file handle may already be closed during shutdown
+            # This is expected and safe to ignore
+            pass
+
         with self._lock:
-            active_buys = list(self._sequence_numbers.keys())
-            if active_buys:
-                logger.info(f"📊 Active media buys at shutdown: {active_buys}")
+            try:
+                active_buys = list(self._sequence_numbers.keys())
+                if active_buys:
+                    logger.info(f"📊 Active media buys at shutdown: {active_buys}")
 
-            # Log circuit breaker states
-            open_circuits = [key for key, cb in self._circuit_breakers.items() if cb.state == CircuitState.OPEN]
-            if open_circuits:
-                logger.warning(f"⚠️ Open circuit breakers at shutdown: {open_circuits}")
+                # Log circuit breaker states
+                open_circuits = [key for key, cb in self._circuit_breakers.items() if cb.state == CircuitState.OPEN]
+                if open_circuits:
+                    logger.warning(f"⚠️ Open circuit breakers at shutdown: {open_circuits}")
 
-            # Log queue sizes
-            non_empty_queues = [(key, queue.size()) for key, queue in self._queues.items() if queue.size() > 0]
-            if non_empty_queues:
-                logger.info(f"📦 Non-empty queues at shutdown: {non_empty_queues}")
+                # Log queue sizes
+                non_empty_queues = [(key, queue.size()) for key, queue in self._queues.items() if queue.size() > 0]
+                if non_empty_queues:
+                    logger.info(f"📦 Non-empty queues at shutdown: {non_empty_queues}")
+            except ValueError:
+                # Logger file handle may already be closed during shutdown
+                # This is expected and safe to ignore
+                pass
 
 
 # Global singleton instance
