@@ -105,9 +105,8 @@ except (RuntimeError, Exception) as e:
 
 mcp = FastMCP(
     name="AdCPSalesAgent",
-    # Enable sessions to allow proper HTTP context for header access
-    # This is needed for tenant detection via headers in unauthenticated calls
-    stateless_http=False,
+    # Sessions enabled for HTTP context (tenant detection via headers)
+    # Note: stateless_http is now configured at runtime via run() or global settings
 )
 
 # Initialize creative engine with minimal config (will be tenant-specific later)
