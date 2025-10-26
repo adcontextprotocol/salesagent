@@ -91,7 +91,8 @@ def _list_creative_formats_impl(
 
     if req.format_ids:
         # Filter to only the specified format IDs
-        format_ids_set = set(req.format_ids)
+        # Extract the 'id' field from each FormatId object
+        format_ids_set = {fmt.id for fmt in req.format_ids}
         formats = [f for f in formats if f.format_id in format_ids_set]
 
     # Sort formats by type and name for consistent ordering

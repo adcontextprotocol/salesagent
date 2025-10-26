@@ -114,7 +114,7 @@ class TestGenerativeCreatives:
         context = MockContext()
 
         result = sync_fn(
-            ctx=context,
+            context=context,
             media_buy_id=self.media_buy_id,
             creatives=[
                 {
@@ -183,7 +183,7 @@ class TestGenerativeCreatives:
         context = MockContext()
 
         result = sync_fn(
-            ctx=context,
+            context=context,
             media_buy_id=self.media_buy_id,
             creatives=[
                 {
@@ -228,7 +228,7 @@ class TestGenerativeCreatives:
 
         with pytest.raises(ValueError, match="GEMINI_API_KEY not configured"):
             sync_fn(
-                ctx=context,
+                context=context,
                 media_buy_id=self.media_buy_id,
                 creatives=[
                     {
@@ -269,7 +269,7 @@ class TestGenerativeCreatives:
 
         # Test with "brief" role
         sync_fn(
-            ctx=context,
+            context=context,
             media_buy_id=self.media_buy_id,
             creatives=[
                 {
@@ -313,7 +313,7 @@ class TestGenerativeCreatives:
 
         # No message in assets
         sync_fn(
-            ctx=context,
+            context=context,
             media_buy_id=self.media_buy_id,
             creatives=[
                 {
@@ -357,7 +357,7 @@ class TestGenerativeCreatives:
 
         # Create initial creative
         sync_fn(
-            ctx=context,
+            context=context,
             media_buy_id=self.media_buy_id,
             creatives=[
                 {
@@ -379,7 +379,7 @@ class TestGenerativeCreatives:
         )
 
         sync_fn(
-            ctx=context,
+            context=context,
             media_buy_id=self.media_buy_id,
             creatives=[
                 {
@@ -429,7 +429,7 @@ class TestGenerativeCreatives:
         }
 
         sync_fn(
-            ctx=context,
+            context=context,
             media_buy_id=self.media_buy_id,
             creatives=[
                 {
