@@ -341,29 +341,49 @@ def google_callback():
                         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
                 # Check if user is authorized (via email list or domain list)
-                from src.admin.domain_access import ensure_user_in_tenant, get_user_tenant_access
+                from src.admin.domain_access import ensure_user_in_tenant
 
                 email_domain = email.split("@")[1] if "@" in email else ""
-                tenant_access = get_user_tenant_access(email)
 
                 # Debug logging for tenant access check
                 logger.info(f"[ACCESS_CHECK] email: {email}, email_domain: {email_domain}")
                 logger.info(f"[ACCESS_CHECK] tenant_id from session: {tenant_id}")
-                logger.info(f"[ACCESS_CHECK] domain_tenant: {tenant_access.get('domain_tenant')}")
-                if tenant_access.get("domain_tenant"):
-                    logger.info(f"[ACCESS_CHECK] domain_tenant.tenant_id: {tenant_access['domain_tenant'].tenant_id}")
-                logger.info(
-                    f"[ACCESS_CHECK] email_tenants: {[t.tenant_id for t in tenant_access.get('email_tenants', [])]}"
-                )
+                logger.info(f"[ACCESS_CHECK] tenant.authorized_domains: {tenant.authorized_domains}")
+                logger.info(f"[ACCESS_CHECK] tenant.authorized_emails: {tenant.authorized_emails}")
 
-                # Check if user has access to this specific tenant
+                # Check if user has access to THIS SPECIFIC tenant
+                # Check domain-based access
                 has_tenant_access = False
-                if tenant_access["domain_tenant"] and tenant_access["domain_tenant"].tenant_id == tenant_id:
-                    has_tenant_access = True
-                    logger.info("[ACCESS_CHECK] Access granted via domain_tenant")
-                elif any(t.tenant_id == tenant_id for t in tenant_access["email_tenants"]):
-                    has_tenant_access = True
-                    logger.info("[ACCESS_CHECK] Access granted via email_tenants")
+                if email_domain and tenant.authorized_domains:
+                    try:
+                        import json
+
+                        domains = (
+                            tenant.authorized_domains
+                            if isinstance(tenant.authorized_domains, list)
+                            else json.loads(tenant.authorized_domains)
+                        )
+                        if email_domain in domains:
+                            has_tenant_access = True
+                            logger.info(f"[ACCESS_CHECK] Access granted via domain: {email_domain} in {domains}")
+                    except (json.JSONDecodeError, TypeError) as e:
+                        logger.warning(f"[ACCESS_CHECK] Invalid authorized_domains JSON: {e}")
+
+                # Check email-based access
+                if not has_tenant_access and tenant.authorized_emails:
+                    try:
+                        import json
+
+                        emails = (
+                            tenant.authorized_emails
+                            if isinstance(tenant.authorized_emails, list)
+                            else json.loads(tenant.authorized_emails)
+                        )
+                        if email.lower() in [e.lower() for e in emails]:
+                            has_tenant_access = True
+                            logger.info(f"[ACCESS_CHECK] Access granted via email: {email} in {emails}")
+                    except (json.JSONDecodeError, TypeError) as e:
+                        logger.warning(f"[ACCESS_CHECK] Invalid authorized_emails JSON: {e}")
 
                 if has_tenant_access:
                     # Ensure user record exists (auto-create if needed)
@@ -381,9 +401,9 @@ def google_callback():
                 else:
                     # User doesn't have access to this tenant
                     logger.warning(
-                        f"[ACCESS_DENIED] User {email} denied access to tenant {tenant_id}. "
-                        f"domain_tenant: {tenant_access.get('domain_tenant')}, "
-                        f"email_tenants: {[t.tenant_id for t in tenant_access.get('email_tenants', [])]}"
+                        f"[ACCESS_DENIED] User {email} (domain: {email_domain}) denied access to tenant {tenant_id}. "
+                        f"tenant.authorized_domains: {tenant.authorized_domains}, "
+                        f"tenant.authorized_emails: {tenant.authorized_emails}"
                     )
                     flash(
                         "You don't have access to this tenant. Please contact your administrator to request access.",
