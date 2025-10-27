@@ -1216,7 +1216,7 @@ def unregister_approximated_domain(tenant_id):
 @settings_bp.route("/approximated-token", methods=["POST"])
 @require_tenant_access()
 def get_approximated_token(tenant_id):
-    """Generate an Approximated DNS widget token."""
+    """Generate an Approximated DNS widget token and get DNS target."""
     try:
         import requests
 
@@ -1225,6 +1225,10 @@ def get_approximated_token(tenant_id):
         if not approximated_api_key:
             logger.error("APPROXIMATED_API_KEY not configured in environment")
             return jsonify({"success": False, "error": "DNS widget not configured on server"}), 500
+
+        # Get the Approximated proxy IP from environment
+        # This is the IP address of your Approximated proxy cluster
+        approximated_proxy_ip = os.getenv("APPROXIMATED_PROXY_IP", "37.16.24.200")
 
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
@@ -1241,7 +1245,7 @@ def get_approximated_token(tenant_id):
             if response.status_code == 200:
                 token_data = response.json()
                 logger.info(f"Approximated API response: {token_data}")
-                return jsonify({"success": True, "token": token_data.get("token")})
+                return jsonify({"success": True, "token": token_data.get("token"), "proxy_ip": approximated_proxy_ip})
             else:
                 logger.error(f"Approximated API error: {response.status_code} - {response.text}")
                 return jsonify({"success": False, "error": f"API error: {response.status_code}"}), response.status_code

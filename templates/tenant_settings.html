@@ -541,7 +541,7 @@
                                     <span style="font-size: 1.5rem;">✅</span>
                                     <div>
                                         <div style="font-weight: 600; color: #065f46; font-size: 1rem;">DNS Records Verified!</div>
-                                        <div style="color: #047857; font-size: 0.875rem;">Your custom domain is properly configured and pointing to sales-agent.scope3.com</div>
+                                        <div style="color: #047857; font-size: 0.875rem;">Your custom domain is properly configured and routing through the Approximated proxy</div>
                                     </div>
                                 </div>
                             </div>
@@ -2160,6 +2160,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
                     if (data.success && data.token) {
                         console.log('Initializing DNS widget with token:', data.token.substring(0, 20) + '...');
+                        console.log('Approximated proxy IP:', data.proxy_ip);
 
                         // Wait for widget library to be ready
                         if (!window.apxDns) {
@@ -2168,15 +2169,19 @@ document.addEventListener("DOMContentLoaded", function() {
                             return;
                         }
 
-                        // Initialize Approximated widget
+                        // Use the proxy IP from the API (Approximated proxy cluster IP)
+                        // Default to 37.16.24.200 if not provided
+                        const proxyIp = data.proxy_ip || "37.16.24.200";
+
+                        // Initialize Approximated widget with A record
                         const config = {
                             token: data.token,
                             api_url: "https://cloud.approximated.app/api/dns",
                             dnsRecords: [
                                 {
-                                    type: "CNAME",
+                                    type: "A",
                                     host: "@",
-                                    value: "sales-agent.scope3.com",
+                                    value: proxyIp,
                                     ttl: 3600
                                 }
                             ],
@@ -2188,7 +2193,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         window.apxDns.init(config);
                         widgetInitialized = true;
 
-                        // Listen for widget events
+                        // Listen for widget events with better error handling
                         document.addEventListener('apx-dnswidget-records-completely-verified', function(e) {
                             console.log('DNS records verified successfully!', e.detail);
                             dnsVerified = true;
@@ -2215,6 +2220,12 @@ document.addEventListener("DOMContentLoaded", function() {
                             if (successMessage) {
                                 successMessage.style.display = 'none';
                             }
+                        });
+
+                        // Listen for error events from the widget
+                        document.addEventListener('apx-dnswidget-error', function(e) {
+                            console.error('DNS widget error:', e.detail);
+                            // Don't show intrusive errors to users, just log them
                         });
                     }
                 } catch (error) {
