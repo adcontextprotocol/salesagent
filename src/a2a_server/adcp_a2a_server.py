@@ -314,7 +314,7 @@ class AdCPRequestHandler(RequestHandler):
             await webhook_service.send_notification(
                 webhook_config=webhook_config,
                 task_id=task.id,
-                task_type='task', // TODO: figure out how to pass task_type. We need to pass this, because adcp client expects 'task_type' to figure out how to handle the response.
+                task_type='task', # TODO: figure out how to pass task_type. We need to pass this, because adcp client expects 'task_type' to figure out how to handle the response.
                 status=status,
                 result=result,
                 error=error,
