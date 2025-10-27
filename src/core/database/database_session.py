@@ -55,20 +55,45 @@ def get_engine():
         connect_timeout = int(os.environ.get("DATABASE_CONNECT_TIMEOUT", "10"))  # 10s default
         pool_timeout = int(os.environ.get("DATABASE_POOL_TIMEOUT", "30"))  # 30s default
 
-        # Create engine with production-ready settings
-        _engine = create_engine(
-            connection_string,
-            pool_size=10,  # Base connections in pool
-            max_overflow=20,  # Additional connections beyond pool_size
-            pool_timeout=pool_timeout,  # Seconds to wait for connection from pool
-            pool_recycle=3600,  # Recycle connections after 1 hour
-            pool_pre_ping=True,  # Test connections before use
-            echo=False,  # Set to True for SQL logging in debug
-            connect_args={
-                "connect_timeout": connect_timeout,  # Connection timeout in seconds
-                "options": f"-c statement_timeout={query_timeout * 1000}",  # Query timeout in milliseconds
-            },
-        )
+        # Detect PgBouncer usage (typically port 6543)
+        # PgBouncer requires different pooling strategy since it manages connections
+        is_pgbouncer = ":6543" in connection_string or os.environ.get("USE_PGBOUNCER", "false").lower() == "true"
+
+        if is_pgbouncer:
+            logger.info("PgBouncer detected - using optimized connection pool settings")
+            # PgBouncer-optimized settings:
+            # - Smaller pool_size (PgBouncer handles pooling)
+            # - No pool_pre_ping (can cause issues with transaction pooling)
+            # - Shorter pool_recycle (PgBouncer recycles for us)
+            _engine = create_engine(
+                connection_string,
+                pool_size=2,  # Small pool - PgBouncer does the pooling
+                max_overflow=5,  # Limited overflow
+                pool_timeout=pool_timeout,
+                pool_recycle=300,  # 5 minutes - shorter since PgBouncer manages connections
+                pool_pre_ping=False,  # Disable pre-ping with PgBouncer transaction pooling
+                echo=False,
+                connect_args={
+                    "connect_timeout": connect_timeout,
+                    "options": f"-c statement_timeout={query_timeout * 1000}",
+                },
+            )
+        else:
+            logger.info("Direct PostgreSQL connection - using standard connection pool settings")
+            # Direct PostgreSQL settings (no PgBouncer)
+            _engine = create_engine(
+                connection_string,
+                pool_size=10,  # Base connections in pool
+                max_overflow=20,  # Additional connections beyond pool_size
+                pool_timeout=pool_timeout,  # Seconds to wait for connection from pool
+                pool_recycle=3600,  # Recycle connections after 1 hour
+                pool_pre_ping=True,  # Test connections before use
+                echo=False,  # Set to True for SQL logging in debug
+                connect_args={
+                    "connect_timeout": connect_timeout,  # Connection timeout in seconds
+                    "options": f"-c statement_timeout={query_timeout * 1000}",  # Query timeout in milliseconds
+                },
+            )
 
         # Create session factory
         _session_factory = sessionmaker(bind=_engine)
