@@ -182,21 +182,15 @@ def google_auth():
     if tenant_context:
         session["oauth_tenant_context"] = tenant_context
 
-    # Build custom state parameter to handle cross-domain scenarios
-    # For cross-domain OAuth (virtual hosts), session cookies won't work
-    import base64
-
-    state_data = {
-        "signup_flow": session.get("signup_flow", False),
-        "external_domain": approximated_host
-        or (host if host != "sales-agent.scope3.com" and not host.startswith("admin.") else None),
-        "tenant_context": tenant_context,
-    }
-    state_json = json.dumps(state_data)
-    state_encoded = base64.urlsafe_b64encode(state_json.encode()).decode()
-
-    # Let Authlib manage the state parameter for CSRF protection, but pass our custom data
-    return oauth.google.authorize_redirect(redirect_uri, state=state_encoded)
+    # NOTE: We do NOT pass a custom state parameter to authorize_redirect()
+    # because it breaks Authlib's built-in CSRF protection. Instead, we rely
+    # on session cookies (which work for same-domain OAuth) and will need
+    # an alternative solution for cross-domain OAuth scenarios.
+    #
+    # For cross-domain OAuth, session cookies won't persist across the redirect,
+    # so tenant context will be lost. Super admins (scope3.com) will still work
+    # but won't be redirected back to the original tenant subdomain.
+    return oauth.google.authorize_redirect(redirect_uri)
 
 
 @auth_bp.route("/tenant/<tenant_id>/auth/google")
@@ -268,21 +262,10 @@ def google_callback():
         session["user_name"] = user.get("name", email)
         session["user_picture"] = user.get("picture", "")
 
-        # Try to decode state parameter for cross-domain OAuth context
-        import base64
-
-        state_param = request.args.get("state")
-        state_data = {}
-        if state_param:
-            try:
-                state_json = base64.urlsafe_b64decode(state_param.encode()).decode()
-                state_data = json.loads(state_json)
-                logger.info(f"OAuth callback - decoded state: {state_data}")
-            except Exception as e:
-                logger.warning(f"Could not decode OAuth state parameter: {e}")
-
-        # Check if this is a signup flow (from state or session)
-        is_signup_flow = state_data.get("signup_flow") or session.get("signup_flow")
+        # Check if this is a signup flow (from session only)
+        # NOTE: We no longer use custom state parameters because they break
+        # Authlib's CSRF protection. We rely on session cookies instead.
+        is_signup_flow = session.get("signup_flow")
         if is_signup_flow:
             logger.info(f"OAuth callback - signup flow detected for {email}")
             # Set signup flow in session for onboarding
@@ -293,10 +276,12 @@ def google_callback():
         # Debug session state before popping values
         logger.info(f"OAuth callback - full session: {dict(session)}")
 
-        # Get originating host and tenant context from state parameter (preferred) or session (fallback)
+        # Get originating host and tenant context from session
+        # NOTE: Session cookies only work for same-domain OAuth (*.sales-agent.scope3.com)
+        # For cross-domain OAuth, these values will be None.
         originating_host = session.pop("oauth_originating_host", None)
-        external_domain = state_data.get("external_domain") or session.pop("oauth_external_domain", None)
-        tenant_id = state_data.get("tenant_context") or session.pop("oauth_tenant_context", None)
+        external_domain = session.pop("oauth_external_domain", None)
+        tenant_id = session.pop("oauth_tenant_context", None)
 
         # Debug logging for OAuth redirect
         logger.info(f"OAuth callback debug - originating_host: {originating_host}")
