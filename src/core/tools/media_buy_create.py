@@ -148,9 +148,8 @@ def _validate_pricing_model_selection(
     # Validate minimum spend per package
     if selected_option.min_spend_per_package:
         package_budget = None
-        if isinstance(package.budget, dict):
-            package_budget = Decimal(str(package.budget.get("total", 0)))
-        elif isinstance(package.budget, int | float):
+        if package.budget is not None:
+            # Package.budget is now always float | None (per AdCP spec)
             package_budget = Decimal(str(package.budget))
 
         if package_budget and package_budget < Decimal(str(selected_option.min_spend_per_package)):
@@ -611,17 +610,14 @@ async def _create_media_buy_impl(
             if not request_currency and req.currency:
                 # Deprecated field, but still supported for backward compatibility
                 request_currency = req.currency
-            elif not request_currency and req.budget and hasattr(req.budget, "currency"):
-                # Legacy: Extract currency from Budget object
-                request_currency = req.budget.currency
-            elif (
-                not request_currency
-                and req.packages
-                and req.packages[0].budget
-                and hasattr(req.packages[0].budget, "currency")
-            ):
-                # Legacy: Extract currency from package budget object
-                request_currency = req.packages[0].budget.currency
+            elif not request_currency and req.budget:
+                # Legacy: Extract currency from Budget object (if it's an object)
+                if hasattr(req.budget, "currency"):
+                    request_currency = req.budget.currency
+            elif not request_currency and req.packages and req.packages[0].budget:
+                # Legacy: Extract currency from package budget object (if it's an object)
+                if hasattr(req.packages[0].budget, "currency"):
+                    request_currency = req.packages[0].budget.currency
 
             # Final fallback
             if not request_currency:
@@ -695,27 +691,11 @@ async def _create_media_buy_impl(
                             if not package.budget:
                                 continue
 
-                            # Extract budget amount and currency from package (each package can have different currency)
-                            from src.core.schemas import extract_budget_amount
+                            # Package.budget is now always float | None (per AdCP spec)
+                            package_budget = Decimal(str(package.budget))
 
-                            package_budget_amount, package_currency = extract_budget_amount(
-                                package.budget, request_currency
-                            )
-                            package_budget = Decimal(str(package_budget_amount))
-
-                            # Validate that package currency is supported (check currency limit exists)
-                            stmt_pkg_currency_check = select(CurrencyLimit).where(
-                                CurrencyLimit.tenant_id == tenant["tenant_id"],
-                                CurrencyLimit.currency_code == package_currency,
-                            )
-                            pkg_currency_limit_check = session.scalars(stmt_pkg_currency_check).first()
-
-                            if not pkg_currency_limit_check:
-                                error_msg = (
-                                    f"Currency {package_currency} is not supported by this publisher. "
-                                    f"Contact the publisher to add support for this currency."
-                                )
-                                raise ValueError(error_msg)
+                            # Package currency is always request_currency (single currency per media buy)
+                            package_currency = request_currency
 
                             # Get the product for this package
                             package_product_ids = [package.product_id] if package.product_id else []
@@ -743,15 +723,9 @@ async def _create_media_buy_impl(
 
                                 # If no product override, check currency limit
                                 if min_spend is None:
-                                    # Get currency limit for package's currency
-                                    stmt_pkg_currency = select(CurrencyLimit).where(
-                                        CurrencyLimit.tenant_id == tenant["tenant_id"],
-                                        CurrencyLimit.currency_code == package_currency,
-                                    )
-                                    pkg_currency_limit = session.scalars(stmt_pkg_currency).first()
-
-                                    if pkg_currency_limit and pkg_currency_limit.min_package_budget:
-                                        min_spend = Decimal(str(pkg_currency_limit.min_package_budget))
+                                    # Use the already-fetched currency_limit
+                                    if currency_limit.min_package_budget:
+                                        min_spend = Decimal(str(currency_limit.min_package_budget))
 
                                 # Validate if minimum spend is set
                                 if min_spend and package_budget < min_spend:
@@ -789,11 +763,8 @@ async def _create_media_buy_impl(
                     for package in req.packages:
                         if not package.budget:
                             continue
-                        # Extract budget amount (v1.8.0 compatible)
-                        from src.core.schemas import extract_budget_amount
-
-                        package_budget_amount, _ = extract_budget_amount(package.budget, request_currency)
-                        package_budget = Decimal(str(package_budget_amount))
+                        # Package.budget is now always float | None (per AdCP spec)
+                        package_budget = Decimal(str(package.budget))
                         package_daily_budget = package_budget / Decimal(str(flight_days))
 
                         if package_daily_budget > currency_limit.max_daily_package_spend:
@@ -995,10 +966,20 @@ async def _create_media_buy_impl(
                     # Add full package data from raw_request
                     for idx, req_pkg in enumerate(req.packages):
                         if idx == pending_packages.index(pkg_data):
+                            # Handle budget - can be float, int, Budget object, or None
+                            budget_value = None
+                            if req_pkg.budget is not None:
+                                if isinstance(req_pkg.budget, int | float):
+                                    budget_value = float(req_pkg.budget)
+                                elif hasattr(req_pkg.budget, "model_dump"):
+                                    budget_value = req_pkg.budget.model_dump()
+                                else:
+                                    budget_value = req_pkg.budget
+
                             package_config.update(
                                 {
                                     "product_id": req_pkg.product_id,
-                                    "budget": req_pkg.budget.model_dump() if req_pkg.budget else None,
+                                    "budget": budget_value,
                                     "targeting_overlay": (
                                         req_pkg.targeting_overlay.model_dump() if req_pkg.targeting_overlay else None
                                     ),

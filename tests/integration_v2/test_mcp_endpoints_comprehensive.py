@@ -229,10 +229,10 @@ class TestMCPEndpointsComprehensive:
         # buyer_ref should NOT be auto-generated (it's the buyer's identifier)
         assert legacy_request.buyer_ref is None
 
-        # Should auto-create budget from total_budget
+        # Should calculate total budget from total_budget (legacy field)
         assert legacy_request.get_total_budget() == 5000.0
-        assert legacy_request.budget.total == 5000.0
-        assert legacy_request.budget.currency == "USD"
+        # Note: budget field is optional/None in AdCP v2.2.0 (not in spec)
+        # Legacy total_budget doesn't auto-create top-level budget object
 
         # Should create packages from product_ids
         product_ids = legacy_request.get_product_ids()
@@ -250,8 +250,8 @@ class TestMCPEndpointsComprehensive:
             po_number="PO-V24-67890",  # Required per AdCP spec
             budget=Budget(total=10000.0, currency="EUR", pacing="asap"),
             packages=[
-                Package(buyer_ref="pkg_1", product_id="prod_1", budget=Budget(total=6000.0, currency="EUR")),
-                Package(buyer_ref="pkg_2", product_id="prod_2", budget=Budget(total=4000.0, currency="EUR")),
+                Package(buyer_ref="pkg_1", product_id="prod_1", budget=6000.0),  # Float budget per AdCP v2.2.0
+                Package(buyer_ref="pkg_2", product_id="prod_2", budget=4000.0),  # Float budget per AdCP v2.2.0
             ],
             start_time=datetime.now(UTC),
             end_time=datetime.now(UTC) + timedelta(days=30),
@@ -356,7 +356,7 @@ class TestMCPEndpointsComprehensive:
                         {
                             "buyer_ref": "pkg_001",
                             "product_id": product["product_id"],
-                            "budget": {"total": 10000.0, "currency": "USD"},
+                            "budget": 10000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                         }
                     ],
                     "start_time": start_time,

@@ -167,10 +167,8 @@ class GAMWorkflowManager:
         order_name = apply_naming_template(order_name_template, context)
 
         # Build detailed action list for humans to manually create the order
-        # Extract budget amount (v1.8.0 compatible)
-        from src.core.schemas import extract_budget_amount
-
-        total_budget_amount, _ = extract_budget_amount(request.budget, request.currency or "USD")
+        # Calculate total budget from package budgets (AdCP v2.2.0)
+        total_budget_amount = request.get_total_budget()
 
         action_details = {
             "action_type": "create_gam_order",
