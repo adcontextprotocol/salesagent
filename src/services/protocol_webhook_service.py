@@ -82,6 +82,7 @@ class ProtocolWebhookService:
                         "credentials": "secret_or_token"
                     }
                 }
+            task_type: Type of task ("sync_creatives", "media_buy", etc.)
             task_id: Task/operation ID
             status: Status of operation ("working", "completed", "failed")
             result: Result data if completed successfully

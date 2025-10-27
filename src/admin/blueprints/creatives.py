@@ -1,5 +1,6 @@
 """Creative formats management blueprint for admin UI."""
 
+import asyncio
 import json
 import logging
 import threading
@@ -7,6 +8,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
+from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
+from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 # TODO: Missing module - these functions need to be implemented
 # from creative_formats import discover_creative_formats_from_url, parse_creative_spec
@@ -131,12 +134,11 @@ def _cleanup_completed_tasks():
         logger.error(f"Error setting up webhook delivery for creative {creative_id}: {e}", exc_info=True)
         return False
 
-def _call_webhook_for_creative_status(
+async def _call_webhook_for_creative_status(
     db_session,
-    creative_id: str,
-    status: str,
+    creative_id,
+    result,
     tenant_id: str | None = None,
-    review_feedback: str | None = None,
 ):
     """Send protocol-level push notification for creative status update.
 
@@ -149,9 +151,6 @@ def _call_webhook_for_creative_status(
         bool: True if webhook delivered successfully, False otherwise (or if no config found)
     """
     try:
-        # Find latest workflow step for this creative to obtain push_notification_config
-        from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
-
         stmt = (
             select(ObjectWorkflowMapping)
             .filter_by(object_type="creative", object_id=creative_id)
@@ -171,63 +170,22 @@ def _call_webhook_for_creative_status(
             return False
 
         webhook_config = step.request_data.get("push_notification_config")
-        if not webhook_config or not webhook_config.get("url"):
-            logger.debug(
-                f"No push_notification_config with URL present for creative {creative_id}; skipping webhook notification"
-            )
-            return False
-
-        # Build AdCP-compliant result payload
-        creative_result = {
-            "creative_id": creative_id,
-            "action": "updated",
-            "status": status,
-        }
-        if review_feedback:
-            creative_result["review_feedback"] = review_feedback
-
-        result = {"creatives": [creative_result]}
-
-        # Send protocol-level notification synchronously (no background thread), using outer session
-        from src.services.protocol_webhook_service import get_protocol_webhook_service
-        import asyncio
 
         service = get_protocol_webhook_service()
         try:
-            asyncio.run(
-                service.send_notification(
-                    webhook_config=webhook_config,
-                    task_id=step.step_id,
-                    task_type="sync_creatives",
-                    status="completed",
-                    result=result,
-                    error=None,
-                )
+            await service.send_notification(
+                webhook_config=webhook_config,
+                task_id=step.step_id,
+                task_type=step.tool_name,
+                status="completed",
+                result=result,
+                error=None,
             )
-        except RuntimeError as loop_err:
-            # If there's already a running loop (unlikely in Flask), fallback to create a new loop
-            try:
-                loop = asyncio.new_event_loop()
-                try:
-                    loop.run_until_complete(
-                        service.send_notification(
-                            webhook_config=webhook_config,
-                            task_id=step.step_id,
-                            task_type="sync_creatives",
-                            status="completed",
-                            result=result,
-                            error=None,
-                        )
-                    )
-                finally:
-                    loop.close()
-            except Exception as send_e:
-                logger.warning(f"Failed to send protocol webhook for creative {creative_id}: {send_e}")
 
-        logger.info(
-            f"Sent protocol-level webhook notification for creative {creative_id} (status={status}) to {webhook_config.get('url')}"
-        )
-        return True
+            return True
+        except Exception as send_e:
+            logger.error(f"Failed to send protocol webhook for creative {creative_id}: {send_e}")
+            return False
 
     except Exception as e:
         logger.error(f"Error sending protocol webhook for creative {creative_id}: {e}", exc_info=True)
@@ -428,33 +386,26 @@ def approve_creative(tenant_id, creative_id, **kwargs):
 
             db_session.commit()
 
-            # Send webhook notification to principal
-            from src.core.database.models import PushNotificationConfig
+            # need to make sure this is complient with AdCP standard
+            result = {
+                "creatives": [
+                    {
+                        "creative_id": creative.creative_id,
+                        "name": creative.name,
+                        "format": creative.format,
+                        "status": "approved",
+                        "approved_by": approved_by,
+                        "approved_at": creative.approved_at.isoformat(),
+                    }
+                ]
+            }
 
-            stmt_webhook = (
-                select(PushNotificationConfig)
-                .filter_by(tenant_id=tenant_id, principal_id=creative.principal_id, is_active=True)
-                .order_by(PushNotificationConfig.created_at.desc())
-            )
-            webhook_config = db_session.scalars(stmt_webhook).first()
-
-            if webhook_config:
-                import requests
-
-                webhook_payload = {
-                    "event": "creative_approved",
-                    "creative_id": creative.creative_id,
-                    "name": creative.name,
-                    "format": creative.format,
-                    "status": "approved",
-                    "approved_by": approved_by,
-                    "approved_at": creative.approved_at.isoformat(),
-                }
-                try:
-                    requests.post(webhook_config.url, json=webhook_payload, timeout=10)
-                    logger.info(f"Sent webhook notification for approved creative {creative_id}")
-                except Exception as webhook_err:
-                    logger.warning(f"Failed to send creative approval webhook: {webhook_err}")
+            asyncio.run(_call_webhook_for_creative_status(
+                db_session=db_session,
+                creative_id=creative_id,
+                result=result,
+                tenant_id=tenant_id,
+            ))
 
             # Send Slack notification if configured
             stmt_tenant = select(Tenant).filter_by(tenant_id=tenant_id)
@@ -576,34 +527,27 @@ def reject_creative(tenant_id, creative_id, **kwargs):
 
             db_session.commit()
 
-            # Send webhook notification to principal
-            from src.core.database.models import PushNotificationConfig
+            # need to make sure this is complient with AdCP standard
+            result = {
+                "creatives": [
+                    {
+                        "creative_id": creative.creative_id,
+                        "name": creative.name,
+                        "format": creative.format,
+                        "status": "rejected",
+                        "rejected_by": rejected_by,
+                        "rejection_reason": rejection_reason,
+                        "rejected_at": creative.data["rejected_at"],
+                    }
+                ]
+            }
 
-            stmt_webhook = (
-                select(PushNotificationConfig)
-                .filter_by(tenant_id=tenant_id, principal_id=creative.principal_id, is_active=True)
-                .order_by(PushNotificationConfig.created_at.desc())
-            )
-            webhook_config = db_session.scalars(stmt_webhook).first()
-
-            if webhook_config:
-                import requests
-
-                webhook_payload = {
-                    "event": "creative_rejected",
-                    "creative_id": creative.creative_id,
-                    "name": creative.name,
-                    "format": creative.format,
-                    "status": "rejected",
-                    "rejected_by": rejected_by,
-                    "rejection_reason": rejection_reason,
-                    "rejected_at": creative.data["rejected_at"],
-                }
-                try:
-                    requests.post(webhook_config.url, json=webhook_payload, timeout=10)
-                    logger.info(f"Sent webhook notification for rejected creative {creative_id}")
-                except Exception as webhook_err:
-                    logger.warning(f"Failed to send creative rejection webhook: {webhook_err}")
+            asyncio.run(_call_webhook_for_creative_status(
+                db_session=db_session,
+                creative_id=creative_id,
+                result=result,
+                tenant_id=tenant_id
+            ))
 
             # Send Slack notification if configured
             stmt_tenant = select(Tenant).filter_by(tenant_id=tenant_id)
@@ -651,7 +595,7 @@ def reject_creative(tenant_id, creative_id, **kwargs):
         return jsonify({"error": str(e)}), 500
 
 
-def _ai_review_creative_async(
+async def _ai_review_creative_async(
     creative_id: str,
     tenant_id: str,
     webhook_url: str | None = None,
@@ -751,16 +695,19 @@ def _ai_review_creative_async(
 
                 # Call webhook if configured
                 if webhook_url:
-                    creative_data = {
+                    result = {
                         "creative_id": creative.creative_id,
                         "name": creative.name,
                         "format": creative.format,
                         "status": creative.status,
                         "ai_review": creative.data.get("ai_review"),
                     }
-                    _call_webhook_for_creative_status(
-                        webhook_url, creative_id, creative.status, creative_data, tenant_id
-                    )
+                    asyncio.run(_call_webhook_for_creative_status(
+                        db_session=session,
+                        creative_id=creative_id,
+                        result=result,
+                        tenant_id=tenant_id
+                    ))
                     logger.info(f"[AI Review Async] Webhook called for {creative_id}")
             else:
                 logger.error(f"[AI Review Async] Creative not found: {creative_id}")
