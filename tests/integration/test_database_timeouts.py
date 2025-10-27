@@ -163,6 +163,11 @@ def test_statement_timeout_enforced(integration_db):
         # Reset engine again
         reset_engine()
 
+        # Reset health state to prevent cascading failures in subsequent tests
+        from src.core.database import database_session
+
+        database_session._is_healthy = True
+
 
 @pytest.mark.requires_db
 def test_connection_timeout_configuration(integration_db):

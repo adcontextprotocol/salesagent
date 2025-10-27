@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from fastmcp.exceptions import ToolError
 from sqlalchemy import delete, select
 
 from src.core.database.database_session import get_db_session

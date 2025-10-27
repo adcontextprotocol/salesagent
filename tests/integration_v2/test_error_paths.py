@@ -18,6 +18,7 @@ those error paths.
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from fastmcp.exceptions import ToolError
 from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
