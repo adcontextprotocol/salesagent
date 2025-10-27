@@ -2055,7 +2055,7 @@ class TestAdCPContract:
             end_time=datetime(2025, 2, 28, 23, 59, 59, tzinfo=UTC),
             budget=Budget(total=5000.0, currency="USD", pacing="even"),
             packages=[
-                AdCPPackageUpdate(package_id="pkg_123", active=True, budget=Budget(total=2500.0, currency="USD"))
+                AdCPPackageUpdate(package_id="pkg_123", active=True, budget=2500.0)  # Float budget per AdCP spec
             ],
         )
 

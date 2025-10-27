@@ -250,8 +250,12 @@ class TestMCPEndpointsComprehensive:
             po_number="PO-V24-67890",  # Required per AdCP spec
             budget=Budget(total=10000.0, currency="EUR", pacing="asap"),
             packages=[
-                Package(buyer_ref="pkg_1", product_id="prod_1", budget=Budget(total=6000.0, currency="EUR")),
-                Package(buyer_ref="pkg_2", product_id="prod_2", budget=Budget(total=4000.0, currency="EUR")),
+                Package(
+                    buyer_ref="pkg_1", product_id="prod_1", budget=6000.0
+                ),  # Float budget, currency from pricing_option
+                Package(
+                    buyer_ref="pkg_2", product_id="prod_2", budget=4000.0
+                ),  # Float budget, currency from pricing_option
             ],
             start_time=datetime.now(UTC),
             end_time=datetime.now(UTC) + timedelta(days=30),

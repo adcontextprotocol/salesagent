@@ -2123,7 +2123,9 @@ class Package(BaseModel):
     buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this package")
     product_id: str | None = Field(None, description="ID of the product this package is based on (single product)")
     products: list[str] | None = Field(None, description="Array of product IDs to include in this package")
-    budget: Budget | float | None = Field(None, description="Package-specific budget (Budget object or number)")
+    budget: float | None = Field(
+        None, ge=0, description="Budget allocation for this package in the currency specified by the pricing option"
+    )
     impressions: float | None = Field(None, description="Impression goal for this package", gt=-1)
     targeting_overlay: Targeting | None = Field(None, description="Package-specific targeting")
     creative_ids: list[str] | None = Field(None, description="Creative IDs to assign to this package")
@@ -2237,10 +2239,6 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         ..., description="Campaign start time: ISO 8601 datetime or 'asap' for immediate start (REQUIRED)"
     )
     end_time: datetime = Field(..., description="Campaign end time (ISO 8601) (REQUIRED)")
-    budget: Budget | float = Field(
-        ...,
-        description="Overall campaign budget (Budget object or number). Currency determined by package pricing options (REQUIRED).",
-    )
 
     # Deprecated fields (for backward compatibility - legacy format conversion only)
     currency: str | None = Field(
@@ -2249,11 +2247,15 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         description="DEPRECATED: Use Package.currency instead. Currency code that will be copied to all packages for backward compatibility.",
     )
 
-    # Legacy fields (for backward compatibility)
+    # Legacy fields (for backward compatibility - NOT in AdCP spec)
+    budget: Budget | float | None = Field(
+        None,
+        description="LEGACY: Campaign-level budget. NOT in AdCP spec - budget is per-package. Use get_total_budget() to calculate total.",
+    )
     product_ids: list[str] | None = Field(None, description="Legacy: Product IDs (converted to packages)")
     start_date: date | None = Field(None, description="Legacy: Start date (converted to start_time)")
     end_date: date | None = Field(None, description="Legacy: End date (converted to end_time)")
-    total_budget: float | None = Field(None, description="Legacy: Total budget (converted to Budget object)")
+    total_budget: float | None = Field(None, description="Legacy: Total budget (converted to package budgets)")
 
     # Common fields
     campaign_name: str | None = Field(None, description="Campaign name for display purposes")
@@ -2336,18 +2338,10 @@ class CreateMediaBuyRequest(AdCPBaseModel):
                     end_date = date.fromisoformat(end_date)
                 values["end_time"] = datetime.combine(end_date, time.max, tzinfo=UTC)
 
-        # Convert total_budget to Budget object (only if not None)
-        if "total_budget" in values and values["total_budget"] is not None and not values.get("budget"):
-            total_budget = values["total_budget"]
-            pacing = values.get("pacing", "even")
-            daily_cap = values.get("daily_budget")
-
-            values["budget"] = {
-                "total": total_budget,
-                "currency": "USD",  # Default currency
-                "pacing": pacing,
-                "daily_cap": daily_cap,
-            }
+        # NOTE: We no longer convert total_budget to top-level budget field
+        # Per AdCP v2.2.0 spec, budget is specified at the package level, not media buy level.
+        # The total_budget legacy field is kept for backward compatibility but should not be
+        # converted to budget field. Use get_total_budget() method to calculate total.
 
         # buyer_ref is optional and should NOT be auto-generated
         # It's the buyer's identifier, not ours to create
@@ -2386,8 +2380,14 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         return self.end_time.date() if self.end_time else None
 
     def get_total_budget(self) -> float:
-        """Get total budget, handling both new and legacy formats."""
-        # AdCP v2.4: Sum budgets from all packages
+        """Calculate total budget by summing all package budgets.
+
+        Per AdCP spec, budget is specified at the package level, not the media buy level.
+        This method calculates the total by summing all package budgets.
+
+        For backward compatibility, falls back to legacy budget fields if packages have no budgets.
+        """
+        # AdCP v2.2.0: Sum budgets from all packages (primary method)
         if self.packages:
             total = 0.0
             for package in self.packages:
@@ -2395,25 +2395,24 @@ class CreateMediaBuyRequest(AdCPBaseModel):
                 if isinstance(package, dict):
                     budget = package.get("budget")
                     if budget:
-                        # Budget can be: dict, number, or Budget object
+                        # Package budget is now just a float (per AdCP spec)
                         if isinstance(budget, dict):
+                            # Legacy dict format (for backward compatibility)
                             total += budget.get("total", 0.0)
                         elif isinstance(budget, int | float):
                             total += float(budget)
                         else:
+                            # Legacy Budget object (for backward compatibility)
                             total += budget.total
                 else:
-                    # Package object
+                    # Package object - budget is now always float | None
                     if package.budget:
-                        # Budget can be number or Budget object
-                        if isinstance(package.budget, int | float):
-                            total += float(package.budget)
-                        else:
-                            total += package.budget.total
+                        total += float(package.budget)
             if total > 0:
                 return total
 
-        # Legacy format: top-level budget
+        # Legacy fallback: Use top-level budget fields if packages have no budgets
+        # NOTE: This is NOT part of AdCP spec - for backward compatibility only
         if self.budget:
             if isinstance(self.budget, int | float):
                 return float(self.budget)
@@ -2669,7 +2668,7 @@ class MediaPackage(BaseModel):
     targeting_overlay: Optional["Targeting"] = None
     buyer_ref: str | None = None  # Optional buyer reference from request package
     product_id: str | None = None  # Product ID for this package
-    budget: Optional["Budget"] = None  # Budget information from request
+    budget: float | None = None  # Budget allocation in the currency specified by the pricing option
 
 
 class PackagePerformance(BaseModel):
@@ -2737,7 +2736,7 @@ class PackageUpdate(BaseModel):
 
     package_id: str
     active: bool | None = None  # True to activate, False to pause
-    budget: Budget | float | None = None  # Budget object (AdCP spec) or legacy float
+    budget: float | None = Field(None, ge=0)  # Budget allocation in the currency specified by the pricing option
     impressions: int | None = None  # Direct impression goal (overrides budget calculation)
     cpm: float | None = None  # Update CPM rate
     daily_budget: float | None = None  # Daily spend cap
@@ -2767,7 +2766,7 @@ class AdCPPackageUpdate(BaseModel):
 
     package_id: str | None = None
     buyer_ref: str | None = None
-    budget: Budget | None = None
+    budget: float | None = Field(None, ge=0)  # Budget allocation in the currency specified by the pricing option
     active: bool | None = None
     targeting_overlay: Targeting | None = None
     creative_ids: list[str] | None = None

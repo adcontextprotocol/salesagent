@@ -24,6 +24,11 @@ _engine = None
 _session_factory = None
 _scoped_session = None
 
+# Track database health
+_last_health_check = 0
+_health_check_interval = 60  # Check health every 60 seconds
+_is_healthy = True
+
 
 def get_engine():
     """Get or create the database engine (lazy initialization)."""
@@ -45,16 +50,24 @@ def get_engine():
         if "postgresql" not in connection_string:
             raise ValueError("Only PostgreSQL is supported. Use DATABASE_URL=postgresql://...")
 
+        # Get timeout configuration from environment
+        query_timeout = int(os.environ.get("DATABASE_QUERY_TIMEOUT", "30"))  # 30s default
+        connect_timeout = int(os.environ.get("DATABASE_CONNECT_TIMEOUT", "10"))  # 10s default
+        pool_timeout = int(os.environ.get("DATABASE_POOL_TIMEOUT", "30"))  # 30s default
+
         # Create engine with production-ready settings
         _engine = create_engine(
             connection_string,
             pool_size=10,  # Base connections in pool
             max_overflow=20,  # Additional connections beyond pool_size
-            pool_timeout=30,  # Seconds to wait for connection
+            pool_timeout=pool_timeout,  # Seconds to wait for connection from pool
             pool_recycle=3600,  # Recycle connections after 1 hour
             pool_pre_ping=True,  # Test connections before use
             echo=False,  # Set to True for SQL logging in debug
-            connect_args={"connect_timeout": 5} if os.environ.get("ADCP_TESTING") else {},  # Fast timeout for tests
+            connect_args={
+                "connect_timeout": connect_timeout,  # Connection timeout in seconds
+                "options": f"-c statement_timeout={query_timeout * 1000}",  # Query timeout in milliseconds
+            },
         )
 
         # Create session factory
@@ -100,7 +113,20 @@ def get_db_session() -> Generator[Session, None, None]:
 
     The session will automatically rollback on exception and
     always be properly closed. Connection errors are logged with more detail.
+
+    Note: Query timeout is enforced at the database level via statement_timeout.
+    Queries exceeding DATABASE_QUERY_TIMEOUT will raise OperationalError.
     """
+    import time
+
+    global _is_healthy, _last_health_check
+
+    # Check if we should fail fast due to repeated database failures
+    if not _is_healthy:
+        time_since_check = time.time() - _last_health_check
+        if time_since_check < 10:  # Fail fast for 10 seconds after unhealthy check
+            raise RuntimeError("Database is unhealthy - failing fast to prevent cascading failures")
+
     scoped = get_scoped_session()
     session = scoped()
     try:
@@ -110,6 +136,9 @@ def get_db_session() -> Generator[Session, None, None]:
         session.rollback()
         # Remove session from registry to force reconnection
         scoped.remove()
+        # Mark as unhealthy for circuit breaker
+        _is_healthy = False
+        _last_health_check = time.time()
         raise
     except SQLAlchemyError as e:
         logger.error(f"Database error: {e}")
@@ -265,3 +294,61 @@ def get_or_create(session: Session, model, defaults: dict | None = None, **kwarg
     instance = model(**params)
     session.add(instance)
     return instance, True
+
+
+def check_database_health(force: bool = False) -> tuple[bool, str]:
+    """
+    Check database health with query timeout protection.
+
+    Args:
+        force: Force immediate check, ignoring cache interval
+
+    Returns:
+        Tuple of (is_healthy, message)
+    """
+    import time
+
+    from sqlalchemy import text
+
+    global _last_health_check, _is_healthy
+
+    # Return cached result if recent (unless forced)
+    if not force and time.time() - _last_health_check < _health_check_interval:
+        return _is_healthy, "cached"
+
+    try:
+        # Use a very short timeout for health check
+        with get_db_session() as session:
+            # Simple query that should always work
+            result = session.execute(text("SELECT 1"))
+            result.scalar()
+
+        _is_healthy = True
+        _last_health_check = time.time()
+        return True, "healthy"
+
+    except Exception as e:
+        _is_healthy = False
+        _last_health_check = time.time()
+        error_msg = f"Database unhealthy: {type(e).__name__}: {str(e)[:100]}"
+        logger.error(error_msg)
+        return False, error_msg
+
+
+def get_pool_status() -> dict:
+    """
+    Get current connection pool status for monitoring.
+
+    Returns:
+        Dict with pool statistics
+    """
+    engine = get_engine()
+    pool = engine.pool
+
+    return {
+        "size": pool.size(),
+        "checked_in": pool.checkedin(),
+        "checked_out": pool.checkedout(),
+        "overflow": pool.overflow(),
+        "total_connections": pool.size() + pool.overflow(),
+    }

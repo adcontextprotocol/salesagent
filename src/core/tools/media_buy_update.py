@@ -263,8 +263,13 @@ def _update_media_buy_impl(
                 # Determine currency (use updated or existing)
                 # Extract currency from Budget object if present (and if it's an object, not plain number)
                 request_currency: str
-                if req.budget and hasattr(req.budget, "currency"):
-                    request_currency = str(req.budget.currency)
+                if req.budget:
+                    # Check if it's a Budget object with currency attribute, otherwise use existing
+                    if hasattr(req.budget, "currency"):
+                        request_currency = str(req.budget.currency)
+                    else:
+                        # Float budget - use existing media buy currency
+                        request_currency = str(media_buy.currency) if media_buy.currency else "USD"
                 else:
                     request_currency = str(media_buy.currency) if media_buy.currency else "USD"
 
@@ -307,13 +312,13 @@ def _update_media_buy_impl(
                 if currency_limit.max_daily_package_spend and req.packages:
                     for pkg_update in req.packages:
                         if pkg_update.budget:
-                            # Extract budget amount - handle both Budget object and legacy float
-                            from src.core.schemas import Budget, extract_budget_amount
-
-                            if isinstance(pkg_update.budget, Budget):
-                                pkg_budget_amount, _ = extract_budget_amount(pkg_update.budget, request_currency)
-                            else:
+                            # Extract budget amount - handle both float and Budget object
+                            pkg_budget_amount: float
+                            if isinstance(pkg_update.budget, int | float):
                                 pkg_budget_amount = float(pkg_update.budget)
+                            else:
+                                # Budget object with .total attribute
+                                pkg_budget_amount = float(pkg_update.budget.total)
 
                             package_budget = Decimal(str(pkg_budget_amount))
                             package_daily = package_budget / Decimal(str(flight_days))
@@ -373,15 +378,16 @@ def _update_media_buy_impl(
 
             # Handle budget updates
             if pkg_update.budget is not None:
-                # Extract budget amount - handle both Budget object and legacy float
-                from src.core.schemas import Budget, extract_budget_amount
-
-                if isinstance(pkg_update.budget, Budget):
-                    budget_amount, currency = extract_budget_amount(pkg_update.budget, "USD")
-                else:
-                    # Legacy float format
+                # Extract budget amount - handle both float and Budget object
+                budget_amount: float
+                currency: str
+                if isinstance(pkg_update.budget, int | float):
                     budget_amount = float(pkg_update.budget)
-                    currency = "USD"
+                    currency = "USD"  # Default currency for float budgets
+                else:
+                    # Budget object with .total and .currency attributes
+                    budget_amount = float(pkg_update.budget.total)
+                    currency = pkg_update.budget.currency if hasattr(pkg_update.budget, "currency") else "USD"
 
                 result = adapter.update_media_buy(
                     media_buy_id=req.media_buy_id,
@@ -529,13 +535,18 @@ def _update_media_buy_impl(
                         }
                     )
 
-    # Handle budget updates (Budget object from AdCP spec - v1.8.0 compatible)
+    # Handle budget updates (handle both float and Budget object)
     if req.budget is not None:
-        from src.core.schemas import extract_budget_amount
-
-        # For UpdateMediaBuyRequest, budget is always a Budget object (not a float)
-        # The currency comes from the Budget object itself or defaults to USD
-        total_budget, currency = extract_budget_amount(req.budget, "USD")
+        # Extract budget amount - handle both float and Budget object
+        total_budget: float
+        currency: str
+        if isinstance(req.budget, int | float):
+            total_budget = float(req.budget)
+            currency = "USD"  # Default currency for float budgets
+        else:
+            # Budget object with .total and .currency attributes
+            total_budget = float(req.budget.total)
+            currency = req.budget.currency if hasattr(req.budget, "currency") else "USD"
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
