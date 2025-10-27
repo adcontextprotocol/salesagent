@@ -15,6 +15,7 @@ from src.core.audit_logger import get_audit_logger
 from src.core.auth import (
     get_principal_from_context,
 )
+from src.core.helpers import get_principal_id_from_context as _get_principal_id_from_context
 from src.landing import generate_tenant_landing_page
 
 logger = logging.getLogger(__name__)

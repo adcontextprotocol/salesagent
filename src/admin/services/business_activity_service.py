@@ -121,7 +121,9 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
                     # Make it human-readable based on skill name
                     if "create_media_buy" in primary_skill:
                         # Try to extract meaningful info from details
-                        budget = details.get("total_budget", details.get("budget"))
+                        budget = (
+                            details.get("total_budget", details.get("budget")) if isinstance(details, dict) else None
+                        )
                         packages = details.get("packages", details.get("package_count"))
 
                         if budget and packages:
@@ -240,12 +242,14 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
         return []
 
     # Sort all activities by timestamp (newest first)
-    activities.sort(key=lambda x: x["timestamp"], reverse=True)
+    from typing import cast
+
+    activities.sort(key=lambda x: cast(datetime, x["timestamp"]), reverse=True)
 
     # Add relative time formatting
     now = datetime.now(UTC)
     for activity in activities[:limit]:
-        timestamp = activity["timestamp"]
+        timestamp = cast(datetime, activity["timestamp"])
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
 

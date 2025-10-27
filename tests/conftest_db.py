@@ -250,7 +250,7 @@ def test_product(db_session, test_tenant):
         formats=["display_300x250"],
         targeting_template={},
         delivery_type="guaranteed",
-        is_fixed_price=True,
+        property_tags=["all_inventory"],  # Required: products must have properties OR property_tags
     )
     db_session.add(product)
     db_session.commit()

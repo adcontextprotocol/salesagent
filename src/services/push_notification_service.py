@@ -83,7 +83,7 @@ class PushNotificationService:
                 return {"sent": 0, "failed": 0, "configs": [], "errors": {}}
 
             # Prepare notification payload
-            payload = {
+            payload: dict[str, Any] = {
                 "task_id": task_id,
                 "status": task_status,
                 "timestamp": datetime.now(UTC).isoformat(),
@@ -96,7 +96,7 @@ class PushNotificationService:
                 payload["data"] = task_data
 
             # Send to all registered webhooks
-            results = {"sent": 0, "failed": 0, "configs": [], "errors": {}}
+            results: dict[str, Any] = {"sent": 0, "failed": 0, "configs": [], "errors": {}}
 
             for config in configs:
                 try:

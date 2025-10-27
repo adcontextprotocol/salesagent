@@ -25,6 +25,7 @@ from src.core.database.models import AuthorizedProperty, PropertyTag
 from src.core.helpers import log_tool_activity
 from src.core.schema_adapters import ListAuthorizedPropertiesRequest, ListAuthorizedPropertiesResponse
 from src.core.schemas import Property, PropertyIdentifier, PropertyTagMetadata
+from src.core.testing_hooks import get_testing_context
 from src.core.validation_helpers import safe_parse_json_field
 
 

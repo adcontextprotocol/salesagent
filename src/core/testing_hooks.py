@@ -488,8 +488,8 @@ def get_session_manager() -> TestSessionManager:
     return _session_manager
 
 
-def get_next_event_calculator() -> NextEventCalculator:
-    """Get the next event calculator."""
+def get_next_event_calculator() -> type[NextEventCalculator]:
+    """Get the next event calculator class."""
     return NextEventCalculator
 
 

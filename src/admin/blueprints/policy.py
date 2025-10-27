@@ -6,7 +6,7 @@ import logging
 from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import select
 
-from src.admin.utils import get_tenant_config_from_db, require_auth
+from src.admin.utils import get_tenant_config_from_db, require_auth  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.audit_logger import AuditLogger
 from src.core.database.database_session import get_db_session

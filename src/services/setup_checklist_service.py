@@ -236,9 +236,9 @@ class SetupChecklistService:
         access_control_configured = bool(has_domains or has_emails)
 
         details = []
-        if has_domains:
+        if has_domains and tenant.authorized_domains:
             details.append(f"{len(tenant.authorized_domains)} domain(s)")
-        if has_emails:
+        if has_emails and tenant.authorized_emails:
             details.append(f"{len(tenant.authorized_emails)} email(s)")
 
         tasks.append(
