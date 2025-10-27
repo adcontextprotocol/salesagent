@@ -90,6 +90,7 @@ def test_pool_status(integration_db):
 def test_circuit_breaker_fail_fast(integration_db):
     """Test that circuit breaker fails fast when database is unhealthy."""
     from src.core.database import database_session
+    from src.core.database.database_session import reset_health_state
 
     # Mark database as unhealthy
     database_session._is_healthy = False
@@ -100,14 +101,15 @@ def test_circuit_breaker_fail_fast(integration_db):
         with get_db_session():
             pass
 
-    # Reset health state
-    database_session._is_healthy = True
+    # Reset health state using public API
+    reset_health_state()
 
 
 @pytest.mark.requires_db
 def test_circuit_breaker_recovery(integration_db):
     """Test that circuit breaker allows retry after timeout."""
     from src.core.database import database_session
+    from src.core.database.database_session import reset_health_state
 
     # Mark database as unhealthy
     database_session._is_healthy = False
@@ -129,8 +131,8 @@ def test_circuit_breaker_recovery(integration_db):
 
     assert success, "Circuit breaker should allow retry after timeout"
 
-    # Reset health state
-    database_session._is_healthy = True
+    # Reset health state using public API
+    reset_health_state()
 
 
 @pytest.mark.requires_db
@@ -164,9 +166,9 @@ def test_statement_timeout_enforced(integration_db):
         reset_engine()
 
         # Reset health state to prevent cascading failures in subsequent tests
-        from src.core.database import database_session
+        from src.core.database.database_session import reset_health_state
 
-        database_session._is_healthy = True
+        reset_health_state()
 
 
 @pytest.mark.requires_db

@@ -117,6 +117,25 @@ def reset_engine():
     _session_factory = None
 
 
+def reset_health_state():
+    """Reset circuit breaker health state for testing.
+
+    Use this to clear the health state after intentionally triggering database
+    errors in tests to prevent cascading failures in subsequent tests.
+
+    Example:
+        try:
+            # Test that triggers database error
+            with get_db_session() as session:
+                session.execute(text("SELECT pg_sleep(999)"))  # Timeout
+        finally:
+            reset_health_state()  # Prevent cascading failures
+    """
+    global _is_healthy, _last_health_check
+    _is_healthy = True
+    _last_health_check = 0
+
+
 def get_scoped_session():
     """Get the scoped session factory (lazy initialization)."""
     # Calling get_engine() ensures all globals are initialized
