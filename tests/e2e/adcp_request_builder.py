@@ -5,7 +5,6 @@ Utilities for building valid AdCP-compliant requests for E2E tests.
 All helpers enforce the NEW AdCP V2.3 format with proper schema validation.
 """
 
-import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -20,12 +19,11 @@ def parse_tool_result(result: Any) -> dict[str, Any]:
     """
     Parse MCP tool result into structured data.
 
-    Handles both old and new ToolResult formats:
-    - New format: result.structured_content contains the data directly
-    - Old format: result.content[0].text contains JSON string that needs parsing
+    Extracts structured data from ToolResult.structured_content field.
+    The text field contains human-readable text, structured_content has the JSON data.
 
     Args:
-        result: MCP tool result object
+        result: MCP tool result object with structured_content
 
     Returns:
         Parsed result data as a dictionary
@@ -35,18 +33,12 @@ def parse_tool_result(result: Any) -> dict[str, Any]:
         >>> products_data = parse_tool_result(products_result)
         >>> assert "products" in products_data
     """
-    # Try new format first (structured_content field)
     if hasattr(result, "structured_content") and result.structured_content:
         return result.structured_content
 
-    # Fallback to old format (parse JSON from text)
-    if hasattr(result, "content") and result.content and len(result.content) > 0:
-        text_content = result.content[0].text
-        return json.loads(text_content)
-
-    # If neither format works, raise error
     raise ValueError(
-        f"Unable to parse tool result: {type(result).__name__} has no structured_content or parseable content"
+        f"Unable to parse tool result: {type(result).__name__} has no structured_content field. "
+        f"Expected ToolResult with structured_content."
     )
 
 
