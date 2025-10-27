@@ -146,7 +146,7 @@ def list_creative_formats(
     format_ids: list[str] | None = None,
     webhook_url: str | None = None,
     context: Context = None,
-) -> ListCreativeFormatsResponse:
+):
     """List all available creative formats (AdCP spec endpoint).
 
     MCP tool wrapper that delegates to the shared implementation.
@@ -160,8 +160,10 @@ def list_creative_formats(
         context: FastMCP context (automatically provided)
 
     Returns:
-        ListCreativeFormatsResponse with all available formats
+        ToolResult with ListCreativeFormatsResponse data
     """
+    from fastmcp.tools.tool import ToolResult
+
     try:
         req = ListCreativeFormatsRequest(
             type=type,
@@ -172,7 +174,8 @@ def list_creative_formats(
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creative_formats request")) from e
 
-    return _list_creative_formats_impl(req, context)
+    response = _list_creative_formats_impl(req, context)
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 def list_creative_formats_raw(

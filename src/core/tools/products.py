@@ -507,7 +507,7 @@ async def get_products(
     brief: str = "",
     filters: dict | None = None,
     context: Context = None,
-) -> GetProductsResponse:
+):
     """Get available products matching the brief.
 
     MCP tool wrapper that delegates to the shared implementation.
@@ -519,12 +519,14 @@ async def get_products(
         context: FastMCP context (automatically provided)
 
     Returns:
-        GetProductsResponse containing matching products
+        ToolResult with human-readable text and structured data
 
     Note:
         promoted_offering is deprecated - use brand_manifest instead.
         If you need backward compatibility, use the A2A interface which still supports it.
     """
+    from fastmcp.tools.tool import ToolResult
+
     # Build request object for shared implementation using helper
     try:
         req = create_get_products_request(
@@ -541,7 +543,10 @@ async def get_products(
 
     # Call shared implementation
     # Note: GetProductsRequest is now a flat class (not RootModel), so pass req directly
-    return await _get_products_impl(req, context)
+    response = await _get_products_impl(req, context)
+
+    # Return ToolResult with human-readable text and structured data
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 async def get_products_raw(

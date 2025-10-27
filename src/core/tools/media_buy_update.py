@@ -652,7 +652,7 @@ def update_media_buy(
     creatives: list = None,
     push_notification_config: dict | None = None,
     context: Context = None,
-) -> UpdateMediaBuyResponse:
+):
     """Update a media buy with campaign-level and/or package-level changes.
 
     MCP tool wrapper that delegates to the shared implementation.
@@ -676,9 +676,11 @@ def update_media_buy(
         context: FastMCP context (automatically provided)
 
     Returns:
-        UpdateMediaBuyResponse with updated media buy details
+        ToolResult with UpdateMediaBuyResponse data
     """
-    return _update_media_buy_impl(
+    from fastmcp.tools.tool import ToolResult
+
+    response = _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
         active=active,
@@ -696,6 +698,7 @@ def update_media_buy(
         push_notification_config=push_notification_config,
         context=context,
     )
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 def update_media_buy_raw(

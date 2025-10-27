@@ -27,7 +27,7 @@ def _get_principal_id_from_context(context: Context | None) -> str | None:
     return principal_id
 
 
-async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:
+async def get_signals(req: GetSignalsRequest, context: Context = None):
     """Optional endpoint for discovering available signals (audiences, contextual, etc.)
 
     Args:
@@ -35,8 +35,9 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
         context: FastMCP context (automatically provided)
 
     Returns:
-        GetSignalsResponse containing matching signals
+        ToolResult with GetSignalsResponse data
     """
+    from fastmcp.tools.tool import ToolResult
 
     _get_principal_id_from_context(context)
 
@@ -184,7 +185,8 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
 
     # Per AdCP PR #113 and official schema, protocol fields (message, context_id)
     # are added by the protocol layer, not the domain response.
-    return GetSignalsResponse(signals=signals)
+    response = GetSignalsResponse(signals=signals)
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 async def activate_signal(
@@ -192,7 +194,7 @@ async def activate_signal(
     campaign_id: str = None,
     media_buy_id: str = None,
     context: Context = None,
-) -> ActivateSignalResponse:
+):
     """Activate a signal for use in campaigns.
 
     Args:
@@ -202,8 +204,10 @@ async def activate_signal(
         context: FastMCP context (automatically provided)
 
     Returns:
-        ActivateSignalResponse with activation status
+        ToolResult with ActivateSignalResponse data
     """
+    from fastmcp.tools.tool import ToolResult
+
     start_time = time.time()
 
     # Authentication required for signal activation
@@ -254,13 +258,13 @@ async def activate_signal(
 
         # Build response with adapter schema fields
         if requires_approval or not activation_success:
-            return ActivateSignalResponse(
+            response = ActivateSignalResponse(
                 task_id=task_id,
                 status=status,
                 errors=errors,
             )
         else:
-            return ActivateSignalResponse(
+            response = ActivateSignalResponse(
                 task_id=task_id,
                 status=status,
                 decisioning_platform_segment_id=decisioning_platform_segment_id if activation_success else None,
@@ -268,14 +272,16 @@ async def activate_signal(
                     estimated_activation_duration_minutes if activation_success else None
                 ),
             )
+        return ToolResult(content=str(response), structured_content=response.model_dump())
 
     except Exception as e:
         logger.error(f"Error activating signal {signal_id}: {e}")
-        return ActivateSignalResponse(
+        response = ActivateSignalResponse(
             task_id=f"task_{uuid.uuid4().hex[:12]}",
             status="failed",
             errors=[{"code": "ACTIVATION_ERROR", "message": str(e)}],
         )
+        return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:

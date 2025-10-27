@@ -1905,7 +1905,7 @@ async def create_media_buy(
     push_notification_config: dict[str, Any] | None = None,
     webhook_url: str | None = None,
     context: Context | None = None,
-) -> CreateMediaBuyResponse:
+):
     """Create a media buy with the specified parameters.
 
     MCP tool wrapper that delegates to the shared implementation.
@@ -1934,9 +1934,11 @@ async def create_media_buy(
         context: FastMCP context (automatically provided)
 
     Returns:
-        CreateMediaBuyResponse with media buy details
+        ToolResult with CreateMediaBuyResponse data
     """
-    return await _create_media_buy_impl(
+    from fastmcp.tools.tool import ToolResult
+
+    response = await _create_media_buy_impl(
         buyer_ref=buyer_ref,
         brand_manifest=brand_manifest,
         po_number=po_number,
@@ -1959,6 +1961,7 @@ async def create_media_buy(
         push_notification_config=push_notification_config,
         context=context,
     )
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 async def create_media_buy_raw(

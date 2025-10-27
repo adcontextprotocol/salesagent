@@ -19,7 +19,7 @@ from src.core.validation_helpers import format_validation_error
 
 def update_performance_index(
     media_buy_id: str, performance_data: list[dict[str, Any]], webhook_url: str | None = None, context: Context = None
-) -> UpdatePerformanceIndexResponse:
+):
     """Update performance index data for a media buy.
 
     Args:
@@ -29,8 +29,10 @@ def update_performance_index(
         context: FastMCP context (automatically provided)
 
     Returns:
-        UpdatePerformanceIndexResponse with operation status
+        ToolResult with UpdatePerformanceIndexResponse data
     """
+    from fastmcp.tools.tool import ToolResult
+
     # Create request object from individual parameters (MCP-compliant)
     # Convert dict performance_data to ProductPerformance objects
     from src.core.schemas import ProductPerformance
@@ -80,10 +82,11 @@ def update_performance_index(
     if any(p.performance_index < 0.8 for p in req.performance_data):
         console.print("  [yellow]⚠️  Low performance detected - optimization recommended[/yellow]")
 
-    return UpdatePerformanceIndexResponse(
+    response = UpdatePerformanceIndexResponse(
         status="success" if success else "failed",
         detail=f"Performance index updated for {len(req.performance_data)} products",
     )
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 def update_performance_index_raw(media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None):

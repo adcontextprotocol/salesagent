@@ -237,7 +237,7 @@ def _list_authorized_properties_impl(
 
 def list_authorized_properties(
     req: ListAuthorizedPropertiesRequest | None = None, webhook_url: str | None = None, context: Context | None = None
-) -> ListAuthorizedPropertiesResponse:
+):
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
 
     MCP tool wrapper that delegates to the shared implementation.
@@ -248,12 +248,14 @@ def list_authorized_properties(
         context: FastMCP context for authentication
 
     Returns:
-        ListAuthorizedPropertiesResponse with properties and tag metadata
+        ToolResult with human-readable text and structured data
     """
     # FIX: Create MinimalContext with headers from FastMCP request (like A2A does)
     # This ensures tenant detection works the same way for both MCP and A2A
     import logging
     import sys
+
+    from fastmcp.tools.tool import ToolResult
 
     logger = logging.getLogger(__name__)
     tool_context = None
@@ -303,7 +305,12 @@ def list_authorized_properties(
         logger.info("MCP list_authorized_properties: No context provided")
         tool_context = context
 
-    return _list_authorized_properties_impl(req, tool_context)
+    response = _list_authorized_properties_impl(req, tool_context)
+
+    # Return ToolResult with human-readable text and structured data
+    # The __str__() method provides the human-readable message
+    # The model_dump() provides the structured JSON data
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 def list_authorized_properties_raw(

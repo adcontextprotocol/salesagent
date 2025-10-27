@@ -304,7 +304,7 @@ def get_media_buy_delivery(
     end_date: str = None,
     webhook_url: str | None = None,
     context: Context = None,
-) -> GetMediaBuyDeliveryResponse:
+):
     """Get delivery data for media buys.
 
     AdCP-compliant implementation of get_media_buy_delivery tool.
@@ -319,8 +319,10 @@ def get_media_buy_delivery(
         context: FastMCP context (automatically provided)
 
     Returns:
-        GetMediaBuyDeliveryResponse with AdCP-compliant delivery data for the requested media buys
+        ToolResult with GetMediaBuyDeliveryResponse data
     """
+    from fastmcp.tools.tool import ToolResult
+
     # Create AdCP-compliant request object
     try:
         req = GetMediaBuyDeliveryRequest(
@@ -333,7 +335,8 @@ def get_media_buy_delivery(
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="get_media_buy_delivery request")) from e
 
-    return _get_media_buy_delivery_impl(req, context)
+    response = _get_media_buy_delivery_impl(req, context)
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 def get_media_buy_delivery_raw(
