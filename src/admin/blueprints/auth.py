@@ -354,10 +354,14 @@ def google_callback():
                 # Check if user has access to THIS SPECIFIC tenant
                 # Check domain-based access
                 has_tenant_access = False
-                if email_domain and tenant.authorized_domains:
-                    try:
+                try:
+                    if email_domain and tenant.authorized_domains:
                         import json
 
+                        logger.info(
+                            f"[ACCESS_CHECK] Checking domain access - type: {type(tenant.authorized_domains)}, "
+                            f"value: {tenant.authorized_domains}"
+                        )
                         domains = (
                             tenant.authorized_domains
                             if isinstance(tenant.authorized_domains, list)
@@ -366,14 +370,17 @@ def google_callback():
                         if email_domain in domains:
                             has_tenant_access = True
                             logger.info(f"[ACCESS_CHECK] Access granted via domain: {email_domain} in {domains}")
-                    except (json.JSONDecodeError, TypeError) as e:
-                        logger.warning(f"[ACCESS_CHECK] Invalid authorized_domains JSON: {e}")
+                        else:
+                            logger.info(f"[ACCESS_CHECK] Domain {email_domain} not in {domains}")
 
-                # Check email-based access
-                if not has_tenant_access and tenant.authorized_emails:
-                    try:
+                    # Check email-based access
+                    if not has_tenant_access and tenant.authorized_emails:
                         import json
 
+                        logger.info(
+                            f"[ACCESS_CHECK] Checking email access - type: {type(tenant.authorized_emails)}, "
+                            f"value: {tenant.authorized_emails}"
+                        )
                         emails = (
                             tenant.authorized_emails
                             if isinstance(tenant.authorized_emails, list)
@@ -382,8 +389,15 @@ def google_callback():
                         if email.lower() in [e.lower() for e in emails]:
                             has_tenant_access = True
                             logger.info(f"[ACCESS_CHECK] Access granted via email: {email} in {emails}")
-                    except (json.JSONDecodeError, TypeError) as e:
-                        logger.warning(f"[ACCESS_CHECK] Invalid authorized_emails JSON: {e}")
+                        else:
+                            logger.info(f"[ACCESS_CHECK] Email {email} not in {emails}")
+
+                except Exception as e:
+                    logger.error(
+                        f"[ACCESS_CHECK] Exception during access check: {type(e).__name__}: {e}", exc_info=True
+                    )
+                    # Don't grant access if there's an error
+                    has_tenant_access = False
 
                 if has_tenant_access:
                     # Ensure user record exists (auto-create if needed)
