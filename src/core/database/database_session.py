@@ -365,15 +365,29 @@ def get_pool_status() -> dict:
     Get current connection pool status for monitoring.
 
     Returns:
-        Dict with pool statistics
+        Dict with pool statistics (all non-negative integers)
+
+    Note:
+        overflow() can return negative values before pool is fully initialized.
+        We normalize these to 0 for monitoring purposes.
     """
     engine = get_engine()
     pool = engine.pool
 
+    # Get raw pool stats
+    size = pool.size()
+    checked_in = pool.checkedin()
+    checked_out = pool.checkedout()
+    overflow = pool.overflow()
+
+    # Normalize overflow to non-negative (can be negative before pool initialization)
+    # Overflow represents connections beyond pool_size that are currently active
+    overflow_normalized = max(0, overflow)
+
     return {
-        "size": pool.size(),
-        "checked_in": pool.checkedin(),
-        "checked_out": pool.checkedout(),
-        "overflow": pool.overflow(),
-        "total_connections": pool.size() + pool.overflow(),
+        "size": size,
+        "checked_in": checked_in,
+        "checked_out": checked_out,
+        "overflow": overflow_normalized,
+        "total_connections": size + overflow_normalized,
     }

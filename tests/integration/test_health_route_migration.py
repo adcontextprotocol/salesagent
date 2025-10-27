@@ -14,6 +14,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 def test_health_routes_in_refactored_app(integration_db):
     """Test that both health routes work in the refactored app."""
     from src.admin.app import create_app
+    from src.core.database.database_session import reset_engine
+
+    # Reset engine to ensure it uses the test database (integration_db fixture sets DATABASE_URL)
+    reset_engine()
 
     app, socketio = create_app()
     client = app.test_client()
@@ -36,6 +40,10 @@ def test_health_routes_in_refactored_app(integration_db):
 def test_health_routes_in_original_app(integration_db):
     """Test that health routes still work in original app for comparison."""
     from src.admin.app import create_app
+    from src.core.database.database_session import reset_engine
+
+    # Reset engine to ensure it uses the test database (integration_db fixture sets DATABASE_URL)
+    reset_engine()
 
     app, _ = create_app()
     client = app.test_client()

@@ -356,7 +356,7 @@ class TestMinimumSpendValidation:
         assert response.buyer_ref == "minspend_test_4"
 
     async def test_unsupported_currency_rejected(self, setup_test_data):
-        """Test that excessively high budgets are rejected by the adapter."""
+        """Test that excessively high budgets are rejected by the adapter (raises ToolError)."""
         from unittest.mock import MagicMock
 
         context = MagicMock()
@@ -368,26 +368,26 @@ class TestMinimumSpendValidation:
         # Try to create media buy with excessive budget
         # Without pricing_option_id, defaults to USD
         # $100,000 USD is excessive and will be rejected by adapter
-        response = await _create_media_buy_impl(
-            buyer_ref="minspend_test_5",
-            brand_manifest={"name": "Test Campaign"},
-            packages=[
-                Package(
-                    buyer_ref="minspend_test_5",
-                    product_id="prod_global",
-                    budget=100000.0,  # Excessive budget per AdCP v2.2.0 float format
-                )
-            ],
-            start_time=start_time.isoformat(),
-            end_time=end_time.isoformat(),
-            budget=Budget(total=100000.0, currency="USD"),
-            context=context,
-        )
+        with pytest.raises(ToolError) as exc_info:
+            await _create_media_buy_impl(
+                buyer_ref="minspend_test_5",
+                brand_manifest={"name": "Test Campaign"},
+                packages=[
+                    Package(
+                        buyer_ref="minspend_test_5",
+                        product_id="prod_global",
+                        budget=100000.0,  # Excessive budget per AdCP v2.2.0 float format
+                    )
+                ],
+                start_time=start_time.isoformat(),
+                end_time=end_time.isoformat(),
+                budget=Budget(total=100000.0, currency="USD"),
+                context=context,
+            )
 
-        # Verify operation failed (either validation or adapter error)
-        assert response.errors is not None and len(response.errors) > 0
-        # The error may come from budget validation or adapter limits
-        assert len(response.errors[0].message) > 0  # Has an error message
+        # Verify the error message indicates adapter rejection
+        error_message = str(exc_info.value)
+        assert "PERCENTAGE_UNITS_BOUGHT_TOO_HIGH" in error_message or "Failed to create media buy" in error_message
 
     async def test_different_currency_different_minimum(self, setup_test_data):
         """Test that different currencies have different minimums."""

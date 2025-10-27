@@ -267,7 +267,7 @@ class TestCreateMediaBuyErrorPaths:
         assert "end" in error.message.lower() or "after" in error.message.lower()
 
     async def test_negative_budget_returns_validation_error(self, test_tenant_with_principal):
-        """Test that negative budget returns Error response."""
+        """Test that negative budget raises validation error during Pydantic schema validation."""
         context = ToolContext(
             context_id="test_ctx",
             tenant_id="error_test_tenant",
@@ -279,31 +279,28 @@ class TestCreateMediaBuyErrorPaths:
         future_start = datetime.now(UTC) + timedelta(days=1)
         future_end = future_start + timedelta(days=7)
 
-        response = await create_media_buy_raw(
-            po_number="error_test_po",
-            brand_manifest={"name": "Test campaign"},
-            buyer_ref="test_buyer",
-            packages=[
-                {
-                    "package_id": "pkg1",
-                    "products": ["error_test_product"],
-                    "budget": -1000.0,  # Negative budget (will fail validation), currency from pricing_option
-                }
-            ],
-            start_time=future_start.isoformat(),
-            end_time=future_end.isoformat(),
-            budget={"total": -1000.0, "currency": "USD"},
-            context=context,
-        )
+        # Negative budget should fail Pydantic validation (ge=0 constraint)
+        with pytest.raises(ToolError) as exc_info:
+            await create_media_buy_raw(
+                po_number="error_test_po",
+                brand_manifest={"name": "Test campaign"},
+                buyer_ref="test_buyer",
+                packages=[
+                    {
+                        "package_id": "pkg1",
+                        "products": ["error_test_product"],
+                        "budget": -1000.0,  # Negative budget (will fail validation), currency from pricing_option
+                    }
+                ],
+                start_time=future_start.isoformat(),
+                end_time=future_end.isoformat(),
+                budget={"total": -1000.0, "currency": "USD"},
+                context=context,
+            )
 
-        assert isinstance(response, CreateMediaBuyResponse)
-        assert response.errors is not None
-        assert len(response.errors) > 0
-
-        error = response.errors[0]
-        assert isinstance(error, Error)
-        assert error.code == "validation_error"
-        assert "budget" in error.message.lower() and "positive" in error.message.lower()
+        error_message = str(exc_info.value)
+        assert "budget" in error_message.lower()
+        assert "greater than or equal to 0" in error_message.lower()
 
     async def test_missing_packages_returns_validation_error(self, test_tenant_with_principal):
         """Test that missing packages returns Error response."""
