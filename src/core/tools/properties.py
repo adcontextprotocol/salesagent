@@ -72,7 +72,7 @@ def _list_authorized_properties_impl(
     tenant_id = tenant["tenant_id"]
 
     # Apply testing hooks
-    from src.core.testing_hooks import AdCPTestContext, get_testing_context
+    from src.core.testing_hooks import AdCPTestContext
     from src.core.tool_context import ToolContext
 
     if isinstance(context, ToolContext):
@@ -196,10 +196,12 @@ def _list_authorized_properties_impl(
                 )
 
             # Create response with AdCP spec-compliant fields
+            # Note: Optional fields (advertising_policies, errors, etc.) should be omitted if not set,
+            # not set to None or empty values. AdCPBaseModel.model_dump() uses exclude_none=True by default.
             response = ListAuthorizedPropertiesResponse(
                 publisher_domains=publisher_domains,  # Required per AdCP v2.4 spec
                 advertising_policies=advertising_policies_text,
-                errors=[],
+                # errors omitted - only include if there are actual errors
             )
 
             # Log audit
