@@ -27,7 +27,8 @@ DATABASE_POOL_TIMEOUT=30  # Default: 30 seconds
 ```
 
 **How it works:**
-- Sets PostgreSQL `statement_timeout` parameter on every connection
+- Sets PostgreSQL `statement_timeout` parameter on every connection using SQLAlchemy event listeners
+- Compatible with both direct PostgreSQL and PgBouncer (PgBouncer doesn't support startup parameters)
 - Database automatically terminates queries exceeding the timeout
 - Raises `OperationalError` in Python code
 - No application code can bypass this timeout
@@ -35,6 +36,8 @@ DATABASE_POOL_TIMEOUT=30  # Default: 30 seconds
 ### 2. Connection Pool Management
 
 **Optimized Pool Settings**:
+
+**Direct PostgreSQL**:
 ```python
 pool_size=10           # Base connections always available
 max_overflow=20        # Additional connections when needed
@@ -43,10 +46,20 @@ pool_recycle=3600      # Recycle connections after 1 hour
 pool_pre_ping=True     # Test connections before use
 ```
 
+**PgBouncer** (automatically detected via port 6543 or `USE_PGBOUNCER=true`):
+```python
+pool_size=2            # Small pool - PgBouncer handles pooling
+max_overflow=5         # Limited overflow
+pool_timeout=30        # Wait time for connection from pool
+pool_recycle=300       # 5 minutes - shorter since PgBouncer manages connections
+pool_pre_ping=False    # Disabled - can cause issues with transaction pooling
+```
+
 **Benefits:**
 - Prevents connection leaks
-- Detects stale connections
+- Detects stale connections (direct PostgreSQL only)
 - Limits total connections to prevent overwhelming database
+- PgBouncer-optimized settings reduce overhead when using connection pooler
 
 ### 3. Circuit Breaker Pattern
 
@@ -218,6 +231,23 @@ uv run pytest tests/integration/test_database_timeouts.py::test_statement_timeou
 2. Review long-running transactions
 3. Consider increasing `pool_size` or `max_overflow`
 4. Add connection pool monitoring
+
+### PgBouncer Compatibility Issues
+
+**Symptoms:**
+- "unsupported startup parameter in options: statement_timeout" error
+- Connection failures when using PgBouncer
+- Application works with direct PostgreSQL but fails with PgBouncer
+
+**Resolution:**
+This issue has been fixed in the codebase. The application now:
+1. Automatically detects PgBouncer connections (port 6543 or `USE_PGBOUNCER=true`)
+2. Uses SQLAlchemy event listeners to set `statement_timeout` after connection
+3. Avoids passing startup parameters that PgBouncer doesn't support
+4. Uses PgBouncer-optimized pool settings (smaller pool, no pre-ping)
+
+**Manual Override:**
+If PgBouncer isn't auto-detected, set: `USE_PGBOUNCER=true`
 
 ## Implementation Details
 

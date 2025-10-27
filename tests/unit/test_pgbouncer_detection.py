@@ -4,6 +4,15 @@ import os
 from unittest.mock import MagicMock, patch
 
 
+def _mock_event_listener(target, event_name):
+    """Mock decorator for event.listens_for to avoid SQLAlchemy event errors in tests."""
+
+    def decorator(fn):
+        return fn
+
+    return decorator
+
+
 class TestPgBouncerDetection:
     """Test PgBouncer detection logic."""
 
@@ -17,6 +26,7 @@ class TestPgBouncerDetection:
         with (
             patch.dict(os.environ, {"DATABASE_URL": "postgresql://user:pass@localhost:6543/test"}),
             patch("src.core.database.database_session.create_engine") as mock_create_engine,
+            patch("src.core.database.database_session.event.listens_for", side_effect=_mock_event_listener),
         ):
             mock_engine = MagicMock()
             mock_create_engine.return_value = mock_engine
@@ -50,6 +60,7 @@ class TestPgBouncerDetection:
                 },
             ),
             patch("src.core.database.database_session.create_engine") as mock_create_engine,
+            patch("src.core.database.database_session.event.listens_for", side_effect=_mock_event_listener),
         ):
             mock_engine = MagicMock()
             mock_create_engine.return_value = mock_engine
@@ -72,6 +83,7 @@ class TestPgBouncerDetection:
         with (
             patch.dict(os.environ, {"DATABASE_URL": "postgresql://user:pass@localhost:5432/test"}),
             patch("src.core.database.database_session.create_engine") as mock_create_engine,
+            patch("src.core.database.database_session.event.listens_for", side_effect=_mock_event_listener),
         ):
             mock_engine = MagicMock()
             mock_create_engine.return_value = mock_engine
@@ -105,6 +117,7 @@ class TestPgBouncerDetection:
             with (
                 patch.dict(os.environ, {"DATABASE_URL": url}),
                 patch("src.core.database.database_session.create_engine") as mock_create_engine,
+                patch("src.core.database.database_session.event.listens_for", side_effect=_mock_event_listener),
             ):
                 mock_engine = MagicMock()
                 mock_create_engine.return_value = mock_engine
@@ -132,6 +145,7 @@ class TestPgBouncerDetection:
                     },
                 ),
                 patch("src.core.database.database_session.create_engine") as mock_create_engine,
+                patch("src.core.database.database_session.event.listens_for", side_effect=_mock_event_listener),
             ):
                 mock_engine = MagicMock()
                 mock_create_engine.return_value = mock_engine
@@ -158,6 +172,7 @@ class TestPgBouncerDetection:
                 },
             ),
             patch("src.core.database.database_session.create_engine") as mock_create_engine,
+            patch("src.core.database.database_session.event.listens_for", side_effect=_mock_event_listener),
         ):
             mock_engine = MagicMock()
             mock_create_engine.return_value = mock_engine
