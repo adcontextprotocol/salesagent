@@ -352,9 +352,16 @@ def google_callback():
                     else:
                         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
                 else:
-                    flash("You don't have access to this tenant", "error")
+                    # User doesn't have access to this tenant
+                    flash(
+                        "You don't have access to this tenant. Please contact your administrator to request access.",
+                        "error",
+                    )
                     session.clear()
-                    return redirect(url_for("auth.tenant_login", tenant_id=tenant_id))
+
+                    # Redirect to general login page to avoid loop
+                    # Don't redirect back to tenant-specific login as that creates an infinite loop
+                    return redirect(url_for("auth.login"))
 
         # Domain-based access control using email domain extraction
         # (ensure_user_in_tenant and get_user_tenant_access already imported above)
