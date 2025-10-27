@@ -229,10 +229,10 @@ class TestMCPEndpointsComprehensive:
         # buyer_ref should NOT be auto-generated (it's the buyer's identifier)
         assert legacy_request.buyer_ref is None
 
-        # Should auto-create budget from total_budget
+        # Should calculate total budget from total_budget (legacy field)
         assert legacy_request.get_total_budget() == 5000.0
-        assert legacy_request.budget.total == 5000.0
-        assert legacy_request.budget.currency == "USD"
+        # Note: budget field is optional/None in AdCP v2.2.0 (not in spec)
+        # Legacy total_budget doesn't auto-create top-level budget object
 
         # Should create packages from product_ids
         product_ids = legacy_request.get_product_ids()
