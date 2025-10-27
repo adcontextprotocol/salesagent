@@ -427,7 +427,11 @@ def get_pool_status() -> dict:
     overflow = pool.overflow()
 
     # Normalize overflow to non-negative (can be negative before pool initialization)
-    # Overflow represents connections beyond pool_size that are currently active
+    # SQLAlchemy's pool.overflow() returns negative values in two cases:
+    # 1. Before the pool is fully initialized (returns -pool_size, e.g., -2 when pool_size=2)
+    # 2. When connections are closed before being used (internal pool accounting)
+    # For monitoring purposes, we treat these as 0 (no overflow connections active)
+    # since negative values don't represent actual resource usage.
     overflow_normalized = max(0, overflow)
 
     return {
