@@ -76,6 +76,23 @@ class AdCPBaseModel(BaseModel):
             kwargs["exclude_none"] = True
         return super().model_dump(**kwargs)
 
+    def model_dump_json(self, **kwargs):
+        """Dump model to JSON string with AdCP-compliant defaults.
+
+        By default, excludes None values to match AdCP spec where optional fields
+        should be omitted rather than set to null. This prevents JSON validation
+        errors from AdCP consumers that use "additionalProperties": false and don't
+        allow null for optional fields.
+
+        Examples:
+            response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
+            # Only includes publisher_domains, omits all None-valued optional fields
+            json_str = response.model_dump_json()  # exclude_none=True by default
+        """
+        if "exclude_none" not in kwargs:
+            kwargs["exclude_none"] = True
+        return super().model_dump_json(**kwargs)
+
 
 class TaskStatus(str, Enum):
     """Standardized task status enum per AdCP MCP Status specification.
