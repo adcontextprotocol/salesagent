@@ -89,18 +89,31 @@ class TestProperty:
         assert property_obj.tags == ["mobile", "entertainment"]
         assert property_obj.publisher_domain == "example.com"
 
-    def test_property_model_dump_includes_empty_tags(self):
-        """Test that model_dump ensures tags is always present."""
+    def test_property_model_dump_omits_none_tags(self):
+        """Test that model_dump omits tags when None (AdCP spec compliance)."""
         property_obj = Property(
             property_type="website",
             name="Example Site",
             identifiers=[PropertyIdentifier(type="domain", value="example.com")],
             publisher_domain="example.com",
+            # tags not set (None)
         )
 
         data = property_obj.model_dump()
-        assert "tags" in data
-        assert data["tags"] == []
+        # Per AdCP spec, optional fields with None values should be omitted
+        assert "tags" not in data, "tags with None value should be omitted per AdCP spec"
+
+        # Test that tags are included when explicitly set
+        property_with_tags = Property(
+            property_type="website",
+            name="Example Site",
+            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
+            publisher_domain="example.com",
+            tags=["premium"],
+        )
+        data_with_tags = property_with_tags.model_dump()
+        assert "tags" in data_with_tags, "tags should be present when set"
+        assert data_with_tags["tags"] == ["premium"]
 
     def test_property_requires_at_least_one_identifier(self):
         """Test that property requires at least one identifier."""
@@ -175,21 +188,23 @@ class TestListAuthorizedPropertiesResponse:
         assert "premium_content" in response.tags
         assert len(response.errors) == 1
 
-    def test_response_model_dump_includes_empty_errors(self):
-        """Test that model_dump ensures errors is always present."""
+    def test_response_model_dump_omits_none_values(self):
+        """Test that model_dump omits None-valued optional fields per AdCP spec."""
         response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
 
         data = response.model_dump()
-        assert "errors" in data
-        assert data["errors"] == []
+        # Per AdCP spec, optional fields with None values should be omitted
+        assert "errors" not in data, "errors with None value should be omitted"
+        assert "primary_channels" not in data, "primary_channels with None value should be omitted"
+        assert "publisher_domains" in data, "Required fields should always be present"
 
     def test_response_adcp_compliance(self):
         """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 schema."""
-        # Create response with all required + optional fields
+        # Create response with required fields only (no optional fields set)
         response = ListAuthorizedPropertiesResponse(
             publisher_domains=["example.com"],
             tags={"test": PropertyTagMetadata(name="Test", description="Test tag")},
-            errors=[],
+            # errors not set - should be omitted per AdCP spec
         )
 
         # Test AdCP-compliant response
@@ -201,20 +216,27 @@ class TestListAuthorizedPropertiesResponse:
             assert field in adcp_response
             assert adcp_response[field] is not None
 
-        # Verify optional AdCP fields present (can be null)
-        optional_fields = [
-            "errors",
-            "primary_channels",
-            "primary_countries",
-            "portfolio_description",
-            "advertising_policies",
-            "last_updated",
-        ]
-        for field in optional_fields:
-            assert field in adcp_response
+        # Verify optional fields with None values are omitted per AdCP spec
+        assert "errors" not in adcp_response, "errors with None value should be omitted"
+        assert "primary_channels" not in adcp_response, "primary_channels with None value should be omitted"
+        assert "primary_countries" not in adcp_response, "primary_countries with None value should be omitted"
+        assert "portfolio_description" not in adcp_response, "portfolio_description with None value should be omitted"
+        assert "advertising_policies" not in adcp_response, "advertising_policies with None value should be omitted"
+        assert "last_updated" not in adcp_response, "last_updated with None value should be omitted"
 
-        # Verify field count expectations (1 required + 7 optional = 8 total: publisher_domains, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated)
-        assert len(adcp_response) == 8
+        # Verify field count (only publisher_domains and tags should be present)
+        assert len(adcp_response) == 2, f"Expected 2 fields, got {len(adcp_response)}: {list(adcp_response.keys())}"
+
+        # Test with optional fields explicitly set to non-None values
+        response_with_optionals = ListAuthorizedPropertiesResponse(
+            publisher_domains=["example.com", "example.org"],
+            primary_channels=["display", "video"],
+            advertising_policies="No tobacco ads",
+        )
+        adcp_with_optionals = response_with_optionals.model_dump()
+        assert "primary_channels" in adcp_with_optionals, "Set optional fields should be present"
+        assert "advertising_policies" in adcp_with_optionals, "Set optional fields should be present"
+        assert "errors" not in adcp_with_optionals, "Unset optional fields should still be omitted"
 
 
 class TestPropertyTagMetadata:

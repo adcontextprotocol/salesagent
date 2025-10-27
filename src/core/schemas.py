@@ -59,6 +59,23 @@ class AdCPBaseModel(BaseModel):
         # Call parent __init__ which will ignore extra fields in production
         super().__init__(**data)
 
+    def model_dump(self, **kwargs):
+        """Dump model with AdCP-compliant defaults.
+
+        By default, excludes None values to match AdCP spec where optional fields
+        should be omitted rather than set to null. This prevents JSON validation
+        errors from AdCP consumers that use "additionalProperties": false and don't
+        allow null for optional fields.
+
+        Examples:
+            response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
+            # Only includes publisher_domains, omits all None-valued optional fields
+            data = response.model_dump()  # exclude_none=True by default
+        """
+        if "exclude_none" not in kwargs:
+            kwargs["exclude_none"] = True
+        return super().model_dump(**kwargs)
+
 
 class TaskStatus(str, Enum):
     """Standardized task status enum per AdCP MCP Status specification.
@@ -3334,12 +3351,14 @@ class Property(BaseModel):
     )
 
     def model_dump(self, **kwargs) -> dict[str, Any]:
-        """Return AdCP-compliant property representation."""
-        data = super().model_dump(**kwargs)
-        # Ensure tags is always present per AdCP schema
-        if data.get("tags") is None:
-            data["tags"] = []
-        return data
+        """Return AdCP-compliant property representation.
+
+        Per AdCP spec, optional fields with None values should be omitted.
+        Set exclude_none=True by default to match AdCP spec behavior.
+        """
+        if "exclude_none" not in kwargs:
+            kwargs["exclude_none"] = True
+        return super().model_dump(**kwargs)
 
 
 class PropertyTagMetadata(BaseModel):
@@ -3422,9 +3441,9 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
             return f"Found {count} authorized publisher domains."
 
     def model_dump(self, **kwargs) -> dict[str, Any]:
-        """Return AdCP-compliant response."""
-        data = super().model_dump(**kwargs)
-        # Ensure errors is always present per AdCP schema
-        if data.get("errors") is None:
-            data["errors"] = []
-        return data
+        """Return AdCP-compliant response.
+
+        Per AdCP spec, optional fields with None values should be omitted, not set to empty values.
+        The parent AdCPBaseModel.model_dump() already handles this with exclude_none=True by default.
+        """
+        return super().model_dump(**kwargs)
