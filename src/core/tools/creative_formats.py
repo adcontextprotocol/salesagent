@@ -122,20 +122,8 @@ def _list_creative_formats_impl(
     # Create response (no message/specification_version - not in adapter schema)
     response = ListCreativeFormatsResponse(formats=formats, status=status)
 
-    # Add schema validation metadata for client validation
-    from src.core.schema_validation import INCLUDE_SCHEMAS_IN_RESPONSES, enhance_mcp_response_with_schema
-
-    if INCLUDE_SCHEMAS_IN_RESPONSES:
-        # Convert to dict, enhance with schema, return enhanced dict
-        response_dict = response.model_dump()
-        enhanced_response = enhance_mcp_response_with_schema(
-            response_data=response_dict,
-            model_class=ListCreativeFormatsResponse,
-            include_full_schema=False,  # Set to True for development debugging
-        )
-        # Return the enhanced response (FastMCP handles dict returns)
-        return enhanced_response
-
+    # Always return Pydantic model - MCP wrapper will handle serialization
+    # Schema enhancement (if needed) should happen in the MCP wrapper, not here
     return response
 
 
