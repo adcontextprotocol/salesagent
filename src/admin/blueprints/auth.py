@@ -160,15 +160,32 @@ def google_auth():
                 tenant_context = tenant.tenant_id
                 logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
 
-    # Always use the registered OAuth redirect URI for Google (no modifications allowed)
+    # Build redirect URI with tenant context as query parameter
+    # Google OAuth allows query parameters in redirect_uri as long as base URI is registered
     if os.environ.get("PRODUCTION") == "true":
-        # For production, always use the exact registered redirect URI
-        redirect_uri = "https://sales-agent.scope3.com/admin/auth/google/callback"
+        # For production, use the registered redirect URI with query params for context
+        base_redirect_uri = "https://sales-agent.scope3.com/admin/auth/google/callback"
+        # Add tenant context and originating host as query parameters
+        import urllib.parse
+
+        params = {}
+        if tenant_context:
+            params["tenant_id"] = tenant_context
+        if approximated_host:
+            params["origin"] = approximated_host
+        elif host and host != "sales-agent.scope3.com" and not host.startswith("admin."):
+            params["origin"] = host
+
+        if params:
+            redirect_uri = f"{base_redirect_uri}?{urllib.parse.urlencode(params)}"
+        else:
+            redirect_uri = base_redirect_uri
     else:
         # Development fallback
         redirect_uri = url_for("auth.google_callback", _external=True)
 
     # Store originating host and tenant context in session for OAuth callback
+    # (as backup - query params are now primary)
     session["oauth_originating_host"] = host
 
     # Store external domain and tenant context in session for OAuth callback
@@ -276,12 +293,11 @@ def google_callback():
         # Debug session state before popping values
         logger.info(f"OAuth callback - full session: {dict(session)}")
 
-        # Get originating host and tenant context from session
-        # NOTE: Session cookies only work for same-domain OAuth (*.sales-agent.scope3.com)
-        # For cross-domain OAuth, these values will be None.
-        originating_host = session.pop("oauth_originating_host", None)
-        external_domain = session.pop("oauth_external_domain", None)
-        tenant_id = session.pop("oauth_tenant_context", None)
+        # Get originating host and tenant context from query params (primary) or session (fallback)
+        # Query params survive the OAuth redirect, session cookies may not for cross-domain
+        tenant_id = request.args.get("tenant_id") or session.pop("oauth_tenant_context", None)
+        external_domain = request.args.get("origin") or session.pop("oauth_external_domain", None)
+        originating_host = external_domain or session.pop("oauth_originating_host", None)
 
         # Debug logging for OAuth redirect
         logger.info(f"OAuth callback debug - originating_host: {originating_host}")
