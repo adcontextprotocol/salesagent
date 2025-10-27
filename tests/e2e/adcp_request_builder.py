@@ -5,6 +5,7 @@ Utilities for building valid AdCP-compliant requests for E2E tests.
 All helpers enforce the NEW AdCP V2.3 format with proper schema validation.
 """
 
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -13,6 +14,40 @@ from typing import Any
 def generate_buyer_ref(prefix: str = "test") -> str:
     """Generate a unique buyer reference."""
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
+
+
+def parse_tool_result(result: Any) -> dict[str, Any]:
+    """
+    Parse MCP tool result into structured data.
+
+    Handles both old and new ToolResult formats:
+    - New format: result.structured_content contains the data directly
+    - Old format: result.content[0].text contains JSON string that needs parsing
+
+    Args:
+        result: MCP tool result object
+
+    Returns:
+        Parsed result data as a dictionary
+
+    Example:
+        >>> products_result = await client.call_tool("get_products", {...})
+        >>> products_data = parse_tool_result(products_result)
+        >>> assert "products" in products_data
+    """
+    # Try new format first (structured_content field)
+    if hasattr(result, "structured_content") and result.structured_content:
+        return result.structured_content
+
+    # Fallback to old format (parse JSON from text)
+    if hasattr(result, "content") and result.content and len(result.content) > 0:
+        text_content = result.content[0].text
+        return json.loads(text_content)
+
+    # If neither format works, raise error
+    raise ValueError(
+        f"Unable to parse tool result: {type(result).__name__} has no structured_content or parseable content"
+    )
 
 
 def build_adcp_media_buy_request(
