@@ -128,13 +128,20 @@ def tenant_login(tenant_id):
 @auth_bp.route("/auth/google")
 def google_auth():
     """Initiate Google OAuth flow with tenant context detection."""
+    # Log entry point
+    host = request.headers.get("Host", "")
+    apx_host = request.headers.get("Apx-Incoming-Host")
+    logger.info(
+        f"[OAUTH_DEBUG] google_auth() called - Host: {host}, Apx-Incoming-Host: {apx_host}, args: {dict(request.args)}"
+    )
+
     oauth = current_app.oauth if hasattr(current_app, "oauth") else None
     if not oauth:
         flash("OAuth not configured", "error")
+        logger.warning("[OAUTH_DEBUG] OAuth not configured, redirecting to login")
         return redirect(url_for("auth.login"))
 
     # Capture tenant context from headers or form data
-    host = request.headers.get("Host", "")
     tenant_context = request.args.get("tenant_context")  # From login form
 
     # Check for Approximated routing headers first
@@ -195,6 +202,8 @@ def google_auth():
     state_json = json.dumps(state_data)
     state_encoded = base64.urlsafe_b64encode(state_json.encode()).decode()
 
+    logger.info(f"[OAUTH_DEBUG] Initiating OAuth redirect - redirect_uri: {redirect_uri}, state_data: {state_data}")
+
     # Let Authlib manage the state parameter for CSRF protection, but pass our custom data
     return oauth.google.authorize_redirect(redirect_uri, state=state_encoded)
 
@@ -237,15 +246,25 @@ def tenant_google_auth(tenant_id):
 @auth_bp.route("/auth/google/callback")
 def google_callback():
     """Handle Google OAuth callback."""
+    # Log entry point
+    host = request.headers.get("Host", "")
+    apx_host = request.headers.get("Apx-Incoming-Host")
+    state_param = request.args.get("state")
+    logger.info(
+        f"[OAUTH_DEBUG] google_callback() called - Host: {host}, Apx-Incoming-Host: {apx_host}, state: {state_param[:50] if state_param else None}..."
+    )
+
     oauth = current_app.oauth if hasattr(current_app, "oauth") else None
     if not oauth:
         flash("OAuth not configured", "error")
+        logger.warning("[OAUTH_DEBUG] OAuth not configured in callback, redirecting to login")
         return redirect(url_for("auth.login"))
 
     try:
         token = oauth.google.authorize_access_token()
         if not token:
             flash("Authentication failed", "error")
+            logger.warning("[OAUTH_DEBUG] No OAuth token received, redirecting to login")
             return redirect(url_for("auth.login"))
 
         # Get user info
