@@ -5,6 +5,7 @@ by both MCP and A2A protocols.
 """
 
 import logging
+from typing import Any
 
 from fastmcp.server.context import Context
 from fastmcp.server.dependencies import get_http_headers
@@ -50,8 +51,8 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                 if not principal:
                     console.print(f"[yellow]No principal found in tenant '{tenant_id}', checking admin token[/yellow]")
                     # Also check if it's the admin token for this specific tenant
-                    stmt = select(Tenant).filter_by(tenant_id=tenant_id, is_active=True)
-                    tenant = session.scalars(stmt).first()
+                    tenant_stmt = select(Tenant).filter_by(tenant_id=tenant_id, is_active=True)
+                    tenant = session.scalars(tenant_stmt).first()
                     console.print(f"[red]Token not found in tenant '{tenant_id}'[/red]")
                     return None
                 else:
@@ -71,8 +72,8 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                 )
 
                 # CRITICAL: Validate the tenant exists and is active before proceeding
-                stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
-                tenant_check = session.scalars(stmt).first()
+                tenant_check_stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
+                tenant_check = session.scalars(tenant_check_stmt).first()
                 if not tenant_check:
                     console.print(f"[red]Tenant '{principal.tenant_id}' is inactive or deleted[/red]")
                     # Tenant is disabled or deleted - fail securely
@@ -82,8 +83,8 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
             # If tenant_id was provided, context was already set by the caller
             if not tenant_id:
                 # Get the tenant for this principal and set it as current context
-                stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
-                tenant = session.scalars(stmt).first()
+                tenant_ctx_stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
+                tenant = session.scalars(tenant_ctx_stmt).first()
                 if tenant:
                     from src.core.utils.tenant_utils import serialize_tenant_to_dict
 
@@ -119,7 +120,7 @@ def _get_header_case_insensitive(headers: dict, header_name: str) -> str | None:
     return None
 
 
-def get_push_notification_config_from_headers(headers: dict[str, str] | None) -> dict[str, any] | None:
+def get_push_notification_config_from_headers(headers: dict[str, str] | None) -> dict[str, Any] | None:
     """
     Extract protocol-level push notification config from MCP HTTP headers.
 
@@ -357,7 +358,7 @@ def get_principal_from_context(
     return (principal_id, tenant_context)
 
 
-def get_principal_adapter_mapping(principal_id: str) -> dict[str, any]:
+def get_principal_adapter_mapping(principal_id: str) -> dict[str, Any]:
     """Get the platform mappings for a principal."""
     tenant = get_current_tenant()
     with get_db_session() as session:

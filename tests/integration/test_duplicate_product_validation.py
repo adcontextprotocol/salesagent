@@ -4,6 +4,11 @@ Unit test for duplicate product validation in media buy packages.
 
 Tests the validation logic that rejects media buy requests where the same
 product_id appears in multiple packages.
+
+📊 BUDGET FORMAT: AdCP v2.2.0 Migration (2025-10-27)
+All tests in this file use float budget format per AdCP v2.2.0 spec:
+- Package.budget: float (e.g., 1000.0) - NOT Budget object
+- Currency is determined by PricingOption, not Package
 """
 
 from datetime import UTC, datetime, timedelta
@@ -63,12 +68,12 @@ class TestDuplicateProductValidation:
                 Package(
                     buyer_ref="pkg_1",
                     product_id="prod_test_1",
-                    budget=Budget(total=1000, currency="USD"),
+                    budget=1000.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
                 ),
                 Package(
                     buyer_ref="pkg_2",
                     product_id="prod_test_1",  # Same product as pkg_1
-                    budget=Budget(total=1500, currency="USD"),
+                    budget=1500.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
                 ),
             ]
 
@@ -140,22 +145,22 @@ class TestDuplicateProductValidation:
                 Package(
                     buyer_ref="pkg_1",
                     product_id="prod_test_1",
-                    budget=Budget(total=1000, currency="USD"),
+                    budget=1000.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
                 ),
                 Package(
                     buyer_ref="pkg_2",
                     product_id="prod_test_1",  # Duplicate of pkg_1
-                    budget=Budget(total=1500, currency="USD"),
+                    budget=1500.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
                 ),
                 Package(
                     buyer_ref="pkg_3",
                     product_id="prod_test_2",
-                    budget=Budget(total=2000, currency="USD"),
+                    budget=2000.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
                 ),
                 Package(
                     buyer_ref="pkg_4",
                     product_id="prod_test_2",  # Duplicate of pkg_3
-                    budget=Budget(total=1800, currency="USD"),
+                    budget=1800.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
                 ),
             ]
 
@@ -220,12 +225,12 @@ class TestDuplicateProductValidation:
                 Package(
                     buyer_ref="pkg_1",
                     product_id="prod_test_1",
-                    budget=Budget(total=1000, currency="USD"),
+                    budget=1000.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
                 ),
                 Package(
                     buyer_ref="pkg_2",
                     product_id="prod_test_2",  # Different product
-                    budget=Budget(total=1500, currency="USD"),
+                    budget=1500.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
                 ),
             ]
 

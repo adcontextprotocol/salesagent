@@ -10,7 +10,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from sqlalchemy import func, select
 
 from src.admin.services import DashboardService
-from src.admin.utils import require_tenant_access
+from src.admin.utils import require_tenant_access  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal, PushNotificationConfig, Tenant
@@ -74,7 +74,7 @@ def list_principals(tenant_id):
             chart_data_dict = dashboard_service.get_chart_data()
 
             # Get tenant config for features
-            from src.admin.utils import get_tenant_config_from_db
+            from src.admin.utils import get_tenant_config_from_db  # type: ignore[attr-defined]
 
             config = get_tenant_config_from_db(tenant_id)
             features = config.get("features", {})

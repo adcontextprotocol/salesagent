@@ -4,12 +4,16 @@ Tests the flow where sync_creatives detects generative formats (those with outpu
 and calls build_creative instead of preview_creative, using mocked Gemini API.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
+from src.core.database.models import Creative as DBCreative
 from src.core.database.models import MediaBuy, Principal
+from src.core.schemas import SyncCreativesResponse
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # TODO: Fix generative creative tests - complex mock setup needs debugging
@@ -49,7 +53,8 @@ class TestGenerativeCreatives:
                 principal_id="test-principal-gen",
                 tenant_id=tenant.tenant_id,
                 name="Test Principal Gen",
-                token="test-token-123",
+                access_token="test-token-123",
+                platform_mappings={"mock": {"advertiser_id": "test-advertiser"}},
             )
             session.add(principal)
 
@@ -59,9 +64,12 @@ class TestGenerativeCreatives:
                 tenant_id=tenant.tenant_id,
                 principal_id=principal.principal_id,
                 buyer_ref="buyer-gen-001",
+                order_name="Test Order",  # Required field
+                advertiser_name="Test Advertiser",  # Required field
                 status="pending",
                 start_date=datetime.now(UTC),
                 end_date=datetime.now(UTC),
+                raw_request={},  # Required field
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
             )
@@ -72,8 +80,8 @@ class TestGenerativeCreatives:
             self.principal_id = principal.principal_id
             self.media_buy_id = media_buy.media_buy_id
 
-    @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.creative_agent_registry.get_creative_agent_registry")
+    @patch("src.core.config.get_config")
     def test_generative_format_detection_calls_build_creative(self, mock_get_config, mock_get_registry):
         """Test that generative formats (with output_format_ids) call build_creative."""
         # Setup mocks
@@ -106,8 +114,7 @@ class TestGenerativeCreatives:
         context = MockContext()
 
         result = sync_fn(
-            ctx=context,
-            media_buy_id=self.media_buy_id,
+            context=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-001",
@@ -142,8 +149,8 @@ class TestGenerativeCreatives:
             assert creative.data.get("generative_context_id") == "ctx-123"
             assert creative.data.get("url") == "https://example.com/generated.html"
 
-    @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.creative_agent_registry.get_creative_agent_registry")
+    @patch("src.core.config.get_config")
     def test_static_format_calls_preview_creative(self, mock_get_config, mock_get_registry):
         """Test that static formats (without output_format_ids) call preview_creative."""
         # Mock format without output_format_ids (static)
@@ -175,8 +182,7 @@ class TestGenerativeCreatives:
         context = MockContext()
 
         result = sync_fn(
-            ctx=context,
-            media_buy_id=self.media_buy_id,
+            context=context,
             creatives=[
                 {
                     "creative_id": "static-creative-001",
@@ -195,8 +201,8 @@ class TestGenerativeCreatives:
         assert isinstance(result, SyncCreativesResponse)
         assert result.created_count == 1
 
-    @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.creative_agent_registry.get_creative_agent_registry")
+    @patch("src.core.config.get_config")
     def test_missing_gemini_api_key_raises_error(self, mock_get_config, mock_get_registry):
         """Test that missing GEMINI_API_KEY raises clear error for generative formats."""
         # Setup mocks - no API key
@@ -220,8 +226,7 @@ class TestGenerativeCreatives:
 
         with pytest.raises(ValueError, match="GEMINI_API_KEY not configured"):
             sync_fn(
-                ctx=context,
-                media_buy_id=self.media_buy_id,
+                context=context,
                 creatives=[
                     {
                         "creative_id": "gen-creative-002",
@@ -232,8 +237,8 @@ class TestGenerativeCreatives:
                 ],
             )
 
-    @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.creative_agent_registry.get_creative_agent_registry")
+    @patch("src.core.config.get_config")
     def test_message_extraction_from_assets(self, mock_get_config, mock_get_registry):
         """Test that message is correctly extracted from various asset roles."""
         mock_config = MagicMock()
@@ -261,8 +266,7 @@ class TestGenerativeCreatives:
 
         # Test with "brief" role
         sync_fn(
-            ctx=context,
-            media_buy_id=self.media_buy_id,
+            context=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-003",
@@ -276,8 +280,8 @@ class TestGenerativeCreatives:
         call_args = mock_registry.build_creative.call_args
         assert call_args[1]["message"] == "Message from brief"
 
-    @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.creative_agent_registry.get_creative_agent_registry")
+    @patch("src.core.config.get_config")
     def test_message_fallback_to_creative_name(self, mock_get_config, mock_get_registry):
         """Test that creative name is used as fallback when no message provided."""
         mock_config = MagicMock()
@@ -305,8 +309,7 @@ class TestGenerativeCreatives:
 
         # No message in assets
         sync_fn(
-            ctx=context,
-            media_buy_id=self.media_buy_id,
+            context=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-004",
@@ -320,8 +323,8 @@ class TestGenerativeCreatives:
         call_args = mock_registry.build_creative.call_args
         assert call_args[1]["message"] == "Create a creative for: Eco-Friendly Products Banner"
 
-    @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.creative_agent_registry.get_creative_agent_registry")
+    @patch("src.core.config.get_config")
     def test_context_id_reuse_for_refinement(self, mock_get_config, mock_get_registry):
         """Test that context_id is reused for iterative refinement."""
         mock_config = MagicMock()
@@ -349,8 +352,7 @@ class TestGenerativeCreatives:
 
         # Create initial creative
         sync_fn(
-            ctx=context,
-            media_buy_id=self.media_buy_id,
+            context=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-005",
@@ -371,8 +373,7 @@ class TestGenerativeCreatives:
         )
 
         sync_fn(
-            ctx=context,
-            media_buy_id=self.media_buy_id,
+            context=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-005",  # Same ID
@@ -388,8 +389,8 @@ class TestGenerativeCreatives:
         assert call_args[1]["context_id"] == "ctx-original"
         assert call_args[1]["message"] == "Refined message"
 
-    @patch("src.core.main.get_creative_agent_registry")
-    @patch("src.core.main.get_config")
+    @patch("src.core.creative_agent_registry.get_creative_agent_registry")
+    @patch("src.core.config.get_config")
     def test_promoted_offerings_extraction(self, mock_get_config, mock_get_registry):
         """Test that promoted_offerings are extracted from assets."""
         mock_config = MagicMock()
@@ -421,8 +422,7 @@ class TestGenerativeCreatives:
         }
 
         sync_fn(
-            ctx=context,
-            media_buy_id=self.media_buy_id,
+            context=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-006",

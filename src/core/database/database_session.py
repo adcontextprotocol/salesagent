@@ -10,8 +10,9 @@ import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
+from urllib.parse import urlparse
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
@@ -23,6 +24,37 @@ logger = logging.getLogger(__name__)
 _engine = None
 _session_factory = None
 _scoped_session = None
+
+# Track database health
+_last_health_check = 0
+_health_check_interval = 60  # Check health every 60 seconds
+_is_healthy = True
+
+
+def _is_pgbouncer_connection(connection_string: str) -> bool:
+    """Check if connection string uses PgBouncer (port 6543) or USE_PGBOUNCER is set.
+
+    Uses URL parsing for robust port detection instead of string matching,
+    which avoids false positives from passwords containing ":6543".
+
+    Args:
+        connection_string: Database connection URL
+
+    Returns:
+        True if PgBouncer is detected, False otherwise
+    """
+    # Check environment variable first (explicit override)
+    if os.environ.get("USE_PGBOUNCER", "false").lower() == "true":
+        return True
+
+    # Parse connection string to check port
+    try:
+        parsed = urlparse(connection_string)
+        return parsed.port == 6543
+    except Exception:
+        # Fallback to string matching if URL parsing fails
+        # This handles edge cases with non-standard URLs
+        return ":6543" in connection_string
 
 
 def get_engine():
@@ -45,17 +77,59 @@ def get_engine():
         if "postgresql" not in connection_string:
             raise ValueError("Only PostgreSQL is supported. Use DATABASE_URL=postgresql://...")
 
-        # Create engine with production-ready settings
-        _engine = create_engine(
-            connection_string,
-            pool_size=10,  # Base connections in pool
-            max_overflow=20,  # Additional connections beyond pool_size
-            pool_timeout=30,  # Seconds to wait for connection
-            pool_recycle=3600,  # Recycle connections after 1 hour
-            pool_pre_ping=True,  # Test connections before use
-            echo=False,  # Set to True for SQL logging in debug
-            connect_args={"connect_timeout": 5} if os.environ.get("ADCP_TESTING") else {},  # Fast timeout for tests
-        )
+        # Get timeout configuration from environment
+        query_timeout = int(os.environ.get("DATABASE_QUERY_TIMEOUT", "30"))  # 30s default
+        connect_timeout = int(os.environ.get("DATABASE_CONNECT_TIMEOUT", "10"))  # 10s default
+        pool_timeout = int(os.environ.get("DATABASE_POOL_TIMEOUT", "30"))  # 30s default
+
+        # Detect PgBouncer usage (typically port 6543)
+        # PgBouncer requires different pooling strategy since it manages connections
+        is_pgbouncer = _is_pgbouncer_connection(connection_string)
+
+        if is_pgbouncer:
+            logger.info("PgBouncer detected - using optimized connection pool settings")
+            # PgBouncer-optimized settings:
+            # - Smaller pool_size (PgBouncer handles pooling)
+            # - No pool_pre_ping (can cause issues with transaction pooling)
+            # - Shorter pool_recycle (PgBouncer recycles for us)
+            # - statement_timeout set via event listener (PgBouncer doesn't support startup parameters)
+            _engine = create_engine(
+                connection_string,
+                pool_size=2,  # Small pool - PgBouncer does the pooling
+                max_overflow=5,  # Limited overflow
+                pool_timeout=pool_timeout,
+                pool_recycle=300,  # 5 minutes - shorter since PgBouncer manages connections
+                pool_pre_ping=False,  # Disable pre-ping with PgBouncer transaction pooling
+                echo=False,
+                connect_args={
+                    "connect_timeout": connect_timeout,
+                },
+            )
+        else:
+            logger.info("Direct PostgreSQL connection - using standard connection pool settings")
+            # Direct PostgreSQL settings (no PgBouncer)
+            _engine = create_engine(
+                connection_string,
+                pool_size=10,  # Base connections in pool
+                max_overflow=20,  # Additional connections beyond pool_size
+                pool_timeout=pool_timeout,  # Seconds to wait for connection from pool
+                pool_recycle=3600,  # Recycle connections after 1 hour
+                pool_pre_ping=True,  # Test connections before use
+                echo=False,  # Set to True for SQL logging in debug
+                connect_args={
+                    "connect_timeout": connect_timeout,  # Connection timeout in seconds
+                },
+            )
+
+        # Set statement_timeout after connection is established
+        # This works with both direct PostgreSQL and PgBouncer
+        # PgBouncer doesn't support startup parameters, so we must use SET command
+        @event.listens_for(_engine, "connect")
+        def set_statement_timeout(dbapi_conn, connection_record):
+            """Set statement_timeout on new connections."""
+            cursor = dbapi_conn.cursor()
+            cursor.execute(f"SET statement_timeout = '{query_timeout * 1000}'")
+            cursor.close()
 
         # Create session factory
         _session_factory = sessionmaker(bind=_engine)
@@ -79,6 +153,25 @@ def reset_engine():
     _session_factory = None
 
 
+def reset_health_state():
+    """Reset circuit breaker health state for testing.
+
+    Use this to clear the health state after intentionally triggering database
+    errors in tests to prevent cascading failures in subsequent tests.
+
+    Example:
+        try:
+            # Test that triggers database error
+            with get_db_session() as session:
+                session.execute(text("SELECT pg_sleep(999)"))  # Timeout
+        finally:
+            reset_health_state()  # Prevent cascading failures
+    """
+    global _is_healthy, _last_health_check
+    _is_healthy = True
+    _last_health_check = 0
+
+
 def get_scoped_session():
     """Get the scoped session factory (lazy initialization)."""
     # Calling get_engine() ensures all globals are initialized
@@ -100,7 +193,20 @@ def get_db_session() -> Generator[Session, None, None]:
 
     The session will automatically rollback on exception and
     always be properly closed. Connection errors are logged with more detail.
+
+    Note: Query timeout is enforced at the database level via statement_timeout.
+    Queries exceeding DATABASE_QUERY_TIMEOUT will raise OperationalError.
     """
+    import time
+
+    global _is_healthy, _last_health_check
+
+    # Check if we should fail fast due to repeated database failures
+    if not _is_healthy:
+        time_since_check = time.time() - _last_health_check
+        if time_since_check < 10:  # Fail fast for 10 seconds after unhealthy check
+            raise RuntimeError("Database is unhealthy - failing fast to prevent cascading failures")
+
     scoped = get_scoped_session()
     session = scoped()
     try:
@@ -110,6 +216,9 @@ def get_db_session() -> Generator[Session, None, None]:
         session.rollback()
         # Remove session from registry to force reconnection
         scoped.remove()
+        # Mark as unhealthy for circuit breaker
+        _is_healthy = False
+        _last_health_check = time.time()
         raise
     except SQLAlchemyError as e:
         logger.error(f"Database error: {e}")
@@ -265,3 +374,79 @@ def get_or_create(session: Session, model, defaults: dict | None = None, **kwarg
     instance = model(**params)
     session.add(instance)
     return instance, True
+
+
+def check_database_health(force: bool = False) -> tuple[bool, str]:
+    """
+    Check database health with query timeout protection.
+
+    Args:
+        force: Force immediate check, ignoring cache interval
+
+    Returns:
+        Tuple of (is_healthy, message)
+    """
+    import time
+
+    from sqlalchemy import text
+
+    global _last_health_check, _is_healthy
+
+    # Return cached result if recent (unless forced)
+    if not force and time.time() - _last_health_check < _health_check_interval:
+        return _is_healthy, "cached"
+
+    try:
+        # Use a very short timeout for health check
+        with get_db_session() as session:
+            # Simple query that should always work
+            result = session.execute(text("SELECT 1"))
+            result.scalar()
+
+        _is_healthy = True
+        _last_health_check = time.time()
+        return True, "healthy"
+
+    except Exception as e:
+        _is_healthy = False
+        _last_health_check = time.time()
+        error_msg = f"Database unhealthy: {type(e).__name__}: {str(e)[:100]}"
+        logger.error(error_msg)
+        return False, error_msg
+
+
+def get_pool_status() -> dict:
+    """
+    Get current connection pool status for monitoring.
+
+    Returns:
+        Dict with pool statistics (all non-negative integers)
+
+    Note:
+        overflow() can return negative values before pool is fully initialized.
+        We normalize these to 0 for monitoring purposes.
+    """
+    engine = get_engine()
+    pool = engine.pool
+
+    # Get raw pool stats
+    size = pool.size()
+    checked_in = pool.checkedin()
+    checked_out = pool.checkedout()
+    overflow = pool.overflow()
+
+    # Normalize overflow to non-negative (can be negative before pool initialization)
+    # SQLAlchemy's pool.overflow() returns negative values in two cases:
+    # 1. Before the pool is fully initialized (returns -pool_size, e.g., -2 when pool_size=2)
+    # 2. When connections are closed before being used (internal pool accounting)
+    # For monitoring purposes, we treat these as 0 (no overflow connections active)
+    # since negative values don't represent actual resource usage.
+    overflow_normalized = max(0, overflow)
+
+    return {
+        "size": size,
+        "checked_in": checked_in,
+        "checked_out": checked_out,
+        "overflow": overflow_normalized,
+        "total_connections": size + overflow_normalized,
+    }

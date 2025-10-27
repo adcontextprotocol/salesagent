@@ -134,9 +134,13 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
             # Filter by status based on date ranges
             for buy in all_buys:
                 # Determine current status based on dates
-                if reference_date < buy.start_time.date():
+                # Use start_time/end_time if available, otherwise fall back to start_date/end_date
+                start_compare = buy.start_time.date() if buy.start_time else buy.start_date
+                end_compare = buy.end_time.date() if buy.end_time else buy.end_date
+
+                if reference_date < start_compare:
                     current_status = "ready"
-                elif reference_date > buy.end_time.date():
+                elif reference_date > end_compare:
                     current_status = "completed"
                 else:
                     current_status = "active"
@@ -189,28 +193,29 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                 impressions = simulated_metrics["impressions"]
             else:
                 # Generate realistic delivery metrics
-                campaign_days = (buy_request.flight_end_date - buy_request.flight_start_date).days
-                days_elapsed = max(0, (simulation_datetime.date() - buy_request.flight_start_date).days)
+                campaign_days = (buy.end_date - buy.start_date).days
+                days_elapsed = max(0, (simulation_datetime.date() - buy.start_date).days)
 
                 if campaign_days > 0:
                     progress = min(1.0, days_elapsed / campaign_days) if status != "ready" else 0.0
                 else:
                     progress = 1.0 if status == "completed" else 0.0
 
-                spend = float(buy_request.total_budget * progress)
+                spend = float(buy.budget * progress) if buy.budget else 0.0
                 impressions = int(spend * 1000)  # Assume $1 CPM for simplicity
 
             # Create package delivery data
             package_deliveries = []
-            if hasattr(buy_request, "product_ids"):
-                for i, product_id in enumerate(buy_request.product_ids):
-                    package_spend = spend / len(buy_request.product_ids)
-                    package_impressions = impressions / len(buy_request.product_ids)
+            if buy.raw_request and isinstance(buy.raw_request, dict) and "product_ids" in buy.raw_request:
+                product_ids = buy.raw_request.get("product_ids", [])
+                for i, product_id in enumerate(product_ids):
+                    package_spend = spend / len(product_ids) if product_ids else spend
+                    package_impressions = impressions / len(product_ids) if product_ids else impressions
 
                     package_deliveries.append(
                         PackageDelivery(
                             package_id=f"pkg_{product_id}_{i}",
-                            buyer_ref=getattr(buy_request, "buyer_ref", None),
+                            buyer_ref=buy.raw_request.get("buyer_ref", None),
                             impressions=package_impressions,
                             spend=package_spend,
                             pacing_index=1.0 if status == "active" else 0.0,
@@ -218,9 +223,10 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                     )
 
             # Create delivery data
+            buyer_ref = buy.raw_request.get("buyer_ref", None) if buy.raw_request else None
             delivery_data = MediaBuyDeliveryData(
                 media_buy_id=media_buy_id,
-                buyer_ref=getattr(buy_request, "buyer_ref", None),
+                buyer_ref=buyer_ref,
                 status=status,
                 totals=DeliveryTotals(impressions=impressions, spend=spend),
                 by_package=package_deliveries,
@@ -249,9 +255,9 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
         if target_media_buys:
             first_buy = target_media_buys[0][1]
             campaign_info = {
-                "start_date": datetime.combine(first_buy.flight_start_date, datetime.min.time()),
-                "end_date": datetime.combine(first_buy.flight_end_date, datetime.min.time()),
-                "total_budget": first_buy.total_budget,
+                "start_date": datetime.combine(first_buy.start_date, datetime.min.time()),
+                "end_date": datetime.combine(first_buy.end_date, datetime.min.time()),
+                "total_budget": float(first_buy.budget) if first_buy.budget else 0.0,
             }
 
         # Convert to dict for testing hooks

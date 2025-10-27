@@ -3,6 +3,12 @@
 ⚠️ MIGRATION NOTICE: This test has been migrated to tests/integration_v2/ to use the new
 pricing_options model. The original file in tests/integration/ is deprecated.
 
+📊 BUDGET FORMAT: AdCP v2.2.0 Migration (2025-10-27)
+All tests in this file use float budget format per AdCP v2.2.0 spec:
+- Package.budget: float (e.g., 1000.0) - NOT Budget object
+- Currency is determined by PricingOption, not Package
+- Validation happens at Pydantic schema level (raises ToolError for constraint violations)
+
 This test suite systematically exercises error handling paths that were previously
 untested, ensuring:
 1. Error responses are actually constructible (no NameErrors)
@@ -18,6 +24,7 @@ those error paths.
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from fastmcp.exceptions import ToolError
 from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
@@ -161,7 +168,7 @@ class TestCreateMediaBuyErrorPaths:
                 {
                     "package_id": "pkg1",
                     "products": ["error_test_product"],
-                    "budget": {"total": 5000.0, "currency": "USD"},
+                    "budget": 5000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                 }
             ],
             start_time=future_start.isoformat(),
@@ -207,7 +214,7 @@ class TestCreateMediaBuyErrorPaths:
                 {
                     "package_id": "pkg1",
                     "products": ["error_test_product"],
-                    "budget": {"total": 5000.0, "currency": "USD"},
+                    "budget": 5000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                 }
             ],
             start_time=past_start.isoformat(),
@@ -248,7 +255,7 @@ class TestCreateMediaBuyErrorPaths:
                 {
                     "package_id": "pkg1",
                     "products": ["error_test_product"],
-                    "budget": {"total": 5000.0, "currency": "USD"},
+                    "budget": 5000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                 }
             ],
             start_time=start.isoformat(),
@@ -266,8 +273,12 @@ class TestCreateMediaBuyErrorPaths:
         assert error.code == "validation_error"
         assert "end" in error.message.lower() or "after" in error.message.lower()
 
-    async def test_negative_budget_returns_validation_error(self, test_tenant_with_principal):
-        """Test that negative budget returns Error response."""
+    async def test_negative_budget_raises_tool_error(self, test_tenant_with_principal):
+        """Test that negative budget raises ToolError during Pydantic validation.
+
+        Note: This is caught at the Pydantic schema level (ge=0 constraint) before
+        business logic runs, so it raises ToolError rather than returning an Error response.
+        """
         context = ToolContext(
             context_id="test_ctx",
             tenant_id="error_test_tenant",
@@ -279,31 +290,28 @@ class TestCreateMediaBuyErrorPaths:
         future_start = datetime.now(UTC) + timedelta(days=1)
         future_end = future_start + timedelta(days=7)
 
-        response = await create_media_buy_raw(
-            po_number="error_test_po",
-            brand_manifest={"name": "Test campaign"},
-            buyer_ref="test_buyer",
-            packages=[
-                {
-                    "package_id": "pkg1",
-                    "products": ["error_test_product"],
-                    "budget": {"total": -1000.0, "currency": "USD"},  # Negative!
-                }
-            ],
-            start_time=future_start.isoformat(),
-            end_time=future_end.isoformat(),
-            budget={"total": -1000.0, "currency": "USD"},
-            context=context,
-        )
+        # Negative budget should fail Pydantic validation (ge=0 constraint)
+        with pytest.raises(ToolError) as exc_info:
+            await create_media_buy_raw(
+                po_number="error_test_po",
+                brand_manifest={"name": "Test campaign"},
+                buyer_ref="test_buyer",
+                packages=[
+                    {
+                        "package_id": "pkg1",
+                        "products": ["error_test_product"],
+                        "budget": -1000.0,  # Negative budget (will fail validation), currency from pricing_option
+                    }
+                ],
+                start_time=future_start.isoformat(),
+                end_time=future_end.isoformat(),
+                budget={"total": -1000.0, "currency": "USD"},
+                context=context,
+            )
 
-        assert isinstance(response, CreateMediaBuyResponse)
-        assert response.errors is not None
-        assert len(response.errors) > 0
-
-        error = response.errors[0]
-        assert isinstance(error, Error)
-        assert error.code == "validation_error"
-        assert "budget" in error.message.lower() and "positive" in error.message.lower()
+        error_message = str(exc_info.value)
+        assert "budget" in error_message.lower()
+        assert "greater than or equal to 0" in error_message.lower()
 
     async def test_missing_packages_returns_validation_error(self, test_tenant_with_principal):
         """Test that missing packages returns Error response."""

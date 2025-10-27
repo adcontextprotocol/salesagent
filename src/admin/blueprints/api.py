@@ -9,7 +9,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func, select, text
 
-from src.admin.utils import require_auth
+from src.admin.utils import require_auth  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal, Product

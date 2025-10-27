@@ -114,11 +114,16 @@ def generate_auto_name(
             f"Brand: {brand_name}",
         ]
 
-        # Add budget info (v1.8.0 compatible)
-        if request.budget:
-            from src.core.schemas import extract_budget_amount
-
-            budget_amount, currency = extract_budget_amount(request.budget, request.currency or "USD")
+        # Add budget info (AdCP v2.2.0: sum package budgets)
+        budget_amount = request.get_total_budget()
+        if budget_amount > 0:
+            # Get currency from first package with currency, or default to USD
+            currency = "USD"
+            if request.packages:
+                for pkg in request.packages:
+                    if hasattr(pkg, "currency") and pkg.currency:
+                        currency = pkg.currency
+                        break
             context_parts.append(f"Budget: ${budget_amount:,.2f} {currency}")
 
         context_parts.extend(

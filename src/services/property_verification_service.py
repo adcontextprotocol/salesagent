@@ -195,6 +195,10 @@ class PropertyVerificationService:
                 agent_type = agent_ident.get("type")
                 agent_value = agent_ident.get("value")
 
+                # Skip if any required fields are missing
+                if not prop_type or not prop_value or not agent_type or not agent_value:
+                    continue
+
                 if prop_type == agent_type and self._identifier_values_match(prop_value, agent_value, prop_type):
                     return True
 

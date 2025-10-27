@@ -29,25 +29,8 @@ class TestBudgetMigrationInMainPy:
 
         assert package_budget == Decimal("5000.0")
 
-    def test_package_budget_validation_with_budget_object(self):
-        """Test that package budget validation works with Budget object (legacy)."""
-        package = Package(product_id="prod_1", budget=Budget(total=7500.0, currency="EUR"))
-        request_currency = "USD"
-
-        package_budget_amount, _ = extract_budget_amount(package.budget, request_currency)
-        package_budget = Decimal(str(package_budget_amount))
-
-        assert package_budget == Decimal("7500.0")
-
-    def test_package_budget_validation_with_dict(self):
-        """Test that package budget validation works with dict budget."""
-        package = Package(product_id="prod_1", budget={"total": 3000.0, "currency": "GBP"})
-        request_currency = "USD"
-
-        package_budget_amount, _ = extract_budget_amount(package.budget, request_currency)
-        package_budget = Decimal(str(package_budget_amount))
-
-        assert package_budget == Decimal("3000.0")
+    # NOTE: Tests removed - Package.budget is now float | None per AdCP v2.2.0 spec
+    # Budget objects and dict budgets are no longer supported at package level
 
     def test_update_media_buy_budget_with_float(self):
         """Test update_media_buy budget extraction with float (v1.8.0).
@@ -247,47 +230,5 @@ class TestBudgetMigrationInAdapters:
 class TestBudgetFormatMixedScenarios:
     """Test scenarios with mixed budget formats in a single request."""
 
-    def test_mixed_package_budgets(self):
-        """Test request with packages using different budget formats."""
-        packages = [
-            Package(product_id="prod_1", budget=5000.0),  # Float (v1.8.0)
-            Package(product_id="prod_2", budget=Budget(total=3000.0, currency="USD")),  # Budget object
-            Package(product_id="prod_3", budget={"total": 2000.0, "currency": "USD"}),  # Dict
-        ]
-
-        # Extract budgets from all packages
-        request_currency = "USD"
-        extracted_budgets = []
-
-        for package in packages:
-            if package.budget:
-                amount, currency = extract_budget_amount(package.budget, request_currency)
-                extracted_budgets.append((amount, currency))
-
-        assert len(extracted_budgets) == 3
-        assert extracted_budgets[0] == (5000.0, "USD")
-        assert extracted_budgets[1] == (3000.0, "USD")
-        assert extracted_budgets[2] == (2000.0, "USD")
-
-    def test_request_level_float_with_mixed_package_budgets(self):
-        """Test request with float budget and mixed package budget formats."""
-        request_budget = 10000.0
-        request_currency = "EUR"
-
-        packages = [
-            Package(product_id="prod_1", budget=4000.0),
-            Package(product_id="prod_2", budget=Budget(total=3000.0, currency="EUR")),
-            Package(product_id="prod_3", budget=3000.0),
-        ]
-
-        # Extract request-level budget
-        request_amount, request_curr = extract_budget_amount(request_budget, request_currency)
-        assert request_amount == 10000.0
-        assert request_curr == "EUR"
-
-        # Extract package budgets
-        for package in packages:
-            if package.budget:
-                amount, currency = extract_budget_amount(package.budget, request_currency)
-                assert amount > 0
-                assert currency == "EUR"
+    # NOTE: Tests removed - Package.budget is now float | None per AdCP v2.2.0 spec
+    # Mixed budget formats (Budget objects and dicts) are no longer supported at package level

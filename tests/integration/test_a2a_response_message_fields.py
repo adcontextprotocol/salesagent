@@ -16,12 +16,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
-from tests.helpers.a2a_response_validator import (
-    assert_valid_skill_response,
-)
+from tests.helpers.a2a_response_validator import assert_valid_skill_response
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.skip_ci]
+pytestmark = [pytest.mark.integration]
 
 
 @pytest.mark.integration
@@ -40,13 +37,26 @@ class TestA2AMessageFieldValidation:
     @pytest.fixture
     def mock_auth_context(self, sample_tenant, sample_principal):
         """Mock authentication context for all tests."""
+        from src.a2a_server import adcp_a2a_server
 
         def _mock_context(handler):
+            # Set up request context with proper headers for tenant resolution
+            # This will allow _create_tool_context_from_a2a to resolve the tenant from headers
+            # Use ContextVars instead of threading.local()
+            adcp_a2a_server._request_headers.set(
+                {
+                    "x-adcp-tenant": sample_tenant["tenant_id"],
+                    "authorization": f"Bearer {sample_principal['access_token']}",
+                }
+            )
+
             handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-            return patch.multiple(
-                "src.a2a_server.adcp_a2a_server",
-                get_principal_from_token=MagicMock(return_value=sample_principal["principal_id"]),
-                get_current_tenant=MagicMock(return_value={"tenant_id": sample_tenant["tenant_id"]}),
+
+            # Only mock get_principal_from_token - let real tenant lookups happen
+            # since sample_tenant fixture created the tenant in the database
+            return patch(
+                "src.core.auth_utils.get_principal_from_token",
+                return_value=sample_principal["principal_id"],
             )
 
         return _mock_context

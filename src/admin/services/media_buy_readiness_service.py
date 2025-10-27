@@ -100,8 +100,10 @@ class MediaBuyReadinessService:
             packages_total = len(packages)
 
             # Get creative assignments for this media buy
-            stmt = select(CreativeAssignment).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id)
-            assignments = session.scalars(stmt).all()
+            from typing import cast
+
+            assignments_stmt = select(CreativeAssignment).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id)
+            assignments = cast(list, session.scalars(assignments_stmt).all())
 
             # Get unique package IDs that have creative assignments
             packages_with_assignments = {a.package_id for a in assignments}
@@ -112,10 +114,12 @@ class MediaBuyReadinessService:
             creatives_total = len(creative_ids)
 
             # Get creative statuses
-            creatives = []
+            creatives: list[Creative] = []
             if creative_ids:
-                stmt = select(Creative).filter(Creative.tenant_id == tenant_id, Creative.creative_id.in_(creative_ids))
-                creatives = session.scalars(stmt).all()
+                creatives_stmt = select(Creative).filter(
+                    Creative.tenant_id == tenant_id, Creative.creative_id.in_(creative_ids)
+                )
+                creatives = list(session.scalars(creatives_stmt).all())
 
             creatives_approved = sum(1 for c in creatives if c.status == "approved")
             creatives_pending = sum(1 for c in creatives if c.status == "pending")

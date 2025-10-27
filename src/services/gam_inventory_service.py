@@ -850,13 +850,13 @@ class GAMInventoryService:
             unit_map[unit.inventory_id] = unit_data
 
             # Check if root (no parent or parent not in path)
-            parent_id = unit.inventory_metadata.get("parent_id")
+            parent_id = unit.inventory_metadata.get("parent_id") if unit.inventory_metadata else None
             if not parent_id:
                 root_units.append(unit_data)
 
         # Build hierarchy
         for unit in ad_units:
-            parent_id = unit.inventory_metadata.get("parent_id")
+            parent_id = unit.inventory_metadata.get("parent_id") if unit.inventory_metadata else None
             if parent_id and parent_id in unit_map:
                 unit_map[parent_id]["children"].append(unit_map[unit.inventory_id])
 
@@ -993,7 +993,7 @@ class GAMInventoryService:
                     filtered_results.append(result)
                     continue
 
-                unit_sizes = result.inventory_metadata.get("sizes", [])
+                unit_sizes = result.inventory_metadata.get("sizes", []) if result.inventory_metadata else []
                 has_matching_size = False
 
                 for required_size in sizes:
@@ -1290,6 +1290,8 @@ class GAMInventoryService:
         all_values = self.db.scalars(stmt).all()
 
         for value in all_values:
+            if not value.inventory_metadata:
+                continue
             key_id = value.inventory_metadata.get("custom_targeting_key_id")
             if key_id:
                 if key_id not in custom_values:
@@ -1335,11 +1337,15 @@ class GAMInventoryService:
                 {
                     "id": key.inventory_id,
                     "name": key.name,
-                    "display_name": key.inventory_metadata.get("display_name", key.name),
-                    "type": key.inventory_metadata.get("type", "UNKNOWN"),
+                    "display_name": (
+                        key.inventory_metadata.get("display_name", key.name) if key.inventory_metadata else key.name
+                    ),
+                    "type": key.inventory_metadata.get("type", "UNKNOWN") if key.inventory_metadata else "UNKNOWN",
                     "status": key.status,
                     "metadata": {
-                        "reportable_type": key.inventory_metadata.get("reportable_type"),
+                        "reportable_type": (
+                            key.inventory_metadata.get("reportable_type") if key.inventory_metadata else None
+                        ),
                         "values_count": len(custom_values.get(key.inventory_id, [])),
                         "values_loaded": key.inventory_id in custom_values and len(custom_values[key.inventory_id]) > 0,
                     },
@@ -1351,13 +1357,17 @@ class GAMInventoryService:
                 {
                     "id": seg.inventory_id,
                     "name": seg.name,
-                    "description": seg.inventory_metadata.get("description"),
-                    "type": seg.inventory_metadata.get("type", "UNKNOWN"),
-                    "size": seg.inventory_metadata.get("size"),
-                    "data_provider_name": seg.inventory_metadata.get("data_provider_name"),
-                    "segment_type": seg.inventory_metadata.get("segment_type", "UNKNOWN"),
+                    "description": seg.inventory_metadata.get("description") if seg.inventory_metadata else None,
+                    "type": seg.inventory_metadata.get("type", "UNKNOWN") if seg.inventory_metadata else "UNKNOWN",
+                    "size": seg.inventory_metadata.get("size") if seg.inventory_metadata else None,
+                    "data_provider_name": (
+                        seg.inventory_metadata.get("data_provider_name") if seg.inventory_metadata else None
+                    ),
+                    "segment_type": (
+                        seg.inventory_metadata.get("segment_type", "UNKNOWN") if seg.inventory_metadata else "UNKNOWN"
+                    ),
                     "status": seg.status,
-                    "category_ids": seg.inventory_metadata.get("category_ids", []),
+                    "category_ids": seg.inventory_metadata.get("category_ids", []) if seg.inventory_metadata else [],
                 }
                 for seg in audiences
             ],

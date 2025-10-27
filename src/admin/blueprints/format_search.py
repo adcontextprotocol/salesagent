@@ -9,7 +9,7 @@ import asyncio
 from flask import Blueprint, jsonify, request
 from sqlalchemy import select
 
-from src.admin.utils import require_auth
+from src.admin.utils import require_auth  # type: ignore[attr-defined]
 from src.core.creative_agent_registry import get_creative_agent_registry
 from src.core.database.database_session import get_db_session
 from src.core.database.models import CreativeAgent as CreativeAgentModel

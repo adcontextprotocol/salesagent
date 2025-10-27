@@ -209,12 +209,12 @@ class TestCreateMediaBuyV24Format:
 
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        # Create Package with nested Budget object
+        # Create Package with float budget (new format)
         packages = [
             Package(
                 buyer_ref="pkg_budget_test",
                 product_id=setup_test_tenant["product_id_usd"],  # Use USD product
-                budget=Budget(total=5000.0, currency="USD", pacing="even"),
+                budget=5000.0,  # Float budget, currency from pricing_option
             )
         ]
 
@@ -263,7 +263,7 @@ class TestCreateMediaBuyV24Format:
             Package(
                 buyer_ref="pkg_targeting_test",
                 product_id=setup_test_tenant["product_id_eur"],  # Use EUR product
-                budget=Budget(total=8000.0, currency="EUR"),
+                budget=8000.0,  # Float budget, currency from pricing_option
                 targeting_overlay=Targeting(
                     geo_country_any_of=["US", "CA"],
                     device_type_any_of=["mobile", "tablet"],
@@ -311,17 +311,17 @@ class TestCreateMediaBuyV24Format:
             Package(
                 buyer_ref="pkg_usd",
                 product_id=setup_test_tenant["product_id_usd"],  # Use USD product
-                budget=Budget(total=3000.0, currency="USD"),
+                budget=3000.0,  # Float budget, currency from pricing_option
             ),
             Package(
                 buyer_ref="pkg_eur",
                 product_id=setup_test_tenant["product_id_eur"],  # Use EUR product
-                budget=Budget(total=2500.0, currency="EUR"),
+                budget=2500.0,  # Float budget, currency from pricing_option
             ),
             Package(
                 buyer_ref="pkg_gbp",
                 product_id=setup_test_tenant["product_id_gbp"],  # Use GBP product
-                budget=Budget(total=2000.0, currency="GBP"),
+                budget=2000.0,  # Float budget, currency from pricing_option
             ),
         ]
 
@@ -330,7 +330,7 @@ class TestCreateMediaBuyV24Format:
         context.headers = {"x-adcp-auth": "test_token_v24"}
 
         # Total budget is sum of all package budgets
-        total_budget_value = sum(pkg.budget.total for pkg in packages)
+        total_budget_value = sum(pkg.budget for pkg in packages)
 
         response = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_multi",  # REQUIRED per AdCP v2.2.0
@@ -361,12 +361,12 @@ class TestCreateMediaBuyV24Format:
 
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        # Create Package with nested Budget object
+        # Create Package with float budget (new format)
         packages = [
             Package(
                 buyer_ref="pkg_a2a_test",
                 product_id=setup_test_tenant["product_id_usd"],  # Use USD product
-                budget=Budget(total=6000.0, currency="USD"),
+                budget=6000.0,  # Float budget, currency from pricing_option
             )
         ]
 

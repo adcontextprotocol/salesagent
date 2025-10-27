@@ -5,7 +5,7 @@ import logging
 from flask import Blueprint, jsonify
 from sqlalchemy import select
 
-from src.admin.utils import require_auth, require_tenant_access
+from src.admin.utils import require_auth, require_tenant_access  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
 

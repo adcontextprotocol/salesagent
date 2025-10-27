@@ -161,7 +161,6 @@ class GetProductsResponse(AdCPBaseModel):
 
     # Fields from generated schema (flexible - accepts dicts or objects)
     products: list[Any] = Field(..., description="List of matching products")
-    status: str | None = Field(None, description="Response status")
     errors: list[Any] | None = Field(None, description="Task-specific errors")
 
     def __str__(self) -> str:
@@ -373,7 +372,6 @@ class ListCreativeFormatsResponse(AdCPBaseModel):
 
     # Fields from generated schema (flexible - accepts dicts or objects)
     formats: list[Any] = Field(..., description="Full format definitions per AdCP spec")
-    status: str | None = Field("completed", description="Task status")
     creative_agents: list[Any] | None = Field(None, description="Creative agents providing additional formats")
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
 
@@ -427,6 +425,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     # Fields from AdCP spec v2.4
+    # Per /schemas/v1/media-buy/list-authorized-properties-response.json
     publisher_domains: list[str] = Field(
         ..., description="Publisher domains this agent is authorized to represent", min_length=1
     )
@@ -758,7 +757,6 @@ class ListCreativesResponse(AdCPBaseModel):
     query_summary: Any = Field(..., description="Summary of the query")
     pagination: Any = Field(..., description="Pagination information")
     creatives: list[Any] = Field(..., description="Array of creative assets")
-    context_id: str | None = None
     format_summary: dict[str, int] | None = None
     status_summary: dict[str, int] | None = None
 

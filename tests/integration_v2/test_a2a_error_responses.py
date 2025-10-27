@@ -213,10 +213,10 @@ class TestA2AErrorPropagation:
                     {
                         "buyer_ref": "pkg_1",
                         "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
-                        "budget": {"total": 10000.0, "currency": "USD"},
+                        "budget": 10000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                     }
                 ],
-                "budget": {"total": 10000.0, "currency": "USD"},
+                "budget": {"total": 10000.0, "currency": "USD"},  # Top-level budget keeps dict format
                 "start_time": start_time,
                 "end_time": end_time,
             }
@@ -266,10 +266,10 @@ class TestA2AErrorPropagation:
                     {
                         "buyer_ref": "pkg_1",
                         "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
-                        "budget": {"total": 10000.0, "currency": "USD"},
+                        "budget": 10000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                     }
                 ],
-                "budget": {"total": 10000.0, "currency": "USD"},
+                "budget": {"total": 10000.0, "currency": "USD"},  # Top-level budget keeps dict format
                 "start_time": start_time,
                 "end_time": end_time,
             }
@@ -326,10 +326,10 @@ class TestA2AErrorPropagation:
                     {
                         "buyer_ref": "pkg_1",
                         "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
-                        "budget": {"total": 10000.0, "currency": "USD"},
+                        "budget": 10000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                     }
                 ],
-                "budget": {"total": 10000.0, "currency": "USD"},
+                "budget": {"total": 10000.0, "currency": "USD"},  # Top-level budget keeps dict format
                 "start_time": start_time,
                 "end_time": end_time,
             }
@@ -351,13 +351,14 @@ class TestA2AErrorPropagation:
             # Required AdCP domain field
             assert "buyer_ref" in artifact_data, "Must include buyer_ref (AdCP spec required domain field)"
 
-            # Optional AdCP domain fields
+            # Optional AdCP domain fields that were set (non-None values)
             assert "media_buy_id" in artifact_data, "Must include media_buy_id (AdCP spec domain field)"
             assert "packages" in artifact_data, "Must include packages (AdCP spec domain field)"
             assert "creative_deadline" in artifact_data, "Must include creative_deadline (AdCP spec domain field)"
 
-            # errors field should be present (None or empty for success, populated for errors)
-            assert "errors" in artifact_data, "Must include errors field (AdCP spec domain field)"
+            # Per AdCP spec, optional fields with None values should be omitted
+            # errors field should NOT be present for successful operations (no errors)
+            assert "errors" not in artifact_data, "errors field should be omitted when None (AdCP spec compliance)"
 
             # A2A-specific augmentation fields (added by wrapper layer)
             assert "success" in artifact_data, "A2A wrapper must add success field"

@@ -302,16 +302,19 @@ class TestMCPAndA2AResponseParity:
         # Both should be identical
         assert a2a_response_data == mcp_response.model_dump()
 
-        # Both should have the same fields
+        # Per AdCP spec, only fields that were set should be present (exclude_none=True)
+        # Optional fields with None values should be omitted
         assert set(a2a_response_data.keys()) == {
             "publisher_domains",
-            "primary_channels",
-            "primary_countries",
-            "portfolio_description",
-            "advertising_policies",
-            "last_updated",
-            "errors",
         }
+
+        # Verify optional fields are omitted when None
+        assert "errors" not in a2a_response_data, "None-valued optional fields should be omitted per AdCP spec"
+        assert "primary_channels" not in a2a_response_data
+        assert "primary_countries" not in a2a_response_data
+        assert "portfolio_description" not in a2a_response_data
+        assert "advertising_policies" not in a2a_response_data
+        assert "last_updated" not in a2a_response_data
 
         # Both can generate the same human-readable message
         mcp_message = str(mcp_response)

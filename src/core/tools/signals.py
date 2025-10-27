@@ -17,7 +17,7 @@ from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import get_current_tenant
 from src.core.schema_adapters import ActivateSignalResponse, GetSignalsResponse
 from src.core.schemas import GetSignalsRequest, Signal, SignalDeployment, SignalPricing
-from src.core.testing_hooks import apply_testing_hooks, get_testing_context
+from src.core.testing_hooks import get_testing_context
 
 
 def _get_principal_id_from_context(context: Context | None) -> str | None:
@@ -233,12 +233,16 @@ async def _activate_signal_impl(
         raise ToolError("No tenant context available")
 
     # Get the Principal object with ad server mappings
+    if not principal_id:
+        raise ToolError("Authentication required for signal activation")
     principal = get_principal_object(principal_id)
 
     # Apply testing hooks
+    if not context:
+        raise ToolError("Context required for signal activation")
     testing_ctx = get_testing_context(context)
     campaign_info = {"endpoint": "activate_signal", "signal_id": signal_id}
-    apply_testing_hooks(testing_ctx, campaign_info)
+    # Note: apply_testing_hooks modifies response data dict, not called here as no response yet
 
     try:
         # In a real implementation, this would:

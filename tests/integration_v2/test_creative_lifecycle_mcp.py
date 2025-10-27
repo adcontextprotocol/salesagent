@@ -914,7 +914,7 @@ class TestCreativeLifecycleMCP:
                 Package(
                     buyer_ref="pkg_1",
                     product_id="prod_1",
-                    budget=Budget(total=5000.0, currency="USD"),
+                    budget=5000.0,  # Float budget, currency from pricing_option
                     creative_ids=creative_ids,  # NEW: Provide creative_ids
                 )
             ]

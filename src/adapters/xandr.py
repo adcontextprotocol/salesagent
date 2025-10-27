@@ -18,7 +18,6 @@ from src.core.schemas import (
     MediaPackage,
     Principal,
     Product,
-    extract_budget_amount,
 )
 
 # NOTE: Xandr adapter needs full refactor - it's using old schemas and patterns
@@ -358,8 +357,8 @@ class XandrAdapter(AdServerAdapter):
             )
 
         try:
-            # Extract total budget
-            total_budget, _ = extract_budget_amount(request.budget, request.currency or "USD")
+            # Calculate total budget from package budgets (AdCP v2.2.0)
+            total_budget = request.get_total_budget()
             days = (end_time.date() - start_time.date()).days
             if days == 0:
                 days = 1

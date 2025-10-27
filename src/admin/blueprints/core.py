@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from sqlalchemy import select, text
 
-from src.admin.utils import require_auth
+from src.admin.utils import require_auth  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Tenant

@@ -1231,8 +1231,9 @@ class TestAdCPContract:
         # Test model_dump (ListCreativesRequest doesn't have internal fields)
         adcp_response = request.model_dump()
 
-        # Verify all fields are optional in AdCP list-creatives request
-        adcp_optional_fields = [
+        # Verify that fields we set are present in the dump
+        # Note: Per AdCP spec, optional fields with None values should be omitted
+        expected_fields = [
             "media_buy_id",
             "buyer_ref",
             "status",
@@ -1240,14 +1241,25 @@ class TestAdCPContract:
             "tags",
             "created_after",
             "created_before",
-            "search",
+            # "search" omitted - not set, so should not be in dump
             "page",  # Uses page, not offset
             "limit",
             "sort_by",
             "sort_order",
         ]
-        for field in adcp_optional_fields:
-            assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
+        for field in expected_fields:
+            assert field in adcp_response, f"Expected field '{field}' missing from response"
+
+        # Verify that unset optional fields WITHOUT defaults are omitted (not present with null values)
+        assert "search" not in adcp_response, "Unset optional field 'search' should be omitted, not null"
+        assert "filters" not in adcp_response, "Unset optional field should be omitted"
+        assert "pagination" not in adcp_response, "Unset optional field should be omitted"
+        assert "sort" not in adcp_response, "Unset optional field should be omitted"
+        assert "fields" not in adcp_response, "Unset optional field should be omitted"
+
+        # Fields WITH defaults should be present (include_performance=False, page=1, limit=50, etc.)
+        assert "include_performance" in adcp_response, "Field with default should be present"
+        assert adcp_response["include_performance"] is False, "Default value should match"
 
         # Verify AdCP-specific requirements
         if adcp_response.get("status"):
@@ -1341,10 +1353,17 @@ class TestAdCPContract:
                 assert field in creative, f"Creative required field '{field}' missing"
                 assert creative[field] is not None, f"Creative required field '{field}' is None"
 
-        # Verify field count (adcp_version, message, query_summary, pagination, creatives, context_id, format_summary, status_summary)
-        assert (
-            len(adcp_response) >= 5
-        ), f"ListCreativesResponse should have at least 5 core fields, got {len(adcp_response)}"
+        # Verify required fields are present
+        # Per AdCP spec, only query_summary, pagination, and creatives are required
+        # Optional fields (format_summary, status_summary, etc.) are omitted if not set
+        required_fields = ["query_summary", "pagination", "creatives"]
+        for field in required_fields:
+            assert field in adcp_response, f"Required field '{field}' missing from response"
+
+        # Verify we have at least the required fields (and possibly some optional ones)
+        assert len(adcp_response) >= len(
+            required_fields
+        ), f"Response should have at least {len(required_fields)} required fields, got {len(adcp_response)}"
 
     def test_create_media_buy_response_adcp_compliance(self):
         """Test that CreateMediaBuyResponse complies with AdCP create-media-buy-response schema."""
@@ -1368,20 +1387,28 @@ class TestAdCPContract:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify optional AdCP domain fields present (can be null)
-        optional_fields = ["media_buy_id", "packages", "creative_deadline", "errors"]
-        for field in optional_fields:
-            assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
-
-        # Verify specific field types and constraints
+        # Verify optional AdCP domain fields that were set are present with valid values
+        # Per AdCP spec, optional fields with None values are omitted (not present with null)
+        assert "media_buy_id" in adcp_response, "media_buy_id was set, should be present"
         assert isinstance(adcp_response["media_buy_id"], str), "media_buy_id must be string"
         assert len(adcp_response["media_buy_id"]) > 0, "media_buy_id must not be empty"
 
-        if adcp_response["packages"] is not None:
-            assert isinstance(adcp_response["packages"], list), "packages must be array"
+        assert "packages" in adcp_response, "packages was set, should be present"
+        assert isinstance(adcp_response["packages"], list), "packages must be array"
 
-        if adcp_response["errors"] is not None:
-            assert isinstance(adcp_response["errors"], list), "errors must be array"
+        assert "creative_deadline" in adcp_response, "creative_deadline was set, should be present"
+
+        # errors=None was set, so it should be omitted per AdCP spec (not present with null)
+        assert "errors" not in adcp_response, "errors with None value should be omitted"
+
+        # Test that IF errors is set to a non-None value, it's included
+        response_with_errors = CreateMediaBuyResponse(
+            buyer_ref="br_67890",
+            errors=[{"code": "test", "message": "test error"}],
+        )
+        adcp_with_errors = response_with_errors.model_dump()
+        assert "errors" in adcp_with_errors, "errors with non-None value should be present"
+        assert isinstance(adcp_with_errors["errors"], list), "errors must be array"
 
         # Test error response case
         error_response = CreateMediaBuyResponse(
@@ -1401,10 +1428,11 @@ class TestAdCPContract:
         assert "code" in error_adcp_response["errors"][0]
         assert "message" in error_adcp_response["errors"][0]
 
-        # Verify field count (buyer_ref, media_buy_id, creative_deadline, packages, errors)
+        # Verify field count - only required fields + non-None optional fields are present
+        # buyer_ref is required; media_buy_id, creative_deadline, packages set; errors=None omitted
         assert (
-            len(adcp_response) >= 5
-        ), f"CreateMediaBuyResponse should have at least 5 domain fields, got {len(adcp_response)}"
+            len(adcp_response) >= 1
+        ), f"CreateMediaBuyResponse should have at least required fields, got {len(adcp_response)}"
 
     def test_get_products_response_adcp_compliance(self):
         """Test that GetProductsResponse complies with AdCP get-products-response schema."""
@@ -1501,7 +1529,7 @@ class TestAdCPContract:
                     assets_required=None,
                 )
             ],
-            errors=[],
+            # errors omitted - per AdCP spec, optional fields with None/empty values should be omitted
         )
 
         # Test AdCP-compliant response
@@ -1513,11 +1541,10 @@ class TestAdCPContract:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify optional AdCP fields present (can be null)
+        # Verify optional AdCP fields with None values are omitted (not present with null)
         # Note: message, adcp_version, status fields removed - handled via protocol envelope
-        optional_fields = ["errors", "creative_agents"]
-        for field in optional_fields:
-            assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
+        assert "errors" not in adcp_response, "errors with None/empty value should be omitted"
+        assert "creative_agents" not in adcp_response, "creative_agents with None value should be omitted"
 
         # Verify message is provided via __str__() not as schema field
         assert "message" not in adcp_response, "message should not be in schema (use __str__() instead)"
@@ -1534,10 +1561,11 @@ class TestAdCPContract:
             assert "type" in format_obj, "format must have type"
             # Note: width/height are in requirements dict, not direct fields
 
-        # Verify field count
+        # Verify field count - only required fields + non-None optional fields
+        # formats is required; errors and creative_agents are omitted (None values)
         assert (
-            len(adcp_response) >= 3
-        ), f"ListCreativeFormatsResponse should have at least 3 fields, got {len(adcp_response)}"
+            len(adcp_response) >= 1
+        ), f"ListCreativeFormatsResponse should have at least required fields, got {len(adcp_response)}"
 
     def test_update_media_buy_response_adcp_compliance(self):
         """Test that UpdateMediaBuyResponse complies with AdCP update-media-buy-response schema."""
@@ -1559,10 +1587,12 @@ class TestAdCPContract:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify optional AdCP fields present (can be null)
-        optional_fields = ["implementation_date", "affected_packages", "errors"]
-        for field in optional_fields:
-            assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
+        # Verify optional AdCP fields that were set are present
+        assert "implementation_date" in adcp_response, "implementation_date was set, should be present"
+        assert "affected_packages" in adcp_response, "affected_packages was set, should be present"
+
+        # errors was not set, so it should be omitted per AdCP spec
+        assert "errors" not in adcp_response, "errors with None value should be omitted"
 
         # Test error response case
         error_response = UpdateMediaBuyResponse(
@@ -1706,10 +1736,11 @@ class TestAdCPContract:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify optional AdCP fields present (can be null)
-        optional_fields = ["aggregated_totals", "errors"]
-        for field in optional_fields:
-            assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
+        # Verify optional AdCP fields that were set are present
+        assert "aggregated_totals" in adcp_response, "aggregated_totals was set, should be present"
+
+        # errors=None was set, so it should be omitted per AdCP spec
+        assert "errors" not in adcp_response, "errors with None value should be omitted"
 
         # Verify currency format
         import re
@@ -1782,10 +1813,11 @@ class TestAdCPContract:
             empty_adcp_response["media_buy_deliveries"] == []
         ), "Empty media_buy_deliveries list should be empty array"
 
-        # Verify field count (5 fields total: reporting_period, currency, aggregated_totals, media_buy_deliveries, errors)
+        # Verify field count - required fields + non-None optional fields
+        # reporting_period, currency, media_buy_deliveries are required; aggregated_totals set; errors=None omitted
         assert (
-            len(adcp_response) == 5
-        ), f"GetMediaBuyDeliveryResponse should have exactly 5 fields, got {len(adcp_response)}"
+            len(adcp_response) >= 3
+        ), f"GetMediaBuyDeliveryResponse should have at least 3 required fields, got {len(adcp_response)}"
 
     def test_property_identifier_adcp_compliance(self):
         """Test that PropertyIdentifier complies with AdCP property identifier schema."""
@@ -1896,10 +1928,13 @@ class TestAdCPContract:
 
     def test_list_authorized_properties_response_adcp_compliance(self):
         """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 list-authorized-properties-response schema."""
-        # Create response with all required + optional fields (per official AdCP v2.4 spec)
-        tag_metadata = PropertyTagMetadata(name="Premium Content", description="Premium content tag")
+        # Create response with required fields only (per AdCP spec, optional fields should be omitted if not set)
+        # Per /schemas/v1/media-buy/list-authorized-properties-response.json, only these fields are spec-compliant:
+        # - publisher_domains (required)
+        # - primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated, errors (optional)
         response = ListAuthorizedPropertiesResponse(
-            publisher_domains=["example.com"], tags={"premium_content": tag_metadata}, errors=[]
+            publisher_domains=["example.com"],
+            # All optional fields omitted - per AdCP spec, optional fields with None/empty values should be omitted
         )
 
         # Test AdCP-compliant response
@@ -1911,44 +1946,31 @@ class TestAdCPContract:
             assert field in adcp_response
             assert adcp_response[field] is not None
 
-        # Verify optional AdCP fields present (can be null)
-        optional_fields = [
-            "errors",
-            "primary_channels",
-            "primary_countries",
-            "portfolio_description",
-            "advertising_policies",
-            "last_updated",
-        ]
-        for field in optional_fields:
-            assert field in adcp_response
-
         # Verify publisher_domains is array
         assert isinstance(adcp_response["publisher_domains"], list)
 
-        # Verify tags is object when present
-        if adcp_response["tags"] is not None:
-            assert isinstance(adcp_response["tags"], dict)
+        # Verify optional fields with None values are omitted per AdCP spec
+        assert "errors" not in adcp_response, "errors with None/empty value should be omitted"
+        assert "primary_channels" not in adcp_response, "primary_channels with None value should be omitted"
+        assert "primary_countries" not in adcp_response, "primary_countries with None value should be omitted"
+        assert "portfolio_description" not in adcp_response, "portfolio_description with None value should be omitted"
+        assert "advertising_policies" not in adcp_response, "advertising_policies with None value should be omitted"
+        assert "last_updated" not in adcp_response, "last_updated with None value should be omitted"
 
-        # Verify errors is array when present
-        if adcp_response["errors"] is not None:
-            assert isinstance(adcp_response["errors"], list)
-
-        # Verify optional fields types
-        if adcp_response["primary_channels"] is not None:
-            assert isinstance(adcp_response["primary_channels"], list)
-        if adcp_response["primary_countries"] is not None:
-            assert isinstance(adcp_response["primary_countries"], list)
-        if adcp_response["portfolio_description"] is not None:
-            assert isinstance(adcp_response["portfolio_description"], str)
-        if adcp_response["advertising_policies"] is not None:
-            assert isinstance(adcp_response["advertising_policies"], str)
-
-        # Verify message is provided via __str__() not as schema field (response already created above)
+        # Verify message is provided via __str__() not as schema field
         assert str(response) == "Found 1 authorized publisher domain."
 
-        # Verify field count expectations (8 domain fields: publisher_domains, tags, errors, primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated)
-        assert len(adcp_response) == 8
+        # Test with optional fields set to non-None values
+        response_with_optionals = ListAuthorizedPropertiesResponse(
+            publisher_domains=["example.com", "example.org"],
+            primary_channels=["display", "video"],
+            advertising_policies="No tobacco ads",
+        )
+        adcp_with_optionals = response_with_optionals.model_dump()
+        assert "primary_channels" in adcp_with_optionals, "Set optional fields should be present"
+        assert "advertising_policies" in adcp_with_optionals, "Set optional fields should be present"
+        assert isinstance(adcp_with_optionals["primary_channels"], list)
+        assert isinstance(adcp_with_optionals["advertising_policies"], str)
 
     def test_get_signals_request_adcp_compliance(self):
         """Test that GetSignalsRequest model complies with AdCP get-signals-request schema."""
@@ -2055,7 +2077,7 @@ class TestAdCPContract:
             end_time=datetime(2025, 2, 28, 23, 59, 59, tzinfo=UTC),
             budget=Budget(total=5000.0, currency="USD", pacing="even"),
             packages=[
-                AdCPPackageUpdate(package_id="pkg_123", active=True, budget=Budget(total=2500.0, currency="USD"))
+                AdCPPackageUpdate(package_id="pkg_123", active=True, budget=2500.0)  # Float budget per AdCP spec
             ],
         )
 

@@ -444,10 +444,8 @@ class GoogleAdManager(AdServerAdapter):
         # Truncate to GAM's 255-character limit while preserving the unique suffix
         order_name = truncate_name_with_suffix(full_order_name, GAM_NAME_LIMITS["max_order_name_length"])
 
-        # Extract budget amount (v1.8.0 compatible)
-        from src.core.schemas import extract_budget_amount
-
-        total_budget_amount, _ = extract_budget_amount(request.budget, request.currency or "USD")
+        # Calculate total budget from package budgets (AdCP v2.2.0)
+        total_budget_amount = request.get_total_budget()
 
         order_id = self.orders_manager.create_order(
             order_name=order_name,

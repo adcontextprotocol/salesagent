@@ -4,10 +4,10 @@ AdCP Sales Agent A2A Server using official a2a-sdk library.
 Supports both standard A2A message format and JSON-RPC 2.0.
 """
 
+import contextvars
 import logging
 import os
 import sys
-import threading
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -102,8 +102,9 @@ from src.services.protocol_webhook_service import get_protocol_webhook_service
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Thread-local storage for current request auth token
-_request_context = threading.local()
+# Context variables for current request (works with async code, unlike threading.local())
+_request_auth_token: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_auth_token", default=None)
+_request_headers: contextvars.ContextVar[dict | None] = contextvars.ContextVar("request_headers", default=None)
 
 
 class AdCPRequestHandler(RequestHandler):
@@ -116,13 +117,15 @@ class AdCPRequestHandler(RequestHandler):
 
     def _get_auth_token(self) -> str | None:
         """Extract Bearer token from current request context."""
-        return getattr(_request_context, "auth_token", None)
+        return _request_auth_token.get()
 
-    def _create_tool_context_from_a2a(self, auth_token: str, tool_name: str, context_id: str = None) -> ToolContext:
+    def _create_tool_context_from_a2a(
+        self, auth_token: str | None, tool_name: str, context_id: str | None = None
+    ) -> ToolContext:
         """Create a ToolContext from A2A authentication information.
 
         Args:
-            auth_token: Bearer token from Authorization header
+            auth_token: Bearer token from Authorization header (optional)
             tool_name: Name of the tool being called
             context_id: Optional context ID for conversation tracking
 
@@ -141,7 +144,7 @@ class AdCPRequestHandler(RequestHandler):
         )
 
         # Get request headers for debugging (case-insensitive lookup)
-        headers = getattr(_request_context, "request_headers", {})
+        headers = _request_headers.get() or {}
 
         # Helper to get header case-insensitively
         def get_header(header_name: str) -> str | None:
@@ -311,6 +314,7 @@ class AdCPRequestHandler(RequestHandler):
             await webhook_service.send_notification(
                 webhook_config=webhook_config,
                 task_id=task.id,
+                task_type='task', # TODO: figure out how to pass task_type. We need to pass this, because adcp client expects 'task_type' to figure out how to handle the response.
                 status=status,
                 result=result,
                 error=error,
@@ -433,7 +437,7 @@ class AdCPRequestHandler(RequestHandler):
                 )
 
         # Prepare task metadata with both invocation types
-        task_metadata = {
+        task_metadata: dict[str, Any] = {
             "request_text": combined_text,
             "invocation_type": "explicit_skill" if skill_invocations else "natural_language",
         }
@@ -530,7 +534,7 @@ class AdCPRequestHandler(RequestHandler):
                     task.artifacts = task.artifacts or []
                     task.artifacts.append(
                         Artifact(
-                            artifactId=f"skill_result_{i + 1}",
+                            artifact_id=f"skill_result_{i + 1}",
                             name=f"{'error' if not res['success'] else res['skill']}_result",
                             description=description,  # Human-readable message
                             parts=[Part(root=DataPart(data=artifact_data))],
@@ -618,7 +622,9 @@ class AdCPRequestHandler(RequestHandler):
                 )
                 task.artifacts = [
                     Artifact(
-                        artifactId="product_catalog_1", name="product_catalog", parts=[Part(root=DataPart(data=result))]
+                        artifact_id="product_catalog_1",
+                        name="product_catalog",
+                        parts=[Part(root=DataPart(data=result))],
                     )
                 ]
             elif any(word in combined_text for word in ["price", "pricing", "cost", "cpm", "budget"]):
@@ -645,7 +651,7 @@ class AdCPRequestHandler(RequestHandler):
                 )
                 task.artifacts = [
                     Artifact(
-                        artifactId="pricing_info_1",
+                        artifact_id="pricing_info_1",
                         name="pricing_information",
                         parts=[Part(root=DataPart(data=result))],
                     )
@@ -676,7 +682,7 @@ class AdCPRequestHandler(RequestHandler):
                 )
                 task.artifacts = [
                     Artifact(
-                        artifactId="targeting_opts_1",
+                        artifact_id="targeting_opts_1",
                         name="targeting_options",
                         parts=[Part(root=DataPart(data=result))],
                     )
@@ -704,13 +710,15 @@ class AdCPRequestHandler(RequestHandler):
                 if result.get("success"):
                     task.artifacts = [
                         Artifact(
-                            artifactId="media_buy_1", name="media_buy_created", parts=[Part(root=DataPart(data=result))]
+                            artifact_id="media_buy_1",
+                            name="media_buy_created",
+                            parts=[Part(root=DataPart(data=result))],
                         )
                     ]
                 else:
                     task.artifacts = [
                         Artifact(
-                            artifactId="media_buy_error_1",
+                            artifact_id="media_buy_error_1",
                             name="media_buy_error",
                             parts=[Part(root=DataPart(data=result))],
                         )
@@ -750,7 +758,9 @@ class AdCPRequestHandler(RequestHandler):
                 )
                 task.artifacts = [
                     Artifact(
-                        artifactId="capabilities_1", name="capabilities", parts=[Part(root=DataPart(data=capabilities))]
+                        artifact_id="capabilities_1",
+                        name="capabilities",
+                        parts=[Part(root=DataPart(data=capabilities))],
                     )
                 ]
 
@@ -1174,7 +1184,7 @@ class AdCPRequestHandler(RequestHandler):
             logger.error(f"Error deleting push notification config: {e}")
             raise ServerError(InternalError(message=f"Failed to delete push notification config: {str(e)}"))
 
-    async def _handle_explicit_skill(self, skill_name: str, parameters: dict, auth_token: str) -> dict:
+    async def _handle_explicit_skill(self, skill_name: str, parameters: dict, auth_token: str | None) -> dict:
         """Handle explicit AdCP skill invocations.
 
         Maps skill names to appropriate handlers and validates parameters.
@@ -1267,12 +1277,19 @@ class AdCPRequestHandler(RequestHandler):
                 brief=brief, promoted_offering=promoted_offering, context=tool_context
             )
 
-            # Return spec-compliant response (no extra fields)
-            # Per AdCP spec: products, available_currencies, errors
+            # Convert response to dict
             if isinstance(response, dict):
-                return response
+                response_data = response
             else:
-                return response.model_dump()
+                response_data = response.model_dump()
+
+            # Add A2A protocol fields (message for human readability)
+            # Use __str__() method which all response types implement
+            response_data["message"] = (
+                str(response) if not isinstance(response, dict) else "Products retrieved successfully"
+            )
+
+            return response_data
 
         except Exception as e:
             logger.error(f"Error in get_products skill: {e}")
@@ -1407,12 +1424,24 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Return spec-compliant response (no extra fields)
-            # Per AdCP spec: creatives (array of results), dry_run (boolean)
+            # Convert response to dict
             if isinstance(response, dict):
-                return response
+                response_data = response
             else:
-                return response.model_dump()
+                response_data = response.model_dump()
+
+            # Add A2A protocol fields
+            # Check for errors in response
+            has_errors = response_data.get("errors") and len(response_data.get("errors", [])) > 0
+
+            response_data["success"] = not has_errors
+            response_data["message"] = (
+                "Creatives synced with errors"
+                if has_errors
+                else str(response) if not isinstance(response, dict) else "Creatives synced successfully"
+            )
+
+            return response_data
 
         except Exception as e:
             logger.error(f"Error in sync_creatives skill: {e}")
@@ -1444,12 +1473,19 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Return spec-compliant response (no extra fields)
-            # Per AdCP spec: query_summary, pagination, creatives (+ optional format_summary, status_summary)
+            # Convert response to dict
             if isinstance(response, dict):
-                return response
+                response_data = response
             else:
-                return response.model_dump()
+                response_data = response.model_dump()
+
+            # Add A2A protocol fields (message for human readability)
+            # Use __str__() method which all response types implement
+            response_data["message"] = (
+                str(response) if not isinstance(response, dict) else "Creatives listed successfully"
+            )
+
+            return response_data
 
         except Exception as e:
             logger.error(f"Error in list_creatives skill: {e}")
@@ -1681,12 +1717,19 @@ class AdCPRequestHandler(RequestHandler):
             # Call core function with request
             response = core_list_creative_formats_tool(req=req, context=tool_context)
 
-            # Return spec-compliant response (no extra fields)
-            # Per AdCP spec: formats (required), creative_agents (optional), errors (optional)
+            # Convert response to dict
             if isinstance(response, dict):
-                return response
+                response_data = response
             else:
-                return response.model_dump()
+                response_data = response.model_dump()
+
+            # Add A2A protocol fields (message for human readability)
+            # Use __str__() method which all response types implement
+            response_data["message"] = (
+                str(response) if not isinstance(response, dict) else "Creative formats retrieved successfully"
+            )
+
+            return response_data
 
         except Exception as e:
             logger.error(f"Error in list_creative_formats skill: {e}")
@@ -1716,7 +1759,7 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 # No auth token - create minimal Context-like object with headers for tenant detection
                 # This allows tenant detection via Apx-Incoming-Host, Host, or x-adcp-tenant headers
-                headers = getattr(_request_context, "request_headers", {})
+                headers = _request_headers.get() or {}
 
                 # Create a simple object that quacks like a FastMCP Context
                 # get_principal_from_context() needs: context.meta["headers"] or context.headers
@@ -1876,7 +1919,7 @@ class AdCPRequestHandler(RequestHandler):
             logger.error(f"Error in update_performance_index skill: {e}")
             raise ServerError(InternalError(message=f"Unable to update performance index: {str(e)}"))
 
-    async def _get_products(self, query: str, auth_token: str) -> dict:
+    async def _get_products(self, query: str, auth_token: str | None) -> dict:
         """Get available advertising products by calling core functions directly.
 
         Args:
@@ -2018,7 +2061,7 @@ class AdCPRequestHandler(RequestHandler):
             }
         }
 
-    async def _create_media_buy(self, request: str, auth_token: str) -> dict:
+    async def _create_media_buy(self, request: str, auth_token: str | None) -> dict:
         """Create a media buy based on the request.
 
         Args:
@@ -2464,23 +2507,22 @@ def main():
                     # Don't break - prefer Authorization if both present
 
             if token:
-                _request_context.auth_token = token
-                _request_context.request_headers = dict(request.headers)
+                _request_auth_token.set(token)
+                _request_headers.set(dict(request.headers))
                 logger.info(f"Extracted token from {auth_source} header for A2A request: {token[:10]}...")
             else:
                 logger.warning(
                     f"A2A request to {request.url.path} missing authentication (checked Authorization and x-adcp-auth headers)"
                 )
-                _request_context.auth_token = None
-                _request_context.request_headers = dict(request.headers)
+                _request_auth_token.set(None)
+                _request_headers.set(dict(request.headers))
 
         response = await call_next(request)
 
-        # Clean up thread-local storage
-        if hasattr(_request_context, "auth_token"):
-            delattr(_request_context, "auth_token")
-        if hasattr(_request_context, "request_headers"):
-            delattr(_request_context, "request_headers")
+        # Clean up context variables (ContextVars automatically clean up at context boundary,
+        # but explicit cleanup ensures no leakage between requests)
+        _request_auth_token.set(None)
+        _request_headers.set(None)
 
         return response
 
