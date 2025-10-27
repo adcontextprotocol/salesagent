@@ -378,10 +378,10 @@ class TestA2ASkillInvocation:
                     {
                         "buyer_ref": f"pkg_{sample_products[0]}",
                         "product_id": sample_products[0],  # Use product_id per AdCP spec
-                        "budget": {"total": 10000.0, "currency": "USD"},
+                        "budget": 10000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                     }
                 ],
-                "budget": {"total": 10000.0, "currency": "USD"},
+                "budget": {"total": 10000.0, "currency": "USD"},  # Top-level budget keeps dict format
                 "start_time": start_date.isoformat(),
                 "end_time": end_date.isoformat(),
             }

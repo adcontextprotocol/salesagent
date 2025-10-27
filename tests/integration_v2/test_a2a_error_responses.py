@@ -213,10 +213,10 @@ class TestA2AErrorPropagation:
                     {
                         "buyer_ref": "pkg_1",
                         "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
-                        "budget": {"total": 10000.0, "currency": "USD"},
+                        "budget": 10000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                     }
                 ],
-                "budget": {"total": 10000.0, "currency": "USD"},
+                "budget": {"total": 10000.0, "currency": "USD"},  # Top-level budget keeps dict format
                 "start_time": start_time,
                 "end_time": end_time,
             }
@@ -266,10 +266,10 @@ class TestA2AErrorPropagation:
                     {
                         "buyer_ref": "pkg_1",
                         "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
-                        "budget": {"total": 10000.0, "currency": "USD"},
+                        "budget": 10000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                     }
                 ],
-                "budget": {"total": 10000.0, "currency": "USD"},
+                "budget": {"total": 10000.0, "currency": "USD"},  # Top-level budget keeps dict format
                 "start_time": start_time,
                 "end_time": end_time,
             }
@@ -326,10 +326,10 @@ class TestA2AErrorPropagation:
                     {
                         "buyer_ref": "pkg_1",
                         "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
-                        "budget": {"total": 10000.0, "currency": "USD"},
+                        "budget": 10000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                     }
                 ],
-                "budget": {"total": 10000.0, "currency": "USD"},
+                "budget": {"total": 10000.0, "currency": "USD"},  # Top-level budget keeps dict format
                 "start_time": start_time,
                 "end_time": end_time,
             }

@@ -241,7 +241,7 @@ class TestMinimumSpendValidation:
                 Package(
                     buyer_ref="minspend_test_1",
                     product_id="prod_global",
-                    budget=500.0,  # Below $1000 minimum, currency from pricing_option
+                    budget=500.0,  # Below $1000 minimum per AdCP v2.2.0, currency from pricing_option
                 )
             ],
             start_time=start_time.isoformat(),
@@ -276,7 +276,7 @@ class TestMinimumSpendValidation:
                 Package(
                     buyer_ref="minspend_test_2",
                     product_id="prod_high",
-                    budget=3000.0,  # Below $5000 product minimum, currency from pricing_option
+                    budget=3000.0,  # Below $5000 product minimum per AdCP v2.2.0, currency from pricing_option
                 )
             ],
             start_time=start_time.isoformat(),
@@ -311,7 +311,7 @@ class TestMinimumSpendValidation:
                 Package(
                     buyer_ref="minspend_test_3",
                     product_id="prod_low",
-                    budget=750.0,  # Above $500 product min, below $1000 currency limit, currency from pricing_option
+                    budget=750.0,  # Above $500 product min, below $1000 currency limit per AdCP v2.2.0
                 )
             ],
             start_time=start_time.isoformat(),
@@ -342,7 +342,7 @@ class TestMinimumSpendValidation:
                 Package(
                     buyer_ref="minspend_test_4",
                     product_id="prod_global",
-                    budget=2000.0,  # Above $1000 minimum, currency from pricing_option
+                    budget=2000.0,  # Above $1000 minimum per AdCP v2.2.0, currency from pricing_option
                 )
             ],
             start_time=start_time.isoformat(),
@@ -374,7 +374,7 @@ class TestMinimumSpendValidation:
                 Package(
                     buyer_ref="minspend_test_5",
                     product_id="prod_global",
-                    budget=100000.0,  # Not configured currency, will fail validation
+                    budget=100000.0,  # JPY not supported (will fail), per AdCP v2.2.0 float format
                 )
             ],
             start_time=start_time.isoformat(),
@@ -408,7 +408,7 @@ class TestMinimumSpendValidation:
                 Package(
                     buyer_ref="minspend_test_6",
                     product_id="prod_global",
-                    budget=800.0,  # Below €900 minimum, currency from pricing_option
+                    budget=800.0,  # Below €900 minimum per AdCP v2.2.0, currency from pricing_option
                 )
             ],
             start_time=start_time.isoformat(),
@@ -453,7 +453,7 @@ class TestMinimumSpendValidation:
                 Package(
                     buyer_ref="minspend_test_7",
                     product_id="prod_global_gbp",  # Use GBP product
-                    budget=100.0,  # Low budget, but no minimum for GBP, currency from pricing_option
+                    budget=100.0,  # Low budget, no minimum for GBP per AdCP v2.2.0, currency from pricing_option
                 )
             ],
             start_time=start_time.isoformat(),

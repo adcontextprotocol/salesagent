@@ -207,7 +207,7 @@ class TestCreateMediaBuyErrorPaths:
                 {
                     "package_id": "pkg1",
                     "products": ["error_test_product"],
-                    "budget": {"total": 5000.0, "currency": "USD"},
+                    "budget": 5000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                 }
             ],
             start_time=past_start.isoformat(),
@@ -248,7 +248,7 @@ class TestCreateMediaBuyErrorPaths:
                 {
                     "package_id": "pkg1",
                     "products": ["error_test_product"],
-                    "budget": {"total": 5000.0, "currency": "USD"},
+                    "budget": 5000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
                 }
             ],
             start_time=start.isoformat(),
@@ -287,7 +287,7 @@ class TestCreateMediaBuyErrorPaths:
                 {
                     "package_id": "pkg1",
                     "products": ["error_test_product"],
-                    "budget": {"total": -1000.0, "currency": "USD"},  # Negative!
+                    "budget": -1000.0,  # Negative budget (will fail validation), currency from pricing_option
                 }
             ],
             start_time=future_start.isoformat(),
