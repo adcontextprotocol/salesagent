@@ -10,29 +10,32 @@ from typing import Any
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from pydantic import ValidationError
+from rich.console import Console
 
 logger = logging.getLogger(__name__)
+console = Console()
 
+from src.core.auth import get_principal_object
+from src.core.helpers import get_principal_id_from_context
+from src.core.helpers.adapter_helpers import get_adapter
 from src.core.schemas import PackagePerformance, UpdatePerformanceIndexRequest, UpdatePerformanceIndexResponse
+from src.core.testing_hooks import get_testing_context
 from src.core.validation_helpers import format_validation_error
 
 
-def update_performance_index(
-    media_buy_id: str, performance_data: list[dict[str, Any]], webhook_url: str | None = None, context: Context = None
-):
-    """Update performance index data for a media buy.
+def _update_performance_index_impl(
+    media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None
+) -> UpdatePerformanceIndexResponse:
+    """Shared implementation for update_performance_index (used by both MCP and A2A).
 
     Args:
         media_buy_id: ID of the media buy to update
         performance_data: List of performance data objects
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
-        ToolResult with UpdatePerformanceIndexResponse data
+        UpdatePerformanceIndexResponse with update status
     """
-    from fastmcp.tools.tool import ToolResult
-
     # Create request object from individual parameters (MCP-compliant)
     # Convert dict performance_data to ProductPerformance objects
     from src.core.schemas import ProductPerformance
@@ -46,8 +49,7 @@ def update_performance_index(
     if context is None:
         raise ValueError("Context is required for update_performance_index")
 
-    _verify_principal(req.media_buy_id, context)
-    principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
+    principal_id = get_principal_id_from_context(context)
 
     # Get the Principal object
     principal = get_principal_object(principal_id)
@@ -58,8 +60,11 @@ def update_performance_index(
             errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
         )
 
+    # Extract testing context for dry_run mode
+    testing_ctx = get_testing_context(context)
+
     # Get the appropriate adapter
-    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
+    adapter = get_adapter(principal, dry_run=testing_ctx.dry_run, testing_context=testing_ctx)
 
     # Convert ProductPerformance to PackagePerformance for the adapter
     package_performance = [
@@ -82,10 +87,31 @@ def update_performance_index(
     if any(p.performance_index < 0.8 for p in req.performance_data):
         console.print("  [yellow]⚠️  Low performance detected - optimization recommended[/yellow]")
 
-    response = UpdatePerformanceIndexResponse(
+    return UpdatePerformanceIndexResponse(
         status="success" if success else "failed",
         detail=f"Performance index updated for {len(req.performance_data)} products",
     )
+
+
+def update_performance_index(
+    media_buy_id: str, performance_data: list[dict[str, Any]], webhook_url: str | None = None, context: Context = None
+):
+    """Update performance index data for a media buy.
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        media_buy_id: ID of the media buy to update
+        performance_data: List of performance data objects
+        webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        ToolResult with UpdatePerformanceIndexResponse data
+    """
+    from fastmcp.tools.tool import ToolResult
+
+    response = _update_performance_index_impl(media_buy_id, performance_data, context)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
@@ -102,7 +128,7 @@ def update_performance_index_raw(media_buy_id: str, performance_data: list[dict[
     Returns:
         UpdatePerformanceIndexResponse
     """
-    return update_performance_index(media_buy_id, performance_data, webhook_url=None, context=context)
+    return _update_performance_index_impl(media_buy_id, performance_data, context)
 
 
 # --- Human-in-the-Loop Task Queue Tools ---

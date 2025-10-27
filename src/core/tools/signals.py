@@ -13,10 +13,11 @@ from fastmcp.server.context import Context
 
 logger = logging.getLogger(__name__)
 
-from src.core.auth import get_principal_from_context
+from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import get_current_tenant
 from src.core.schema_adapters import ActivateSignalResponse, GetSignalsResponse
 from src.core.schemas import GetSignalsRequest, Signal, SignalDeployment, SignalPricing
+from src.core.testing_hooks import apply_testing_hooks, get_testing_context
 
 
 def _get_principal_id_from_context(context: Context | None) -> str | None:
@@ -27,18 +28,16 @@ def _get_principal_id_from_context(context: Context | None) -> str | None:
     return principal_id
 
 
-async def get_signals(req: GetSignalsRequest, context: Context = None):
-    """Optional endpoint for discovering available signals (audiences, contextual, etc.)
+async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:
+    """Shared implementation for get_signals (used by both MCP and A2A).
 
     Args:
         req: Request containing query parameters for signal discovery
         context: FastMCP context (automatically provided)
 
     Returns:
-        ToolResult with GetSignalsResponse data
+        GetSignalsResponse with matching signals
     """
-    from fastmcp.tools.tool import ToolResult
-
     _get_principal_id_from_context(context)
 
     # Get tenant information
@@ -185,17 +184,34 @@ async def get_signals(req: GetSignalsRequest, context: Context = None):
 
     # Per AdCP PR #113 and official schema, protocol fields (message, context_id)
     # are added by the protocol layer, not the domain response.
-    response = GetSignalsResponse(signals=signals)
+    return GetSignalsResponse(signals=signals)
+
+
+async def get_signals(req: GetSignalsRequest, context: Context = None):
+    """Optional endpoint for discovering available signals (audiences, contextual, etc.)
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        req: Request containing query parameters for signal discovery
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        ToolResult with GetSignalsResponse data
+    """
+    from fastmcp.tools.tool import ToolResult
+
+    response = await _get_signals_impl(req, context)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
-async def activate_signal(
+async def _activate_signal_impl(
     signal_id: str,
     campaign_id: str = None,
     media_buy_id: str = None,
     context: Context = None,
-):
-    """Activate a signal for use in campaigns.
+) -> ActivateSignalResponse:
+    """Shared implementation for activate_signal (used by both MCP and A2A).
 
     Args:
         signal_id: Signal ID to activate
@@ -204,10 +220,8 @@ async def activate_signal(
         context: FastMCP context (automatically provided)
 
     Returns:
-        ToolResult with ActivateSignalResponse data
+        ActivateSignalResponse with activation status
     """
-    from fastmcp.tools.tool import ToolResult
-
     start_time = time.time()
 
     # Authentication required for signal activation
@@ -272,16 +286,40 @@ async def activate_signal(
                     estimated_activation_duration_minutes if activation_success else None
                 ),
             )
-        return ToolResult(content=str(response), structured_content=response.model_dump())
+        return response
 
     except Exception as e:
         logger.error(f"Error activating signal {signal_id}: {e}")
-        response = ActivateSignalResponse(
+        return ActivateSignalResponse(
             task_id=f"task_{uuid.uuid4().hex[:12]}",
             status="failed",
             errors=[{"code": "ACTIVATION_ERROR", "message": str(e)}],
         )
-        return ToolResult(content=str(response), structured_content=response.model_dump())
+
+
+async def activate_signal(
+    signal_id: str,
+    campaign_id: str = None,
+    media_buy_id: str = None,
+    context: Context = None,
+):
+    """Activate a signal for use in campaigns.
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        signal_id: Signal ID to activate
+        campaign_id: Optional campaign ID to activate signal for
+        media_buy_id: Optional media buy ID to activate signal for
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        ToolResult with ActivateSignalResponse data
+    """
+    from fastmcp.tools.tool import ToolResult
+
+    response = await _activate_signal_impl(signal_id, campaign_id, media_buy_id, context)
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:
@@ -296,4 +334,26 @@ async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> Ge
     Returns:
         GetSignalsResponse containing matching signals
     """
-    return await get_signals(req, context)
+    return await _get_signals_impl(req, context)
+
+
+async def activate_signal_raw(
+    signal_id: str,
+    campaign_id: str = None,
+    media_buy_id: str = None,
+    context: Context = None,
+) -> ActivateSignalResponse:
+    """Activate a signal for use in campaigns (raw function for A2A server use).
+
+    Delegates to the shared implementation.
+
+    Args:
+        signal_id: Signal ID to activate
+        campaign_id: Optional campaign ID to activate signal for
+        media_buy_id: Optional media buy ID to activate signal for
+        context: Context for authentication
+
+    Returns:
+        ActivateSignalResponse with activation status
+    """
+    return await _activate_signal_impl(signal_id, campaign_id, media_buy_id, context)
