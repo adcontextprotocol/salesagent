@@ -11,7 +11,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
@@ -65,6 +65,7 @@ def get_engine():
             # - Smaller pool_size (PgBouncer handles pooling)
             # - No pool_pre_ping (can cause issues with transaction pooling)
             # - Shorter pool_recycle (PgBouncer recycles for us)
+            # - statement_timeout set via event listener (PgBouncer doesn't support startup parameters)
             _engine = create_engine(
                 connection_string,
                 pool_size=2,  # Small pool - PgBouncer does the pooling
@@ -75,7 +76,6 @@ def get_engine():
                 echo=False,
                 connect_args={
                     "connect_timeout": connect_timeout,
-                    "options": f"-c statement_timeout={query_timeout * 1000}",
                 },
             )
         else:
@@ -91,9 +91,18 @@ def get_engine():
                 echo=False,  # Set to True for SQL logging in debug
                 connect_args={
                     "connect_timeout": connect_timeout,  # Connection timeout in seconds
-                    "options": f"-c statement_timeout={query_timeout * 1000}",  # Query timeout in milliseconds
                 },
             )
+
+        # Set statement_timeout after connection is established
+        # This works with both direct PostgreSQL and PgBouncer
+        # PgBouncer doesn't support startup parameters, so we must use SET command
+        @event.listens_for(_engine, "connect")
+        def set_statement_timeout(dbapi_conn, connection_record):
+            """Set statement_timeout on new connections."""
+            cursor = dbapi_conn.cursor()
+            cursor.execute(f"SET statement_timeout = '{query_timeout * 1000}'")
+            cursor.close()
 
         # Create session factory
         _session_factory = sessionmaker(bind=_engine)
