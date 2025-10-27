@@ -262,8 +262,11 @@ def google_callback():
 
     try:
         token = oauth.google.authorize_access_token()
+        logger.info(f"[OAUTH_DEBUG] authorize_access_token() returned: {token is not None}")
+        if token:
+            logger.info(f"[OAUTH_DEBUG] Token keys: {list(token.keys())}")
         if not token:
-            flash("Authentication failed", "error")
+            flash("Authentication failed. Please try again.", "error")
             logger.warning("[OAUTH_DEBUG] No OAuth token received, redirecting to login")
             return redirect(url_for("auth.login"))
 
@@ -484,7 +487,9 @@ def google_callback():
             return redirect(url_for("auth.select_tenant"))
 
     except Exception as e:
-        logger.error(f"OAuth callback error: {e}", exc_info=True)
+        logger.error(f"[OAUTH_DEBUG] OAuth callback error: {type(e).__name__}: {e}", exc_info=True)
+        logger.error(f"[OAUTH_DEBUG] Request args: {dict(request.args)}")
+        logger.error(f"[OAUTH_DEBUG] Session keys: {list(session.keys())}")
         flash("Authentication failed. Please try again.", "error")
         return redirect(url_for("auth.login"))
 
