@@ -172,20 +172,22 @@ class TestListAuthorizedPropertiesResponse:
         response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"])
 
         assert response.publisher_domains == ["example.com"]
-        assert response.tags == {}
         assert response.errors is None
 
     def test_response_with_all_fields(self):
-        """Test response with all fields (per AdCP v2.4 spec)."""
-        tag_metadata = PropertyTagMetadata(name="Premium Content", description="Premium content tag")
+        """Test response with all optional fields (per AdCP v2.4 spec)."""
         response = ListAuthorizedPropertiesResponse(
             publisher_domains=["example.com"],
-            tags={"premium_content": tag_metadata},
+            primary_channels=["display", "video"],
+            primary_countries=["US", "GB"],
+            portfolio_description="Premium content portfolio",
+            advertising_policies="No tobacco or alcohol ads",
+            last_updated="2025-10-27T12:00:00Z",
             errors=[{"code": "WARNING", "message": "Test warning"}],
         )
 
         assert len(response.publisher_domains) == 1
-        assert "premium_content" in response.tags
+        assert response.primary_channels == ["display", "video"]
         assert len(response.errors) == 1
 
     def test_response_model_dump_omits_none_values(self):
@@ -201,10 +203,10 @@ class TestListAuthorizedPropertiesResponse:
     def test_response_adcp_compliance(self):
         """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 schema."""
         # Create response with required fields only (no optional fields set)
+        # Per /schemas/v1/media-buy/list-authorized-properties-response.json
         response = ListAuthorizedPropertiesResponse(
             publisher_domains=["example.com"],
-            tags={"test": PropertyTagMetadata(name="Test", description="Test tag")},
-            # errors not set - should be omitted per AdCP spec
+            # All optional fields omitted - should be excluded from model_dump per AdCP spec
         )
 
         # Test AdCP-compliant response
@@ -224,8 +226,8 @@ class TestListAuthorizedPropertiesResponse:
         assert "advertising_policies" not in adcp_response, "advertising_policies with None value should be omitted"
         assert "last_updated" not in adcp_response, "last_updated with None value should be omitted"
 
-        # Verify field count (only publisher_domains and tags should be present)
-        assert len(adcp_response) == 2, f"Expected 2 fields, got {len(adcp_response)}: {list(adcp_response.keys())}"
+        # Verify field count (only publisher_domains should be present)
+        assert len(adcp_response) == 1, f"Expected 1 field, got {len(adcp_response)}: {list(adcp_response.keys())}"
 
         # Test with optional fields explicitly set to non-None values
         response_with_optionals = ListAuthorizedPropertiesResponse(
