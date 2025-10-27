@@ -327,6 +327,13 @@ def google_callback():
         logger.info(f"OAuth callback debug - PRODUCTION env: {os.environ.get('PRODUCTION')}")
         logger.info(f"OAuth callback debug - user email: {email}")
         logger.info(f"OAuth callback debug - request headers: {dict(request.headers)}")
+
+        # Flash debug info for troubleshooting (temporary)
+        flash(
+            f"DEBUG: external_domain={external_domain}, originating_host={originating_host}, tenant_id={tenant_id}",
+            "info",
+        )
+
         if tenant_id:
             # Verify user has access to this tenant
             with get_db_session() as db_session:
