@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 from src.core.auth import get_principal_object
-from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
+from src.core.helpers.context_helpers import get_principal_id_from_context as _get_principal_id_from_context
 from src.core.schemas import PackagePerformance, UpdatePerformanceIndexRequest, UpdatePerformanceIndexResponse
-from src.core.testing_hooks import get_testing_context
+from src.core.tools.media_buy_update import _verify_principal
 from src.core.validation_helpers import format_validation_error
 
 
@@ -49,7 +49,8 @@ def _update_performance_index_impl(
     if context is None:
         raise ValueError("Context is required for update_performance_index")
 
-    principal_id = get_principal_id_from_context(context)
+    _verify_principal(req.media_buy_id, context)
+    principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
 
     # Get the Principal object
     principal = get_principal_object(principal_id)
@@ -60,11 +61,8 @@ def _update_performance_index_impl(
             errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
         )
 
-    # Extract testing context for dry_run mode
-    testing_ctx = get_testing_context(context)
-
-    # Get the appropriate adapter
-    adapter = get_adapter(principal, dry_run=testing_ctx.dry_run, testing_context=testing_ctx)
+    # Get the appropriate adapter (no dry_run support for performance updates)
+    adapter = get_adapter(principal, dry_run=False)
 
     # Convert ProductPerformance to PackagePerformance for the adapter
     package_performance = [
