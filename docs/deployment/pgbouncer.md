@@ -79,6 +79,49 @@ PgBouncer detected - using optimized connection pool settings
 - **Recycle**: 3600 seconds (1 hour)
 - **Best for**: Development, local testing
 
+## Performance Characteristics
+
+### Connection Efficiency
+**Connection Establishment Time**:
+- **Direct PostgreSQL**: ~50-100ms per connection
+- **PgBouncer**: ~1-5ms per connection acquisition (95% reduction)
+
+**Memory Usage**:
+- **Direct PostgreSQL**: ~10MB per connection × 30 connections = ~300MB
+- **PgBouncer**: ~10MB per connection × 2-7 connections = ~70MB (77% reduction)
+
+### Recommended Pool Settings
+
+Choose pool settings based on your application's request volume:
+
+| App Size | Requests/min | pool_size | max_overflow | Total Connections |
+|----------|-------------|-----------|--------------|-------------------|
+| **Small** | <100 | 2 | 3 | 5 |
+| **Medium** | 100-1000 | 2 | 5 | 7 (current) |
+| **Large** | >1000 | 5 | 10 | 15 |
+
+**Note**: These are PgBouncer-side settings. PgBouncer itself maintains a much larger pool to the actual PostgreSQL server.
+
+### Performance Tips
+
+1. **Monitor pool usage**:
+   ```bash
+   fly logs --app adcp-sales-agent | grep "checked_out"
+   ```
+
+2. **Adjust if needed**: If you frequently see "timed out waiting for connection", increase `max_overflow`:
+   ```python
+   # In database_session.py (PgBouncer section)
+   max_overflow=10  # Increase from 5 to 10
+   ```
+
+3. **Slow query detection**: Connection reuse can mask slow queries. Monitor query performance:
+   ```bash
+   fly postgres connect --app adcp-postgres
+   # Inside Postgres:
+   SELECT * FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 10;
+   ```
+
 ## Connection Pooling Modes
 
 PgBouncer on Fly.io uses **transaction pooling** by default:

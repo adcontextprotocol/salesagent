@@ -3,6 +3,12 @@
 ⚠️ MIGRATION NOTICE: This test has been migrated to tests/integration_v2/ to use the new
 pricing_options model. The original file in tests/integration/ is deprecated.
 
+📊 BUDGET FORMAT: AdCP v2.2.0 Migration (2025-10-27)
+All tests in this file use float budget format per AdCP v2.2.0 spec:
+- Package.budget: float (e.g., 1000.0) - NOT Budget object
+- Currency is determined by PricingOption, not Package
+- Validation happens at Pydantic schema level (raises ToolError for constraint violations)
+
 This test suite systematically exercises error handling paths that were previously
 untested, ensuring:
 1. Error responses are actually constructible (no NameErrors)
@@ -267,8 +273,12 @@ class TestCreateMediaBuyErrorPaths:
         assert error.code == "validation_error"
         assert "end" in error.message.lower() or "after" in error.message.lower()
 
-    async def test_negative_budget_returns_validation_error(self, test_tenant_with_principal):
-        """Test that negative budget raises validation error during Pydantic schema validation."""
+    async def test_negative_budget_raises_tool_error(self, test_tenant_with_principal):
+        """Test that negative budget raises ToolError during Pydantic validation.
+
+        Note: This is caught at the Pydantic schema level (ge=0 constraint) before
+        business logic runs, so it raises ToolError rather than returning an Error response.
+        """
         context = ToolContext(
             context_id="test_ctx",
             tenant_id="error_test_tenant",

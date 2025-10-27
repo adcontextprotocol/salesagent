@@ -10,6 +10,7 @@ import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
+from urllib.parse import urlparse
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
@@ -28,6 +29,32 @@ _scoped_session = None
 _last_health_check = 0
 _health_check_interval = 60  # Check health every 60 seconds
 _is_healthy = True
+
+
+def _is_pgbouncer_connection(connection_string: str) -> bool:
+    """Check if connection string uses PgBouncer (port 6543) or USE_PGBOUNCER is set.
+
+    Uses URL parsing for robust port detection instead of string matching,
+    which avoids false positives from passwords containing ":6543".
+
+    Args:
+        connection_string: Database connection URL
+
+    Returns:
+        True if PgBouncer is detected, False otherwise
+    """
+    # Check environment variable first (explicit override)
+    if os.environ.get("USE_PGBOUNCER", "false").lower() == "true":
+        return True
+
+    # Parse connection string to check port
+    try:
+        parsed = urlparse(connection_string)
+        return parsed.port == 6543
+    except Exception:
+        # Fallback to string matching if URL parsing fails
+        # This handles edge cases with non-standard URLs
+        return ":6543" in connection_string
 
 
 def get_engine():
@@ -57,7 +84,7 @@ def get_engine():
 
         # Detect PgBouncer usage (typically port 6543)
         # PgBouncer requires different pooling strategy since it manages connections
-        is_pgbouncer = ":6543" in connection_string or os.environ.get("USE_PGBOUNCER", "false").lower() == "true"
+        is_pgbouncer = _is_pgbouncer_connection(connection_string)
 
         if is_pgbouncer:
             logger.info("PgBouncer detected - using optimized connection pool settings")
@@ -400,7 +427,11 @@ def get_pool_status() -> dict:
     overflow = pool.overflow()
 
     # Normalize overflow to non-negative (can be negative before pool initialization)
-    # Overflow represents connections beyond pool_size that are currently active
+    # SQLAlchemy's pool.overflow() returns negative values in two cases:
+    # 1. Before the pool is fully initialized (returns -pool_size, e.g., -2 when pool_size=2)
+    # 2. When connections are closed before being used (internal pool accounting)
+    # For monitoring purposes, we treat these as 0 (no overflow connections active)
+    # since negative values don't represent actual resource usage.
     overflow_normalized = max(0, overflow)
 
     return {

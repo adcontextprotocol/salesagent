@@ -5,6 +5,12 @@ functionality for media buy creation.
 
 MIGRATED: Uses new pricing_options model instead of legacy Product pricing fields.
 Product.min_spend → PricingOption.min_spend_per_package
+
+📊 BUDGET FORMAT: AdCP v2.2.0 Migration (2025-10-27)
+All tests in this file use float budget format per AdCP v2.2.0 spec:
+- Package.budget: float (e.g., 1000.0) - NOT Budget object
+- Currency is determined by PricingOption, not Package
+- Excessive budgets trigger adapter errors (raises ToolError)
 """
 
 from datetime import UTC, datetime, timedelta

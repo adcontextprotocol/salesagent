@@ -4,6 +4,11 @@ Unit test for duplicate product validation in media buy packages.
 
 Tests the validation logic that rejects media buy requests where the same
 product_id appears in multiple packages.
+
+📊 BUDGET FORMAT: AdCP v2.2.0 Migration (2025-10-27)
+All tests in this file use float budget format per AdCP v2.2.0 spec:
+- Package.budget: float (e.g., 1000.0) - NOT Budget object
+- Currency is determined by PricingOption, not Package
 """
 
 from datetime import UTC, datetime, timedelta

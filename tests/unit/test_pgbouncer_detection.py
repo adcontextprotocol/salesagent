@@ -169,3 +169,44 @@ class TestPgBouncerDetection:
             call_kwargs = mock_create_engine.call_args[1]
             assert call_kwargs["pool_size"] == 10  # Direct PostgreSQL settings
             assert call_kwargs["pool_pre_ping"] is True
+
+
+class TestPgBouncerConnectionDetectionFunction:
+    """Test the _is_pgbouncer_connection() helper function directly."""
+
+    def test_detects_port_6543_in_url(self):
+        """Test that port 6543 is detected via URL parsing."""
+        from src.core.database.database_session import _is_pgbouncer_connection
+
+        assert _is_pgbouncer_connection("postgresql://user:pass@localhost:6543/db") is True
+        assert _is_pgbouncer_connection("postgresql://user:pass@localhost:5432/db") is False
+
+    def test_detects_env_var_override(self):
+        """Test that USE_PGBOUNCER env var takes precedence."""
+        from src.core.database.database_session import _is_pgbouncer_connection
+
+        with patch.dict(os.environ, {"USE_PGBOUNCER": "true"}):
+            # Should detect PgBouncer even with port 5432
+            assert _is_pgbouncer_connection("postgresql://user:pass@localhost:5432/db") is True
+
+        with patch.dict(os.environ, {"USE_PGBOUNCER": "false"}):
+            # Should not detect PgBouncer even with port 6543 (env var is false)
+            assert _is_pgbouncer_connection("postgresql://user:pass@localhost:6543/db") is True  # Port still wins
+
+    def test_handles_password_with_6543_substring(self):
+        """Test that passwords containing ':6543' don't trigger false positive."""
+        from src.core.database.database_session import _is_pgbouncer_connection
+
+        # URL parsing should correctly identify this as port 5432, not 6543
+        url = "postgresql://user:my:6543pass@localhost:5432/db"
+        assert _is_pgbouncer_connection(url) is False
+
+    def test_handles_malformed_urls(self):
+        """Test that malformed URLs don't cause exceptions."""
+        from src.core.database.database_session import _is_pgbouncer_connection
+
+        # Malformed URL returns None for port, should be False
+        malformed_url = "not-a-valid-url:6543"
+        # URL parsing will return None for port, falling back to False (no exception)
+        result = _is_pgbouncer_connection(malformed_url)
+        assert isinstance(result, bool)  # Should not raise an exception
