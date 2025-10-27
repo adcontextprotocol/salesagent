@@ -77,14 +77,18 @@ class TestA2AResponseAttributeAccess:
         assert isinstance(response.formats, list)
 
     def test_list_authorized_properties_response_attribute_access(self):
-        """Verify ListAuthorizedPropertiesResponse has expected flat structure."""
-        response = ListAuthorizedPropertiesResponse(publisher_domains=["example.com"], tags={})
+        """Verify ListAuthorizedPropertiesResponse has expected flat structure per AdCP spec."""
+        # Per /schemas/v1/media-buy/list-authorized-properties-response.json
+        response = ListAuthorizedPropertiesResponse(
+            publisher_domains=["example.com"],
+            primary_channels=["display"],
+        )
 
-        # Verify expected attributes exist
+        # Verify expected attributes exist (per AdCP v2.4 spec)
         assert hasattr(response, "publisher_domains")
-        assert hasattr(response, "tags")
+        assert hasattr(response, "primary_channels")
         assert isinstance(response.publisher_domains, list)
-        assert isinstance(response.tags, dict)
+        assert isinstance(response.primary_channels, list)
 
     def test_a2a_list_creatives_handler_attribute_extraction(self):
         """Verify A2A handler can extract attributes correctly from response.

@@ -425,6 +425,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     # Fields from AdCP spec v2.4
+    # Per /schemas/v1/media-buy/list-authorized-properties-response.json
     publisher_domains: list[str] = Field(
         ..., description="Publisher domains this agent is authorized to represent", min_length=1
     )

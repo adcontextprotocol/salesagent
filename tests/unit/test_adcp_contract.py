@@ -1929,11 +1929,12 @@ class TestAdCPContract:
     def test_list_authorized_properties_response_adcp_compliance(self):
         """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 list-authorized-properties-response schema."""
         # Create response with required fields only (per AdCP spec, optional fields should be omitted if not set)
-        tag_metadata = PropertyTagMetadata(name="Premium Content", description="Premium content tag")
+        # Per /schemas/v1/media-buy/list-authorized-properties-response.json, only these fields are spec-compliant:
+        # - publisher_domains (required)
+        # - primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated, errors (optional)
         response = ListAuthorizedPropertiesResponse(
             publisher_domains=["example.com"],
-            tags={"premium_content": tag_metadata},
-            # errors omitted - per AdCP spec, optional fields with None/empty values should be omitted
+            # All optional fields omitted - per AdCP spec, optional fields with None/empty values should be omitted
         )
 
         # Test AdCP-compliant response
@@ -1947,10 +1948,6 @@ class TestAdCPContract:
 
         # Verify publisher_domains is array
         assert isinstance(adcp_response["publisher_domains"], list)
-
-        # Verify tags is object when present
-        assert "tags" in adcp_response, "tags was set, should be present"
-        assert isinstance(adcp_response["tags"], dict)
 
         # Verify optional fields with None values are omitted per AdCP spec
         assert "errors" not in adcp_response, "errors with None/empty value should be omitted"

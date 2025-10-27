@@ -3412,9 +3412,6 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     """
 
     publisher_domains: list[str] = Field(..., description="Publisher domains this agent is authorized to represent")
-    tags: dict[str, PropertyTagMetadata] = Field(
-        default_factory=dict, description="Metadata for each tag referenced by properties"
-    )
     primary_channels: list[str] | None = Field(
         None, description="Primary advertising channels in this portfolio (helps buyers filter relevance)"
     )
