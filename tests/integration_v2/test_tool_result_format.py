@@ -6,6 +6,55 @@ both human-readable text content and structured JSON data.
 """
 
 import pytest
+from fastmcp.client import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
+from src.core.database.database_session import get_db_session
+from src.core.database.models import Principal
+from tests.integration_v2.conftest import add_required_setup_data
+from tests.utils.database_helpers import create_tenant_with_timestamps
+
+
+@pytest.fixture(scope="function")
+def setup_test_data(integration_db):
+    """Create test tenant and principal for MCP tests."""
+    with get_db_session() as session:
+        # Create test tenant
+        tenant = create_tenant_with_timestamps(
+            tenant_id="test_tool_result",
+            name="Test Tool Result Tenant",
+            subdomain="test-tool-result",
+            is_active=True,
+            ad_server="mock",
+            authorized_emails=["test@example.com"],
+        )
+        session.add(tenant)
+        session.flush()
+
+        # Add required setup data
+        add_required_setup_data(session, "test_tool_result")
+
+        # Create test principal
+        principal = Principal(
+            tenant_id="test_tool_result",
+            principal_id="test_principal",
+            name="Test Principal",
+            access_token="test_tool_result_token",
+            platform_mappings={"mock": {"id": "test_advertiser"}},
+        )
+        session.add(principal)
+        session.commit()
+
+    return "test_tool_result_token"
+
+
+@pytest.fixture
+async def mcp_client(mcp_server, setup_test_data):
+    """Create MCP client with test authentication."""
+    headers = {"x-adcp-auth": setup_test_data}  # Use the token from setup_test_data
+    transport = StreamableHttpTransport(url=f"http://localhost:{mcp_server.port}/mcp/", headers=headers)
+    client = Client(transport=transport)
+    return client
 
 
 @pytest.mark.requires_server
