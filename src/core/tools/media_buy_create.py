@@ -368,28 +368,85 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                         targeting_overlay = Targeting(**package_config["targeting_overlay"])
 
                     # Create MediaPackage object (what adapters expect)
-                    # Note: Product model has 'formats' not 'format_ids'
-                    # Convert FormatReference objects to FormatId objects
+                    # Convert formats (FormatReference/dict) to FormatId objects per AdCP spec
+                    from urllib.parse import urlparse
+
                     from src.core.schemas import FormatId, FormatReference
 
-                    format_ids_list = []
-                    for fmt in product.formats or []:
-                        if isinstance(fmt, FormatReference):
-                            # Convert FormatReference to FormatId (format_id -> id)
-                            format_ids_list.append(FormatId(agent_url=fmt.agent_url, id=fmt.format_id))
-                        elif isinstance(fmt, FormatId):
-                            # Already a FormatId object
-                            format_ids_list.append(fmt)
-                        elif isinstance(fmt, dict):
-                            # Dict format - check which type
-                            if "format_id" in fmt:
-                                # FormatReference dict
-                                format_ids_list.append(FormatId(agent_url=fmt["agent_url"], id=fmt["format_id"]))
-                            elif "id" in fmt:
-                                # FormatId dict
-                                format_ids_list.append(FormatId(**fmt))
-                        else:
-                            logger.warning(f"[APPROVAL] Unknown format type: {type(fmt)}, skipping")
+                    def validate_agent_url(url: str | None) -> bool:
+                        """Validate agent_url is a valid HTTP(S) URL per AdCP spec."""
+                        if not url or not isinstance(url, str):
+                            return False
+                        try:
+                            result = urlparse(url)
+                            return all([result.scheme in ("http", "https"), result.netloc])
+                        except Exception:
+                            return False
+
+                    format_ids_list: list[FormatId] = []
+                    formats = product.formats or []
+
+                    logger.debug(f"[APPROVAL] Converting {len(formats)} formats for package {package_id}")
+
+                    for idx, fmt in enumerate(formats):
+                        try:
+                            # Most common case: dict from database (JSONB field returns dicts)
+                            if isinstance(fmt, dict):
+                                agent_url = fmt.get("agent_url")
+                                format_id = fmt.get("format_id") or fmt.get("id")
+
+                                # Validate required fields exist and are non-empty strings
+                                if not agent_url or not isinstance(agent_url, str):
+                                    raise ValueError(f"Format missing or invalid agent_url: agent_url={agent_url!r}")
+                                if not validate_agent_url(agent_url):
+                                    raise ValueError(f"agent_url must be valid HTTP(S) URL: {agent_url!r}")
+                                if not format_id or not isinstance(format_id, str):
+                                    raise ValueError(f"Format missing or invalid id: id={format_id!r}")
+
+                                format_ids_list.append(FormatId(agent_url=agent_url, id=format_id))
+
+                            # Already correct type (no conversion needed)
+                            elif isinstance(fmt, FormatId):
+                                # Defensive validation even for FormatId objects
+                                if not fmt.agent_url or not validate_agent_url(fmt.agent_url):
+                                    raise ValueError(f"FormatId has invalid agent_url: {fmt.agent_url!r}")
+                                if not fmt.id:
+                                    raise ValueError(f"FormatId has empty id: {fmt.id!r}")
+                                format_ids_list.append(fmt)
+
+                            # Legacy FormatReference object (convert format_id -> id)
+                            elif isinstance(fmt, FormatReference):
+                                if not fmt.agent_url or not validate_agent_url(fmt.agent_url):
+                                    raise ValueError(f"FormatReference has invalid agent_url: {fmt.agent_url!r}")
+                                if not fmt.format_id:
+                                    raise ValueError(f"FormatReference has empty format_id: {fmt.format_id!r}")
+                                format_ids_list.append(FormatId(agent_url=fmt.agent_url, id=fmt.format_id))
+
+                            else:
+                                raise ValueError(f"Unknown format type: {type(fmt).__name__}")
+
+                        except (ValueError, ValidationError) as e:
+                            error_msg = (
+                                f"Failed to reconstruct package {package_id}: "
+                                f"Format validation failed at index {idx}: {e}"
+                            )
+                            logger.error(f"[APPROVAL] {error_msg}")
+                            return False, error_msg
+
+                    # Validate non-empty format_ids (required by AdCP spec)
+                    if not format_ids_list:
+                        error_msg = (
+                            f"Failed to reconstruct package {package_id}: "
+                            f"Product {product_id} has no valid formats - cannot create media buy"
+                        )
+                        logger.error(f"[APPROVAL] {error_msg}")
+                        return False, error_msg
+
+                    # Log conversion results
+                    logger.info(
+                        f"[APPROVAL] Package {package_id}: "
+                        f"Successfully converted all {len(format_ids_list)} formats"
+                    )
 
                     media_package = MediaPackage(
                         package_id=package_id,
