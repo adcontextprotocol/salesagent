@@ -261,6 +261,7 @@ def google_callback():
         # Check if user is super admin
         if email_domain == "scope3.com" or is_super_admin(email):
             session["is_super_admin"] = True
+            session["role"] = "super_admin"
             flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
             return redirect(url_for("core.index"))
 
