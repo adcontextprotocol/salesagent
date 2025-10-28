@@ -117,11 +117,9 @@ class TestListCreativesAuthentication:
 
     def _import_mcp_tool(self):
         """Import MCP tool to avoid module-level database initialization."""
-        from src.core.main import list_creatives as core_list_creatives_tool
+        from src.core.tools.creatives import list_creatives_raw
 
-        # Extract the actual function from FunctionTool object if needed
-        list_fn = core_list_creatives_tool.fn if hasattr(core_list_creatives_tool, "fn") else core_list_creatives_tool
-        return list_fn
+        return list_creatives_raw
 
     def test_unauthenticated_request_should_fail(self):
         """Test that list_creatives rejects requests without authentication.

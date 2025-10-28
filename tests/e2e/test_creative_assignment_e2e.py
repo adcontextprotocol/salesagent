@@ -19,6 +19,7 @@ from tests.e2e.adcp_request_builder import (
     build_creative,
     build_sync_creatives_request,
     get_test_date_range,
+    parse_tool_result,
 )
 
 
@@ -65,7 +66,7 @@ class TestCreativeAssignment:
                     "brief": "display advertising",
                 },
             )
-            products_data = json.loads(products_result.content[0].text)
+            products_data = parse_tool_result(products_result)
 
             assert "products" in products_data, "Response must contain products"
             assert len(products_data["products"]) > 0, "Must have at least one product"
@@ -76,7 +77,7 @@ class TestCreativeAssignment:
 
             # Get creative formats
             formats_result = await client.call_tool("list_creative_formats", {})
-            formats_data = json.loads(formats_result.content[0].text)
+            formats_data = parse_tool_result(formats_result)
 
             assert "formats" in formats_data, "Response must contain formats"
             print(f"   ✓ Available formats: {len(formats_data['formats'])}")
@@ -121,7 +122,7 @@ class TestCreativeAssignment:
             media_buy_request["packages"][0]["buyer_ref"] = package_buyer_ref
 
             media_buy_result = await client.call_tool("create_media_buy", media_buy_request)
-            media_buy_data = json.loads(media_buy_result.content[0].text)
+            media_buy_data = parse_tool_result(media_buy_result)
 
             media_buy_id = media_buy_data.get("media_buy_id")
             buyer_ref = media_buy_data.get("buyer_ref")
@@ -167,7 +168,7 @@ class TestCreativeAssignment:
             print(f"   📋 Sync request: {json.dumps(sync_request, indent=2)}")
 
             sync_result = await client.call_tool("sync_creatives", sync_request)
-            sync_data = json.loads(sync_result.content[0].text)
+            sync_data = parse_tool_result(sync_result)
 
             print(f"   📋 Sync response: {json.dumps(sync_data, indent=2)}")
 
@@ -184,7 +185,7 @@ class TestCreativeAssignment:
             print("\n📊 PHASE 4: Verify Assignment via Get Delivery")
 
             delivery_result = await client.call_tool("get_media_buy_delivery", {"media_buy_ids": [media_buy_id]})
-            delivery_data = json.loads(delivery_result.content[0].text)
+            delivery_data = parse_tool_result(delivery_result)
 
             print(f"   📋 Delivery response: {json.dumps(delivery_data, indent=2)[:1000]}")
 
@@ -213,7 +214,7 @@ class TestCreativeAssignment:
             print("\n📋 PHASE 5: List Creatives (verify final state)")
 
             list_result = await client.call_tool("list_creatives", {})
-            list_data = json.loads(list_result.content[0].text)
+            list_data = parse_tool_result(list_result)
 
             assert "creatives" in list_data, "Response must contain creatives"
             print(f"   ✓ Listed {len(list_data['creatives'])} creatives")
@@ -274,7 +275,7 @@ class TestCreativeAssignment:
                     "brief": "display advertising",
                 },
             )
-            products_data = json.loads(products_result.content[0].text)
+            products_data = parse_tool_result(products_result)
 
             assert len(products_data["products"]) > 0, "Must have at least one product"
             product = products_data["products"][0]
@@ -283,7 +284,7 @@ class TestCreativeAssignment:
 
             # Get formats
             formats_result = await client.call_tool("list_creative_formats", {})
-            formats_data = json.loads(formats_result.content[0].text)
+            formats_data = parse_tool_result(formats_result)
 
             format_id = None
             for fmt in formats_data["formats"]:
@@ -334,7 +335,7 @@ class TestCreativeAssignment:
             ]
 
             media_buy_result = await client.call_tool("create_media_buy", media_buy_request)
-            media_buy_data = json.loads(media_buy_result.content[0].text)
+            media_buy_data = parse_tool_result(media_buy_result)
 
             media_buy_id = media_buy_data.get("media_buy_id")
 
@@ -399,7 +400,7 @@ class TestCreativeAssignment:
             )
 
             sync_result = await client.call_tool("sync_creatives", sync_request)
-            sync_data = json.loads(sync_result.content[0].text)
+            sync_data = parse_tool_result(sync_result)
 
             assert "results" in sync_data, "Response must contain results"
             assert len(sync_data["results"]) == 3, "Should sync 3 creatives"
@@ -411,7 +412,7 @@ class TestCreativeAssignment:
             print("\n📊 PHASE 4: Verify Assignments")
 
             delivery_result = await client.call_tool("get_media_buy_delivery", {"media_buy_ids": [media_buy_id]})
-            delivery_data = json.loads(delivery_result.content[0].text)
+            delivery_data = parse_tool_result(delivery_result)
 
             deliveries = delivery_data.get("deliveries") or delivery_data.get("media_buy_deliveries", [])
             if deliveries and "packages" in deliveries[0]:

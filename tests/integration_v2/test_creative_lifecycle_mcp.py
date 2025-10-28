@@ -48,14 +48,9 @@ class TestCreativeLifecycleMCP:
 
     def _import_mcp_tools(self):
         """Import MCP tools to avoid module-level database initialization."""
-        from src.core.main import list_creatives as core_list_creatives_tool
-        from src.core.main import sync_creatives as core_sync_creatives_tool
+        from src.core.tools.creatives import list_creatives_raw, sync_creatives_raw
 
-        # Extract the actual functions from FunctionTool objects if needed
-        sync_fn = core_sync_creatives_tool.fn if hasattr(core_sync_creatives_tool, "fn") else core_sync_creatives_tool
-        list_fn = core_list_creatives_tool.fn if hasattr(core_list_creatives_tool, "fn") else core_list_creatives_tool
-
-        return sync_fn, list_fn
+        return sync_creatives_raw, list_creatives_raw
 
     @pytest.fixture(autouse=True)
     def setup_test_data(self, integration_db):

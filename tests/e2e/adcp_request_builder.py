@@ -15,6 +15,33 @@ def generate_buyer_ref(prefix: str = "test") -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 
+def parse_tool_result(result: Any) -> dict[str, Any]:
+    """
+    Parse MCP tool result into structured data.
+
+    Extracts structured data from ToolResult.structured_content field.
+    The text field contains human-readable text, structured_content has the JSON data.
+
+    Args:
+        result: MCP tool result object with structured_content
+
+    Returns:
+        Parsed result data as a dictionary
+
+    Example:
+        >>> products_result = await client.call_tool("get_products", {...})
+        >>> products_data = parse_tool_result(products_result)
+        >>> assert "products" in products_data
+    """
+    if hasattr(result, "structured_content") and result.structured_content:
+        return result.structured_content
+
+    raise ValueError(
+        f"Unable to parse tool result: {type(result).__name__} has no structured_content field. "
+        f"Expected ToolResult with structured_content."
+    )
+
+
 def build_adcp_media_buy_request(
     product_ids: list[str],
     total_budget: float,

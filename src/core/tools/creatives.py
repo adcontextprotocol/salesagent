@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 from sqlalchemy import select
@@ -1424,7 +1425,7 @@ def sync_creatives(
     validation_mode: str = "strict",
     push_notification_config: dict | None = None,
     context: Context | None = None,
-) -> SyncCreativesResponse:
+):
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
 
     MCP tool wrapper that delegates to the shared implementation.
@@ -1440,9 +1441,9 @@ def sync_creatives(
         context: FastMCP context (automatically provided)
 
     Returns:
-        SyncCreativesResponse with sync results
+        ToolResult with SyncCreativesResponse data
     """
-    return _sync_creatives_impl(
+    response = _sync_creatives_impl(
         creatives=creatives,
         patch=patch,
         assignments=assignments,
@@ -1452,6 +1453,7 @@ def sync_creatives(
         push_notification_config=push_notification_config,
         context=context,
     )
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 def _list_creatives_impl(
@@ -1777,14 +1779,17 @@ def list_creatives(
     sort_order: str = "desc",
     webhook_url: str | None = None,
     context: Context = None,
-) -> ListCreativesResponse:
+):
     """List and filter creative assets from the centralized library.
 
     MCP tool wrapper that delegates to the shared implementation.
     Supports both flat parameters (status, format, etc.) and nested objects (filters, sort, pagination)
     for maximum flexibility.
+
+    Returns:
+        ToolResult with ListCreativesResponse data
     """
-    return _list_creatives_impl(
+    response = _list_creatives_impl(
         media_buy_id,
         buyer_ref,
         status,
@@ -1806,6 +1811,7 @@ def list_creatives(
         sort_order,
         context,
     )
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 def sync_creatives_raw(

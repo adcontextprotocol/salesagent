@@ -14,7 +14,7 @@ from sqlalchemy import select
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 from src.core.schemas import Signal
-from src.core.tools.products import get_products
+from src.core.tools.products import get_products_raw
 from tests.fixtures.builders import create_test_tenant_with_principal
 from tests.integration_v2.conftest import create_test_product_with_pricing
 
@@ -129,7 +129,7 @@ class TestSignalsAgentWorkflow:
         # Use single context patch with real tenant data
         with self._mock_auth_context(tenant_data):
             # Call get_products with correct parameters (not GetProductsRequest object)
-            response = await get_products(
+            response = await get_products_raw(
                 brand_manifest={"name": "BMW M3 2025 sports sedan"},
                 brief="sports car advertising campaign",
                 filters=None,
@@ -165,7 +165,7 @@ class TestSignalsAgentWorkflow:
 
             with self._mock_auth_context(tenant_data):
                 # Call get_products with correct parameters
-                response = await get_products(
+                response = await get_products_raw(
                     brand_manifest={"name": "Porsche 911 Turbo S 2025"},
                     brief="luxury sports car advertising for wealthy professionals",
                     filters=None,
@@ -202,7 +202,7 @@ class TestSignalsAgentWorkflow:
 
             with self._mock_auth_context(tenant_data):
                 # Call get_products with correct parameters
-                response = await get_products(
+                response = await get_products_raw(
                     brand_manifest={"name": "Test Product 2025"},
                     brief="test brief for failure scenario",
                     filters=None,
@@ -234,7 +234,7 @@ class TestSignalsAgentWorkflow:
 
             with self._mock_auth_context(tenant_data):
                 # Call get_products with correct parameters (empty brief)
-                response = await get_products(
+                response = await get_products_raw(
                     brand_manifest={"name": "Generic Product 2025"},
                     brief="",
                     filters=None,

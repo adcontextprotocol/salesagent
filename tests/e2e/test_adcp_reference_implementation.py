@@ -27,6 +27,7 @@ from tests.e2e.adcp_request_builder import (
     build_creative,
     build_sync_creatives_request,
     get_test_date_range,
+    parse_tool_result,
 )
 
 
@@ -131,7 +132,7 @@ class TestAdCPReferenceImplementation:
                     "brief": "display advertising",
                 },
             )
-            products_data = json.loads(products_result.content[0].text)
+            products_data = parse_tool_result(products_result)
 
             print(f"   🔍 DEBUG: products_result type: {type(products_result)}")
             print(f"   🔍 DEBUG: products_result.content: {products_result.content}")
@@ -145,11 +146,12 @@ class TestAdCPReferenceImplementation:
             product = products_data["products"][0]
             product_id = product["product_id"]
             print(f"   ✓ Found product: {product['name']} ({product_id})")
-            print(f"   ✓ Formats: {product['format_ids']}")
+            # AdCP spec uses 'formats' not 'format_ids'
+            print(f"   ✓ Formats: {product['formats']}")
 
             # Get creative formats (no req wrapper - takes optional params directly)
             formats_result = await client.call_tool("list_creative_formats", {})
-            formats_data = json.loads(formats_result.content[0].text)
+            formats_data = parse_tool_result(formats_result)
 
             assert "formats" in formats_data, "Response must contain formats"
             print(f"   ✓ Available formats: {len(formats_data['formats'])}")
@@ -177,7 +179,7 @@ class TestAdCPReferenceImplementation:
 
             # Create media buy (pass params directly - no req wrapper)
             media_buy_result = await client.call_tool("create_media_buy", media_buy_request)
-            media_buy_data = json.loads(media_buy_result.content[0].text)
+            media_buy_data = parse_tool_result(media_buy_result)
 
             # When webhook is provided, response may have task_id instead of media_buy_id
             # For this test, we'll use buyer_ref if media_buy_id is not available
@@ -226,7 +228,7 @@ class TestAdCPReferenceImplementation:
             sync_request = build_sync_creatives_request(creatives=[creative_1, creative_2])
 
             sync_result = await client.call_tool("sync_creatives", sync_request)
-            sync_data = json.loads(sync_result.content[0].text)
+            sync_data = parse_tool_result(sync_result)
 
             assert "results" in sync_data, "Response must contain results"
             assert len(sync_data["results"]) == 2, "Should sync 2 creatives"
@@ -239,7 +241,7 @@ class TestAdCPReferenceImplementation:
             print("\n📊 PHASE 4: Get Delivery Metrics")
 
             delivery_result = await client.call_tool("get_media_buy_delivery", {"media_buy_ids": [media_buy_id]})
-            delivery_data = json.loads(delivery_result.content[0].text)
+            delivery_data = parse_tool_result(delivery_result)
 
             # Verify delivery response structure (AdCP spec: deliveries is an array)
             assert "deliveries" in delivery_data or "media_buy_deliveries" in delivery_data
@@ -273,7 +275,7 @@ class TestAdCPReferenceImplementation:
                     },
                 },
             )
-            update_data = json.loads(update_result.content[0].text)
+            update_data = parse_tool_result(update_result)
 
             assert "media_buy_id" in update_data or "buyer_ref" in update_data
             print("   ✓ Budget update requested: $5000 → $7500")
@@ -318,7 +320,7 @@ class TestAdCPReferenceImplementation:
             print("\n📋 PHASE 7: List Creatives (verify final state)")
 
             list_result = await client.call_tool("list_creatives", {})
-            list_data = json.loads(list_result.content[0].text)
+            list_data = parse_tool_result(list_result)
 
             assert "creatives" in list_data, "Response must contain creatives"
             print(f"   ✓ Listed {len(list_data['creatives'])} creatives")

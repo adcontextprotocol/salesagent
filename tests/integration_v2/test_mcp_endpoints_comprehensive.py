@@ -164,7 +164,8 @@ class TestMCPEndpointsComprehensive:
                 assert "product_id" in product
                 assert "name" in product
                 assert "description" in product
-                assert "format_ids" in product
+                # AdCP spec uses "formats" (array of FormatId objects), not "format_ids"
+                assert "formats" in product
                 assert "delivery_type" in product
                 assert product["delivery_type"] in ["guaranteed", "non_guaranteed"]
                 # Pricing options should be included
@@ -381,9 +382,10 @@ class TestMCPEndpointsComprehensive:
             assert "media_buy_deliveries" in status_content
             # Newly created media buy might not have delivery data yet
             assert isinstance(status_content["media_buy_deliveries"], list)
-            # But should have aggregated totals
-            assert "aggregated_totals" in status_content
+            # Currency is required per AdCP spec
             assert "currency" in status_content
+            # aggregated_totals is optional per AdCP spec (only for API responses, not webhooks)
+            # Don't assert it must exist
 
 
 if __name__ == "__main__":

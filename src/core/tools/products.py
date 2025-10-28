@@ -12,6 +12,7 @@ from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 
 # Imports for implementation
@@ -505,7 +506,7 @@ async def get_products(
     brief: str = "",
     filters: dict | None = None,
     context: Context = None,
-) -> GetProductsResponse:
+):
     """Get available products matching the brief.
 
     MCP tool wrapper that delegates to the shared implementation.
@@ -517,7 +518,7 @@ async def get_products(
         context: FastMCP context (automatically provided)
 
     Returns:
-        GetProductsResponse containing matching products
+        ToolResult with human-readable text and structured data
 
     Note:
         promoted_offering is deprecated - use brand_manifest instead.
@@ -539,7 +540,10 @@ async def get_products(
 
     # Call shared implementation
     # Note: GetProductsRequest is now a flat class (not RootModel), so pass req directly
-    return await _get_products_impl(req, context)
+    response = await _get_products_impl(req, context)
+
+    # Return ToolResult with human-readable text and structured data
+    return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 async def get_products_raw(

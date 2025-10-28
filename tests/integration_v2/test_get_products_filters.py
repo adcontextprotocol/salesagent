@@ -53,11 +53,9 @@ class TestGetProductsFilterBehavior:
 
     def _import_get_products_tool(self):
         """Import get_products tool and extract underlying function."""
-        from src.core.main import get_products as core_get_products_tool
+        from src.core.tools.products import get_products_raw
 
-        # Extract the actual function from FunctionTool object if needed
-        get_products_fn = core_get_products_tool.fn if hasattr(core_get_products_tool, "fn") else core_get_products_tool
-        return get_products_fn
+        return get_products_raw
 
     @pytest.fixture(autouse=True)
     def setup_diverse_products(self, integration_db):
