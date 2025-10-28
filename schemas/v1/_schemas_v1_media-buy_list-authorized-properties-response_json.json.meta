@@ -1,6 +1,7 @@
 {
   "etag": "W/\"68ffaa97-b14\"",
   "last-modified": "Mon, 27 Oct 2025 17:23:35 GMT",
-  "downloaded_at": "2025-10-27T23:11:45.803064",
-  "schema_ref": "/schemas/v1/media-buy/list-authorized-properties-response.json"
+  "downloaded_at": "2025-10-28T16:16:21.782281",
+  "schema_ref": "/schemas/v1/media-buy/list-authorized-properties-response.json",
+  "content_hash": "e75dd3aa8ba60502b0975355b215d55b16496a699190e1b1106db0df0940a59a"
 }

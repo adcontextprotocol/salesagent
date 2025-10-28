@@ -1,6 +1,7 @@
 {
   "etag": "W/\"68ffaa97-2cb0\"",
   "last-modified": "Mon, 27 Oct 2025 17:23:35 GMT",
-  "downloaded_at": "2025-10-27T23:11:44.216170",
-  "schema_ref": "/schemas/v1/core/brand-manifest.json"
+  "downloaded_at": "2025-10-28T16:16:14.563623",
+  "schema_ref": "/schemas/v1/core/brand-manifest.json",
+  "content_hash": "a7d4d24cc56504e59fa6ff4554074128e5e9fa5a1ef010923424e861aae7e26c"
 }

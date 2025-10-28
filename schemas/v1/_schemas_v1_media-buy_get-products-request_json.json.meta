@@ -1,6 +1,7 @@
 {
   "etag": "W/\"68ffaa97-7b9\"",
   "last-modified": "Mon, 27 Oct 2025 17:23:35 GMT",
-  "downloaded_at": "2025-10-27T23:11:45.117952",
-  "schema_ref": "/schemas/v1/media-buy/get-products-request.json"
+  "downloaded_at": "2025-10-28T16:15:28.603429",
+  "schema_ref": "/schemas/v1/media-buy/get-products-request.json",
+  "content_hash": "3de0c3f8a90fb2f1aacc80c973ccebe53737107fcea7c64abb69a33eaa3c7caf"
 }

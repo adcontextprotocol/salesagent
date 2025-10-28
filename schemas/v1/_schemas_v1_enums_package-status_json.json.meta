@@ -1,6 +1,7 @@
 {
   "etag": "W/\"68ffaa97-1c4\"",
   "last-modified": "Mon, 27 Oct 2025 17:23:35 GMT",
-  "downloaded_at": "2025-10-27T23:11:44.664330",
-  "schema_ref": "/schemas/v1/enums/package-status.json"
+  "downloaded_at": "2025-10-28T16:16:16.746579",
+  "schema_ref": "/schemas/v1/enums/package-status.json",
+  "content_hash": "4d221cfdeea58f2caad52233ce8c4066fa7fd6bdb3f1b86453196b9df84721be"
 }
