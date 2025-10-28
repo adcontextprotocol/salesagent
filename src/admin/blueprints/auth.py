@@ -181,8 +181,15 @@ def tenant_google_auth(tenant_id):
 @auth_bp.route("/auth/google/callback")
 def google_callback():
     """Handle Google OAuth callback - simplified version."""
+    # Log immediately when callback is hit
+    logger.warning("========== GOOGLE OAUTH CALLBACK HIT ==========")
+    logger.warning(f"Request URL: {request.url}")
+    logger.warning(f"Request args: {dict(request.args)}")
+    logger.warning(f"Session keys at start: {list(session.keys())}")
+
     oauth = current_app.oauth if hasattr(current_app, "oauth") else None
     if not oauth:
+        logger.error("OAuth not configured!")
         flash("OAuth not configured", "error")
         return redirect(url_for("auth.login"))
 
