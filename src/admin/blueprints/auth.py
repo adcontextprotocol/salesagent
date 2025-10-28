@@ -133,10 +133,20 @@ def google_auth():
         flash("OAuth not configured", "error")
         return redirect(url_for("auth.login"))
 
-    # Use configured redirect URI from environment, fall back to auto-generated
+    # Get redirect URI - must match what's configured in Google OAuth credentials
+    # Note: In production with nginx, the path is /admin/auth/google/callback
+    # but Flask only knows about /auth/google/callback
     redirect_uri = os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
     if not redirect_uri:
-        redirect_uri = url_for("auth.google_callback", _external=True)
+        # Build the URL with /admin prefix for nginx routing
+        base_url = url_for("auth.google_callback", _external=True)
+        # If the base URL doesn't already have /admin, prepend it
+        if "/admin/" not in base_url:
+            redirect_uri = base_url.replace("/auth/google/callback", "/admin/auth/google/callback")
+        else:
+            redirect_uri = base_url
+
+    logger.info(f"OAuth redirect URI: {redirect_uri}")
 
     # Simple OAuth flow - no tenant context preservation needed
     return oauth.google.authorize_redirect(redirect_uri)
