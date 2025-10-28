@@ -1,6 +1,7 @@
 {
-  "etag": "W/\"68ff4038-14d\"",
-  "last-modified": "Mon, 27 Oct 2025 09:49:44 GMT",
-  "downloaded_at": "2025-10-27T05:54:03.534469",
-  "schema_ref": "/schemas/v1/enums/frequency-cap-scope.json"
+  "etag": "W/\"68ffaa97-14d\"",
+  "last-modified": "Mon, 27 Oct 2025 17:23:35 GMT",
+  "downloaded_at": "2025-10-28T16:16:17.325896",
+  "schema_ref": "/schemas/v1/enums/frequency-cap-scope.json",
+  "content_hash": "ecc3e29daae79b2d5cf402751840746ae78e5714dfc0a5e20ef47193359da9e4"
 }

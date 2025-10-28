@@ -1,6 +1,7 @@
 {
-  "etag": "W/\"68ff4038-203\"",
-  "last-modified": "Mon, 27 Oct 2025 09:49:44 GMT",
-  "downloaded_at": "2025-10-27T05:54:03.393050",
-  "schema_ref": "/schemas/v1/enums/media-buy-status.json"
+  "etag": "W/\"68ffaa97-203\"",
+  "last-modified": "Mon, 27 Oct 2025 17:23:35 GMT",
+  "downloaded_at": "2025-10-28T16:16:16.552802",
+  "schema_ref": "/schemas/v1/enums/media-buy-status.json",
+  "content_hash": "cc89c2d193a2d5ea70633c641b3c3d550a5ce749557b0a3d430c16a3a1ca94b9"
 }

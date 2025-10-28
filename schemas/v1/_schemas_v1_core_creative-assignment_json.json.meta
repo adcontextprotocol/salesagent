@@ -1,6 +1,7 @@
 {
-  "etag": "W/\"68ff4038-462\"",
-  "last-modified": "Mon, 27 Oct 2025 09:49:44 GMT",
-  "downloaded_at": "2025-10-27T05:54:02.940943",
-  "schema_ref": "/schemas/v1/core/creative-assignment.json"
+  "etag": "W/\"68ffaa97-462\"",
+  "last-modified": "Mon, 27 Oct 2025 17:23:35 GMT",
+  "downloaded_at": "2025-10-28T16:16:13.780925",
+  "schema_ref": "/schemas/v1/core/creative-assignment.json",
+  "content_hash": "8c5d336843f646d39045fd5f66f00a7940aaa8e0a2a2982b2896c6b64cf0c17b"
 }
