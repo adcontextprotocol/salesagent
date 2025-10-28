@@ -119,9 +119,12 @@ class HybridProductCatalog(ProductCatalogProvider):
 
     async def _is_signals_enabled(self, tenant_id: str) -> bool:
         """Check if signals discovery is enabled for the tenant."""
+        from sqlalchemy import select
+
         try:
             with get_db_session() as db_session:
-                tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+                stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+                tenant = db_session.scalars(stmt).first()
                 if not tenant or not tenant.signals_agent_config:
                     return False
 
@@ -176,7 +179,7 @@ class HybridProductCatalog(ProductCatalogProvider):
             return products
 
         deduplicated = []
-        seen_names = set()
+        seen_names: set[str] = set()
 
         for product in products:
             # Simple deduplication based on normalized product name
@@ -223,14 +226,17 @@ async def create_hybrid_catalog_for_tenant(tenant_id: str) -> HybridProductCatal
     This function reads the tenant's signals configuration from the database
     and sets up the hybrid catalog appropriately.
     """
-    config = {
+    from sqlalchemy import select
+
+    config: dict[str, Any] = {
         "database": {},  # Use defaults
         "signals_discovery": {},  # Will be populated from tenant config
     }
 
     try:
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = db_session.scalars(stmt).first()
             if tenant and tenant.signals_agent_config:
                 # Parse signals configuration from tenant
                 if isinstance(tenant.signals_agent_config, dict):

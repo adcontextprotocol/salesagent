@@ -107,7 +107,7 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                         # Keep empty list on error - don't set to None
 
                 # Convert ORM object to dictionary
-                product_data = {
+                product_data: dict[str, Any] = {
                     "product_id": product_obj.product_id,
                     "name": product_obj.name,
                     "description": product_obj.description,
@@ -150,29 +150,6 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     logger.debug(
                         f"Formats for {product_data.get('product_id')}: {product_data['formats']} (keeping as FormatId objects)"
                     )
-
-                # 4. Convert DECIMAL fields to float for Pydantic validation
-                if product_data.get("min_spend") is not None:
-                    logger.debug(
-                        f"Original min_spend for {product_data.get('product_id')}: {product_data['min_spend']} (type: {type(product_data['min_spend'])})"
-                    )
-                    try:
-                        product_data["min_spend"] = float(product_data["min_spend"])
-                        logger.debug(f"Converted min_spend to float: {product_data['min_spend']}")
-                    except (ValueError, TypeError) as e:
-                        logger.warning(f"Failed to convert min_spend to float: {e}, setting to None")
-                        product_data["min_spend"] = None
-
-                if product_data.get("cpm") is not None:
-                    logger.debug(
-                        f"Original cpm for {product_data.get('product_id')}: {product_data['cpm']} (type: {type(product_data['cpm'])})"
-                    )
-                    try:
-                        product_data["cpm"] = float(product_data["cpm"])
-                        logger.debug(f"Converted cpm to float: {product_data['cpm']}")
-                    except (ValueError, TypeError) as e:
-                        logger.warning(f"Failed to convert cpm to float: {e}, setting to None")
-                        product_data["cpm"] = None
 
                 # Validate against AdCP protocol schema before returning
                 try:

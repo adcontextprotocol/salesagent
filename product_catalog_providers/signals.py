@@ -48,7 +48,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         self.timeout = config.get("timeout", 30)
         self.fallback_to_database = config.get("fallback_to_database", True)
         self.max_signal_products = config.get("max_signal_products", 10)
-        self.client = None
+        self.client: Client[StreamableHttpTransport] | None = None
 
     async def initialize(self) -> None:
         """Initialize the MCP client connection if enabled."""
@@ -62,8 +62,9 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
                 headers[self.auth_header] = self.upstream_token
 
             transport = StreamableHttpTransport(url=self.upstream_url, headers=headers)
-            self.client = Client(transport=transport)
-            await self.client.__aenter__()
+            client = Client(transport=transport)
+            await client.__aenter__()
+            self.client = client
             logger.info(f"Initialized signals discovery connection to {self.upstream_url}")
         except Exception as e:
             logger.error(f"Failed to initialize signals discovery client: {e}")
@@ -146,7 +147,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             raise Exception("Signals discovery client not available")
 
         # Prepare request for signals discovery
-        request_data = {
+        request_data: dict[str, Any] = {
             "brief": brief,
             "tenant_id": tenant_id,
         }
@@ -169,7 +170,10 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             result = await asyncio.wait_for(self.client.call_tool("get_signals", request_data), timeout=self.timeout)
 
             # Return raw signal data (AdCP protocol format)
-            return result.get("signals", [])
+            # CallToolResult is a dict-like object
+            if isinstance(result, dict):
+                return result.get("signals", [])
+            return []
 
         except TimeoutError as err:
             raise Exception(f"Signals discovery timeout after {self.timeout} seconds") from err
@@ -181,7 +185,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         products = []
 
         # Group signals by category for better organization
-        signals_by_category = {}
+        signals_by_category: dict[str, list[dict[str, Any]]] = {}
         for signal in signals:
             category = signal.get("category") or "general"
             if category not in signals_by_category:
@@ -252,6 +256,10 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             description=product_description,
             formats=["display_300x250", "display_728x90", "video_pre_roll"],  # Standard format IDs
             delivery_type="non_guaranteed",  # Signals products are typically programmatic
+            floor_cpm=None,  # Optional field
+            recommended_cpm=None,  # Optional field
+            measurement=None,  # Optional field
+            creative_policy=None,  # Optional field
             is_custom=True,  # These are custom products created from signals
             brief_relevance=f"Generated from {len(signals)} signals in {category} category for: {brief[:100]}...",
             property_tags=["all_inventory"],  # Required per AdCP spec (using property_tags instead of properties)
@@ -262,14 +270,17 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
                     pricing_option_id="cpm_usd_auction",
                     pricing_model="cpm",  # type: ignore[arg-type]  # String literal matches PricingModel enum
                     currency="USD",
+                    rate=float(adjusted_price),  # Required field
                     is_fixed=False,
                     supported=True,  # Required field - signals products are supported
                     price_guidance=PriceGuidance(
                         floor=float(adjusted_price),
+                        p25=float(adjusted_price) * 1.1,  # Required field
                         p50=float(adjusted_price) * 1.2,
                         p75=float(adjusted_price) * 1.5,
                         p90=float(adjusted_price) * 1.8,  # Required field
                     ),
+                    parameters=None,  # Optional field - None for standard CPM
                     min_spend_per_package=100.0,
                     unsupported_reason=None,  # Optional field
                 )
@@ -301,41 +312,39 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
                     # (Similar to database.py approach - only include AdCP spec fields)
                     # Get pricing from pricing_options (preferred) or legacy fields (fallback)
                     pricing_options = get_product_pricing_options(db_product)
-                    first_pricing = pricing_options[0] if pricing_options else {}
 
-                    product_data = {
+                    # Build product_data with proper types
+                    formats_raw = db_product.formats or []
+                    # Handle JSON fields (might be strings in SQLite)
+                    if isinstance(formats_raw, str):
+                        import json
+
+                        try:
+                            formats_raw = json.loads(formats_raw)
+                        except json.JSONDecodeError:
+                            formats_raw = []
+
+                    # Extract format IDs if formats are objects
+                    formats: list[str] = []
+                    if formats_raw:
+                        for fmt in formats_raw:
+                            if isinstance(fmt, dict) and "format_id" in fmt:
+                                formats.append(fmt["format_id"])
+                            elif isinstance(fmt, str):
+                                formats.append(fmt)
+
+                    product_data: dict[str, Any] = {
                         "product_id": db_product.product_id,
                         "name": db_product.name,
                         "description": db_product.description or f"Advertising product: {db_product.name}",
-                        "formats": db_product.formats or [],
-                        "delivery_type": "guaranteed" if first_pricing.get("is_fixed") else "non_guaranteed",
-                        "is_fixed_price": first_pricing.get("is_fixed", False),
-                        "cpm": first_pricing.get("rate"),
-                        "min_spend": float(db_product.min_spend) if db_product.min_spend else None,
+                        "formats": formats,
+                        "delivery_type": db_product.delivery_type or "non_guaranteed",
                         "is_custom": getattr(db_product, "is_custom", False),
                         "property_tags": getattr(
                             db_product, "property_tags", ["all_inventory"]
                         ),  # Required per AdCP spec
+                        "pricing_options": pricing_options,  # Use pricing_options structure
                     }
-
-                    # Handle JSON fields (might be strings in SQLite)
-                    if isinstance(product_data["formats"], str):
-                        import json
-
-                        try:
-                            product_data["formats"] = json.loads(product_data["formats"])
-                        except json.JSONDecodeError:
-                            product_data["formats"] = []
-
-                    # Extract format IDs if formats are objects
-                    if product_data["formats"]:
-                        format_ids = []
-                        for fmt in product_data["formats"]:
-                            if isinstance(fmt, dict) and "format_id" in fmt:
-                                format_ids.append(fmt["format_id"])
-                            elif isinstance(fmt, str):
-                                format_ids.append(fmt)
-                        product_data["formats"] = format_ids
 
                     product = Product(**product_data)
                     products.append(product)

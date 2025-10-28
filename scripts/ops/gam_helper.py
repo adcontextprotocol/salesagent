@@ -138,6 +138,8 @@ def get_gam_network_info(tenant_id: str) -> dict:
     """
     try:
         client = get_ad_manager_client_for_tenant(tenant_id)
+        if not client:
+            raise ValueError(f"No GAM client available for tenant {tenant_id}")
         network_service = client.GetService("NetworkService")
         network = network_service.getCurrentNetwork()
 
@@ -214,7 +216,7 @@ def get_gam_config_for_tenant(tenant_id: str) -> dict | None:
         return {
             "network_code": adapter_config.gam_network_code,
             "has_refresh_token": bool(adapter_config.gam_refresh_token),
-            "company_id": adapter_config.gam_company_id,
+            "company_id": adapter_config.advertiser_id if hasattr(adapter_config, "advertiser_id") else None,
             "trafficker_id": adapter_config.gam_trafficker_id,
             "manual_approval_required": adapter_config.gam_manual_approval_required,
         }

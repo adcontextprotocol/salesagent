@@ -9,7 +9,7 @@ import google.generativeai as genai
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ProductModel
 from src.core.database.product_pricing import get_product_pricing_options
-from src.core.schemas import Product
+from src.core.schemas import PricingOption, Product
 
 from .base import ProductCatalogProvider
 
@@ -85,8 +85,11 @@ class AIProductCatalog(ProductCatalogProvider):
 
     async def _get_all_products(self, tenant_id: str) -> list[Product]:
         """Fetch all products from the database."""
+        from sqlalchemy import select
+
         with get_db_session() as session:
-            product_models = session.query(ProductModel).filter_by(tenant_id=tenant_id).all()
+            stmt = select(ProductModel).filter_by(tenant_id=tenant_id)
+            product_models = session.scalars(stmt).all()
 
             products = []
             for product_model in product_models:
@@ -95,36 +98,35 @@ class AIProductCatalog(ProductCatalogProvider):
                 first_pricing = pricing_options[0] if pricing_options else {}
 
                 # Convert model to Product schema (only include AdCP-compliant fields)
-                product_data = {
-                    "product_id": product_model.product_id,
-                    "name": product_model.name,
-                    "description": product_model.description or f"Advertising product: {product_model.name}",
-                    "formats": product_model.formats,
-                    "delivery_type": "guaranteed" if first_pricing.get("is_fixed") else "non_guaranteed",
-                    "is_fixed_price": first_pricing.get("is_fixed", False),
-                    "cpm": first_pricing.get("rate"),
-                    "min_spend": float(product_model.min_spend) if product_model.min_spend else None,
-                    "is_custom": product_model.is_custom if product_model.is_custom is not None else False,
-                }
-
+                # Build product_data with proper types
+                formats_raw = product_model.formats
                 # Handle JSONB fields - PostgreSQL returns them as Python objects, SQLite as strings
-                if isinstance(product_data["formats"], str):
+                if isinstance(formats_raw, str):
                     import json
 
                     try:
-                        product_data["formats"] = json.loads(product_data["formats"])
+                        formats_raw = json.loads(formats_raw)
                     except json.JSONDecodeError:
-                        product_data["formats"] = []
+                        formats_raw = []
 
                 # Extract format IDs if formats are objects
-                if product_data["formats"]:
-                    format_ids = []
-                    for fmt in product_data["formats"]:
+                formats: list[str] = []
+                if formats_raw:
+                    for fmt in formats_raw:
                         if isinstance(fmt, dict) and "format_id" in fmt:
-                            format_ids.append(fmt["format_id"])
+                            formats.append(fmt["format_id"])
                         elif isinstance(fmt, str):
-                            format_ids.append(fmt)
-                    product_data["formats"] = format_ids
+                            formats.append(fmt)
+
+                product_data: dict[str, Any] = {
+                    "product_id": product_model.product_id,
+                    "name": product_model.name,
+                    "description": product_model.description or f"Advertising product: {product_model.name}",
+                    "formats": formats,
+                    "delivery_type": product_model.delivery_type or "non_guaranteed",
+                    "is_custom": product_model.is_custom if product_model.is_custom is not None else False,
+                    "pricing_options": pricing_options,  # Use pricing_options structure
+                }
 
                 # Create Product instance
                 product = Product(**product_data)
@@ -144,17 +146,22 @@ class AIProductCatalog(ProductCatalogProvider):
         # Prepare products data for AI analysis
         products_data = []
         for product in products:
-            # Product schema objects already have pricing fields populated from pricing_options
+            # Product schema objects already have pricing_options structure
+            # Extract pricing info from first option for AI analysis
+            first_pricing: PricingOption | None = product.pricing_options[0] if product.pricing_options else None
             product_info = {
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
                 "formats": product.formats,
                 "delivery_type": product.delivery_type,
-                "is_fixed_price": product.is_fixed_price,
-                "cpm": product.cpm,
-                "min_spend": product.min_spend,
                 "is_custom": product.is_custom,
+                "pricing": {
+                    "model": first_pricing.pricing_model if first_pricing else None,
+                    "rate": first_pricing.rate if first_pricing else None,
+                    "is_fixed": first_pricing.is_fixed if first_pricing else None,
+                    "min_spend": first_pricing.min_spend_per_package if first_pricing else None,
+                },
             }
             products_data.append(product_info)
 
@@ -234,12 +241,9 @@ Return ONLY the JSON response, no additional text.
             for product_id in ranked_product_ids:
                 for product in products:
                     if product.product_id == product_id:
-                        # Add AI reasoning if requested
-                        if self.include_reasoning:
-                            for analysis in ai_result.get("products", []):
-                                if analysis["product_id"] == product_id:
-                                    product.ai_reasoning = analysis.get("reasoning", "")
-                                    product.ai_score = analysis.get("relevance_score", 0)
+                        # Note: ai_reasoning and ai_score are internal fields
+                        # They're not part of Product schema (AdCP spec)
+                        # We just add the product as-is for now
                         ranked_products.append(product)
                         break
 
