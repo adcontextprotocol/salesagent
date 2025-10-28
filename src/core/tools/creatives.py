@@ -1450,7 +1450,7 @@ def _sync_creatives_impl(
     # Log activity
     # Activity logging imported at module level
     if context is not None:
-        log_tool_activity(context, "sync_creatives", start_time)  # type: ignore[arg-type]
+        log_tool_activity(context, "sync_creatives", start_time)
 
     # Build message
     message = f"Synced {created_count + updated_count} creatives"
@@ -1824,7 +1824,7 @@ def _list_creatives_impl(
     # Log activity
     # Activity logging imported at module level
     if context is not None:
-        log_tool_activity(context, "list_creatives", start_time)  # type: ignore[arg-type]
+        log_tool_activity(context, "list_creatives", start_time)
 
     message = f"Found {len(creatives)} creatives"
     if total_count > len(creatives):

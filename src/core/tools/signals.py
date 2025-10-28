@@ -23,10 +23,14 @@ from src.core.schemas import GetSignalsRequest, Signal, SignalDeployment, Signal
 from src.core.testing_hooks import get_testing_context
 
 
-def _get_principal_id_from_context(context: Context | None) -> str | None:
-    """Extract principal ID from the FastMCP context."""
+def _get_principal_id_from_context(context: Context | ToolContext | None) -> str | None:
+    """Extract principal ID from the FastMCP Context or ToolContext."""
     if not context:
         return None
+    # ToolContext has principal_id directly
+    if isinstance(context, ToolContext):
+        return context.principal_id
+    # FastMCP Context needs extraction
     principal_id, _ = get_principal_from_context(context, require_valid_token=False)
     return principal_id
 
@@ -41,7 +45,7 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolConte
     Returns:
         GetSignalsResponse with matching signals
     """
-    _get_principal_id_from_context(context)  # type: ignore[arg-type,union-attr]
+    _get_principal_id_from_context(context)
 
     # Get tenant information
     tenant = get_current_tenant()
@@ -274,7 +278,7 @@ async def _activate_signal_impl(
     start_time = time.time()
 
     # Authentication required for signal activation
-    principal_id = _get_principal_id_from_context(context)  # type: ignore[arg-type]
+    principal_id = _get_principal_id_from_context(context)
 
     # Get tenant information
     tenant = get_current_tenant()
@@ -289,7 +293,7 @@ async def _activate_signal_impl(
     # Apply testing hooks
     if not context:
         raise ToolError("Context required for signal activation")
-    testing_ctx = get_testing_context(context)  # type: ignore[arg-type]
+    testing_ctx = get_testing_context(context)
     campaign_info = {"endpoint": "activate_signal", "signal_id": signal_id}
     # Note: apply_testing_hooks modifies response data dict, not called here as no response yet
 

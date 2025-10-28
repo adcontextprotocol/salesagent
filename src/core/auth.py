@@ -5,9 +5,12 @@ by both MCP and A2A protocols.
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastmcp.server.context import Context
+
+if TYPE_CHECKING:
+    from src.core.tool_context import ToolContext
 from fastmcp.server.dependencies import get_http_headers
 from rich.console import Console
 from sqlalchemy import select
@@ -149,16 +152,15 @@ def get_push_notification_config_from_headers(headers: dict[str, str] | None) ->
 
 
 def get_principal_from_context(
-    context: Context | None, require_valid_token: bool = True
+    context: Context | "ToolContext" | None, require_valid_token: bool = True
 ) -> tuple[str | None, dict | None]:
-    """Extract principal ID and tenant context from the FastMCP context using x-adcp-auth header.
+    """Extract principal ID and tenant context from the FastMCP context or ToolContext.
 
-    Uses the current recommended FastMCP pattern with get_http_headers().
-    Falls back to context.meta["headers"] for sync tools where get_http_headers() may return empty dict.
-    Requires FastMCP >= 2.11.0.
+    For FastMCP Context: Uses get_http_headers() to extract from x-adcp-auth header.
+    For ToolContext: Directly returns principal_id and tenant_id from the context object.
 
     Args:
-        context: FastMCP context object
+        context: FastMCP Context, ToolContext, or None
         require_valid_token: If True (default), raises error for invalid tokens.
                            If False, treats invalid tokens like missing tokens (for discovery endpoints).
 
@@ -169,6 +171,13 @@ def get_principal_from_context(
     don't reliably propagate to async callers (Python ContextVar + async/sync boundary issue).
     The caller MUST call set_current_tenant(tenant_context) in their own context.
     """
+    # Import here to avoid circular dependency
+    from src.core.tool_context import ToolContext
+
+    # Handle ToolContext directly (already has principal_id and tenant_id)
+    if isinstance(context, ToolContext):
+        return (context.principal_id, {"tenant_id": context.tenant_id})
+
     # Get headers using the recommended FastMCP approach
     # NOTE: get_http_headers() works via context vars, so it can work even when context=None
     # This allows unauthenticated public discovery endpoints to detect tenant from headers

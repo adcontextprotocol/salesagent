@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 
     from src.core.schemas import Creative, Package
     from src.core.testing_context import TestingContext
+    from src.core.tool_context import ToolContext
 
 from src.core.schemas import Creative
 
@@ -183,7 +184,7 @@ def _detect_snippet_type(snippet: str) -> str:
 
 def process_and_upload_package_creatives(
     packages: list["Package"],
-    context: "Context",
+    context: "Context | ToolContext",
     testing_ctx: "TestingContext | None" = None,
 ) -> tuple[list["Package"], dict[str, list[str]]]:
     """Upload creatives from package.creatives arrays and return updated packages.

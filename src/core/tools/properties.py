@@ -91,7 +91,7 @@ def _list_authorized_properties_impl(
 
     # Activity logging imported at module level
     if context is not None:
-        log_tool_activity(context, "list_authorized_properties", start_time)  # type: ignore[arg-type]
+        log_tool_activity(context, "list_authorized_properties", start_time)
 
     try:
         with get_db_session() as session:
@@ -289,7 +289,10 @@ def list_authorized_properties(
             logger.error(f"🔍 context type={type(context)}")
 
             # Access raw Starlette request headers via context.request_context.request
-            request = context.request_context.request  # type: ignore[union-attr]
+            # ToolContext doesn't have request_context (A2A path doesn't use Starlette)
+            request = None
+            if isinstance(context, Context) and hasattr(context, "request_context"):
+                request = context.request_context.request
             logger.error(f"🔍 request type={type(request) if request else None}")
 
             if request and hasattr(request, "headers"):

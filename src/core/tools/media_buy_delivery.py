@@ -51,7 +51,7 @@ def _get_media_buy_delivery_impl(
         raise ToolError("Context is required")
 
     # Extract testing context for time simulation and event jumping
-    testing_ctx = get_testing_context(context)  # type: ignore[arg-type]
+    testing_ctx = get_testing_context(context)
 
     principal_id = get_principal_id_from_context(context)
     if not principal_id:

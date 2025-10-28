@@ -968,7 +968,7 @@ async def _create_media_buy_impl(
     if context is None:
         raise ToolError("Context is required")
 
-    testing_ctx = get_testing_context(context)  # type: ignore[arg-type]
+    testing_ctx = get_testing_context(context)
 
     # Authentication and tenant setup
     principal_id = get_principal_id_from_context(context)
@@ -1422,7 +1422,7 @@ async def _create_media_buy_impl(
                 logger.info("[INLINE_CREATIVE_DEBUG] Calling process_and_upload_package_creatives")
                 updated_packages, uploaded_ids = process_and_upload_package_creatives(
                     packages=req.packages,
-                    context=context,  # type: ignore[arg-type]
+                    context=context,
                     testing_ctx=testing_ctx,
                 )
                 # Replace packages with updated versions (functional approach)
@@ -2608,7 +2608,7 @@ async def _create_media_buy_impl(
         # Log activity
         # Activity logging imported at module level
 
-        log_tool_activity(context, "create_media_buy", request_start_time)  # type: ignore[arg-type]
+        log_tool_activity(context, "create_media_buy", request_start_time)
 
         # Also log specific media buy activity
         try:

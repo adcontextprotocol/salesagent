@@ -52,7 +52,7 @@ def _update_performance_index_impl(
     if context is None:
         raise ValueError("Context is required for update_performance_index")
 
-    _verify_principal(req.media_buy_id, context)  # type: ignore[arg-type]
+    _verify_principal(req.media_buy_id, context)
     principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
     if principal_id is None:
         raise ToolError("Principal ID not found in context - authentication required")

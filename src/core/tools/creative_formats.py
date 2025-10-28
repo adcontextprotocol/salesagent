@@ -24,7 +24,7 @@ from src.core.validation_helpers import format_validation_error
 
 
 def _list_creative_formats_impl(
-    req: ListCreativeFormatsRequest | None, context: Context | None
+    req: ListCreativeFormatsRequest | None, context: Context | ToolContext | None
 ) -> ListCreativeFormatsResponse:
     """List all available creative formats (AdCP spec endpoint).
 
@@ -170,7 +170,7 @@ def list_creative_formats(
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creative_formats request")) from e
 
-    response = _list_creative_formats_impl(req, context)  # type: ignore[arg-type]
+    response = _list_creative_formats_impl(req, context)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
@@ -188,4 +188,4 @@ def list_creative_formats_raw(
     Returns:
         ListCreativeFormatsResponse with all available formats
     """
-    return _list_creative_formats_impl(req, context)  # type: ignore[arg-type]
+    return _list_creative_formats_impl(req, context)

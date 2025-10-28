@@ -36,14 +36,14 @@ from src.core.testing_hooks import get_testing_context
 from src.core.validation_helpers import format_validation_error
 
 
-def _verify_principal(media_buy_id: str, context: Context):
+def _verify_principal(media_buy_id: str, context: Context | ToolContext):
     """Verify that the principal from context owns the media buy.
 
     Checks database for media buy ownership, not in-memory dictionary.
 
     Args:
         media_buy_id: Media buy ID to verify
-        context: FastMCP context with principal info
+        context: FastMCP Context or ToolContext with principal info
 
     Raises:
         ValueError: Media buy not found
@@ -52,7 +52,11 @@ def _verify_principal(media_buy_id: str, context: Context):
 
     from src.core.database.models import MediaBuy as MediaBuyModel
 
-    principal_id = get_principal_id_from_context(context)
+    # Get principal_id from context
+    if isinstance(context, ToolContext):
+        principal_id: str | None = context.principal_id
+    else:
+        principal_id = get_principal_id_from_context(context)
     tenant = get_current_tenant()
 
     # Query database for media buy (try media_buy_id first, then buyer_ref)
@@ -186,7 +190,7 @@ def _update_media_buy_impl(
         # TODO: Handle buyer_ref case - for now just raise error
         raise ValueError("media_buy_id is required (buyer_ref lookup not yet implemented)")
 
-    _verify_principal(req.media_buy_id, context)  # type: ignore[arg-type]
+    _verify_principal(req.media_buy_id, context)
     principal_id = get_principal_id_from_context(context)  # Already verified by _verify_principal
 
     # Verify principal_id is not None (get_principal_id_from_context should raise if None)
@@ -231,7 +235,7 @@ def _update_media_buy_impl(
         )
 
     # Extract testing context for dry_run and testing_context parameters
-    testing_ctx = get_testing_context(context)  # type: ignore[arg-type]
+    testing_ctx = get_testing_context(context)
 
     adapter = get_adapter(principal, dry_run=testing_ctx.dry_run, testing_context=testing_ctx)
     today = req.today or date.today()
