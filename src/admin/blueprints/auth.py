@@ -136,17 +136,29 @@ def google_auth():
     # Get redirect URI - must match what's configured in Google OAuth credentials
     # Note: In production with nginx, the path is /admin/auth/google/callback
     # but Flask only knows about /auth/google/callback
+
+    # Debug: Log request context
+    logger.info(f"OAuth initiation - Request URL: {request.url}")
+    logger.info(f"OAuth initiation - Request host: {request.host}")
+    logger.info(f"OAuth initiation - Request scheme: {request.scheme}")
+
     redirect_uri = os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
-    if not redirect_uri:
+    if redirect_uri:
+        logger.info(f"Using GOOGLE_OAUTH_REDIRECT_URI from env: {redirect_uri}")
+    else:
         # Build the URL with /admin prefix for nginx routing
         base_url = url_for("auth.google_callback", _external=True)
+        logger.info(f"Generated base URL: {base_url}")
+
         # If the base URL doesn't already have /admin, prepend it
         if "/admin/" not in base_url:
             redirect_uri = base_url.replace("/auth/google/callback", "/admin/auth/google/callback")
+            logger.info(f"Added /admin prefix, final URI: {redirect_uri}")
         else:
             redirect_uri = base_url
+            logger.info(f"URL already has /admin prefix: {redirect_uri}")
 
-    logger.info(f"OAuth redirect URI: {redirect_uri}")
+    logger.warning(f"========== FINAL OAuth redirect URI: {redirect_uri} ==========")
 
     # Simple OAuth flow - no tenant context preservation needed
     return oauth.google.authorize_redirect(redirect_uri)
