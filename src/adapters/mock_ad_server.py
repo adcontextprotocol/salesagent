@@ -413,11 +413,14 @@ class MockAdServer(AdServerAdapter):
                         pkg_dict["package_id"] = pkg.package_id
                     package_responses.append(pkg_dict)
 
+                # For question-asking scenario, return response without media_buy_id
+                # The media buy hasn't been created yet - we need input first
+                # The workflow_step_id will track this pending operation
                 return CreateMediaBuyResponse(
-                    media_buy_id=f"pending_question_{id(request)}",
+                    media_buy_id=None,  # No media buy yet - pending user input
                     creative_deadline=None,
                     buyer_ref=request.buyer_ref or "unknown",
-                    packages=package_responses,
+                    packages=[],  # No packages yet - operation not complete
                     errors=[],
                 )
 
@@ -524,22 +527,15 @@ class MockAdServer(AdServerAdapter):
         else:
             self.log("   Manual completion required - use complete_task tool")
 
-        # Build package responses with package_ids from input packages
-        # Even for pending responses, we need to return packages with IDs
-        package_responses = []
-        for pkg in packages:
-            pkg_dict = pkg.model_dump()
-            # Ensure package_id is present
-            if "package_id" not in pkg_dict or not pkg_dict["package_id"]:
-                pkg_dict["package_id"] = pkg.package_id
-            package_responses.append(pkg_dict)
-
-        # Return pending response
+        # For async mode, return response without media_buy_id or packages
+        # The media buy hasn't been created yet - it's being processed asynchronously
+        # The workflow_step_id (from step['step_id']) will track this pending operation
+        # Client can poll the step or wait for webhook notification when complete
         return CreateMediaBuyResponse(
             buyer_ref=request.buyer_ref or "unknown",
-            media_buy_id=f"pending_{step['step_id']}",
+            media_buy_id=None,  # No media buy yet - async processing in progress
             creative_deadline=None,
-            packages=package_responses,
+            packages=[],  # No packages yet - operation not complete
             errors=[],
         )
 

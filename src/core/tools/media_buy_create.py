@@ -1354,42 +1354,45 @@ async def _create_media_buy_impl(
         # Note: In-memory media_buys dict removed after refactor
         # Media buys are persisted in database, not in-memory state
 
-        # Determine initial status based on flight dates
-        now = datetime.now(UTC)
-        if now < start_time:
-            media_buy_status = "ready"  # Scheduled to go live at flight start date
-        elif now > end_time:
-            media_buy_status = "completed"
-        else:
-            media_buy_status = "active"
+        # For pending/async responses, skip database persistence
+        # The media buy doesn't exist yet - it's being processed
+        if not is_pending and response.media_buy_id:
+            # Determine initial status based on flight dates
+            now = datetime.now(UTC)
+            if now < start_time:
+                media_buy_status = "ready"  # Scheduled to go live at flight start date
+            elif now > end_time:
+                media_buy_status = "completed"
+            else:
+                media_buy_status = "active"
 
-        # Store the media buy in database (context_id is NULL for synchronous operations)
-        tenant = get_current_tenant()
-        with get_db_session() as session:
-            new_media_buy = MediaBuy(
-                media_buy_id=response.media_buy_id,
-                tenant_id=tenant["tenant_id"],
-                principal_id=principal_id,
-                buyer_ref=req.buyer_ref,  # AdCP v2.4 buyer reference
-                order_name=req.po_number or f"Order-{response.media_buy_id}",
-                advertiser_name=principal.name,
-                campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
-                kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
-                budget=total_budget,  # Extract total budget
-                currency=request_currency,  # AdCP v2.4 currency field (resolved above)
-                start_date=start_time.date(),  # Legacy field for compatibility
-                end_date=end_time.date(),  # Legacy field for compatibility
-                start_time=start_time,  # AdCP v2.4 datetime scheduling (resolved from 'asap' if needed)
-                end_time=end_time,  # AdCP v2.4 datetime scheduling
-                status=media_buy_status,
-                raw_request=req.model_dump(mode="json"),
-            )
-            session.add(new_media_buy)
-            session.commit()
+            # Store the media buy in database (context_id is NULL for synchronous operations)
+            tenant = get_current_tenant()
+            with get_db_session() as session:
+                new_media_buy = MediaBuy(
+                    media_buy_id=response.media_buy_id,
+                    tenant_id=tenant["tenant_id"],
+                    principal_id=principal_id,
+                    buyer_ref=req.buyer_ref,  # AdCP v2.4 buyer reference
+                    order_name=req.po_number or f"Order-{response.media_buy_id}",
+                    advertiser_name=principal.name,
+                    campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
+                    kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
+                    budget=total_budget,  # Extract total budget
+                    currency=request_currency,  # AdCP v2.4 currency field (resolved above)
+                    start_date=start_time.date(),  # Legacy field for compatibility
+                    end_date=end_time.date(),  # Legacy field for compatibility
+                    start_time=start_time,  # AdCP v2.4 datetime scheduling (resolved from 'asap' if needed)
+                    end_time=end_time,  # AdCP v2.4 datetime scheduling
+                    status=media_buy_status,
+                    raw_request=req.model_dump(mode="json"),
+                )
+                session.add(new_media_buy)
+                session.commit()
 
-        # Populate media_packages table for structured querying
+        # Populate media_packages table for structured querying (only for completed responses)
         # This enables creative_assignments to work properly
-        if req.packages or (response.packages and len(response.packages) > 0):
+        if not is_pending and (req.packages or (response.packages and len(response.packages) > 0)):
             with get_db_session() as session:
                 from src.core.database.models import MediaPackage as DBMediaPackage
 
@@ -1579,9 +1582,14 @@ async def _create_media_buy_impl(
                     detail="Creative submitted to ad server",
                 )
 
-        # Check if this is a pending/async response (media_buy_id starts with "pending_")
+        # Check if this is a pending/async response
+        # Pending responses have either:
+        # - media_buy_id = None (operation not started/incomplete)
+        # - media_buy_id starting with "pending_" (legacy format, being phased out)
         # For pending responses, use the adapter's packages as-is without processing
-        is_pending = response.media_buy_id and response.media_buy_id.startswith("pending_")
+        is_pending = response.media_buy_id is None or (
+            response.media_buy_id and response.media_buy_id.startswith("pending_")
+        )
 
         # Build packages list for response (AdCP v2.4 format)
         # Use packages from adapter response (has package_ids) merged with request package fields
