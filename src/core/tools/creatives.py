@@ -1275,6 +1275,193 @@ def _sync_creatives_impl(
 
             session.commit()
 
+    # Upload auto-approved creatives to ad server
+    # This happens AFTER assignments are created, so we can group by media_buy_id
+    if approval_mode == "auto-approve" and not dry_run:
+        logger.info(f"[sync_creatives] Auto-approve mode: uploading {len(synced_creatives)} approved creatives to ad server")
+
+        # Group creatives by media_buy_id from assignments
+        creatives_by_media_buy: dict[str, list[dict]] = {}
+
+        for creative_dict in synced_creatives:
+            creative_id = creative_dict.get("creative_id")
+            if not creative_id:
+                continue
+
+            # Find all media buy IDs this creative is assigned to
+            with get_db_session() as session:
+                from src.core.database.models import CreativeAssignment as DBAssignment
+                from src.core.database.models import Creative as DBCreative
+
+                # Get creative from DB with latest data
+                stmt_creative = select(DBCreative).filter_by(
+                    tenant_id=tenant["tenant_id"],
+                    creative_id=creative_id,
+                    status="approved"  # Only upload approved creatives
+                )
+                db_creative = session.scalars(stmt_creative).first()
+
+                if not db_creative:
+                    logger.warning(f"[sync_creatives] Creative {creative_id} not found or not approved, skipping adapter upload")
+                    continue
+
+                # Get assignments for this creative
+                stmt_assignments = select(DBAssignment).filter_by(
+                    tenant_id=tenant["tenant_id"],
+                    creative_id=creative_id
+                )
+                assignments = session.scalars(stmt_assignments).all()
+
+                if not assignments:
+                    logger.info(f"[sync_creatives] Creative {creative_id} has no assignments yet, skipping adapter upload for now")
+                    continue
+
+                # Group by media_buy_id
+                for assignment in assignments:
+                    media_buy_id = assignment.media_buy_id
+
+                    if media_buy_id not in creatives_by_media_buy:
+                        creatives_by_media_buy[media_buy_id] = []
+
+                    # Build asset dict for adapter (following add_creative_assets signature)
+                    asset_dict = {
+                        "creative_id": db_creative.creative_id,
+                        "id": db_creative.creative_id,  # Some adapters use 'id'
+                        "name": db_creative.name,
+                        "format": db_creative.format,
+                        "package_assignments": [assignment.package_id],  # Package this creative is assigned to
+                    }
+
+                    # Add media data from creative.data field
+                    if db_creative.data:
+                        if db_creative.data.get("url"):
+                            asset_dict["media_url"] = db_creative.data["url"]
+                        if db_creative.data.get("width"):
+                            asset_dict["width"] = db_creative.data["width"]
+                        if db_creative.data.get("height"):
+                            asset_dict["height"] = db_creative.data["height"]
+                        if db_creative.data.get("duration"):
+                            asset_dict["duration"] = db_creative.data["duration"]
+                        if db_creative.data.get("click_url"):
+                            asset_dict["click_url"] = db_creative.data["click_url"]
+
+                    creatives_by_media_buy[media_buy_id].append(asset_dict)
+
+        # Upload creatives to adapter for each media buy
+        if creatives_by_media_buy:
+            from src.adapters import get_adapter
+            from src.core.database.models import Tenant as DBTenant, Principal as DBPrincipal, AdapterConfig
+
+            with get_db_session() as session:
+                # Get tenant and adapter config
+                stmt_tenant = select(DBTenant).filter_by(tenant_id=tenant["tenant_id"])
+                db_tenant = session.scalars(stmt_tenant).first()
+
+                stmt_principal = select(DBPrincipal).filter_by(
+                    tenant_id=tenant["tenant_id"],
+                    principal_id=principal_id
+                )
+                db_principal = session.scalars(stmt_principal).first()
+
+                stmt_adapter = select(AdapterConfig).filter_by(tenant_id=tenant["tenant_id"])
+                adapter_config = session.scalars(stmt_adapter).first()
+
+                if not db_tenant or not db_principal or not adapter_config:
+                    logger.error(f"[sync_creatives] Missing tenant/principal/adapter config, cannot upload creatives")
+                else:
+                    # Get adapter instance
+                    adapter_type = adapter_config.adapter_type or "mock"
+                    adapter_config_dict = {
+                        "tenant_id": tenant["tenant_id"],
+                        "network_code": adapter_config.gam_network_code,
+                        "trafficker_id": adapter_config.gam_trafficker_id,
+                        "refresh_token": adapter_config.gam_refresh_token,
+                    }
+
+                    try:
+                        adapter = get_adapter(adapter_type, adapter_config_dict, db_principal)
+
+                        # Upload creatives for each media buy
+                        for media_buy_id, assets in creatives_by_media_buy.items():
+                            logger.info(f"[sync_creatives] Uploading {len(assets)} creatives to {adapter_type} adapter for media buy {media_buy_id}")
+
+                            try:
+                                asset_statuses = adapter.add_creative_assets(
+                                    media_buy_id=media_buy_id,
+                                    assets=assets,
+                                    today=datetime.now(UTC)
+                                )
+
+                                # Update creative status in results based on adapter response
+                                for asset_status in asset_statuses:
+                                    creative_id_from_status = asset_status.creative_id or asset_status.asset_id
+
+                                    # Find result for this creative
+                                    for result in results:
+                                        if result.creative_id == creative_id_from_status:
+                                            if asset_status.status == "failed":
+                                                # Update creative status to failed in DB
+                                                stmt_update = select(DBCreative).filter_by(
+                                                    tenant_id=tenant["tenant_id"],
+                                                    creative_id=creative_id_from_status
+                                                )
+                                                creative_to_update = session.scalars(stmt_update).first()
+                                                if creative_to_update:
+                                                    creative_to_update.status = "failed"
+                                                    # Store error message in creative data
+                                                    if not creative_to_update.data:
+                                                        creative_to_update.data = {}
+                                                    creative_to_update.data["upload_error"] = asset_status.message or "Upload failed"
+                                                    from sqlalchemy.orm import attributes
+                                                    attributes.flag_modified(creative_to_update, "data")
+
+                                                # Add error to result
+                                                if not result.errors:
+                                                    result.errors = []
+                                                error_msg = asset_status.message or "Failed to upload to ad server"
+                                                result.errors.append(error_msg)
+                                                logger.error(f"[sync_creatives] Failed to upload creative {creative_id_from_status}: {error_msg}")
+                                            else:
+                                                logger.info(f"[sync_creatives] Successfully uploaded creative {creative_id_from_status} (status: {asset_status.status})")
+                                            break
+
+                                session.commit()
+
+                            except Exception as upload_error:
+                                error_msg = f"Failed to upload creatives to adapter: {str(upload_error)}"
+                                logger.error(f"[sync_creatives] {error_msg}", exc_info=True)
+
+                                # Mark all creatives in this media buy as failed
+                                for asset in assets:
+                                    creative_id = asset.get("creative_id")
+
+                                    # Update creative status in DB
+                                    stmt_update = select(DBCreative).filter_by(
+                                        tenant_id=tenant["tenant_id"],
+                                        creative_id=creative_id
+                                    )
+                                    creative_to_update = session.scalars(stmt_update).first()
+                                    if creative_to_update:
+                                        creative_to_update.status = "failed"
+                                        if not creative_to_update.data:
+                                            creative_to_update.data = {}
+                                        creative_to_update.data["upload_error"] = error_msg
+                                        from sqlalchemy.orm import attributes
+                                        attributes.flag_modified(creative_to_update, "data")
+
+                                    # Add error to result
+                                    for result in results:
+                                        if result.creative_id == creative_id:
+                                            if not result.errors:
+                                                result.errors = []
+                                            result.errors.append(error_msg)
+                                            break
+
+                                session.commit()
+
+                    except Exception as adapter_error:
+                        logger.error(f"[sync_creatives] Failed to initialize adapter: {str(adapter_error)}", exc_info=True)
+
     # Update creative results with assignment information (per AdCP spec)
     for result in results:
         if result.creative_id in assignments_by_creative:

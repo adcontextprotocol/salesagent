@@ -22,7 +22,9 @@ from src.core.schemas import (
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
     Creative,
+    CreativeAsset,
     CreativeAssignment,
+    CreativeAssetInput,
     CreativePolicy,
     CreativeStatus,
     Error,
@@ -670,6 +672,80 @@ class TestAdCPContract:
         assert (
             len(internal_only_fields) >= 4
         ), f"Expected at least 4 internal-only fields, got {len(internal_only_fields)}"
+
+    def test_creative_asset_adcp_compliance(self):
+        """Test that CreativeAsset model complies with official AdCP creative-asset schema."""
+        # Test creating a CreativeAsset with minimal required fields
+        from src.core.schemas import ImageAsset
+
+        creative_asset_min = CreativeAsset(
+            creative_id="asset_min_123",
+            name="Minimal Creative Asset",
+            format_id=FormatId(agent_url="https://creatives.adcontextprotocol.org", id="display_300x250"),
+            assets={"main": ImageAsset(url="https://example.com/image.jpg")},
+        )
+
+        # Verify required fields
+        adcp_response = creative_asset_min.model_dump()
+        assert adcp_response["creative_id"] == "asset_min_123"
+        assert adcp_response["name"] == "Minimal Creative Asset"
+        assert adcp_response["format_id"]["id"] == "display_300x250"
+        assert "main" in adcp_response["assets"]
+        assert "inputs" not in adcp_response  # Optional, should be excluded if None
+        assert "tags" not in adcp_response
+        assert "approved" not in adcp_response
+
+        # Test with all optional fields
+        creative_asset_full = CreativeAsset(
+            creative_id="asset_full_456",
+            name="Full Creative Asset",
+            format_id=FormatId(agent_url="https://creatives.adcontextprotocol.org", id="video_1920x1080"),
+            assets={
+                "main_video": {"url": "https://example.com/video.mp4", "duration_ms": 30000},
+                "thumbnail": {"url": "https://example.com/thumb.jpg"},
+            },
+            inputs=[
+                CreativeAssetInput(name="Variant A", macros={"color": "blue"}),
+                CreativeAssetInput(name="Variant B", context_description="Premium variant"),
+            ],
+            tags=["video", "hd", "premium"],
+            approved=True,
+        )
+
+        adcp_response_full = creative_asset_full.model_dump()
+        assert adcp_response_full["creative_id"] == "asset_full_456"
+        assert len(adcp_response_full["inputs"]) == 2
+        assert adcp_response_full["tags"] == ["video", "hd", "premium"]
+        assert adcp_response_full["approved"] is True
+
+        # Verify field names match spec (format_id, not format)
+        assert "format_id" in adcp_response_full
+        assert "format" not in adcp_response_full  # Should use format_id per spec
+
+        # Verify spec compliance - no extra fields
+        spec_fields = {"creative_id", "name", "format_id", "assets", "inputs", "tags", "approved"}
+        response_fields = set(adcp_response_full.keys())
+        assert response_fields.issubset(spec_fields), f"Extra fields in response: {response_fields - spec_fields}"
+
+    def test_creative_asset_input_adcp_compliance(self):
+        """Test that CreativeAssetInput model complies with AdCP spec."""
+        # Minimal input (only name required)
+        input_min = CreativeAssetInput(name="Minimal Input")
+        data_min = input_min.model_dump()
+        assert data_min["name"] == "Minimal Input"
+        assert "macros" not in data_min
+        assert "context_description" not in data_min
+
+        # Full input
+        input_full = CreativeAssetInput(
+            name="Full Input",
+            macros={"season": "summer", "region": "north"},
+            context_description="Summer campaign targeting northern regions",
+        )
+        data_full = input_full.model_dump()
+        assert data_full["name"] == "Full Input"
+        assert data_full["macros"]["season"] == "summer"
+        assert "Summer campaign" in data_full["context_description"]
 
     def test_signal_adcp_compliance(self):
         """Test that Signal model complies with AdCP get-signals-response schema."""

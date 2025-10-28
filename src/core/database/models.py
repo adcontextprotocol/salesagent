@@ -329,22 +329,58 @@ class User(Base):
 
 
 class Creative(Base):
-    """Creative database model matching the actual creatives table schema."""
+    """Creative database model matching the actual creatives table schema.
+
+    Fully AdCP v1 creative-asset spec compliant with:
+    - FormatId structure (agent_url + id) per AdCP v2.4+
+    - Assets object keyed by asset_role per AdCP spec
+    - Inputs array for generative format preview contexts
+    - Tags array for user-defined organization
+    - Approved flag for generative creative workflow
+    """
 
     __tablename__ = "creatives"
 
+    # Primary identification
     creative_id: Mapped[str] = mapped_column(String(100), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(
         String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
     )
     principal_id: Mapped[str] = mapped_column(String(100), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    agent_url: Mapped[str] = mapped_column(String(500), nullable=False)
-    format: Mapped[str] = mapped_column(String(100), nullable=False)
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
 
-    # Data field stores creative content and metadata as JSON
-    data: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    # AdCP v2.4+ FormatId structure (agent_url + id)
+    agent_url: Mapped[str] = mapped_column(String(500), nullable=False,
+                                           comment="Creative agent URL (FormatId.agent_url)")
+    format: Mapped[str] = mapped_column(String(100), nullable=False,
+                                        comment="Format ID (FormatId.id) - DEPRECATED: use format_id_id")
+    format_id_agent_url: Mapped[str | None] = mapped_column(String(500), nullable=True,
+                                                             comment="Agent URL component of FormatId")
+    format_id_id: Mapped[str | None] = mapped_column(String(100), nullable=True,
+                                                      comment="Format ID component of FormatId")
+
+    # AdCP creative-asset required/optional fields
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
+    assets: Mapped[dict | None] = mapped_column(
+        JSONType, nullable=True,
+        comment="Assets keyed by asset_role per AdCP spec (e.g., {'main_image': {...}, 'logo': {...}})"
+    )
+    inputs: Mapped[list | None] = mapped_column(
+        JSONType, nullable=True,
+        comment="Preview contexts for generative formats per AdCP spec"
+    )
+    tags: Mapped[list | None] = mapped_column(
+        JSONType, nullable=True,
+        comment="User-defined tags array per AdCP spec"
+    )
+    approved: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True,
+        comment="Approval flag for generative creatives per AdCP spec"
+    )
+
+    # Legacy data field (preserved for backward compatibility)
+    data: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict,
+                                       comment="Legacy creative content storage")
 
     # Relationships and metadata
     group_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -366,7 +402,13 @@ class Creative(Base):
         Index("idx_creatives_tenant", "tenant_id"),
         Index("idx_creatives_principal", "tenant_id", "principal_id"),
         Index("idx_creatives_status", "status"),
-        Index("idx_creatives_format_namespace", "agent_url", "format"),  # AdCP v2.4 format namespacing
+        Index("idx_creatives_format_namespace", "agent_url", "format"),  # AdCP v2.4 format namespacing (legacy)
+        Index("idx_creatives_format_agent_url", "format_id_agent_url"),  # New AdCP-compliant index
+        Index("idx_creatives_format_id", "format_id_id"),  # New AdCP-compliant index
+        Index("idx_creatives_tags", "tags", postgresql_using="gin",
+              postgresql_where=text("tags IS NOT NULL")),  # GIN index for tag searches
+        Index("idx_creatives_approved", "approved",
+              postgresql_where=text("approved IS NOT NULL")),  # Partial index for workflow queries
     )
 
 
