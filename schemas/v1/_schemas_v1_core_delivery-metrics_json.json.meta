@@ -1,6 +1,7 @@
 {
-  "etag": "W/\"68ff4038-13c2\"",
-  "last-modified": "Mon, 27 Oct 2025 09:49:44 GMT",
-  "downloaded_at": "2025-10-27T05:54:02.764778",
-  "schema_ref": "/schemas/v1/core/delivery-metrics.json"
+  "etag": "W/\"68ffaa97-13c2\"",
+  "last-modified": "Mon, 27 Oct 2025 17:23:35 GMT",
+  "downloaded_at": "2025-10-28T16:16:12.811420",
+  "schema_ref": "/schemas/v1/core/delivery-metrics.json",
+  "content_hash": "5f7fc6ab6a71d49560699c80c225fb6eaae167c82d85f7c88ef9f7d499b750bc"
 }
