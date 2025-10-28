@@ -555,7 +555,9 @@ class MockAdServer(AdServerAdapter):
 
         # Continue with immediate processing
         self.log("✅ SYNC delay completed, proceeding with creation")
-        return self._create_media_buy_immediate(request, packages, start_time, end_time, package_pricing_info=package_pricing_info)
+        return self._create_media_buy_immediate(
+            request, packages, start_time, end_time, package_pricing_info=package_pricing_info
+        )
 
     def _create_media_buy_immediate(
         self,
@@ -649,7 +651,7 @@ class MockAdServer(AdServerAdapter):
         # Per AdCP v2.2.0: budget is at package level
         from src.core.schemas import extract_budget_amount
 
-        total_budget = 0
+        total_budget = 0.0
         for p in packages:
             # First try to get budget from package (AdCP v2.2.0)
             if p.budget:
@@ -665,7 +667,7 @@ class MockAdServer(AdServerAdapter):
                 else:
                     # Fallback to legacy package.cpm
                     rate = p.cpm
-                total_budget += (rate * p.impressions / 1000)
+                total_budget += rate * p.impressions / 1000
 
         # Apply strategy-based bid adjustment
         if self.strategy_context and hasattr(self.strategy_context, "get_bid_adjustment"):

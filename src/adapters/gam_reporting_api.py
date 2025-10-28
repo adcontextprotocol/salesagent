@@ -10,6 +10,7 @@ Provides REST API endpoints for accessing GAM reporting data with:
 import logging
 import re
 from functools import wraps
+from typing import Literal, cast
 
 import pytz
 from flask import Blueprint, jsonify, request, session
@@ -18,7 +19,7 @@ from sqlalchemy import select
 from scripts.ops.gam_helper import get_ad_manager_client_for_tenant
 from src.adapters.gam_reporting_service import GAMReportingService
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Principal, Tenant
+from src.core.database.models import AdapterConfig, Principal, Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +179,10 @@ def get_gam_reporting(tenant_id: str):
 
         # Get the reporting data
         logger.info(f"Getting reporting data for tenant {tenant_id}, date_range={date_range}")
+        # Type narrowing: We validated date_range above
+        date_range_literal = cast(Literal["lifetime", "this_month", "today"], date_range)
         report_data = reporting_service.get_reporting_data(
-            date_range=date_range,
+            date_range=date_range_literal,
             advertiser_id=advertiser_id,
             order_id=order_id,
             line_item_id=line_item_id,
@@ -259,8 +262,10 @@ def get_advertiser_summary(tenant_id: str, advertiser_id: str):
         reporting_service = GAMReportingService(gam_client, network_timezone)
 
         # Get the advertiser summary
+        # Type narrowing: We validated date_range above
+        date_range_literal = cast(Literal["lifetime", "this_month", "today"], date_range)
         summary = reporting_service.get_advertiser_summary(
-            advertiser_id=advertiser_id, date_range=date_range, requested_timezone=timezone
+            advertiser_id=advertiser_id, date_range=date_range_literal, requested_timezone=timezone
         )
 
         return jsonify({"success": True, "data": summary})
@@ -335,11 +340,9 @@ def get_principal_reporting(tenant_id: str, principal_id: str):
         gam_client = get_ad_manager_client_for_tenant(tenant_id)
 
         # Get the network timezone from adapter config
-        from src.core.database.models import AdapterConfig
-
         with get_db_session() as db_session:
-            stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type="google_ad_manager")
-            adapter_config = db_session.scalars(stmt).first()
+            stmt_config = select(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type="google_ad_manager")
+            adapter_config = db_session.scalars(stmt_config).first()
 
         if not adapter_config:
             # Default to America/New_York if no config found
@@ -353,8 +356,10 @@ def get_principal_reporting(tenant_id: str, principal_id: str):
         reporting_service = GAMReportingService(gam_client, network_timezone)
 
         # Get the reporting data
+        # Type narrowing: We validated date_range above
+        date_range_literal = cast(Literal["lifetime", "this_month", "today"], date_range)
         report_data = reporting_service.get_reporting_data(
-            date_range=date_range,
+            date_range=date_range_literal,
             advertiser_id=advertiser_id,
             order_id=order_id,
             line_item_id=line_item_id,
@@ -454,8 +459,10 @@ def get_country_breakdown(tenant_id: str):
         reporting_service = GAMReportingService(gam_client, network_timezone)
 
         # Get the country breakdown
+        # Type narrowing: We validated date_range above
+        date_range_literal = cast(Literal["lifetime", "this_month", "today"], date_range)
         country_data = reporting_service.get_country_breakdown(
-            date_range=date_range,
+            date_range=date_range_literal,
             advertiser_id=advertiser_id,
             order_id=order_id,
             line_item_id=line_item_id,
@@ -541,8 +548,10 @@ def get_ad_unit_breakdown(tenant_id: str):
         reporting_service = GAMReportingService(gam_client, network_timezone)
 
         # Get the ad unit breakdown
+        # Type narrowing: We validated date_range above
+        date_range_literal = cast(Literal["lifetime", "this_month", "today"], date_range)
         ad_unit_data = reporting_service.get_ad_unit_breakdown(
-            date_range=date_range,
+            date_range=date_range_literal,
             advertiser_id=advertiser_id,
             order_id=order_id,
             line_item_id=line_item_id,
@@ -609,11 +618,9 @@ def get_principal_summary(tenant_id: str, principal_id: str):
         gam_client = get_ad_manager_client_for_tenant(tenant_id)
 
         # Get the network timezone from adapter config
-        from src.core.database.models import AdapterConfig
-
         with get_db_session() as db_session:
-            stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type="google_ad_manager")
-            adapter_config = db_session.scalars(stmt).first()
+            stmt_config = select(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type="google_ad_manager")
+            adapter_config = db_session.scalars(stmt_config).first()
 
         if not adapter_config:
             # Default to America/New_York if no config found
@@ -627,8 +634,10 @@ def get_principal_summary(tenant_id: str, principal_id: str):
         reporting_service = GAMReportingService(gam_client, network_timezone)
 
         # Get the advertiser summary
+        # Type narrowing: We validated date_range above
+        date_range_literal = cast(Literal["lifetime", "this_month", "today"], date_range)
         summary = reporting_service.get_advertiser_summary(
-            advertiser_id=advertiser_id, date_range=date_range, requested_timezone=timezone
+            advertiser_id=advertiser_id, date_range=date_range_literal, requested_timezone=timezone
         )
 
         # Add principal info to the response

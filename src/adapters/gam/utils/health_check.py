@@ -40,7 +40,7 @@ class HealthCheckResult:
     message: str
     details: dict[str, Any]
     duration_ms: float
-    timestamp: datetime = None
+    timestamp: datetime | None = None
 
     def __post_init__(self):
         if self.timestamp is None:
@@ -54,7 +54,7 @@ class HealthCheckResult:
             "message": self.message,
             "details": self.details,
             "duration_ms": self.duration_ms,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
         }
 
 
@@ -65,8 +65,8 @@ class GAMHealthChecker:
         self.config = config
         self.dry_run = dry_run
         self.client = None
-        self.last_check_time = None
-        self.last_results = []
+        self.last_check_time: datetime | None = None
+        self.last_results: list[HealthCheckResult] = []
 
     def _init_client(self) -> bool:
         """Initialize GAM client for health checks."""
@@ -112,6 +112,7 @@ class GAMHealthChecker:
                 raise GAMAuthenticationError("Failed to initialize client")
 
             # Try a simple API call to verify auth
+            assert self.client is not None  # Type narrowing for mypy
             network_service = self.client.GetService("NetworkService")
             network = network_service.getCurrentNetwork()
 
@@ -146,6 +147,10 @@ class GAMHealthChecker:
             )
 
         try:
+            if not self.client:
+                raise GAMAuthenticationError("Client not initialized")
+
+            assert self.client is not None  # Type narrowing for mypy
             permissions_ok = True
             missing_permissions = []
 
@@ -273,6 +278,10 @@ class GAMHealthChecker:
             )
 
         try:
+            if not self.client:
+                raise GAMAuthenticationError("Client not initialized")
+
+            assert self.client is not None  # Type narrowing for mypy
             inventory_service = self.client.GetService("InventoryService")
 
             # Check first few ad units
@@ -349,6 +358,10 @@ class GAMHealthChecker:
             )
 
         try:
+            if not self.client:
+                raise GAMAuthenticationError("Client not initialized")
+
+            assert self.client is not None  # Type narrowing for mypy
             # Test key services
             services_to_test = ["OrderService", "LineItemService", "CreativeService", "ReportService"]
 

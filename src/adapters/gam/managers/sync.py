@@ -118,17 +118,20 @@ class GAMSyncManager:
                 )
 
                 # Save inventory to database - this would be delegated to inventory service
+                from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
                 from src.services.gam_inventory_service import GAMInventoryService
 
                 inventory_service = GAMInventoryService(db_session)
 
                 # Get the discovery instance and save to DB
                 discovery = self.inventory_manager._get_discovery()
-                inventory_service._save_inventory_to_db(self.tenant_id, discovery)
+                # Only save real discovery instances to DB, not mock instances
+                if isinstance(discovery, GAMInventoryDiscovery):
+                    inventory_service._save_inventory_to_db(self.tenant_id, discovery)
 
             # Update sync job with results
             sync_job.status = "completed"
-            sync_job.completed_at = datetime.now(UTC)
+            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.summary = json.dumps(summary)
             db_session.commit()
 
@@ -144,7 +147,7 @@ class GAMSyncManager:
 
             # Update sync job with error
             sync_job.status = "failed"
-            sync_job.completed_at = datetime.now(UTC)
+            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.error_message = str(e)
             db_session.commit()
 
@@ -203,7 +206,7 @@ class GAMSyncManager:
 
             # Update sync job with results
             sync_job.status = "completed"
-            sync_job.completed_at = datetime.now(UTC)
+            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.summary = json.dumps(summary)
             db_session.commit()
 
@@ -219,7 +222,7 @@ class GAMSyncManager:
 
             # Update sync job with error
             sync_job.status = "failed"
-            sync_job.completed_at = datetime.now(UTC)
+            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.error_message = str(e)
             db_session.commit()
 
@@ -269,7 +272,7 @@ class GAMSyncManager:
 
             # Update sync job with results
             sync_job.status = "completed"
-            sync_job.completed_at = datetime.now(UTC)
+            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.summary = json.dumps(combined_summary)
             db_session.commit()
 
@@ -285,7 +288,7 @@ class GAMSyncManager:
 
             # Update sync job with error
             sync_job.status = "failed"
-            sync_job.completed_at = datetime.now(UTC)
+            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.error_message = str(e)
             db_session.commit()
 
@@ -333,6 +336,8 @@ class GAMSyncManager:
                 logger.info("[DRY RUN] Simulated selective sync completed")
             else:
                 # Get discovery instance
+                from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
+
                 discovery = self.inventory_manager._get_discovery()
 
                 # Perform selective sync using the discovery's sync_selective method
@@ -346,11 +351,13 @@ class GAMSyncManager:
                 from src.services.gam_inventory_service import GAMInventoryService
 
                 inventory_service = GAMInventoryService(db_session)
-                inventory_service._save_inventory_to_db(self.tenant_id, discovery)
+                # Only save real discovery instances to DB, not mock instances
+                if isinstance(discovery, GAMInventoryDiscovery):
+                    inventory_service._save_inventory_to_db(self.tenant_id, discovery)
 
             # Update sync job with results
             sync_job.status = "completed"
-            sync_job.completed_at = datetime.now(UTC)
+            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.summary = json.dumps(summary)
             db_session.commit()
 
@@ -366,7 +373,7 @@ class GAMSyncManager:
 
             # Update sync job with error
             sync_job.status = "failed"
-            sync_job.completed_at = datetime.now(UTC)
+            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.error_message = str(e)
             db_session.commit()
 
@@ -393,13 +400,13 @@ class GAMSyncManager:
             "tenant_id": sync_job.tenant_id,
             "sync_type": sync_job.sync_type,
             "status": sync_job.status,
-            "started_at": sync_job.started_at.isoformat(),
+            "started_at": sync_job.started_at.isoformat(),  # type: ignore[attr-defined]
             "triggered_by": sync_job.triggered_by,
         }
 
         if sync_job.completed_at:
-            status_info["completed_at"] = sync_job.completed_at.isoformat()
-            status_info["duration_seconds"] = (sync_job.completed_at - sync_job.started_at).total_seconds()
+            status_info["completed_at"] = sync_job.completed_at.isoformat()  # type: ignore[attr-defined]
+            status_info["duration_seconds"] = (sync_job.completed_at - sync_job.started_at).total_seconds()  # type: ignore[operator]
 
         if sync_job.summary:
             status_info["summary"] = json.loads(sync_job.summary)
@@ -448,13 +455,13 @@ class GAMSyncManager:
                 "sync_id": job.sync_id,
                 "sync_type": job.sync_type,
                 "status": job.status,
-                "started_at": job.started_at.isoformat(),
+                "started_at": job.started_at.isoformat(),  # type: ignore[attr-defined]
                 "triggered_by": job.triggered_by,
             }
 
             if job.completed_at:
-                result["completed_at"] = job.completed_at.isoformat()
-                result["duration_seconds"] = (job.completed_at - job.started_at).total_seconds()
+                result["completed_at"] = job.completed_at.isoformat()  # type: ignore[attr-defined]
+                result["duration_seconds"] = (job.completed_at - job.started_at).total_seconds()  # type: ignore[operator]
 
             if job.summary:
                 result["summary"] = json.loads(job.summary)
@@ -528,7 +535,7 @@ class GAMSyncManager:
             return {
                 "sync_id": recent_sync.sync_id,
                 "status": "completed",
-                "completed_at": recent_sync.completed_at.isoformat(),
+                "completed_at": recent_sync.completed_at.isoformat() if recent_sync.completed_at else None,  # type: ignore[attr-defined]
                 "summary": summary,
                 "message": "Recent sync exists",
             }
@@ -609,7 +616,7 @@ class GAMSyncManager:
                 {
                     "sync_id": job.sync_id,
                     "sync_type": job.sync_type,
-                    "started_at": job.started_at.isoformat(),
+                    "started_at": job.started_at.isoformat(),  # type: ignore[attr-defined]
                     "error": job.error_message,
                 }
             )

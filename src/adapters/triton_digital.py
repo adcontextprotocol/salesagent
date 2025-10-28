@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -270,7 +270,7 @@ class TritonDigital(AdServerAdapter):
                     matching_req_package = request.packages[package_idx]
 
                 # Build package response with ALL package data
-                package_dict = {
+                package_dict: dict[str, object] = {
                     "package_id": package.package_id,
                     "product_id": package.product_id,
                     "name": package.name,
@@ -320,14 +320,17 @@ class TritonDigital(AdServerAdapter):
                 if request.packages and idx < len(request.packages):
                     matching_req_package = request.packages[idx]
 
-                package_dict = {
-                    "package_id": package.package_id,
-                    "product_id": package.product_id,
-                    "name": package.name,
-                    "delivery_type": package.delivery_type,
-                    "cpm": package.cpm,
-                    "impressions": package.impressions,
-                }
+                package_dict = cast(
+                    dict[str, object],
+                    {
+                        "package_id": package.package_id,
+                        "product_id": package.product_id,
+                        "name": package.name,
+                        "delivery_type": package.delivery_type,
+                        "cpm": package.cpm,
+                        "impressions": package.impressions,
+                    },
+                )
 
                 # Add buyer_ref from request package if available
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):

@@ -85,7 +85,7 @@ class GAMTargetingManager:
         Returns:
             List of unsupported feature descriptions
         """
-        unsupported = []
+        unsupported: list[str] = []
 
         if not targeting_overlay:
             return unsupported
@@ -131,10 +131,10 @@ class GAMTargetingManager:
         if not targeting_overlay:
             return {}
 
-        gam_targeting = {}
+        gam_targeting: dict[str, Any] = {}
 
         # Geographic targeting
-        geo_targeting = {}
+        geo_targeting: dict[str, Any] = {}
 
         # Build targeted locations - only for supported geo features
         if any(
@@ -318,8 +318,9 @@ class GAMTargetingManager:
 
             if media_type in media_type_map:
                 # Store for line item creation - will be picked up by orders manager
-                gam_targeting["_media_type_environment"] = media_type_map[media_type]
-                logger.info(f"Media type '{media_type}' mapped to GAM environmentType: {media_type_map[media_type]}")
+                environment_type = media_type_map[media_type]
+                gam_targeting["_media_type_environment"] = environment_type
+                logger.info(f"Media type '{media_type}' mapped to GAM environmentType: {environment_type}")
             else:
                 raise ValueError(
                     f"Media type '{media_type}' is not supported in GAM. "

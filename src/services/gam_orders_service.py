@@ -10,7 +10,7 @@ This service:
 
 import logging
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import create_engine, or_, select
 from sqlalchemy.orm import Session, joinedload, scoped_session, sessionmaker
@@ -91,21 +91,21 @@ class GAMOrdersService:
             existing.salesperson_id = order.salesperson_id
             existing.salesperson_name = order.salesperson_name
             existing.status = order.status.value
-            existing.start_date = order.start_date
-            existing.end_date = order.end_date
+            existing.start_date = cast(Any, order.start_date)  # type: ignore[assignment]
+            existing.end_date = cast(Any, order.end_date)  # type: ignore[assignment]
             existing.unlimited_end_date = order.unlimited_end_date
             existing.total_budget = order.total_budget
             existing.currency_code = order.currency_code
             existing.external_order_id = order.external_order_id
             existing.po_number = order.po_number
             existing.notes = order.notes
-            existing.last_modified_date = order.last_modified_date
+            existing.last_modified_date = cast(Any, order.last_modified_date)  # type: ignore[assignment]
             existing.is_programmatic = order.is_programmatic
             existing.applied_labels = order.applied_labels
             existing.effective_applied_labels = order.effective_applied_labels
             existing.custom_field_values = order.custom_field_values
             existing.order_metadata = order.order_metadata
-            existing.last_synced = sync_time
+            existing.last_synced = cast(Any, sync_time)  # type: ignore[assignment]
         else:
             # Create new order
             new_order = GAMOrder(
@@ -151,8 +151,8 @@ class GAMOrdersService:
             existing.status = line_item.status.value
             existing.line_item_type = line_item.line_item_type
             existing.priority = line_item.priority
-            existing.start_date = line_item.start_date
-            existing.end_date = line_item.end_date
+            existing.start_date = cast(Any, line_item.start_date)  # type: ignore[assignment]
+            existing.end_date = cast(Any, line_item.end_date)  # type: ignore[assignment]
             existing.unlimited_end_date = line_item.unlimited_end_date
             existing.auto_extension_days = line_item.auto_extension_days
             existing.cost_type = line_item.cost_type
@@ -192,10 +192,10 @@ class GAMOrdersService:
             existing.third_party_measurement_settings = line_item.third_party_measurement_settings
             existing.video_max_duration = line_item.video_max_duration
             existing.line_item_metadata = line_item.line_item_metadata
-            existing.last_modified_date = line_item.last_modified_date
-            existing.creation_date = line_item.creation_date
+            existing.last_modified_date = cast(Any, line_item.last_modified_date)  # type: ignore[assignment]
+            existing.creation_date = cast(Any, line_item.creation_date)  # type: ignore[assignment]
             existing.external_id = line_item.external_id
-            existing.last_synced = sync_time
+            existing.last_synced = cast(Any, sync_time)  # type: ignore[assignment]
         else:
             # Create new line item
             new_line_item = GAMLineItem(
@@ -347,15 +347,15 @@ class GAMOrdersService:
         Returns:
             Order details with associated line items
         """
-        stmt = select(GAMOrder).filter_by(tenant_id=tenant_id, order_id=order_id)
-        order = self.db.scalars(stmt).first()
+        order_stmt = select(GAMOrder).filter_by(tenant_id=tenant_id, order_id=order_id)
+        order = self.db.scalars(order_stmt).first()
 
         if not order:
             return None
 
         # Get associated line items
-        stmt = select(GAMLineItem).filter_by(tenant_id=tenant_id, order_id=order_id)
-        line_items = self.db.scalars(stmt).all()
+        line_items_stmt = select(GAMLineItem).filter_by(tenant_id=tenant_id, order_id=order_id)
+        line_items: list[GAMLineItem] = list(self.db.scalars(line_items_stmt).all())
 
         result = self._order_to_dict(order)
         result["line_items"] = [self._line_item_to_dict(li) for li in line_items]
@@ -401,19 +401,21 @@ class GAMOrdersService:
             "salesperson_id": order.salesperson_id,
             "salesperson_name": order.salesperson_name,
             "status": order.status,
-            "start_date": order.start_date.isoformat() if order.start_date else None,
-            "end_date": order.end_date.isoformat() if order.end_date else None,
+            "start_date": cast(datetime, order.start_date).isoformat() if order.start_date else None,
+            "end_date": cast(datetime, order.end_date).isoformat() if order.end_date else None,
             "unlimited_end_date": order.unlimited_end_date,
             "total_budget": order.total_budget,
             "currency_code": order.currency_code,
             "external_order_id": order.external_order_id,
             "po_number": order.po_number,
             "notes": order.notes,
-            "last_modified_date": order.last_modified_date.isoformat() if order.last_modified_date else None,
+            "last_modified_date": (
+                cast(datetime, order.last_modified_date).isoformat() if order.last_modified_date else None
+            ),
             "is_programmatic": order.is_programmatic,
             "applied_labels": order.applied_labels,
             "custom_field_values": order.custom_field_values,
-            "last_synced": order.last_synced.isoformat() if order.last_synced else None,
+            "last_synced": cast(datetime, order.last_synced).isoformat() if order.last_synced else None,
             # Add delivery status and metrics
             "delivery_status": delivery_status,
             "delivery_metrics": delivery_metrics,
@@ -459,15 +461,18 @@ class GAMOrdersService:
                         # Convert dates to datetime for comparison if needed
                         import datetime as dt
 
+                        start_date_val = cast(datetime, li.start_date)
+                        end_date_val = cast(datetime, li.end_date)
+
                         start_dt = (
-                            dt.datetime.combine(li.start_date, dt.datetime.min.time(), dt.UTC)
-                            if isinstance(li.start_date, date)
-                            else li.start_date
+                            dt.datetime.combine(start_date_val, dt.datetime.min.time(), dt.UTC)
+                            if isinstance(start_date_val, date) and not isinstance(start_date_val, datetime)
+                            else start_date_val
                         )
                         end_dt = (
-                            dt.datetime.combine(li.end_date, dt.datetime.max.time(), dt.UTC)
-                            if isinstance(li.end_date, date)
-                            else li.end_date
+                            dt.datetime.combine(end_date_val, dt.datetime.max.time(), dt.UTC)
+                            if isinstance(end_date_val, date) and not isinstance(end_date_val, datetime)
+                            else end_date_val
                         )
 
                         if start_dt <= now <= end_dt:
@@ -540,8 +545,12 @@ class GAMOrdersService:
                 if li.start_date and li.end_date:
                     now = datetime.now(UTC).date()
                     # Ensure dates are date objects for comparison
-                    start_date = li.start_date.date() if isinstance(li.start_date, datetime) else li.start_date
-                    end_date = li.end_date.date() if isinstance(li.end_date, datetime) else li.end_date
+                    start_date_val = cast(datetime, li.start_date)
+                    end_date_val = cast(datetime, li.end_date)
+                    start_date = (
+                        start_date_val.date() if isinstance(start_date_val, datetime) else cast(date, start_date_val)
+                    )
+                    end_date = end_date_val.date() if isinstance(end_date_val, datetime) else cast(date, end_date_val)
                     if start_date <= now:
                         days_elapsed = (min(now, end_date) - start_date).days + 1
                         spend = days_elapsed * li.cost_per_unit
@@ -580,8 +589,8 @@ class GAMOrdersService:
             "status": line_item.status,
             "line_item_type": line_item.line_item_type,
             "priority": line_item.priority,
-            "start_date": line_item.start_date.isoformat() if line_item.start_date else None,
-            "end_date": line_item.end_date.isoformat() if line_item.end_date else None,
+            "start_date": cast(datetime, line_item.start_date).isoformat() if line_item.start_date else None,
+            "end_date": cast(datetime, line_item.end_date).isoformat() if line_item.end_date else None,
             "unlimited_end_date": line_item.unlimited_end_date,
             "cost_type": line_item.cost_type,
             "cost_per_unit": line_item.cost_per_unit,
@@ -598,7 +607,9 @@ class GAMOrdersService:
             "delivery_percentage": delivery_percentage,
             "targeting": line_item.targeting,
             "creative_placeholders": line_item.creative_placeholders,
-            "last_modified_date": line_item.last_modified_date.isoformat() if line_item.last_modified_date else None,
-            "creation_date": line_item.creation_date.isoformat() if line_item.creation_date else None,
-            "last_synced": line_item.last_synced.isoformat() if line_item.last_synced else None,
+            "last_modified_date": (
+                cast(datetime, line_item.last_modified_date).isoformat() if line_item.last_modified_date else None
+            ),
+            "creation_date": cast(datetime, line_item.creation_date).isoformat() if line_item.creation_date else None,
+            "last_synced": cast(datetime, line_item.last_synced).isoformat() if line_item.last_synced else None,
         }

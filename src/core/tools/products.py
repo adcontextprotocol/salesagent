@@ -374,7 +374,9 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context 
                         product_format_ids.add(format_id)
                     elif isinstance(format_id, dict):
                         # Dict with 'id' key (from database)
-                        product_format_ids.add(format_id.get("id"))
+                        dict_id = format_id.get("id")
+                        if dict_id is not None:
+                            product_format_ids.add(dict_id)
                     elif hasattr(format_id, "id"):
                         # FormatId object (has .id attribute, not .format_id)
                         product_format_ids.add(format_id.id)
@@ -388,7 +390,9 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context 
                         # FormatId object
                         request_format_ids.add(fmt_id.id)
                     elif isinstance(fmt_id, dict):
-                        request_format_ids.add(fmt_id.get("id"))
+                        dict_id = fmt_id.get("id")
+                        if dict_id is not None:
+                            request_format_ids.add(dict_id)
 
                 if not any(fmt_id in product_format_ids for fmt_id in request_format_ids):
                     continue

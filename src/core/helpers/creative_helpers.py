@@ -275,39 +275,11 @@ def process_and_upload_package_creatives(
                 f"with product_id {product_id}: {uploaded_ids}"
             )
 
-            # Step 2: Upload creatives to ad server (GAM) to get platform_creative_id
-            # This is critical - without platform_creative_id, creatives can't be associated with line items
-            from src.core.helpers.adapter_helpers import get_adapter
-            from src.core.helpers.principal_helpers import get_principal_from_context
-
-            principal = get_principal_from_context(context)
-            adapter = get_adapter(
-                principal, dry_run=testing_ctx.dry_run if testing_ctx else False, testing_context=testing_ctx
-            )
-
-            # Convert Creative schema objects to adapter asset format
-            assets = []
-            for creative in pkg.creatives:
-                try:
-                    asset = _convert_creative_to_adapter_asset(creative, package_assignments=[product_id])
-                    assets.append(asset)
-                except Exception as conv_error:
-                    logger.error(f"Failed to convert creative {creative.creative_id} to adapter format: {conv_error}")
-                    # Continue with other creatives
-                    continue
-
-            # Upload to ad server
-            if assets:
-                logger.info(f"Uploading {len(assets)} creatives to ad server (GAM) for package {product_id}")
-                try:
-                    upload_result = adapter.add_creative_assets(assets)
-                    logger.info(f"Successfully uploaded {len(assets)} creatives to GAM: {upload_result}")
-                except Exception as upload_error:
-                    logger.error(f"Failed to upload creatives to GAM: {upload_error}")
-                    # Don't fail the entire operation - creatives are in database and can be uploaded later
-                    logger.warning(
-                        "Creatives saved to database but not uploaded to GAM yet. They will need manual upload."
-                    )
+            # Note: Ad server upload happens later in media buy creation flow
+            # This function runs BEFORE media_buy_id exists, so we can't call
+            # adapter.add_creative_assets() here (it requires media_buy_id, assets, today).
+            # The creatives are synced to database above and will be uploaded to
+            # the ad server during media buy creation when media_buy_id is available.
 
             # Create updated package with merged creative_ids (immutable)
             existing_ids = pkg.creative_ids or []

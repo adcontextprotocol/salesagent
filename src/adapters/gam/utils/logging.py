@@ -55,11 +55,11 @@ class GAMLogContext:
         self.media_buy_id = media_buy_id
         self.correlation_id = str(uuid.uuid4())
         self.metadata = metadata or {}
-        self.start_time = None
-        self.end_time = None
+        self.start_time: float | None = None
+        self.end_time: float | None = None
         self.success = False
-        self.error = None
-        self.api_calls = []
+        self.error: Exception | None = None
+        self.api_calls: list[dict[str, Any]] = []
 
     def add_api_call(
         self,
@@ -113,7 +113,7 @@ class GAMLogContext:
 
     def _summarize_targeting(self, targeting: dict[str, Any]) -> dict[str, Any]:
         """Summarize targeting for logging."""
-        summary = {}
+        summary: dict[str, Any] = {}
 
         if "geoTargeting" in targeting:
             geo = targeting["geoTargeting"]
@@ -341,13 +341,18 @@ def _send_metrics(context: GAMLogContext):
 
     # In production, this would send to DataDog, CloudWatch, etc.
     # For now, just log periodically
-    if hasattr(_send_metrics, "call_count"):
-        _send_metrics.call_count += 1
-    else:
-        _send_metrics.call_count = 1
+    # Use module-level counter instead of function attribute for type safety
+    global _send_metrics_call_count
+    if "_send_metrics_call_count" not in globals():
+        _send_metrics_call_count = 0
+    _send_metrics_call_count += 1
 
-    if _send_metrics.call_count % 100 == 0:
+    if _send_metrics_call_count % 100 == 0:
         logger.info("GAM metrics summary", extra={"metrics": _metrics.get_metrics()})
+
+
+# Module-level counter for metrics
+_send_metrics_call_count = 0
 
 
 def _store_audit_log(context: GAMLogContext):

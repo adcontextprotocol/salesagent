@@ -40,13 +40,14 @@ from src.adapters.gam.managers.orders import (
 from src.adapters.gam.pricing_compatibility import PricingCompatibility
 from src.core.audit_logger import AuditLogger
 from src.core.schemas import (
+    AdapterGetMediaBuyDeliveryResponse,
     AssetStatus,
     CheckMediaBuyStatusResponse,
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
     Error,
-    GetMediaBuyDeliveryResponse,
     MediaPackage,
+    ReportingPeriod,
     UpdateMediaBuyResponse,
 )
 
@@ -66,8 +67,8 @@ class GoogleAdManager(AdServerAdapter):
         advertiser_id: str | None = None,
         trafficker_id: str | None = None,
         dry_run: bool = False,
-        audit_logger: AuditLogger = None,
-        tenant_id: str = None,
+        audit_logger: AuditLogger | None = None,
+        tenant_id: str | None = None,
     ):
         """Initialize Google Ad Manager adapter with modular managers.
 
@@ -130,33 +131,41 @@ class GoogleAdManager(AdServerAdapter):
                     )
                 except Exception as e:
                     logger.warning(f"Could not auto-detect trafficker_id: {e}")
+
+            # Initialize manager components
+            self.targeting_manager = GAMTargetingManager()
+
+            # Initialize orders manager (advertiser_id/trafficker_id optional for query operations)
+            self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
+
+            # Only initialize creative manager if we have advertiser_id (required for creative operations)
+            if self.advertiser_id and self.trafficker_id:
+                self.creatives_manager = GAMCreativesManager(
+                    self.client_manager, self.advertiser_id, dry_run, self.log, self
+                )
+            else:
+                self.creatives_manager = None  # type: ignore[assignment]
+
+            # Inventory manager doesn't need advertiser_id
+            self.inventory_manager = GAMInventoryManager(self.client_manager, tenant_id or "", dry_run)
+
+            # Sync manager only needs inventory manager for inventory sync
+            self.sync_manager = GAMSyncManager(
+                self.client_manager, self.inventory_manager, self.orders_manager, tenant_id or "", dry_run
+            )
+            self.workflow_manager = GAMWorkflowManager(tenant_id or "", principal, audit_logger, self.log)
         else:
-            self.client_manager = None
+            self.client_manager = None  # type: ignore[assignment]
             self.client = None
             self.log("[yellow]Running in dry-run mode - GAM client not initialized[/yellow]")
 
-        # Initialize manager components
-        self.targeting_manager = GAMTargetingManager()
-
-        # Initialize orders manager (advertiser_id/trafficker_id optional for query operations)
-        self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
-
-        # Only initialize creative manager if we have advertiser_id (required for creative operations)
-        if self.advertiser_id and self.trafficker_id:
-            self.creatives_manager = GAMCreativesManager(
-                self.client_manager, self.advertiser_id, dry_run, self.log, self
-            )
-        else:
-            self.creatives_manager = None
-
-        # Inventory manager doesn't need advertiser_id
-        self.inventory_manager = GAMInventoryManager(self.client_manager, tenant_id, dry_run)
-
-        # Sync manager only needs inventory manager for inventory sync
-        self.sync_manager = GAMSyncManager(
-            self.client_manager, self.inventory_manager, self.orders_manager, tenant_id, dry_run
-        )
-        self.workflow_manager = GAMWorkflowManager(tenant_id, principal, audit_logger, self.log)
+            # Initialize minimal managers for dry-run mode
+            self.targeting_manager = GAMTargetingManager()
+            self.orders_manager = None  # type: ignore[assignment]
+            self.creatives_manager = None  # type: ignore[assignment]
+            self.inventory_manager = None  # type: ignore[assignment]
+            self.sync_manager = None  # type: ignore[assignment]
+            self.workflow_manager = None  # type: ignore[assignment]
 
         # Initialize legacy validator for backward compatibility
         from .gam.utils.validation import GAMValidator
@@ -305,8 +314,9 @@ class GoogleAdManager(AdServerAdapter):
                     )
                     self.log(f"[red]Error: {error_msg}[/red]")
                     return CreateMediaBuyResponse(
-                        buyer_ref=request.buyer_ref,
+                        buyer_ref=request.buyer_ref or "",
                         media_buy_id=None,
+                        creative_deadline=None,
                         errors=[Error(code="unsupported_pricing_model", message=error_msg, details=None)],
                     )
 
@@ -327,9 +337,10 @@ class GoogleAdManager(AdServerAdapter):
 
             self.log(f"[red]Error: {error_msg}[/red]")
             return CreateMediaBuyResponse(
-                buyer_ref=request.buyer_ref,
+                buyer_ref=request.buyer_ref or "",
                 media_buy_id=None,
-                errors=[Error(code="configuration_error", message=error_msg)],
+                creative_deadline=None,
+                errors=[Error(code="configuration_error", message=error_msg, details=None)],
             )
 
         # Get products to access implementation_config
@@ -361,8 +372,7 @@ class GoogleAdManager(AdServerAdapter):
 
                     # Load inventory mappings from ProductInventoryMapping table
                     inventory_stmt = select(ProductInventoryMapping).filter_by(
-                        product_id=product.product_id,  # Use product_id string, not integer id
-                        tenant_id=self.tenant_id
+                        product_id=product.product_id, tenant_id=self.tenant_id  # Use product_id string, not integer id
                     )
                     inventory_mappings = db_session.scalars(inventory_stmt).all()
                     logger.info(f"Found {len(inventory_mappings)} inventory mappings for product {product.product_id}")
@@ -372,13 +382,15 @@ class GoogleAdManager(AdServerAdapter):
                         ad_unit_ids = []
                         placement_ids = []
                         for mapping in inventory_mappings:
-                            logger.info(f"Processing mapping: type={mapping.inventory_type}, inventory_id={mapping.inventory_id}")
+                            logger.info(
+                                f"Processing mapping: type={mapping.inventory_type}, inventory_id={mapping.inventory_id}"
+                            )
                             if mapping.inventory_type == "ad_unit":
                                 # Load the actual GAM inventory record
                                 gam_inv_stmt = select(GAMInventory).filter_by(
                                     inventory_id=mapping.inventory_id,  # Match by inventory_id string
                                     inventory_type="ad_unit",
-                                    tenant_id=self.tenant_id
+                                    tenant_id=self.tenant_id,
                                 )
                                 gam_inv = db_session.scalars(gam_inv_stmt).first()
                                 if gam_inv:
@@ -391,7 +403,7 @@ class GoogleAdManager(AdServerAdapter):
                                 gam_inv_stmt = select(GAMInventory).filter_by(
                                     inventory_id=mapping.inventory_id,
                                     inventory_type="placement",
-                                    tenant_id=self.tenant_id
+                                    tenant_id=self.tenant_id,
                                 )
                                 gam_inv = db_session.scalars(gam_inv_stmt).first()
                                 if gam_inv:
@@ -422,9 +434,10 @@ class GoogleAdManager(AdServerAdapter):
             error_msg = f"Unsupported targeting features: {', '.join(unsupported_features)}"
             self.log(f"[red]Error: {error_msg}[/red]")
             return CreateMediaBuyResponse(
-                buyer_ref=request.buyer_ref,
+                buyer_ref=request.buyer_ref or "",
                 media_buy_id=None,
-                errors=[Error(code="unsupported_targeting", message=error_msg)],
+                creative_deadline=None,
+                errors=[Error(code="unsupported_targeting", message=error_msg, details=None)],
             )
 
         # Build base targeting from targeting overlay
@@ -433,7 +446,7 @@ class GoogleAdManager(AdServerAdapter):
         # Check if manual approval is required for media buy creation
         # Skip approval workflow if this media buy was already manually approved
         # (when called from execute_approved_media_buy, we're in "post-approval execution" mode)
-        already_approved = getattr(request, '_already_approved', False)
+        already_approved = getattr(request, "_already_approved", False)
         if self._requires_manual_approval("create_media_buy") and not already_approved:
             self.log("[yellow]Manual approval mode - creating workflow step for human intervention[/yellow]")
 
@@ -454,7 +467,7 @@ class GoogleAdManager(AdServerAdapter):
                 if request.packages and idx < len(request.packages):
                     matching_req_package = request.packages[idx]
 
-                package_dict = {
+                package_dict: dict[str, Any] = {
                     "package_id": package.package_id,
                     "product_id": package.product_id,
                     "name": package.name,
@@ -475,31 +488,38 @@ class GoogleAdManager(AdServerAdapter):
                     elif hasattr(matching_req_package.budget, "model_dump"):
                         package_dict["budget"] = matching_req_package.budget.model_dump()
                     else:
-                        package_dict["budget"] = dict(matching_req_package.budget) if isinstance(matching_req_package.budget, dict) else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        package_dict["budget"] = (
+                            dict(matching_req_package.budget)
+                            if isinstance(matching_req_package.budget, dict)
+                            else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        )
 
                 # Add targeting_overlay from package if available
                 if package.targeting_overlay:
-                    package_dict["targeting_overlay"] = package.targeting_overlay
+                    package_dict["targeting_overlay"] = dict(package.targeting_overlay)
 
                 # Add creative_ids from package if available (from uploaded inline creatives)
                 if package.creative_ids:
-                    package_dict["creative_ids"] = package.creative_ids
+                    package_dict["creative_ids"] = list(package.creative_ids)
 
                 package_responses.append(package_dict)
 
             if step_id:
                 return CreateMediaBuyResponse(
-                    buyer_ref=request.buyer_ref,
+                    buyer_ref=request.buyer_ref or "",
                     media_buy_id=media_buy_id,
+                    creative_deadline=None,
                     workflow_step_id=step_id,
                     packages=package_responses,
+                    errors=[],
                 )
             else:
                 error_msg = "Failed to create manual order workflow step"
                 return CreateMediaBuyResponse(
-                    buyer_ref=request.buyer_ref,
+                    buyer_ref=request.buyer_ref or "",
                     media_buy_id=media_buy_id,
-                    errors=[Error(code="workflow_creation_failed", message=error_msg)],
+                    creative_deadline=None,
+                    errors=[Error(code="workflow_creation_failed", message=error_msg, details=None)],
                     packages=package_responses,
                 )
 
@@ -518,8 +538,8 @@ class GoogleAdManager(AdServerAdapter):
         with get_db_session() as db_session:
             from src.core.database.models import Tenant
 
-            stmt = select(AdapterConfig).filter_by(tenant_id=self.tenant_id)
-            adapter_config = db_session.scalars(stmt).first()
+            adapter_stmt = select(AdapterConfig).filter_by(tenant_id=self.tenant_id)
+            adapter_config = db_session.scalars(adapter_stmt).first()
             if adapter_config and adapter_config.gam_order_name_template:
                 order_name_template = adapter_config.gam_order_name_template
 
@@ -579,7 +599,9 @@ class GoogleAdManager(AdServerAdapter):
                     self.log(f"✓ Approved GAM Order {order_id}")
                 else:
                     # Approval failed (likely NO_FORECAST_YET) - start background polling
-                    self.log(f"[yellow]Order {order_id} forecasting not ready - starting background approval task[/yellow]")
+                    self.log(
+                        f"[yellow]Order {order_id} forecasting not ready - starting background approval task[/yellow]"
+                    )
 
                     # Get webhook URL from push notification config
                     webhook_url = None
@@ -596,7 +618,7 @@ class GoogleAdManager(AdServerAdapter):
                         approval_id = start_order_approval_background(
                             order_id=order_id,
                             media_buy_id=media_buy_id,
-                            tenant_id=self.tenant_id,
+                            tenant_id=self.tenant_id or "",
                             principal_id=principal_id,
                             webhook_url=webhook_url,
                             max_attempts=12,  # 2 minutes with 10 second intervals
@@ -620,25 +642,26 @@ class GoogleAdManager(AdServerAdapter):
                 if request.packages and idx < len(request.packages):
                     matching_req_package = request.packages[idx]
 
-                package_dict = {
+                error_package_dict: dict[str, Any] = {
                     "package_id": package.package_id,
                     "product_id": package.product_id,
                     "name": package.name,
                 }
 
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
-                    package_dict["buyer_ref"] = matching_req_package.buyer_ref
+                    error_package_dict["buyer_ref"] = matching_req_package.buyer_ref
 
                 # Add creative_ids from package if available (from uploaded inline creatives)
                 if package.creative_ids:
-                    package_dict["creative_ids"] = package.creative_ids
+                    error_package_dict["creative_ids"] = list(package.creative_ids)
 
-                package_responses.append(package_dict)
+                package_responses.append(error_package_dict)
 
             return CreateMediaBuyResponse(
-                buyer_ref=request.buyer_ref,
+                buyer_ref=request.buyer_ref or "",
                 media_buy_id=order_id,
-                errors=[Error(code="line_item_creation_failed", message=error_msg)],
+                creative_deadline=None,
+                errors=[Error(code="line_item_creation_failed", message=error_msg, details=None)],
                 packages=package_responses,
             )
 
@@ -657,7 +680,7 @@ class GoogleAdManager(AdServerAdapter):
                 if request.packages and idx < len(request.packages):
                     matching_req_package = request.packages[idx]
 
-                package_dict = {
+                guaranteed_package_dict: dict[str, Any] = {
                     "package_id": package.package_id,
                     "product_id": package.product_id,
                     "name": package.name,
@@ -669,33 +692,42 @@ class GoogleAdManager(AdServerAdapter):
 
                 # Add buyer_ref from request package if available
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
-                    package_dict["buyer_ref"] = matching_req_package.buyer_ref
+                    guaranteed_package_dict["buyer_ref"] = matching_req_package.buyer_ref
 
                 # Add budget from request package if available (serialize to dict for JSON storage)
                 if matching_req_package and hasattr(matching_req_package, "budget") and matching_req_package.budget:
                     # Handle both ADCP 2.5.0 (float) and 2.3 (Budget object)
                     if isinstance(matching_req_package.budget, (int, float)):
-                        package_dict["budget"] = {"total": float(matching_req_package.budget), "currency": "USD"}
+                        guaranteed_package_dict["budget"] = {
+                            "total": float(matching_req_package.budget),
+                            "currency": "USD",
+                        }
                     elif hasattr(matching_req_package.budget, "model_dump"):
-                        package_dict["budget"] = matching_req_package.budget.model_dump()
+                        guaranteed_package_dict["budget"] = matching_req_package.budget.model_dump()
                     else:
-                        package_dict["budget"] = dict(matching_req_package.budget) if isinstance(matching_req_package.budget, dict) else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        guaranteed_package_dict["budget"] = (
+                            dict(matching_req_package.budget)
+                            if isinstance(matching_req_package.budget, dict)
+                            else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        )
 
                 # Add targeting_overlay from package if available
                 if package.targeting_overlay:
-                    package_dict["targeting_overlay"] = package.targeting_overlay
+                    guaranteed_package_dict["targeting_overlay"] = dict(package.targeting_overlay)
 
                 # Add creative_ids from package if available (from uploaded inline creatives)
                 if package.creative_ids:
-                    package_dict["creative_ids"] = package.creative_ids
+                    guaranteed_package_dict["creative_ids"] = list(package.creative_ids)
 
-                package_responses.append(package_dict)
+                package_responses.append(guaranteed_package_dict)
 
             return CreateMediaBuyResponse(
-                buyer_ref=request.buyer_ref,
+                buyer_ref=request.buyer_ref or "",
                 media_buy_id=order_id,
+                creative_deadline=None,
                 workflow_step_id=step_id,
                 packages=package_responses,
+                errors=[],
             )
 
         # Build package responses with ALL package data + line_item_ids for creative association
@@ -706,7 +738,7 @@ class GoogleAdManager(AdServerAdapter):
             if request.packages and idx < len(request.packages):
                 matching_req_package = request.packages[idx]
 
-            package_dict = {
+            final_package_dict: dict[str, Any] = {
                 "package_id": package.package_id,
                 "product_id": package.product_id,
                 "name": package.name,
@@ -718,32 +750,38 @@ class GoogleAdManager(AdServerAdapter):
 
             # Add buyer_ref from request package if available
             if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
-                package_dict["buyer_ref"] = matching_req_package.buyer_ref
+                final_package_dict["buyer_ref"] = matching_req_package.buyer_ref
 
             # Add budget from request package if available (serialize to dict for JSON storage)
             if matching_req_package and hasattr(matching_req_package, "budget") and matching_req_package.budget:
                 # Handle both ADCP 2.5.0 (float) and 2.3 (Budget object)
                 if isinstance(matching_req_package.budget, (int, float)):
-                    package_dict["budget"] = {"total": float(matching_req_package.budget), "currency": "USD"}
+                    final_package_dict["budget"] = {"total": float(matching_req_package.budget), "currency": "USD"}
                 elif hasattr(matching_req_package.budget, "model_dump"):
-                    package_dict["budget"] = matching_req_package.budget.model_dump()
+                    final_package_dict["budget"] = matching_req_package.budget.model_dump()
                 else:
-                    package_dict["budget"] = dict(matching_req_package.budget) if isinstance(matching_req_package.budget, dict) else {"total": float(matching_req_package.budget), "currency": "USD"}
+                    final_package_dict["budget"] = (
+                        dict(matching_req_package.budget)
+                        if isinstance(matching_req_package.budget, dict)
+                        else {"total": float(matching_req_package.budget), "currency": "USD"}
+                    )
 
             # Add targeting_overlay from package if available
             if package.targeting_overlay:
-                package_dict["targeting_overlay"] = package.targeting_overlay
+                final_package_dict["targeting_overlay"] = dict(package.targeting_overlay)
 
             # Add creative_ids from package if available (from uploaded inline creatives)
             if package.creative_ids:
-                package_dict["creative_ids"] = package.creative_ids
+                final_package_dict["creative_ids"] = list(package.creative_ids)
 
-            package_responses.append(package_dict)
+            package_responses.append(final_package_dict)
 
         return CreateMediaBuyResponse(
-            buyer_ref=request.buyer_ref,
+            buyer_ref=request.buyer_ref or "",
             media_buy_id=order_id,
+            creative_deadline=None,
             packages=package_responses,
+            errors=[],
         )
 
     def archive_order(self, order_id: str) -> bool:
@@ -794,7 +832,7 @@ class GoogleAdManager(AdServerAdapter):
 
             if step_id:
                 # Return asset statuses indicating they are awaiting approval
-                asset_statuses = []
+                asset_statuses: list[AssetStatus] = []
                 for asset in assets:
                     asset_statuses.append(
                         AssetStatus(
@@ -851,7 +889,7 @@ class GoogleAdManager(AdServerAdapter):
 
         results = []
 
-        if not self.dry_run:
+        if not self.dry_run and self.client_manager:
             lica_service = self.client_manager.get_service("LineItemCreativeAssociationService")
 
         for line_item_id in line_item_ids:
@@ -896,17 +934,30 @@ class GoogleAdManager(AdServerAdapter):
         status = self.orders_manager.get_order_status(media_buy_id)
 
         return CheckMediaBuyStatusResponse(
-            media_buy_id=media_buy_id, status=status.lower(), message=f"GAM order status: {status}"
+            buyer_ref="", media_buy_id=media_buy_id, status=status.lower()  # Would need to be retrieved from database
         )
 
-    def get_media_buy_delivery(self, media_buy_id: str, today: datetime) -> GetMediaBuyDeliveryResponse:
+    def get_media_buy_delivery(
+        self, media_buy_id: str, date_range: ReportingPeriod, today: datetime
+    ) -> AdapterGetMediaBuyDeliveryResponse:
         """Get delivery metrics for a media buy."""
         # This would be implemented with appropriate manager delegation
         # For now, returning a basic implementation
-        return GetMediaBuyDeliveryResponse(
+        from src.core.schemas import DeliveryTotals
+
+        return AdapterGetMediaBuyDeliveryResponse(
             media_buy_id=media_buy_id,
-            delivery_data={"impressions": 0, "clicks": 0, "spend": 0.0},
-            message="Delivery data retrieval would be implemented",
+            reporting_period=date_range,
+            by_package=[],
+            totals=DeliveryTotals(
+                impressions=0,
+                spend=0,
+                clicks=0,
+                ctr=0.0,
+                video_completions=0,
+                completion_rate=0.0,
+            ),
+            currency="USD",
         )
 
     def update_media_buy(
@@ -924,12 +975,13 @@ class GoogleAdManager(AdServerAdapter):
 
         # Check if action requires admin privileges
         if action in admin_only_actions and not self._is_admin_principal():
-            from src.core.schemas import Error
-
             return UpdateMediaBuyResponse(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
-                errors=[Error(code="insufficient_privileges", message="Only admin users can approve orders")],
+                implementation_date=today,
+                errors=[
+                    Error(code="insufficient_privileges", message="Only admin users can approve orders", details=None)
+                ],
             )
 
         # Check if manual approval is required for media buy updates
@@ -944,17 +996,19 @@ class GoogleAdManager(AdServerAdapter):
                 return UpdateMediaBuyResponse(
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
+                    implementation_date=today,
+                    errors=[],
                 )
             else:
-                from src.core.schemas import Error
-
                 return UpdateMediaBuyResponse(
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
+                    implementation_date=today,
                     errors=[
                         Error(
                             code="workflow_creation_failed",
                             message="Failed to create approval workflow step",
+                            details=None,
                         )
                     ],
                 )
@@ -974,17 +1028,19 @@ class GoogleAdManager(AdServerAdapter):
                     return UpdateMediaBuyResponse(
                         media_buy_id=media_buy_id,
                         buyer_ref=buyer_ref,
+                        implementation_date=today,
+                        errors=[],
                     )
                 else:
-                    from src.core.schemas import Error
-
                     return UpdateMediaBuyResponse(
                         media_buy_id=media_buy_id,
                         buyer_ref=buyer_ref,
+                        implementation_date=today,
                         errors=[
                             Error(
                                 code="activation_workflow_failed",
                                 message=f"Cannot auto-activate order with guaranteed line items: {', '.join(item_types)}",
+                                details=None,
                             )
                         ],
                     )
@@ -993,6 +1049,8 @@ class GoogleAdManager(AdServerAdapter):
         return UpdateMediaBuyResponse(
             media_buy_id=media_buy_id,
             buyer_ref=buyer_ref,
+            implementation_date=today,
+            errors=[],
         )
 
     def update_media_buy_performance_index(self, media_buy_id: str, package_performance: list) -> bool:
@@ -1099,25 +1157,3 @@ class GoogleAdManager(AdServerAdapter):
     def needs_sync(self, db_session, sync_type, max_age_hours=24):
         """Check if sync is needed (delegated to sync manager)."""
         return self.sync_manager.needs_sync(db_session, sync_type, max_age_hours)
-
-    # Backward compatibility methods for tests
-    def _is_admin_principal(self) -> bool:
-        """Check if principal has admin privileges."""
-        if not self.principal or not hasattr(self.principal, "platform_mappings"):
-            return False
-        gam_mapping = self.principal.platform_mappings.get("google_ad_manager", {})
-        if isinstance(gam_mapping, dict):
-            return gam_mapping.get("gam_admin", False) or gam_mapping.get("is_admin", False)
-        return False
-
-    def _validate_creative_for_gam(self, asset: dict) -> list:
-        """Validate creative asset for GAM (backward compatibility)."""
-        return self.creatives_manager._validate_creative_for_gam(asset)
-
-    def _get_creative_type(self, asset: dict) -> str:
-        """Determine creative type from asset (backward compatibility)."""
-        return self.creatives_manager._get_creative_type(asset)
-
-    def _check_order_has_guaranteed_items(self, order_id: str) -> tuple:
-        """Check if order has guaranteed line items (backward compatibility)."""
-        return self.orders_manager.check_order_has_guaranteed_items(order_id)

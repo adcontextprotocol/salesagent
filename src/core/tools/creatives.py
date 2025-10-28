@@ -252,7 +252,8 @@ def _sync_creatives_impl(
                     if existing_creative:
                         # Update existing creative (respects patch vs full upsert)
                         # Update updated_at timestamp
-                        existing_creative.updated_at = datetime.now(UTC)
+                        now = datetime.now(UTC)
+                        existing_creative.updated_at = now  # type: ignore[assignment]
 
                         # Track changes for result
                         changes = []
@@ -1205,13 +1206,13 @@ def _sync_creatives_impl(
                     # Note: We need to join with MediaBuy to verify tenant_id
                     from sqlalchemy import join
 
-                    stmt = (
+                    package_stmt = (
                         select(MediaPackage, MediaBuy)
                         .select_from(join(MediaPackage, MediaBuy, MediaPackage.media_buy_id == MediaBuy.media_buy_id))
                         .where(MediaPackage.package_id == package_id)
                         .where(MediaBuy.tenant_id == tenant["tenant_id"])
                     )
-                    result = session.execute(stmt).first()
+                    result = session.execute(package_stmt).first()
 
                     media_buy_id = None
                     actual_package_id = None
@@ -1284,16 +1285,16 @@ def _sync_creatives_impl(
             session.commit()
 
     # Update creative results with assignment information (per AdCP spec)
-    for result in results:
-        if result.creative_id in assignments_by_creative:
-            assigned_packages = assignments_by_creative[result.creative_id]
+    for sync_result in results:
+        if sync_result.creative_id in assignments_by_creative:
+            assigned_packages = assignments_by_creative[sync_result.creative_id]
             if assigned_packages:
-                result.assigned_to = assigned_packages
+                sync_result.assigned_to = assigned_packages
 
-        if result.creative_id in assignment_errors_by_creative:
-            errors = assignment_errors_by_creative[result.creative_id]
+        if sync_result.creative_id in assignment_errors_by_creative:
+            errors = assignment_errors_by_creative[sync_result.creative_id]
             if errors:
-                result.assignment_errors = errors
+                sync_result.assignment_errors = errors
 
     # Create workflow steps for creatives requiring approval
     if creatives_needing_approval:

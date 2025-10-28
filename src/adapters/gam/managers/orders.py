@@ -213,7 +213,9 @@ class GAMOrdersManager:
         logger.info(f"[APPROVAL] Approving GAM Order {order_id} (dry_run={self.dry_run})")
 
         if self.dry_run:
-            logger.info(f"[APPROVAL] DRY-RUN MODE: Would call order_service.performOrderAction(ApproveOrders, {order_id})")
+            logger.info(
+                f"[APPROVAL] DRY-RUN MODE: Would call order_service.performOrderAction(ApproveOrders, {order_id})"
+            )
             return True
 
         # Retry logic for NO_FORECAST_YET errors
@@ -473,7 +475,7 @@ class GAMOrdersManager:
 
             # Build creative placeholders from format_ids
             # First try to get from package.format_ids (buyer-specified)
-            creative_placeholders = []
+            creative_placeholders: list[dict[str, Any]] = []
 
             if package.format_ids:
                 from src.core.format_resolver import get_format
@@ -492,7 +494,9 @@ class GAMOrdersManager:
                     format_display = f"{agent_url}/{format_id_str}" if agent_url else format_id_str
 
                     try:
-                        format_obj = get_format(format_id_str, agent_url=agent_url, tenant_id=tenant_id, product_id=package.package_id)
+                        format_obj = get_format(
+                            format_id_str, agent_url=agent_url, tenant_id=tenant_id, product_id=package.package_id
+                        )
                     except ValueError as e:
                         error_msg = f"Format lookup failed for '{format_display}': {e}"
                         log(f"[red]Error: {error_msg}[/red]")
@@ -525,7 +529,7 @@ class GAMOrdersManager:
                     placeholder_cfg = gam_cfg.get("creative_placeholder", {})
 
                     # Build creative placeholder
-                    placeholder = {
+                    placeholder: dict[str, Any] = {
                         "expectedCreativeCount": 1,
                     }
 
@@ -558,7 +562,8 @@ class GAMOrdersManager:
                         # Last resort: Try to extract dimensions from format_id (e.g., "display_970x250_image")
                         if not (width and height):
                             import re
-                            match = re.search(r'(\d+)x(\d+)', format_id_str)
+
+                            match = re.search(r"(\d+)x(\d+)", format_id_str)
                             if match:
                                 width = int(match.group(1))
                                 height = int(match.group(2))
@@ -696,7 +701,9 @@ class GAMOrdersManager:
                     if pricing_model == "flat_rate":
                         goal_unit_type = "IMPRESSIONS"
                         goal_units = 100  # 100% impression share for flat rate sponsorships
-                        log("  SPONSORSHIP (FLAT_RATE): DAILY goal with 100% impression share (serves on all matching requests)")
+                        log(
+                            "  SPONSORSHIP (FLAT_RATE): DAILY goal with 100% impression share (serves on all matching requests)"
+                        )
                     else:
                         log(f"  {line_item_type} line item: Using DAILY goal type (required by GAM API)")
                 elif line_item_type == "STANDARD":

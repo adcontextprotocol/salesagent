@@ -163,8 +163,8 @@ class GAMWorkflowManager:
             if tenant:
                 tenant_gemini_key = tenant.gemini_api_key
 
-        context = build_order_name_context(request, packages, start_time, end_time, tenant_gemini_key)
-        order_name = apply_naming_template(order_name_template, context)
+        naming_context = build_order_name_context(request, packages, start_time, end_time, tenant_gemini_key)
+        order_name = apply_naming_template(order_name_template, naming_context)
 
         # Build detailed action list for humans to manually create the order
         # Calculate total budget from package budgets (AdCP v2.2.0)
