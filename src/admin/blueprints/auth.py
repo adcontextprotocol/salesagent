@@ -276,15 +276,27 @@ def google_callback():
                     "tenant_id": tenant_access["domain_tenant"].tenant_id,
                     "name": tenant_access["domain_tenant"].name,
                     "subdomain": tenant_access["domain_tenant"].subdomain,
+                    "is_admin": True,  # Domain users get admin access
                 }
             )
 
         for tenant in tenant_access["email_tenants"]:
+            # Check existing user record for role, default to admin
+            with get_db_session() as db_session:
+                from sqlalchemy import select
+
+                from src.core.database.models import User
+
+                stmt = select(User).filter_by(email=email, tenant_id=tenant.tenant_id)
+                existing_user = db_session.scalars(stmt).first()
+                is_admin = existing_user.role == "admin" if existing_user else True
+
             session["available_tenants"].append(
                 {
                     "tenant_id": tenant.tenant_id,
                     "name": tenant.name,
                     "subdomain": tenant.subdomain,
+                    "is_admin": is_admin,
                 }
             )
 
