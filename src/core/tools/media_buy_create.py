@@ -369,13 +369,35 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
                     # Create MediaPackage object (what adapters expect)
                     # Note: Product model has 'formats' not 'format_ids'
+                    # Convert FormatReference objects to FormatId objects
+                    from src.core.schemas import FormatId, FormatReference
+
+                    format_ids_list = []
+                    for fmt in product.formats or []:
+                        if isinstance(fmt, FormatReference):
+                            # Convert FormatReference to FormatId (format_id -> id)
+                            format_ids_list.append(FormatId(agent_url=fmt.agent_url, id=fmt.format_id))
+                        elif isinstance(fmt, FormatId):
+                            # Already a FormatId object
+                            format_ids_list.append(fmt)
+                        elif isinstance(fmt, dict):
+                            # Dict format - check which type
+                            if "format_id" in fmt:
+                                # FormatReference dict
+                                format_ids_list.append(FormatId(agent_url=fmt["agent_url"], id=fmt["format_id"]))
+                            elif "id" in fmt:
+                                # FormatId dict
+                                format_ids_list.append(FormatId(**fmt))
+                        else:
+                            logger.warning(f"[APPROVAL] Unknown format type: {type(fmt)}, skipping")
+
                     media_package = MediaPackage(
                         package_id=package_id,
                         name=package_config.get("name") or product.name,
                         delivery_type=product.delivery_type,
                         cpm=cpm,
                         impressions=impressions,
-                        format_ids=product.formats or [],
+                        format_ids=format_ids_list,
                         targeting_overlay=targeting_overlay,
                         buyer_ref=package_config.get("buyer_ref"),
                         product_id=product_id,
@@ -2323,7 +2345,9 @@ async def _create_media_buy_impl(
                             else:
                                 # Creative not uploaded to GAM yet - upload it now
                                 # Use the same simple asset dict approach as manual approval (execute_approved_media_buy)
-                                logger.info(f"Creative {creative_id} has no platform_creative_id - uploading to GAM now")
+                                logger.info(
+                                    f"Creative {creative_id} has no platform_creative_id - uploading to GAM now"
+                                )
                                 try:
                                     creative_data = creative.data or {}
 
@@ -2368,10 +2392,14 @@ async def _create_media_buy_impl(
                                     if upload_result and len(upload_result) > 0:
                                         uploaded_creative = upload_result[0]
                                         if "platform_creative_id" in uploaded_creative:
-                                            creative.data["platform_creative_id"] = uploaded_creative["platform_creative_id"]
+                                            creative.data["platform_creative_id"] = uploaded_creative[
+                                                "platform_creative_id"
+                                            ]
                                             session.add(creative)
                                             platform_creative_ids.append(uploaded_creative["platform_creative_id"])
-                                            logger.info(f"Updated creative {creative_id} with platform_creative_id={uploaded_creative['platform_creative_id']}")
+                                            logger.info(
+                                                f"Updated creative {creative_id} with platform_creative_id={uploaded_creative['platform_creative_id']}"
+                                            )
                                 except Exception as upload_error:
                                     logger.error(f"Failed to upload creative {creative_id} to GAM: {upload_error}")
                                     logger.warning(
