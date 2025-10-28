@@ -27,15 +27,6 @@ def initialize_application() -> None:
         validate_configuration()
         logger.info("✅ Configuration validation passed")
 
-        # Restart active delivery simulations (mock adapter only)
-        try:
-            from src.services.delivery_simulator import delivery_simulator
-
-            delivery_simulator.restart_active_simulations()
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to restart delivery simulations: {e}")
-            # Don't fail startup if simulations can't restart
-
         logger.info("🎉 Application initialization completed successfully")
 
     except Exception as e:
