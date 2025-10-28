@@ -62,10 +62,22 @@ def index():
             return redirect(url_for("auth.login"))
 
         # Check if we're on an external virtual host (via Approximated)
-        # External domains should always show landing page for signup
         if approximated_host and not approximated_host.endswith(".sales-agent.scope3.com"):
-            logger.info(f"[LANDING DEBUG] External domain detected: {approximated_host}, showing landing page")
-            return render_template("landing.html")
+            # External domain detected - check if tenant exists for this virtual host
+            logger.info(f"[LANDING DEBUG] External domain detected: {approximated_host}, checking for tenant")
+            tenant = get_tenant_from_hostname()
+            if tenant:
+                # Tenant exists - redirect to login for this tenant
+                logger.info(
+                    f"[LANDING DEBUG] Tenant found for external domain: {tenant.tenant_id}, redirecting to login"
+                )
+                return redirect(url_for("auth.login"))
+            else:
+                # No tenant configured for this external domain - show signup landing page
+                logger.info(
+                    f"[LANDING DEBUG] No tenant found for external domain: {approximated_host}, showing landing page"
+                )
+                return render_template("landing.html")
 
         # Check if we're on a tenant-specific subdomain (*.sales-agent.scope3.com)
         tenant = get_tenant_from_hostname()
