@@ -187,8 +187,21 @@ def google_callback():
         return redirect(url_for("auth.login"))
 
     try:
-        token = oauth.google.authorize_access_token()
+        logger.info("Attempting OAuth token exchange...")
+        try:
+            token = oauth.google.authorize_access_token()
+            logger.info(f"Token exchange result: {token is not None}")
+        except Exception as auth_error:
+            logger.error(
+                f"Authlib error during token exchange: {type(auth_error).__name__}: {auth_error}", exc_info=True
+            )
+            flash(f"Authentication error: {str(auth_error)}", "error")
+            return redirect(url_for("auth.login"))
+
         if not token:
+            logger.error("OAuth token exchange failed - authorize_access_token() returned None")
+            logger.error(f"Request args: {dict(request.args)}")
+            logger.error(f"Session keys: {list(session.keys())}")
             flash("Authentication failed. Please try again.", "error")
             return redirect(url_for("auth.login"))
 
