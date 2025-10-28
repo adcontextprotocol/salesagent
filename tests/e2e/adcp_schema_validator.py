@@ -125,6 +125,9 @@ class AdCPSchemaValidator:
 
         Uses conditional GET with If-None-Match header to avoid re-downloading
         unchanged schemas. Falls back to cached version if server unavailable.
+
+        Now includes content hash verification to prevent meta file updates when
+        only weak ETags change but content is identical.
         """
         cache_path = self.cache_dir / "index.json"
         meta_path = self._get_cache_metadata_path(cache_path)
@@ -139,13 +142,15 @@ class AdCPSchemaValidator:
                     raise SchemaDownloadError(f"Offline mode enabled but cached index is invalid: {cache_path}")
             raise SchemaDownloadError("Offline mode enabled but no valid cached index found")
 
-        # Load cached metadata (ETag, Last-Modified)
+        # Load cached metadata (ETag, Last-Modified, content hash)
         cached_etag = None
+        cached_content_hash = None
         if meta_path.exists():
             try:
                 with open(meta_path) as f:
                     metadata = json.load(f)
                     cached_etag = metadata.get("etag")
+                    cached_content_hash = metadata.get("content_hash")
             except (json.JSONDecodeError, OSError):
                 pass
 
@@ -167,6 +172,21 @@ class AdCPSchemaValidator:
             response.raise_for_status()
             index_data = response.json()
 
+            # Compute content hash to detect actual changes (weak ETags can change without content changes)
+            content_str = json.dumps(index_data, sort_keys=True)
+            content_hash = hashlib.sha256(content_str.encode()).hexdigest()
+
+            # Check if content actually changed
+            if cached_content_hash and content_hash == cached_content_hash:
+                # Content is identical despite new ETag (weak ETag changed, content didn't)
+                # Return cached data without updating files to avoid git noise
+                if cache_path.exists():
+                    with open(cache_path) as f:
+                        return json.load(f)
+                # If cache missing somehow, fall through to save
+
+            # Content changed (or first download) - update cache and metadata
+
             # Delete old metadata first (prevents stale ETag issues)
             if meta_path.exists():
                 meta_path.unlink()
@@ -176,11 +196,12 @@ class AdCPSchemaValidator:
                 json.dump(index_data, f, indent=2)
                 f.write("\n")  # Add trailing newline for pre-commit compatibility
 
-            # Save new metadata
+            # Save new metadata with content hash
             metadata = {
                 "etag": response.headers.get("etag"),
                 "last-modified": response.headers.get("last-modified"),
                 "downloaded_at": datetime.now().isoformat(),
+                "content_hash": content_hash,
             }
             with open(meta_path, "w") as f:
                 json.dump(metadata, f, indent=2)
@@ -203,6 +224,9 @@ class AdCPSchemaValidator:
 
         Uses conditional GET with If-None-Match header to avoid re-downloading
         unchanged schemas. Falls back to cached version if server unavailable.
+
+        Now includes content hash verification to prevent meta file updates when
+        only weak ETags change but content is identical.
         """
         cache_path = self._get_cache_path(schema_ref)
         meta_path = self._get_cache_metadata_path(cache_path)
@@ -217,13 +241,15 @@ class AdCPSchemaValidator:
                     raise SchemaDownloadError(f"Offline mode enabled but cached schema is invalid: {cache_path}")
             raise SchemaDownloadError(f"Offline mode enabled but no valid cached schema: {schema_ref}")
 
-        # Load cached metadata (ETag, Last-Modified)
+        # Load cached metadata (ETag, Last-Modified, content hash)
         cached_etag = None
+        cached_content_hash = None
         if meta_path.exists():
             try:
                 with open(meta_path) as f:
                     metadata = json.load(f)
                     cached_etag = metadata.get("etag")
+                    cached_content_hash = metadata.get("content_hash")
             except (json.JSONDecodeError, OSError):
                 pass
 
@@ -251,6 +277,21 @@ class AdCPSchemaValidator:
             response.raise_for_status()
             schema_data = response.json()
 
+            # Compute content hash to detect actual changes (weak ETags can change without content changes)
+            content_str = json.dumps(schema_data, sort_keys=True)
+            content_hash = hashlib.sha256(content_str.encode()).hexdigest()
+
+            # Check if content actually changed
+            if cached_content_hash and content_hash == cached_content_hash:
+                # Content is identical despite new ETag (weak ETag changed, content didn't)
+                # Return cached data without updating files to avoid git noise
+                if cache_path.exists():
+                    with open(cache_path) as f:
+                        return json.load(f)
+                # If cache missing somehow, fall through to save
+
+            # Content changed (or first download) - update cache and metadata
+
             # Delete old metadata first (prevents stale ETag issues)
             if meta_path.exists():
                 meta_path.unlink()
@@ -260,12 +301,13 @@ class AdCPSchemaValidator:
                 json.dump(schema_data, f, indent=2)
                 f.write("\n")  # Add trailing newline for pre-commit compatibility
 
-            # Save new metadata
+            # Save new metadata with content hash
             metadata = {
                 "etag": response.headers.get("etag"),
                 "last-modified": response.headers.get("last-modified"),
                 "downloaded_at": datetime.now().isoformat(),
                 "schema_ref": schema_ref,
+                "content_hash": content_hash,
             }
             with open(meta_path, "w") as f:
                 json.dump(metadata, f, indent=2)

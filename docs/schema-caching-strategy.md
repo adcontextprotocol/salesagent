@@ -96,16 +96,23 @@ schemas/v1/
 
 ### Metadata Format
 
-Each `.meta` file stores HTTP cache headers:
+Each `.meta` file stores HTTP cache headers and content hash:
 
 ```json
 {
   "etag": "W/\"68edd34b-415c\"",
   "last-modified": "Tue, 14 Oct 2025 04:36:27 GMT",
   "downloaded_at": "2025-10-14T00:43:25.613705",
-  "schema_ref": "/schemas/v1/core/package.json"
+  "schema_ref": "/schemas/v1/core/package.json",
+  "content_hash": "8be401d7f593296e38d5a6d84091c30cfc1ca929b4ab6d72fe275a379878598b"
 }
 ```
+
+**Why content_hash?**
+- Weak ETags (`W/"..."`) can change even when content is identical
+- Server restarts or deployments may generate new weak ETags
+- Content hash (SHA-256) prevents unnecessary file updates when only ETag changed
+- Reduces git noise from timestamp-only changes
 
 ## Implementation Details
 
@@ -129,11 +136,12 @@ def _is_cache_valid(self, cache_path: Path, max_age_hours: int = 24) -> bool:
     return self.offline_mode and cache_path.exists()
 ```
 
-#### 3. Conditional GET Implementation
+#### 3. Conditional GET with Content Hash Verification
 ```python
 async def _download_schema(self, schema_ref: str) -> dict[str, Any]:
-    # Load cached ETag
+    # Load cached ETag and content hash
     cached_etag = load_etag_from_meta(schema_ref)
+    cached_content_hash = load_content_hash_from_meta(schema_ref)
 
     # Send conditional GET
     headers = {"If-None-Match": cached_etag} if cached_etag else {}
@@ -143,8 +151,16 @@ async def _download_schema(self, schema_ref: str) -> dict[str, Any]:
     if response.status_code == 304:
         return load_from_cache(schema_ref)
 
-    # Save new version with ETag
-    save_to_cache(response.json(), response.headers["etag"])
+    # Compute content hash to detect actual changes
+    content_hash = hashlib.sha256(json.dumps(response.json(), sort_keys=True).encode()).hexdigest()
+
+    # Check if content actually changed (weak ETags can change without content changes)
+    if cached_content_hash and content_hash == cached_content_hash:
+        # Content identical despite new ETag - don't update files to avoid git noise
+        return load_from_cache(schema_ref)
+
+    # Save new version with ETag and content hash
+    save_to_cache(response.json(), response.headers["etag"], content_hash)
 ```
 
 ### Refresh Script Updates
