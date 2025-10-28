@@ -99,24 +99,22 @@ class AIProductCatalog(ProductCatalogProvider):
 
                 # Convert model to Product schema (only include AdCP-compliant fields)
                 # Build product_data with proper types
+                # Note: PostgreSQL with JSONType returns formats as Python objects (list of dicts)
                 formats_raw = product_model.formats
-                # Handle JSONB fields - PostgreSQL returns them as Python objects, SQLite as strings
-                if isinstance(formats_raw, str):
-                    import json
 
-                    try:
-                        formats_raw = json.loads(formats_raw)
-                    except json.JSONDecodeError:
-                        formats_raw = []
+                # Convert database format objects to FormatId objects
+                # Database stores formats as list of dicts with 'agent_url' and 'id' keys
+                from src.core.schemas import FormatId
 
-                # Extract format IDs if formats are objects
-                formats: list[str] = []
+                formats: list[FormatId] = []
                 if formats_raw:
                     for fmt in formats_raw:
-                        if isinstance(fmt, dict) and "format_id" in fmt:
-                            formats.append(fmt["format_id"])
+                        if isinstance(fmt, dict):
+                            # Database format: {"agent_url": "...", "id": "..."}
+                            formats.append(FormatId(agent_url=fmt.get("agent_url", ""), id=fmt.get("id", "")))
                         elif isinstance(fmt, str):
-                            formats.append(fmt)
+                            # Legacy string format (backwards compatibility)
+                            formats.append(FormatId(agent_url="", id=fmt))
 
                 product_data: dict[str, Any] = {
                     "product_id": product_model.product_id,
