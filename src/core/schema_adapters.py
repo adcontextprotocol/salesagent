@@ -445,6 +445,22 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     last_updated: str | None = Field(None, description="ISO 8601 timestamp of when authorization list was last updated")
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
 
+    def dict(self, **kwargs):
+        """Override dict to use model_dump with exclude_none=True for AdCP compliance.
+
+        FastMCP may use dict() for serialization instead of model_dump().
+        This ensures optional fields with None values are excluded from the response.
+        """
+        return self.model_dump(**kwargs)
+
+    def __iter__(self):
+        """Override iteration to exclude None values for AdCP compliance.
+
+        When dict() or json.dumps() iterates over the model, it will only include
+        non-None fields. This ensures the response is spec-compliant.
+        """
+        return iter(self.model_dump().items())
+
     def __str__(self) -> str:
         """Return human-readable message for protocol layer.
 

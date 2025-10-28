@@ -198,11 +198,14 @@ def _list_authorized_properties_impl(
             # Create response with AdCP spec-compliant fields
             # Note: Optional fields (advertising_policies, errors, etc.) should be omitted if not set,
             # not set to None or empty values. AdCPBaseModel.model_dump() uses exclude_none=True by default.
-            response = ListAuthorizedPropertiesResponse(
-                publisher_domains=publisher_domains,  # Required per AdCP v2.4 spec
-                advertising_policies=advertising_policies_text,
-                # errors omitted - only include if there are actual errors
-            )
+            # Build response dict with only non-None values
+            response_data = {"publisher_domains": publisher_domains}  # Required per AdCP v2.4 spec
+
+            # Only add optional fields if they have actual values
+            if advertising_policies_text:
+                response_data["advertising_policies"] = advertising_policies_text
+
+            response = ListAuthorizedPropertiesResponse(**response_data)
 
             # Log audit
             audit_logger = get_audit_logger("AdCP", tenant_id)
