@@ -8,40 +8,47 @@
 
     {% if tenants %}
     <p style="margin-bottom: 2rem;">
-        Your email address has access to the following accounts. Select one to continue, or create a new account:
+        Select an account to continue:
     </p>
 
     <form method="POST" action="{{ url_for('auth.select_tenant') }}">
         <div style="margin-bottom: 2rem;">
             {% for tenant in tenants %}
-            <label style="display: block; padding: 1rem; margin-bottom: 0.5rem; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+            <label style="display: block; padding: 1rem; margin-bottom: 0.5rem; border: 2px solid #ddd; border-radius: 4px; cursor: pointer; transition: all 0.2s;">
                 <input type="radio" name="tenant_id" value="{{ tenant.tenant_id }}" style="margin-right: 0.5rem;">
                 <strong>{{ tenant.name }}</strong> <span style="color: #666;">({{ tenant.tenant_id }})</span>
             </label>
             {% endfor %}
         </div>
 
-        <button type="submit" class="btn">Continue to Selected Account</button>
-        <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary" style="margin-left: 0.5rem;">Cancel</a>
+        <button type="submit" class="btn btn-primary btn-lg w-100" style="margin-bottom: 1rem;">Continue to Selected Account</button>
     </form>
 
-    <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ddd;">
-    {% else %}
-    <p style="margin-bottom: 2rem; color: #666;">
-        You don't have access to any accounts yet. Create a new account to get started:
-    </p>
-    {% endif %}
-
-    <div style="text-align: center;">
-        <a href="{{ url_for('public.signup_onboarding') }}" class="btn" style="background: #28a745; border-color: #28a745;">
+    <div style="text-align: center; padding-top: 1rem; border-top: 1px solid #ddd;">
+        <p style="margin-bottom: 0.75rem; color: #666; font-size: 0.9rem;">Don't see your account?</p>
+        <a href="{{ url_for('public.signup_onboarding') }}" class="btn btn-outline-secondary">
             Create New Account
         </a>
     </div>
+    {% else %}
+    <p style="margin-bottom: 2rem; color: #666;">
+        You don't have access to any accounts yet.
+    </p>
+
+    <a href="{{ url_for('public.signup_onboarding') }}" class="btn btn-primary btn-lg w-100">
+        Create New Account
+    </a>
+    {% endif %}
 </div>
 
 <style>
 label:hover {
     background: #f8f9fa;
+    border-color: #007bff !important;
+}
+label:has(input:checked) {
+    background: #e7f3ff;
+    border-color: #007bff !important;
 }
 </style>
 {% endblock %}
