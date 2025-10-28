@@ -13,7 +13,15 @@ import pytest
 from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, PricingOption, Principal, Product, Tenant
+from src.core.database.models import (
+    CurrencyLimit,
+    MediaBuy,
+    PricingOption,
+    Principal,
+    Product,
+    PropertyTag,
+    Tenant,
+)
 from src.core.tools.media_buy_create import execute_approved_media_buy
 
 
@@ -40,6 +48,61 @@ def test_tenant(integration_db):
         tenant = session.scalars(stmt).first()
         if tenant:
             session.delete(tenant)
+            session.commit()
+
+
+@pytest.fixture
+def test_currency_limit(integration_db, test_tenant):
+    """Create required CurrencyLimit for budget validation.
+
+    Per CLAUDE.md "Database Initialization Dependencies":
+    Products require CurrencyLimit for budget validation in media buys.
+    """
+    with get_db_session() as session:
+        currency_limit = CurrencyLimit(
+            tenant_id=test_tenant,
+            currency_code="USD",
+            max_daily_budget=100000.0,
+        )
+        session.add(currency_limit)
+        session.commit()
+
+    yield "USD"
+
+    # Cleanup
+    with get_db_session() as session:
+        stmt = select(CurrencyLimit).filter_by(tenant_id=test_tenant, currency_code="USD")
+        limit = session.scalars(stmt).first()
+        if limit:
+            session.delete(limit)
+            session.commit()
+
+
+@pytest.fixture
+def test_property_tag(integration_db, test_tenant):
+    """Create required PropertyTag for property_tags array references.
+
+    Per CLAUDE.md "Database Initialization Dependencies":
+    Products with property_tags=["all_inventory"] require PropertyTag record.
+    """
+    with get_db_session() as session:
+        property_tag = PropertyTag(
+            tenant_id=test_tenant,
+            tag_id="all_inventory",
+            name="All Inventory",
+            description="All available inventory",
+        )
+        session.add(property_tag)
+        session.commit()
+
+    yield "all_inventory"
+
+    # Cleanup
+    with get_db_session() as session:
+        stmt = select(PropertyTag).filter_by(tenant_id=test_tenant, tag_id="all_inventory")
+        tag = session.scalars(stmt).first()
+        if tag:
+            session.delete(tag)
             session.commit()
 
 
@@ -73,7 +136,9 @@ def test_principal(integration_db, test_tenant):
 class TestFormatConversionApproval:
     """Test format conversion during media buy approval execution."""
 
-    def test_valid_format_reference_dict_conversion(self, test_tenant, test_principal):
+    def test_valid_format_reference_dict_conversion(
+        self, test_tenant, test_principal, test_currency_limit, test_property_tag
+    ):
         """✅ Valid FormatReference dict (with format_id) converts to FormatId successfully."""
         product_id = "prod_format_ref"
         media_buy_id = "mb_format_ref"
@@ -155,7 +220,9 @@ class TestFormatConversionApproval:
 
             session.commit()
 
-    def test_invalid_format_missing_agent_url(self, test_tenant, test_principal):
+    def test_invalid_format_missing_agent_url(
+        self, test_tenant, test_principal, test_currency_limit, test_property_tag
+    ):
         """❌ FormatReference dict missing agent_url should fail validation."""
         product_id = "prod_no_agent_url"
         media_buy_id = "mb_no_agent_url"
@@ -238,7 +305,7 @@ class TestFormatConversionApproval:
 
             session.commit()
 
-    def test_invalid_format_empty_agent_url(self, test_tenant, test_principal):
+    def test_invalid_format_empty_agent_url(self, test_tenant, test_principal, test_currency_limit, test_property_tag):
         """❌ FormatReference dict with empty agent_url should fail validation."""
         product_id = "prod_empty_agent_url"
         media_buy_id = "mb_empty_agent_url"
@@ -320,7 +387,7 @@ class TestFormatConversionApproval:
 
             session.commit()
 
-    def test_invalid_agent_url_not_http(self, test_tenant, test_principal):
+    def test_invalid_agent_url_not_http(self, test_tenant, test_principal, test_currency_limit, test_property_tag):
         """❌ FormatReference with non-HTTP(S) agent_url should fail validation."""
         product_id = "prod_invalid_url"
         media_buy_id = "mb_invalid_url"
@@ -403,7 +470,9 @@ class TestFormatConversionApproval:
 
             session.commit()
 
-    def test_invalid_format_missing_format_id(self, test_tenant, test_principal):
+    def test_invalid_format_missing_format_id(
+        self, test_tenant, test_principal, test_currency_limit, test_property_tag
+    ):
         """❌ FormatReference dict missing format_id/id should fail validation."""
         product_id = "prod_no_format_id"
         media_buy_id = "mb_no_format_id"
@@ -486,7 +555,7 @@ class TestFormatConversionApproval:
 
             session.commit()
 
-    def test_valid_format_id_dict_conversion(self, test_tenant, test_principal):
+    def test_valid_format_id_dict_conversion(self, test_tenant, test_principal, test_currency_limit, test_property_tag):
         """✅ Valid FormatId dict (with 'id' key) converts successfully."""
         product_id = "prod_format_id"
         media_buy_id = "mb_format_id"
@@ -568,7 +637,7 @@ class TestFormatConversionApproval:
 
             session.commit()
 
-    def test_invalid_dict_missing_id(self, test_tenant, test_principal):
+    def test_invalid_dict_missing_id(self, test_tenant, test_principal, test_currency_limit, test_property_tag):
         """❌ Dict with neither 'id' nor 'format_id' should fail validation."""
         product_id = "prod_missing_both"
         media_buy_id = "mb_missing_both"
@@ -650,7 +719,7 @@ class TestFormatConversionApproval:
 
             session.commit()
 
-    def test_empty_formats_list_fails(self, test_tenant, test_principal):
+    def test_empty_formats_list_fails(self, test_tenant, test_principal, test_currency_limit, test_property_tag):
         """❌ Product with empty formats list should fail validation."""
         product_id = "prod_empty_formats"
         media_buy_id = "mb_empty_formats"
@@ -727,7 +796,7 @@ class TestFormatConversionApproval:
 
             session.commit()
 
-    def test_mixed_valid_format_types(self, test_tenant, test_principal):
+    def test_mixed_valid_format_types(self, test_tenant, test_principal, test_currency_limit, test_property_tag):
         """✅ Product with mixed valid format types (FormatRef, FormatId, dict) succeeds."""
         product_id = "prod_mixed_formats"
         media_buy_id = "mb_mixed_formats"
@@ -820,7 +889,7 @@ class TestFormatConversionApproval:
 
             session.commit()
 
-    def test_invalid_format_unknown_type(self, test_tenant, test_principal):
+    def test_invalid_format_unknown_type(self, test_tenant, test_principal, test_currency_limit, test_property_tag):
         """❌ Format with unknown type (string, int) should fail validation."""
         product_id = "prod_invalid_type"
         media_buy_id = "mb_invalid_type"
