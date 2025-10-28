@@ -1911,6 +1911,11 @@ def _list_creatives_impl(
                 "principal_id": db_creative.principal_id,
                 "created_at": db_creative.created_at or datetime.now(UTC),
                 "updated_at": db_creative.updated_at or datetime.now(UTC),
+                # AdCP v1 creative-asset spec fields (CRITICAL FIX: extract from DB)
+                "assets": db_creative.assets,  # Assets keyed by asset_role
+                "inputs": db_creative.inputs,  # Preview contexts for generative formats
+                "tags": db_creative.tags,  # User-defined tags
+                "approved": db_creative.approved,  # Approval flag for generative creatives
             }
 
             # Handle content_uri - required field even for snippet creatives
