@@ -237,7 +237,7 @@ def process_and_upload_package_creatives(
         logger.info(f"Processing {len(pkg.creatives)} creatives for package with product_id {product_id}")
 
         # Convert creatives to dicts with better error handling
-        creative_dicts = []
+        creative_dicts: list[dict[Any, Any]] = []
         for creative_idx, creative in enumerate(pkg.creatives):
             try:
                 if isinstance(creative, dict):

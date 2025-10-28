@@ -23,6 +23,8 @@ from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 console = Console()
 
@@ -891,7 +893,7 @@ async def _create_media_buy_impl(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
 
@@ -966,7 +968,7 @@ async def _create_media_buy_impl(
     if context is None:
         raise ToolError("Context is required")
 
-    testing_ctx = get_testing_context(context)
+    testing_ctx = get_testing_context(context)  # type: ignore[arg-type]
 
     # Authentication and tenant setup
     principal_id = get_principal_id_from_context(context)
@@ -1420,7 +1422,7 @@ async def _create_media_buy_impl(
                 logger.info("[INLINE_CREATIVE_DEBUG] Calling process_and_upload_package_creatives")
                 updated_packages, uploaded_ids = process_and_upload_package_creatives(
                     packages=req.packages,
-                    context=context,
+                    context=context,  # type: ignore[arg-type]
                     testing_ctx=testing_ctx,
                 )
                 # Replace packages with updated versions (functional approach)
@@ -2606,7 +2608,7 @@ async def _create_media_buy_impl(
         # Log activity
         # Activity logging imported at module level
 
-        log_tool_activity(context, "create_media_buy", request_start_time)
+        log_tool_activity(context, "create_media_buy", request_start_time)  # type: ignore[arg-type]
 
         # Also log specific media buy activity
         try:
@@ -2839,7 +2841,7 @@ async def create_media_buy(
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
     webhook_url: str | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Create a media buy with the specified parameters.
 
@@ -2918,7 +2920,7 @@ async def create_media_buy_raw(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Create a new media buy with specified parameters (raw function for A2A server use).
 

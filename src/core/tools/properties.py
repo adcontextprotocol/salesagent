@@ -16,6 +16,8 @@ from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 from sqlalchemy import select
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 
 from src.core.audit_logger import get_audit_logger
@@ -31,7 +33,7 @@ from src.core.validation_helpers import safe_parse_json_field
 
 
 def _list_authorized_properties_impl(
-    req: ListAuthorizedPropertiesRequest | None = None, context: Context | None = None
+    req: ListAuthorizedPropertiesRequest | None = None, context: Context | ToolContext | None = None
 ) -> ListAuthorizedPropertiesResponse:
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
 
@@ -55,7 +57,7 @@ def _list_authorized_properties_impl(
     # Authentication is OPTIONAL for discovery endpoints (returns public inventory)
     # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
     principal_id, tenant = get_principal_from_context(
-        context, require_valid_token=False
+        context, require_valid_token=False  # type: ignore[arg-type]
     )  # May return (None, tenant) for public discovery
 
     # Set tenant context if returned
@@ -89,7 +91,7 @@ def _list_authorized_properties_impl(
 
     # Activity logging imported at module level
     if context is not None:
-        log_tool_activity(context, "list_authorized_properties", start_time)
+        log_tool_activity(context, "list_authorized_properties", start_time)  # type: ignore[arg-type]
 
     try:
         with get_db_session() as session:
@@ -256,7 +258,9 @@ def _list_authorized_properties_impl(
 
 
 def list_authorized_properties(
-    req: ListAuthorizedPropertiesRequest | None = None, webhook_url: str | None = None, context: Context | None = None
+    req: ListAuthorizedPropertiesRequest | None = None,
+    webhook_url: str | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
 
@@ -276,7 +280,7 @@ def list_authorized_properties(
     import sys
 
     logger = logging.getLogger(__name__)
-    tool_context: Context | None = None
+    tool_context: Context | ToolContext | None = None
 
     if context:
         try:
@@ -285,7 +289,7 @@ def list_authorized_properties(
             logger.error(f"🔍 context type={type(context)}")
 
             # Access raw Starlette request headers via context.request_context.request
-            request = context.request_context.request
+            request = context.request_context.request  # type: ignore[union-attr]
             logger.error(f"🔍 request type={type(request) if request else None}")
 
             if request and hasattr(request, "headers"):
@@ -336,7 +340,7 @@ def list_authorized_properties(
 
 
 def list_authorized_properties_raw(
-    req: "ListAuthorizedPropertiesRequest" = None, context: Context = None
+    req: "ListAuthorizedPropertiesRequest" = None, context: Context | ToolContext | None = None
 ) -> "ListAuthorizedPropertiesResponse":
     """List all properties this agent is authorized to represent (raw function for A2A server use).
 

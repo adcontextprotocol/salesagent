@@ -12,6 +12,8 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 
 from src.core.auth import get_principal_from_context, get_principal_object
@@ -29,7 +31,7 @@ def _get_principal_id_from_context(context: Context | None) -> str | None:
     return principal_id
 
 
-async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:
+async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolContext | None = None) -> GetSignalsResponse:
     """Shared implementation for get_signals (used by both MCP and A2A).
 
     Args:
@@ -39,7 +41,7 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
     Returns:
         GetSignalsResponse with matching signals
     """
-    _get_principal_id_from_context(context)
+    _get_principal_id_from_context(context)  # type: ignore[arg-type,union-attr]
 
     # Get tenant information
     tenant = get_current_tenant()
@@ -236,7 +238,7 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
     return GetSignalsResponse(signals=signals)
 
 
-async def get_signals(req: GetSignalsRequest, context: Context = None):
+async def get_signals(req: GetSignalsRequest, context: Context | ToolContext | None = None):
     """Optional endpoint for discovering available signals (audiences, contextual, etc.)
 
     MCP tool wrapper that delegates to the shared implementation.
@@ -256,7 +258,7 @@ async def _activate_signal_impl(
     signal_id: str,
     campaign_id: str = None,
     media_buy_id: str = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ) -> ActivateSignalResponse:
     """Shared implementation for activate_signal (used by both MCP and A2A).
 
@@ -272,7 +274,7 @@ async def _activate_signal_impl(
     start_time = time.time()
 
     # Authentication required for signal activation
-    principal_id = _get_principal_id_from_context(context)
+    principal_id = _get_principal_id_from_context(context)  # type: ignore[arg-type]
 
     # Get tenant information
     tenant = get_current_tenant()
@@ -287,7 +289,7 @@ async def _activate_signal_impl(
     # Apply testing hooks
     if not context:
         raise ToolError("Context required for signal activation")
-    testing_ctx = get_testing_context(context)
+    testing_ctx = get_testing_context(context)  # type: ignore[arg-type]
     campaign_info = {"endpoint": "activate_signal", "signal_id": signal_id}
     # Note: apply_testing_hooks modifies response data dict, not called here as no response yet
 
@@ -352,7 +354,7 @@ async def activate_signal(
     signal_id: str,
     campaign_id: str = None,
     media_buy_id: str = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """Activate a signal for use in campaigns.
 
@@ -371,7 +373,7 @@ async def activate_signal(
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
-async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:
+async def get_signals_raw(req: GetSignalsRequest, context: Context | ToolContext | None = None) -> GetSignalsResponse:
     """Optional endpoint for discovering available signals (raw function for A2A server use).
 
     Delegates to the shared implementation.
@@ -390,7 +392,7 @@ async def activate_signal_raw(
     signal_id: str,
     campaign_id: str = None,
     media_buy_id: str = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ) -> ActivateSignalResponse:
     """Activate a signal for use in campaigns (raw function for A2A server use).
 

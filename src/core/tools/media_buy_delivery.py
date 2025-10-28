@@ -17,6 +17,8 @@ from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 console = Console()
 
@@ -36,7 +38,7 @@ from src.core.validation_helpers import format_validation_error
 
 
 def _get_media_buy_delivery_impl(
-    req: GetMediaBuyDeliveryRequest, context: Context | None
+    req: GetMediaBuyDeliveryRequest, context: Context | ToolContext | None
 ) -> GetMediaBuyDeliveryResponse:
     """Get delivery data for one or more media buys.
 
@@ -49,7 +51,7 @@ def _get_media_buy_delivery_impl(
         raise ToolError("Context is required")
 
     # Extract testing context for time simulation and event jumping
-    testing_ctx = get_testing_context(context)
+    testing_ctx = get_testing_context(context)  # type: ignore[arg-type]
 
     principal_id = get_principal_id_from_context(context)
     if not principal_id:
@@ -394,7 +396,7 @@ def get_media_buy_delivery(
     start_date: str | None = None,
     end_date: str | None = None,
     webhook_url: str | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Get delivery data for media buys.
 
@@ -434,7 +436,7 @@ def get_media_buy_delivery_raw(
     status_filter: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Get delivery metrics for media buys (raw function for A2A server use).
 

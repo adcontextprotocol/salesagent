@@ -405,7 +405,8 @@ jobs:
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
         echo "🔍 Running mypy type checks on src/ directory..."
-        uv run mypy src/ --config-file=mypy.ini
+        # Use uv to run mypy from the project's virtual environment
+        uv run python -m mypy src/ --config-file=mypy.ini
         echo "✅ Mypy type checking passed (0 errors)"
 
   test-summary:

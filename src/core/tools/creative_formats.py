@@ -12,6 +12,8 @@ from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 
 from src.core.audit_logger import get_audit_logger
@@ -132,7 +134,7 @@ def list_creative_formats(
     category: str | None = None,
     format_ids: list[str] | None = None,
     webhook_url: str | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """List all available creative formats (AdCP spec endpoint).
 
@@ -168,12 +170,12 @@ def list_creative_formats(
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creative_formats request")) from e
 
-    response = _list_creative_formats_impl(req, context)
+    response = _list_creative_formats_impl(req, context)  # type: ignore[arg-type]
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 def list_creative_formats_raw(
-    req: ListCreativeFormatsRequest | None = None, context: Context = None
+    req: ListCreativeFormatsRequest | None = None, context: Context | ToolContext | None = None
 ) -> ListCreativeFormatsResponse:
     """List all available creative formats (raw function for A2A server use).
 
@@ -186,4 +188,4 @@ def list_creative_formats_raw(
     Returns:
         ListCreativeFormatsResponse with all available formats
     """
-    return _list_creative_formats_impl(req, context)
+    return _list_creative_formats_impl(req, context)  # type: ignore[arg-type]

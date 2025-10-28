@@ -27,13 +27,16 @@ from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json 
     GetProductsRequest as GetProductsRequestGenerated,
 )
 from src.core.testing_hooks import apply_testing_hooks, get_testing_context
+from src.core.tool_context import ToolContext
 from src.core.validation_helpers import format_validation_error, safe_parse_json_field
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 
 logger = logging.getLogger(__name__)
 
 
-async def _get_products_impl(req: GetProductsRequestGenerated, context: Context | None) -> GetProductsResponse:
+async def _get_products_impl(
+    req: GetProductsRequestGenerated, context: Context | ToolContext | None
+) -> GetProductsResponse:
     """Shared implementation for get_products.
 
     Contains all business logic for product discovery including policy checks,
@@ -382,7 +385,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context 
                         product_format_ids.add(format_id.id)
 
                 # req.filters.format_ids contains FormatId objects, extract .id from them
-                request_format_ids = set()
+                request_format_ids: set[str] = set()
                 for fmt_id in req.filters.format_ids:
                     if isinstance(fmt_id, str):
                         request_format_ids.add(fmt_id)
@@ -468,7 +471,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context 
 
     # Apply testing hooks to response
     response_data = {"products": [p.model_dump_internal() for p in eligible_products]}
-    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")
+    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")  # type: ignore[arg-type]
 
     # Reconstruct products from modified data
     modified_products = [Product(**p) for p in response_data["products"]]
@@ -517,7 +520,7 @@ async def get_products(
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
     filters: dict | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Get available products matching the brief.
 
@@ -566,7 +569,7 @@ async def get_products_raw(
     min_exposures: int | None = None,
     filters: dict | None = None,
     strategy_id: str | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ) -> GetProductsResponse:
     """Get available products matching the brief.
 

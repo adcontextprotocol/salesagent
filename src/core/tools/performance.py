@@ -13,6 +13,8 @@ from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 console = Console()
 
@@ -25,7 +27,7 @@ from src.core.validation_helpers import format_validation_error
 
 
 def _update_performance_index_impl(
-    media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None
+    media_buy_id: str, performance_data: list[dict[str, Any]], context: Context | ToolContext | None = None
 ) -> UpdatePerformanceIndexResponse:
     """Shared implementation for update_performance_index (used by both MCP and A2A).
 
@@ -50,7 +52,7 @@ def _update_performance_index_impl(
     if context is None:
         raise ValueError("Context is required for update_performance_index")
 
-    _verify_principal(req.media_buy_id, context)
+    _verify_principal(req.media_buy_id, context)  # type: ignore[arg-type]
     principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
     if principal_id is None:
         raise ToolError("Principal ID not found in context - authentication required")
@@ -91,7 +93,10 @@ def _update_performance_index_impl(
 
 
 def update_performance_index(
-    media_buy_id: str, performance_data: list[dict[str, Any]], webhook_url: str | None = None, context: Context = None
+    media_buy_id: str,
+    performance_data: list[dict[str, Any]],
+    webhook_url: str | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Update performance index data for a media buy.
 
@@ -110,7 +115,9 @@ def update_performance_index(
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
-def update_performance_index_raw(media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None):
+def update_performance_index_raw(
+    media_buy_id: str, performance_data: list[dict[str, Any]], context: Context | ToolContext | None = None
+):
     """Update performance data for a media buy (raw function for A2A server use).
 
     Delegates to the shared implementation.

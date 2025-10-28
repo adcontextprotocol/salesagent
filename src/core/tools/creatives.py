@@ -19,6 +19,8 @@ from pydantic import ValidationError
 from rich.console import Console
 from sqlalchemy import select
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 console = Console()
 
@@ -44,7 +46,7 @@ def _sync_creatives_impl(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
 
@@ -1448,7 +1450,7 @@ def _sync_creatives_impl(
     # Log activity
     # Activity logging imported at module level
     if context is not None:
-        log_tool_activity(context, "sync_creatives", start_time)
+        log_tool_activity(context, "sync_creatives", start_time)  # type: ignore[arg-type]
 
     # Build message
     message = f"Synced {created_count + updated_count} creatives"
@@ -1518,7 +1520,7 @@ def sync_creatives(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
 
@@ -1570,7 +1572,7 @@ def _list_creatives_impl(
     limit: int = 50,
     sort_by: str = "created_date",
     sort_order: str = "desc",
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ) -> ListCreativesResponse:
     """List and search creative library (AdCP spec endpoint).
 
@@ -1822,7 +1824,7 @@ def _list_creatives_impl(
     # Log activity
     # Activity logging imported at module level
     if context is not None:
-        log_tool_activity(context, "list_creatives", start_time)
+        log_tool_activity(context, "list_creatives", start_time)  # type: ignore[arg-type]
 
     message = f"Found {len(creatives)} creatives"
     if total_count > len(creatives):
@@ -1892,7 +1894,7 @@ def list_creatives(
     sort_by: str = "created_date",
     sort_order: str = "desc",
     webhook_url: str | None = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """List and filter creative assets from the centralized library.
 
@@ -1936,7 +1938,7 @@ def sync_creatives_raw(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """Sync creative assets to the centralized creative library (raw function for A2A server use).
 
@@ -1980,7 +1982,7 @@ def list_creatives_raw(
     limit: int = 50,
     sort_by: str = "created_date",
     sort_order: str = "desc",
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """List creative assets with filtering and pagination (raw function for A2A server use).
 

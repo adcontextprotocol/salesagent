@@ -56,7 +56,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 # Import core functions for direct calls (raw functions without FastMCP decorators)
 from datetime import UTC, datetime
 
-from fastmcp.server.context import Context
 from sqlalchemy import select
 
 from src.core.audit_logger import get_audit_logger
@@ -270,15 +269,14 @@ class AdCPRequestHandler(RequestHandler):
             testing_context=AdCPTestContext().model_dump(),  # Default testing context for A2A requests
         )
 
-    def _tool_context_to_mcp_context(self, tool_context: ToolContext) -> Context | None:
-        """Convert ToolContext to FastMCP Context for raw function calls.
+    def _tool_context_to_mcp_context(self, tool_context: ToolContext) -> ToolContext:
+        """Convert ToolContext to a context object for raw function calls.
 
-        Raw functions expect Context | None. Since A2A doesn't use FastMCP's Context,
-        we pass None and let the tools use the internal context mechanism instead.
+        Raw functions now accept ToolContext directly (no conversion needed).
+        The tools handle both ToolContext and legacy FastMCP Context.
         """
-        # Return None - tools will use the internal tenant/principal context
-        # that was set up during authentication
-        return None
+        # Return ToolContext directly - tools handle ToolContext natively
+        return tool_context
 
     def _log_a2a_operation(
         self,

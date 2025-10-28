@@ -17,6 +17,8 @@ from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from sqlalchemy import select
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 
 from src.core.audit_logger import get_audit_logger
@@ -100,7 +102,7 @@ def _update_media_buy_impl(
     packages: list | None = None,
     creatives: list | None = None,
     push_notification_config: dict | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ) -> UpdateMediaBuyResponse:
     """Shared implementation for update_media_buy (used by both MCP and A2A).
 
@@ -184,7 +186,7 @@ def _update_media_buy_impl(
         # TODO: Handle buyer_ref case - for now just raise error
         raise ValueError("media_buy_id is required (buyer_ref lookup not yet implemented)")
 
-    _verify_principal(req.media_buy_id, context)
+    _verify_principal(req.media_buy_id, context)  # type: ignore[arg-type]
     principal_id = get_principal_id_from_context(context)  # Already verified by _verify_principal
 
     # Verify principal_id is not None (get_principal_id_from_context should raise if None)
@@ -229,7 +231,7 @@ def _update_media_buy_impl(
         )
 
     # Extract testing context for dry_run and testing_context parameters
-    testing_ctx = get_testing_context(context)
+    testing_ctx = get_testing_context(context)  # type: ignore[arg-type]
 
     adapter = get_adapter(principal, dry_run=testing_ctx.dry_run, testing_context=testing_ctx)
     today = req.today or date.today()
@@ -682,7 +684,7 @@ def update_media_buy(
     packages: list = None,
     creatives: list = None,
     push_notification_config: dict | None = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """Update a media buy with campaign-level and/or package-level changes.
 
@@ -746,7 +748,7 @@ def update_media_buy_raw(
     packages: list = None,
     creatives: list = None,
     push_notification_config: dict = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """Update an existing media buy (raw function for A2A server use).
 
