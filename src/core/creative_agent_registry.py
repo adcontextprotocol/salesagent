@@ -76,7 +76,7 @@ class CreativeAgentRegistry:
         priority=1,
     )
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize registry with empty cache."""
         self._format_cache: dict[str, CachedFormats] = {}  # Key: agent_url
 
@@ -175,7 +175,7 @@ class CreativeAgentRegistry:
 
                 async with client:
                     # Build parameters for list_creative_formats
-                    params = {}
+                    params: dict[str, Any] = {}
                     if max_width is not None:
                         params["max_width"] = max_width
                     if max_height is not None:
@@ -202,24 +202,26 @@ class CreativeAgentRegistry:
                     logger = logging.getLogger(__name__)
 
                     # Use structured_content field for JSON response (MCP protocol update)
-                    formats_data = None
+                    formats_data: dict[str, Any] | None = None
                     if hasattr(result, "structured_content") and result.structured_content:
-                        formats_data = result.structured_content
+                        formats_data = result.structured_content  # type: ignore[assignment]
                         logger.info(f"_fetch_formats_from_agent: Using structured_content, type={type(formats_data)}")
                     elif isinstance(result.content, list) and result.content:
                         # Fallback: Parse from content field (legacy)
-                        formats_data = (
+                        content_item = (
                             result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
                         )
                         logger.info(
-                            f"_fetch_formats_from_agent: Using legacy content field, formats_data (first 500 chars): {str(formats_data)[:500]}"
+                            f"_fetch_formats_from_agent: Using legacy content field, formats_data (first 500 chars): {str(content_item)[:500]}"
                         )
 
                         # Parse JSON if needed
                         import json
 
-                        if isinstance(formats_data, str):
-                            formats_data = json.loads(formats_data)
+                        if isinstance(content_item, str):
+                            formats_data = json.loads(content_item)
+                        else:
+                            formats_data = content_item  # type: ignore[assignment]
 
                     formats = []
                     if formats_data:
@@ -515,16 +517,16 @@ class CreativeAgentRegistry:
 
             # Use structured_content field for JSON response (MCP protocol update)
             if hasattr(result, "structured_content") and result.structured_content:
-                return result.structured_content
+                return result.structured_content  # type: ignore[return-value]
 
             # Fallback: Parse result from content field (legacy)
             import json
 
             if isinstance(result.content, list) and result.content:
-                preview_data = result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
+                preview_data: Any = result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
                 if isinstance(preview_data, str):
                     preview_data = json.loads(preview_data)
-                return preview_data
+                return preview_data  # type: ignore[return-value]
 
             return {}
 
@@ -581,16 +583,16 @@ class CreativeAgentRegistry:
 
             # Use structured_content field for JSON response (MCP protocol update)
             if hasattr(result, "structured_content") and result.structured_content:
-                return result.structured_content
+                return result.structured_content  # type: ignore[return-value]
 
             # Fallback: Parse result from content field (legacy)
             import json
 
             if isinstance(result.content, list) and result.content:
-                creative_data = result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
+                creative_data: Any = result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
                 if isinstance(creative_data, str):
                     creative_data = json.loads(creative_data)
-                return creative_data
+                return creative_data  # type: ignore[return-value]
 
             return {}
 

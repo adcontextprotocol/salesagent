@@ -105,8 +105,8 @@ def _validate_creative_assets(assets: Any) -> dict[str, dict[str, Any]] | None:
 def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: list[str]) -> dict[str, Any]:
     """Convert AdCP v1.3+ Creative object to format expected by ad server adapters."""
 
-    # Base asset object with common fields
-    asset = {
+    # Base asset object with common fields - type annotation for mypy
+    asset: dict[str, Any] = {
         "creative_id": creative.creative_id,
         "name": creative.name,
         "format": creative.get_format_string(),  # Handle both string and FormatId object

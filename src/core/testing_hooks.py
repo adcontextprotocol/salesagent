@@ -234,7 +234,7 @@ class NextEventCalculator:
 class SimulatedSpendTracker:
     """Tracks simulated spending across test sessions."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._session_spend: dict[str, float] = {}
 
     def update_spend(self, session_id: str, amount: float):
@@ -255,7 +255,7 @@ class SimulatedSpendTracker:
 class TestSessionManager:
     """Manages isolated test sessions to prevent cross-contamination."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._sessions: dict[str, dict[str, Any]] = {}
         self._spend_tracker = SimulatedSpendTracker()
 

@@ -1,5 +1,7 @@
 """Adapter instance creation and configuration helpers."""
 
+from typing import Any
+
 from sqlalchemy import select
 
 from src.adapters.google_ad_manager import GoogleAdManager
@@ -12,7 +14,9 @@ from src.core.database.models import AdapterConfig
 from src.core.schemas import Principal
 
 
-def get_adapter(principal: Principal, dry_run: bool = False, testing_context=None):
+def get_adapter(
+    principal: Principal, dry_run: bool = False, testing_context: Any = None
+) -> MockAdServerAdapter | GoogleAdManager | Kevel | TritonDigital:
     """Get the appropriate adapter instance for the selected adapter type."""
     # Get tenant and adapter config from database
     tenant = get_current_tenant()
@@ -23,20 +27,21 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
         stmt = select(AdapterConfig).filter_by(tenant_id=tenant["tenant_id"])
         config_row = session.scalars(stmt).first()
 
-        adapter_config = {"enabled": True}
+        adapter_config: dict[str, Any] = {"enabled": True}
         if config_row:
             adapter_type = config_row.adapter_type
             if adapter_type == "mock":
-                adapter_config["dry_run"] = config_row.mock_dry_run
-                adapter_config["manual_approval_required"] = config_row.mock_manual_approval_required
+                adapter_config["dry_run"] = config_row.mock_dry_run or False
+                adapter_config["manual_approval_required"] = config_row.mock_manual_approval_required or False
             elif adapter_type == "google_ad_manager":
-                adapter_config["network_code"] = config_row.gam_network_code
-                adapter_config["refresh_token"] = config_row.gam_refresh_token
-                adapter_config["trafficker_id"] = config_row.gam_trafficker_id
-                adapter_config["manual_approval_required"] = config_row.gam_manual_approval_required
+                adapter_config["network_code"] = config_row.gam_network_code or ""
+                adapter_config["refresh_token"] = config_row.gam_refresh_token or ""
+                adapter_config["trafficker_id"] = config_row.gam_trafficker_id or ""
+                adapter_config["manual_approval_required"] = config_row.gam_manual_approval_required or False
 
                 # Get advertiser_id from principal's platform_mappings (per-principal, not tenant-level)
                 # Support both old format (nested under "google_ad_manager") and new format (root "gam_advertiser_id")
+                advertiser_id: str | None = None
                 if principal.platform_mappings:
                     # Try nested format first
                     gam_mappings = principal.platform_mappings.get("google_ad_manager", {})
@@ -46,19 +51,14 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
                     if not advertiser_id:
                         advertiser_id = principal.platform_mappings.get("gam_advertiser_id")
 
-                    adapter_config["company_id"] = advertiser_id
-                else:
-                    adapter_config["company_id"] = None
+                adapter_config["company_id"] = advertiser_id
             elif adapter_type == "kevel":
-                adapter_config["network_id"] = config_row.kevel_network_id
-                adapter_config["api_key"] = config_row.kevel_api_key
-                adapter_config["manual_approval_required"] = config_row.kevel_manual_approval_required
-            elif adapter_type == "mock":
-                adapter_config["dry_run"] = config_row.mock_dry_run or False
-                adapter_config["manual_approval_required"] = config_row.mock_manual_approval_required or False
+                adapter_config["network_id"] = config_row.kevel_network_id or ""
+                adapter_config["api_key"] = config_row.kevel_api_key or ""
+                adapter_config["manual_approval_required"] = config_row.kevel_manual_approval_required or False
             elif adapter_type == "triton":
-                adapter_config["station_id"] = config_row.triton_station_id
-                adapter_config["api_key"] = config_row.triton_api_key
+                adapter_config["station_id"] = config_row.triton_station_id or ""
+                adapter_config["api_key"] = config_row.triton_api_key or ""
 
     if not selected_adapter:
         # Default to mock if no adapter specified
@@ -73,10 +73,15 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
             adapter_config, principal, dry_run, tenant_id=tenant_id, strategy_context=testing_context
         )
     elif selected_adapter == "google_ad_manager":
+        # network_code is required for GoogleAdManager
+        network_code = adapter_config.get("network_code")
+        if not network_code or not isinstance(network_code, str):
+            raise ValueError("network_code is required for GoogleAdManager adapter")
+
         return GoogleAdManager(
             adapter_config,
             principal,
-            network_code=adapter_config.get("network_code"),
+            network_code=network_code,
             advertiser_id=adapter_config.get("company_id"),
             trafficker_id=adapter_config.get("trafficker_id"),
             dry_run=dry_run,

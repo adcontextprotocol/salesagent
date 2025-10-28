@@ -52,15 +52,13 @@ def _update_performance_index_impl(
 
     _verify_principal(req.media_buy_id, context)
     principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
+    if principal_id is None:
+        raise ToolError("Principal ID not found in context - authentication required")
 
     # Get the Principal object
     principal = get_principal_object(principal_id)
     if not principal:
-        return UpdatePerformanceIndexResponse(
-            status="failed",
-            message=f"Principal {principal_id} not found",
-            errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
-        )
+        raise ToolError(f"Principal {principal_id} not found")
 
     # Get the appropriate adapter (no dry_run support for performance updates)
     adapter = get_adapter(principal, dry_run=False)

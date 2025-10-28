@@ -50,6 +50,7 @@ Authentication for This Service:
 import logging
 import os
 import tempfile
+from typing import Any
 
 from google.cloud import iam_admin_v1
 from google.cloud.iam_admin_v1 import types
@@ -345,13 +346,18 @@ class GCPServiceAccountService:
             )
             raise
 
-    def test_connection(self) -> dict:
+    def test_connection(self) -> dict[str, Any]:
         """Test GCP IAM API connectivity and permissions.
 
         Returns:
             Dict with test results including project, permissions, and any errors
         """
-        result = {"project_id": self.gcp_project_id, "can_list": False, "can_create": False, "errors": []}
+        result: dict[str, Any] = {
+            "project_id": self.gcp_project_id,
+            "can_list": False,
+            "can_create": False,
+            "errors": [],
+        }
 
         try:
             # Test listing service accounts (requires serviceAccountViewer or higher)

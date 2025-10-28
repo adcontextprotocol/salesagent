@@ -11,8 +11,8 @@ No database schema changes required - computes state from existing data.
 """
 
 import logging
-from datetime import UTC, datetime
-from typing import TypedDict
+from datetime import UTC, date, datetime
+from typing import TypedDict, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -77,6 +77,9 @@ class MediaBuyReadinessService:
                     "creatives_rejected": 0,
                     "blocking_issues": ["Media buy not found"],
                     "warnings": [],
+                    "gam_order_status": None,
+                    "gam_line_items_total": 0,
+                    "gam_line_items_ready": 0,
                 }
 
             # Check if already failed
@@ -92,6 +95,9 @@ class MediaBuyReadinessService:
                     "creatives_rejected": 0,
                     "blocking_issues": ["Media buy creation failed"],
                     "warnings": [],
+                    "gam_order_status": None,
+                    "gam_line_items_total": 0,
+                    "gam_line_items_ready": 0,
                 }
 
             # Extract packages from raw_request
@@ -147,17 +153,17 @@ class MediaBuyReadinessService:
                 blocking_issues.append("No creatives uploaded")
 
             # Check GAM status if using GAM adapter
-            gam_order_status = None
+            gam_order_status: str | None = None
             gam_line_items_total = 0
             gam_line_items_ready = 0
 
             # Determine if tenant uses GAM
-            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
-            tenant = session.scalars(stmt).first()
-            if tenant and tenant.ad_server == "google_ad_manager":
+            tenant_stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = session.scalars(tenant_stmt).first()
+            if tenant and hasattr(tenant, "ad_server") and tenant.ad_server == "google_ad_manager":
                 # Check if we have GAM order data for this media buy
-                stmt = select(GAMOrder).filter_by(tenant_id=tenant_id, order_id=media_buy_id)
-                gam_order = session.scalars(stmt).first()
+                order_stmt = select(GAMOrder).filter_by(tenant_id=tenant_id, order_id=media_buy_id)
+                gam_order = session.scalars(order_stmt).first()
 
                 if gam_order:
                     gam_order_status = gam_order.status
@@ -168,8 +174,8 @@ class MediaBuyReadinessService:
                         blocking_issues.append(f"GAM order is {gam_order.status.lower()}")
 
                     # Get line item statuses
-                    stmt = select(GAMLineItem).filter_by(tenant_id=tenant_id, order_id=media_buy_id)
-                    line_items = session.scalars(stmt).all()
+                    li_stmt = select(GAMLineItem).filter_by(tenant_id=tenant_id, order_id=media_buy_id)
+                    line_items = session.scalars(li_stmt).all()
                     gam_line_items_total = len(line_items)
                     gam_line_items_ready = sum(
                         1 for li in line_items if li.status in ["APPROVED", "DELIVERING", "READY"]
@@ -259,17 +265,28 @@ class MediaBuyReadinessService:
             return "needs_approval"
 
         # Check flight timing - ensure timezone-aware datetimes
+        # Note: SQLAlchemy's DateTime and Date map to Python's datetime and date at runtime
         if media_buy.start_time:
-            start_time = (
-                media_buy.start_time if media_buy.start_time.tzinfo else media_buy.start_time.replace(tzinfo=UTC)
-            )
+            # media_buy.start_time is datetime | None (from Mapped[DateTime | None])
+            # Cast to help mypy understand the runtime type
+            start_datetime = cast(datetime, media_buy.start_time)
+            start_time = start_datetime if start_datetime.tzinfo else start_datetime.replace(tzinfo=UTC)
         else:
-            start_time = datetime.combine(media_buy.start_date, datetime.min.time()).replace(tzinfo=UTC)
+            # media_buy.start_date is date (from Mapped[Date])
+            # Cast to help mypy understand the runtime type
+            start_date_val = cast(date, media_buy.start_date)
+            start_time = datetime.combine(start_date_val, datetime.min.time()).replace(tzinfo=UTC)
 
         if media_buy.end_time:
-            end_time = media_buy.end_time if media_buy.end_time.tzinfo else media_buy.end_time.replace(tzinfo=UTC)
+            # media_buy.end_time is datetime | None (from Mapped[DateTime | None])
+            # Cast to help mypy understand the runtime type
+            end_datetime = cast(datetime, media_buy.end_time)
+            end_time = end_datetime if end_datetime.tzinfo else end_datetime.replace(tzinfo=UTC)
         else:
-            end_time = datetime.combine(media_buy.end_date, datetime.max.time()).replace(tzinfo=UTC)
+            # media_buy.end_date is date (from Mapped[Date])
+            # Cast to help mypy understand the runtime type
+            end_date_val = cast(date, media_buy.end_date)
+            end_time = datetime.combine(end_date_val, datetime.max.time()).replace(tzinfo=UTC)
 
         # Completed if past end date
         if now > end_time:

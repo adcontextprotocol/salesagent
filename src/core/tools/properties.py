@@ -49,7 +49,7 @@ def _list_authorized_properties_impl(
 
     # Handle missing request object (allows empty calls)
     if req is None:
-        req = ListAuthorizedPropertiesRequest()
+        req = ListAuthorizedPropertiesRequest(tags=None)
 
     # Get tenant and principal from context
     # Authentication is OPTIONAL for discovery endpoints (returns public inventory)
@@ -88,8 +88,8 @@ def _list_authorized_properties_impl(
     # The testing_context is used later if needed
 
     # Activity logging imported at module level
-
-    log_tool_activity(context, "list_authorized_properties", start_time)
+    if context is not None:
+        log_tool_activity(context, "list_authorized_properties", start_time)
 
     try:
         with get_db_session() as session:
@@ -122,8 +122,16 @@ def _list_authorized_properties_impl(
                 prop_tags = prop.tags or []
                 all_tags.update(prop_tags)
 
+                # Validate property_type is in allowed set
+                from typing import Literal, cast
+
+                PropertyType = Literal[
+                    "website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"
+                ]
+                property_type: PropertyType = cast(PropertyType, prop.property_type)
+
                 property_obj = Property(
-                    property_type=prop.property_type,
+                    property_type=property_type,
                     name=prop.name,
                     identifiers=identifiers,
                     tags=prop_tags,
@@ -134,12 +142,14 @@ def _list_authorized_properties_impl(
             # Get tag metadata for all referenced tags
             tag_metadata = {}
             if all_tags:
-                stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(all_tags))
-                property_tags = session.scalars(stmt).all()
+                tags_stmt = select(PropertyTag).where(
+                    PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(all_tags)
+                )
+                property_tags = session.scalars(tags_stmt).all()
 
                 for property_tag in property_tags:
                     tag_metadata[property_tag.tag_id] = PropertyTagMetadata(
-                        name=property_tag.name, description=property_tag.description
+                        name=property_tag.name, description=property_tag.description if property_tag.description else ""
                     )
 
             # Generate advertising policies text from tenant configuration
@@ -200,7 +210,9 @@ def _list_authorized_properties_impl(
             # Note: Optional fields (advertising_policies, errors, etc.) should be omitted if not set,
             # not set to None or empty values. AdCPBaseModel.model_dump() uses exclude_none=True by default.
             # Build response dict with only non-None values
-            response_data = {"publisher_domains": publisher_domains}  # Required per AdCP v2.4 spec
+            from typing import Any
+
+            response_data: dict[str, Any] = {"publisher_domains": publisher_domains}  # Required per AdCP v2.4 spec
 
             # Only add optional fields if they have actual values
             if advertising_policies_text:
@@ -230,10 +242,11 @@ def _list_authorized_properties_impl(
 
         # Log audit for failure
         audit_logger = get_audit_logger("AdCP", tenant_id)
+        principal_name = principal_id if principal_id else "anonymous"
         audit_logger.log_operation(
             operation="list_authorized_properties",
-            principal_name=principal_id,
-            principal_id=principal_id,
+            principal_name=principal_name,
+            principal_id=principal_name,
             adapter_id="mcp_server",
             success=False,
             error=str(e),
@@ -263,7 +276,7 @@ def list_authorized_properties(
     import sys
 
     logger = logging.getLogger(__name__)
-    tool_context = None
+    tool_context: Context | None = None
 
     if context:
         try:
@@ -286,12 +299,16 @@ def list_authorized_properties(
                 )
 
                 # Create MinimalContext matching A2A pattern
-                class MinimalContext:
-                    def __init__(self, headers):
-                        self.meta = {"headers": headers}
-                        self.headers = headers
+                # Note: Using Any type to allow duck-typed context
+                from typing import Any
 
-                tool_context = MinimalContext(headers)
+                class MinimalContext:
+                    def __init__(self, headers: dict[str, str]):
+                        self.meta: dict[str, Any] = {"headers": headers}
+                        self.headers: dict[str, str] = headers
+
+                tool_context_temp: Any = MinimalContext(headers)
+                tool_context = tool_context_temp
                 print("[MCP DEBUG] Created MinimalContext successfully", file=sys.stderr, flush=True)
                 logger.info("MCP list_authorized_properties: Created MinimalContext successfully")
             else:

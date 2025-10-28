@@ -182,7 +182,7 @@ class WebhookDeliveryService:
     circuit breakers, exponential backoff, and replay attack prevention.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize enhanced webhook delivery service."""
         self._sequence_numbers: dict[str, int] = {}  # Track sequence per media buy
         self._lock = threading.Lock()  # Protect shared state
@@ -281,7 +281,8 @@ class WebhookDeliveryService:
             if next_expected_at:
                 delivery_payload["next_expected_at"] = next_expected_at
 
-            totals = delivery_payload["media_buy_deliveries"][0]["totals"]
+            # Get totals dict with type assertion for mypy
+            totals: dict[str, Any] = delivery_payload["media_buy_deliveries"][0]["totals"]  # type: ignore[index]
             if clicks is not None:
                 totals["clicks"] = clicks
             if ctr is not None:

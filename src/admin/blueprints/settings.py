@@ -264,7 +264,7 @@ def update_general(tenant_id):
 @log_admin_action(
     "update_adapter",
     extract_details=lambda r, **kw: {
-        "adapter": request.json.get("adapter") if request.is_json else request.form.get("adapter")
+        "adapter": request.json.get("adapter") if request.is_json and request.json else request.form.get("adapter")  # type: ignore[union-attr]
     },
 )
 def update_adapter(tenant_id):

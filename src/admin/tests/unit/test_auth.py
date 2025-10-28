@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from src.admin.blueprints.auth import auth_bp, init_oauth
-from src.admin.utils import is_super_admin, is_tenant_admin
+from src.admin.utils import is_super_admin, is_tenant_admin  # type: ignore[attr-defined]
 
 
 class TestAuthBlueprint:

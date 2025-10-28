@@ -7,14 +7,14 @@ similar to how A2A handles conversation context.
 from collections.abc import Callable
 from typing import Any
 
-from fastmcp.server import Server
-from fastmcp.server.server import Context as FastMCPContext
+from fastmcp import FastMCP
+from fastmcp.server.context import Context as FastMCPContext
 from pydantic import BaseModel
 
 from src.core.mcp_context_wrapper import MCPContextWrapper
 
 
-class EnhancedMCPServer(Server):
+class EnhancedMCPServer(FastMCP):
     """Extended FastMCP server with automatic context management.
 
     This server automatically:
@@ -34,7 +34,7 @@ class EnhancedMCPServer(Server):
         self.context_wrapper = MCPContextWrapper()
         self._original_tool_decorator = super().tool
 
-    def tool(self, func: Callable | None = None, **kwargs) -> Callable:
+    def tool(self, func: Callable | None = None, **kwargs) -> Callable:  # type: ignore[override]
         """Enhanced tool decorator that adds context management.
 
         This decorator wraps the standard FastMCP tool decorator to add
@@ -45,7 +45,7 @@ class EnhancedMCPServer(Server):
             # First wrap with context management
             wrapped = self.context_wrapper.wrap_tool(f)
             # Then apply the FastMCP tool decorator
-            return self._original_tool_decorator(wrapped, **kwargs)
+            return self._original_tool_decorator(wrapped, **kwargs)  # type: ignore[return-value]
 
         if func is None:
             return decorator
@@ -53,13 +53,13 @@ class EnhancedMCPServer(Server):
             return decorator(func)
 
     async def _handle_tool_call(self, tool_name: str, arguments: dict, context: FastMCPContext) -> Any:
-        """Override to inject context_id into responses.
+        """Handle tool calls and inject context_id into responses.
 
-        This method is called by FastMCP when processing tool calls.
-        We override it to extract context_id and inject it into the response.
+        Note: This method may not be called by FastMCP in all scenarios.
+        It's here for potential future protocol-level interception.
         """
-        # Call the original handler
-        result = await super()._handle_tool_call(tool_name, arguments, context)
+        # Call the original handler if it exists
+        result = await super()._handle_tool_call(tool_name, arguments, context)  # type: ignore[misc]
 
         # Extract context_id from request headers
         headers = context.meta.get("headers", {}) if hasattr(context, "meta") else {}
@@ -74,8 +74,8 @@ class EnhancedMCPServer(Server):
             # For BaseModel responses, we need to handle this at serialization
             # Store context_id as metadata that the transport can use
             if not hasattr(result, "__mcp_metadata__"):
-                result.__mcp_metadata__ = {}
-            result.__mcp_metadata__["context_id"] = context_id
+                result.__mcp_metadata__ = {}  # type: ignore[attr-defined]
+            result.__mcp_metadata__["context_id"] = context_id  # type: ignore[attr-defined]
 
         return result
 

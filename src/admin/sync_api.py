@@ -12,8 +12,9 @@ import logging
 import secrets
 from datetime import UTC, datetime
 from functools import wraps
+from typing import Any
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 from sqlalchemy import func, select
 
 from src.adapters.google_ad_manager import GoogleAdManager
@@ -41,11 +42,11 @@ def get_tenant_management_api_key() -> str | None:
     return None
 
 
-def require_tenant_management_api_key(f):
+def require_tenant_management_api_key(f: Any) -> Any:
     """Decorator to require tenant management API key authentication."""
 
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         api_key = request.headers.get("X-API-Key")
 
         if not api_key:
@@ -62,7 +63,7 @@ def require_tenant_management_api_key(f):
 
 @sync_api.route("/trigger/<tenant_id>", methods=["POST"])
 @require_tenant_management_api_key
-def trigger_sync(tenant_id: str):
+def trigger_sync(tenant_id: str) -> tuple[Response, int]:
     """
     Trigger an inventory sync for a tenant.
 
@@ -79,16 +80,16 @@ def trigger_sync(tenant_id: str):
         # Validate tenant exists and has GAM configured
         db_session.remove()  # Start fresh
 
-        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
-        tenant = db_session.scalars(stmt).first()
+        tenant_stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = db_session.scalars(tenant_stmt).first()
         if not tenant:
             return jsonify({"error": "Tenant not found"}), 404
 
         if tenant.ad_server != "google_ad_manager":
             return jsonify({"error": "Only Google Ad Manager sync is currently supported"}), 400
 
-        stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
-        adapter_config = db_session.scalars(stmt).first()
+        adapter_stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
+        adapter_config = db_session.scalars(adapter_stmt).first()
 
         if not adapter_config:
             return jsonify({"error": "Adapter not configured"}), 400
@@ -103,23 +104,24 @@ def trigger_sync(tenant_id: str):
 
         # Check for recent sync if not forcing
         if not force:
-            stmt = select(SyncJob).where(
+            sync_stmt = select(SyncJob).where(
                 SyncJob.tenant_id == tenant_id,
                 SyncJob.status.in_(["running", "completed"]),
                 SyncJob.started_at >= datetime.now(UTC).replace(hour=0, minute=0, second=0),
             )
-            recent_sync = db_session.scalars(stmt).first()
+            recent_sync = db_session.scalars(sync_stmt).first()
 
             if recent_sync:
                 if recent_sync.status == "running":
                     return jsonify({"message": "Sync already in progress", "sync_id": recent_sync.sync_id}), 409
-                else:
+                elif recent_sync.completed_at:
                     return (
                         jsonify(
                             {
                                 "message": "Recent sync exists",
                                 "sync_id": recent_sync.sync_id,
-                                "completed_at": recent_sync.completed_at.isoformat(),
+                                # Type ignore: SQLAlchemy DateTime is datetime at runtime
+                                "completed_at": recent_sync.completed_at.isoformat(),  # type: ignore[attr-defined]
                             }
                         ),
                         200,
@@ -150,12 +152,11 @@ def trigger_sync(tenant_id: str):
             principal = Principal(
                 principal_id="system",
                 name="System",
-                access_token="system_sync_token",  # Required field for sync operations
                 platform_mappings={},  # No advertiser_id needed for inventory sync
             )
 
             # Build GAM config
-            gam_config = {
+            gam_config: dict[str, Any] = {
                 "enabled": True,
                 "network_code": adapter_config.gam_network_code,
                 "refresh_token": adapter_config.gam_refresh_token,
@@ -168,7 +169,7 @@ def trigger_sync(tenant_id: str):
             adapter = GoogleAdManager(
                 config=gam_config,
                 principal=principal,
-                network_code=adapter_config.gam_network_code,
+                network_code=adapter_config.gam_network_code or "",
                 advertiser_id=None,  # Not needed for inventory sync
                 trafficker_id=adapter_config.gam_trafficker_id or None,
                 dry_run=False,
@@ -206,7 +207,8 @@ def trigger_sync(tenant_id: str):
             # Update sync job with error (if it was created)
             try:
                 sync_job.status = "failed"
-                sync_job.completed_at = datetime.now(UTC)
+                # Type ignore for SQLAlchemy DateTime column assignment
+                sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
                 sync_job.error_message = str(e)
                 db_session.commit()
             except:
@@ -224,7 +226,7 @@ def trigger_sync(tenant_id: str):
 
 @sync_api.route("/status/<sync_id>", methods=["GET"])
 @require_tenant_management_api_key
-def get_sync_status(sync_id: str):
+def get_sync_status(sync_id: str) -> tuple[Response, int]:
     """Get status of a specific sync job."""
     try:
         db_session.remove()  # Start fresh
@@ -234,28 +236,30 @@ def get_sync_status(sync_id: str):
         if not sync_job:
             return jsonify({"error": "Sync job not found"}), 404
 
-        response = {
+        response_dict: dict[str, Any] = {
             "sync_id": sync_job.sync_id,
             "tenant_id": sync_job.tenant_id,
             "adapter_type": sync_job.adapter_type,
             "sync_type": sync_job.sync_type,
             "status": sync_job.status,
-            "started_at": sync_job.started_at.isoformat(),
+            # Type ignore: SQLAlchemy DateTime is datetime at runtime
+            "started_at": sync_job.started_at.isoformat() if sync_job.started_at else None,  # type: ignore[attr-defined]
             "triggered_by": sync_job.triggered_by,
             "triggered_by_id": sync_job.triggered_by_id,
         }
 
         if sync_job.completed_at:
-            response["completed_at"] = sync_job.completed_at.isoformat()
-            response["duration_seconds"] = (sync_job.completed_at - sync_job.started_at).total_seconds()
+            # Type ignore: SQLAlchemy DateTime is datetime at runtime
+            response_dict["completed_at"] = sync_job.completed_at.isoformat()  # type: ignore[attr-defined]
+            response_dict["duration_seconds"] = (sync_job.completed_at - sync_job.started_at).total_seconds()  # type: ignore[operator]
 
         if sync_job.summary:
-            response["summary"] = json.loads(sync_job.summary)
+            response_dict["summary"] = json.loads(sync_job.summary)
 
         if sync_job.error_message:
-            response["error"] = sync_job.error_message
+            response_dict["error"] = sync_job.error_message
 
-        return jsonify(response), 200
+        return jsonify(response_dict), 200
 
     except Exception as e:
         logger.error(f"Failed to get sync status: {e}", exc_info=True)
@@ -266,7 +270,7 @@ def get_sync_status(sync_id: str):
 
 @sync_api.route("/history/<tenant_id>", methods=["GET"])
 @require_tenant_management_api_key
-def get_sync_history(tenant_id: str):
+def get_sync_history(tenant_id: str) -> tuple[Response, int]:
     """
     Get sync history for a tenant.
 
@@ -297,20 +301,22 @@ def get_sync_history(tenant_id: str):
         stmt = stmt.order_by(SyncJob.started_at.desc()).limit(limit).offset(offset)
         sync_jobs = db_session.scalars(stmt).all()
 
-        results = []
+        results: list[dict[str, Any]] = []
         for job in sync_jobs:
-            result = {
+            result: dict[str, Any] = {
                 "sync_id": job.sync_id,
                 "sync_type": job.sync_type,
                 "status": job.status,
-                "started_at": job.started_at.isoformat(),
+                # Type ignore: SQLAlchemy DateTime is datetime at runtime
+                "started_at": job.started_at.isoformat() if job.started_at else None,  # type: ignore[attr-defined]
                 "triggered_by": job.triggered_by,
                 "triggered_by_id": job.triggered_by_id,
             }
 
             if job.completed_at:
-                result["completed_at"] = job.completed_at.isoformat()
-                result["duration_seconds"] = (job.completed_at - job.started_at).total_seconds()
+                # Type ignore: SQLAlchemy DateTime is datetime at runtime
+                result["completed_at"] = job.completed_at.isoformat()  # type: ignore[attr-defined]
+                result["duration_seconds"] = (job.completed_at - job.started_at).total_seconds()  # type: ignore[operator]
 
             if job.summary:
                 result["summary"] = json.loads(job.summary)
@@ -331,30 +337,30 @@ def get_sync_history(tenant_id: str):
 
 @sync_api.route("/tenants", methods=["GET"])
 @require_tenant_management_api_key
-def list_tenants():
+def list_tenants() -> tuple[Response, int]:
     """List all GAM-enabled tenants."""
     try:
         db_session.remove()  # Start fresh
 
         # Get all GAM tenants with their adapter configs
-        stmt = select(Tenant).filter_by(ad_server="google_ad_manager")
-        tenants = db_session.scalars(stmt).all()
+        tenant_stmt = select(Tenant).filter_by(ad_server="google_ad_manager")
+        tenants = db_session.scalars(tenant_stmt).all()
 
-        results = []
+        results: list[dict[str, Any]] = []
         for tenant in tenants:
             # Get adapter config
-            stmt = select(AdapterConfig).filter_by(tenant_id=tenant.tenant_id)
-            adapter_config = db_session.scalars(stmt).first()
+            adapter_stmt = select(AdapterConfig).filter_by(tenant_id=tenant.tenant_id)
+            adapter_config = db_session.scalars(adapter_stmt).first()
 
             # Get last sync info
-            stmt = (
+            sync_stmt = (
                 select(SyncJob)
                 .where(SyncJob.tenant_id == tenant.tenant_id, SyncJob.status == "completed")
                 .order_by(SyncJob.completed_at.desc())
             )
-            last_sync = db_session.scalars(stmt).first()
+            last_sync = db_session.scalars(sync_stmt).first()
 
-            tenant_info = {
+            tenant_info: dict[str, Any] = {
                 "tenant_id": tenant.tenant_id,
                 "name": tenant.name,
                 "subdomain": tenant.subdomain,
@@ -362,7 +368,8 @@ def list_tenants():
                 "last_sync": (
                     {
                         "sync_id": last_sync.sync_id,
-                        "completed_at": last_sync.completed_at.isoformat(),
+                        # Type ignore: SQLAlchemy DateTime is datetime at runtime
+                        "completed_at": last_sync.completed_at.isoformat() if last_sync.completed_at else None,  # type: ignore[attr-defined]
                         "summary": json.loads(last_sync.summary) if last_sync.summary else None,
                     }
                     if last_sync
@@ -387,7 +394,7 @@ def list_tenants():
 
 @sync_api.route("/stats", methods=["GET"])
 @require_tenant_management_api_key
-def get_sync_stats():
+def get_sync_stats() -> tuple[Response, int]:
     """Get overall sync statistics across all tenants."""
     try:
         db_session.remove()  # Start fresh
@@ -396,53 +403,56 @@ def get_sync_stats():
         since = datetime.now(UTC).replace(hour=0, minute=0, second=0)
 
         # Count by status
-        status_counts = {}
+        status_counts: dict[str, Any] = {}
         for status in ["pending", "running", "completed", "failed"]:
-            stmt = (
+            count_stmt = (
                 select(func.count()).select_from(SyncJob).where(SyncJob.status == status, SyncJob.started_at >= since)
             )
-            count = db_session.scalar(stmt)
+            count = db_session.scalar(count_stmt)
             status_counts[status] = count
 
         # Get recent failures
-        stmt = (
+        failures_stmt = (
             select(SyncJob)
             .where(SyncJob.status == "failed", SyncJob.started_at >= since)
             .order_by(SyncJob.started_at.desc())
             .limit(5)
         )
-        recent_failures = db_session.scalars(stmt).all()
+        recent_failures = db_session.scalars(failures_stmt).all()
 
-        failures = []
+        failures: list[dict[str, Any]] = []
         for job in recent_failures:
             failures.append(
                 {
                     "sync_id": job.sync_id,
                     "tenant_id": job.tenant_id,
-                    "started_at": job.started_at.isoformat(),
+                    # Type ignore: SQLAlchemy DateTime is datetime at runtime
+                    "started_at": job.started_at.isoformat() if job.started_at else None,  # type: ignore[attr-defined]
                     "error": job.error_message,
                 }
             )
 
         # Get tenants that haven't synced recently
-        stmt = select(Tenant).filter_by(ad_server="google_ad_manager")
-        all_gam_tenants = db_session.scalars(stmt).all()
+        tenants_stmt = select(Tenant).filter_by(ad_server="google_ad_manager")
+        all_gam_tenants = db_session.scalars(tenants_stmt).all()
 
-        stale_tenants = []
+        stale_tenants: list[dict[str, Any]] = []
         for tenant in all_gam_tenants:
-            stmt = (
+            tenant_sync_stmt = (
                 select(SyncJob)
                 .where(SyncJob.tenant_id == tenant.tenant_id, SyncJob.status == "completed")
                 .order_by(SyncJob.completed_at.desc())
             )
-            last_sync = db_session.scalars(stmt).first()
+            last_sync = db_session.scalars(tenant_sync_stmt).first()
 
-            if not last_sync or (datetime.now(UTC) - last_sync.completed_at).days > 1:
+            # Type ignore: SQLAlchemy DateTime is datetime at runtime
+            if not last_sync or (last_sync.completed_at and (datetime.now(UTC) - last_sync.completed_at).days > 1):  # type: ignore[operator]
                 stale_tenants.append(
                     {
                         "tenant_id": tenant.tenant_id,
                         "tenant_name": tenant.name,
-                        "last_sync": last_sync.completed_at.isoformat() if last_sync else None,
+                        # Type ignore: SQLAlchemy DateTime is datetime at runtime
+                        "last_sync": last_sync.completed_at.isoformat() if (last_sync and last_sync.completed_at) else None,  # type: ignore[attr-defined]
                     }
                 )
 
@@ -467,18 +477,18 @@ def get_sync_stats():
 
 @sync_api.route("/tenant/<tenant_id>/orders/sync", methods=["POST"])
 @require_tenant_management_api_key
-def sync_tenant_orders(tenant_id):
+def sync_tenant_orders(tenant_id: str) -> tuple[Response, int]:
     """Trigger orders and line items sync for a tenant."""
     db_session.remove()  # Clean start
     try:
         # Get tenant and adapter config
-        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
-        tenant = db_session.scalars(stmt).first()
+        tenant_stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = db_session.scalars(tenant_stmt).first()
         if not tenant:
             return jsonify({"error": "Tenant not found"}), 404
 
-        stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type="google_ad_manager")
-        adapter_config = db_session.scalars(stmt).first()
+        adapter_stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type="google_ad_manager")
+        adapter_config = db_session.scalars(adapter_stmt).first()
 
         if not adapter_config or not adapter_config.gam_network_code:
             return (
@@ -513,12 +523,11 @@ def sync_tenant_orders(tenant_id):
             principal = Principal(
                 principal_id="system",
                 name="System",
-                access_token="system_sync_token",  # Required field for sync operations
                 platform_mappings={},  # No advertiser_id needed for order discovery
             )
 
             # Build GAM config
-            gam_config = {
+            gam_config: dict[str, Any] = {
                 "enabled": True,
                 "network_code": adapter_config.gam_network_code,
                 "refresh_token": adapter_config.gam_refresh_token,
@@ -529,7 +538,7 @@ def sync_tenant_orders(tenant_id):
             adapter = GoogleAdManager(
                 gam_config,
                 principal,
-                network_code=adapter_config.gam_network_code,
+                network_code=adapter_config.gam_network_code or "",
                 advertiser_id=None,  # Not needed for order discovery
                 trafficker_id=adapter_config.gam_trafficker_id or None,
                 tenant_id=tenant_id,
@@ -541,7 +550,8 @@ def sync_tenant_orders(tenant_id):
 
             # Update sync job with results
             sync_job.status = "completed"
-            sync_job.completed_at = datetime.now(UTC)
+            # Type ignore for SQLAlchemy DateTime column assignment
+            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.summary = json.dumps(summary)
             db_session.commit()
 
@@ -552,7 +562,8 @@ def sync_tenant_orders(tenant_id):
 
             # Update sync job with error
             sync_job.status = "failed"
-            sync_job.completed_at = datetime.now(UTC)
+            # Type ignore for SQLAlchemy DateTime column assignment
+            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.error_message = str(e)
             db_session.commit()
 
@@ -568,7 +579,7 @@ def sync_tenant_orders(tenant_id):
 
 @sync_api.route("/tenant/<tenant_id>/orders", methods=["GET"])
 @require_tenant_management_api_key
-def get_tenant_orders(tenant_id):
+def get_tenant_orders(tenant_id: str) -> tuple[Response, int]:
     """Get orders for a tenant."""
     try:
         db_session.remove()  # Start fresh
@@ -625,7 +636,7 @@ def get_tenant_orders(tenant_id):
 
 @sync_api.route("/tenant/<tenant_id>/orders/<order_id>", methods=["GET"])
 @require_tenant_management_api_key
-def get_order_details(tenant_id, order_id):
+def get_order_details(tenant_id: str, order_id: str) -> tuple[Response, int]:
     """Get detailed information about an order including line items."""
     try:
         db_session.remove()  # Start fresh
@@ -655,7 +666,7 @@ def get_order_details(tenant_id, order_id):
 
 @sync_api.route("/tenant/<tenant_id>/line-items", methods=["GET"])
 @require_tenant_management_api_key
-def get_tenant_line_items(tenant_id):
+def get_tenant_line_items(tenant_id: str) -> tuple[Response, int]:
     """Get line items for a tenant."""
     try:
         db_session.remove()  # Start fresh
@@ -686,13 +697,13 @@ def get_tenant_line_items(tenant_id):
 
 
 def initialize_tenant_management_api_key() -> str:
-    """Initialize tenant management API key if not exists."""
-    with get_db_session() as db_session:
+    """Initialize tenant management API key if not exists. Always returns a valid API key."""
+    with get_db_session() as session:
         # Check if API key exists
         stmt = select(TenantManagementConfig).filter_by(config_key="api_key")
-        config = db_session.scalars(stmt).first()
+        config = session.scalars(stmt).first()
 
-        if config:
+        if config and config.config_value:
             return config.config_value
 
         # Generate new API key
@@ -706,8 +717,8 @@ def initialize_tenant_management_api_key() -> str:
             updated_by="system",
             updated_at=datetime.now(UTC),
         )
-        db_session.add(new_config)
-        db_session.commit()
+        session.add(new_config)
+        session.commit()
 
         logger.info(f"Generated new tenant management API key: {api_key[:10]}...")
         return api_key

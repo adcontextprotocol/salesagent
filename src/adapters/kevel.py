@@ -270,7 +270,7 @@ class Kevel(AdServerAdapter):
         else:
             # Create campaign in Kevel
             campaign_payload = {
-                "AdvertiserId": int(self.advertiser_id),
+                "AdvertiserId": int(self.advertiser_id) if self.advertiser_id else 0,
                 "Name": f"AdCP Campaign {media_buy_id}",
                 "StartDate": start_time.isoformat(),
                 "EndDate": end_time.isoformat(),
@@ -498,14 +498,22 @@ class Kevel(AdServerAdapter):
         if self.dry_run:
             self.log(f"Would call: POST {self.base_url}/report/queue")
             self.log("  Report Request: {")
-            self.log(f"    'StartDate': '{date_range.start.isoformat()}',")
-            self.log(f"    'EndDate': '{date_range.end.isoformat()}',")
+            self.log(f"    'StartDate': '{date_range.start}',")
+            self.log(f"    'EndDate': '{date_range.end}',")
             self.log("    'GroupBy': ['day', 'campaign', 'flight'],")
             self.log(f"    'Filter': {{'CampaignId': '{media_buy_id}'}}")
             self.log("  }")
 
             # Simulate response based on campaign progress
-            days_elapsed = (today.date() - date_range.start).days
+            # date_range.start and date_range.end are ISO 8601 strings, convert to date
+            from datetime import datetime as dt
+
+            start_date = (
+                dt.fromisoformat(date_range.start.replace("Z", "+00:00")).date()
+                if isinstance(date_range.start, str)
+                else date_range.start
+            )
+            days_elapsed = (today.date() - start_date).days
             progress_factor = min(days_elapsed / 14, 1.0)  # Assume 14-day campaigns
 
             # Calculate simulated delivery
@@ -526,8 +534,8 @@ class Kevel(AdServerAdapter):
         else:
             # Queue a report in Kevel
             report_request = {
-                "StartDate": date_range.start.isoformat(),
-                "EndDate": date_range.end.isoformat(),
+                "StartDate": date_range.start,  # Already ISO 8601 string
+                "EndDate": date_range.end,  # Already ISO 8601 string
                 "GroupBy": ["day", "campaign", "flight"],
                 "Filter": {"CampaignId": media_buy_id},
             }
@@ -605,10 +613,12 @@ class Kevel(AdServerAdapter):
             return UpdateMediaBuyResponse(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
+                implementation_date=None,
                 errors=[
                     Error(
                         code="unsupported_action",
                         message=f"Action '{action}' not supported. Supported actions: {REQUIRED_UPDATE_ACTIONS}",
+                        details=None,
                     )
                 ],
             )
@@ -648,6 +658,7 @@ class Kevel(AdServerAdapter):
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
                 implementation_date=today,
+                errors=None,
             )
         else:
             try:
@@ -675,7 +686,10 @@ class Kevel(AdServerAdapter):
                         return UpdateMediaBuyResponse(
                             media_buy_id=media_buy_id,
                             buyer_ref=buyer_ref,
-                            errors=[Error(code="flight_not_found", message=f"Flight '{package_id}' not found")],
+                            implementation_date=None,
+                            errors=[
+                                Error(code="flight_not_found", message=f"Flight '{package_id}' not found", details=None)
+                            ],
                         )
 
                     # Update flight status
@@ -702,7 +716,10 @@ class Kevel(AdServerAdapter):
                         return UpdateMediaBuyResponse(
                             media_buy_id=media_buy_id,
                             buyer_ref=buyer_ref,
-                            errors=[Error(code="flight_not_found", message=f"Flight '{package_id}' not found")],
+                            implementation_date=None,
+                            errors=[
+                                Error(code="flight_not_found", message=f"Flight '{package_id}' not found", details=None)
+                            ],
                         )
 
                     # Calculate impressions based on action
@@ -714,9 +731,9 @@ class Kevel(AdServerAdapter):
                         new_impressions = budget  # budget param contains impressions
 
                     # Update flight impressions
-                    update_payload = {"Impressions": new_impressions}
+                    impressions_payload: dict[str, int] = {"Impressions": new_impressions}
                     update_response = requests.put(
-                        f"{self.base_url}/flight/{flight['Id']}", headers=self.headers, json=update_payload
+                        f"{self.base_url}/flight/{flight['Id']}", headers=self.headers, json=impressions_payload
                     )
                     update_response.raise_for_status()
 
@@ -724,6 +741,7 @@ class Kevel(AdServerAdapter):
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
                     implementation_date=today,
+                    errors=None,
                 )
 
             except requests.exceptions.RequestException as e:
@@ -731,5 +749,6 @@ class Kevel(AdServerAdapter):
                 return UpdateMediaBuyResponse(
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
-                    errors=[Error(code="api_error", message=str(e))],
+                    implementation_date=None,
+                    errors=[Error(code="api_error", message=str(e), details=None)],
                 )

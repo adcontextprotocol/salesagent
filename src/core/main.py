@@ -31,6 +31,7 @@ from src.core.config_loader import (
 )
 from src.core.database.database import init_db
 from src.core.database.database_session import get_db_session
+from src.core.database.models import Context as DBContext  # Avoid collision with fastmcp.Context
 from src.core.database.models import (
     ObjectWorkflowMapping,
     Tenant,
@@ -861,8 +862,8 @@ if unified_mode:
             # Find the task in this tenant
             stmt = (
                 select(WorkflowStep)
-                .join(Context)
-                .where(WorkflowStep.step_id == task_id, Context.tenant_id == tenant["tenant_id"])
+                .join(DBContext)
+                .where(WorkflowStep.step_id == task_id, DBContext.tenant_id == tenant["tenant_id"])
             )
             task = session.scalars(stmt).first()
 
@@ -931,8 +932,8 @@ if unified_mode:
             # Find the task in this tenant
             stmt = (
                 select(WorkflowStep)
-                .join(Context)
-                .where(WorkflowStep.step_id == task_id, Context.tenant_id == tenant["tenant_id"])
+                .join(DBContext)
+                .where(WorkflowStep.step_id == task_id, DBContext.tenant_id == tenant["tenant_id"])
             )
             task = session.scalars(stmt).first()
 
@@ -944,13 +945,14 @@ if unified_mode:
 
             # Update task status
             task.status = status
-            task.updated_at = datetime.now(UTC)
+            completed_time = datetime.now(UTC)
+            task.completed_at = completed_time  # type: ignore[assignment]
 
             if status == "completed":
                 task.response_data = response_data or {"manually_completed": True, "completed_by": principal_id}
-                task.error = None
+                task.error_message = None
             else:  # failed
-                task.error = error_message or "Task marked as failed manually"
+                task.error_message = error_message or "Task marked as failed manually"
                 if response_data:
                     task.response_data = response_data
 
@@ -961,7 +963,7 @@ if unified_mode:
             audit_logger.log_operation(
                 operation="complete_task",
                 principal_name="Manual Completion",
-                principal_id=principal_id,
+                principal_id=principal_id or "unknown",
                 adapter_id="system",
                 success=True,
                 details={
@@ -976,7 +978,7 @@ if unified_mode:
                 "task_id": task_id,
                 "status": status,
                 "message": f"Task {task_id} marked as {status}",
-                "completed_at": task.updated_at.isoformat(),
+                "completed_at": completed_time.isoformat(),
                 "completed_by": principal_id,
             }
 
@@ -992,37 +994,37 @@ if unified_mode:
 
     logger.info("STARTUP: Registered root route")
 
-    @mcp.custom_route(
+    @mcp.custom_route(  # type: ignore[arg-type]
         "/admin/{path:path}",
         methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
     )
     async def admin_handler(request: Request, path: str = ""):
         """Handle admin UI requests."""
         # Forward to Flask app
-        scope = request.scope.copy()
+        scope = dict(request.scope)  # type: ignore[arg-type]
         scope["path"] = f"/{path}" if path else "/"
 
         receive = request.receive
-        send = request._send
+        send = request._send  # type: ignore[attr-defined]
 
-        await admin_wsgi(scope, receive, send)
+        await admin_wsgi(scope, receive, send)  # type: ignore[arg-type]
 
-    @mcp.custom_route(
+    @mcp.custom_route(  # type: ignore[arg-type]
         "/tenant/{tenant_id}/admin/{path:path}",
         methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
     )
     async def tenant_admin_handler(request: Request, tenant_id: str, path: str = ""):
         """Handle tenant-specific admin requests."""
         # Forward to Flask app with tenant context
-        scope = request.scope.copy()
+        scope = dict(request.scope)  # type: ignore[arg-type]
         scope["path"] = f"/tenant/{tenant_id}/{path}" if path else f"/tenant/{tenant_id}"
 
         receive = request.receive
-        send = request._send
+        send = request._send  # type: ignore[attr-defined]
 
-        await admin_wsgi(scope, receive, send)
+        await admin_wsgi(scope, receive, send)  # type: ignore[arg-type]
 
-    @mcp.custom_route("/tenant/{tenant_id}", methods=["GET"])
+    @mcp.custom_route("/tenant/{tenant_id}", methods=["GET"])  # type: ignore[arg-type]
     async def tenant_root(request: Request, tenant_id: str):
         """Redirect to tenant admin."""
         return RedirectResponse(url=f"/tenant/{tenant_id}/admin/")

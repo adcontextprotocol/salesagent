@@ -70,6 +70,10 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
                 )
             ],
             pricing=SignalPricing(cpm=3.0, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
         Signal(
             signal_agent_segment_id="luxury_travel_enthusiasts",
@@ -81,12 +85,18 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
             deployments=[
                 SignalDeployment(
                     platform="google_ad_manager",
+                    account=None,
                     is_live=True,
                     scope="platform-wide",
+                    decisioning_platform_segment_id=None,
                     estimated_activation_duration_minutes=15,
                 )
             ],
             pricing=SignalPricing(cpm=5.0, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
         Signal(
             signal_agent_segment_id="sports_content",
@@ -98,12 +108,18 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
             deployments=[
                 SignalDeployment(
                     platform="google_ad_manager",
+                    account=None,
                     is_live=True,
                     scope="account-specific",
                     decisioning_platform_segment_id="sports_contextual",
+                    estimated_activation_duration_minutes=None,
                 )
             ],
             pricing=SignalPricing(cpm=1.5, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
         Signal(
             signal_agent_segment_id="finance_content",
@@ -112,8 +128,21 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
             signal_type="owned",
             data_provider="Financial News Corp",
             coverage_percentage=88.0,
-            deployments=[SignalDeployment(platform="google_ad_manager", is_live=True, scope="platform-wide")],
+            deployments=[
+                SignalDeployment(
+                    platform="google_ad_manager",
+                    account=None,
+                    is_live=True,
+                    scope="platform-wide",
+                    decisioning_platform_segment_id=None,
+                    estimated_activation_duration_minutes=None,
+                )
+            ],
             pricing=SignalPricing(cpm=2.0, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
         Signal(
             signal_agent_segment_id="urban_millennials",
@@ -125,12 +154,18 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
             deployments=[
                 SignalDeployment(
                     platform="google_ad_manager",
+                    account=None,
                     is_live=True,
                     scope="account-specific",
+                    decisioning_platform_segment_id=None,
                     estimated_activation_duration_minutes=30,
                 )
             ],
             pricing=SignalPricing(cpm=1.8, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
         Signal(
             signal_agent_segment_id="pet_owners",
@@ -139,8 +174,21 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
             signal_type="marketplace",
             data_provider="Lifestyle Data Inc",
             coverage_percentage=92.0,
-            deployments=[SignalDeployment(platform="google_ad_manager", is_live=True, scope="platform-wide")],
+            deployments=[
+                SignalDeployment(
+                    platform="google_ad_manager",
+                    account=None,
+                    is_live=True,
+                    scope="platform-wide",
+                    decisioning_platform_segment_id=None,
+                    estimated_activation_duration_minutes=None,
+                )
+            ],
             pricing=SignalPricing(cpm=1.2, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
     ]
 

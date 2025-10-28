@@ -49,7 +49,7 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
                     principal_name = principal.name
 
         # Calculate response time if start_time provided
-        response_time_ms = None
+        response_time_ms: int | None = None
         if start_time:
             response_time_ms = int((time.time() - start_time) * 1000)
 
@@ -63,10 +63,12 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
         )
 
         # Also log to audit logs (for persistent dashboard activity feed)
+        from typing import Any
+
         from src.core.audit_logger import get_audit_logger
 
         audit_logger = get_audit_logger("MCP", tenant["tenant_id"])
-        details = {"tool": tool_name, "status": "success"}
+        details: dict[str, Any] = {"tool": tool_name, "status": "success"}
         if response_time_ms:
             details["response_time_ms"] = response_time_ms
 

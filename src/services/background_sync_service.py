@@ -65,18 +65,21 @@ def start_inventory_sync_background(
             # Check if sync is stale (running for >1 hour with no progress updates)
             from datetime import timedelta
 
-            # Make started_at timezone-aware if it's naive (from database)
-            started_at = existing_sync.started_at
-            if started_at.tzinfo is None:
-                started_at = started_at.replace(tzinfo=UTC)
+            # Get started_at as datetime (SQLAlchemy returns datetime for DateTime columns)
+            started_at_value: datetime = existing_sync.started_at  # type: ignore[assignment]
 
-            time_running = datetime.now(UTC) - started_at
+            # Make started_at timezone-aware if it's naive (from database)
+            if started_at_value.tzinfo is None:
+                started_at_value = started_at_value.replace(tzinfo=UTC)
+
+            time_running = datetime.now(UTC) - started_at_value
             is_stale = time_running > timedelta(hours=1) and not existing_sync.progress
 
             if is_stale:
                 # Mark stale sync as failed and allow new sync to start
                 existing_sync.status = "failed"
-                existing_sync.completed_at = datetime.now(UTC)
+                # SQLAlchemy DateTime column accepts datetime objects
+                existing_sync.completed_at = datetime.now(UTC)  # type: ignore[assignment]
                 existing_sync.error_message = (
                     "Sync thread died (stale after 1+ hour with no progress) - marked as failed to allow fresh sync"
                 )
@@ -87,7 +90,7 @@ def start_inventory_sync_background(
             else:
                 # Sync is actually running, raise error
                 raise ValueError(
-                    f"Sync already running for tenant {tenant_id}: {existing_sync.sync_id} (started {started_at})"
+                    f"Sync already running for tenant {tenant_id}: {existing_sync.sync_id} (started {started_at_value})"
                 )
 
         # Create new sync job
@@ -196,6 +199,10 @@ def _run_sync_thread(
             # Create GAM client based on auth method
             if auth_method == "service_account":
                 service_account_json_str = adapter_config.gam_service_account_json
+                if not service_account_json_str:
+                    _mark_sync_failed(sync_id, "Service account JSON not found")
+                    return
+
                 with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                     f.write(service_account_json_str)
                     temp_keyfile = f.name
@@ -473,7 +480,8 @@ def _mark_sync_complete(sync_id: str, summary: dict[str, Any]):
             sync_job = db.scalars(stmt).first()
             if sync_job:
                 sync_job.status = "completed"
-                sync_job.completed_at = datetime.now(UTC)
+                # SQLAlchemy DateTime column accepts datetime objects
+                sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
                 # Convert summary dict to JSON string (summary field is Text, not JSON)
                 sync_job.summary = json.dumps(summary) if summary else None
                 db.commit()
@@ -489,10 +497,11 @@ def _mark_sync_failed(sync_id: str, error_message: str):
             sync_job = db.scalars(stmt).first()
             if sync_job:
                 sync_job.status = "failed"
-                sync_job.completed_at = datetime.now(UTC)
+                # SQLAlchemy DateTime column accepts datetime objects
+                completed_at = datetime.now(UTC)
+                sync_job.completed_at = completed_at  # type: ignore[assignment]
                 sync_job.error_message = error_message
-                if sync_job.started_at:
-                    sync_job.duration_seconds = (sync_job.completed_at - sync_job.started_at).total_seconds()
+                # Note: SyncJob doesn't have duration_seconds field - duration is calculated from started_at/completed_at
                 db.commit()
     except Exception as e:
         logger.error(f"Failed to mark sync failed: {e}")

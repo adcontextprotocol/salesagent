@@ -214,7 +214,7 @@ class MCPContextWrapper:
 
         # Get or create persistent context if needed
         persistent_context = None
-        conversation_history = []
+        conversation_history: list[dict[str, Any]] = []
         workflow_id = None
 
         if context_id or is_async:
