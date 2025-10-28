@@ -403,10 +403,21 @@ class MockAdServer(AdServerAdapter):
 
             # Handle question asking (return pending with question)
             if scenario.should_ask_question:
+                # Build package responses with package_ids from input packages
+                # Even for pending responses, we need to return packages with IDs
+                package_responses = []
+                for pkg in packages:
+                    pkg_dict = pkg.model_dump()
+                    # Ensure package_id is present
+                    if "package_id" not in pkg_dict or not pkg_dict["package_id"]:
+                        pkg_dict["package_id"] = pkg.package_id
+                    package_responses.append(pkg_dict)
+
                 return CreateMediaBuyResponse(
                     media_buy_id=f"pending_question_{id(request)}",
                     creative_deadline=None,
                     buyer_ref=request.buyer_ref or "unknown",
+                    packages=package_responses,
                     errors=[],
                 )
 
@@ -513,11 +524,22 @@ class MockAdServer(AdServerAdapter):
         else:
             self.log("   Manual completion required - use complete_task tool")
 
+        # Build package responses with package_ids from input packages
+        # Even for pending responses, we need to return packages with IDs
+        package_responses = []
+        for pkg in packages:
+            pkg_dict = pkg.model_dump()
+            # Ensure package_id is present
+            if "package_id" not in pkg_dict or not pkg_dict["package_id"]:
+                pkg_dict["package_id"] = pkg.package_id
+            package_responses.append(pkg_dict)
+
         # Return pending response
         return CreateMediaBuyResponse(
             buyer_ref=request.buyer_ref or "unknown",
             media_buy_id=f"pending_{step['step_id']}",
             creative_deadline=None,
+            packages=package_responses,
             errors=[],
         )
 
@@ -719,19 +741,38 @@ class MockAdServer(AdServerAdapter):
             pkg_dict = pkg.model_dump()
             self.log(f"[DEBUG] MockAdapter: Package {idx} model_dump() = {pkg_dict}")
             self.log(f"[DEBUG] MockAdapter: Package {idx} has package_id = {pkg_dict.get('package_id')}")
+
+            # CRITICAL: Ensure package_id is always present in response
+            # MediaPackage has package_id as required field, but explicitly verify it's in dict
+            if "package_id" not in pkg_dict or pkg_dict["package_id"] is None:
+                # This should never happen since MediaPackage.package_id is required
+                # But if it does, generate one as fallback
+                import secrets
+
+                fallback_id = f"pkg_fallback_{secrets.token_hex(4)}_{idx}"
+                self.log(f"[ERROR] MockAdapter: Package {idx} missing package_id! Using fallback: {fallback_id}")
+                pkg_dict["package_id"] = fallback_id
+
             # Add buyer_ref from original request package if available
             if request.packages and idx < len(request.packages):
                 pkg_dict["buyer_ref"] = request.packages[idx].buyer_ref
             response_packages.append(pkg_dict)
 
         self.log(f"[DEBUG] MockAdapter: Returning {len(response_packages)} packages in response")
-        return CreateMediaBuyResponse(
+        for idx, resp_pkg in enumerate(response_packages):
+            self.log(f"[DEBUG] MockAdapter: Final response package {idx}: package_id={resp_pkg.get('package_id')}")
+
+        response = CreateMediaBuyResponse(
             buyer_ref=request.buyer_ref or "unknown",  # Required field per AdCP spec
             media_buy_id=media_buy_id,
             creative_deadline=datetime.now(UTC) + timedelta(days=2),
             packages=response_packages,  # Include packages with buyer_ref
             errors=[],  # No errors for successful mock response
         )
+        self.log(
+            f"[DEBUG] MockAdapter: CreateMediaBuyResponse created with {len(response.packages) if response.packages else 0} packages"
+        )
+        return response
 
     def add_creative_assets(
         self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
