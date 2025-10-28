@@ -321,12 +321,15 @@ def google_callback():
         )
 
         if tenant_id:
+            flash(f"DEBUG: Entering tenant_id block, tenant_id={tenant_id}", "info")
             # Verify user has access to this tenant
             with get_db_session() as db_session:
                 tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
                 if not tenant:
+                    flash(f"DEBUG: Tenant not found for tenant_id={tenant_id}", "error")
                     flash("Invalid tenant", "error")
                     return redirect(url_for("auth.login"))
+                flash(f"DEBUG: Tenant found: {tenant.name}", "info")
 
                 # Check if user is super admin or has tenant access
                 if is_super_admin(email):
