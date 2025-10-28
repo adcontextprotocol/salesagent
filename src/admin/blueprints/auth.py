@@ -211,10 +211,9 @@ def google_callback():
         session["user_name"] = user.get("name", email)
         session["user_picture"] = user.get("picture", "")
 
-        # Check if this is a signup flow
-        is_signup_flow = session.get("signup_flow")
+        # Check if this is a signup flow (only if explicitly set, not just present in session)
+        is_signup_flow = session.pop("signup_flow", False)
         if is_signup_flow:
-            session["signup_flow"] = True
             return redirect(url_for("public.signup_onboarding"))
 
         # Query all tenants user has access to
