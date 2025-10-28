@@ -327,6 +327,280 @@ def analyze(tenant_id, **kwargs):
         return jsonify({"error": str(e)}), 500
 
 
+def execute_approved_creative_upload(creative_id: str, tenant_id: str) -> tuple[bool, str | None]:
+    """Upload a single approved creative to the ad server and associate with line items.
+
+    This function handles individual creative uploads after manual approval, separate from
+    the full media buy creation flow. It works for both:
+    1. Media buys already created in adapter (just upload creative)
+    2. Media buys pending creation (queue for later)
+
+    Args:
+        creative_id: The creative ID to upload
+        tenant_id: The tenant ID for context
+
+    Returns:
+        Tuple of (success: bool, error_message: str | None)
+    """
+    from sqlalchemy import select
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Creative as CreativeModel
+    from src.core.database.models import CreativeAssignment, MediaBuy, Tenant
+    from src.core.config_loader import set_current_tenant
+    from src.core.auth import get_principal_object
+    from src.core.helpers.adapter_helpers import get_adapter
+    from src.core.testing_hooks import TestingContext
+    from datetime import UTC, datetime
+    from sqlalchemy.orm import attributes
+
+    logger.info(f"[CREATIVE UPLOAD] Starting upload for creative {creative_id}")
+
+    try:
+        with get_db_session() as session:
+            # Set tenant context
+            stmt_tenant = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant_obj = session.scalars(stmt_tenant).first()
+
+            if not tenant_obj:
+                error_msg = f"Tenant {tenant_id} not found"
+                logger.error(f"[CREATIVE UPLOAD] {error_msg}")
+                return False, error_msg
+
+            tenant_dict = {
+                "tenant_id": tenant_obj.tenant_id,
+                "name": tenant_obj.name,
+                "subdomain": tenant_obj.subdomain,
+                "ad_server": tenant_obj.ad_server,
+                "virtual_host": tenant_obj.virtual_host,
+            }
+            set_current_tenant(tenant_dict)
+
+            # Load creative
+            stmt_creative = select(CreativeModel).filter_by(tenant_id=tenant_id, creative_id=creative_id)
+            creative = session.scalars(stmt_creative).first()
+
+            if not creative:
+                error_msg = f"Creative {creative_id} not found"
+                logger.error(f"[CREATIVE UPLOAD] {error_msg}")
+                return False, error_msg
+
+            # Check creative is approved
+            if creative.status != "approved":
+                error_msg = f"Creative {creative_id} is not approved (status: {creative.status})"
+                logger.error(f"[CREATIVE UPLOAD] {error_msg}")
+                return False, error_msg
+
+            # Get all creative assignments for this creative
+            stmt_assignments = select(CreativeAssignment).filter_by(tenant_id=tenant_id, creative_id=creative_id)
+            assignments = session.scalars(stmt_assignments).all()
+
+            if not assignments:
+                error_msg = f"No assignments found for creative {creative_id}"
+                logger.warning(f"[CREATIVE UPLOAD] {error_msg}")
+                return False, error_msg
+
+            # Get unique media buys this creative is assigned to
+            media_buy_ids = list(set(a.media_buy_id for a in assignments))
+            logger.info(f"[CREATIVE UPLOAD] Creative {creative_id} assigned to {len(media_buy_ids)} media buy(s)")
+
+            # Process each media buy
+            all_succeeded = True
+            errors = []
+
+            for media_buy_id in media_buy_ids:
+                stmt_buy = select(MediaBuy).filter_by(media_buy_id=media_buy_id, tenant_id=tenant_id)
+                media_buy = session.scalars(stmt_buy).first()
+
+                if not media_buy:
+                    error_msg = f"Media buy {media_buy_id} not found"
+                    logger.error(f"[CREATIVE UPLOAD] {error_msg}")
+                    errors.append(error_msg)
+                    all_succeeded = False
+                    continue
+
+                logger.info(f"[CREATIVE UPLOAD] Media buy {media_buy_id} status: {media_buy.status}")
+
+                # Check if media buy has been created in adapter
+                # Status "pending_creatives" means order/line items exist in GAM
+                # Status "pending_approval" means not yet created in adapter
+                if media_buy.status == "pending_approval":
+                    logger.info(
+                        f"[CREATIVE UPLOAD] Media buy {media_buy_id} not yet created in adapter - "
+                        f"creative will be uploaded when media buy is approved"
+                    )
+                    continue
+
+                # Media buy exists in adapter - upload creative now
+                # Get package IDs for this media buy and creative
+                package_ids = [
+                    a.package_id for a in assignments
+                    if a.media_buy_id == media_buy_id
+                ]
+
+                logger.info(
+                    f"[CREATIVE UPLOAD] Uploading creative {creative_id} to media buy {media_buy_id} "
+                    f"for packages: {package_ids}"
+                )
+
+                # Build asset dict for adapter
+                creative_data = creative.data or {}
+
+                # Extract dimensions from format or data
+                width = creative_data.get("width")
+                height = creative_data.get("height")
+
+                if (not width or not height) and creative.format:
+                    import re
+                    format_str = str(creative.format)
+                    dimension_match = re.search(r"(\d+)x(\d+)", format_str)
+                    if dimension_match:
+                        width = width or int(dimension_match.group(1))
+                        height = height or int(dimension_match.group(2))
+                        logger.info(
+                            f"[CREATIVE UPLOAD] Extracted dimensions from format {format_str}: "
+                            f"{width}x{height}"
+                        )
+
+                asset = {
+                    "creative_id": creative.creative_id,
+                    "package_assignments": package_ids,
+                    "width": width,
+                    "height": height,
+                    "url": creative_data.get("url") or creative_data.get("content_uri"),
+                    "asset_type": creative_data.get("asset_type", "image"),
+                    "name": creative.name or f"Creative {creative.creative_id}",
+                }
+
+                # Validate required fields
+                if not asset["width"] or not asset["height"]:
+                    error_msg = (
+                        f"Creative {creative_id} missing dimensions "
+                        f"(width={asset['width']}, height={asset['height']})"
+                    )
+                    logger.error(f"[CREATIVE UPLOAD] {error_msg}")
+                    errors.append(error_msg)
+                    all_succeeded = False
+
+                    # Update creative status to failed
+                    creative.status = "failed"
+                    if not isinstance(creative.data, dict):
+                        creative.data = {}
+                    creative.data["upload_error"] = error_msg
+                    creative.data["upload_failed_at"] = datetime.now(UTC).isoformat()
+                    attributes.flag_modified(creative, "data")
+                    session.commit()
+                    continue
+
+                if not asset["url"]:
+                    error_msg = f"Creative {creative_id} missing content URL"
+                    logger.error(f"[CREATIVE UPLOAD] {error_msg}")
+                    errors.append(error_msg)
+                    all_succeeded = False
+
+                    # Update creative status to failed
+                    creative.status = "failed"
+                    if not isinstance(creative.data, dict):
+                        creative.data = {}
+                    creative.data["upload_error"] = error_msg
+                    creative.data["upload_failed_at"] = datetime.now(UTC).isoformat()
+                    attributes.flag_modified(creative, "data")
+                    session.commit()
+                    continue
+
+                # Get principal and adapter
+                principal = get_principal_object(media_buy.principal_id)
+                if not principal:
+                    error_msg = f"Principal {media_buy.principal_id} not found"
+                    logger.error(f"[CREATIVE UPLOAD] {error_msg}")
+                    errors.append(error_msg)
+                    all_succeeded = False
+                    continue
+
+                testing_ctx = TestingContext(dry_run=False, test_session_id=None)
+                adapter = get_adapter(principal, dry_run=False, testing_context=testing_ctx)
+
+                # Upload creative to adapter
+                try:
+                    if hasattr(adapter, "creatives_manager") and adapter.creatives_manager:
+                        # Use GAM order ID (stored in media_buy.adapter_ids)
+                        adapter_ids = media_buy.adapter_ids or {}
+                        gam_order_id = adapter_ids.get("order_id") or media_buy.media_buy_id
+
+                        logger.info(
+                            f"[CREATIVE UPLOAD] Calling adapter.creatives_manager.add_creative_assets "
+                            f"for order {gam_order_id}"
+                        )
+
+                        asset_statuses = adapter.creatives_manager.add_creative_assets(
+                            gam_order_id, [asset], datetime.now(UTC)
+                        )
+
+                        if asset_statuses and asset_statuses[0].status == "approved":
+                            logger.info(
+                                f"[CREATIVE UPLOAD] Successfully uploaded creative {creative_id} "
+                                f"to media buy {media_buy_id}"
+                            )
+
+                            # Update creative status to active
+                            creative.status = "active"
+                            if not isinstance(creative.data, dict):
+                                creative.data = {}
+                            creative.data["uploaded_at"] = datetime.now(UTC).isoformat()
+                            creative.data["uploaded_to_media_buy"] = media_buy_id
+                            attributes.flag_modified(creative, "data")
+                            session.commit()
+                        else:
+                            error_msg = f"Creative upload returned status: {asset_statuses[0].status if asset_statuses else 'unknown'}"
+                            logger.error(f"[CREATIVE UPLOAD] {error_msg}")
+                            errors.append(error_msg)
+                            all_succeeded = False
+
+                            # Update creative status to failed
+                            creative.status = "failed"
+                            if not isinstance(creative.data, dict):
+                                creative.data = {}
+                            creative.data["upload_error"] = error_msg
+                            creative.data["upload_failed_at"] = datetime.now(UTC).isoformat()
+                            attributes.flag_modified(creative, "data")
+                            session.commit()
+                    else:
+                        logger.warning(
+                            f"[CREATIVE UPLOAD] Adapter does not support creative upload "
+                            f"(no creatives_manager)"
+                        )
+                        # For adapters without creatives_manager, just mark as active
+                        creative.status = "active"
+                        session.commit()
+
+                except Exception as upload_error:
+                    error_msg = f"Failed to upload creative {creative_id}: {str(upload_error)}"
+                    logger.error(f"[CREATIVE UPLOAD] {error_msg}", exc_info=True)
+                    errors.append(error_msg)
+                    all_succeeded = False
+
+                    # Update creative status to failed
+                    creative.status = "failed"
+                    if not isinstance(creative.data, dict):
+                        creative.data = {}
+                    creative.data["upload_error"] = error_msg
+                    creative.data["upload_failed_at"] = datetime.now(UTC).isoformat()
+                    attributes.flag_modified(creative, "data")
+                    session.commit()
+
+            if all_succeeded:
+                logger.info(f"[CREATIVE UPLOAD] Successfully uploaded creative {creative_id}")
+                return True, None
+            else:
+                error_summary = "; ".join(errors)
+                logger.error(f"[CREATIVE UPLOAD] Some uploads failed: {error_summary}")
+                return False, error_summary
+
+    except Exception as e:
+        error_msg = f"Unexpected error uploading creative {creative_id}: {str(e)}"
+        logger.error(f"[CREATIVE UPLOAD] {error_msg}", exc_info=True)
+        return False, error_msg
+
+
 @creatives_bp.route("/review/<creative_id>/approve", methods=["POST"])
 @log_admin_action("approve_creative")
 @require_tenant_access()
@@ -447,8 +721,9 @@ def approve_creative(tenant_id, creative_id, **kwargs):
             )
 
             # Check if this creative approval unblocks any media buys
-            # If a media buy was waiting for creatives (status="pending_creatives"),
-            # check if all its creatives are now approved
+            # There are two scenarios:
+            # 1. Media buy is pending_approval: Not yet created in adapter - wait for media buy approval
+            # 2. Media buy is pending_creatives: Already created in adapter - upload this creative now
             from src.core.database.models import CreativeAssignment, MediaBuy
 
             stmt_assignments = select(CreativeAssignment).filter_by(
@@ -457,6 +732,9 @@ def approve_creative(tenant_id, creative_id, **kwargs):
             assignments = db_session.scalars(stmt_assignments).all()
 
             logger.info(f"[CREATIVE APPROVAL] Creative {creative_id} approved, checking {len(assignments)} media buy assignments")
+
+            # Track which media buys need creative upload
+            media_buys_to_upload = []
 
             for assignment in assignments:
                 media_buy_id = assignment.media_buy_id
@@ -470,8 +748,36 @@ def approve_creative(tenant_id, creative_id, **kwargs):
 
                 logger.info(f"[CREATIVE APPROVAL] Media buy {media_buy_id} status: {media_buy.status}")
 
-                # Only check if media buy is waiting for creatives
+                # SCENARIO 1: Media buy pending approval - not yet created in adapter
+                # Creative will be uploaded when media buy is approved
+                if media_buy.status == "pending_approval":
+                    logger.info(
+                        f"[CREATIVE APPROVAL] Media buy {media_buy_id} pending approval - "
+                        f"creative will be uploaded when media buy is approved"
+                    )
+                    continue
+
+                # SCENARIO 2: Media buy already created in adapter
+                # Check if order exists (adapter_ids populated) - if so, upload creative now
+                # If not, this is legacy flow where we wait for all creatives
                 if media_buy.status == "pending_creatives":
+                    adapter_ids = media_buy.adapter_ids or {}
+                    has_order_id = bool(adapter_ids.get("order_id"))
+
+                    if has_order_id:
+                        # Media buy already exists in adapter - upload creative immediately
+                        logger.info(
+                            f"[CREATIVE APPROVAL] Media buy {media_buy_id} already in adapter (order_id: {adapter_ids.get('order_id')}) - "
+                            f"will upload creative now"
+                        )
+                        media_buys_to_upload.append(media_buy_id)
+                        continue
+
+                    # SCENARIO 3: Legacy flow - media buy waiting for ALL creatives before creation
+                    logger.info(
+                        f"[CREATIVE APPROVAL] Media buy {media_buy_id} not yet in adapter - "
+                        f"checking if all creatives are approved"
+                    )
                     # Get all creative assignments for this media buy
                     stmt_all_assignments = select(CreativeAssignment).filter_by(media_buy_id=media_buy_id)
                     all_assignments = db_session.scalars(stmt_all_assignments).all()
@@ -494,9 +800,9 @@ def approve_creative(tenant_id, creative_id, **kwargs):
                     )
 
                     if not unapproved_creatives:
-                        # All creatives approved! Execute adapter creation
+                        # All creatives approved! Execute full media buy creation
                         logger.info(
-                            f"[CREATIVE APPROVAL] All creatives approved for media buy {media_buy_id}, executing adapter creation"
+                            f"[CREATIVE APPROVAL] All creatives approved for media buy {media_buy_id}, executing full adapter creation"
                         )
 
                         from src.core.tools.media_buy_create import execute_approved_media_buy
@@ -520,6 +826,23 @@ def approve_creative(tenant_id, creative_id, **kwargs):
                         logger.info(
                             f"[CREATIVE APPROVAL] Media buy {media_buy_id} still waiting for {len(unapproved_creatives)} creatives: {unapproved_creatives}"
                         )
+
+            # Upload creative to media buys that are already created in adapter
+            if media_buys_to_upload:
+                logger.info(
+                    f"[CREATIVE APPROVAL] Uploading creative {creative_id} to {len(media_buys_to_upload)} existing media buy(s)"
+                )
+
+                # Call the new creative upload function
+                upload_success, upload_error = execute_approved_creative_upload(creative_id, tenant_id)
+
+                if not upload_success:
+                    logger.error(
+                        f"[CREATIVE APPROVAL] Failed to upload creative {creative_id}: {upload_error}"
+                    )
+                    # Don't fail the approval - creative is still approved, just not uploaded yet
+                else:
+                    logger.info(f"[CREATIVE APPROVAL] Successfully uploaded creative {creative_id} to adapter")
 
             return jsonify({"success": True, "status": "approved"})
 

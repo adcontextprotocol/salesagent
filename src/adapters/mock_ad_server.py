@@ -583,33 +583,17 @@ class MockAdServer(AdServerAdapter):
         tenant = get_current_tenant()
         tenant_id = tenant.get("tenant_id", "unknown") if tenant else "unknown"
 
-        # Generate order name using naming template
-        from sqlalchemy import select
+        # Build order name using shared helper
+        from src.core.helpers.media_buy_helpers import build_order_name
 
-        from src.core.database.database_session import get_db_session
-        from src.core.database.models import Tenant
-        from src.core.utils.naming import apply_naming_template, build_order_name_context
-
-        order_name_template = "{campaign_name|brand_name} - {date_range}"  # Default
-        tenant_gemini_key = None
-        try:
-            with get_db_session() as db_session:
-                if tenant_id and tenant_id != "unknown":
-                    tenant_obj = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-                    if tenant_obj:
-                        if tenant_obj.order_name_template:
-                            order_name_template = tenant_obj.order_name_template
-                        tenant_gemini_key = tenant_obj.gemini_api_key
-        except Exception:
-            # Database not available (e.g., in unit tests) - use default template
-            pass
-
-        # Build context and apply template
-        context = build_order_name_context(request, packages, start_time, end_time, tenant_gemini_key)
-        print(
-            f"[NAMING DEBUG] template={repr(order_name_template)}, has_promoted_offering={('promoted_offering' in context)}"
+        order_name = build_order_name(
+            request=request,
+            packages=packages,
+            start_time=start_time,
+            end_time=end_time,
+            tenant_id=tenant_id if tenant_id != "unknown" else None,
+            adapter_type="mock",
         )
-        order_name = apply_naming_template(order_name_template, context)
 
         # Strategy-aware behavior modifications
         if self._is_simulation():
@@ -645,27 +629,10 @@ class MockAdServer(AdServerAdapter):
             },
         )
 
-        # Calculate total budget from packages using pricing_info if available
-        # Per AdCP v2.2.0: budget is at package level
-        from src.core.schemas import extract_budget_amount
+        # Calculate total budget using shared helper
+        from src.core.helpers.media_buy_helpers import calculate_total_budget
 
-        total_budget = 0
-        for p in packages:
-            # First try to get budget from package (AdCP v2.2.0)
-            if p.budget:
-                budget_amount, _ = extract_budget_amount(p.budget)
-                total_budget += budget_amount
-            elif p.delivery_type == "guaranteed":
-                # Fallback: calculate from CPM * impressions (legacy)
-                # Use pricing_info if available (pricing_option_id flow), else fallback to package.cpm
-                pricing_info = package_pricing_info.get(p.package_id) if package_pricing_info else None
-                if pricing_info:
-                    # Use rate from pricing option (fixed) or bid_price (auction)
-                    rate = pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", p.cpm)
-                else:
-                    # Fallback to legacy package.cpm
-                    rate = p.cpm
-                total_budget += (rate * p.impressions / 1000)
+        total_budget = calculate_total_budget(request, packages, package_pricing_info)
 
         # Apply strategy-based bid adjustment
         if self.strategy_context and hasattr(self.strategy_context, "get_bid_adjustment"):
@@ -737,17 +704,10 @@ class MockAdServer(AdServerAdapter):
         else:
             self.log(f"Would return: Campaign ID '{media_buy_id}' with status 'pending_creative'")
 
-        # Build packages response with buyer_ref from original request
-        response_packages = []
-        for idx, pkg in enumerate(packages):
-            # Use mode="python" to ensure all fields are included
-            pkg_dict = pkg.model_dump(mode="python", exclude_none=False)
-            self.log(f"[DEBUG] MockAdapter: Package {idx} model_dump() = {pkg_dict}")
-            self.log(f"[DEBUG] MockAdapter: Package {idx} has package_id = {pkg_dict.get('package_id')}")
-            # Add buyer_ref from original request package if available
-            if request.packages and idx < len(request.packages):
-                pkg_dict["buyer_ref"] = request.packages[idx].buyer_ref
-            response_packages.append(pkg_dict)
+        # Build packages response using shared helper
+        from src.core.helpers.media_buy_helpers import build_package_responses
+
+        response_packages = build_package_responses(packages, request, line_item_ids=None)
 
         self.log(f"[DEBUG] MockAdapter: Returning {len(response_packages)} packages in response")
         return CreateMediaBuyResponse(

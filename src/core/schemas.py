@@ -1296,6 +1296,222 @@ class FormatId(BaseModel):
         return f"FormatId(id='{self.id}', agent_url='{self.agent_url}')"
 
 
+# --- AdCP v1 Creative Asset Types ---
+# These models match the official AdCP schema at:
+# https://adcontextprotocol.org/schemas/v1/core/assets/
+
+class ImageAsset(AdCPBaseModel):
+    """Image asset per AdCP spec."""
+    url: str = Field(..., format="uri", description="URL to the image asset")
+    width: int | None = Field(None, ge=1, description="Image width in pixels")
+    height: int | None = Field(None, ge=1, description="Image height in pixels")
+    format: str | None = Field(None, description="Image file format (jpg, png, gif, webp, etc.)")
+    alt_text: str | None = Field(None, description="Alternative text for accessibility")
+
+
+class VideoAsset(AdCPBaseModel):
+    """Video asset per AdCP spec."""
+    url: str = Field(..., format="uri", description="URL to the video asset")
+    width: int | None = Field(None, ge=1, description="Video width in pixels")
+    height: int | None = Field(None, ge=1, description="Video height in pixels")
+    duration_ms: int | None = Field(None, ge=0, description="Video duration in milliseconds")
+    format: str | None = Field(None, description="Video file format (mp4, webm, mov, etc.)")
+    bitrate_kbps: int | None = Field(None, ge=1, description="Video bitrate in kilobits per second")
+
+
+class AudioAsset(AdCPBaseModel):
+    """Audio asset per AdCP spec."""
+    url: str = Field(..., format="uri", description="URL to the audio asset")
+    duration_ms: int | None = Field(None, ge=0, description="Audio duration in milliseconds")
+    format: str | None = Field(None, description="Audio file format (mp3, aac, wav, etc.)")
+    bitrate_kbps: int | None = Field(None, ge=1, description="Audio bitrate in kilobits per second")
+
+
+class TextAsset(AdCPBaseModel):
+    """Text asset per AdCP spec."""
+    text: str = Field(..., description="Text content")
+    max_length: int | None = Field(None, ge=1, description="Maximum character length constraint")
+
+
+class HtmlAsset(AdCPBaseModel):
+    """HTML markup asset per AdCP spec."""
+    html: str = Field(..., description="HTML markup content")
+
+
+class CssAsset(AdCPBaseModel):
+    """CSS stylesheet asset per AdCP spec."""
+    css: str = Field(..., description="CSS stylesheet content")
+
+
+class JavascriptAsset(AdCPBaseModel):
+    """JavaScript asset per AdCP spec."""
+    javascript: str = Field(..., description="JavaScript code content")
+    sandbox_compatible: bool | None = Field(None, description="Whether compatible with sandboxed environments")
+
+
+class UrlAsset(AdCPBaseModel):
+    """URL asset (e.g., click-through URL) per AdCP spec."""
+    url: str = Field(..., format="uri", description="URL value")
+    tracking_parameters: dict[str, str] | None = Field(
+        None, description="Optional tracking parameters to append"
+    )
+
+
+class InputContext(AdCPBaseModel):
+    """Preview context for generative formats per AdCP spec."""
+    name: str = Field(..., description="Human-readable name for this preview variant")
+    macros: dict[str, str] | None = Field(None, description="Macro values to apply for this preview")
+    context_description: str | None = Field(
+        None, description="Natural language description of the context for AI-generated content"
+    )
+
+
+class CreativeAssetInput(AdCPBaseModel):
+    """Preview context for generative formats per AdCP creative-asset spec.
+
+    Defines a scenario to generate previews for in generative formats.
+    Only 'name' is required per the spec.
+    """
+
+    name: str = Field(..., description="Human-readable name for this preview variant")
+    macros: dict[str, str] | None = Field(None, description="Macro values to apply for this preview")
+    context_description: str | None = Field(
+        None, description="Natural language description of the context for AI-generated content"
+    )
+
+
+class CreativeAsset(AdCPBaseModel):
+    """AdCP v1 creative-asset schema - official specification.
+
+    This model strictly matches the official AdCP creative-asset schema at:
+    https://adcontextprotocol.org/schemas/v1/core/creative-asset.json
+
+    Per the spec, the `assets` field uses patternProperties to accept keys matching
+    `^[a-zA-Z0-9_-]+$` with values being oneOf multiple asset types. In Pydantic, we
+    represent this as `dict[str, Any]` since we validate keys via pattern matching.
+
+    Use this model for AdCP protocol compliance in sync_creatives, list_creatives, etc.
+    For internal processing with extended fields, use the Creative model.
+    """
+
+    creative_id: str = Field(..., description="Unique identifier for the creative")
+    name: str = Field(..., description="Human-readable creative name")
+    format_id: FormatId = Field(..., description="Format identifier specifying which format this creative conforms to")
+    assets: dict[str, Any] = Field(
+        ..., description="Assets required by the format, keyed by asset_role. Keys must match pattern ^[a-zA-Z0-9_-]+$"
+    )
+    inputs: list[CreativeAssetInput] | None = Field(
+        None, description="Preview contexts for generative formats - defines what scenarios to generate previews for"
+    )
+    tags: list[str] | None = Field(None, description="User-defined tags for organization and searchability")
+    approved: bool | None = Field(
+        None,
+        description="For generative creatives: set to true to approve and finalize, false to request regeneration. Omit for non-generative creatives."
+    )
+
+    @staticmethod
+    def _validate_asset_key(key: str) -> bool:
+        """Validate asset key matches AdCP pattern: ^[a-zA-Z0-9_-]+$"""
+        import re
+        return bool(re.match(r"^[a-zA-Z0-9_-]+$", key))
+
+    @model_validator(mode="after")
+    def validate_asset_keys(self) -> "CreativeAsset":
+        """Validate all asset keys match the required pattern."""
+        if self.assets:
+            invalid_keys = [key for key in self.assets.keys() if not self._validate_asset_key(key)]
+            if invalid_keys:
+                raise ValueError(
+                    f"Asset keys must match pattern ^[a-zA-Z0-9_-]+$. Invalid keys: {invalid_keys}"
+                )
+        return self
+
+    @classmethod
+    def from_db_model(cls, db_creative: Any) -> "CreativeAsset":
+        """Create AdCP-compliant creative asset from database model.
+
+        Args:
+            db_creative: Creative database model instance
+
+        Returns:
+            CreativeAsset matching official AdCP spec
+        """
+        # Handle format_id as either FormatId object or construct from parts
+        if hasattr(db_creative, 'format') and isinstance(db_creative.format, FormatId):
+            format_id = db_creative.format
+        else:
+            format_id = FormatId(
+                agent_url=getattr(db_creative, 'format_id_agent_url', None)
+                           or getattr(db_creative, 'agent_url', 'https://creatives.adcontextprotocol.org'),
+                id=getattr(db_creative, 'format_id_id', None)
+                   or getattr(db_creative, 'format', None)
+                   or 'unknown'
+            )
+
+        return cls(
+            creative_id=db_creative.creative_id,
+            name=db_creative.name,
+            format_id=format_id,
+            assets=db_creative.assets or {},
+            inputs=[CreativeAssetInput(**inp) for inp in (db_creative.inputs or [])],
+            tags=db_creative.tags,
+            approved=db_creative.approved
+        )
+
+    def to_creative(self, principal_id: str, group_id: str | None = None, url: str | None = None) -> "Creative":
+        """Convert AdCP-compliant CreativeAsset to internal Creative model.
+
+        Args:
+            principal_id: Principal ID for the creative
+            group_id: Optional group ID for organization
+            url: Optional URL for the creative (if not provided, will extract from assets or use placeholder)
+
+        Returns:
+            Creative model instance with AdCP fields populated
+        """
+        # Convert assets to dict format (in case they're model instances)
+        assets_dict = {}
+        asset_url = url  # Use provided URL if given
+
+        if self.assets:
+            for key, value in self.assets.items():
+                if isinstance(value, dict):
+                    assets_dict[key] = value
+                    # Try to extract URL from first asset if not provided
+                    if not asset_url and "url" in value:
+                        asset_url = value["url"]
+                else:
+                    # Convert Pydantic model to dict
+                    asset_data = value.model_dump() if hasattr(value, 'model_dump') else value
+                    assets_dict[key] = asset_data
+                    # Try to extract URL from first asset if not provided
+                    if not asset_url and isinstance(asset_data, dict) and "url" in asset_data:
+                        asset_url = asset_data["url"]
+
+        # Use extracted URL or placeholder
+        final_url = asset_url or f"https://assets.example.com/{self.creative_id}"
+
+        # Build Creative using direct constructor with all required fields
+        return Creative(
+            creative_id=self.creative_id,
+            name=self.name,
+            format_id=self.format_id,  # This is used as alias
+            url=final_url,  # Use url field directly
+            assets=assets_dict,
+            inputs=self.inputs,
+            tags=self.tags,
+            approved=self.approved,
+            principal_id=principal_id,
+            group_id=group_id,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+
+
+# Alias for backward compatibility
+AdCPCreativeAsset = CreativeAsset
+
+
 class Creative(BaseModel):
     """Individual creative asset in the creative library - AdCP spec compliant."""
 
@@ -1359,6 +1575,22 @@ class Creative(BaseModel):
         None,
         description="Assets keyed by asset_id from format asset_requirements (AdCP v2.4+). "
         "Keys MUST match asset_id values from the format specification.",
+    )
+
+    # AdCP CreativeAsset fields (spec-compliant)
+    inputs: list[CreativeAssetInput] | None = Field(
+        None,
+        description="Preview contexts for generative formats (AdCP spec). "
+        "Defines scenarios to generate previews for."
+    )
+    tags: list[str] | None = Field(
+        None,
+        description="User-defined tags for organization and searchability (AdCP spec)"
+    )
+    approved: bool | None = Field(
+        None,
+        description="For generative creatives: true to approve, false to request regeneration (AdCP spec). "
+        "Omit for non-generative creatives."
     )
 
     # === AdCP v1.3+ Creative Management Fields ===
@@ -1525,6 +1757,24 @@ class Creative(BaseModel):
             data["click_through_url"] = data["click_url"]
 
         return data
+
+    def to_adcp_creative_asset(self) -> CreativeAsset:
+        """Convert to AdCP-compliant CreativeAsset model.
+
+        Extracts only spec-compliant fields for external API responses.
+
+        Returns:
+            CreativeAsset matching official AdCP spec
+        """
+        return CreativeAsset(
+            creative_id=self.creative_id,
+            name=self.name,
+            format_id=self.format,
+            assets=self.assets or {},
+            inputs=self.inputs,
+            tags=self.tags,
+            approved=self.approved,
+        )
 
     # === AdCP v1.3+ Helper Methods ===
 
