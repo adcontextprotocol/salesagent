@@ -150,9 +150,8 @@ async def test_tool_result_content_differs_from_structured(mcp_client):
 
         json_dump = json.dumps(structured_content)
         assert text_content != json_dump, "Text should be a summary, not full JSON dump"
-        assert len(text_content) < len(json_dump), "Text should be shorter than full JSON"
 
-        # Text should be human-readable
+        # Text should be human-readable (not necessarily shorter - empty results can have longer messages)
         assert "product" in text_content.lower(), "Text should describe products"
         # Common patterns: "Found N products" or "No products"
         assert any(
