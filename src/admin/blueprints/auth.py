@@ -133,10 +133,9 @@ def google_auth():
         flash("OAuth not configured", "error")
         return redirect(url_for("auth.login"))
 
-    # Always use the registered OAuth redirect URI for Google
-    if os.environ.get("PRODUCTION") == "true":
-        redirect_uri = "https://sales-agent.scope3.com/admin/auth/google/callback"
-    else:
+    # Use configured redirect URI from environment, fall back to auto-generated
+    redirect_uri = os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
+    if not redirect_uri:
         redirect_uri = url_for("auth.google_callback", _external=True)
 
     # Simple OAuth flow - no tenant context preservation needed
@@ -231,12 +230,8 @@ def google_callback():
         session["user_name"] = user.get("name", email)
         session["user_picture"] = user.get("picture", "")
 
-        # Check if this is a signup flow (only if explicitly set, not just present in session)
-        is_signup_flow = session.pop("signup_flow", False)
-        if is_signup_flow:
-            return redirect(url_for("public.signup_onboarding"))
-
-        # Query all tenants user has access to
+        # Unified flow: Always show tenant selector (with option to create new tenant)
+        # No distinction between signup and login - keeps UX simple and consistent
         from src.admin.domain_access import get_user_tenant_access
 
         email_domain = email.split("@")[1] if "@" in email else ""
@@ -247,56 +242,33 @@ def google_callback():
             flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
             return redirect(url_for("core.index"))
 
-        # Get accessible tenants
+        # Get all accessible tenants
         tenant_access = get_user_tenant_access(email)
 
-        # No access
-        if tenant_access["total_access"] == 0:
-            flash("You don't have access to any tenants. Please contact your administrator.", "error")
-            session.clear()
-            return redirect(url_for("auth.login"))
+        # Build tenant list for selector (empty list is fine - user can create new tenant)
+        session["available_tenants"] = []
 
-        # Single tenant - auto-select and redirect
-        elif tenant_access["total_access"] == 1:
-            from src.admin.domain_access import ensure_user_in_tenant
+        if tenant_access["domain_tenant"]:
+            session["available_tenants"].append(
+                {
+                    "tenant_id": tenant_access["domain_tenant"].tenant_id,
+                    "name": tenant_access["domain_tenant"].name,
+                    "subdomain": tenant_access["domain_tenant"].subdomain,
+                }
+            )
 
-            if tenant_access["domain_tenant"]:
-                tenant = tenant_access["domain_tenant"]
-            else:
-                tenant = tenant_access["email_tenants"][0]
+        for tenant in tenant_access["email_tenants"]:
+            session["available_tenants"].append(
+                {
+                    "tenant_id": tenant.tenant_id,
+                    "name": tenant.name,
+                    "subdomain": tenant.subdomain,
+                }
+            )
 
-            # Ensure user record exists
-            user_record = ensure_user_in_tenant(email, tenant.tenant_id, role="admin", name=user.get("name"))
-
-            session["tenant_id"] = tenant.tenant_id
-            session["is_tenant_admin"] = user_record.role == "admin"
-            flash(f"Welcome {user.get('name', email)}!", "success")
-            return redirect(url_for("tenants.dashboard", tenant_id=tenant.tenant_id))
-
-        # Multiple tenants - show selection page
-        else:
-
-            session["available_tenants"] = []
-
-            if tenant_access["domain_tenant"]:
-                session["available_tenants"].append(
-                    {
-                        "tenant_id": tenant_access["domain_tenant"].tenant_id,
-                        "name": tenant_access["domain_tenant"].name,
-                        "subdomain": tenant_access["domain_tenant"].subdomain,
-                    }
-                )
-
-            for tenant in tenant_access["email_tenants"]:
-                session["available_tenants"].append(
-                    {
-                        "tenant_id": tenant.tenant_id,
-                        "name": tenant.name,
-                        "subdomain": tenant.subdomain,
-                    }
-                )
-
-            return redirect(url_for("auth.select_tenant"))
+        # Always show tenant selector (includes "Create New Tenant" option)
+        flash(f"Welcome {user.get('name', email)}!", "success")
+        return redirect(url_for("auth.select_tenant"))
 
     except Exception as e:
         logger.error(f"[OAUTH_DEBUG] OAuth callback error: {type(e).__name__}: {e}", exc_info=True)
