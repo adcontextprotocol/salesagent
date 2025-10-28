@@ -13,6 +13,8 @@ Extracted from gam_inventory_service.py and gam_inventory_discovery.py to provid
 a clean, focused interface for inventory operations within the modular GAM architecture.
 """
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime, timedelta
 from typing import Any
