@@ -9,6 +9,7 @@ import time
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -148,8 +149,6 @@ def list_creative_formats(
     Returns:
         ToolResult with ListCreativeFormatsResponse data
     """
-    from fastmcp.tools.tool import ToolResult
-
     try:
         req = ListCreativeFormatsRequest(
             type=type,

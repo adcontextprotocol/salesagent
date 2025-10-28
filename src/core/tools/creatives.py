@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 from sqlalchemy import select
@@ -1442,8 +1443,6 @@ def sync_creatives(
     Returns:
         ToolResult with SyncCreativesResponse data
     """
-    from fastmcp.tools.tool import ToolResult
-
     response = _sync_creatives_impl(
         creatives=creatives,
         patch=patch,
@@ -1790,8 +1789,6 @@ def list_creatives(
     Returns:
         ToolResult with ListCreativesResponse data
     """
-    from fastmcp.tools.tool import ToolResult
-
     response = _list_creatives_impl(
         media_buy_id,
         buyer_ref,

@@ -13,6 +13,7 @@ import time
 import sqlalchemy as sa
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import ToolResult
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
@@ -257,8 +258,6 @@ def list_authorized_properties(
     # This ensures tenant detection works the same way for both MCP and A2A
     import logging
     import sys
-
-    from fastmcp.tools.tool import ToolResult
 
     logger = logging.getLogger(__name__)
     tool_context = None

@@ -10,6 +10,7 @@ import uuid
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -199,8 +200,6 @@ async def get_signals(req: GetSignalsRequest, context: Context = None):
     Returns:
         ToolResult with GetSignalsResponse data
     """
-    from fastmcp.tools.tool import ToolResult
-
     response = await _get_signals_impl(req, context)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
@@ -320,8 +319,6 @@ async def activate_signal(
     Returns:
         ToolResult with ActivateSignalResponse data
     """
-    from fastmcp.tools.tool import ToolResult
-
     response = await _activate_signal_impl(signal_id, campaign_id, media_buy_id, context)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 

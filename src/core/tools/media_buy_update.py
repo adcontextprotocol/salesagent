@@ -13,6 +13,7 @@ from datetime import UTC, date, datetime
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from sqlalchemy import select
 
@@ -689,8 +690,6 @@ def update_media_buy(
     Returns:
         ToolResult with UpdateMediaBuyResponse data
     """
-    from fastmcp.tools.tool import ToolResult
-
     response = _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,

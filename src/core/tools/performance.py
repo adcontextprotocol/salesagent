@@ -9,6 +9,7 @@ from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 
@@ -107,8 +108,6 @@ def update_performance_index(
     Returns:
         ToolResult with UpdatePerformanceIndexResponse data
     """
-    from fastmcp.tools.tool import ToolResult
-
     response = _update_performance_index_impl(media_buy_id, performance_data, context)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 

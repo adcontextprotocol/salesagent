@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 
@@ -327,8 +328,6 @@ def get_media_buy_delivery(
     Returns:
         ToolResult with GetMediaBuyDeliveryResponse data
     """
-    from fastmcp.tools.tool import ToolResult
-
     # Create AdCP-compliant request object
     try:
         req = GetMediaBuyDeliveryRequest(

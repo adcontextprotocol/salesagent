@@ -16,6 +16,7 @@ from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 
@@ -1920,8 +1921,6 @@ async def create_media_buy(
     Returns:
         ToolResult with CreateMediaBuyResponse data
     """
-    from fastmcp.tools.tool import ToolResult
-
     response = await _create_media_buy_impl(
         buyer_ref=buyer_ref,
         brand_manifest=brand_manifest,

@@ -12,6 +12,7 @@ from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 
 # Imports for implementation
@@ -523,8 +524,6 @@ async def get_products(
         promoted_offering is deprecated - use brand_manifest instead.
         If you need backward compatibility, use the A2A interface which still supports it.
     """
-    from fastmcp.tools.tool import ToolResult
-
     # Build request object for shared implementation using helper
     try:
         req = create_get_products_request(
