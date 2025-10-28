@@ -350,6 +350,11 @@ def google_callback():
                 logger.info(f"[ACCESS_CHECK] tenant_id from session: {tenant_id}")
                 logger.info(f"[ACCESS_CHECK] tenant.authorized_domains: {tenant.authorized_domains}")
                 logger.info(f"[ACCESS_CHECK] tenant.authorized_emails: {tenant.authorized_emails}")
+                flash(
+                    f"DEBUG ACCESS CHECK: email_domain={email_domain}, "
+                    f"authorized_domains={tenant.authorized_domains}",
+                    "info",
+                )
 
                 # Check if user has access to THIS SPECIFIC tenant
                 # Check domain-based access
