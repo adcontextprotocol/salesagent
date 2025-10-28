@@ -13,6 +13,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -22,6 +23,25 @@ from rich.console import Console
 
 logger = logging.getLogger(__name__)
 console = Console()
+
+
+def validate_agent_url(url: str | None) -> bool:
+    """Validate agent_url is a valid HTTP(S) URL per AdCP spec.
+
+    Args:
+        url: URL string to validate
+
+    Returns:
+        True if valid HTTP(S) URL, False otherwise
+    """
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        result = urlparse(url)
+        return all([result.scheme in ("http", "https"), result.netloc])
+    except Exception:
+        return False
+
 
 # Tool-specific imports
 from src.core.audit_logger import get_audit_logger
@@ -40,6 +60,8 @@ from src.core.schemas import (
     CreateMediaBuyRequest,
     CreativeStatus,
     Error,
+    FormatId,
+    FormatReference,
     MediaPackage,
     Package,
     Principal,
@@ -369,20 +391,6 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
                     # Create MediaPackage object (what adapters expect)
                     # Convert formats (FormatReference/dict) to FormatId objects per AdCP spec
-                    from urllib.parse import urlparse
-
-                    from src.core.schemas import FormatId, FormatReference
-
-                    def validate_agent_url(url: str | None) -> bool:
-                        """Validate agent_url is a valid HTTP(S) URL per AdCP spec."""
-                        if not url or not isinstance(url, str):
-                            return False
-                        try:
-                            result = urlparse(url)
-                            return all([result.scheme in ("http", "https"), result.netloc])
-                        except Exception:
-                            return False
-
                     format_ids_list: list[FormatId] = []
                     formats = product.formats or []
 
