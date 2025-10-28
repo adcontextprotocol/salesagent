@@ -7,14 +7,12 @@ both human-readable text content and structured JSON data.
 
 import pytest
 
-from tests.integration_v2.conftest_v2 import get_fastmcp_client
-
 
 @pytest.mark.requires_server
 @pytest.mark.asyncio
-async def test_get_products_returns_tool_result():
+async def test_get_products_returns_tool_result(mcp_client):
     """Verify get_products MCP wrapper returns ToolResult with correct structure."""
-    async with get_fastmcp_client() as client:
+    async with mcp_client as client:
         result = await client.call_tool(
             "get_products",
             {"brief": "display ads", "brand_manifest": {"name": "Test Brand"}},
@@ -42,9 +40,9 @@ async def test_get_products_returns_tool_result():
 
 @pytest.mark.requires_server
 @pytest.mark.asyncio
-async def test_list_creative_formats_returns_tool_result():
+async def test_list_creative_formats_returns_tool_result(mcp_client):
     """Verify list_creative_formats MCP wrapper returns ToolResult with correct structure."""
-    async with get_fastmcp_client() as client:
+    async with mcp_client as client:
         result = await client.call_tool("list_creative_formats", {})
 
         # Verify ToolResult structure
@@ -65,9 +63,9 @@ async def test_list_creative_formats_returns_tool_result():
 
 @pytest.mark.requires_server
 @pytest.mark.asyncio
-async def test_list_authorized_properties_returns_tool_result():
+async def test_list_authorized_properties_returns_tool_result(mcp_client):
     """Verify list_authorized_properties MCP wrapper returns ToolResult with correct structure."""
-    async with get_fastmcp_client() as client:
+    async with mcp_client as client:
         result = await client.call_tool("list_authorized_properties", {})
 
         # Verify ToolResult structure
@@ -87,9 +85,9 @@ async def test_list_authorized_properties_returns_tool_result():
 
 @pytest.mark.requires_server
 @pytest.mark.asyncio
-async def test_tool_result_content_differs_from_structured():
+async def test_tool_result_content_differs_from_structured(mcp_client):
     """Verify that text content is different from structured content (not just JSON dump)."""
-    async with get_fastmcp_client() as client:
+    async with mcp_client as client:
         result = await client.call_tool(
             "get_products",
             {"brief": "video ads", "brand_manifest": {"name": "Test Brand"}},
