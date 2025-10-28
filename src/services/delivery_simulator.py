@@ -7,6 +7,14 @@ Example: 1 second = 1 hour of campaign time (configurable)
 
 NOTE: Time acceleration is mock-adapter specific for testing. Webhook delivery
 itself is a core feature (webhook_delivery_service) shared by all adapters.
+
+DESIGN DECISION (2025-10-27):
+- Simulators are NOT automatically restarted on server boot
+- Daemon threads don't survive container restarts (Fly.io, Kubernetes, etc.)
+- Auto-restart caused webhook loops in production (multiple containers + frequent restarts)
+- Simulators now only start when explicitly requested (e.g., media buy creation)
+- If server restarts, simulators for active media buys must be manually restarted via admin UI
+- For production use cases, use real ad server adapters (GAM, Kevel) instead of mock simulator
 """
 
 import atexit
@@ -39,8 +47,11 @@ class DeliverySimulator:
     def restart_active_simulations(self):
         """Restart delivery simulations for active media buys.
 
-        Called on server startup to resume simulations that were running
-        before a server restart. Daemon threads don't survive restarts.
+        DEPRECATED: No longer called automatically on server startup.
+        Can be manually invoked via admin UI or API if needed.
+
+        Daemon threads don't survive container restarts, so automatic restart
+        caused webhook loops in production environments with frequent container restarts.
         """
         try:
             from sqlalchemy import select
