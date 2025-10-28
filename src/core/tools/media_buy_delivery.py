@@ -300,7 +300,7 @@ def _get_media_buy_delivery_impl(
             media_buy_count += 1
 
         except Exception as e:
-            console.print(f"[red]Error getting delivery for {media_buy_id}: {e}[/red]")
+            logger.error(f"Error getting delivery for {media_buy_id}: {e}")
             # Continue with other media buys
 
     # Create AdCP-compliant response

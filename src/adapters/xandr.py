@@ -467,6 +467,15 @@ class XandrAdapter(AdServerAdapter):
                 if not self.advertiser_id:
                     raise ValueError("Advertiser ID is required for creating line items")
 
+                # Get pricing for this package
+                pricing_info = package_pricing_info.get(package.package_id) if package_pricing_info else None
+                if pricing_info:
+                    rate = (
+                        pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                    )
+                else:
+                    rate = package.cpm
+
                 li_data = {
                     "line-item": {
                         "name": package.name,
@@ -475,9 +484,9 @@ class XandrAdapter(AdServerAdapter):
                         "start_date": start_time.date().isoformat(),
                         "end_date": end_time.date().isoformat(),
                         "revenue_type": "cpm",
-                        "revenue_value": package.cpm,
-                        "lifetime_budget": float(package.cpm * package.impressions / 1000),
-                        "daily_budget": float(package.cpm * package.impressions / 1000 / days),
+                        "revenue_value": rate,  # Use pricing from pricing option or fallback
+                        "lifetime_budget": float(rate * package.impressions / 1000),
+                        "daily_budget": float(rate * package.impressions / 1000 / days),
                         "currency": "USD",
                         "state": "inactive",  # Start inactive
                         "inventory_type": "display",

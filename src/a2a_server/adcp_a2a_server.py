@@ -2453,7 +2453,7 @@ def main():
                     if "message" in params and isinstance(params["message"], dict):
                         message = params["message"]
                         # Convert numeric messageId to string if needed
-                        if "messageId" in message and isinstance(message["messageId"], int | float):
+                        if "messageId" in message and isinstance(message["messageId"], (int, float)):
                             logger.warning(
                                 f"Converting numeric messageId {message['messageId']} to string for compatibility"
                             )
@@ -2462,7 +2462,7 @@ def main():
                             body = json.dumps(data).encode()
 
                 # Also handle the outer id field for JSON-RPC
-                if "id" in data and isinstance(data["id"], int | float):
+                if "id" in data and isinstance(data["id"], (int, float)):
                     logger.warning(f"Converting numeric JSON-RPC id {data['id']} to string for compatibility")
                     data["id"] = str(data["id"])
                     body = json.dumps(data).encode()
