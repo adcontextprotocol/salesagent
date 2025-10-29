@@ -9,8 +9,12 @@ import os
 
 
 def get_base_domain() -> str:
-    """Get the base domain (e.g., example.com)."""
-    return os.getenv("BASE_DOMAIN", "example.com")
+    """Get the base domain (e.g., scope3.com).
+
+    Defaults to scope3.com for backwards compatibility with existing deployments.
+    Override with BASE_DOMAIN environment variable to use a different domain.
+    """
+    return os.getenv("BASE_DOMAIN", "scope3.com")
 
 
 def get_sales_agent_domain() -> str:
