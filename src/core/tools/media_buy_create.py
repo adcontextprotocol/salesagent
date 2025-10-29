@@ -1127,6 +1127,11 @@ async def _create_media_buy_impl(
         start_time_val = computed_start_time
         end_time_val = computed_end_time
 
+        # Update function parameters to use validated datetime objects
+        # This ensures adapters receive datetime objects, not strings
+        start_time = start_time_val
+        end_time = end_time_val
+
         # 3. Package/Product validation
         product_ids = req.get_product_ids()
         logger.info(f"DEBUG: Extracted product_ids: {product_ids}")
