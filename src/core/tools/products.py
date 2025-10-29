@@ -95,7 +95,45 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
     principal = get_principal_object(principal_id) if principal_id else None
     principal_data = principal.model_dump() if principal else None
 
-    # Extract offering text from brand_manifest
+    # Get tenant's brand manifest policy
+    brand_manifest_policy = tenant.get("brand_manifest_policy", "require_auth")
+
+    # Validate brand manifest based on policy
+    # Policy options:
+    # - "public": No auth required, no brand_manifest required (but no pricing shown)
+    # - "require_auth": Auth required, brand_manifest optional
+    # - "require_brand": Auth + brand_manifest both required (strictest, default)
+
+    if brand_manifest_policy == "require_brand":
+        # Strictest: require both auth and brand_manifest
+        if not principal_id:
+            raise ToolError("Authentication required. This tenant requires authentication to access product catalog.")
+        if not req.brand_manifest:
+            raise ToolError(
+                "brand_manifest required. This tenant requires brand information to provide product recommendations."
+            )
+    elif brand_manifest_policy == "require_auth":
+        # Middle: require auth but brand_manifest is optional
+        if not principal_id:
+            raise ToolError("Authentication required. This tenant requires authentication to access product catalog.")
+        # brand_manifest is optional in this mode
+    elif brand_manifest_policy == "public":
+        # Most permissive: no auth required, no brand_manifest required
+        # Pricing will be stripped later for anonymous users
+        pass
+    else:
+        # Unknown policy - default to strictest for safety
+        logger.warning(
+            f"Unknown brand_manifest_policy '{brand_manifest_policy}' for tenant {tenant['tenant_id']}, defaulting to require_brand"
+        )
+        if not principal_id:
+            raise ToolError("Authentication required. This tenant requires authentication to access product catalog.")
+        if not req.brand_manifest:
+            raise ToolError(
+                "brand_manifest required. This tenant requires brand information to provide product recommendations."
+            )
+
+    # Extract offering text from brand_manifest (if provided)
     offering = None
     if req.brand_manifest:
         if isinstance(req.brand_manifest, str):
@@ -110,8 +148,9 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
             elif isinstance(req.brand_manifest, dict):
                 offering = req.brand_manifest.get("name", "")
 
+    # If no brand_manifest provided, use a generic offering for context
     if not offering:
-        raise ToolError("brand_manifest must provide brand information")
+        offering = "Generic advertising campaign"
 
     # Skip strict validation in test environments (allow simple test values)
 
@@ -490,10 +529,25 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
         except Exception as e:
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
 
-    # Filter pricing data for anonymous users
-    if principal_id is None:  # Anonymous user
-        # Remove pricing data from products for anonymous users
-        # Set to empty list to hide pricing (will be excluded during serialization)
+    # Filter pricing data based on policy and authentication
+    # Policy determines who can see pricing:
+    # - "public": No pricing for anyone (including authenticated users)
+    # - "require_auth": Pricing only for authenticated users
+    # - "require_brand": Pricing only for authenticated users with brand_manifest
+
+    should_show_pricing = False
+    if brand_manifest_policy == "public":
+        # Public policy: never show pricing (encourages users to authenticate for pricing)
+        should_show_pricing = False
+    elif brand_manifest_policy == "require_auth":
+        # Require auth: show pricing only if authenticated
+        should_show_pricing = principal_id is not None
+    elif brand_manifest_policy == "require_brand":
+        # Require brand: show pricing only if authenticated AND brand_manifest provided
+        should_show_pricing = principal_id is not None and req.brand_manifest is not None
+
+    if not should_show_pricing:
+        # Remove pricing data from products
         for product in modified_products:
             product.pricing_options = []
 
@@ -634,7 +688,9 @@ def get_product_catalog() -> list[Product]:
 
             # Convert pricing_options ORM objects to Pydantic objects
             pricing_options = []
-            logger.info(f"Product {product.name} ({product.product_id}) has {len(product.pricing_options)} pricing options loaded")
+            logger.info(
+                f"Product {product.name} ({product.product_id}) has {len(product.pricing_options)} pricing options loaded"
+            )
             for po in product.pricing_options:
                 fixed_str = "fixed" if po.is_fixed else "auction"
                 pricing_option_data = {

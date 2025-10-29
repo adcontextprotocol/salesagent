@@ -47,6 +47,29 @@
                             </small>
                         </div>
 
+                        <hr class="my-4">
+
+                        <div class="form-group mb-3">
+                            <label for="brand_manifest_policy"><strong>Product Discovery Access</strong></label>
+                            <select class="form-control" id="brand_manifest_policy" name="brand_manifest_policy">
+                                <option value="require_auth" {% if brand_manifest_policy == 'require_auth' %}selected{% endif %}>
+                                    Standard B2B (recommended)
+                                </option>
+                                <option value="require_brand" {% if brand_manifest_policy == 'require_brand' %}selected{% endif %}>
+                                    Brand context required
+                                </option>
+                                <option value="public" {% if brand_manifest_policy == 'public' %}selected{% endif %}>
+                                    Public marketplace
+                                </option>
+                            </select>
+                            <small class="form-text text-muted">
+                                <strong>Standard B2B (recommended):</strong> Advertisers sign up to see products and pricing. Most common model.<br>
+                                <strong>Brand context required:</strong> Advertisers provide brand info before seeing products. For highly customized/bespoke products.<br>
+                                <strong>Public marketplace:</strong> Products visible to everyone (pricing hidden). For generic, commoditized ad products.<br>
+                                <em>Note: Future versions will support per-product settings. Currently applies to all products.</em>
+                            </small>
+                        </div>
+
                         <button type="submit" class="btn btn-primary">Save Settings</button>
                         <a href="/tenant/{{ tenant_id }}/policy/rules" class="btn btn-secondary">
                             Manage Custom Rules
