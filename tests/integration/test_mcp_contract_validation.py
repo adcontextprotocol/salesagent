@@ -22,7 +22,7 @@ from src.core.schemas import (
     UpdateMediaBuyRequest,
 )
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 class TestMCPContractValidation:

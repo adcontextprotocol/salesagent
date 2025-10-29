@@ -22,7 +22,7 @@ from src.core.schema_adapters import (
     UpdateMediaBuyResponse,
 )
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 @pytest.mark.integration

@@ -15,6 +15,8 @@ import pytest
 
 from src.admin.app import create_app
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+
 
 class TestNotificationUrlsExist:
     """Verify all notification URLs correspond to actual routes."""
