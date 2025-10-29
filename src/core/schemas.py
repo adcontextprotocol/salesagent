@@ -2,9 +2,6 @@ import uuid
 import warnings
 from datetime import UTC, date, datetime, time
 
-# UTC timezone for timezone-aware datetime objects
-UTC = UTC
-
 # --- V2.3 Pydantic Models (Bearer Auth, Restored & Complete) ---
 # --- MCP Status System (AdCP PR #77) ---
 from enum import Enum
