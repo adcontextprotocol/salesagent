@@ -28,6 +28,7 @@ from src.admin.blueprints.products import products_bp
 from src.admin.blueprints.public import public_bp
 from src.admin.blueprints.schemas import schemas_bp
 from src.admin.blueprints.settings import settings_bp, tenant_management_settings_bp
+from src.admin.blueprints.signals_agents import signals_agents_bp
 
 # from src.admin.blueprints.tasks import tasks_bp  # Disabled - tasks eliminated in favor of workflow system
 from src.admin.blueprints.tenants import tenants_bp
@@ -291,6 +292,7 @@ def create_app(config=None):
     )  # No url_prefix - routes define their own paths like /adapters/{adapter}/config/{tenant_id}/{product_id}
     app.register_blueprint(authorized_properties_bp, url_prefix="/tenant")  # Tenant-specific routes
     app.register_blueprint(creative_agents_bp, url_prefix="/tenant/<tenant_id>/creative-agents")
+    app.register_blueprint(signals_agents_bp, url_prefix="/tenant/<tenant_id>/signals-agents")
     app.register_blueprint(inventory_bp)  # Has its own internal routing
     app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(format_search_bp)  # Format search API (/api/formats)

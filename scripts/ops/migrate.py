@@ -27,7 +27,10 @@ def run_migrations(exit_on_error=True):
     # Run migrations
     try:
         print("Running database migrations...")
-        command.upgrade(alembic_cfg, "head")
+        # Use 'heads' instead of 'head' to handle multiple migration heads
+        # This will upgrade to all head revisions, which is necessary when
+        # there are parallel migration branches that haven't been merged yet
+        command.upgrade(alembic_cfg, "heads")
         print("✅ Database migrations completed successfully!")
     except Exception as e:
         error_msg = str(e)
