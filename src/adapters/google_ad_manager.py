@@ -159,13 +159,30 @@ class GoogleAdManager(AdServerAdapter):
             self.client = None
             self.log("[yellow]Running in dry-run mode - GAM client not initialized[/yellow]")
 
-            # Initialize minimal managers for dry-run mode
+            # Initialize managers for dry-run mode (they can work without real client)
             self.targeting_manager = GAMTargetingManager()
-            self.orders_manager = None  # type: ignore[assignment]
-            self.creatives_manager = None  # type: ignore[assignment]
-            self.inventory_manager = None  # type: ignore[assignment]
-            self.sync_manager = None  # type: ignore[assignment]
-            self.workflow_manager = None  # type: ignore[assignment]
+
+            # Initialize orders manager in dry-run mode
+            self.orders_manager = GAMOrdersManager(None, self.advertiser_id, self.trafficker_id, dry_run=True)  # type: ignore[arg-type]
+
+            # Only initialize creative manager if we have advertiser_id (required for creative operations)
+            if self.advertiser_id and self.trafficker_id:
+                self.creatives_manager = GAMCreativesManager(
+                    None, self.advertiser_id, dry_run=True, log_func=self.log, adapter=self  # type: ignore[arg-type]
+                )
+            else:
+                self.creatives_manager = None  # type: ignore[assignment]
+
+            # Initialize inventory manager in dry-run mode
+            self.inventory_manager = GAMInventoryManager(None, tenant_id or "", dry_run=True)  # type: ignore[arg-type]
+
+            # Initialize sync manager in dry-run mode
+            self.sync_manager = GAMSyncManager(
+                None, self.inventory_manager, self.orders_manager, tenant_id or "", dry_run=True  # type: ignore[arg-type]
+            )
+
+            # Initialize workflow manager (doesn't need client)
+            self.workflow_manager = GAMWorkflowManager(tenant_id or "", principal, audit_logger, self.log)
 
         # Initialize legacy validator for backward compatibility
         from .gam.utils.validation import GAMValidator
