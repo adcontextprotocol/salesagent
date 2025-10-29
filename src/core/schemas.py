@@ -2363,6 +2363,21 @@ class CreateMediaBuyRequest(AdCPBaseModel):
                 )
             values["packages"] = packages
 
+        # Parse ISO 8601 datetime strings to datetime objects
+        # Handle start_time: convert ISO string to datetime if needed
+        if "start_time" in values:
+            start_time = values["start_time"]
+            if isinstance(start_time, str) and start_time != "asap":
+                # Parse ISO 8601 string to datetime
+                values["start_time"] = datetime.fromisoformat(start_time)
+
+        # Handle end_time: convert ISO string to datetime if needed
+        if "end_time" in values:
+            end_time = values["end_time"]
+            if isinstance(end_time, str):
+                # Parse ISO 8601 string to datetime
+                values["end_time"] = datetime.fromisoformat(end_time)
+
         # Convert dates to datetimes with defensive handling
         # Handle start_date -> start_time conversion (only if start_time not provided)
         if "start_date" in values and not values.get("start_time"):
@@ -2847,6 +2862,29 @@ class UpdateMediaBuyRequest(AdCPBaseModel):
 
     # NOTE: No Python validator needed for oneOf constraint - AdCP schema enforces media_buy_id/buyer_ref oneOf
     # Schema validation at /schemas/v1/media-buy/update-media-buy-request.json enforces this
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_datetime_strings(cls, values):
+        """Parse ISO 8601 datetime strings to datetime objects."""
+        if not isinstance(values, dict):
+            return values
+
+        # Handle start_time: convert ISO string to datetime if needed
+        if "start_time" in values:
+            start_time = values["start_time"]
+            if isinstance(start_time, str) and start_time != "asap":
+                # Parse ISO 8601 string to datetime
+                values["start_time"] = datetime.fromisoformat(start_time)
+
+        # Handle end_time: convert ISO string to datetime if needed
+        if "end_time" in values:
+            end_time = values["end_time"]
+            if isinstance(end_time, str):
+                # Parse ISO 8601 string to datetime
+                values["end_time"] = datetime.fromisoformat(end_time)
+
+        return values
 
     @model_validator(mode="after")
     def validate_timezone_aware(self):
