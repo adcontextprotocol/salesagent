@@ -1348,7 +1348,7 @@ async def _create_media_buy_impl(
             # Validate maximum daily spend per package (if set)
             # This is per-package to prevent buyers from splitting large budgets across many packages
             if currency_limit.max_daily_package_spend:
-                flight_days = (end_time - start_time).days
+                flight_days = (end_time_val - start_time_val).days
                 if flight_days <= 0:
                     flight_days = 1
 
@@ -2618,7 +2618,7 @@ async def _create_media_buy_impl(
                     principal_name = principal_db.name
 
             # Calculate duration using new datetime fields (resolved from 'asap' if needed)
-            duration_days = (end_time - start_time).days + 1
+            duration_days = (end_time_val - start_time_val).days + 1
 
             activity_feed.log_media_buy(
                 tenant_id=tenant["tenant_id"],
@@ -2702,7 +2702,7 @@ async def _create_media_buy_impl(
                 "start_time": start_time.isoformat(),  # Resolved from 'asap' if needed
                 "end_time": end_time.isoformat(),
                 "product_ids": req.get_product_ids(),
-                "duration_days": (end_time - start_time).days + 1,
+                "duration_days": (end_time_val - start_time_val).days + 1,
                 "packages_count": len(response_packages) if response_packages else 0,
                 "creatives_count": len(req.creatives) if req.creatives else 0,
                 "workflow_step_id": step.step_id,
@@ -2734,7 +2734,7 @@ async def _create_media_buy_impl(
                 "media_buy_id": response.media_buy_id,
                 "total_budget": total_budget,
                 "po_number": req.po_number,
-                "duration_days": (end_time - start_time).days + 1,  # Resolved from 'asap' if needed
+                "duration_days": (end_time_val - start_time_val).days + 1,  # Resolved from 'asap' if needed
                 "product_count": len(req.get_product_ids()),
                 "packages_count": len(response_packages) if response_packages else 0,
             },
