@@ -23,7 +23,8 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import requests
-
+from urllib.parse import urlparse, urlunparse
+from src.core.database.models import PushNotificationConfig
 logger = logging.getLogger(__name__)
 
 
@@ -62,10 +63,10 @@ class ProtocolWebhookService:
 
     async def send_notification(
         self,
-        webhook_config: dict[str, Any],
         task_type: str,
         task_id: str,
         status: str,
+        push_notification_config: PushNotificationConfig,
         result: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> bool:
@@ -73,40 +74,28 @@ class ProtocolWebhookService:
         Send a protocol-level push notification to the configured webhook.
 
         Args:
-            webhook_config: Push notification configuration from protocol layer
-                Expected structure:
-                {
-                    "url": "https://...",
-                    "authentication": {
-                        "schemes": ["HMAC-SHA256", "Bearer"],
-                        "credentials": "secret_or_token"
-                    }
-                }
+            push_notification_config: Push notification configuration from protocol layer
             task_type: Type of task ("sync_creatives", "media_buy", etc.)
             task_id: Task/operation ID
             status: Status of operation ("working", "completed", "failed")
-            result: Result data if completed successfully
+            result: Result data
             error: Error message if failed
 
         Returns:
             True if notification sent successfully, False otherwise
         """
-        if not webhook_config or not webhook_config.get("url"):
+        if not push_notification_config or not push_notification_config.url:
             logger.debug(f"No webhook URL configured for task {task_id}, skipping notification")
             return False
 
-        url = _normalize_localhost_for_docker(webhook_config["url"])
-        auth_config = webhook_config.get("authentication", {})
-        schemes = auth_config.get("schemes", [])
-        credentials = auth_config.get("credentials")
-
+        url = _normalize_localhost_for_docker(push_notification_config.url)
+        
         # Build notification payload (AdCP standard format)
         payload: dict[str, Any] = {
             "task_id": task_id,
             "task_type": task_type,
             "status": status,
             "timestamp": datetime.now(UTC).isoformat(),
-            "adcp_version": "2.3.0",
         }
 
         if result:
@@ -117,21 +106,23 @@ class ProtocolWebhookService:
         # Prepare headers
         headers = {"Content-Type": "application/json", "User-Agent": "AdCP-Sales-Agent/1.0"}
 
+        logger.info(f"push_notification_config: {push_notification_config}")
+
         # Apply authentication based on schemes
-        if "HMAC-SHA256" in schemes and credentials:
+        if push_notification_config.authentication_type == "HMAC-SHA256" and push_notification_config.authentication_token:
             # Sign payload with HMAC-SHA256
 
             timestamp = str(int(time.time()))
             payload_str = json.dumps(payload, sort_keys=False, separators=(",", ":"))
             message = f"{timestamp}.{payload_str}"
-            signature = hmac.new(credentials.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+            signature = hmac.new(push_notification_config.authentication_token.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
 
             headers["X-AdCP-Signature"] = f"sha256={signature}"
             headers["X-AdCP-Timestamp"] = timestamp
 
-        elif "Bearer" in schemes and credentials:
+        elif push_notification_config.authentication_type == "Bearer" and push_notification_config.authentication_token:
             # Use Bearer token authentication
-            headers["Authorization"] = f"Bearer {credentials}"
+            headers["Authorization"] = f"Bearer {push_notification_config.authentication_token}"
 
         # Send notification
         try:

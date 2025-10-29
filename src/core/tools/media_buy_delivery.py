@@ -35,6 +35,9 @@ from src.core.schemas import (
 )
 from src.core.testing_hooks import DeliverySimulator, TimeSimulator, apply_testing_hooks, get_testing_context
 from src.core.validation_helpers import format_validation_error
+from src.core.schemas_generated._schemas_v1_core_push_notification_config_json import (
+    PushNotificationConfig,
+)
 
 
 def _get_media_buy_delivery_impl(
@@ -401,6 +404,7 @@ def get_media_buy_delivery(
     start_date: str | None = None,
     end_date: str | None = None,
     webhook_url: str | None = None,
+    push_notification_config: PushNotificationConfig | None = None,
     context: Context | ToolContext | None = None,
 ):
     """Get delivery data for media buys.
@@ -414,6 +418,7 @@ def get_media_buy_delivery(
         start_date: Start date for reporting period in YYYY-MM-DD format (optional)
         end_date: End date for reporting period in YYYY-MM-DD format (optional)
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        push_notification_config: Optional webhook configuration (accepted, ignored by this operation)
         context: FastMCP context (automatically provided)
 
     Returns:

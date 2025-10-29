@@ -1,11 +1,14 @@
 """Operations management blueprint."""
 
 import logging
+import asyncio
 
 from flask import Blueprint, jsonify
 from sqlalchemy import select
 
 from src.admin.utils import require_auth, require_tenant_access  # type: ignore[attr-defined]
+from src.services.protocol_webhook_service import get_protocol_webhook_service
+from src.core.database.models import MediaBuy, MediaPackage, PushNotificationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -338,9 +341,6 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                 )
                 attributes.flag_modified(step, "comments")
 
-                # Get the media buy and update status
-                from src.core.database.models import MediaBuy, PushNotificationConfig
-
                 stmt_buy = select(MediaBuy).filter_by(media_buy_id=media_buy_id, tenant_id=tenant_id)
                 media_buy = db_session.scalars(stmt_buy).first()
 
@@ -407,24 +407,32 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                     # Send webhook notification to buyer
                     stmt_webhook = (
                         select(PushNotificationConfig)
-                        .filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id, is_active=True)
+                        .filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id, url=media_buy.raw_request.get("push_notification_config").get("url"), is_active=True)
                         .order_by(PushNotificationConfig.created_at.desc())
                     )
                     webhook_config = db_session.scalars(stmt_webhook).first()
 
                     if webhook_config:
-                        import requests
+                        all_packages = db_session.scalars(select(MediaPackage).filter_by(media_buy_id=media_buy_id)).all()
 
+                        # Why this is not compliant with AdCP spec (particularly why status is missing in the protocol)?
                         webhook_payload = {
-                            "event": "media_buy_approved",
                             "media_buy_id": media_buy_id,
                             "buyer_ref": media_buy.buyer_ref,
                             "status": "scheduled",
-                            "approved_at": media_buy.approved_at.isoformat(),
-                            "approved_by": user_email,
+                            "packages": list(map(lambda x: {"package_id": x.package_id, "status": "approved"}, all_packages)),
                         }
+
                         try:
-                            requests.post(webhook_config.url, json=webhook_payload, timeout=10)
+                            service = get_protocol_webhook_service()
+                            asyncio.run(service.send_notification(
+                                push_notification_config=webhook_config,
+                                task_id=step.step_id,
+                                task_type=step.tool_name,
+                                status="completed",
+                                result=webhook_payload,
+                                error=None,
+                            ))
                             logger.info(f"Sent webhook notification for approved media buy {media_buy_id}")
                         except Exception as webhook_err:
                             logger.warning(f"Failed to send webhook notification: {webhook_err}")

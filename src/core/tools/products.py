@@ -28,6 +28,9 @@ from src.core.schemas import Product
 from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
     GetProductsRequest as GetProductsRequestGenerated,
 )
+from src.core.schemas_generated._schemas_v1_core_push_notification_config_json import (
+    PushNotificationConfig,
+)
 from src.core.testing_hooks import apply_testing_hooks, get_testing_context
 from src.core.tool_context import ToolContext
 from src.core.validation_helpers import format_validation_error, safe_parse_json_field
@@ -526,6 +529,7 @@ async def get_products(
         brief: Brief description of the advertising campaign or requirements (optional)
         filters: Structured filters for product discovery (optional)
         context: FastMCP context (automatically provided)
+        push_notification_config: Optional webhook configuration (accepted, ignored by this operation)
 
     Returns:
         ToolResult with human-readable text and structured data
