@@ -62,7 +62,7 @@ def test_currency_limit(integration_db, test_tenant):
         currency_limit = CurrencyLimit(
             tenant_id=test_tenant,
             currency_code="USD",
-            max_daily_budget=100000.0,
+            max_daily_package_spend=100000.0,
         )
         session.add(currency_limit)
         session.commit()
