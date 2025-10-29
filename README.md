@@ -236,6 +236,38 @@ We welcome contributions! Please see our [Development Guide](docs/DEVELOPMENT.md
 - Code style guidelines
 - Creating pull requests
 
+### Changesets for Version Management
+
+This project uses [changesets](https://github.com/changesets/changesets) to manage versions and changelogs.
+
+**When to add a changeset:**
+- All PRs that change functionality must include a changeset
+- Skip changesets only for documentation, tests, or internal tooling changes
+- Label PRs with `skip-changeset` if no version bump is needed
+
+**How to add a changeset:**
+
+```bash
+# Run the changeset CLI
+npx changeset
+
+# Select the version bump type:
+# - patch: Bug fixes (0.1.0 -> 0.1.1)
+# - minor: New features (0.1.0 -> 0.2.0)
+# - major: Breaking changes (0.1.0 -> 1.0.0)
+
+# Write a clear summary of your changes
+# Commit the generated .changeset/*.md file with your PR
+```
+
+**What happens after merge:**
+1. When changesets are merged to `main`, a "Version Packages" PR is automatically created
+2. That PR combines all changesets, bumps versions, and updates CHANGELOG.md
+3. When the Version PR is merged, the new version is published
+4. Both `package.json` and `pyproject.toml` are kept in sync automatically
+
+See [.changeset/README.md](.changeset/README.md) for more details.
+
 ### Important: Database Access Patterns
 
 When contributing, please follow our standardized database patterns:

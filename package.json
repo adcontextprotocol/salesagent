@@ -1,0 +1,14 @@
+{
+  "name": "adcp-sales-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AdCP Sales Agent - Multi-protocol ad sales agent supporting MCP and A2A",
+  "scripts": {
+    "changeset": "changeset",
+    "version": "changeset version && python scripts/sync_version.py",
+    "release": "changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.0"
+  }
+}
