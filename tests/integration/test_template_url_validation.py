@@ -76,6 +76,10 @@ class TestTemplateUrlValidation:
                             test_params["property_id"] = "test_property"
                         if "config_id" in params:
                             test_params["config_id"] = "test_config"
+                        if "agent_id" in params:
+                            test_params["agent_id"] = 1  # Integer ID for signals/creative agents
+                        if "filename" in params:
+                            test_params["filename"] = "test.js"  # For static file routes
 
                         # Try to build the URL
                         url = url_for(endpoint, **test_params)
@@ -261,6 +265,12 @@ class TestTemplateUrlValidation:
                                     test_params["principal_id"] = "test_principal"
                                     if "delete" in endpoint or "toggle" in endpoint:
                                         test_params["config_id"] = "test_config"
+
+                                # Add agent_id for signals agent endpoints
+                                if "signals_agent" in endpoint and (
+                                    "edit" in endpoint or "test" in endpoint or "delete" in endpoint
+                                ):
+                                    test_params["agent_id"] = 1
 
                                 url_for(endpoint, **test_params)
                             except BuildError as e:
