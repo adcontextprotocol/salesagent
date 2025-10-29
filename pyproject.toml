@@ -142,15 +142,3 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E722", "F821"]
 "admin_ui.py" = ["E402", "E722"]
-
-[tool.commitizen]
-name = "cz_conventional_commits"
-version = "0.1.0"
-version_scheme = "semver"
-version_provider = "pep621"
-update_changelog_on_bump = true
-major_version_zero = true
-tag_format = "v$version"
-changelog_file = "CHANGELOG.md"
-changelog_incremental = true
-changelog_start_rev = "v0.1.0"

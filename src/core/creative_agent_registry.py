@@ -14,15 +14,12 @@ Architecture:
 - Generative creative: Use agent's create_generative_creative tool
 """
 
-import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastmcp.client import Client
-from fastmcp.client.transports import StreamableHttpTransport
-
 from src.core.schemas import Format, FormatId
+from src.core.utils.mcp_client import MCPConnectionError, create_mcp_client
 
 
 @dataclass
@@ -70,13 +67,13 @@ class CreativeAgentRegistry:
 
     # Default creative agent (always available)
     DEFAULT_AGENT = CreativeAgent(
-        agent_url="https://creative.adcontextprotocol.org",
+        agent_url="https://creative.adcontextprotocol.org/mcp",
         name="AdCP Standard Creative Agent",
         enabled=True,
         priority=1,
     )
 
-    def __init__(self) -> None:
+    def __init__(self):
         """Initialize registry with empty cache."""
         self._format_cache: dict[str, CachedFormats] = {}  # Key: agent_url
 
@@ -152,137 +149,82 @@ class CreativeAgentRegistry:
         Returns:
             List of Format objects from the agent
         """
-        # Build MCP client
-        headers = {}
-        if agent.auth and agent.auth.get("type") == "bearer":
-            token = agent.auth.get("token") or self._get_auth_token(agent.auth.get("token_env"))
-            headers["Authorization"] = f"Bearer {token}"
+        import logging
 
-        # Normalize agent URL to avoid double slashes (e.g., "https://example.com//mcp")
-        from src.core.validation import normalize_agent_url
+        logger = logging.getLogger(__name__)
 
-        normalized_url = normalize_agent_url(agent.agent_url)
+        try:
+            # Use unified MCP client for standardized connection handling
+            async with create_mcp_client(
+                agent_url=agent.agent_url,
+                auth=agent.auth,
+                timeout=30,
+                max_retries=3,
+            ) as client:
+                # Build parameters for list_creative_formats
+                params: dict[str, Any] = {}
+                if max_width is not None:
+                    params["max_width"] = max_width
+                if max_height is not None:
+                    params["max_height"] = max_height
+                if min_width is not None:
+                    params["min_width"] = min_width
+                if min_height is not None:
+                    params["min_height"] = min_height
+                if is_responsive is not None:
+                    params["is_responsive"] = is_responsive
+                if asset_types is not None:
+                    params["asset_types"] = asset_types
+                if name_search is not None:
+                    params["name_search"] = name_search
+                if type_filter is not None:
+                    params["type"] = type_filter
 
-        # Retry logic for transient connection failures
-        max_retries = 3
-        retry_delay = 1.0  # seconds
-        last_exception = None
+                # Call list_creative_formats tool
+                result = await client.call_tool("list_creative_formats", params)
 
-        for attempt in range(max_retries):
-            try:
-                transport = StreamableHttpTransport(url=f"{normalized_url}/mcp", headers=headers)
-                client = Client(transport=transport)
-
-                async with client:
-                    # Build parameters for list_creative_formats
-                    params: dict[str, Any] = {}
-                    if max_width is not None:
-                        params["max_width"] = max_width
-                    if max_height is not None:
-                        params["max_height"] = max_height
-                    if min_width is not None:
-                        params["min_width"] = min_width
-                    if min_height is not None:
-                        params["min_height"] = min_height
-                    if is_responsive is not None:
-                        params["is_responsive"] = is_responsive
-                    if asset_types is not None:
-                        params["asset_types"] = asset_types
-                    if name_search is not None:
-                        params["name_search"] = name_search
-                    if type_filter is not None:
-                        params["type"] = type_filter
-
-                    # Call list_creative_formats tool
-                    result = await client.call_tool("list_creative_formats", params)
-
-                    # Parse result into Format objects
-                    import logging
-
-                    logger = logging.getLogger(__name__)
-
-                    # Use structured_content field for JSON response (MCP protocol update)
-                    formats_data: dict[str, Any] | None = None
-                    if hasattr(result, "structured_content") and result.structured_content:
-                        formats_data = result.structured_content  # type: ignore[assignment]
-                        logger.info(f"_fetch_formats_from_agent: Using structured_content, type={type(formats_data)}")
-                    elif isinstance(result.content, list) and result.content:
-                        # Fallback: Parse from content field (legacy)
-                        content_item = (
-                            result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
-                        )
-                        logger.info(
-                            f"_fetch_formats_from_agent: Using legacy content field, formats_data (first 500 chars): {str(content_item)[:500]}"
-                        )
-
-                        # Parse JSON if needed
-                        import json
-
-                        if isinstance(content_item, str):
-                            formats_data = json.loads(content_item)
-                        else:
-                            formats_data = content_item  # type: ignore[assignment]
-
-                    formats = []
-                    if formats_data:
-                        logger.info(
-                            f"_fetch_formats_from_agent: After parse, type={type(formats_data)}, keys={list(formats_data.keys()) if isinstance(formats_data, dict) else 'not a dict'}"
-                        )
-
-                        # Convert to Format objects
-                        if isinstance(formats_data, dict) and "formats" in formats_data:
-                            logger.info(
-                                f"_fetch_formats_from_agent: Found 'formats' key with {len(formats_data['formats'])} items"
-                            )
-                            for fmt_data in formats_data["formats"]:
-                                # Ensure agent_url is set
-                                fmt_data["agent_url"] = agent.agent_url
-                                formats.append(Format(**fmt_data))
-                        else:
-                            logger.warning(
-                                f"_fetch_formats_from_agent: No 'formats' key in response. Data: {formats_data}"
-                            )
-
-                    return formats
-
-            except Exception as e:
-                last_exception = e
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.warning(
-                    f"Attempt {attempt + 1}/{max_retries} failed to connect to {normalized_url}/mcp: {type(e).__name__}: {e}"
-                )
-                if attempt < max_retries - 1:
-                    # Exponential backoff
-                    await asyncio.sleep(retry_delay * (2**attempt))
-                else:
-                    # Final attempt failed - raise the exception
-                    logger.error(
-                        f"All {max_retries} attempts failed to connect to {normalized_url}/mcp. Last error: {type(e).__name__}: {e}"
+                # Use structured_content field for JSON response (MCP protocol update)
+                formats_data = None
+                if hasattr(result, "structured_content") and result.structured_content:
+                    formats_data = result.structured_content
+                    logger.info(f"_fetch_formats_from_agent: Using structured_content, type={type(formats_data)}")
+                elif isinstance(result.content, list) and result.content:
+                    # Fallback: Parse from content field (legacy)
+                    formats_data = result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
+                    logger.info(
+                        f"_fetch_formats_from_agent: Using legacy content field, formats_data (first 500 chars): {str(formats_data)[:500]}"
                     )
-                    raise RuntimeError(
-                        f"Failed to connect to creative agent after {max_retries} attempts: {type(e).__name__}: {e}"
-                    ) from last_exception
 
-        # This should never be reached, but just in case
-        return []
+                    # Parse JSON if needed
+                    import json
 
-    def _get_auth_token(self, token_env: str | None) -> str | None:
-        """Get auth token from environment variable.
+                    if isinstance(formats_data, str):
+                        formats_data = json.loads(formats_data)
 
-        Args:
-            token_env: Environment variable name
+                formats = []
+                if formats_data:
+                    logger.info(
+                        f"_fetch_formats_from_agent: After parse, type={type(formats_data)}, keys={list(formats_data.keys()) if isinstance(formats_data, dict) else 'not a dict'}"
+                    )
 
-        Returns:
-            Token value or None
-        """
-        if not token_env:
-            return None
+                    # Convert to Format objects
+                    if isinstance(formats_data, dict) and "formats" in formats_data:
+                        logger.info(
+                            f"_fetch_formats_from_agent: Found 'formats' key with {len(formats_data['formats'])} items"
+                        )
+                        for fmt_data in formats_data["formats"]:
+                            # Ensure agent_url is set
+                            fmt_data["agent_url"] = agent.agent_url
+                            formats.append(Format(**fmt_data))
+                    else:
+                        logger.warning(f"_fetch_formats_from_agent: No 'formats' key in response. Data: {formats_data}")
 
-        import os
+                return formats
 
-        return os.environ.get(token_env)
+        except MCPConnectionError as e:
+            # Connection failed after retries - log and re-raise as RuntimeError for backward compatibility
+            logger.error(f"Failed to connect to creative agent: {e}")
+            raise RuntimeError(str(e)) from e
 
     async def get_formats_for_agent(
         self,
@@ -506,27 +448,24 @@ class CreativeAgentRegistry:
                 }]
             }
         """
-        # Build MCP client
-        transport = StreamableHttpTransport(url=f"{agent_url}/mcp")
-        client = Client(transport=transport)
-
-        async with client:
+        # Use unified MCP client
+        async with create_mcp_client(agent_url=agent_url, timeout=30) as client:
             result = await client.call_tool(
                 "preview_creative", {"format_id": format_id, "creative_manifest": creative_manifest}
             )
 
             # Use structured_content field for JSON response (MCP protocol update)
             if hasattr(result, "structured_content") and result.structured_content:
-                return result.structured_content  # type: ignore[return-value]
+                return result.structured_content
 
             # Fallback: Parse result from content field (legacy)
             import json
 
             if isinstance(result.content, list) and result.content:
-                preview_data: Any = result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
+                preview_data = result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
                 if isinstance(preview_data, str):
                     preview_data = json.loads(preview_data)
-                return preview_data  # type: ignore[return-value]
+                return preview_data
 
             return {}
 
@@ -561,11 +500,8 @@ class CreativeAgentRegistry:
             - status: "draft" or "finalized"
             - creative_output: Generated creative manifest with output_format
         """
-        # Build MCP client
-        transport = StreamableHttpTransport(url=f"{agent_url}/mcp")
-        client = Client(transport=transport)
-
-        async with client:
+        # Use unified MCP client
+        async with create_mcp_client(agent_url=agent_url, timeout=30) as client:
             params = {
                 "message": message,
                 "format_id": format_id,
@@ -583,16 +519,16 @@ class CreativeAgentRegistry:
 
             # Use structured_content field for JSON response (MCP protocol update)
             if hasattr(result, "structured_content") and result.structured_content:
-                return result.structured_content  # type: ignore[return-value]
+                return result.structured_content
 
             # Fallback: Parse result from content field (legacy)
             import json
 
             if isinstance(result.content, list) and result.content:
-                creative_data: Any = result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
+                creative_data = result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
                 if isinstance(creative_data, str):
                     creative_data = json.loads(creative_data)
-                return creative_data  # type: ignore[return-value]
+                return creative_data
 
             return {}
 

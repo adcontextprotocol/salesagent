@@ -75,12 +75,6 @@ class Tenant(Base, JSONValidatorMixin):
         nullable=True,
         comment="Advertising policy configuration with prohibited categories, tactics, and advertisers",
     )
-    brand_manifest_policy: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-        server_default="require_auth",
-        comment="Product discovery access policy: require_auth (standard B2B - signup to see pricing), require_brand (brand context required for bespoke products), public (generic products visible to all)",
-    )
 
     # Naming templates (business rules - shared across all adapters)
     order_name_template: Mapped[str | None] = mapped_column(
@@ -107,6 +101,11 @@ class Tenant(Base, JSONValidatorMixin):
     )
     creative_agents = relationship(
         "CreativeAgent",
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
+    signals_agents = relationship(
+        "SignalsAgent",
         back_populates="tenant",
         cascade="all, delete-orphan",
     )
@@ -728,6 +727,41 @@ class CreativeAgent(Base):
     __table_args__ = (
         Index("idx_creative_agents_tenant", "tenant_id"),
         Index("idx_creative_agents_enabled", "enabled"),
+    )
+
+
+class SignalsAgent(Base):
+    """Tenant-specific signals discovery agent configuration.
+
+    Each tenant can register custom signals agents for product discovery enhancement.
+    Priority and max_signal_products are configured per-product, not per-agent.
+    """
+
+    __tablename__ = "signals_agents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50),
+        ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    agent_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    auth_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # "bearer", "api_key", etc.
+    auth_header: Mapped[str | None] = mapped_column(String(100), nullable=True)  # e.g., "x-api-key", "Authorization"
+    auth_credentials: Mapped[str | None] = mapped_column(Text, nullable=True)
+    forward_promoted_offering: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    timeout: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    tenant = relationship("Tenant", back_populates="signals_agents")
+
+    __table_args__ = (
+        Index("idx_signals_agents_tenant", "tenant_id"),
+        Index("idx_signals_agents_enabled", "enabled"),
     )
 
 

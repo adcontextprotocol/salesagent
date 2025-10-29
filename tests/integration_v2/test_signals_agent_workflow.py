@@ -1,7 +1,4 @@
-"""Integration tests for signals agent workflow.
-
-MIGRATED: Uses new pricing_options model instead of legacy Product pricing fields.
-"""
+"""Integration tests for signals agent workflow (v2 - using new pricing model)."""
 
 from collections.abc import Callable
 from typing import Any
@@ -9,21 +6,28 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastmcp.server.context import Context
-from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Tenant
 from src.core.schemas import Signal
 from src.core.tools.products import get_products_raw
 from tests.fixtures.builders import create_test_tenant_with_principal
 from tests.integration_v2.conftest import create_test_product_with_pricing
 
 
+@pytest.mark.requires_db
 @pytest.mark.requires_server
 @pytest.mark.asyncio
-@pytest.mark.requires_db
 class TestSignalsAgentWorkflow:
-    """Integration tests for signals agent workflow with real database."""
+    """Integration tests for signals agent workflow with real database (v2 pricing)."""
+
+    @pytest.fixture(autouse=True)
+    def clear_provider_cache(self):
+        """Clear provider cache before and after each test to ensure correct provider is used."""
+        from product_catalog_providers.factory import _provider_cache
+
+        _provider_cache.clear()
+        yield
+        _provider_cache.clear()
 
     @pytest.fixture
     async def tenant_with_signals_config(self, integration_db) -> dict[str, Any]:
@@ -31,25 +35,23 @@ class TestSignalsAgentWorkflow:
         tenant_data = await create_test_tenant_with_principal()
         tenant_id = tenant_data["tenant"]["tenant_id"]
 
-        # Add signals configuration using real database
-        signals_config = {
-            "enabled": True,
-            "upstream_url": "http://test-signals:8080/mcp/",
-            "upstream_token": "test-token",
-            "auth_header": "x-adcp-auth",
-            "timeout": 30,
-            "forward_promoted_offering": True,
-            "fallback_to_database": True,
-        }
-
+        # Add signals agent using new SignalsAgent table
         with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-            if tenant:
-                tenant.signals_agent_config = signals_config
-                db_session.commit()
+            from src.core.database.models import SignalsAgent
 
-        # Update tenant_data to include signals_agent_config
-        tenant_data["tenant"]["signals_agent_config"] = signals_config
+            signals_agent = SignalsAgent(
+                tenant_id=tenant_id,
+                agent_url="http://test-signals:8080/mcp/",
+                name="Test Signals Agent",
+                enabled=True,
+                auth_type="bearer",
+                auth_header="Authorization",
+                auth_credentials="test-token",
+                forward_promoted_offering=True,
+                timeout=30,
+            )
+            db_session.add(signals_agent)
+            db_session.commit()
 
         return tenant_data
 
@@ -121,7 +123,7 @@ class TestSignalsAgentWorkflow:
         tenant_id = tenant_data["tenant"]["tenant_id"]
         principal_id = tenant_data["principal"].principal_id
 
-        # Add test products to real database
+        # Add test products to real database (using new pricing helpers)
         await self._add_test_products(tenant_id)
 
         context = test_context_factory()
@@ -131,7 +133,7 @@ class TestSignalsAgentWorkflow:
             # Call get_products with correct parameters (not GetProductsRequest object)
             response = await get_products_raw(
                 brand_manifest={"name": "BMW M3 2025 sports sedan"},
-                brief="sports car advertising campaign",
+                brief="sports",  # Match "Database Sports Package"
                 filters=None,
                 context=context,
             )
@@ -154,20 +156,23 @@ class TestSignalsAgentWorkflow:
 
         context = test_context_factory()
 
-        # Mock only external signals API call
-        with patch("product_catalog_providers.signals.Client") as mock_client_class:
+        # Mock only external signals API call (registry will call this)
+        with patch("src.core.signals_agent_registry.create_mcp_client") as mock_create_client:
+            # Create mock result object with structured_content (matches MCP protocol)
+            mock_result = Mock()
+            mock_result.structured_content = {"signals": [signal.model_dump() for signal in mock_signals_response]}
+            mock_result.content = []  # Fallback field (not used when structured_content exists)
+
             mock_client = AsyncMock()
-            mock_client_class.return_value = mock_client
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.call_tool = AsyncMock(
-                return_value={"signals": [signal.model_dump() for signal in mock_signals_response]}
-            )
+            mock_create_client.return_value.__aenter__.return_value = mock_client
+            mock_create_client.return_value.__aexit__.return_value = None
+            mock_client.call_tool = AsyncMock(return_value=mock_result)
 
             with self._mock_auth_context(tenant_data):
                 # Call get_products with correct parameters
                 response = await get_products_raw(
                     brand_manifest={"name": "Porsche 911 Turbo S 2025"},
-                    brief="luxury sports car advertising for wealthy professionals",
+                    brief="automotive",  # Match "Database Automotive Package"
                     filters=None,
                     context=context,
                 )
@@ -194,17 +199,17 @@ class TestSignalsAgentWorkflow:
         context = test_context_factory()
 
         # Mock upstream failure
-        with patch("product_catalog_providers.signals.Client") as mock_client_class:
+        with patch("src.core.signals_agent_registry.create_mcp_client") as mock_create_client:
             mock_client = AsyncMock()
-            mock_client_class.return_value = mock_client
-            mock_client.__aenter__.return_value = mock_client
+            mock_create_client.return_value.__aenter__.return_value = mock_client
+            mock_create_client.return_value.__aexit__.return_value = None
             mock_client.call_tool = AsyncMock(side_effect=Exception("Connection timeout"))
 
             with self._mock_auth_context(tenant_data):
                 # Call get_products with correct parameters
                 response = await get_products_raw(
                     brand_manifest={"name": "Test Product 2025"},
-                    brief="test brief for failure scenario",
+                    brief="sports",  # Match database products
                     filters=None,
                     context=context,
                 )
@@ -226,17 +231,17 @@ class TestSignalsAgentWorkflow:
         context = test_context_factory()
 
         # Mock signals client to verify it's not called
-        with patch("product_catalog_providers.signals.Client") as mock_client_class:
+        with patch("src.core.signals_agent_registry.create_mcp_client") as mock_create_client:
             mock_client = AsyncMock()
-            mock_client_class.return_value = mock_client
-            mock_client.__aenter__.return_value = mock_client
+            mock_create_client.return_value.__aenter__.return_value = mock_client
+            mock_create_client.return_value.__aexit__.return_value = None
             mock_client.call_tool = AsyncMock()
 
             with self._mock_auth_context(tenant_data):
                 # Call get_products with correct parameters (empty brief)
                 response = await get_products_raw(
                     brand_manifest={"name": "Generic Product 2025"},
-                    brief="",
+                    brief="",  # Empty brief - should return all products
                     filters=None,
                     context=context,
                 )
@@ -256,10 +261,17 @@ class TestSignalsAgentWorkflow:
 
         stack = ExitStack()
 
-        # Build full tenant dict including signals_agent_config
+        # Build full tenant dict with product_catalog config to use signals provider
         tenant_dict = {
             "tenant_id": tenant_data["tenant"]["tenant_id"],
-            "signals_agent_config": tenant_data["tenant"].get("signals_agent_config"),
+            "product_catalog": {
+                "provider": "signals",
+                "config": {
+                    "tenant_id": tenant_data["tenant"]["tenant_id"],
+                    "fallback_to_database": True,
+                    "max_signal_products": 10,
+                },
+            },
         }
 
         # Patch auth functions in src.core.tools.products where they're imported at module level
@@ -304,7 +316,7 @@ class TestSignalsAgentWorkflow:
             add_required_setup_data(db_session, tenant_id)
             db_session.flush()  # Ensure setup data is committed before creating products
 
-            # Sports package with CPM pricing
+            # Product 1: Sports Package with CPM pricing
             create_test_product_with_pricing(
                 session=db_session,
                 tenant_id=tenant_id,
@@ -314,18 +326,16 @@ class TestSignalsAgentWorkflow:
                 pricing_model="CPM",
                 rate="4.50",
                 is_fixed=True,
-                currency="USD",
                 min_spend_per_package="500.0",
-                formats=[
-                    {"agent_url": "https://test.com", "id": "display_300x250"},
-                    {"agent_url": "https://test.com", "id": "display_728x90"},
-                ],
-                targeting_template={},
                 delivery_type="non_guaranteed",
+                formats=[
+                    {"agent_url": "https://test.com", "id": "300x250"},
+                    {"agent_url": "https://test.com", "id": "728x90"},
+                ],
                 countries=["US", "CA"],
             )
 
-            # Automotive package with CPM pricing
+            # Product 2: Automotive Package with CPM pricing
             create_test_product_with_pricing(
                 session=db_session,
                 tenant_id=tenant_id,
@@ -335,14 +345,12 @@ class TestSignalsAgentWorkflow:
                 pricing_model="CPM",
                 rate="5.25",
                 is_fixed=True,
-                currency="USD",
                 min_spend_per_package="750.0",
+                delivery_type="non_guaranteed",
                 formats=[
-                    {"agent_url": "https://test.com", "id": "display_300x250"},
+                    {"agent_url": "https://test.com", "id": "300x250"},
                     {"agent_url": "https://test.com", "id": "video_pre_roll"},
                 ],
-                targeting_template={},
-                delivery_type="non_guaranteed",
                 countries=["US"],
             )
 
