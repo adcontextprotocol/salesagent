@@ -14,9 +14,6 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-# Use timezone.utc instead of UTC (Python 3.9 compatibility)
-UTC = UTC
-
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
