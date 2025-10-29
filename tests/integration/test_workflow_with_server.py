@@ -10,6 +10,8 @@ from rich.console import Console
 
 console = Console()
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+
 
 @pytest.mark.asyncio
 @pytest.mark.requires_server

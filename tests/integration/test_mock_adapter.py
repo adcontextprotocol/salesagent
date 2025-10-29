@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 # This is what the API endpoint /api/tenant/{tenant_id}/gam/line-item/7047822666 would return
 mock_response = {

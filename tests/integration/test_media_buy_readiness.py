@@ -12,6 +12,8 @@ from src.admin.services.media_buy_readiness_service import MediaBuyReadinessServ
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative, CreativeAssignment, MediaBuy, Principal, Tenant
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+
 
 @pytest.fixture
 def test_tenant(integration_db, request):

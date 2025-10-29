@@ -5,6 +5,10 @@ This test file documents the current OAuth implementation and verifies
 key behaviors while preventing regressions.
 """
 
+import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+
 
 class TestOAuthCrossDomainLimitations:
     """Test documenting OAuth cross-domain limitations and current behavior."""

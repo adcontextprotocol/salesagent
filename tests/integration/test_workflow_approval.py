@@ -16,8 +16,9 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep
 from tests.utils.database_helpers import get_utc_now
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
-@pytest.mark.integration
+
 class TestWorkflowApproval:
     """Test the workflow approval system."""
 
