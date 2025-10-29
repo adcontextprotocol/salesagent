@@ -170,12 +170,17 @@ async def _call_webhook_for_creative_status(
             )
             return False
 
-        webhook_config = step.request_data.get("push_notification_config")
-
+        stmt_push_notification_config = (
+            select(PushNotificationConfig)
+            .filter_by(tenant_id=tenant_id, url=step.request_data.get("push_notification_config").get("url"), is_active=True)
+            .order_by(PushNotificationConfig.created_at.desc())
+        )
+        push_notification_config = db_session.scalars(stmt_push_notification_config).first()
+        
         service = get_protocol_webhook_service()
         try:
             await service.send_notification(
-                webhook_config=webhook_config,
+                push_notification_config=push_notification_config,
                 task_id=step.step_id,
                 task_type=step.tool_name,
                 status="completed",

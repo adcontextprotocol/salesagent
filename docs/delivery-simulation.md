@@ -292,5 +292,4 @@ Potential improvements:
 
 - [Webhook Management](webhooks.md)
 - [Mock Adapter Configuration](../src/adapters/mock_ad_server.py)
-- [Push Notification Service](../src/services/push_notification_service.py)
 - [Delivery Simulator](../src/services/delivery_simulator.py)

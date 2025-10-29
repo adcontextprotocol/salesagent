@@ -1347,6 +1347,24 @@ class PushNotificationConfig(Base, JSONValidatorMixin):
         Index("idx_push_notification_configs_principal", "tenant_id", "principal_id"),
     )
 
+    def __repr__(self):
+        return (
+            f"<PushNotificationConfig("
+            f"id='{self.id}', "
+            f"tenant_id='{self.tenant_id}', "
+            f"principal_id='{self.principal_id}', "
+            f"session_id='{self.session_id}', "
+            f"url='{self.url}', "
+            f"authentication_type='{self.authentication_type}', "
+            f"authentication_token='{self.authentication_token}', "
+            f"validation_token='{self.validation_token}', "
+            f"webhook_secret='{self.webhook_secret}', "
+            f"is_active={self.is_active}, "
+            f"created_at={self.created_at}, "
+            f"updated_at={self.updated_at}"
+            f")>"
+        )
+
 
 class WebhookDeliveryRecord(Base):
     """Tracks webhook delivery attempts with retry history.
