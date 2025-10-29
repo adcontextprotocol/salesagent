@@ -236,37 +236,79 @@ We welcome contributions! Please see our [Development Guide](docs/DEVELOPMENT.md
 - Code style guidelines
 - Creating pull requests
 
-### Changesets for Version Management
+### Commitizen for Version Management
 
-This project uses [changesets](https://github.com/changesets/changesets) to manage versions and changelogs.
+This project uses [Commitizen](https://commitizen-tools.github.io/commitizen/) for automated version management and changelog generation.
 
-**When to add a changeset:**
-- All PRs that change functionality must include a changeset
-- Skip changesets only for documentation, tests, or internal tooling changes
-- Label PRs with `skip-changeset` if no version bump is needed
+**Commit Message Format:**
 
-**How to add a changeset:**
+All commits must follow the [Conventional Commits](https://www.conventionalcommits.org/) format:
 
-```bash
-# Run the changeset CLI
-npx changeset
+```
+<type>(<scope>): <subject>
 
-# Select the version bump type:
-# - patch: Bug fixes (0.1.0 -> 0.1.1)
-# - minor: New features (0.1.0 -> 0.2.0)
-# - major: Breaking changes (0.1.0 -> 1.0.0)
+<body>
 
-# Write a clear summary of your changes
-# Commit the generated .changeset/*.md file with your PR
+<footer>
 ```
 
-**What happens after merge:**
-1. When changesets are merged to `main`, a "Version Packages" PR is automatically created
-2. That PR combines all changesets, bumps versions, and updates CHANGELOG.md
-3. When the Version PR is merged, the new version is published
-4. Both `package.json` and `pyproject.toml` are kept in sync automatically
+**Types:**
+- `feat`: New feature (triggers minor version bump: 0.1.0 → 0.2.0)
+- `fix`: Bug fix (triggers patch version bump: 0.1.0 → 0.1.1)
+- `docs`: Documentation changes (no version bump)
+- `test`: Test changes (no version bump)
+- `chore`: Build/tooling changes (no version bump)
+- `refactor`: Code refactoring (no version bump)
+- `perf`: Performance improvements (triggers patch bump)
+- `BREAKING CHANGE`: Breaking change (triggers major version bump: 0.1.0 → 1.0.0)
 
-See [.changeset/README.md](.changeset/README.md) for more details.
+**Examples:**
+
+```bash
+# Feature (minor bump)
+git commit -m "feat: add OAuth authentication support"
+git commit -m "feat(gam): add support for video creatives"
+
+# Bug fix (patch bump)
+git commit -m "fix: correct schema validation for media buy"
+git commit -m "fix(auth): prevent token refresh race condition"
+
+# Breaking change (major bump)
+git commit -m "feat!: redesign API response format
+
+BREAKING CHANGE: Response format changed from {data} to {result}
+Clients must update to handle new format"
+
+# No version bump
+git commit -m "docs: update README with setup instructions"
+git commit -m "test: add integration tests for A2A protocol"
+git commit -m "chore: update pre-commit hooks"
+```
+
+**Using Commitizen CLI (Optional):**
+
+```bash
+# Interactive commit helper
+uv run cz commit
+
+# Check if commits follow format
+uv run cz check
+
+# Manually bump version (usually done by CI)
+uv run cz bump
+```
+
+**Automated Releases:**
+
+When commits are pushed to `main`:
+1. CI automatically analyzes commit messages
+2. Determines version bump type (major/minor/patch)
+3. Updates version in `pyproject.toml`
+4. Updates `CHANGELOG.md` with changes
+5. Creates git tag and GitHub release
+6. Pushes changes back to `main`
+
+No manual version bumps needed - it's all automated from your commit messages!
 
 ### Important: Database Access Patterns
 

@@ -49,9 +49,6 @@ Thumbs.db
 # Python
 *.pyc
 
-# Node.js (for changesets CLI)
-node_modules/
-
 # Diagnostic scripts (one-off debugging tools)
 check_*.py
 diagnose_*.py
