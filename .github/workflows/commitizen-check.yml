@@ -27,7 +27,8 @@ jobs:
       - name: Install dependencies
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
-          uv sync --group dev
+          uv sync
+          uv pip install commitizen
 
       - name: Check commits follow conventional commit format
         run: |
