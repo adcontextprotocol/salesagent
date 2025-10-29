@@ -4,20 +4,20 @@
 
 This guide covers three types of webhooks/notifications in the AdCP Sales Agent:
 
-1. **Protocol-Level Push Notifications** - Operation/task status updates (configured at A2A/MCP transport layer)
-2. **Application-Level Webhooks** - Delivery reporting (GetMediaBuyDelivery via webhook) configured per principal in Admin UI
+1. **Protocol-Level Push Notifications** - Operation status updates (configured at A2A/MCP transport layer)
+2. **Application-Level Webhooks** - Event notifications like creative approvals and delivery reports (configured in Admin UI)
 3. **Slack Audit Notifications** - Real-time audit logs sent to Slack (configured per tenant in Admin UI)
 
 ## Protocol vs Application-Level Webhooks
 
-| Feature           | Protocol-Level                | Application-Level           |
-| ----------------- | ----------------------------- | --------------------------- |
-| **Purpose**       | Operation/task status updates | Delivery reporting only     |
-| **Configuration** | Protocol layer (A2A/MCP)      | Admin UI per principal      |
-| **Trigger**       | Task state changes            | Periodic delivery updates   |
-| **Frequency**     | Per operation                 | Per event or scheduled      |
-| **Duration**      | Short (seconds)               | Ongoing (campaign lifetime) |
-| **Auth Schemes**  | HMAC-SHA256, Bearer, None     | HMAC-SHA256                 |
+| Feature | Protocol-Level | Application-Level |
+|---------|---------------|-------------------|
+| **Purpose** | Operation status updates | Event notifications & delivery reports |
+| **Configuration** | Protocol layer (A2A/MCP) | Admin UI per principal |
+| **Trigger** | Task state changes | Events (approvals, status changes) |
+| **Frequency** | Per operation | Per event or scheduled |
+| **Duration** | Short (seconds) | Ongoing (campaign lifetime) |
+| **Auth Schemes** | HMAC-SHA256, Bearer, None | HMAC-SHA256 |
 
 ---
 
@@ -32,7 +32,6 @@ Protocol-level push notifications provide asynchronous status updates for long-r
 - Operations transitioning through states (working → completed/failed)
 
 Most AdCP operations complete synchronously (<120s), so protocol-level webhooks are primarily useful for:
-
 1. Large batch operations
 2. Operations requiring external approvals
 3. Complex creative processing workflows
@@ -98,11 +97,11 @@ curl -X POST http://localhost:8080/mcp/ \
 
 ### MCP Headers
 
-| Header                            | Description                        | Required                 |
-| --------------------------------- | ---------------------------------- | ------------------------ |
-| `X-Push-Notification-Url`         | Webhook endpoint URL               | Yes                      |
-| `X-Push-Notification-Auth-Scheme` | `HMAC-SHA256`, `Bearer`, or `None` | No (default: `None`)     |
-| `X-Push-Notification-Credentials` | Shared secret or Bearer token      | If auth scheme != `None` |
+| Header | Description | Required |
+|--------|-------------|----------|
+| `X-Push-Notification-Url` | Webhook endpoint URL | Yes |
+| `X-Push-Notification-Auth-Scheme` | `HMAC-SHA256`, `Bearer`, or `None` | No (default: `None`) |
+| `X-Push-Notification-Credentials` | Shared secret or Bearer token | If auth scheme != `None` |
 
 ## Protocol-Level Webhook Payload
 
@@ -179,11 +178,7 @@ def handle_status_webhook():
 
 # Part 2: Application-Level Webhooks
 
-IMPORTANT: Per AdCP, operation/task status updates (e.g., Sync Creatives approvals/rejections, media buy create/update completion) MUST be sent via protocol-level push notifications (per-request `push_notification_config`).
-
-Application-level webhooks in this system are reserved for ongoing delivery reporting (GetMediaBuyDeliveryResponse via webhook). The payload for delivery webhooks is specified later in “AdCP Delivery Webhooks (Enhanced Security)”.
-
-The examples in this section are legacy/internal notification shapes and are NOT part of the AdCP specification. Do not use them for approvals/status events.
+Application-level webhooks send notifications for events like creative approvals, media buy status changes, and delivery reports. These are configured per principal in the Admin UI.
 
 ## Quick Start (Application-Level Webhooks)
 
@@ -240,13 +235,13 @@ Application-level webhooks send JSON payloads with this structure:
 - `owner`: Who needs to act (principal, publisher, system)
 - `timestamp`: ISO 8601 timestamp of the event
 
-### Common Event Types (Legacy/Internal)
+### Common Event Types
 
-Note: For approvals/status changes, use protocol-level push notifications instead.
-
-| Event Type               | Description                                |
-| ------------------------ | ------------------------------------------ |
-| `workflow_status_update` | Internal workflow/state changes (non-AdCP) |
+| Event Type | Description |
+|------------|-------------|
+| `creative_approval` | Creative requires manual review |
+| `media_buy_status` | Media buy status changed (active, paused, completed) |
+| `workflow_status_update` | Any workflow step status change |
 
 ## Implementation Examples
 
@@ -337,8 +332,8 @@ if __name__ == "__main__":
 ### Node.js (Express)
 
 ```javascript
-const express = require("express");
-const crypto = require("crypto");
+const express = require('express');
+const crypto = require('crypto');
 
 const app = express();
 app.use(express.json());
@@ -346,37 +341,35 @@ app.use(express.json());
 // Store this securely
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 
-app.post("/webhooks/adcp", (req, res) => {
+app.post('/webhooks/adcp', (req, res) => {
   // 1. Get signature and timestamp
-  const signature = req.headers["x-webhook-signature"] || "";
-  const timestamp = req.headers["x-webhook-timestamp"];
+  const signature = req.headers['x-webhook-signature'] || '';
+  const timestamp = req.headers['x-webhook-timestamp'];
 
   if (!signature || !timestamp) {
-    return res.status(401).json({ error: "Missing signature headers" });
+    return res.status(401).json({ error: 'Missing signature headers' });
   }
 
   // 2. Replay attack prevention
   const webhookTime = parseInt(timestamp);
   if (Math.abs(Date.now() / 1000 - webhookTime) > 300) {
-    return res.status(400).json({ error: "Webhook timestamp too old" });
+    return res.status(400).json({ error: 'Webhook timestamp too old' });
   }
 
   // 3. Verify signature
   const payload = JSON.stringify(req.body);
   const expectedSignature = crypto
-    .createHmac("sha256", WEBHOOK_SECRET)
+    .createHmac('sha256', WEBHOOK_SECRET)
     .update(`${timestamp}.${payload}`)
-    .digest("hex");
+    .digest('hex');
 
-  const receivedSignature = signature.replace("sha256=", "");
+  const receivedSignature = signature.replace('sha256=', '');
 
-  if (
-    !crypto.timingSafeEqual(
-      Buffer.from(expectedSignature),
-      Buffer.from(receivedSignature)
-    )
-  ) {
-    return res.status(401).json({ error: "Invalid signature" });
+  if (!crypto.timingSafeEqual(
+    Buffer.from(expectedSignature),
+    Buffer.from(receivedSignature)
+  )) {
+    return res.status(401).json({ error: 'Invalid signature' });
   }
 
   // 4. Process webhook
@@ -385,11 +378,11 @@ app.post("/webhooks/adcp", (req, res) => {
 
   // Your business logic here
 
-  res.json({ status: "ok" });
+  res.json({ status: 'ok' });
 });
 
 app.listen(3001, () => {
-  console.log("Webhook server running on port 3001");
+  console.log('Webhook server running on port 3001');
 });
 ```
 
@@ -456,7 +449,6 @@ curl -X POST http://localhost:3001/webhooks/adcp \
 ### 2. Use Webhook Testing Tools
 
 - **ngrok**: Expose localhost to the internet for testing
-
   ```bash
   ngrok http 3001
   # Use the ngrok URL in Admin UI webhook registration
@@ -618,32 +610,28 @@ For delivery reporting webhooks (impressions, spend, etc.), see the enhanced web
 The delivery webhook service implements advanced security and reliability:
 
 **Security:**
-
 - HMAC-SHA256 signatures with `X-ADCP-Signature` header
 - Replay attack prevention (5-minute window)
 - Minimum 32-character secrets required
 - Constant-time signature comparison
 
 **Reliability:**
-
 - Circuit breaker pattern (CLOSED/OPEN/HALF_OPEN states)
 - Exponential backoff with jitter
 - Bounded queues (1000 webhooks per endpoint)
 - Per-endpoint isolation
 
 **New Payload Fields:**
-
 - `is_adjusted`: Boolean flag for late-arriving data corrections
 - `notification_type`: `"scheduled"`, `"final"`, or `"adjusted"`
 
 ### Using Enhanced Delivery Webhooks
 
 ```python
-from datetime import UTC, datetime
-from src.services.webhook_delivery_service import webhook_delivery_service
+from src.services.webhook_delivery_service_v2 import enhanced_webhook_delivery_service
 
 # Send delivery webhook with security
-webhook_delivery_service.send_delivery_webhook(
+enhanced_webhook_delivery_service.send_delivery_webhook(
     media_buy_id="buy_123",
     tenant_id="tenant_1",
     principal_id="buyer_1",
@@ -651,8 +639,7 @@ webhook_delivery_service.send_delivery_webhook(
     reporting_period_end=datetime(2025, 10, 2, tzinfo=UTC),
     impressions=100000,
     spend=500.00,
-    is_final=False,
-    is_adjusted=False,
+    is_adjusted=False,  # True for late-arriving data
 )
 ```
 
@@ -690,33 +677,20 @@ def receive_delivery_webhook(request):
 ### Circuit Breaker Monitoring
 
 ```python
-from src.services.webhook_delivery_service import webhook_delivery_service
-
 # Check endpoint health
-state, failures = webhook_delivery_service.get_circuit_breaker_state(
+state, failures = enhanced_webhook_delivery_service.get_circuit_breaker_state(
     "https://buyer.example.com/webhooks"
 )
 
 # Manual recovery if needed
-webhook_delivery_service.reset_circuit_breaker(
+enhanced_webhook_delivery_service.reset_circuit_breaker(
     "https://buyer.example.com/webhooks"
 )
 ```
 
 For complete documentation on delivery webhook security, see the implementation in:
-
-- `src/services/webhook_delivery_service.py`
+- `src/services/webhook_delivery_service_v2.py`
 - `src/services/webhook_verification.py`
-
-### Choosing the right webhook type (AdCP-aligned)
-
-- Protocol-level push notifications: Use for operation/task status (e.g., Sync Creatives approvals, Create/Update Media Buy completion). These are configured per request via `push_notification_config` and sent by the protocol transport.
-- Delivery reporting webhooks: Use for ongoing campaign delivery (GetMediaBuyDeliveryResponse). These are periodic notifications with webhook-only fields like `notification_type`, `sequence_number`, and `next_expected_at` and are configured per principal in the Admin UI.
-
-UI navigation:
-
-- Manage delivery webhooks: Tenant → Principals → select principal → Webhooks
-- Delivery activity dashboard: Tenant → Webhooks
 
 ---
 
@@ -735,17 +709,14 @@ Slack audit notifications provide real-time visibility into sensitive operations
 ### Automatic Triggers
 
 1. **Sensitive Operations**
-
    - `create_media_buy`, `update_media_buy`, `delete_media_buy`
    - `approve_creative`, `reject_creative`
    - `manual_approval` actions
 
 2. **High-Value Operations**
-
    - Any operation with `budget` or `total_budget` > $10,000
 
 3. **Failed Operations**
-
    - All operations that fail (`success=False`)
 
 4. **Security Violations**
@@ -756,7 +727,6 @@ Slack audit notifications provide real-time visibility into sensitive operations
 ## Notification Format
 
 Audit notifications include:
-
 - **Operation**: The operation performed (e.g., `create_media_buy`)
 - **Principal**: Who performed the operation
 - **Tenant**: Which publisher/tenant
@@ -767,7 +737,6 @@ Audit notifications include:
 - **Adapter**: Which ad server adapter was used
 
 Security violations are highlighted with:
-
 - 🚨 Security Alert emoji
 - Red danger color
 - UNAUTHORIZED prefix on principal name
@@ -790,7 +759,6 @@ https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX
 ```
 
 Create a Slack webhook:
-
 1. Go to https://api.slack.com/messaging/webhooks
 2. Create an "Incoming Webhook" app
 3. Select the channel for audit logs
@@ -808,7 +776,6 @@ Create a Slack webhook:
 ### No Notifications Appearing
 
 Check:
-
 1. Is `slack_audit_webhook_url` configured in tenant settings?
 2. Is the webhook URL valid and active in Slack?
 3. Are audit logs being created in the database?
@@ -817,7 +784,6 @@ Check:
 ### Webhook Delivery Failures
 
 Common causes:
-
 - Invalid webhook URL
 - Slack API rate limiting
 - Network connectivity issues
