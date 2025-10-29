@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant, User
+from src.core.domain_config import get_super_admin_domain
 
 logger = logging.getLogger(__name__)
 
@@ -166,16 +167,18 @@ def get_user_tenant_access(email: str) -> dict:
     """
     email_domain = extract_email_domain(email)
 
+    super_admin_domain = get_super_admin_domain()
+
     result: dict[str, Tenant | list[Tenant] | bool | int | None] = {
         "domain_tenant": None,
         "email_tenants": [],
-        "is_super_admin": email_domain == "scope3.com",
+        "is_super_admin": email_domain == super_admin_domain,
         "total_access": 0,
     }
 
     # Check domain-based access
     total_access = 0
-    if email_domain and email_domain != "scope3.com":
+    if email_domain and email_domain != super_admin_domain:
         domain_tenant = find_tenant_by_authorized_domain(email_domain)
         if domain_tenant:
             result["domain_tenant"] = domain_tenant
@@ -202,10 +205,11 @@ def add_authorized_domain(tenant_id: str, domain: str) -> bool:
         True if successful, False otherwise
     """
     domain_lower = domain.lower()
+    super_admin_domain = get_super_admin_domain()
 
-    # Security check - prevent scope3.com hijacking
-    if domain_lower == "scope3.com":
-        logger.error(f"Attempted to add scope3.com domain to tenant {tenant_id}")
+    # Security check - prevent super admin domain hijacking
+    if domain_lower == super_admin_domain:
+        logger.error(f"Attempted to add super admin domain {domain} to tenant {tenant_id}")
         return False
 
     with get_db_session() as session:
@@ -293,10 +297,11 @@ def add_authorized_email(tenant_id: str, email: str) -> bool:
         True if successful, False otherwise
     """
     email_lower = email.lower()
+    super_admin_domain = get_super_admin_domain()
 
-    # Security check - prevent scope3.com email hijacking
-    if email_lower.endswith("@scope3.com"):
-        logger.error(f"Attempted to add scope3.com email {email} to tenant {tenant_id}")
+    # Security check - prevent super admin domain email hijacking
+    if email_lower.endswith(f"@{super_admin_domain}"):
+        logger.error(f"Attempted to add super admin domain email {email} to tenant {tenant_id}")
         return False
 
     with get_db_session() as session:

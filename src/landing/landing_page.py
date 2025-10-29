@@ -5,6 +5,13 @@ import os
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from src.core.domain_config import (
+    extract_subdomain_from_host,
+    get_sales_agent_url,
+    get_tenant_url,
+    is_sales_agent_domain,
+)
+
 
 def _get_jinja_env() -> Environment:
     """Get configured Jinja2 environment for landing page templates."""
@@ -32,7 +39,7 @@ def _determine_base_url(virtual_host: str | None = None) -> str:
         if virtual_host:
             return f"https://{virtual_host}"
         # Fallback to production domain
-        return "https://sales-agent.scope3.com"
+        return get_sales_agent_url()
 
     # Check for virtual host in development
     if virtual_host:
@@ -56,9 +63,10 @@ def _extract_tenant_subdomain(tenant: dict, virtual_host: str | None = None) -> 
     """
     # First try virtual host
     if virtual_host:
-        # Extract subdomain from virtual host (e.g., scribd.sales-agent.scope3.com -> scribd)
-        if ".sales-agent.scope3.com" in virtual_host:
-            return virtual_host.split(".sales-agent.scope3.com")[0]
+        # Extract subdomain from virtual host using domain config
+        subdomain = extract_subdomain_from_host(virtual_host)
+        if subdomain:
+            return subdomain
         elif "." in virtual_host:
             # Generic virtual host, use first part
             return virtual_host.split(".")[0]
@@ -96,11 +104,11 @@ def generate_tenant_landing_page(tenant: dict, virtual_host: str | None = None) 
     agent_card_url = f"{base_url}/.well-known/agent.json"
 
     # Admin URL: For external domains, use subdomain; otherwise use current domain
-    is_external_domain = virtual_host and not virtual_host.endswith(".sales-agent.scope3.com")
+    is_external_domain = virtual_host and not is_sales_agent_domain(virtual_host)
     if is_external_domain and tenant_subdomain:
         # External domain: Point admin to tenant subdomain
         if os.getenv("PRODUCTION") == "true":
-            admin_url = f"https://{tenant_subdomain}.sales-agent.scope3.com/admin/"
+            admin_url = f"{get_tenant_url(tenant_subdomain)}/admin/"
         else:
             # Local dev: Use localhost with subdomain simulation
             admin_url = f"http://{tenant_subdomain}.localhost:8001/admin/"
@@ -120,7 +128,6 @@ def generate_tenant_landing_page(tenant: dict, virtual_host: str | None = None) 
         "agent_card_url": agent_card_url,
         "admin_url": admin_url,
         "adcp_docs_url": "https://adcontextprotocol.org",
-        "scope3_url": "https://scope3.com",
         # Virtual host info
         "virtual_host": virtual_host,
         "is_production": os.getenv("PRODUCTION") == "true",

@@ -38,6 +38,10 @@ from src.core.database.models import (
 )
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
+from src.core.domain_config import (
+    extract_subdomain_from_host,
+    is_sales_agent_domain,
+)
 
 # Schema models (explicit imports to avoid collisions)
 # Schema adapters (wrapping generated schemas)
@@ -576,9 +580,9 @@ async def debug_root_logic(request: Request):
         debug_info["exact_tenant_lookup"] = tenant is not None
 
         # If no exact match, check for domain-based routing patterns
-        if not tenant and ".sales-agent.scope3.com" in virtual_host and not virtual_host.startswith("admin."):
+        if not tenant and is_sales_agent_domain(virtual_host) and not virtual_host.startswith("admin."):
             debug_info["step"] = "subdomain_fallback"
-            subdomain = virtual_host.split(".sales-agent.scope3.com")[0]
+            subdomain = extract_subdomain_from_host(virtual_host)
             debug_info["extracted_subdomain"] = subdomain
 
             # This is the fallback logic we don't need for test-agent
@@ -689,9 +693,9 @@ if unified_mode:
                     )
 
         # Check if this is a subdomain request
-        if apx_host and ".sales-agent.scope3.com" in apx_host:
+        if apx_host and is_sales_agent_domain(apx_host):
             # Extract subdomain from apx_host
-            subdomain = apx_host.split(".sales-agent.scope3.com")[0]
+            subdomain = extract_subdomain_from_host(apx_host)
 
             # Look up tenant by subdomain
             try:

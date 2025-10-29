@@ -9,6 +9,7 @@ import logging
 
 from flask import Blueprint, jsonify
 
+from src.core.domain_config import get_sales_agent_url
 from src.core.schema_validation import create_schema_registry
 
 logger = logging.getLogger(__name__)
@@ -38,9 +39,10 @@ def get_schema(schema_name: str):
         for registry_name, schema in schema_registry.items():
             if registry_name.replace("_", "").replace("-", "") == normalized_name:
                 # Add metadata to the schema
+                base_url = get_sales_agent_url()
                 schema_with_meta = {
                     "$schema": "https://json-schema.org/draft/2020-12/schema",
-                    "$id": f"https://sales-agent.scope3.com/schemas/adcp/v2.4/{schema_name}.json",
+                    "$id": f"{base_url}/schemas/adcp/v2.4/{schema_name}.json",
                     "title": f"AdCP {registry_name.title()} Response Schema",
                     "description": f"JSON Schema for AdCP v2.4 {registry_name} response validation",
                     **schema,
@@ -80,7 +82,7 @@ def list_schemas():
     """
     try:
         schema_registry = create_schema_registry()
-        base_url = "https://sales-agent.scope3.com/schemas/adcp/v2.4"
+        base_url = f"{get_sales_agent_url()}/schemas/adcp/v2.4"
 
         schemas_index = {
             "schemas": {},
@@ -115,7 +117,7 @@ def list_versions():
             "available_versions": ["v2.4"],
             "current_version": "v2.4",
             "description": "Available AdCP schema versions",
-            "latest_url": "https://sales-agent.scope3.com/schemas/adcp/v2.4/",
+            "latest_url": f"{get_sales_agent_url()}/schemas/adcp/v2.4/",
         }
     )
 
@@ -134,7 +136,7 @@ def schemas_root():
                     "description": "Advertising Context Protocol",
                     "versions": ["v2.4"],
                     "current_version": "v2.4",
-                    "url": "https://sales-agent.scope3.com/schemas/adcp/",
+                    "url": f"{get_sales_agent_url()}/schemas/adcp/",
                 }
             },
             "description": "JSON Schema service for API validation",

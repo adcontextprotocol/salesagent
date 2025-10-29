@@ -11,6 +11,8 @@ from urllib.parse import urljoin
 
 from pydantic import BaseModel, ConfigDict
 
+from src.core.domain_config import get_sales_agent_url
+
 
 class SchemaMetadata(BaseModel):
     """Metadata about the JSON Schema for API response validation."""
@@ -59,7 +61,7 @@ def get_schema_reference(model_class: type[BaseModel], base_url: str = None) -> 
         Schema reference URL
     """
     if base_url is None:
-        base_url = "https://sales-agent.scope3.com"
+        base_url = get_sales_agent_url()
 
     schema_name = model_class.__name__.lower().replace("response", "")
     return urljoin(base_url, f"/schemas/adcp/v2.4/{schema_name}.json")
@@ -129,7 +131,7 @@ def enhance_mcp_response_with_schema(
         response_data=response_data,
         model_class=model_class,
         include_full_schema=include_full_schema,
-        base_url="https://sales-agent.scope3.com",
+        base_url=get_sales_agent_url(),
     )
 
 
@@ -150,7 +152,7 @@ def enhance_a2a_response_with_schema(
     enhanced_response = response_data.copy()
 
     # Add schema metadata at the top level
-    schema_metadata = create_schema_metadata(model_class, "https://sales-agent.scope3.com")
+    schema_metadata = create_schema_metadata(model_class, get_sales_agent_url())
     enhanced_response["$schema"] = schema_metadata.model_dump()
 
     if include_full_schema:

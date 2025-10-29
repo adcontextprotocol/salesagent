@@ -14,6 +14,7 @@ from src.admin.utils import require_tenant_access  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AuthorizedProperty, PropertyTag, Tenant
+from src.core.domain_config import get_tenant_url
 from src.core.schemas import (
     PROPERTY_ERROR_MESSAGES,
     PROPERTY_REQUIRED_FIELDS,
@@ -242,7 +243,7 @@ def _construct_agent_url(tenant_id: str, request) -> str:
                 return url
             else:
                 # Fallback to subdomain pattern
-                url = f"https://{subdomain}.sales-agent.scope3.com"
+                url = get_tenant_url(subdomain)
                 logger.info(f"🌐 Production: using subdomain pattern -> {url}")
                 return url
 

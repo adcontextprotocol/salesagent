@@ -54,7 +54,8 @@ primary_region = "iad"
   SKIP_NGINX = "false"
   # A2A Configuration
   A2A_MOCK_MODE = "false"
-  A2A_SERVER_URL = "https://sales-agent.scope3.com/a2a"
+  # A2A_SERVER_URL is constructed from SALES_AGENT_DOMAIN at runtime
+  # Set SALES_AGENT_DOMAIN in your secrets: fly secrets set SALES_AGENT_DOMAIN=your-domain.com
   # GCP Configuration (for auto-provisioning service accounts)
   GCP_PROJECT_ID = "bok-playground"
 

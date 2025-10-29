@@ -60,6 +60,7 @@ from sqlalchemy import select
 from src.core.audit_logger import get_audit_logger
 from src.core.auth_utils import get_principal_from_token
 from src.core.config_loader import get_current_tenant
+from src.core.domain_config import get_a2a_server_url, get_sales_agent_domain
 from src.core.schemas import (
     GetSignalsRequest,
     ListAuthorizedPropertiesRequest,
@@ -314,7 +315,7 @@ class AdCPRequestHandler(RequestHandler):
             await webhook_service.send_notification(
                 webhook_config=webhook_config,
                 task_id=task.id,
-                task_type='task', # TODO: figure out how to pass task_type. We need to pass this, because adcp client expects 'task_type' to figure out how to handle the response.
+                task_type="task",  # TODO: figure out how to pass task_type. We need to pass this, because adcp client expects 'task_type' to figure out how to handle the response.
                 status=status,
                 result=result,
                 error=error,
@@ -2112,9 +2113,9 @@ def create_agent_card() -> AgentCard:
     Returns:
         AgentCard with AdCP Sales Agent capabilities
     """
-    # Use new production domain for agent card
+    # Use configured domain for agent card
     # Note: This will be overridden dynamically in the endpoint handlers
-    server_url = "https://sales-agent.scope3.com/a2a"
+    server_url = get_a2a_server_url()
 
     from a2a.types import AgentCapabilities, AgentSkill
 
@@ -2305,14 +2306,15 @@ def main():
         else:
             # Fallback to Host header
             host = get_header_case_insensitive(request.headers, "Host") or ""
-            if host and host != "sales-agent.scope3.com":
+            sales_domain = get_sales_agent_domain()
+            if host and host != sales_domain:
                 # For external domains or localhost, use appropriate protocol
                 protocol = get_protocol(host)
                 server_url = f"{protocol}://{host}/a2a"
                 logger.info(f"Using Host header: {host} -> {server_url}")
             else:
-                # Default fallback - production HTTPS
-                server_url = "https://sales-agent.scope3.com/a2a"
+                # Default fallback - configured production URL
+                server_url = get_a2a_server_url()
                 logger.info(f"Using default URL: {server_url}")
 
         # Create a copy of the static agent card with dynamic URL

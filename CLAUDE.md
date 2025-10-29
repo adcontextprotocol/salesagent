@@ -1207,7 +1207,7 @@ app = create_flask_app(agent)  # Provides all standard endpoints
 ### Admin UI Access
 ```bash
 # Local: http://localhost:8001
-# Reference Production: https://admin.sales-agent.scope3.com
+# Reference Production: https://admin.${SALES_AGENT_DOMAIN}
 # Your Production: Configure based on your hosting setup
 ```
 
