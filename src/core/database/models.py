@@ -75,6 +75,12 @@ class Tenant(Base, JSONValidatorMixin):
         nullable=True,
         comment="Advertising policy configuration with prohibited categories, tactics, and advertisers",
     )
+    brand_manifest_policy: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        server_default="require_brand",
+        comment="Brand manifest requirement policy: public (no auth, no pricing), require_auth (auth required, no brand manifest), require_brand (auth + brand manifest required)",
+    )
 
     # Naming templates (business rules - shared across all adapters)
     order_name_template: Mapped[str | None] = mapped_column(

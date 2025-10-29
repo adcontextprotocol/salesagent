@@ -71,6 +71,9 @@ def index(tenant_id):
         policy_settings = default_policies.copy()
         policy_settings.update(tenant_policies)
 
+        # Get brand manifest policy
+        brand_manifest_policy = tenant.brand_manifest_policy
+
         # Get recent policy checks from audit log
         stmt = (
             select(AuditLog)
@@ -124,6 +127,7 @@ def index(tenant_id):
         tenant_id=tenant_id,
         tenant_name=tenant_name,
         policy_settings=policy_settings,
+        brand_manifest_policy=brand_manifest_policy,
         recent_checks=recent_checks,
         pending_reviews=pending_reviews,
     )
@@ -186,11 +190,18 @@ def update(tenant_id):
 
         config["policy_settings"] = policy_settings
 
+        # Get brand_manifest_policy from form
+        brand_manifest_policy = request.form.get("brand_manifest_policy", "require_brand")
+        # Validate policy value
+        if brand_manifest_policy not in ["public", "require_auth", "require_brand"]:
+            brand_manifest_policy = "require_brand"  # Default to strictest for safety
+
         # Update database
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if tenant:
                 tenant.policy_settings = json.dumps(policy_settings)
+                tenant.brand_manifest_policy = brand_manifest_policy
                 db_session.commit()
 
         return redirect(url_for("policy.index", tenant_id=tenant_id))
