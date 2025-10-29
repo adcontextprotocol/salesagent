@@ -8,8 +8,12 @@ the validation logic and handles validation failures appropriately.
 from datetime import datetime
 from unittest.mock import patch
 
+import pytest
+
 from src.adapters.google_ad_manager import GoogleAdManager
 from src.core.schemas import Principal
+
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 class TestGAMValidationIntegration:

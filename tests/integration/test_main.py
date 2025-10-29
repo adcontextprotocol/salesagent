@@ -10,8 +10,9 @@ from src.core.database.models import Product as ProductModel
 
 # Ensure the main module can be imported
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
-@pytest.mark.integration
+
 class TestAdcpServerV2_3(unittest.TestCase):
     """
     Tests for the V2.3 AdCP Buy-Side Server.

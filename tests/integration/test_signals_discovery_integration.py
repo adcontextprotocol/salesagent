@@ -9,6 +9,8 @@ import pytest
 
 from product_catalog_providers.signals import SignalsDiscoveryProvider
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+
 
 class TestSignalsDiscoveryProviderIntegration:
     """Integration tests for SignalsDiscoveryProvider with minimal mocking."""

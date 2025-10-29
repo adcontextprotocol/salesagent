@@ -7,7 +7,7 @@ import pytest
 from src.core.schema_adapters import GetProductsRequest
 from src.services.policy_check_service import PolicyCheckResult, PolicyCheckService, PolicyStatus
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 @pytest.fixture

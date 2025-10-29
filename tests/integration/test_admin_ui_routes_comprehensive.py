@@ -13,7 +13,7 @@ import pytest
 
 from tests.integration.link_validator import LinkValidator, format_broken_links_report
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 class TestCoreRoutes:

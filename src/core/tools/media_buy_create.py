@@ -13,6 +13,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -22,6 +23,25 @@ from rich.console import Console
 
 logger = logging.getLogger(__name__)
 console = Console()
+
+
+def validate_agent_url(url: str | None) -> bool:
+    """Validate agent_url is a valid HTTP(S) URL per AdCP spec.
+
+    Args:
+        url: URL string to validate
+
+    Returns:
+        True if valid HTTP(S) URL, False otherwise
+    """
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        result = urlparse(url)
+        return all([result.scheme in ("http", "https"), result.netloc])
+    except Exception:
+        return False
+
 
 # Tool-specific imports
 from src.core.audit_logger import get_audit_logger
@@ -40,6 +60,8 @@ from src.core.schemas import (
     CreateMediaBuyRequest,
     CreativeStatus,
     Error,
+    FormatId,
+    FormatReference,
     MediaPackage,
     Package,
     Principal,
@@ -368,14 +390,79 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                         targeting_overlay = Targeting(**package_config["targeting_overlay"])
 
                     # Create MediaPackage object (what adapters expect)
-                    # Note: Product model has 'formats' not 'format_ids'
+                    # Convert formats (FormatReference/dict) to FormatId objects per AdCP spec
+                    format_ids_list: list[FormatId] = []
+                    formats = product.formats or []
+
+                    logger.debug(f"[APPROVAL] Converting {len(formats)} formats for package {package_id}")
+
+                    for idx, fmt in enumerate(formats):
+                        try:
+                            # Most common case: dict from database (JSONB field returns dicts)
+                            if isinstance(fmt, dict):
+                                agent_url = fmt.get("agent_url")
+                                format_id = fmt.get("format_id") or fmt.get("id")
+
+                                # Validate required fields exist and are non-empty strings
+                                if not agent_url or not isinstance(agent_url, str):
+                                    raise ValueError(f"Format missing or invalid agent_url: agent_url={agent_url!r}")
+                                if not validate_agent_url(agent_url):
+                                    raise ValueError(f"agent_url must be valid HTTP(S) URL: {agent_url!r}")
+                                if not format_id or not isinstance(format_id, str):
+                                    raise ValueError(f"Format missing or invalid id: id={format_id!r}")
+
+                                format_ids_list.append(FormatId(agent_url=agent_url, id=format_id))
+
+                            # Already correct type (no conversion needed)
+                            elif isinstance(fmt, FormatId):
+                                # Defensive validation even for FormatId objects
+                                if not fmt.agent_url or not validate_agent_url(fmt.agent_url):
+                                    raise ValueError(f"FormatId has invalid agent_url: {fmt.agent_url!r}")
+                                if not fmt.id:
+                                    raise ValueError(f"FormatId has empty id: {fmt.id!r}")
+                                format_ids_list.append(fmt)
+
+                            # Legacy FormatReference object (convert format_id -> id)
+                            elif isinstance(fmt, FormatReference):
+                                if not fmt.agent_url or not validate_agent_url(fmt.agent_url):
+                                    raise ValueError(f"FormatReference has invalid agent_url: {fmt.agent_url!r}")
+                                if not fmt.format_id:
+                                    raise ValueError(f"FormatReference has empty format_id: {fmt.format_id!r}")
+                                format_ids_list.append(FormatId(agent_url=fmt.agent_url, id=fmt.format_id))
+
+                            else:
+                                raise ValueError(f"Unknown format type: {type(fmt).__name__}")
+
+                        except (ValueError, ValidationError) as e:
+                            error_msg = (
+                                f"Failed to reconstruct package {package_id}: "
+                                f"Format validation failed at index {idx}: {e}"
+                            )
+                            logger.error(f"[APPROVAL] {error_msg}")
+                            return False, error_msg
+
+                    # Validate non-empty format_ids (required by AdCP spec)
+                    if not format_ids_list:
+                        error_msg = (
+                            f"Failed to reconstruct package {package_id}: "
+                            f"Product {product_id} has no valid formats - cannot create media buy"
+                        )
+                        logger.error(f"[APPROVAL] {error_msg}")
+                        return False, error_msg
+
+                    # Log conversion results
+                    logger.info(
+                        f"[APPROVAL] Package {package_id}: "
+                        f"Successfully converted all {len(format_ids_list)} formats"
+                    )
+
                     media_package = MediaPackage(
                         package_id=package_id,
                         name=package_config.get("name") or product.name,
                         delivery_type=product.delivery_type,
                         cpm=cpm,
                         impressions=impressions,
-                        format_ids=product.formats or [],
+                        format_ids=format_ids_list,
                         targeting_overlay=targeting_overlay,
                         buyer_ref=package_config.get("buyer_ref"),
                         product_id=product_id,
@@ -2323,7 +2410,9 @@ async def _create_media_buy_impl(
                             else:
                                 # Creative not uploaded to GAM yet - upload it now
                                 # Use the same simple asset dict approach as manual approval (execute_approved_media_buy)
-                                logger.info(f"Creative {creative_id} has no platform_creative_id - uploading to GAM now")
+                                logger.info(
+                                    f"Creative {creative_id} has no platform_creative_id - uploading to GAM now"
+                                )
                                 try:
                                     creative_data = creative.data or {}
 
@@ -2368,10 +2457,14 @@ async def _create_media_buy_impl(
                                     if upload_result and len(upload_result) > 0:
                                         uploaded_creative = upload_result[0]
                                         if "platform_creative_id" in uploaded_creative:
-                                            creative.data["platform_creative_id"] = uploaded_creative["platform_creative_id"]
+                                            creative.data["platform_creative_id"] = uploaded_creative[
+                                                "platform_creative_id"
+                                            ]
                                             session.add(creative)
                                             platform_creative_ids.append(uploaded_creative["platform_creative_id"])
-                                            logger.info(f"Updated creative {creative_id} with platform_creative_id={uploaded_creative['platform_creative_id']}")
+                                            logger.info(
+                                                f"Updated creative {creative_id} with platform_creative_id={uploaded_creative['platform_creative_id']}"
+                                            )
                                 except Exception as upload_error:
                                     logger.error(f"Failed to upload creative {creative_id} to GAM: {upload_error}")
                                     logger.warning(

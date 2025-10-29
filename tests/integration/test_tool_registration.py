@@ -1,5 +1,9 @@
 """Test that all AdCP tools are properly registered with MCP server."""
 
+import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+
 
 def test_all_tools_registered():
     """Verify all expected AdCP tools are registered with MCP."""
