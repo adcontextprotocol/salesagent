@@ -105,6 +105,24 @@
                                 Create review tasks for policy violations instead of auto-rejecting
                             </small>
                         </div>
+
+                        <hr class="my-4">
+
+                        <div class="form-group mb-3">
+                            <label for="brand_manifest_policy"><strong>Who can browse your ad products?</strong></label>
+                            <select class="form-control" id="brand_manifest_policy" name="brand_manifest_policy">
+                                <option value="require_auth" {% if brand_manifest_policy == 'require_auth' or brand_manifest_policy == 'require_brand' or not brand_manifest_policy %}selected{% endif %}>
+                                    Authenticated buyers only
+                                </option>
+                                <option value="public" {% if brand_manifest_policy == 'public' %}selected{% endif %}>
+                                    Public access (no pricing shown)
+                                </option>
+                            </select>
+                            <small class="form-text text-muted">
+                                <strong>Authenticated buyers:</strong> Advertisers must sign up to see products and pricing.<br>
+                                <strong>Public access:</strong> Anyone can see what you offer (pricing requires signup).
+                            </small>
+                        </div>
                     </div>
                 </div>
 

@@ -975,6 +975,26 @@
                     </div>
                 </div>
 
+                <!-- Product Catalog Access -->
+                <div class="form-section">
+                    <h3>Product Catalog Access</h3>
+                    <div class="form-group">
+                        <label for="brand_manifest_policy"><strong>Who can browse your ad products?</strong></label>
+                        <select class="form-control" id="brand_manifest_policy" name="brand_manifest_policy" style="max-width: 400px;">
+                            <option value="require_auth" {% if tenant.brand_manifest_policy == 'require_auth' or tenant.brand_manifest_policy == 'require_brand' or not tenant.brand_manifest_policy %}selected{% endif %}>
+                                Authenticated buyers only
+                            </option>
+                            <option value="public" {% if tenant.brand_manifest_policy == 'public' %}selected{% endif %}>
+                                Public access (no pricing shown)
+                            </option>
+                        </select>
+                        <small class="form-text text-muted" style="display: block; margin-top: 0.5rem;">
+                            <strong>Authenticated buyers:</strong> Advertisers must sign up to see products and pricing.<br>
+                            <strong>Public access:</strong> Anyone can see what you offer (pricing requires signup).
+                        </small>
+                    </div>
+                </div>
+
                 <!-- Naming Conventions -->
                 <div class="form-section">
                     <h3>Naming Conventions</h3>
@@ -2495,6 +2515,34 @@ async function unregisterDomain() {
     } finally {
         unregisterBtn.disabled = false;
         unregisterBtn.textContent = 'Unregister Domain';
+    }
+}
+
+// Save Business Rules (Policies & Workflows)
+async function saveBusinessRules() {
+    const form = document.getElementById('business-rules-form');
+    const formData = new FormData(form);
+
+    const scriptName = document.getElementById('settings-config').dataset.scriptName || '';
+    const tenantId = document.getElementById('settings-config').dataset.tenantId;
+
+    try {
+        const response = await fetch(`${scriptName}/tenant/${tenantId}/policy/update`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.ok) {
+            alert('✅ Business rules saved successfully!');
+            // Optionally reload to show updated values
+            window.location.reload();
+        } else {
+            const error = await response.text();
+            alert(`❌ Error saving business rules: ${error}`);
+        }
+    } catch (error) {
+        console.error('Error saving business rules:', error);
+        alert(`❌ Error: ${error.message}`);
     }
 }
 </script>
