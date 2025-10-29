@@ -19,6 +19,8 @@ from sqlalchemy import select
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AdapterConfig, CurrencyLimit, Tenant, User
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+
 
 class TestSelfServiceSignupFlow:
     """Test self-service tenant signup flow."""

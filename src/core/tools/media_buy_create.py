@@ -12,7 +12,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from fastmcp.exceptions import ToolError
@@ -42,6 +42,7 @@ def validate_agent_url(url: str | None) -> bool:
     except Exception:
         return False
 
+
 # Tool-specific imports
 from src.core import schemas
 from src.core.audit_logger import get_audit_logger
@@ -61,13 +62,15 @@ from src.core.schemas import (
     CreativeStatus,
     Error,
     FormatId,
-    FormatReference,
     MediaPackage,
     Package,
     Principal,
+    Product,
+    Targeting,
     TaskStatus,
 )
 from src.core.testing_hooks import TestingContext, apply_testing_hooks, get_testing_context
+from src.core.tool_context import ToolContext
 
 # Import get_product_catalog from main (after refactor)
 from src.core.validation_helpers import format_validation_error
@@ -470,7 +473,6 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                         f"[APPROVAL] Package {package_id}: "
                         f"Successfully converted all {len(format_ids_list)} formats"
                     )
-
 
                     media_package = MediaPackage(
                         package_id=package_id,
