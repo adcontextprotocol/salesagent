@@ -109,22 +109,18 @@
                         <hr class="my-4">
 
                         <div class="form-group mb-3">
-                            <label for="brand_manifest_policy"><strong>Brand Manifest Policy</strong></label>
+                            <label for="brand_manifest_policy"><strong>Who can browse your ad products?</strong></label>
                             <select class="form-control" id="brand_manifest_policy" name="brand_manifest_policy">
-                                <option value="require_brand" {% if brand_manifest_policy == 'require_brand' %}selected{% endif %}>
-                                    Require Brand Manifest (Strictest)
-                                </option>
-                                <option value="require_auth" {% if brand_manifest_policy == 'require_auth' %}selected{% endif %}>
-                                    Require Authentication Only
+                                <option value="require_auth" {% if brand_manifest_policy == 'require_auth' or brand_manifest_policy == 'require_brand' or not brand_manifest_policy %}selected{% endif %}>
+                                    Authenticated buyers only
                                 </option>
                                 <option value="public" {% if brand_manifest_policy == 'public' %}selected{% endif %}>
-                                    Public (No Authentication)
+                                    Public access (no pricing shown)
                                 </option>
                             </select>
                             <small class="form-text text-muted">
-                                <strong>Require Brand Manifest:</strong> Buyers must provide both authentication and brand information to see products with pricing.<br>
-                                <strong>Require Authentication:</strong> Buyers must authenticate but brand manifest is optional. Pricing shown to authenticated users.<br>
-                                <strong>Public:</strong> Products visible to anyone without authentication. No pricing shown (encourages authentication).
+                                <strong>Authenticated buyers:</strong> Advertisers must sign up to see products and pricing.<br>
+                                <strong>Public access:</strong> Anyone can see what you offer (pricing requires signup).
                             </small>
                         </div>
                     </div>

@@ -78,8 +78,8 @@ class Tenant(Base, JSONValidatorMixin):
     brand_manifest_policy: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
-        server_default="require_brand",
-        comment="Brand manifest requirement policy: public (no auth, no pricing), require_auth (auth required, no brand manifest), require_brand (auth + brand manifest required)",
+        server_default="require_auth",
+        comment="Product discovery access policy: require_auth (standard B2B - signup to see pricing), require_brand (brand context required for bespoke products), public (generic products visible to all)",
     )
 
     # Naming templates (business rules - shared across all adapters)

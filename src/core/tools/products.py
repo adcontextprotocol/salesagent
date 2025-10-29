@@ -96,7 +96,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
     principal_data = principal.model_dump() if principal else None
 
     # Get tenant's brand manifest policy
-    brand_manifest_policy = tenant.get("brand_manifest_policy", "require_brand")
+    brand_manifest_policy = tenant.get("brand_manifest_policy", "require_auth")
 
     # Validate brand manifest based on policy
     # Policy options:

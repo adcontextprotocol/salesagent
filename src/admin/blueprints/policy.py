@@ -191,10 +191,10 @@ def update(tenant_id):
         config["policy_settings"] = policy_settings
 
         # Get brand_manifest_policy from form
-        brand_manifest_policy = request.form.get("brand_manifest_policy", "require_brand")
+        brand_manifest_policy = request.form.get("brand_manifest_policy", "require_auth")
         # Validate policy value
         if brand_manifest_policy not in ["public", "require_auth", "require_brand"]:
-            brand_manifest_policy = "require_brand"  # Default to strictest for safety
+            brand_manifest_policy = "require_auth"  # Default to standard B2B model
 
         # Update database
         with get_db_session() as db_session:
