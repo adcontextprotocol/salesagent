@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
-          uv sync
+          uv sync --group dev
 
       - name: Check commits follow conventional commit format
         run: |
