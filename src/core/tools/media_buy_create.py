@@ -2418,11 +2418,10 @@ async def _create_media_buy_impl(
                                         continue
 
                                     # Upload to GAM using adapter's add_creative_assets method
-                                    from datetime import UTC
-                                    from datetime import datetime as dt
-
                                     upload_result = adapter.add_creative_assets(
-                                        response.media_buy_id if response.media_buy_id else "", [asset], dt.now(UTC)
+                                        response.media_buy_id if response.media_buy_id else "",
+                                        [asset],
+                                        datetime.now(UTC),
                                     )
                                     logger.info(f"Successfully uploaded creative {creative_id} to GAM: {upload_result}")
 
