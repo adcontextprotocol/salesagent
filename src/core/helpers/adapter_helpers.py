@@ -42,12 +42,22 @@ def get_adapter(
                 logger.info(f"[ADAPTER_SELECT] Using AdapterConfig.adapter_type: {selected_adapter}")
             if adapter_type == "mock":
                 adapter_config["dry_run"] = config_row.mock_dry_run or False
-                adapter_config["manual_approval_required"] = config_row.mock_manual_approval_required or False
+                # Default to True (require approval) for safety
+                adapter_config["manual_approval_required"] = (
+                    config_row.mock_manual_approval_required
+                    if config_row.mock_manual_approval_required is not None
+                    else True
+                )
             elif adapter_type == "google_ad_manager":
                 adapter_config["network_code"] = config_row.gam_network_code or ""
                 adapter_config["refresh_token"] = config_row.gam_refresh_token or ""
                 adapter_config["trafficker_id"] = config_row.gam_trafficker_id or ""
-                adapter_config["manual_approval_required"] = config_row.gam_manual_approval_required or False
+                # Default to True (require approval) for safety
+                adapter_config["manual_approval_required"] = (
+                    config_row.gam_manual_approval_required
+                    if config_row.gam_manual_approval_required is not None
+                    else True
+                )
 
                 # Get advertiser_id from principal's platform_mappings (per-principal, not tenant-level)
                 # Support both old format (nested under "google_ad_manager") and new format (root "gam_advertiser_id")
@@ -73,7 +83,12 @@ def get_adapter(
             elif adapter_type == "kevel":
                 adapter_config["network_id"] = config_row.kevel_network_id or ""
                 adapter_config["api_key"] = config_row.kevel_api_key or ""
-                adapter_config["manual_approval_required"] = config_row.kevel_manual_approval_required or False
+                # Default to True (require approval) for safety
+                adapter_config["manual_approval_required"] = (
+                    config_row.kevel_manual_approval_required
+                    if config_row.kevel_manual_approval_required is not None
+                    else True
+                )
             elif adapter_type == "triton":
                 adapter_config["station_id"] = config_row.triton_station_id or ""
                 adapter_config["api_key"] = config_row.triton_api_key or ""

@@ -5,7 +5,7 @@ by both MCP and A2A protocols.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Union
 
 from fastmcp.server.context import Context
 
@@ -152,7 +152,7 @@ def get_push_notification_config_from_headers(headers: dict[str, str] | None) ->
 
 
 def get_principal_from_context(
-    context: Context | "ToolContext" | None, require_valid_token: bool = True
+    context: Union[Context, "ToolContext", None], require_valid_token: bool = True
 ) -> tuple[str | None, dict | None]:
     """Extract principal ID and tenant context from the FastMCP context or ToolContext.
 

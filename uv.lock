@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -90,6 +90,7 @@ dependencies = [
     { name = "rich" },
     { name = "simple-websocket" },
     { name = "sqlalchemy" },
+    { name = "types-pytz" },
     { name = "uvicorn" },
     { name = "waitress" },
     { name = "watchdog" },
@@ -161,6 +162,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.7.1" },
     { name = "simple-websocket", specifier = ">=1.1.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
+    { name = "types-pytz", specifier = ">=2025.2.0.20250809" },
     { name = "uvicorn", specifier = ">=0.23.0" },
     { name = "waitress", specifier = ">=3.0.0" },
     { name = "watchdog", specifier = ">=6.0.0" },

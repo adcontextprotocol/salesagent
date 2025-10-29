@@ -34,6 +34,7 @@ dependencies = [
     "a2a-sdk[http-server]>=0.3.10", # Latest available version
     "jinja2>=3.1.0",
     "prometheus-client>=0.23.1",
+    "types-pytz>=2025.2.0.20250809",
 ]
 
 

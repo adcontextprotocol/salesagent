@@ -131,6 +131,7 @@ class GAMSyncManager:
 
             # Update sync job with results
             sync_job.status = "completed"
+            # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
             sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.summary = json.dumps(summary)
             db_session.commit()
@@ -147,6 +148,7 @@ class GAMSyncManager:
 
             # Update sync job with error
             sync_job.status = "failed"
+            # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
             sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.error_message = str(e)
             db_session.commit()
@@ -206,6 +208,7 @@ class GAMSyncManager:
 
             # Update sync job with results
             sync_job.status = "completed"
+            # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
             sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.summary = json.dumps(summary)
             db_session.commit()
@@ -222,6 +225,7 @@ class GAMSyncManager:
 
             # Update sync job with error
             sync_job.status = "failed"
+            # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
             sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.error_message = str(e)
             db_session.commit()
@@ -272,6 +276,7 @@ class GAMSyncManager:
 
             # Update sync job with results
             sync_job.status = "completed"
+            # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
             sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.summary = json.dumps(combined_summary)
             db_session.commit()
@@ -288,6 +293,7 @@ class GAMSyncManager:
 
             # Update sync job with error
             sync_job.status = "failed"
+            # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
             sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.error_message = str(e)
             db_session.commit()
@@ -357,6 +363,7 @@ class GAMSyncManager:
 
             # Update sync job with results
             sync_job.status = "completed"
+            # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
             sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.summary = json.dumps(summary)
             db_session.commit()
@@ -373,6 +380,7 @@ class GAMSyncManager:
 
             # Update sync job with error
             sync_job.status = "failed"
+            # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
             sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
             sync_job.error_message = str(e)
             db_session.commit()

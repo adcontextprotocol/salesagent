@@ -305,5 +305,6 @@ repos:
           - sqlalchemy[mypy]==2.0.36
           - types-requests
           - types-python-dateutil
+          - types-pytz
         files: '^src/'
         exclude: '^src/adapters/google_ad_manager_original\.py$'

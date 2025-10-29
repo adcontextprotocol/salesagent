@@ -270,6 +270,7 @@ def _get_media_buy_delivery_impl(
                             buyer_ref=buy.raw_request.get("buyer_ref", None),
                             impressions=package_impressions,
                             spend=package_spend,
+                            # TODO: Calculate clicks for CPC pricing - extract pricing model from raw_request
                             clicks=None,  # Optional field, not calculated in this implementation
                             video_completions=None,  # Optional field, not calculated in this implementation
                             pacing_index=1.0 if status == "active" else 0.0,
@@ -287,6 +288,10 @@ def _get_media_buy_delivery_impl(
                 totals=DeliveryTotals(
                     impressions=impressions,
                     spend=spend,
+                    # TODO: Calculate clicks for CPC pricing models - should be required for CPC
+                    # Need to: 1) Extract pricing model from raw_request packages
+                    #          2) Calculate clicks based on spend/CPC rate
+                    #          3) Make clicks required (not None) for CPC pricing
                     clicks=None,  # Optional field
                     ctr=None,  # Optional field
                     video_completions=None,  # Optional field

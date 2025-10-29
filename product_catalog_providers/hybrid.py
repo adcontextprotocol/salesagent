@@ -1,7 +1,10 @@
 """Hybrid product catalog provider that combines database and signals discovery."""
 
+import json
 import logging
 from typing import Any
+
+from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
@@ -119,8 +122,6 @@ class HybridProductCatalog(ProductCatalogProvider):
 
     async def _is_signals_enabled(self, tenant_id: str) -> bool:
         """Check if signals discovery is enabled for the tenant."""
-        from sqlalchemy import select
-
         try:
             with get_db_session() as db_session:
                 stmt = select(Tenant).filter_by(tenant_id=tenant_id)
@@ -132,8 +133,6 @@ class HybridProductCatalog(ProductCatalogProvider):
                 if isinstance(tenant.signals_agent_config, dict):
                     config = tenant.signals_agent_config
                 else:
-                    import json
-
                     config = json.loads(tenant.signals_agent_config)
 
                 return config.get("enabled", False)
@@ -226,8 +225,6 @@ async def create_hybrid_catalog_for_tenant(tenant_id: str) -> HybridProductCatal
     This function reads the tenant's signals configuration from the database
     and sets up the hybrid catalog appropriately.
     """
-    from sqlalchemy import select
-
     config: dict[str, Any] = {
         "database": {},  # Use defaults
         "signals_discovery": {},  # Will be populated from tenant config
@@ -242,8 +239,6 @@ async def create_hybrid_catalog_for_tenant(tenant_id: str) -> HybridProductCatal
                 if isinstance(tenant.signals_agent_config, dict):
                     signals_config = tenant.signals_agent_config
                 else:
-                    import json
-
                     signals_config = json.loads(tenant.signals_agent_config)
 
                 config["signals_discovery"] = signals_config

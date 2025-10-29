@@ -23,6 +23,12 @@ from src.core.schemas import (
 # NOTE: Xandr adapter needs full refactor - it's using old schemas and patterns
 # The other methods (get_media_buy_status, get_media_buy_delivery, etc.) still use old schemas
 # that no longer exist. Only create_media_buy has been updated to match the current API.
+#
+# TODO: Complete Xandr adapter refactor to use current AdCP schemas throughout
+# - Replace MediaBuy/MediaBuyDetails stubs with proper schema classes
+# - Update all methods to match current API patterns
+# - Add comprehensive test coverage
+# - Remove this entire stub section
 
 
 # Temporary stubs for old schemas until Xandr adapter is properly refactored
