@@ -51,13 +51,10 @@ primary_region = "iad"
   ADK_WEB_PORT = "8091"
   A2A_PORT = "8091"
   DB_TYPE = "postgresql"
-  SKIP_NGINX = "false"
-  # A2A Configuration
-  A2A_MOCK_MODE = "false"
-  # A2A_SERVER_URL is constructed from SALES_AGENT_DOMAIN at runtime
-  # Set SALES_AGENT_DOMAIN in your secrets: fly secrets set SALES_AGENT_DOMAIN=your-domain.com
-  # GCP Configuration (for auto-provisioning service accounts)
-  GCP_PROJECT_ID = "bok-playground"
+  # Domain configuration - set these as secrets:
+  # fly secrets set BASE_DOMAIN=your-domain.com
+  # fly secrets set SALES_AGENT_DOMAIN=sales-agent.your-domain.com
+  # fly secrets set GCP_PROJECT_ID=your-gcp-project
 
 [mounts]
   source = "adcp_data"
