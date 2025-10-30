@@ -917,7 +917,7 @@ async def _create_media_buy_impl(
         push_notification_config: Push notification config for status updates (MCP/A2A)
         context: FastMCP context (automatically provided)
 
-    Returns:
+    Returns:  
         CreateMediaBuyResponse with media buy details
     """
     request_start_time = time.time()
@@ -1994,6 +1994,9 @@ async def _create_media_buy_impl(
                             if format_id:
                                 # Normalize agent_url by removing trailing slash for consistent comparison
                                 normalized_url = agent_url.rstrip("/") if agent_url else None
+                                # Also strip '/mcp' suffix to compare base URLs only
+                                if normalized_url and normalized_url.endswith("/mcp"):
+                                    normalized_url = normalized_url[:-4]
                                 product_format_keys.add((normalized_url, format_id))
 
                     # Build set of requested format keys for comparison

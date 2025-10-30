@@ -4,7 +4,7 @@ This module provides a single, standardized way to create MCP clients for
 communicating with external agents (creative agents, signals agents, etc.).
 
 Key features:
-- Consistent URL handling (respects user's URL, no suffix appending)
+- Consistent URL handling (normalizes paths to /mcp endpoint)
 - Standardized auth header building
 - Built-in retry logic with exponential backoff
 - Proper error handling and logging
@@ -25,6 +25,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
@@ -67,6 +68,7 @@ def _build_auth_headers(auth: dict[str, Any] | None, auth_header: str | None = N
     headers: dict[str, str] = {}
 
     if not auth:
+        logger.warning(f"No auth provided for MCP client {auth}")
         return headers
 
     auth_type = auth.get("type")
@@ -114,7 +116,9 @@ async def create_mcp_client(
         agent_url: URL of the MCP agent endpoint
                   Examples: "https://creative.adcontextprotocol.org/mcp"
                            "https://audience-agent.fly.dev/FastMCP/"
-                  NOTE: Use the exact URL the user provided - no modifications!
+                           "https://example.com"
+                  NOTE: Any path in the URL will be removed and replaced with /mcp
+                  when creating the connection (e.g., /FastMCP/ becomes /mcp)
         auth: Optional auth configuration dict
               Format: {"type": "bearer"|"api_key", "credentials": "token_value"}
         auth_header: Optional custom auth header name
@@ -138,8 +142,18 @@ async def create_mcp_client(
             result = await client.call_tool("list_creative_formats", {})
             formats = result.structured_content
     """
-    # Strip trailing slashes only - preserve the actual path
-    agent_url = agent_url.rstrip("/")
+    # Parse URL to extract base (scheme + netloc)
+    parsed = urlparse(agent_url.rstrip("/"))
+    
+    # Normalize path to /mcp: remove any existing path and append /mcp
+    # If path is already /mcp, keep it; otherwise replace with /mcp
+    if parsed.path == "/mcp":
+        # Already has /mcp, use as-is
+        mcp_url = agent_url.rstrip("/")
+    else:
+        # Extract base URL (scheme + netloc) and append /mcp
+        base_url = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+        mcp_url = f"{base_url}/mcp"
 
     # Build auth headers
     headers = _build_auth_headers(auth, auth_header)
@@ -150,14 +164,14 @@ async def create_mcp_client(
 
     for attempt in range(max_retries):
         try:
-            # Create transport and client
-            transport = StreamableHttpTransport(url=agent_url, headers=headers)
+            # Create transport and client with normalized /mcp URL
+            transport = StreamableHttpTransport(url=mcp_url, headers=headers)
             client = Client(transport=transport)
 
             # Use client's built-in context manager
             async with client:
                 # Success! Yield the connected client
-                logger.debug(f"MCP client connected to {agent_url} on attempt {attempt + 1}")
+                logger.debug(f"MCP client connected to {mcp_url} on attempt {attempt + 1}")
                 yield client
                 return
 
@@ -168,19 +182,19 @@ async def create_mcp_client(
             # Check for known compatibility issues
             if "notifications/initialized" in error_msg:
                 logger.warning(
-                    f"MCP SDK compatibility issue with {agent_url}: "
+                    f"MCP SDK compatibility issue with {mcp_url}: "
                     f"Server doesn't support 'notifications/initialized' notification. "
                     f"This is a known issue between FastMCP SDK versions."
                 )
                 raise MCPCompatibilityError(
-                    f"MCP SDK compatibility issue with {agent_url}: "
+                    f"MCP SDK compatibility issue with {mcp_url}: "
                     f"Server doesn't support notifications/initialized notification. "
                     f"The agent may need to upgrade their FastMCP version to match the client."
                 ) from e
 
             # Log and retry
             logger.warning(
-                f"MCP connection attempt {attempt + 1}/{max_retries} failed for {agent_url}: "
+                f"MCP connection attempt {attempt + 1}/{max_retries} failed for {mcp_url}: "
                 f"{type(e).__name__}: {e}"
             )
 
@@ -190,11 +204,11 @@ async def create_mcp_client(
             else:
                 # Final attempt failed
                 logger.error(
-                    f"All {max_retries} connection attempts failed for {agent_url}. "
+                    f"All {max_retries} connection attempts failed for {mcp_url}. "
                     f"Last error: {type(e).__name__}: {e}"
                 )
                 raise MCPConnectionError(
-                    f"Failed to connect to MCP agent at {agent_url} after {max_retries} attempts: "
+                    f"Failed to connect to MCP agent at {mcp_url} after {max_retries} attempts: "
                     f"{type(e).__name__}: {e}"
                 ) from last_exception
 
@@ -227,7 +241,7 @@ async def check_mcp_agent_connection(
             print(f"Failed: {result['error']}")
     """
     try:
-        async with create_mcp_client(agent_url=agent_url, auth=auth, auth_header=auth_header, timeout=10) as client:
+        async with create_mcp_client(agent_url, auth=auth, auth_header=auth_header, timeout=10) as client:
             # Try to list tools to verify full functionality
             tools = await client.list_tools()
 
