@@ -19,7 +19,7 @@ from src.core.database.database_session import get_db_session, get_engine
 from src.core.database.health_check import check_database_health, print_health_report
 from src.core.database.models import Base, Product, Tenant
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 class TestDatabaseHealthIntegration:

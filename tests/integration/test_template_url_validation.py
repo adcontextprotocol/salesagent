@@ -18,6 +18,7 @@ admin_app, _ = create_app()
 
 @pytest.mark.integration
 @pytest.mark.ui
+@pytest.mark.requires_db
 class TestTemplateUrlValidation:
     """Validate all url_for calls in templates can be resolved."""
 

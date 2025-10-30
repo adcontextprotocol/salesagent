@@ -6,6 +6,9 @@ Test workflow approval system for manual approvals.
 from datetime import UTC, datetime
 
 import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+
 from sqlalchemy import delete, select
 
 from src.core.context_manager import ContextManager

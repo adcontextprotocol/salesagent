@@ -18,7 +18,7 @@ import pytest
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from tests.helpers.a2a_response_validator import assert_valid_skill_response
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 @pytest.mark.integration
