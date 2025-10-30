@@ -1,6 +1,7 @@
 {
-  "etag": "W/\"68f98531-713\"",
-  "last-modified": "Thu, 23 Oct 2025 01:30:25 GMT",
-  "downloaded_at": "2025-10-25T20:48:00.359022",
-  "schema_ref": "/schemas/v1/core/push-notification-config.json"
+  "etag": "W/\"6901f913-713\"",
+  "last-modified": "Wed, 29 Oct 2025 11:22:59 GMT",
+  "downloaded_at": "2025-10-30T10:34:21.717006",
+  "schema_ref": "/schemas/v1/core/push-notification-config.json",
+  "content_hash": "cca0ec3f08938bb691674968c785d37341a49881e2723992c7adba98984fee3e"
 }

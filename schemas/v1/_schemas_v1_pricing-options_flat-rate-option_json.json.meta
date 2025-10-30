@@ -1,6 +1,7 @@
 {
-  "etag": "W/\"68f98531-b7c\"",
-  "last-modified": "Thu, 23 Oct 2025 01:30:25 GMT",
-  "downloaded_at": "2025-10-25T20:48:02.685166",
-  "schema_ref": "/schemas/v1/pricing-options/flat-rate-option.json"
+  "etag": "W/\"6901f913-b7c\"",
+  "last-modified": "Wed, 29 Oct 2025 11:22:59 GMT",
+  "downloaded_at": "2025-10-30T10:35:42.341231",
+  "schema_ref": "/schemas/v1/pricing-options/flat-rate-option.json",
+  "content_hash": "e026976d0c64b6595430150f2dc5dfb261cc269ee085e9cc86f8fab50f0c72ff"
 }

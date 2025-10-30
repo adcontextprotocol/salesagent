@@ -1,6 +1,7 @@
 {
-  "etag": "W/\"68f98531-30c\"",
-  "last-modified": "Thu, 23 Oct 2025 01:30:25 GMT",
-  "downloaded_at": "2025-10-25T20:48:03.302886",
-  "schema_ref": "/schemas/v1/core/assets/audio-asset.json"
+  "etag": "W/\"6901f913-30c\"",
+  "last-modified": "Wed, 29 Oct 2025 11:22:59 GMT",
+  "downloaded_at": "2025-10-30T10:35:42.999254",
+  "schema_ref": "/schemas/v1/core/assets/audio-asset.json",
+  "content_hash": "e503a6f97ab05825d10e9a6fe0373b0d93538334457ef467cc5935335c055ff7"
 }
