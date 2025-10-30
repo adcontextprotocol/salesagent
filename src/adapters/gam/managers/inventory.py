@@ -13,6 +13,8 @@ Extracted from gam_inventory_service.py and gam_inventory_discovery.py to provid
 a clean, focused interface for inventory operations within the modular GAM architecture.
 """
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime, timedelta
 from typing import Any
@@ -43,12 +45,12 @@ class GAMInventoryManager:
         self.client_manager = client_manager
         self.tenant_id = tenant_id
         self.dry_run = dry_run
-        self._discovery = None
+        self._discovery: GAMInventoryDiscovery | MockGAMInventoryDiscovery | None = None
         self._cache_timeout = timedelta(hours=24)
 
         logger.info(f"Initialized GAMInventoryManager for tenant {tenant_id} (dry_run: {dry_run})")
 
-    def _get_discovery(self) -> GAMInventoryDiscovery:
+    def _get_discovery(self) -> GAMInventoryDiscovery | MockGAMInventoryDiscovery:
         """Get or create GAM inventory discovery instance."""
         if not self._discovery:
             if self.dry_run:
@@ -337,12 +339,12 @@ class MockGAMInventoryDiscovery:
     def __init__(self, client, tenant_id: str):
         self.client = client
         self.tenant_id = tenant_id
-        self.ad_units = {}
-        self.placements = {}
-        self.labels = {}
-        self.custom_targeting_keys = {}
-        self.custom_targeting_values = {}
-        self.audience_segments = {}
+        self.ad_units: dict[str, Any] = {}
+        self.placements: dict[str, Any] = {}
+        self.labels: dict[str, Any] = {}
+        self.custom_targeting_keys: dict[str, Any] = {}
+        self.custom_targeting_values: dict[str, Any] = {}
+        self.audience_segments: dict[str, Any] = {}
         self.last_sync = None
 
     def discover_ad_units(self, parent_id=None, max_depth=10):
@@ -365,7 +367,9 @@ class MockGAMInventoryDiscovery:
         logger.info("[MOCK] Discovering labels")
         return []
 
-    def sync_all(self):
+    def sync_all(
+        self, fetch_custom_targeting_values: bool = False, max_custom_targeting_values_per_key: int = 1000
+    ) -> dict[str, Any]:
         logger.info("[MOCK] Performing full sync")
         return {
             "tenant_id": self.tenant_id,
@@ -376,6 +380,21 @@ class MockGAMInventoryDiscovery:
             "labels": {"total": 0},
             "custom_targeting": {"total_keys": 0, "total_values": 0},
             "audience_segments": {"total": 0},
+        }
+
+    def sync_selective(
+        self,
+        sync_types: list[str],
+        custom_targeting_limit: int = 1000,
+        audience_segment_limit: int | None = None,
+    ) -> dict[str, Any]:
+        logger.info(f"[MOCK] Performing selective sync: {sync_types}")
+        return {
+            "tenant_id": self.tenant_id,
+            "sync_time": datetime.now().isoformat(),
+            "dry_run": True,
+            "sync_types": sync_types,
+            "duration_seconds": 0,
         }
 
     def build_ad_unit_tree(self):

@@ -13,6 +13,8 @@ from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 console = Console()
 
@@ -25,7 +27,7 @@ from src.core.validation_helpers import format_validation_error
 
 
 def _update_performance_index_impl(
-    media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None
+    media_buy_id: str, performance_data: list[dict[str, Any]], context: Context | ToolContext | None = None
 ) -> UpdatePerformanceIndexResponse:
     """Shared implementation for update_performance_index (used by both MCP and A2A).
 
@@ -52,15 +54,13 @@ def _update_performance_index_impl(
 
     _verify_principal(req.media_buy_id, context)
     principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
+    if principal_id is None:
+        raise ToolError("Principal ID not found in context - authentication required")
 
     # Get the Principal object
     principal = get_principal_object(principal_id)
     if not principal:
-        return UpdatePerformanceIndexResponse(
-            status="failed",
-            message=f"Principal {principal_id} not found",
-            errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
-        )
+        raise ToolError(f"Principal {principal_id} not found")
 
     # Get the appropriate adapter (no dry_run support for performance updates)
     adapter = get_adapter(principal, dry_run=False)
@@ -93,7 +93,10 @@ def _update_performance_index_impl(
 
 
 def update_performance_index(
-    media_buy_id: str, performance_data: list[dict[str, Any]], webhook_url: str | None = None, context: Context = None
+    media_buy_id: str,
+    performance_data: list[dict[str, Any]],
+    webhook_url: str | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Update performance index data for a media buy.
 
@@ -112,7 +115,9 @@ def update_performance_index(
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
-def update_performance_index_raw(media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None):
+def update_performance_index_raw(
+    media_buy_id: str, performance_data: list[dict[str, Any]], context: Context | ToolContext | None = None
+):
     """Update performance data for a media buy (raw function for A2A server use).
 
     Delegates to the shared implementation.

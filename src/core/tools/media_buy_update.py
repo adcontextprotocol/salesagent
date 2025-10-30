@@ -9,13 +9,15 @@ Handles media buy updates including:
 """
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from sqlalchemy import select
+
+from src.core.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +36,14 @@ from src.core.testing_hooks import get_testing_context
 from src.core.validation_helpers import format_validation_error
 
 
-def _verify_principal(media_buy_id: str, context: Context):
+def _verify_principal(media_buy_id: str, context: Context | ToolContext):
     """Verify that the principal from context owns the media buy.
 
     Checks database for media buy ownership, not in-memory dictionary.
 
     Args:
         media_buy_id: Media buy ID to verify
-        context: FastMCP context with principal info
+        context: FastMCP Context or ToolContext with principal info
 
     Raises:
         ValueError: Media buy not found
@@ -50,7 +52,11 @@ def _verify_principal(media_buy_id: str, context: Context):
 
     from src.core.database.models import MediaBuy as MediaBuyModel
 
-    principal_id = get_principal_id_from_context(context)
+    # Get principal_id from context
+    if isinstance(context, ToolContext):
+        principal_id: str | None = context.principal_id
+    else:
+        principal_id = get_principal_id_from_context(context)
     tenant = get_current_tenant()
 
     # Query database for media buy (try media_buy_id first, then buyer_ref)
@@ -91,7 +97,7 @@ def _update_media_buy_impl(
     flight_start_date: str | None = None,
     flight_end_date: str | None = None,
     budget: float | None = None,
-    currency: str | None = None,
+    currency_param: str | None = None,  # Renamed to avoid redefinition
     targeting_overlay: dict | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
@@ -100,7 +106,7 @@ def _update_media_buy_impl(
     packages: list | None = None,
     creatives: list | None = None,
     push_notification_config: dict | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ) -> UpdateMediaBuyResponse:
     """Shared implementation for update_media_buy (used by both MCP and A2A).
 
@@ -146,7 +152,7 @@ def _update_media_buy_impl(
             pacing_val = pacing  # type: ignore[assignment]
         budget_obj = Budget(
             total=budget,
-            currency=currency or "USD",  # Default to USD if not specified
+            currency=currency_param or "USD",  # Use renamed parameter
             pacing=pacing_val,  # Default pacing
             daily_cap=daily_budget,  # Map daily_budget to daily_cap
             auto_pause_on_budget_exhaustion=None,
@@ -174,6 +180,9 @@ def _update_media_buy_impl(
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="update_media_buy request")) from e
 
+    # Initialize tracking for affected packages (internal tracking, not part of schema)
+    affected_packages_list: list[dict] = []
+
     if context is None:
         raise ValueError("Context is required for update_media_buy")
 
@@ -183,6 +192,11 @@ def _update_media_buy_impl(
 
     _verify_principal(req.media_buy_id, context)
     principal_id = get_principal_id_from_context(context)  # Already verified by _verify_principal
+
+    # Verify principal_id is not None (get_principal_id_from_context should raise if None)
+    if principal_id is None:
+        raise ValueError("principal_id is required but was None")
+
     tenant = get_current_tenant()
 
     # Create or get persistent context
@@ -190,14 +204,18 @@ def _update_media_buy_impl(
     ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
     persistent_ctx = ctx_manager.get_or_create_context(
         tenant_id=tenant["tenant_id"],
-        principal_id=principal_id,
+        principal_id=principal_id,  # Now guaranteed to be str
         context_id=ctx_id,
         is_async=True,
     )
 
+    # Verify persistent_ctx is not None
+    if persistent_ctx is None:
+        raise ValueError("Failed to create or get persistent context")
+
     # Create workflow step for this tool call
     step = ctx_manager.create_workflow_step(
-        context_id=persistent_ctx.context_id,
+        context_id=persistent_ctx.context_id,  # Now safe to access
         step_type="tool_call",
         owner="principal",
         status="in_progress",
@@ -205,7 +223,7 @@ def _update_media_buy_impl(
         request_data=req.model_dump(mode="json"),  # Convert dates to strings
     )
 
-    principal = get_principal_object(principal_id)
+    principal = get_principal_object(principal_id)  # Now guaranteed to be str
     if not principal:
         error_msg = f"Principal {principal_id} not found"
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
@@ -297,15 +315,30 @@ def _update_media_buy_impl(
                 # Parse datetime strings if needed, handle 'asap' (AdCP v1.7.0)
                 from datetime import datetime as dt
 
+                # Convert to datetime objects
+                start_dt: datetime
+                end_dt: datetime
+
                 if isinstance(start, str):
                     if start == "asap":
-                        start = dt.now(UTC)
+                        start_dt = dt.now(UTC)
                     else:
-                        start = dt.fromisoformat(start.replace("Z", "+00:00"))
-                if isinstance(end, str):
-                    end = dt.fromisoformat(end.replace("Z", "+00:00"))
+                        start_dt = dt.fromisoformat(start.replace("Z", "+00:00"))
+                elif isinstance(start, datetime):
+                    start_dt = start
+                else:
+                    # Handle None or other types
+                    start_dt = dt.now(UTC)
 
-                flight_days = (end - start).days
+                if isinstance(end, str):
+                    end_dt = dt.fromisoformat(end.replace("Z", "+00:00"))
+                elif isinstance(end, datetime):
+                    end_dt = end
+                else:
+                    # Handle None - default to start + 1 day
+                    end_dt = start_dt + timedelta(days=1)
+
+                flight_days = (end_dt - start_dt).days
                 if flight_days <= 0:
                     flight_days = 1
 
@@ -350,7 +383,8 @@ def _update_media_buy_impl(
             today=datetime.combine(today, datetime.min.time()),
         )
         if result.errors:
-            return result
+            # Convert schemas.UpdateMediaBuyResponse to schema_adapters.UpdateMediaBuyResponse
+            return UpdateMediaBuyResponse(**result.model_dump())
 
     # Handle package-level updates
     if req.packages:
@@ -367,15 +401,14 @@ def _update_media_buy_impl(
                     today=datetime.combine(today, datetime.min.time()),
                 )
                 if result.errors:
-                    error_message = (
-                        result.errors[0].get("message", "Update failed") if result.errors else "Update failed"
-                    )
+                    error_message = result.errors[0].message if result.errors else "Update failed"
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
                         error_message=error_message,
                     )
-                    return result
+                    # Convert schemas.UpdateMediaBuyResponse to schema_adapters.UpdateMediaBuyResponse
+                    return UpdateMediaBuyResponse(**result.model_dump())
 
             # Handle budget updates
             if pkg_update.budget is not None:
@@ -399,20 +432,17 @@ def _update_media_buy_impl(
                     today=datetime.combine(today, datetime.min.time()),
                 )
                 if result.errors:
-                    error_message = (
-                        result.errors[0].get("message", "Update failed") if result.errors else "Update failed"
-                    )
+                    error_message = result.errors[0].message if result.errors else "Update failed"
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
                         error_message=error_message,
                     )
-                    return result
+                    # Convert schemas.UpdateMediaBuyResponse to schema_adapters.UpdateMediaBuyResponse
+                    return UpdateMediaBuyResponse(**result.model_dump())
 
                 # Track budget update in affected_packages
-                if not hasattr(req, "_affected_packages"):
-                    req._affected_packages = []
-                req._affected_packages.append(
+                affected_packages_list.append(
                     {
                         "buyer_package_ref": pkg_update.package_id,
                         "changes_applied": {"budget": {"updated": budget_amount, "currency": currency}},
@@ -521,9 +551,7 @@ def _update_media_buy_impl(
                     session.commit()
 
                     # Store results for affected_packages response
-                    if not hasattr(req, "_affected_packages"):
-                        req._affected_packages = []
-                    req._affected_packages.append(
+                    affected_packages_list.append(
                         {
                             "buyer_package_ref": pkg_update.package_id,
                             "changes_applied": {
@@ -540,14 +568,14 @@ def _update_media_buy_impl(
     if req.budget is not None:
         # Extract budget amount - handle both float and Budget object
         total_budget: float
-        currency: str
+        budget_currency: str  # Renamed to avoid redefinition
         if isinstance(req.budget, int | float):
             total_budget = float(req.budget)
-            currency = "USD"  # Default currency for float budgets
+            budget_currency = "USD"  # Default currency for float budgets
         else:
             # Budget object with .total and .currency attributes
             total_budget = float(req.budget.total)
-            currency = req.budget.currency if hasattr(req.budget, "currency") else "USD"
+            budget_currency = req.budget.currency if hasattr(req.budget, "currency") else "USD"
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
@@ -563,41 +591,39 @@ def _update_media_buy_impl(
         # Note: In-memory media_buys dict removed after refactor
         # Media buys are persisted in database, not in-memory state
         if req.budget:
-            from sqlalchemy import update
+            from sqlalchemy import update as sqlalchemy_update
 
             from src.core.database.models import MediaBuy
 
             with get_db_session() as db_session:
-                stmt = (
-                    update(MediaBuy)
+                update_stmt = (
+                    sqlalchemy_update(MediaBuy)
                     .where(MediaBuy.media_buy_id == req.media_buy_id)
-                    .values(budget=total_budget, currency=currency)
+                    .values(budget=total_budget, currency=budget_currency)
                 )
-                db_session.execute(stmt)
+                db_session.execute(update_stmt)
                 db_session.commit()
                 logger.info(
-                    f"[update_media_buy] Updated MediaBuy {req.media_buy_id} budget to {total_budget} {currency}"
+                    f"[update_media_buy] Updated MediaBuy {req.media_buy_id} budget to {total_budget} {budget_currency}"
                 )
 
             # Track top-level budget update in affected_packages
             # When top-level budget changes, all packages are affected
-            if not hasattr(req, "_affected_packages"):
-                req._affected_packages = []
-
             # Get all packages for this media buy from database to report them as affected
             from src.core.database.models import MediaPackage as MediaPackageModel
 
             with get_db_session() as db_session:
                 stmt_packages = select(MediaPackageModel).filter_by(media_buy_id=req.media_buy_id)
-                packages = db_session.scalars(stmt_packages).all()
+                packages_result = list(db_session.scalars(stmt_packages).all())
 
-                for pkg in packages:
-                    package_ref = pkg.package_id if pkg.package_id else pkg.buyer_ref
+                for pkg in packages_result:
+                    # MediaPackage uses package_id as primary identifier
+                    package_ref = pkg.package_id if pkg.package_id else None
                     if package_ref:
-                        req._affected_packages.append(
+                        affected_packages_list.append(
                             {
                                 "buyer_package_ref": package_ref,
-                                "changes_applied": {"budget": {"updated": total_budget, "currency": currency}},
+                                "changes_applied": {"budget": {"updated": total_budget, "currency": budget_currency}},
                             }
                         )
 
@@ -636,14 +662,13 @@ def _update_media_buy_impl(
     )
 
     # Build affected_packages from stored results
-    affected_packages = getattr(req, "_affected_packages", [])
-    logger.info(f"[update_media_buy] Final affected_packages before return: {affected_packages}")
+    logger.info(f"[update_media_buy] Final affected_packages before return: {affected_packages_list}")
 
     return UpdateMediaBuyResponse(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
         implementation_date=None,
-        affected_packages=affected_packages if affected_packages else None,
+        affected_packages=affected_packages_list if affected_packages_list else None,
     )
 
 
@@ -663,7 +688,7 @@ def update_media_buy(
     packages: list = None,
     creatives: list = None,
     push_notification_config: dict | None = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """Update a media buy with campaign-level and/or package-level changes.
 
@@ -697,7 +722,7 @@ def update_media_buy(
         flight_start_date=flight_start_date,
         flight_end_date=flight_end_date,
         budget=budget,
-        currency=currency,
+        currency_param=currency,  # Pass as currency_param
         targeting_overlay=targeting_overlay,
         start_time=start_time,
         end_time=end_time,
@@ -727,7 +752,7 @@ def update_media_buy_raw(
     packages: list = None,
     creatives: list = None,
     push_notification_config: dict = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """Update an existing media buy (raw function for A2A server use).
 
@@ -761,7 +786,7 @@ def update_media_buy_raw(
         flight_start_date=flight_start_date,
         flight_end_date=flight_end_date,
         budget=budget,
-        currency=currency,
+        currency_param=currency,  # Pass as currency_param
         targeting_overlay=targeting_overlay,
         start_time=start_time,
         end_time=end_time,

@@ -12,6 +12,8 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 
 from src.core.auth import get_principal_from_context, get_principal_object
@@ -21,15 +23,19 @@ from src.core.schemas import GetSignalsRequest, Signal, SignalDeployment, Signal
 from src.core.testing_hooks import get_testing_context
 
 
-def _get_principal_id_from_context(context: Context | None) -> str | None:
-    """Extract principal ID from the FastMCP context."""
+def _get_principal_id_from_context(context: Context | ToolContext | None) -> str | None:
+    """Extract principal ID from the FastMCP Context or ToolContext."""
     if not context:
         return None
+    # ToolContext has principal_id directly
+    if isinstance(context, ToolContext):
+        return context.principal_id
+    # FastMCP Context needs extraction
     principal_id, _ = get_principal_from_context(context, require_valid_token=False)
     return principal_id
 
 
-async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:
+async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolContext | None = None) -> GetSignalsResponse:
     """Shared implementation for get_signals (used by both MCP and A2A).
 
     Args:
@@ -70,6 +76,10 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
                 )
             ],
             pricing=SignalPricing(cpm=3.0, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
         Signal(
             signal_agent_segment_id="luxury_travel_enthusiasts",
@@ -81,12 +91,18 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
             deployments=[
                 SignalDeployment(
                     platform="google_ad_manager",
+                    account=None,
                     is_live=True,
                     scope="platform-wide",
+                    decisioning_platform_segment_id=None,
                     estimated_activation_duration_minutes=15,
                 )
             ],
             pricing=SignalPricing(cpm=5.0, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
         Signal(
             signal_agent_segment_id="sports_content",
@@ -98,12 +114,18 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
             deployments=[
                 SignalDeployment(
                     platform="google_ad_manager",
+                    account=None,
                     is_live=True,
                     scope="account-specific",
                     decisioning_platform_segment_id="sports_contextual",
+                    estimated_activation_duration_minutes=None,
                 )
             ],
             pricing=SignalPricing(cpm=1.5, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
         Signal(
             signal_agent_segment_id="finance_content",
@@ -112,8 +134,21 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
             signal_type="owned",
             data_provider="Financial News Corp",
             coverage_percentage=88.0,
-            deployments=[SignalDeployment(platform="google_ad_manager", is_live=True, scope="platform-wide")],
+            deployments=[
+                SignalDeployment(
+                    platform="google_ad_manager",
+                    account=None,
+                    is_live=True,
+                    scope="platform-wide",
+                    decisioning_platform_segment_id=None,
+                    estimated_activation_duration_minutes=None,
+                )
+            ],
             pricing=SignalPricing(cpm=2.0, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
         Signal(
             signal_agent_segment_id="urban_millennials",
@@ -125,12 +160,18 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
             deployments=[
                 SignalDeployment(
                     platform="google_ad_manager",
+                    account=None,
                     is_live=True,
                     scope="account-specific",
+                    decisioning_platform_segment_id=None,
                     estimated_activation_duration_minutes=30,
                 )
             ],
             pricing=SignalPricing(cpm=1.8, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
         Signal(
             signal_agent_segment_id="pet_owners",
@@ -139,8 +180,21 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
             signal_type="marketplace",
             data_provider="Lifestyle Data Inc",
             coverage_percentage=92.0,
-            deployments=[SignalDeployment(platform="google_ad_manager", is_live=True, scope="platform-wide")],
+            deployments=[
+                SignalDeployment(
+                    platform="google_ad_manager",
+                    account=None,
+                    is_live=True,
+                    scope="platform-wide",
+                    decisioning_platform_segment_id=None,
+                    estimated_activation_duration_minutes=None,
+                )
+            ],
             pricing=SignalPricing(cpm=1.2, currency="USD"),
+            tenant_id=None,
+            created_at=None,
+            updated_at=None,
+            metadata=None,
         ),
     ]
 
@@ -188,7 +242,7 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context = None) -> 
     return GetSignalsResponse(signals=signals)
 
 
-async def get_signals(req: GetSignalsRequest, context: Context = None):
+async def get_signals(req: GetSignalsRequest, context: Context | ToolContext | None = None):
     """Optional endpoint for discovering available signals (audiences, contextual, etc.)
 
     MCP tool wrapper that delegates to the shared implementation.
@@ -208,7 +262,7 @@ async def _activate_signal_impl(
     signal_id: str,
     campaign_id: str = None,
     media_buy_id: str = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ) -> ActivateSignalResponse:
     """Shared implementation for activate_signal (used by both MCP and A2A).
 
@@ -304,7 +358,7 @@ async def activate_signal(
     signal_id: str,
     campaign_id: str = None,
     media_buy_id: str = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """Activate a signal for use in campaigns.
 
@@ -323,7 +377,7 @@ async def activate_signal(
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
-async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:
+async def get_signals_raw(req: GetSignalsRequest, context: Context | ToolContext | None = None) -> GetSignalsResponse:
     """Optional endpoint for discovering available signals (raw function for A2A server use).
 
     Delegates to the shared implementation.
@@ -342,7 +396,7 @@ async def activate_signal_raw(
     signal_id: str,
     campaign_id: str = None,
     media_buy_id: str = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ) -> ActivateSignalResponse:
     """Activate a signal for use in campaigns (raw function for A2A server use).
 

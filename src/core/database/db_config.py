@@ -71,7 +71,7 @@ class DatabaseConnection:
 
     def __init__(self):
         self.config = DatabaseConfig.get_db_config()
-        self.connection = None
+        self.connection: Any | None = None
 
     def connect(self):
         """Connect to PostgreSQL database."""
@@ -92,6 +92,8 @@ class DatabaseConnection:
 
     def execute(self, query: str, params: tuple | None = None):
         """Execute a query with parameter substitution."""
+        if self.connection is None:
+            raise RuntimeError("Connection not established. Call connect() first.")
         cursor = self.connection.cursor()
 
         if params:
@@ -103,6 +105,8 @@ class DatabaseConnection:
 
     def cursor(self):
         """Get a database cursor."""
+        if self.connection is None:
+            raise RuntimeError("Connection not established. Call connect() first.")
         return self.connection.cursor()
 
     def commit(self):

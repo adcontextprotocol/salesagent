@@ -207,7 +207,7 @@ class AuditLogger:
                     should_notify = True
 
             if should_notify:
-                from src.core.utils.tenant_utils import tenant_to_dict
+                from src.core.utils.tenant_utils import serialize_tenant_to_dict
                 from src.services.slack_notifier import get_slack_notifier
 
                 # Get tenant config for Slack notifier
@@ -220,7 +220,7 @@ class AuditLogger:
                             stmt = select(Tenant).filter_by(tenant_id=tenant_id)
                             tenant = db_session.scalars(stmt).first()
                             if tenant:
-                                tenant_config = tenant_to_dict(tenant)
+                                tenant_config = serialize_tenant_to_dict(tenant)
                     except:
                         pass
 
@@ -278,7 +278,7 @@ class AuditLogger:
 
         # Send security alert to Slack
         try:
-            from src.core.utils.tenant_utils import tenant_to_dict
+            from src.core.utils.tenant_utils import serialize_tenant_to_dict
             from src.services.slack_notifier import get_slack_notifier
 
             # Get tenant name and config
@@ -293,7 +293,7 @@ class AuditLogger:
                         tenant = db_session.scalars(stmt).first()
                         if tenant:
                             tenant_name = tenant.name
-                            tenant_config = tenant_to_dict(tenant)
+                            tenant_config = serialize_tenant_to_dict(tenant)
                 except:
                     pass
 

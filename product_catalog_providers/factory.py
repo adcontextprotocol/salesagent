@@ -1,6 +1,6 @@
 """Factory for creating product catalog providers based on configuration."""
 
-from typing import Any
+from typing import Any, cast
 
 from .ai import AIProductCatalog
 from .base import ProductCatalogProvider
@@ -60,8 +60,8 @@ async def get_product_catalog_provider(tenant_id: str, tenant_config: dict[str, 
         raise ValueError(f"Unknown product catalog provider: {provider_type}")
 
     # Create provider instance
-    provider_class = PROVIDER_REGISTRY[provider_type]
-    provider = provider_class(provider_config)
+    provider_class: type[ProductCatalogProvider] = cast(type[ProductCatalogProvider], PROVIDER_REGISTRY[provider_type])
+    provider: ProductCatalogProvider = provider_class(provider_config)
 
     # Initialize if needed
     await provider.initialize()

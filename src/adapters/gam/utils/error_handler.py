@@ -215,7 +215,7 @@ def with_retry(
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args, **kwargs) -> T:
-            last_exception = None
+            last_exception: GAMError | None = None
             op_name = operation_name or func.__name__
 
             for attempt in range(retry_config.max_attempts):
@@ -275,7 +275,13 @@ def with_retry(
                         raise gam_error
 
             # All retries exhausted
-            error_dict = last_exception.to_dict() if last_exception else {}
+            if last_exception is None:
+                # This should never happen, but handle it gracefully
+                raise RuntimeError(
+                    f"{op_name} failed after {retry_config.max_attempts} attempts with no exception recorded"
+                )
+
+            error_dict = last_exception.to_dict()
             # Remove 'message' key to avoid conflict with logging system
             error_dict.pop("message", None)
             logger.error(f"{op_name} failed after {retry_config.max_attempts} attempts", extra=error_dict)

@@ -87,8 +87,8 @@ class GAMInventoryService:
         total_updated = 0
 
         # Prepare batch insert and update lists
-        to_insert = []
-        to_update = []
+        to_insert: list[dict[str, Any]] = []
+        to_update: list[dict[str, Any]] = []
 
         def flush_batch():
             """Flush current batch to database with error handling."""
@@ -220,23 +220,23 @@ class GAMInventoryService:
         logger.info("Completed saving labels")
 
         # Process custom targeting keys
-        for key in discovery.custom_targeting_keys.values():
+        for targeting_key in discovery.custom_targeting_keys.values():
             item_data = {
                 "tenant_id": tenant_id,
                 "inventory_type": "custom_targeting_key",
-                "inventory_id": key.id,
-                "name": key.name,
-                "path": [key.display_name],
-                "status": key.status,
+                "inventory_id": targeting_key.id,
+                "name": targeting_key.name,
+                "path": [targeting_key.display_name],
+                "status": targeting_key.status,
                 "inventory_metadata": {
-                    "display_name": key.display_name,
-                    "type": key.type,  # PREDEFINED or FREEFORM
-                    "reportable_type": key.reportable_type,
+                    "display_name": targeting_key.display_name,
+                    "type": targeting_key.type,  # PREDEFINED or FREEFORM
+                    "reportable_type": targeting_key.reportable_type,
                 },
                 "last_synced": sync_time,
             }
 
-            item_key = ("custom_targeting_key", key.id)
+            item_key = ("custom_targeting_key", targeting_key.id)
             if item_key in existing_ids:
                 item_data["id"] = existing_ids[item_key]
                 to_update.append(item_data)
@@ -244,21 +244,21 @@ class GAMInventoryService:
                 to_insert.append(item_data)
 
             # Process values for this key
-            values = discovery.custom_targeting_values.get(key.id, [])
+            values = discovery.custom_targeting_values.get(targeting_key.id, [])
             for value in values:
                 value_data = {
                     "tenant_id": tenant_id,
                     "inventory_type": "custom_targeting_value",
                     "inventory_id": value.id,
                     "name": value.name,
-                    "path": [key.display_name, value.display_name],
+                    "path": [targeting_key.display_name, value.display_name],
                     "status": value.status,
                     "inventory_metadata": {
                         "custom_targeting_key_id": value.custom_targeting_key_id,
                         "display_name": value.display_name,
                         "match_type": value.match_type,
-                        "key_name": key.name,
-                        "key_display_name": key.display_name,
+                        "key_name": targeting_key.name,
+                        "key_display_name": targeting_key.display_name,
                     },
                     "last_synced": sync_time,
                 }
@@ -319,7 +319,7 @@ class GAMInventoryService:
         # Don't mark ad units as STALE - they should remain ACTIVE
         from sqlalchemy import update
 
-        stmt = (
+        update_stmt = (
             update(GAMInventory)
             .where(
                 and_(
@@ -330,7 +330,7 @@ class GAMInventoryService:
             )
             .values(status="STALE")
         )
-        self.db.execute(stmt)
+        self.db.execute(update_stmt)
         self.db.commit()
 
         logger.info(
@@ -413,7 +413,7 @@ class GAMInventoryService:
                 max_values_per_key=None,
                 fetch_values=False,  # Don't fetch values  # Lazy load values on demand
             )
-            self._write_custom_targeting_keys(tenant_id, discovery.custom_targeting_keys.values(), sync_time)
+            self._write_custom_targeting_keys(tenant_id, list(discovery.custom_targeting_keys.values()), sync_time)
             counts["custom_targeting_keys"] = len(discovery.custom_targeting_keys)
             counts["custom_targeting_values"] = custom_targeting.get("total_values", 0)
             discovery.custom_targeting_keys.clear()  # Clear from memory
@@ -483,8 +483,8 @@ class GAMInventoryService:
         existing_ids = {row.inventory_id: row.id for row in existing}
         logger.info(f"✅ Found {len(existing_ids)} existing {inventory_type} items")
 
-        to_insert = []
-        to_update = []
+        to_insert: list[dict[str, Any]] = []
+        to_update: list[dict[str, Any]] = []
         batch_num = 0
 
         logger.info(f"🔄 Processing {len(items)} items (batch size: {BATCH_SIZE})...")
@@ -546,8 +546,8 @@ class GAMInventoryService:
         existing = self.db.execute(stmt).all()
         existing_ids = {row.inventory_id: row.id for row in existing}
 
-        to_insert = []
-        to_update = []
+        to_insert: list[dict[str, Any]] = []
+        to_update: list[dict[str, Any]] = []
 
         for key in keys:
             item_data = {
@@ -685,11 +685,13 @@ class GAMInventoryService:
         try:
             if to_insert:
                 logger.info(f"📝 Starting bulk insert of {len(to_insert)} items...")
-                self.db.bulk_insert_mappings(GAMInventory, to_insert)
+                # Type ignore: bulk_insert_mappings accepts model class, not mapper
+                self.db.bulk_insert_mappings(GAMInventory, to_insert)  # type: ignore[arg-type]
                 logger.info(f"✅ Batch inserted {len(to_insert)} items")
             if to_update:
                 logger.info(f"📝 Starting bulk update of {len(to_update)} items...")
-                self.db.bulk_update_mappings(GAMInventory, to_update)
+                # Type ignore: bulk_update_mappings accepts model class, not mapper
+                self.db.bulk_update_mappings(GAMInventory, to_update)  # type: ignore[arg-type]
                 logger.info(f"✅ Batch updated {len(to_update)} items")
             logger.info("💾 Committing batch transaction (120s timeout)...")
             _commit_with_timeout()
@@ -708,10 +710,11 @@ class GAMInventoryService:
             logger.error(f"   Insert count: {len(to_insert)}, Update count: {len(to_update)}")
             logger.error("   Connection may have been lost during long-running sync")
             self.db.rollback()
+            # Re-raise the original error with additional context
             raise OperationalError(
                 "Database connection lost during batch write. This can happen in long-running syncs if the connection times out.",
                 params=None,
-                orig=e.orig if hasattr(e, "orig") else None,
+                orig=e.orig if hasattr(e, "orig") and e.orig is not None else Exception("Unknown error"),
             )
         except Exception as e:
             logger.error(f"❌ Batch write failed: {e}", exc_info=True)
@@ -787,7 +790,8 @@ class GAMInventoryService:
             existing.path = path
             existing.status = status
             existing.inventory_metadata = inventory_metadata
-            existing.last_synced = last_synced
+            # Properly assign datetime to DateTime column
+            existing.last_synced = last_synced  # type: ignore[assignment]
         else:
             # Insert new
             item = GAMInventory(
@@ -858,12 +862,20 @@ class GAMInventoryService:
         for unit in ad_units:
             parent_id = unit.inventory_metadata.get("parent_id") if unit.inventory_metadata else None
             if parent_id and parent_id in unit_map:
-                unit_map[parent_id]["children"].append(unit_map[unit.inventory_id])
+                children_list = unit_map[parent_id]["children"]
+                if isinstance(children_list, list):
+                    children_list.append(unit_map[unit.inventory_id])
 
         # Get last sync info from gam_inventory table
-        stmt = select(func.max(GAMInventory.last_synced)).where(GAMInventory.tenant_id == tenant_id)
-        last_sync_result = self.db.scalar(stmt)
-        last_sync = last_sync_result.isoformat() if last_sync_result else None
+        last_sync_stmt = select(func.max(GAMInventory.last_synced)).where(GAMInventory.tenant_id == tenant_id)
+        last_sync_result = self.db.scalar(last_sync_stmt)
+        # last_sync_result is a datetime object from func.max(), not DateTime column
+        last_sync: str | None = None
+        if last_sync_result is not None:
+            from datetime import datetime
+
+            if isinstance(last_sync_result, datetime):
+                last_sync = last_sync_result.isoformat()
 
         # Get counts for other inventory types
         placements_count = (
@@ -1021,12 +1033,13 @@ class GAMInventoryService:
                 "path": item.path,
                 "status": item.status,
                 "metadata": item.inventory_metadata,
-                "last_synced": item.last_synced.isoformat(),
+                # item.last_synced is a datetime object from the database, not DateTime column
+                "last_synced": (item.last_synced.isoformat() if isinstance(item.last_synced, datetime) else None),
             }
             for item in results
         ]
 
-    def get_product_inventory(self, tenant_id: str, product_id: str) -> dict[str, Any]:
+    def get_product_inventory(self, tenant_id: str, product_id: str) -> dict[str, Any] | None:
         """
         Get inventory mappings for a product.
 
@@ -1035,34 +1048,34 @@ class GAMInventoryService:
             product_id: Product ID
 
         Returns:
-            Product inventory configuration
+            Product inventory configuration or None if product not found
         """
         # Get product
-        stmt = select(Product).where(and_(Product.tenant_id == tenant_id, Product.product_id == product_id))
-        product = self.db.scalars(stmt).first()
+        product_stmt = select(Product).where(and_(Product.tenant_id == tenant_id, Product.product_id == product_id))
+        product = self.db.scalars(product_stmt).first()
 
         if not product:
             return None
 
         # Get mappings
-        stmt = select(ProductInventoryMapping).where(
+        mappings_stmt = select(ProductInventoryMapping).where(
             and_(ProductInventoryMapping.tenant_id == tenant_id, ProductInventoryMapping.product_id == product_id)
         )
-        mappings = self.db.scalars(stmt).all()
+        mappings = self.db.scalars(mappings_stmt).all()
 
         # Get inventory details
         ad_units = []
         placements = []
 
         for mapping in mappings:
-            stmt = select(GAMInventory).where(
+            inventory_stmt = select(GAMInventory).where(
                 and_(
                     GAMInventory.tenant_id == tenant_id,
                     GAMInventory.inventory_type == mapping.inventory_type,
                     GAMInventory.inventory_id == mapping.inventory_id,
                 )
             )
-            inventory = self.db.scalars(stmt).first()
+            inventory = self.db.scalars(inventory_stmt).first()
 
             if inventory:
                 item = {
@@ -1109,17 +1122,17 @@ class GAMInventoryService:
         """
         try:
             # Verify product exists
-            stmt = select(Product).where(and_(Product.tenant_id == tenant_id, Product.product_id == product_id))
-            product = self.db.scalars(stmt).first()
+            product_stmt = select(Product).where(and_(Product.tenant_id == tenant_id, Product.product_id == product_id))
+            product = self.db.scalars(product_stmt).first()
 
             if not product:
                 return False
 
             # Delete existing mappings
-            stmt = delete(ProductInventoryMapping).where(
+            delete_stmt = delete(ProductInventoryMapping).where(
                 and_(ProductInventoryMapping.tenant_id == tenant_id, ProductInventoryMapping.product_id == product_id)
             )
-            self.db.execute(stmt)
+            self.db.execute(delete_stmt)
 
             # Add new ad unit mappings
             for ad_unit_id in ad_unit_ids:
@@ -1173,18 +1186,18 @@ class GAMInventoryService:
             List of suggested inventory items with scores
         """
         # Get product
-        stmt = select(Product).where(and_(Product.tenant_id == tenant_id, Product.product_id == product_id))
-        product = self.db.scalars(stmt).first()
+        product_stmt = select(Product).where(and_(Product.tenant_id == tenant_id, Product.product_id == product_id))
+        product = self.db.scalars(product_stmt).first()
 
         if not product:
             return []
 
         # Extract product characteristics
-        creative_sizes = []
+        creative_sizes: list[dict[str, int]] = []
         if product.formats:
             # Parse formats to get sizes
             for format_id in product.formats:
-                if "display" in format_id:
+                if isinstance(format_id, str) and "display" in format_id:
                     # Extract size from format like "display_300x250"
                     parts = format_id.split("_")
                     if len(parts) > 1 and "x" in parts[1]:
@@ -1192,31 +1205,32 @@ class GAMInventoryService:
                         creative_sizes.append({"width": int(width), "height": int(height)})
 
         # Get keywords from product name and description
-        keywords = []
+        keywords: list[str] = []
         if product.name:
             keywords.extend(product.name.lower().split())
         if product.description:
             keywords.extend(product.description.lower().split()[:5])  # First 5 words
 
         # Search for matching ad units
-        suggestions = []
+        suggestions: list[dict[str, Any]] = []
 
         # Get active ad units
-        stmt = select(GAMInventory).where(
+        ad_units_stmt = select(GAMInventory).where(
             and_(
                 GAMInventory.tenant_id == tenant_id,
                 GAMInventory.inventory_type == "ad_unit",
                 GAMInventory.status == "ACTIVE",
             )
         )
-        ad_units = self.db.scalars(stmt).all()
+        ad_units = self.db.scalars(ad_units_stmt).all()
 
         for unit in ad_units:
             score = 0
-            reasons = []
+            reasons: list[str] = []
 
             # Check size match
-            unit_sizes = unit.inventory_metadata.get("sizes", [])
+            unit_metadata = unit.inventory_metadata if unit.inventory_metadata else {}
+            unit_sizes = unit_metadata.get("sizes", [])
             for creative_size in creative_sizes:
                 for unit_size in unit_sizes:
                     if unit_size["width"] == creative_size["width"] and unit_size["height"] == creative_size["height"]:
@@ -1224,29 +1238,31 @@ class GAMInventoryService:
                         reasons.append(f"Size match: {unit_size['width']}x{unit_size['height']}")
 
             # Check keyword match
-            unit_text = " ".join([unit.name.lower()] + [p.lower() for p in unit.path])
+            unit_path_strs = [str(p).lower() for p in unit.path] if unit.path else []
+            unit_text = " ".join([unit.name.lower()] + unit_path_strs)
             for keyword in keywords:
                 if keyword in unit_text:
                     score += 5
                     reasons.append(f"Keyword match: {keyword}")
 
             # Prefer explicitly targeted units
-            if unit.inventory_metadata.get("explicitly_targeted"):
+            if unit_metadata.get("explicitly_targeted"):
                 score += 3
                 reasons.append("Explicitly targeted")
 
             # Prefer specific placements
-            if len(unit.path) > 2:
+            if unit.path and len(unit.path) > 2:
                 score += 2
                 reasons.append("Specific placement")
 
             if score > 0:
+                path_str = " > ".join([str(p) for p in unit.path]) if unit.path else ""
                 suggestions.append(
                     {
                         "inventory": {
                             "id": unit.inventory_id,
                             "name": unit.name,
-                            "path": " > ".join(unit.path),
+                            "path": path_str,
                             "sizes": unit_sizes,
                         },
                         "score": score,
@@ -1255,7 +1271,7 @@ class GAMInventoryService:
                 )
 
         # Sort by score and limit
-        suggestions.sort(key=lambda x: x["score"], reverse=True)
+        suggestions.sort(key=lambda x: int(x["score"]), reverse=True)  # type: ignore[arg-type, return-value]
         return suggestions[:limit]
 
     def get_all_targeting_data(self, tenant_id: str) -> dict[str, Any]:
@@ -1279,7 +1295,7 @@ class GAMInventoryService:
         custom_keys = self.db.scalars(stmt).all()
 
         # Get custom targeting values grouped by key
-        custom_values = {}
+        custom_values: dict[str, list[dict[str, str]]] = {}
         stmt = select(GAMInventory).where(
             and_(
                 GAMInventory.tenant_id == tenant_id,
@@ -1327,9 +1343,15 @@ class GAMInventoryService:
         labels = self.db.scalars(stmt).all()
 
         # Get last sync info from gam_inventory table
-        stmt = select(func.max(GAMInventory.last_synced)).where(GAMInventory.tenant_id == tenant_id)
-        last_sync_result = self.db.scalar(stmt)
-        last_sync = last_sync_result.isoformat() if last_sync_result else None
+        last_sync_stmt_2 = select(func.max(GAMInventory.last_synced)).where(GAMInventory.tenant_id == tenant_id)
+        last_sync_result_2 = self.db.scalar(last_sync_stmt_2)
+        last_sync_2: str | None = None
+        if last_sync_result_2 is not None:
+            from datetime import datetime
+
+            if isinstance(last_sync_result_2, datetime):
+                last_sync_2 = last_sync_result_2.isoformat()
+        last_sync = last_sync_2
 
         # Format response
         return {
@@ -1375,10 +1397,12 @@ class GAMInventoryService:
                 {
                     "id": label.inventory_id,
                     "name": label.name,
-                    "description": label.inventory_metadata.get("description"),
+                    "description": label.inventory_metadata.get("description") if label.inventory_metadata else None,
                     "is_active": label.status == "ACTIVE",
-                    "ad_category": label.inventory_metadata.get("ad_category"),
-                    "label_type": label.inventory_metadata.get("label_type", "UNKNOWN"),
+                    "ad_category": label.inventory_metadata.get("ad_category") if label.inventory_metadata else None,
+                    "label_type": (
+                        label.inventory_metadata.get("label_type", "UNKNOWN") if label.inventory_metadata else "UNKNOWN"
+                    ),
                 }
                 for label in labels
             ],

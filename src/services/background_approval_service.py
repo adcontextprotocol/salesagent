@@ -88,28 +88,33 @@ def _run_approval_polling_thread(
             f"(interval={polling_interval_seconds}s, max_duration={max_polling_duration_minutes}m)"
         )
 
-        # Get adapter and client for GAM operations
-        from src.adapters import get_adapter
+        # Get GAM client manager for approval operations
+        from src.adapters.gam.client import GAMClientManager
+        from src.adapters.gam.managers.orders import GAMOrdersManager
 
-        adapter = None
+        orders_manager = None
         try:
             with get_db_session() as db:
-                # Get tenant principal for adapter initialization
-                from src.core.database.models import AdapterConfig, Principal
+                # Get adapter config for GAM
+                from src.core.database.models import AdapterConfig
 
-                stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
+                stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type="google_ad_manager")
                 adapter_config = db.scalars(stmt).first()
                 if not adapter_config:
-                    raise ValueError(f"No adapter config found for tenant {tenant_id}")
+                    raise ValueError(f"No GAM adapter config found for tenant {tenant_id}")
 
-                # Get any principal for this tenant (for adapter initialization)
-                principal_stmt = select(Principal).filter_by(tenant_id=tenant_id)
-                principal = db.scalars(principal_stmt).first()
-                if not principal:
-                    raise ValueError(f"No principal found for tenant {tenant_id}")
+                if not adapter_config.gam_network_code:
+                    raise ValueError(f"GAM network code not configured for tenant {tenant_id}")
 
-            # Initialize adapter
-            adapter = get_adapter(tenant_id=tenant_id, principal=principal, dry_run=False)
+            # Build config dict from adapter_config
+            config_dict = {
+                "refresh_token": adapter_config.gam_refresh_token,
+                "service_account_json": adapter_config.gam_service_account_json,
+            }
+
+            # Initialize GAM client and orders manager
+            client_manager = GAMClientManager(config_dict, adapter_config.gam_network_code)
+            orders_manager = GAMOrdersManager(client_manager, dry_run=False)
 
         except Exception as e:
             logger.error(f"[{workflow_step_id}] Failed to initialize adapter: {e}")
@@ -145,7 +150,7 @@ def _run_approval_polling_thread(
             # Attempt approval (single retry)
             logger.info(f"[{workflow_step_id}] Approval attempt {attempt} for order {order_id}")
             try:
-                approval_success = adapter.orders_manager.approve_order(order_id, max_retries=1)
+                approval_success = orders_manager.approve_order(order_id, max_retries=1)
 
                 if approval_success:
                     logger.info(f"[{workflow_step_id}] ✓ Order {order_id} approved successfully")
@@ -195,9 +200,7 @@ def _update_approval_progress(workflow_step_id: str, progress_data: dict) -> Non
         logger.warning(f"Failed to update approval progress: {e}")
 
 
-def _mark_approval_complete(
-    workflow_step_id: str, order_id: str, attempts: int, elapsed_seconds: float
-) -> None:
+def _mark_approval_complete(workflow_step_id: str, order_id: str, attempts: int, elapsed_seconds: float) -> None:
     """Mark approval as completed in workflow step."""
     try:
         with get_db_session() as db:
@@ -205,7 +208,7 @@ def _mark_approval_complete(
             workflow_step = db.scalars(stmt).first()
             if workflow_step:
                 workflow_step.status = "completed"
-                workflow_step.completed_at = datetime.now(UTC)
+                workflow_step.completed_at = datetime.now(UTC)  # type: ignore[assignment]
 
                 # Update transaction details
                 if not workflow_step.transaction_details:
@@ -242,7 +245,7 @@ def _mark_approval_failed(workflow_step_id: str, error_message: str) -> None:
             workflow_step = db.scalars(stmt).first()
             if workflow_step:
                 workflow_step.status = "failed"
-                workflow_step.completed_at = datetime.now(UTC)
+                workflow_step.completed_at = datetime.now(UTC)  # type: ignore[assignment]
                 workflow_step.error_message = error_message
 
                 # Update transaction details
@@ -273,18 +276,9 @@ def _send_approval_webhook(tenant_id: str, order_id: str, workflow_step_id: str,
                 logger.warning(f"No media buy found for order {order_id}, cannot send webhook")
                 return
 
-            # Check if media buy has push notification config
-            if not media_buy.push_notification_config_id:
-                logger.info(f"No push notification config for media buy {order_id}, skipping webhook")
-                return
-
-        # Send webhook notification via webhook delivery service
-        from src.services.webhook_delivery_service import send_media_buy_status_webhook
-
-        logger.info(f"Sending webhook notification for order {order_id} (status={status})")
-        send_media_buy_status_webhook(
-            tenant_id=tenant_id, media_buy_id=order_id, status=status, workflow_step_id=workflow_step_id
-        )
+            # TODO: Implement webhook notification once push_notification_config_id is added to MediaBuy model
+            # and webhook delivery service has the appropriate function
+            logger.info(f"Webhook notification for order {order_id} (status={status}) - not yet implemented")
 
     except Exception as e:
         logger.error(f"Failed to send approval webhook: {e}", exc_info=True)

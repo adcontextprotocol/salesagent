@@ -45,10 +45,10 @@ class PolicyCheckService:
         """
         # If no argument provided, check environment
         if gemini_api_key is _UNSET:
-            self.api_key = os.getenv("GEMINI_API_KEY")
+            self.api_key: str | None = os.getenv("GEMINI_API_KEY")
         else:
             # Explicit argument provided (could be None or a key)
-            self.api_key = gemini_api_key
+            self.api_key = gemini_api_key if isinstance(gemini_api_key, str | type(None)) else None
 
         if not self.api_key:
             logger.warning("No Gemini API key provided. Policy checks will use basic rules only.")

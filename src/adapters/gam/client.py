@@ -193,11 +193,12 @@ class GAMClientManager:
         config = {"existing_client": True}
         network_code = getattr(client, "network_code", "unknown")
 
-        # Create instance
+        # Create instance bypassing __init__
         manager = cls.__new__(cls)
         manager.config = config
         manager.network_code = network_code
-        manager.auth_manager = None  # Not needed since client exists
+        # Create a minimal auth manager (not used since client exists)
+        manager.auth_manager = GAMAuthManager(config)
         manager._client = client
         manager._health_checker = None
 

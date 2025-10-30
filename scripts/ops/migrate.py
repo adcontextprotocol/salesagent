@@ -4,7 +4,7 @@
 import sys
 from pathlib import Path
 
-from alembic import command
+from alembic import command  # type: ignore[attr-defined]
 from alembic.config import Config
 
 

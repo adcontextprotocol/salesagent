@@ -150,7 +150,12 @@ def _run_approval_thread(
         # Create GAM client
         from src.adapters.gam.client import GAMClientManager
 
-        client_manager = GAMClientManager(adapter_config)
+        # Build config dict from adapter_config
+        config_dict = {
+            "refresh_token": adapter_config.gam_refresh_token,
+            "service_account_json": adapter_config.gam_service_account_json,
+        }
+        client_manager = GAMClientManager(config_dict, adapter_config.gam_network_code)
         orders_manager = GAMOrdersManager(client_manager, dry_run=False)
 
         # Poll GAM approval endpoint
@@ -192,9 +197,7 @@ def _run_approval_thread(
                 else:
                     # Max attempts reached
                     error_msg = f"Order approval failed after {max_attempts} attempts (2 minutes). GAM forecasting may still be in progress."
-                    _mark_approval_failed(
-                        approval_id, error_msg, webhook_url, tenant_id, principal_id, media_buy_id
-                    )
+                    _mark_approval_failed(approval_id, error_msg, webhook_url, tenant_id, principal_id, media_buy_id)
                     return
 
             except Exception as e:
@@ -273,7 +276,7 @@ def _mark_approval_complete(
             approval_job = db.scalars(stmt).first()
             if approval_job:
                 approval_job.status = "completed"
-                approval_job.completed_at = datetime.now(UTC)
+                approval_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
                 approval_job.summary = json.dumps(summary) if summary else None
                 db.commit()
 
@@ -309,7 +312,7 @@ def _mark_approval_failed(
             approval_job = db.scalars(stmt).first()
             if approval_job:
                 approval_job.status = "failed"
-                approval_job.completed_at = datetime.now(UTC)
+                approval_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
                 approval_job.error_message = error_message
                 db.commit()
 
@@ -355,7 +358,7 @@ def _send_approval_webhook(
     try:
         import httpx
 
-        payload = {
+        payload: dict[str, Any] = {
             "event": "order_approval_update",
             "media_buy_id": media_buy_id,
             "status": status,
@@ -412,13 +415,9 @@ def _send_approval_webhook(
                     )
 
             except httpx.TimeoutException:
-                logger.warning(
-                    f"Approval webhook to {webhook_url} timed out (attempt: {attempt + 1}/{max_retries})"
-                )
+                logger.warning(f"Approval webhook to {webhook_url} timed out (attempt: {attempt + 1}/{max_retries})")
             except httpx.RequestError as e:
-                logger.warning(
-                    f"Approval webhook to {webhook_url} failed: {e} (attempt: {attempt + 1}/{max_retries})"
-                )
+                logger.warning(f"Approval webhook to {webhook_url} failed: {e} (attempt: {attempt + 1}/{max_retries})")
 
             # Wait before retry (exponential backoff)
             if attempt < max_retries - 1:
@@ -459,11 +458,27 @@ def get_approval_status(approval_id: str) -> dict[str, Any] | None:
             if not approval_job:
                 return None
 
+            started_at_iso = None
+            if approval_job.started_at is not None:
+                # Handle both datetime and SQLAlchemy DateTime objects
+                if hasattr(approval_job.started_at, "isoformat"):
+                    started_at_iso = approval_job.started_at.isoformat()
+                else:
+                    started_at_iso = str(approval_job.started_at)
+
+            completed_at_iso = None
+            if approval_job.completed_at is not None:
+                # Handle both datetime and SQLAlchemy DateTime objects
+                if hasattr(approval_job.completed_at, "isoformat"):
+                    completed_at_iso = approval_job.completed_at.isoformat()
+                else:
+                    completed_at_iso = str(approval_job.completed_at)
+
             return {
                 "approval_id": approval_id,
                 "status": approval_job.status,
-                "started_at": approval_job.started_at.isoformat() if approval_job.started_at else None,
-                "completed_at": approval_job.completed_at.isoformat() if approval_job.completed_at else None,
+                "started_at": started_at_iso,
+                "completed_at": completed_at_iso,
                 "progress": approval_job.progress,
                 "error_message": approval_job.error_message,
                 "summary": approval_job.summary,

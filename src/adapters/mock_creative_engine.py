@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from src.adapters.creative_engine import CreativeEngineAdapter
 from src.core.schemas import Creative, CreativeAdaptation, CreativeStatus, FormatId
@@ -23,6 +23,7 @@ class MockCreativeEngine(CreativeEngineAdapter):
             is_auto_approvable = creative.format_id in self.auto_approve_formats
 
             # Determine status based on format and configuration
+            status: Literal["pending_review", "approved", "rejected", "adaptation_required"]
             if is_auto_approvable and not self.human_review_required:
                 status = "approved"
                 detail = f"Creative auto-approved - format '{creative.format_id}' is in auto-approve list."

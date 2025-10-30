@@ -131,7 +131,7 @@ class SignalsAgentRegistry:
                 max_retries=3,
             ) as client:
                 # Build parameters for get_signals
-                params = {
+                params: dict[str, Any] = {
                     "brief": brief,
                     "tenant_id": tenant_id,
                 }

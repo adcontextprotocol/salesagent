@@ -17,6 +17,8 @@ from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 console = Console()
 
@@ -35,17 +37,38 @@ from src.core.testing_hooks import DeliverySimulator, TimeSimulator, apply_testi
 from src.core.validation_helpers import format_validation_error
 
 
-def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
+def _get_media_buy_delivery_impl(
+    req: GetMediaBuyDeliveryRequest, context: Context | ToolContext | None
+) -> GetMediaBuyDeliveryResponse:
     """Get delivery data for one or more media buys.
 
     AdCP-compliant implementation that handles start_date/end_date parameters
     and returns spec-compliant response format.
     """
 
+    # Validate context is provided
+    if context is None:
+        raise ToolError("Context is required")
+
     # Extract testing context for time simulation and event jumping
     testing_ctx = get_testing_context(context)
 
     principal_id = get_principal_id_from_context(context)
+    if not principal_id:
+        # Return AdCP-compliant error response
+        return GetMediaBuyDeliveryResponse(
+            reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
+            currency="USD",
+            aggregated_totals={
+                "impressions": 0,
+                "spend": 0,
+                "clicks": None,
+                "video_completions": None,
+                "media_buy_count": 0,
+            },
+            media_buy_deliveries=[],
+            errors=[{"code": "principal_id_missing", "message": "Principal ID not found in context"}],
+        )
 
     # Get the Principal object
     principal = get_principal_object(principal_id)
@@ -54,6 +77,13 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
         return GetMediaBuyDeliveryResponse(
             reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
             currency="USD",
+            aggregated_totals={
+                "impressions": 0,
+                "spend": 0,
+                "clicks": None,
+                "video_completions": None,
+                "media_buy_count": 0,
+            },
             media_buy_deliveries=[],
             errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
         )
@@ -136,8 +166,17 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
             for buy in all_buys:
                 # Determine current status based on dates
                 # Use start_time/end_time if available, otherwise fall back to start_date/end_date
-                start_compare = buy.start_time.date() if buy.start_time else buy.start_date
-                end_compare = buy.end_time.date() if buy.end_time else buy.end_date
+                # Note: buy.start_time/end_time are Python datetime objects (not SQLAlchemy DateTime type)
+                # Note: buy.start_date and buy.end_date are Python date objects (not SQLAlchemy Date type)
+                if buy.start_time:
+                    start_compare: date = buy.start_time.date()  # type: ignore[union-attr,attr-defined]
+                else:
+                    start_compare = buy.start_date  # type: ignore[assignment]
+
+                if buy.end_time:
+                    end_compare: date = buy.end_time.date()  # type: ignore[union-attr,attr-defined]
+                else:
+                    end_compare = buy.end_date  # type: ignore[assignment]
 
                 if reference_date < start_compare:
                     current_status = "ready"
@@ -163,16 +202,22 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                 simulation_datetime = testing_ctx.mock_time
             elif testing_ctx.jump_to_event:
                 # Calculate time based on event
+                # Note: buy.start_date and buy.end_date are Python date objects (not SQLAlchemy Date type)
+                buy_start_date: date = buy.start_date  # type: ignore[assignment]
+                buy_end_date: date = buy.end_date  # type: ignore[assignment]
                 simulation_datetime = TimeSimulator.jump_to_event_time(
                     testing_ctx.jump_to_event,
-                    datetime.combine(buy.start_date, datetime.min.time()),
-                    datetime.combine(buy.end_date, datetime.min.time()),
+                    datetime.combine(buy_start_date, datetime.min.time()),
+                    datetime.combine(buy_end_date, datetime.min.time()),
                 )
 
             # Determine status
-            if simulation_datetime.date() < buy.start_date:
+            # Note: buy.start_date and buy.end_date are Python date objects
+            buy_start_date_status: date = buy.start_date  # type: ignore[assignment]
+            buy_end_date_status: date = buy.end_date  # type: ignore[assignment]
+            if simulation_datetime.date() < buy_start_date_status:
                 status = "ready"
-            elif simulation_datetime.date() > buy.end_date:
+            elif simulation_datetime.date() > buy_end_date_status:
                 status = "completed"
             else:
                 status = "active"
@@ -182,8 +227,11 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                 [testing_ctx.dry_run, testing_ctx.mock_time, testing_ctx.jump_to_event, testing_ctx.test_session_id]
             ):
                 # Use simulation for testing
-                start_dt = datetime.combine(buy.start_date, datetime.min.time())
-                end_dt_campaign = datetime.combine(buy.end_date, datetime.min.time())
+                # Note: buy.start_date and buy.end_date are Python date objects
+                buy_start_date_sim: date = buy.start_date  # type: ignore[assignment]
+                buy_end_date_sim: date = buy.end_date  # type: ignore[assignment]
+                start_dt = datetime.combine(buy_start_date_sim, datetime.min.time())
+                end_dt_campaign = datetime.combine(buy_end_date_sim, datetime.min.time())
                 progress = TimeSimulator.calculate_campaign_progress(start_dt, end_dt_campaign, simulation_datetime)
 
                 simulated_metrics = DeliverySimulator.calculate_simulated_metrics(
@@ -194,8 +242,11 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                 impressions = simulated_metrics["impressions"]
             else:
                 # Generate realistic delivery metrics
-                campaign_days = (buy.end_date - buy.start_date).days
-                days_elapsed = max(0, (simulation_datetime.date() - buy.start_date).days)
+                # Note: buy.start_date and buy.end_date are Python date objects
+                buy_start_date_metrics: date = buy.start_date  # type: ignore[assignment]
+                buy_end_date_metrics: date = buy.end_date  # type: ignore[assignment]
+                campaign_days = (buy_end_date_metrics - buy_start_date_metrics).days
+                days_elapsed = max(0, (simulation_datetime.date() - buy_start_date_metrics).days)
 
                 if campaign_days > 0:
                     progress = min(1.0, days_elapsed / campaign_days) if status != "ready" else 0.0
@@ -219,18 +270,35 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
                             buyer_ref=buy.raw_request.get("buyer_ref", None),
                             impressions=package_impressions,
                             spend=package_spend,
+                            # TODO: Calculate clicks for CPC pricing - extract pricing model from raw_request
+                            clicks=None,  # Optional field, not calculated in this implementation
+                            video_completions=None,  # Optional field, not calculated in this implementation
                             pacing_index=1.0 if status == "active" else 0.0,
                         )
                     )
 
             # Create delivery data
             buyer_ref = buy.raw_request.get("buyer_ref", None) if buy.raw_request else None
+            # Type cast status to match Literal type
+            status_literal: str = status
             delivery_data = MediaBuyDeliveryData(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
-                status=status,
-                totals=DeliveryTotals(impressions=impressions, spend=spend),
+                status=status_literal,  # type: ignore[arg-type]
+                totals=DeliveryTotals(
+                    impressions=impressions,
+                    spend=spend,
+                    # TODO: Calculate clicks for CPC pricing models - should be required for CPC
+                    # Need to: 1) Extract pricing model from raw_request packages
+                    #          2) Calculate clicks based on spend/CPC rate
+                    #          3) Make clicks required (not None) for CPC pricing
+                    clicks=None,  # Optional field
+                    ctr=None,  # Optional field
+                    video_completions=None,  # Optional field
+                    completion_rate=None,  # Optional field
+                ),
                 by_package=package_deliveries,
+                daily_breakdown=None,  # Optional field, not calculated in this implementation
             )
 
             deliveries.append(delivery_data)
@@ -246,6 +314,13 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
     response = GetMediaBuyDeliveryResponse(
         reporting_period=reporting_period,
         currency="USD",
+        aggregated_totals={
+            "impressions": total_impressions,
+            "spend": total_spend,
+            "clicks": None,
+            "video_completions": None,
+            "media_buy_count": media_buy_count,
+        },
         media_buy_deliveries=deliveries,
     )
 
@@ -255,9 +330,12 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
         campaign_info = None
         if target_media_buys:
             first_buy = target_media_buys[0][1]
+            # Note: first_buy.start_date and first_buy.end_date are Python date objects
+            first_buy_start: date = first_buy.start_date  # type: ignore[assignment]
+            first_buy_end: date = first_buy.end_date  # type: ignore[assignment]
             campaign_info = {
-                "start_date": datetime.combine(first_buy.start_date, datetime.min.time()),
-                "end_date": datetime.combine(first_buy.end_date, datetime.min.time()),
+                "start_date": datetime.combine(first_buy_start, datetime.min.time()),
+                "end_date": datetime.combine(first_buy_end, datetime.min.time()),
                 "total_budget": float(first_buy.budget) if first_buy.budget else 0.0,
             }
 
@@ -269,6 +347,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
         valid_fields = {
             "reporting_period",
             "currency",
+            "aggregated_totals",
             "media_buy_deliveries",
             "notification_type",
             "partial_data",
@@ -284,6 +363,17 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
             filtered_data["reporting_period"] = response_data.get("reporting_period", reporting_period)
         if "currency" not in filtered_data:
             filtered_data["currency"] = response_data.get("currency", "USD")
+        if "aggregated_totals" not in filtered_data:
+            filtered_data["aggregated_totals"] = response_data.get(
+                "aggregated_totals",
+                {
+                    "impressions": total_impressions,
+                    "spend": total_spend,
+                    "clicks": None,
+                    "video_completions": None,
+                    "media_buy_count": media_buy_count,
+                },
+            )
         if "media_buy_deliveries" not in filtered_data:
             filtered_data["media_buy_deliveries"] = response_data.get("media_buy_deliveries", [])
 
@@ -291,6 +381,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
         response = GetMediaBuyDeliveryResponse(
             reporting_period=filtered_data["reporting_period"],
             currency=filtered_data["currency"],
+            aggregated_totals=filtered_data["aggregated_totals"],
             media_buy_deliveries=filtered_data["media_buy_deliveries"],
             notification_type=filtered_data.get("notification_type"),
             partial_data=filtered_data.get("partial_data"),
@@ -304,13 +395,13 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
 
 
 def get_media_buy_delivery(
-    media_buy_ids: list[str] = None,
-    buyer_refs: list[str] = None,
-    status_filter: str = None,
-    start_date: str = None,
-    end_date: str = None,
+    media_buy_ids: list[str] | None = None,
+    buyer_refs: list[str] | None = None,
+    status_filter: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     webhook_url: str | None = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """Get delivery data for media buys.
 
@@ -345,12 +436,12 @@ def get_media_buy_delivery(
 
 
 def get_media_buy_delivery_raw(
-    media_buy_ids: list[str] = None,
-    buyer_refs: list[str] = None,
-    status_filter: str = None,
-    start_date: str = None,
-    end_date: str = None,
-    context: Context = None,
+    media_buy_ids: list[str] | None = None,
+    buyer_refs: list[str] | None = None,
+    status_filter: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Get delivery metrics for media buys (raw function for A2A server use).
 

@@ -58,27 +58,31 @@ class TestAuthBlueprint:
 class TestAuthUtilities:
     """Test authentication utility functions."""
 
-    @patch("src.admin.utils.get_db_session")
+    @patch("src.admin.utils.helpers.get_db_session")
     def test_is_super_admin_with_email(self, mock_get_db_session):
         """Test super admin check with email list."""
-        # Setup mock database session
+        # Setup mock database session (SQLAlchemy 2.0 style)
         mock_session = MagicMock()
         mock_get_db_session.return_value.__enter__.return_value = mock_session
 
         # Mock email config
         mock_config = Mock()
         mock_config.config_value = "admin@example.com,super@example.com"
-        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_config
+
+        # Mock SQLAlchemy 2.0 pattern: session.scalars(stmt).first()
+        mock_scalars = Mock()
+        mock_scalars.first.return_value = mock_config
+        mock_session.scalars.return_value = mock_scalars
 
         # Test matching email
         assert is_super_admin("admin@example.com")
         assert is_super_admin("super@example.com")
         assert not is_super_admin("user@example.com")
 
-    @patch("src.admin.utils.get_db_session")
+    @patch("src.admin.utils.helpers.get_db_session")
     def test_is_super_admin_with_domain(self, mock_get_db_session):
         """Test super admin check with domain list."""
-        # Setup mock database session
+        # Setup mock database session (SQLAlchemy 2.0 style)
         mock_session = MagicMock()
         mock_get_db_session.return_value.__enter__.return_value = mock_session
 
@@ -88,69 +92,70 @@ class TestAuthUtilities:
         mock_domain_config = Mock()
         mock_domain_config.config_value = "admin.com,super.org"
 
-        def side_effect(config_key=None):
-            query = Mock()
-            if config_key == "super_admin_emails":
-                query.first.return_value = mock_email_config
-            elif config_key == "super_admin_domains":
-                query.first.return_value = mock_domain_config
-            return query
+        # Create side effect for scalars().first() pattern
+        call_count = [0]
 
-        mock_session.query.return_value.filter_by.side_effect = side_effect
+        def scalars_side_effect(stmt):
+            mock_scalars = Mock()
+            # First call: super_admin_emails query (returns None)
+            # Second call: super_admin_domains query (returns domain config)
+            if call_count[0] == 0:
+                mock_scalars.first.return_value = mock_email_config
+            else:
+                mock_scalars.first.return_value = mock_domain_config
+            call_count[0] += 1
+            return mock_scalars
+
+        mock_session.scalars.side_effect = scalars_side_effect
 
         # Test matching domain
         assert is_super_admin("user@admin.com")
+
+        # Reset counter for next test
+        call_count[0] = 0
         assert is_super_admin("user@super.org")
+
+        # Reset counter for negative test
+        call_count[0] = 0
         assert not is_super_admin("user@example.com")
 
-    @patch("src.admin.utils.get_db_session")
-    def test_is_tenant_admin(self, mock_get_db_session):
-        """Test tenant admin check."""
+    @patch("src.admin.utils.helpers.is_super_admin")
+    def test_is_tenant_admin_super_admin(self, mock_is_super_admin):
+        """Test tenant admin check - super admin path."""
+        # Super admins are implicitly tenant admins
+        mock_is_super_admin.return_value = True
+        assert is_tenant_admin("superadmin@example.com", "tenant_123")
+
+    @patch("src.admin.utils.helpers.select")
+    @patch("src.admin.utils.helpers.is_super_admin")
+    @patch("src.admin.utils.helpers.get_db_session")
+    def test_is_tenant_admin_database(self, mock_get_db_session, mock_is_super_admin, mock_select):
+        """Test tenant admin check - database path."""
+        # Mock is_super_admin to return False (testing regular tenant admin path)
+        mock_is_super_admin.return_value = False
+
         # Setup mock database session
         mock_session = MagicMock()
         mock_get_db_session.return_value.__enter__.return_value = mock_session
 
-        # Create mock for TenantManagementConfig query that always returns None
-        mock_superadmin_query = MagicMock()
-        mock_superadmin_query.filter_by.return_value.first.return_value = None
+        # Mock select() and filter_by() chain
+        mock_stmt = MagicMock()
+        mock_stmt.filter_by.return_value = mock_stmt
+        mock_select.return_value = mock_stmt
 
         # Test 1: User is admin
         mock_user_admin = Mock()
-        mock_user_admin.is_admin = True
-        mock_user_admin.is_active = True
+        mock_scalars_admin = Mock()
+        mock_scalars_admin.first.return_value = mock_user_admin
+        mock_session.scalars.return_value = mock_scalars_admin
 
-        mock_user_query_admin = MagicMock()
-        mock_user_query_admin.filter_by.return_value.filter_by.return_value.first.return_value = mock_user_admin
-
-        def query_side_effect_admin(model):
-            if hasattr(model, "__name__"):
-                if model.__name__ == "TenantManagementConfig":
-                    return mock_superadmin_query
-                elif model.__name__ == "User":
-                    return mock_user_query_admin
-            return mock_user_query_admin
-
-        mock_session.query.side_effect = query_side_effect_admin
         assert is_tenant_admin("admin@tenant.com", "tenant_123")
 
         # Test 2: User is not admin
-        mock_user_not_admin = Mock()
-        mock_user_not_admin.is_admin = False
-        mock_user_not_admin.is_active = True
+        mock_scalars_not_admin = Mock()
+        mock_scalars_not_admin.first.return_value = None
+        mock_session.scalars.return_value = mock_scalars_not_admin
 
-        mock_user_query_not_admin = MagicMock()
-        # When is_admin=False, the filter_by chain should return no results (None)
-        mock_user_query_not_admin.filter_by.return_value.filter_by.return_value.first.return_value = None
-
-        def query_side_effect_not_admin(model):
-            if hasattr(model, "__name__"):
-                if model.__name__ == "TenantManagementConfig":
-                    return mock_superadmin_query
-                elif model.__name__ == "User":
-                    return mock_user_query_not_admin
-            return mock_user_query_not_admin
-
-        mock_session.query.side_effect = query_side_effect_not_admin
         assert not is_tenant_admin("user@tenant.com", "tenant_123")
 
         # Test 3: User is inactive

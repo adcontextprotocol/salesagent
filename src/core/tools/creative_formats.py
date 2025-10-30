@@ -12,6 +12,8 @@ from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 
 from src.core.audit_logger import get_audit_logger
@@ -22,7 +24,7 @@ from src.core.validation_helpers import format_validation_error
 
 
 def _list_creative_formats_impl(
-    req: ListCreativeFormatsRequest | None, context: Context
+    req: ListCreativeFormatsRequest | None, context: Context | ToolContext | None
 ) -> ListCreativeFormatsResponse:
     """List all available creative formats (AdCP spec endpoint).
 
@@ -34,7 +36,7 @@ def _list_creative_formats_impl(
 
     # Use default request if none provided
     if req is None:
-        req = ListCreativeFormatsRequest()
+        req = ListCreativeFormatsRequest(type=None, standard_only=None, category=None, format_ids=None)
 
     # For discovery endpoints, authentication is optional
     # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
@@ -119,7 +121,7 @@ def _list_creative_formats_impl(
     )
 
     # Create response (no message/specification_version - not in adapter schema)
-    response = ListCreativeFormatsResponse(formats=formats)
+    response = ListCreativeFormatsResponse(formats=formats, creative_agents=None, errors=None)
 
     # Always return Pydantic model - MCP wrapper will handle serialization
     # Schema enhancement (if needed) should happen in the MCP wrapper, not here
@@ -132,7 +134,7 @@ def list_creative_formats(
     category: str | None = None,
     format_ids: list[str] | None = None,
     webhook_url: str | None = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """List all available creative formats (AdCP spec endpoint).
 
@@ -150,11 +152,20 @@ def list_creative_formats(
         ToolResult with ListCreativeFormatsResponse data
     """
     try:
+        # Convert list[str] format_ids to list[FormatId] if provided
+        from src.core.schemas import FormatId
+
+        format_ids_objects = None
+        if format_ids:
+            # For MCP tools, format_ids are simple strings, but FormatId requires agent_url
+            # Use empty string as placeholder since we'll filter by ID only
+            format_ids_objects = [FormatId(id=fid, agent_url="") for fid in format_ids]
+
         req = ListCreativeFormatsRequest(
             type=type,
             standard_only=standard_only,
             category=category,
-            format_ids=format_ids,
+            format_ids=format_ids_objects,
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creative_formats request")) from e
@@ -164,7 +175,7 @@ def list_creative_formats(
 
 
 def list_creative_formats_raw(
-    req: ListCreativeFormatsRequest | None = None, context: Context = None
+    req: ListCreativeFormatsRequest | None = None, context: Context | ToolContext | None = None
 ) -> ListCreativeFormatsResponse:
     """List all available creative formats (raw function for A2A server use).
 

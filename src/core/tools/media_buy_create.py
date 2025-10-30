@@ -12,7 +12,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -20,10 +20,13 @@ from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 console = Console()
 
 # Tool-specific imports
+from src.core import schemas
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import (
     get_principal_object,
@@ -43,13 +46,14 @@ from src.core.schemas import (
     MediaPackage,
     Package,
     Principal,
+    Targeting,
     TaskStatus,
 )
 from src.core.testing_hooks import TestingContext, apply_testing_hooks, get_testing_context
 
 # Import get_product_catalog from main (after refactor)
 from src.core.validation_helpers import format_validation_error
-from src.services import activity_feed
+from src.services.activity_feed import activity_feed
 
 # --- Helper Functions ---
 
@@ -146,7 +150,7 @@ def _execute_adapter_media_buy_creation(
     package_pricing_info: dict[str, dict[str, Any]],
     principal: Principal,
     testing_ctx: TestingContext | None = None,
-) -> CreateMediaBuyResponse:
+) -> schemas.CreateMediaBuyResponse:
     """Execute adapter's create_media_buy call.
 
     This function is shared between auto-approval and manual approval flows
@@ -175,7 +179,8 @@ def _execute_adapter_media_buy_creation(
 
     # Call adapter with detailed error logging
     try:
-        response = adapter.create_media_buy(request, packages, start_time, end_time, package_pricing_info)
+        # Type ignore needed because adapter expects MediaPackage but we pass Package (compatible types)
+        response = adapter.create_media_buy(request, packages, start_time, end_time, package_pricing_info)  # type: ignore[arg-type]
         logger.info(
             f"[ADAPTER] create_media_buy succeeded: {response.media_buy_id} "
             f"with {len(response.packages) if response.packages else 0} packages"
@@ -259,7 +264,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
             try:
                 request = CreateMediaBuyRequest(**media_buy.raw_request)
                 # Mark this request as already approved to skip adapter's approval workflow
-                request._already_approved = True
+                request._already_approved = True  # type: ignore[attr-defined]
             except ValidationError as ve:
                 error_msg = f"Failed to reconstruct request: {format_validation_error(ve)}"
                 logger.error(f"[APPROVAL] {error_msg}")
@@ -347,10 +352,10 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                     # Reconstruct package_pricing_info from package_config if available
                     # This includes the bid_price for auction pricing
                     pricing_info_from_config = package_config.get("pricing_info")
-                    if pricing_info_from_config:
+                    if pricing_info_from_config and package_id:
                         # Use the stored pricing_info which has the correct bid_price
                         package_pricing_info[package_id] = pricing_info_from_config
-                    else:
+                    elif package_id:
                         # Fallback for old media buys without pricing_info
                         package_pricing_info[package_id] = {
                             "pricing_model": pricing_option.pricing_model,
@@ -369,13 +374,34 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
                     # Create MediaPackage object (what adapters expect)
                     # Note: Product model has 'formats' not 'format_ids'
+                    if not package_id:
+                        error_msg = f"Package ID missing for package in media buy {media_buy_id}"
+                        logger.error(f"[APPROVAL] {error_msg}")
+                        return False, error_msg
+
+                    # Validate delivery_type is a valid literal
+                    delivery_type_str = str(product.delivery_type)
+                    if delivery_type_str not in ["guaranteed", "non_guaranteed"]:
+                        delivery_type_str = "non_guaranteed"  # Default fallback
+
+                    # Convert formats to FormatId objects
+                    from src.core.schemas import FormatId as FormatIdType
+
+                    format_ids: list[FormatIdType] = []
+                    if product.formats:
+                        for fmt in product.formats:
+                            if isinstance(fmt, dict):
+                                format_ids.append(FormatIdType(**fmt))
+                            elif isinstance(fmt, FormatIdType):
+                                format_ids.append(fmt)
+
                     media_package = MediaPackage(
                         package_id=package_id,
                         name=package_config.get("name") or product.name,
-                        delivery_type=product.delivery_type,
+                        delivery_type=delivery_type_str,  # type: ignore[arg-type]
                         cpm=cpm,
                         impressions=impressions,
-                        format_ids=product.formats or [],
+                        format_ids=format_ids,
                         targeting_overlay=targeting_overlay,
                         buyer_ref=package_config.get("buyer_ref"),
                         product_id=product_id,
@@ -419,8 +445,9 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
             )
 
         # Execute adapter creation (outside session to avoid conflicts)
+        # Type ignore needed because we're passing MediaPackage list as Package list (adapter compatibility)
         response = _execute_adapter_media_buy_creation(
-            request, packages, start_time, end_time, package_pricing_info, principal, testing_ctx
+            request, packages, start_time, end_time, package_pricing_info, principal, testing_ctx  # type: ignore[arg-type]
         )
 
         logger.info(f"[APPROVAL] Adapter creation succeeded for {media_buy_id}: {response.media_buy_id}")
@@ -440,7 +467,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
                 # Group packages by creative (REVERSED - key by creative_id, value is list of package_ids)
                 # This ensures each creative is uploaded ONCE with ALL its package assignments
-                packages_by_creative = {}
+                packages_by_creative: dict[str, list[str]] = {}
                 for assignment in assignments:
                     if assignment.creative_id not in packages_by_creative:
                         packages_by_creative[assignment.creative_id] = []
@@ -526,11 +553,10 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
                     # Call adapter's add_creative_assets method
                     # For GAM, the media_buy_id is the GAM order ID
-                    gam_order_id = response.media_buy_id
-                    from datetime import UTC, datetime
+                    gam_order_id: str = response.media_buy_id if response.media_buy_id else ""
 
                     try:
-                        if hasattr(adapter, "creatives_manager") and adapter.creatives_manager:
+                        if hasattr(adapter, "creatives_manager") and adapter.creatives_manager and gam_order_id:
                             asset_statuses = adapter.creatives_manager.add_creative_assets(
                                 gam_order_id, assets, datetime.now(UTC)
                             )
@@ -855,8 +881,8 @@ async def _create_media_buy_impl(
     start_date: Any | None = None,  # Legacy format conversion
     end_date: Any | None = None,  # Legacy format conversion
     total_budget: float | None = None,  # Legacy format conversion
-    targeting_overlay: dict[str, Any] | None = None,
-    pacing: str = "even",
+    targeting_overlay: Targeting | None = None,
+    pacing: Literal["even", "asap", "daily_budget"] = "even",
     daily_budget: float | None = None,
     creatives: list[Any] | None = None,
     reporting_webhook: dict[str, Any] | None = None,
@@ -864,7 +890,7 @@ async def _create_media_buy_impl(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
 
@@ -913,7 +939,7 @@ async def _create_media_buy_impl(
             packages=packages,
             start_time=start_time,
             end_time=end_time,
-            # budget: REMOVED - Budget is package-level only per AdCP v2.2.0
+            budget=None,  # Budget is package-level, but field exists in schema
             currency=None,  # Derived from product pricing_options
             product_ids=product_ids,
             start_date=start_date,
@@ -936,10 +962,16 @@ async def _create_media_buy_impl(
         raise ToolError(format_validation_error(e, context="request")) from e
 
     # Extract testing context first
+    if context is None:
+        raise ToolError("Context is required")
+
     testing_ctx = get_testing_context(context)
 
     # Authentication and tenant setup
     principal_id = get_principal_id_from_context(context)
+    if principal_id is None:
+        raise ToolError("Principal ID not found in context - authentication required")
+
     tenant = get_current_tenant()
 
     # Validate setup completion (only in production, skip for testing)
@@ -967,7 +999,7 @@ async def _create_media_buy_impl(
 
     # Context management and workflow step creation - create workflow step FIRST
     ctx_manager = get_context_manager()
-    ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
+    ctx_id = context.headers.get("x-context-id") if context and hasattr(context, "headers") else None
     persistent_ctx = None
     step = None
 
@@ -1026,7 +1058,7 @@ async def _create_media_buy_impl(
                     existing_config.url = url
                     existing_config.authentication_type = auth_type
                     existing_config.authentication_token = credentials
-                    existing_config.updated_at = datetime.now(UTC)
+                    # updated_at automatically updated via onupdate=func.now()
                     existing_config.is_active = True
                 else:
                     # Create new
@@ -1055,7 +1087,7 @@ async def _create_media_buy_impl(
             raise ValueError(error_msg)
 
         # 2. DateTime validation
-        now = datetime.now(UTC)
+        now = datetime.now(UTC)  # noqa: F823
 
         # Validate start_time
         if req.start_time is None:
@@ -1064,16 +1096,16 @@ async def _create_media_buy_impl(
 
         # Handle 'asap' start_time (AdCP v1.7.0)
         if req.start_time == "asap":
-            start_time = now
+            computed_start_time: datetime = now
         else:
             # Ensure start_time is timezone-aware for comparison
             # At this point, req.start_time is guaranteed to be datetime (not str)
             assert isinstance(req.start_time, datetime), "start_time must be datetime when not 'asap'"
-            start_time = req.start_time  # type: datetime
-            if start_time.tzinfo is None:
-                start_time = start_time.replace(tzinfo=UTC)
+            computed_start_time = req.start_time
+            if computed_start_time.tzinfo is None:
+                computed_start_time = computed_start_time.replace(tzinfo=UTC)
 
-            if start_time < now:
+            if computed_start_time < now:
                 error_msg = f"Invalid start time: {req.start_time}. Start time cannot be in the past."
                 raise ValueError(error_msg)
 
@@ -1083,13 +1115,22 @@ async def _create_media_buy_impl(
             raise ValueError(error_msg)
 
         # Ensure end_time is timezone-aware for comparison
-        end_time = req.end_time
-        if end_time.tzinfo is None:
-            end_time = end_time.replace(tzinfo=UTC)
+        computed_end_time: datetime = req.end_time
+        if computed_end_time.tzinfo is None:
+            computed_end_time = computed_end_time.replace(tzinfo=UTC)
 
-        if end_time <= start_time:
+        if computed_end_time <= computed_start_time:
             error_msg = f"Invalid time range: end time ({req.end_time}) must be after start time ({req.start_time})."
             raise ValueError(error_msg)
+
+        # Assign computed times to local variables for use throughout the function
+        start_time_val = computed_start_time
+        end_time_val = computed_end_time
+
+        # Update function parameters to use validated datetime objects
+        # This ensures adapters receive datetime objects, not strings
+        start_time = start_time_val
+        end_time = end_time_val
 
         # 3. Package/Product validation
         product_ids = req.get_product_ids()
@@ -1272,7 +1313,7 @@ async def _create_media_buy_impl(
                                 product = product_map[product_id]
 
                                 # Find minimum spend for this package's currency
-                                min_spend = None
+                                package_min_spend: Decimal | None = None
 
                                 # First check if product has pricing option for this currency
                                 if product.pricing_options:
@@ -1280,19 +1321,19 @@ async def _create_media_buy_impl(
                                         (po for po in product.pricing_options if po.currency == package_currency), None
                                     )
                                     if matching_option and matching_option.min_spend_per_package is not None:
-                                        min_spend = Decimal(str(matching_option.min_spend_per_package))
+                                        package_min_spend = Decimal(str(matching_option.min_spend_per_package))
 
                                 # If no product override, check currency limit
-                                if min_spend is None:
+                                if package_min_spend is None:
                                     # Use the already-fetched currency_limit
                                     if currency_limit.min_package_budget:
-                                        min_spend = Decimal(str(currency_limit.min_package_budget))
+                                        package_min_spend = Decimal(str(currency_limit.min_package_budget))
 
                                 # Validate if minimum spend is set
-                                if min_spend and package_budget < min_spend:
+                                if package_min_spend and package_budget < package_min_spend:
                                     error_msg = (
                                         f"Package budget ({package_budget} {package_currency}) does not meet minimum spend requirement "
-                                        f"({min_spend} {package_currency}) for products in this package"
+                                        f"({package_min_spend} {package_currency}) for products in this package"
                                     )
                                     raise ValueError(error_msg)
                     else:
@@ -1312,7 +1353,7 @@ async def _create_media_buy_impl(
             # Validate maximum daily spend per package (if set)
             # This is per-package to prevent buyers from splitting large budgets across many packages
             if currency_limit.max_daily_package_spend:
-                flight_days = (end_time - start_time).days
+                flight_days = (end_time_val - start_time_val).days
                 if flight_days <= 0:
                     flight_days = 1
 
@@ -1337,11 +1378,12 @@ async def _create_media_buy_impl(
                             raise ValueError(error_msg)
                 else:
                     # Legacy mode: validate total budget
-                    daily_budget = Decimal(str(total_budget)) / Decimal(str(flight_days))
+                    legacy_daily_budget: Decimal = Decimal(str(total_budget)) / Decimal(str(flight_days))
+                    max_daily_spend: Decimal = Decimal(str(currency_limit.max_daily_package_spend))
 
-                    if daily_budget > currency_limit.max_daily_package_spend:
+                    if legacy_daily_budget > max_daily_spend:
                         error_msg = (
-                            f"Daily budget ({daily_budget} {request_currency}) exceeds maximum daily spend "
+                            f"Daily budget ({legacy_daily_budget} {request_currency}) exceeds maximum daily spend "
                             f"({currency_limit.max_daily_package_spend} {request_currency}). "
                             f"This protects against accidental large budgets."
                         )
@@ -1362,7 +1404,7 @@ async def _create_media_buy_impl(
 
         # Return error response (protocol layer will add status="failed")
         return CreateMediaBuyResponse(
-            buyer_ref=buyer_ref or "unknown",
+            buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
             errors=[Error(code="validation_error", message=str(e), details=None)],
         )
 
@@ -1577,22 +1619,12 @@ async def _create_media_buy_impl(
                     # Add full package data from raw_request
                     for idx, req_pkg in enumerate(req.packages):
                         if idx == pending_packages.index(pkg_data):
-                            # Handle budget - can be float, int, Budget object, or None
-                            budget_value = None
-                            if req_pkg.budget is not None:
-                                if isinstance(req_pkg.budget, int | float):
-                                    budget_value = float(req_pkg.budget)
-                                elif hasattr(req_pkg.budget, "model_dump"):
-                                    budget_value = req_pkg.budget.model_dump()
-                                else:
-                                    budget_value = req_pkg.budget
-
                             # Get pricing info for this package if available
                             pricing_info_for_package = package_pricing_info.get(pkg_data["package_id"])
 
                             # Serialize budget: normalize to object format for database storage
                             # ADCP 2.5.0 sends flat numbers, but we normalize to object with currency for DB
-                            budget_value = None
+                            budget_value: dict[str, Any] | None = None
                             if req_pkg.budget is not None:
                                 if isinstance(req_pkg.budget, (int, float)):
                                     # ADCP 2.5.0 flat format: normalize to object with currency from pricing
@@ -1699,13 +1731,15 @@ async def _create_media_buy_impl(
                     for i, package in enumerate(req.packages):
                         if package.creative_ids:
                             # Get package_id from pending_packages (already generated)
-                            package_id = pending_packages[i].get("package_id") if i < len(pending_packages) else None
-                            if not package_id:
+                            pkg_id: str | None = (
+                                pending_packages[i].get("package_id") if i < len(pending_packages) else None
+                            )
+                            if not pkg_id:
                                 logger.error(f"Cannot assign creatives: No package_id for package {i}")
                                 continue
 
                             logger.info(
-                                f"[CREATIVE_ASSIGN_DEBUG] Creating assignments for package {package_id}, creative_ids: {package.creative_ids}"
+                                f"[CREATIVE_ASSIGN_DEBUG] Creating assignments for package {pkg_id}, creative_ids: {package.creative_ids}"
                             )
 
                             for creative_id in package.creative_ids:
@@ -1720,7 +1754,7 @@ async def _create_media_buy_impl(
                                     assignment_id=assignment_id,
                                     tenant_id=tenant["tenant_id"],
                                     media_buy_id=media_buy_id,
-                                    package_id=package_id,
+                                    package_id=pkg_id,
                                     creative_id=creative_id,
                                 )
                                 session.add(assignment)
@@ -1729,12 +1763,14 @@ async def _create_media_buy_impl(
                                 )
 
                             session.commit()
-                            logger.info(f"✅ Created creative assignments for package {package_id}")
+                            logger.info(f"✅ Created creative assignments for package {pkg_id}")
 
             # Return success response with packages awaiting approval
             # The workflow_step_id in packages indicates approval is required
+            # buyer_ref is required by schema, but mypy needs explicit check
+            response_buyer_ref = req.buyer_ref if req.buyer_ref else "unknown"
             return CreateMediaBuyResponse(
-                buyer_ref=req.buyer_ref,
+                buyer_ref=response_buyer_ref,
                 media_buy_id=media_buy_id,
                 creative_deadline=None,
                 packages=pending_packages,
@@ -1756,7 +1792,7 @@ async def _create_media_buy_impl(
             gam_validator = GAMProductConfigService()
             config_errors = []
 
-            for product in products_in_buy:
+            for product in products_in_buy:  # type: ignore[assignment]
                 # Auto-generate default config if missing
                 if not product.implementation_config:
                     logger.info(
@@ -1765,22 +1801,34 @@ async def _create_media_buy_impl(
                     )
                     # Generate defaults based on product delivery type and formats
                     delivery_type = product.delivery_type if hasattr(product, "delivery_type") else "non_guaranteed"
-                    formats = product.formats if hasattr(product, "formats") else None
+                    # Extract format IDs as strings for config generation
+                    formats_list: list[str] | None = None
+                    if hasattr(product, "formats") and product.formats:
+                        formats_list = []
+                        for fmt in product.formats:
+                            if isinstance(fmt, str):
+                                formats_list.append(fmt)
+                            elif isinstance(fmt, dict):
+                                formats_list.append(fmt.get("id") or fmt.get("format_id", ""))
+                            elif hasattr(fmt, "format_id"):
+                                formats_list.append(fmt.format_id)
                     product.implementation_config = gam_validator.generate_default_config(
-                        delivery_type=delivery_type, formats=formats
+                        delivery_type=delivery_type, formats=formats_list
                     )
 
                     # Persist the auto-generated config to database
                     with get_db_session() as db_session:
-                        stmt = select(ModelProduct).filter_by(product_id=product.product_id)
-                        db_product = db_session.scalars(stmt).first()
+                        product_stmt = select(ModelProduct).filter_by(product_id=product.product_id)
+                        db_product = db_session.scalars(product_stmt).first()
                         if db_product:
-                            db_product.implementation_config = product.implementation_config
+                            db_product.implementation_config = product.implementation_config  # type: ignore[assignment]
                             db_session.commit()
                             logger.info(f"Saved auto-generated GAM config for product {product.product_id}")
 
                 # Validate the config (whether existing or auto-generated)
-                is_valid, error_msg = gam_validator.validate_config(product.implementation_config)
+                impl_config = product.implementation_config if product.implementation_config else {}
+                is_valid, error_msg_temp = gam_validator.validate_config(impl_config)  # type: ignore[arg-type]
+                error_msg = error_msg_temp if error_msg_temp else "Unknown error"
                 if not is_valid:
                     config_errors.append(
                         f"Product '{product.name}' ({product.product_id}) has invalid GAM configuration: {error_msg}"
@@ -1792,8 +1840,8 @@ async def _create_media_buy_impl(
                 )
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return CreateMediaBuyResponse(
-                    buyer_ref=req.buyer_ref,
-                    errors=[{"code": "invalid_configuration", "message": err} for err in config_errors],
+                    buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
+                    errors=[Error(code="invalid_configuration", message=err, details=None) for err in config_errors],
                 )
 
         product_auto_create = all(
@@ -1806,9 +1854,7 @@ async def _create_media_buy_impl(
             reason = "Tenant configuration" if not auto_create_enabled else "Product configuration"
 
             # Update existing workflow step to require approval
-            ctx_manager.update_workflow_step(
-                step.step_id, status="requires_approval", step_type="approval", owner="publisher"
-            )
+            ctx_manager.update_workflow_step(step.step_id, status="requires_approval")
 
             # Workflow step already created above - no need for separate task
             # Generate permanent media buy ID (not "pending_xxx")
@@ -1887,7 +1933,7 @@ async def _create_media_buy_impl(
                 logger.warning(f"⚠️ Failed to send configuration approval Slack notification: {e}")
 
             return CreateMediaBuyResponse(
-                buyer_ref=req.buyer_ref,
+                buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
                 media_buy_id=media_buy_id,
                 packages=response_packages,  # Include packages with buyer_ref
                 workflow_step_id=step.step_id,
@@ -1906,7 +1952,7 @@ async def _create_media_buy_impl(
         # Convert products to MediaPackages
         # If req.packages provided, use format_ids from request; otherwise use product.formats
         packages = []
-        for idx, product in enumerate(products_in_buy, 1):
+        for idx, product in enumerate(products_in_buy, 1):  # type: ignore[assignment]
             # Determine format_ids to use
             format_ids_to_use = []
 
@@ -1951,8 +1997,8 @@ async def _create_media_buy_impl(
                                 product_format_keys.add((normalized_url, format_id))
 
                     # Build set of requested format keys for comparison
-                    requested_format_keys = set()
-                    for fmt in matching_package.format_ids:
+                    requested_format_keys = set()  # type: ignore[var-annotated]
+                    for fmt in matching_package.format_ids:  # type: ignore[assignment]
                         agent_url = None
                         format_id = None
 
@@ -2004,7 +2050,7 @@ async def _create_media_buy_impl(
 
             # Fallback to product's formats if no request format_ids
             if not format_ids_to_use:
-                format_ids_to_use = list(product.formats) if product.formats else []
+                format_ids_to_use = list(product.formats) if product.formats else []  # type: ignore[arg-type]
 
             # Get CPM from pricing_options
             cpm = 10.0  # Default
@@ -2019,32 +2065,39 @@ async def _create_media_buy_impl(
             package_id = f"pkg_{product.product_id}_{secrets.token_hex(4)}_{idx}"
 
             # Get buyer_ref and budget from matching request package if available
-            buyer_ref = None
-            budget = None
+            package_buyer_ref: str | None = None
+            package_budget_value: float | None = None
             if matching_package:
                 if hasattr(matching_package, "buyer_ref"):
-                    buyer_ref = matching_package.buyer_ref
+                    package_buyer_ref = matching_package.buyer_ref
                 if hasattr(matching_package, "budget"):
                     raw_budget = matching_package.budget
                     # Normalize budget: MediaPackage expects float | None (ADCP 2.5.0)
                     if raw_budget is not None:
                         if isinstance(raw_budget, (int, float)):
                             # ADCP 2.5.0 flat format: use as-is (float)
-                            budget = float(raw_budget)
+                            package_budget_value = float(raw_budget)
                         elif isinstance(raw_budget, dict):
                             # Legacy dict format: extract total
-                            budget = float(raw_budget.get("total", 0.0))
+                            package_budget_value = float(raw_budget.get("total", 0.0))
                         elif hasattr(raw_budget, "total"):
                             # Budget object: extract total
-                            budget = float(raw_budget.total)
+                            package_budget_value = float(raw_budget.total)
                         else:
-                            budget = None
+                            package_budget_value = None
+
+            # Ensure delivery_type is the correct literal type
+            from typing import cast
+
+            delivery_type_value: Literal["guaranteed", "non_guaranteed"] = cast(
+                Literal["guaranteed", "non_guaranteed"], product.delivery_type
+            )
 
             packages.append(
                 MediaPackage(
                     package_id=package_id,
                     name=product.name,
-                    delivery_type=product.delivery_type,
+                    delivery_type=delivery_type_value,
                     cpm=cpm,
                     impressions=int(total_budget / cpm * 1000),
                     format_ids=format_ids_to_use,
@@ -2053,9 +2106,9 @@ async def _create_media_buy_impl(
                         if matching_package and hasattr(matching_package, "targeting_overlay")
                         else None
                     ),
-                    buyer_ref=buyer_ref,
+                    buyer_ref=package_buyer_ref,
                     product_id=product.product_id,  # Include product_id
-                    budget=budget,  # Include budget from request (now normalized)
+                    budget=package_budget_value,  # Include budget from request (now normalized)
                     creative_ids=(
                         matching_package.creative_ids if matching_package else None
                     ),  # Include creative_ids from uploaded creatives
@@ -2084,7 +2137,7 @@ async def _create_media_buy_impl(
             error_msg = "start_time and end_time are required but were not properly set"
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return CreateMediaBuyResponse(
-                buyer_ref=req.buyer_ref,
+                buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
                 errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
             )
 
@@ -2095,6 +2148,13 @@ async def _create_media_buy_impl(
             response = _execute_adapter_media_buy_creation(
                 req, packages, start_time, end_time, package_pricing_info, principal, testing_ctx
             )
+            if response.packages:
+                for i, pkg in enumerate(response.packages):  # type: ignore[assignment,no-redef]
+                    # pkg is dict[str, Any] here (response.packages), different scope from earlier Package usage
+                    logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg}")
+
+            # Type narrowing: media_buy_id must be present in successful response
+            assert response.media_buy_id is not None, "Adapter returned response without media_buy_id"
         except Exception as adapter_error:
             raise
 
@@ -2103,7 +2163,7 @@ async def _create_media_buy_impl(
             logger.error(
                 f"[ADAPTER] Adapter returned error response: {response.errors[0].code} - {response.errors[0].message}"
             )
-            return response
+            return response  # type: ignore[return-value]
 
         # Store the media buy in memory (for backward compatibility)
         # Lazy import to avoid circular dependency
@@ -2177,7 +2237,7 @@ async def _create_media_buy_impl(
 
                 for i, resp_package in enumerate(packages_to_save):
                     # Extract package_id from response - MUST be present, no fallback allowed
-                    package_id = resp_package.get("package_id")
+                    package_id: str | None = resp_package.get("package_id")  # type: ignore[assignment,no-redef]
                     logger.info(f"[DEBUG] Package {i}: resp_package.get('package_id') = {package_id}")
 
                     if not package_id:
@@ -2198,8 +2258,8 @@ async def _create_media_buy_impl(
                     pricing_info_for_package = package_pricing_info.get(package_id)
 
                     # Get impressions from request package if available
-                    req_pkg = req.packages[i] if i < len(req.packages) else None
-                    impressions = req_pkg.impressions if req_pkg else None
+                    request_pkg: Package | None = req.packages[i] if i < len(req.packages) else None
+                    impressions = request_pkg.impressions if request_pkg else None
 
                     package_config = {
                         "package_id": package_id,
@@ -2262,17 +2322,17 @@ async def _create_media_buy_impl(
                     if package.creative_ids:
                         all_creative_ids.extend(package.creative_ids)
 
-                creatives_map: dict[str, Any] = {}
+                creatives_by_id: dict[str, Any] = {}
                 if all_creative_ids:
                     creative_stmt = select(DBCreative).where(
                         DBCreative.tenant_id == tenant["tenant_id"],
                         DBCreative.creative_id.in_(all_creative_ids),
                     )
                     creatives_list = session.scalars(creative_stmt).all()
-                    creatives_map = {str(c.creative_id): c for c in creatives_list}
+                    creatives_by_id = {str(c.creative_id): c for c in creatives_list}
 
                     # Validate all creative IDs exist (match update_media_buy behavior)
-                    found_creative_ids = set(creatives_map.keys())
+                    found_creative_ids = set(creatives_by_id.keys())
                     requested_creative_ids = set(all_creative_ids)
                     missing_ids = requested_creative_ids - found_creative_ids
 
@@ -2286,13 +2346,13 @@ async def _create_media_buy_impl(
                     if package.creative_ids:
                         # Use package_id from response (matches what's in media_packages table)
                         # NO FALLBACK - if adapter doesn't return package_id, fail loudly
-                        package_id = None
+                        response_package_id = None
                         if response.packages and i < len(response.packages):
-                            package_id = response.packages[i].get("package_id")
+                            response_package_id = response.packages[i].get("package_id")
                             logger.info(f"[DEBUG] Package {i}: response.packages[i] = {response.packages[i]}")
-                            logger.info(f"[DEBUG] Package {i}: extracted package_id = {package_id}")
+                            logger.info(f"[DEBUG] Package {i}: extracted package_id = {response_package_id}")
 
-                        if not package_id:
+                        if not response_package_id:
                             error_msg = f"Cannot assign creatives: Adapter did not return package_id for package {i}"
                             logger.error(error_msg)
                             raise ValueError(error_msg)
@@ -2307,7 +2367,7 @@ async def _create_media_buy_impl(
 
                         for creative_id in package.creative_ids:
                             # Get creative from batch-loaded map
-                            creative = creatives_map.get(creative_id)
+                            creative = creatives_by_id.get(creative_id)
 
                             # This should never happen now due to validation above
                             if not creative:
@@ -2323,7 +2383,9 @@ async def _create_media_buy_impl(
                             else:
                                 # Creative not uploaded to GAM yet - upload it now
                                 # Use the same simple asset dict approach as manual approval (execute_approved_media_buy)
-                                logger.info(f"Creative {creative_id} has no platform_creative_id - uploading to GAM now")
+                                logger.info(
+                                    f"Creative {creative_id} has no platform_creative_id - uploading to GAM now"
+                                )
                                 try:
                                     creative_data = creative.data or {}
 
@@ -2360,18 +2422,24 @@ async def _create_media_buy_impl(
                                         logger.warning(f"Skipping creative {creative_id}: missing URL")
                                         continue
 
-                                    # Upload to GAM
-                                    upload_result = adapter.add_creative_assets([asset])
+                                    # Upload to GAM using adapter's add_creative_assets method
+                                    upload_result = adapter.add_creative_assets(
+                                        response.media_buy_id if response.media_buy_id else "",
+                                        [asset],
+                                        datetime.now(UTC),
+                                    )
                                     logger.info(f"Successfully uploaded creative {creative_id} to GAM: {upload_result}")
 
                                     # Update creative in database with platform_creative_id
                                     if upload_result and len(upload_result) > 0:
-                                        uploaded_creative = upload_result[0]
-                                        if "platform_creative_id" in uploaded_creative:
-                                            creative.data["platform_creative_id"] = uploaded_creative["platform_creative_id"]
+                                        uploaded_status = upload_result[0]
+                                        if uploaded_status.creative_id:
+                                            creative.data["platform_creative_id"] = uploaded_status.creative_id
                                             session.add(creative)
-                                            platform_creative_ids.append(uploaded_creative["platform_creative_id"])
-                                            logger.info(f"Updated creative {creative_id} with platform_creative_id={uploaded_creative['platform_creative_id']}")
+                                            platform_creative_ids.append(uploaded_status.creative_id)
+                                            logger.info(
+                                                f"Updated creative {creative_id} with platform_creative_id={uploaded_status.creative_id}"
+                                            )
                                 except Exception as upload_error:
                                     logger.error(f"Failed to upload creative {creative_id} to GAM: {upload_error}")
                                     logger.warning(
@@ -2384,7 +2452,7 @@ async def _create_media_buy_impl(
                                 assignment_id=assignment_id,
                                 tenant_id=tenant["tenant_id"],
                                 media_buy_id=response.media_buy_id,
-                                package_id=package_id,
+                                package_id=response_package_id,
                                 creative_id=creative_id,
                             )
                             session.add(assignment)
@@ -2417,7 +2485,7 @@ async def _create_media_buy_impl(
                                 )
                         elif platform_creative_ids:
                             logger.warning(
-                                f"Package {package_id} has {len(platform_creative_ids)} creatives but no platform_line_item_id from adapter. "
+                                f"Package {response_package_id} has {len(platform_creative_ids)} creatives but no platform_line_item_id from adapter. "
                                 f"Creatives will need to be associated via sync_creatives."
                             )
 
@@ -2428,7 +2496,9 @@ async def _create_media_buy_impl(
             assets = []
             for creative in req.creatives:
                 try:
-                    asset = _convert_creative_to_adapter_asset(creative, req.product_ids)
+                    # Ensure product_ids is a list, not None
+                    product_ids_list = req.product_ids if req.product_ids else []
+                    asset = _convert_creative_to_adapter_asset(creative, product_ids_list)
                     assets.append(asset)
                 except Exception as e:
                     logger.error(f"Error converting creative {creative.creative_id}: {e}")
@@ -2443,19 +2513,21 @@ async def _create_media_buy_impl(
             require_creative_approval = manual_approval_required and "add_creative_assets" in manual_approval_operations
 
             for status in statuses:
-                # Override status to pending_review if manual approval is required for creatives
-                if require_creative_approval:
-                    final_status = "pending_review"
-                    detail = "Creative requires manual approval"
-                else:
-                    final_status = "approved" if status.status == "approved" else "pending_review"
-                    detail = "Creative submitted to ad server"
+                # Skip statuses without creative_id (shouldn't happen but defensive)
+                if status.creative_id:
+                    # Override status to pending_review if manual approval is required for creatives
+                    if require_creative_approval:
+                        final_status: str = "pending_review"
+                        detail = "Creative requires manual approval"
+                    else:
+                        final_status = "approved" if status.status == "approved" else "pending_review"
+                        detail = "Creative submitted to ad server"
 
-                creative_statuses[status.creative_id] = CreativeStatus(
-                    creative_id=status.creative_id,
-                    status=final_status,
-                    detail=detail,
-                )
+                    creative_statuses[status.creative_id] = CreativeStatus(
+                        creative_id=status.creative_id,
+                        status=final_status,  # type: ignore[arg-type]
+                        detail=detail,
+                    )
 
         # Build packages list for response (AdCP v2.4 format)
         # Use packages from adapter response (has package_ids) merged with request package fields
@@ -2468,9 +2540,8 @@ async def _create_media_buy_impl(
             # Start with adapter response package (has package_id)
             if i < len(adapter_packages):
                 # Get package_id and other fields from adapter response
-                response_package_dict = (
-                    adapter_packages[i] if isinstance(adapter_packages[i], dict) else adapter_packages[i].model_dump()
-                )
+                # adapter_packages is list[dict[str, Any]] so this is always a dict
+                response_package_dict = adapter_packages[i]
             else:
                 # Fallback if adapter didn't return enough packages
                 logger.warning(f"Adapter returned fewer packages than request. Using request package {i}")
@@ -2544,13 +2615,15 @@ async def _create_media_buy_impl(
         try:
             principal_name = "Unknown"
             with get_db_session() as session:
-                stmt = select(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
-                principal_db = session.scalars(stmt).first()
+                principal_stmt = select(ModelPrincipal).filter_by(
+                    principal_id=principal_id, tenant_id=tenant["tenant_id"]
+                )
+                principal_db = session.scalars(principal_stmt).first()
                 if principal_db:
                     principal_name = principal_db.name
 
             # Calculate duration using new datetime fields (resolved from 'asap' if needed)
-            duration_days = (end_time - start_time).days + 1
+            duration_days = (end_time_val - start_time_val).days + 1
 
             activity_feed.log_media_buy(
                 tenant_id=tenant["tenant_id"],
@@ -2611,8 +2684,10 @@ async def _create_media_buy_impl(
             # Get principal name for notification (reuse from activity logging above)
             principal_name = "Unknown"
             with get_db_session() as session:
-                stmt = select(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
-                principal_db = session.scalars(stmt).first()
+                principal_stmt2 = select(ModelPrincipal).filter_by(
+                    principal_id=principal_id, tenant_id=tenant["tenant_id"]
+                )
+                principal_db = session.scalars(principal_stmt2).first()
                 if principal_db:
                     principal_name = principal_db.name
 
@@ -2632,7 +2707,7 @@ async def _create_media_buy_impl(
                 "start_time": start_time.isoformat(),  # Resolved from 'asap' if needed
                 "end_time": end_time.isoformat(),
                 "product_ids": req.get_product_ids(),
-                "duration_days": (end_time - start_time).days + 1,
+                "duration_days": (end_time_val - start_time_val).days + 1,
                 "packages_count": len(response_packages) if response_packages else 0,
                 "creatives_count": len(req.creatives) if req.creatives else 0,
                 "workflow_step_id": step.step_id,
@@ -2664,7 +2739,7 @@ async def _create_media_buy_impl(
                 "media_buy_id": response.media_buy_id,
                 "total_budget": total_budget,
                 "po_number": req.po_number,
-                "duration_days": (end_time - start_time).days + 1,  # Resolved from 'asap' if needed
+                "duration_days": (end_time_val - start_time_val).days + 1,  # Resolved from 'asap' if needed
                 "product_count": len(req.get_product_ids()),
                 "packages_count": len(response_packages) if response_packages else 0,
             },
@@ -2730,7 +2805,7 @@ async def _create_media_buy_impl(
                 principal_id=principal_id or "anonymous",
                 adapter_id="mcp_server",
                 success=False,
-                error_message=str(e),
+                error=str(e),
                 details={
                     "error_type": type(e).__name__,
                     "error_message": str(e),
@@ -2767,7 +2842,7 @@ async def create_media_buy(
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
     webhook_url: str | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Create a media buy with the specified parameters.
 
@@ -2811,8 +2886,8 @@ async def create_media_buy(
         start_date=start_date,
         end_date=end_date,
         total_budget=total_budget,
-        targeting_overlay=targeting_overlay,
-        pacing=pacing,
+        targeting_overlay=targeting_overlay,  # type: ignore[arg-type]
+        pacing=pacing,  # type: ignore[arg-type]
         daily_budget=daily_budget,
         creatives=creatives,
         reporting_webhook=reporting_webhook,
@@ -2846,7 +2921,7 @@ async def create_media_buy_raw(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Create a new media buy with specified parameters (raw function for A2A server use).
 
@@ -2890,8 +2965,8 @@ async def create_media_buy_raw(
         start_date=start_date,
         end_date=end_date,
         total_budget=total_budget,
-        targeting_overlay=targeting_overlay,
-        pacing=pacing,
+        targeting_overlay=targeting_overlay,  # type: ignore[arg-type]
+        pacing=pacing,  # type: ignore[arg-type]
         daily_budget=daily_budget,
         creatives=creatives,
         reporting_webhook=reporting_webhook,

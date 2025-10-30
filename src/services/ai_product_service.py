@@ -140,7 +140,7 @@ class AIProductConfigurationService:
                 {
                     "suggested_name": "Premium High-Impact Package",
                     "buyer_description": "Premium advertising package featuring our highest-performing placements with guaranteed visibility and premium targeting. Perfect for brand awareness and conversion campaigns.",
-                    "implementation_notes": f"Premium units: {', '.join([p.get('name', p.get('id')) for p in premium_placements[:3]])}. Floors: ${min([p.get('floor_price', 0) for p in premium_placements]):.2f}+",
+                    "implementation_notes": f"Premium units: {', '.join([str(p.get('name', p.get('id', ''))) for p in premium_placements[:3]])}. Floors: ${min([p.get('floor_price', 0) for p in premium_placements]):.2f}+",
                     "placement_ids": [p.get("id") for p in premium_placements],
                 }
             )
@@ -150,7 +150,7 @@ class AIProductConfigurationService:
                 {
                     "suggested_name": "Performance Display Network",
                     "buyer_description": "Balanced performance advertising across high-quality placements with competitive pricing and broad reach. Ideal for performance and retargeting campaigns.",
-                    "implementation_notes": f"Standard units: {', '.join([p.get('name', p.get('id')) for p in standard_placements[:3]])}. Competitive pricing with proven performance.",
+                    "implementation_notes": f"Standard units: {', '.join([str(p.get('name', p.get('id', ''))) for p in standard_placements[:3]])}. Competitive pricing with proven performance.",
                     "placement_ids": [p.get("id") for p in standard_placements],
                 }
             )
@@ -160,7 +160,7 @@ class AIProductConfigurationService:
                 {
                     "suggested_name": "Value Reach Network",
                     "buyer_description": "Cost-effective advertising solution for maximum reach and frequency. Perfect for awareness campaigns and testing new audiences.",
-                    "implementation_notes": f"Budget-friendly units: {', '.join([p.get('name', p.get('id')) for p in budget_placements[:3]])}. Volume-based pricing for reach optimization.",
+                    "implementation_notes": f"Budget-friendly units: {', '.join([str(p.get('name', p.get('id', ''))) for p in budget_placements[:3]])}. Volume-based pricing for reach optimization.",
                     "placement_ids": [p.get("id") for p in budget_placements],
                 }
             )
@@ -176,7 +176,7 @@ class AIProductConfigurationService:
                 {
                     "suggested_name": "Video Engagement Suite",
                     "buyer_description": "Premium video advertising with high engagement rates and viewability. Supports multiple video formats and targeting options.",
-                    "implementation_notes": f"Video units: {', '.join([p.get('name', p.get('id')) for p in video_placements])}. VAST compatible with engagement tracking.",
+                    "implementation_notes": f"Video units: {', '.join([str(p.get('name', p.get('id', ''))) for p in video_placements])}. VAST compatible with engagement tracking.",
                     "placement_ids": [p.get("id") for p in video_placements],
                 }
             )
@@ -191,7 +191,7 @@ class AIProductConfigurationService:
                 {
                     "suggested_name": "Rich Media Experience",
                     "buyer_description": "Interactive and rich media advertising with advanced engagement features and premium user experience.",
-                    "implementation_notes": f"Rich media units: {', '.join([p.get('name', p.get('id')) for p in rich_media_placements])}. Interactive formats with behavioral triggers.",
+                    "implementation_notes": f"Rich media units: {', '.join([str(p.get('name', p.get('id', ''))) for p in rich_media_placements])}. Interactive formats with behavioral triggers.",
                     "placement_ids": [p.get("id") for p in rich_media_placements],
                 }
             )
@@ -251,7 +251,7 @@ class AIProductConfigurationService:
 
         if not tenant_id or not re.match(r"^[a-zA-Z0-9_-]+$", tenant_id) or len(tenant_id) > 100:
             logger.error(f"Invalid tenant_id format: {tenant_id}")
-            return AdServerInventory(ad_units=[], targeting_keys=[], formats=[])
+            return AdServerInventory(placements=[], ad_units=[], targeting_options={}, creative_specs=[])
 
         # Get adapter configuration and principal
         with get_db_session() as db_session:
@@ -260,11 +260,11 @@ class AIProductConfigurationService:
             tenant = db_session.scalars(stmt).first()
             if not tenant:
                 logger.error(f"Tenant {tenant_id} not found")
-                return AdServerInventory(ad_units=[], targeting_keys=[], formats=[])
+                return AdServerInventory(placements=[], ad_units=[], targeting_options={}, creative_specs=[])
 
             # Get a principal for this tenant (use first available)
-            stmt = select(PrincipalModel).filter_by(tenant_id=tenant_id)
-            principal_model = db_session.scalars(stmt).first()
+            principal_stmt = select(PrincipalModel).filter_by(tenant_id=tenant_id)
+            principal_model = db_session.scalars(principal_stmt).first()
 
             if not principal_model:
                 # Create a temporary principal for inventory fetching
@@ -273,7 +273,6 @@ class AIProductConfigurationService:
                 principal = Principal(
                     principal_id="ai_config_temp",
                     name="AI Configuration Service",
-                    access_token="ai_config_token",
                     platform_mappings={"mock": {"id": "system"}},  # Default mock mapping
                 )
             else:
@@ -296,7 +295,6 @@ class AIProductConfigurationService:
                 principal = Principal(
                     principal_id=principal_model.principal_id,
                     name=principal_model.name,
-                    access_token=principal_model.access_token,
                     platform_mappings=mappings,
                 )
 
@@ -308,8 +306,8 @@ class AIProductConfigurationService:
 
         # Get adapter config from adapter_config table
         with get_db_session() as db_session:
-            stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
-            adapter_config_row = db_session.scalars(stmt).first()
+            adapter_config_stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
+            adapter_config_row = db_session.scalars(adapter_config_stmt).first()
             adapter_config = {}
             if adapter_config_row:
                 # Build config from individual fields based on adapter type
@@ -359,7 +357,7 @@ class AIProductConfigurationService:
             inventory_data = await adapter.get_available_inventory()
         except Exception as e:
             logger.error(f"Failed to fetch inventory from {adapter_type}: {e}")
-            return AdServerInventory(ad_units=[], targeting_keys=[], formats=[])
+            return AdServerInventory(placements=[], ad_units=[], targeting_options={}, creative_specs=[])
 
         return AdServerInventory(
             placements=inventory_data.get("placements", []),
@@ -380,8 +378,11 @@ class AIProductConfigurationService:
         self, description: ProductDescription, inventory: AdServerInventory
     ) -> dict[str, Any]:
         """Analyze inventory to find best matches for product description."""
-        analysis = {
-            "matched_placements": [],
+        matched_placements: list[dict[str, Any]] = []
+        cpm_values: list[float] = []
+
+        analysis: dict[str, Any] = {
+            "matched_placements": matched_placements,
             "suggested_cpm_range": {"min": 0, "max": 0},
             "premium_level": "standard",
             "recommended_formats": [],
@@ -400,7 +401,6 @@ class AIProductConfigurationService:
             analysis["premium_level"] = "standard"
 
         # Match placements based on description
-        cpm_values = []
         for placement in inventory.placements:
             placement_name = placement.get("name", "").lower()
             placement_path = placement.get("path", "").lower()

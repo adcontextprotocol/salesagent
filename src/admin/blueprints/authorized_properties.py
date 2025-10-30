@@ -9,6 +9,7 @@ from typing import Any
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from sqlalchemy import select
+from werkzeug.wrappers import Response
 
 from src.admin.utils import require_tenant_access  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
@@ -27,11 +28,14 @@ logger = logging.getLogger(__name__)
 authorized_properties_bp = Blueprint("authorized_properties", __name__)
 
 
-def _validate_property_form(request) -> tuple[bool, str, tuple[str, str, str, list[dict[str, str]], list[str]]]:
+def _validate_property_form(
+    request: Any,
+) -> tuple[bool, str, tuple[str, str, str, list[dict[str, str]], list[str]] | None]:
     """Validate property form data and return parsed values.
 
     Returns:
         Tuple of (is_valid, error_message, (property_type, name, publisher_domain, identifiers, tags))
+        When is_valid is False, the tuple is None.
     """
     # Get form data
     property_type = request.form.get("property_type", "").strip()
@@ -82,7 +86,7 @@ def _validate_property_form(request) -> tuple[bool, str, tuple[str, str, str, li
     return True, "", (property_type, name, publisher_domain, identifiers, tags)
 
 
-def _parse_properties_file(file) -> tuple[list[dict[str, Any]], str]:
+def _parse_properties_file(file: Any) -> tuple[list[dict[str, Any]], str]:
     """Parse properties from uploaded file.
 
     Returns:
@@ -163,7 +167,7 @@ def _save_properties_batch(properties_data: list[dict[str, Any]], tenant_id: str
                     existing_property.verification_status = "pending"
                     existing_property.verification_checked_at = None
                     existing_property.verification_error = None
-                    existing_property.updated_at = datetime.now(UTC)
+                    existing_property.updated_at = datetime.now(UTC)  # type: ignore[assignment]
                 else:
                     # Create new property
                     new_property = AuthorizedProperty(
@@ -207,7 +211,7 @@ def _parse_and_save_properties_file(file, tenant_id: str) -> tuple[int, int, lis
     return _save_properties_batch(properties_data, tenant_id)
 
 
-def _construct_agent_url(tenant_id: str, request) -> str:
+def _construct_agent_url(tenant_id: str, request: Any) -> str:
     """Construct the agent URL using existing tenant resolution logic."""
     import os
 
@@ -263,7 +267,7 @@ def _construct_agent_url(tenant_id: str, request) -> str:
 
 @authorized_properties_bp.route("/<tenant_id>/authorized-properties")
 @require_tenant_access()
-def list_authorized_properties(tenant_id):
+def list_authorized_properties(tenant_id: str) -> str | Response:
     """List all authorized properties for a tenant."""
     try:
         logger.info(f"Accessing authorized properties for tenant: {tenant_id}")
@@ -284,12 +288,12 @@ def list_authorized_properties(tenant_id):
 
             # Get all properties for this tenant
             logger.info("Querying authorized properties...")
-            stmt = (
+            props_stmt = (
                 select(AuthorizedProperty)
                 .where(AuthorizedProperty.tenant_id == tenant_id)
                 .order_by(AuthorizedProperty.created_at.desc())
             )
-            properties = db_session.scalars(stmt).all()
+            properties = db_session.scalars(props_stmt).all()
 
             logger.info(f"Found {len(properties)} properties")
 
@@ -326,7 +330,7 @@ def list_authorized_properties(tenant_id):
 @authorized_properties_bp.route("/<tenant_id>/authorized-properties/upload", methods=["GET", "POST"])
 @log_admin_action("upload_authorized_properties")
 @require_tenant_access()
-def upload_authorized_properties(tenant_id):
+def upload_authorized_properties(tenant_id: str) -> str | Response:
     """Upload authorized properties from JSON or CSV file."""
     if request.method == "GET":
         try:
@@ -338,8 +342,8 @@ def upload_authorized_properties(tenant_id):
                     return redirect(url_for("core.admin_dashboard"))
 
                 # Get existing tags for this tenant
-                stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id)
-                existing_tags = db_session.scalars(stmt).all()
+                tags_stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id)
+                existing_tags = db_session.scalars(tags_stmt).all()
 
                 return render_template(
                     "authorized_properties_upload.html",
@@ -365,7 +369,7 @@ def upload_authorized_properties(tenant_id):
             flash(PROPERTY_ERROR_MESSAGES["no_file_selected"], "error")
             return redirect(request.url)
 
-        if not file.filename.lower().endswith(tuple(SUPPORTED_UPLOAD_FILE_TYPES)):
+        if not file.filename or not file.filename.lower().endswith(tuple(SUPPORTED_UPLOAD_FILE_TYPES)):
             flash(PROPERTY_ERROR_MESSAGES["invalid_file_type"], "error")
             return redirect(request.url)
 
@@ -395,7 +399,7 @@ def upload_authorized_properties(tenant_id):
 @authorized_properties_bp.route("/<tenant_id>/authorized-properties/<property_id>/delete", methods=["POST"])
 @log_admin_action("delete_property")
 @require_tenant_access()
-def delete_property(tenant_id, property_id):
+def delete_property(tenant_id: str, property_id: str) -> Response:
     """Delete an authorized property."""
     try:
         with get_db_session() as db_session:
@@ -423,7 +427,7 @@ def delete_property(tenant_id, property_id):
 
 @authorized_properties_bp.route("/<tenant_id>/property-tags")
 @require_tenant_access()
-def list_property_tags(tenant_id):
+def list_property_tags(tenant_id: str) -> str | Response:
     """List and manage property tags for a tenant."""
     try:
         with get_db_session() as db_session:
@@ -435,8 +439,10 @@ def list_property_tags(tenant_id):
                 return redirect(url_for("core.admin_dashboard"))
 
             # Ensure 'all_inventory' tag exists (default tag for all properties)
-            stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id == "all_inventory")
-            all_inventory_tag = db_session.scalars(stmt).first()
+            tag_stmt = select(PropertyTag).where(
+                PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id == "all_inventory"
+            )
+            all_inventory_tag = db_session.scalars(tag_stmt).first()
 
             if not all_inventory_tag:
                 # Auto-create the default tag
@@ -453,8 +459,8 @@ def list_property_tags(tenant_id):
                 logger.info(f"Auto-created 'all_inventory' tag for tenant {tenant_id}")
 
             # Get all tags for this tenant
-            stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id).order_by(PropertyTag.name)
-            tags = db_session.scalars(stmt).all()
+            all_tags_stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id).order_by(PropertyTag.name)
+            tags = db_session.scalars(all_tags_stmt).all()
 
             return render_template(
                 "property_tags_list.html",
@@ -473,7 +479,7 @@ def list_property_tags(tenant_id):
 @authorized_properties_bp.route("/<tenant_id>/property-tags/create", methods=["POST"])
 @log_admin_action("create_property_tag")
 @require_tenant_access()
-def create_property_tag(tenant_id):
+def create_property_tag(tenant_id: str) -> Response:
     """Create a new property tag."""
     try:
         tag_id = request.form.get("tag_id", "").strip()
@@ -524,7 +530,7 @@ def create_property_tag(tenant_id):
 @authorized_properties_bp.route("/<tenant_id>/authorized-properties/verify-all", methods=["POST"])
 @log_admin_action("verify_all_properties")
 @require_tenant_access()
-def verify_all_properties(tenant_id):
+def verify_all_properties(tenant_id: str) -> Response:
     """Verify all pending properties against their adagents.json files."""
     try:
         # In production, always construct agent URL from tenant context
@@ -570,7 +576,7 @@ def verify_all_properties(tenant_id):
 @authorized_properties_bp.route("/<tenant_id>/authorized-properties/<property_id>/verify-auto", methods=["POST"])
 @log_admin_action("verify_property_auto")
 @require_tenant_access()
-def verify_property_auto(tenant_id, property_id):
+def verify_property_auto(tenant_id: str, property_id: str) -> Response:
     """Automatically verify a property against its adagents.json file."""
     try:
         logger.info(f"🚀 Verify property request - tenant: {tenant_id}, property: {property_id}")
@@ -616,7 +622,7 @@ def verify_property_auto(tenant_id, property_id):
 @authorized_properties_bp.route("/<tenant_id>/authorized-properties/create", methods=["GET", "POST"])
 @log_admin_action("create_property")
 @require_tenant_access()
-def create_property(tenant_id):
+def create_property(tenant_id: str) -> str | Response:
     """Create a new authorized property."""
     if request.method == "GET":
         try:
@@ -628,8 +634,8 @@ def create_property(tenant_id):
                     return redirect(url_for("core.admin_dashboard"))
 
                 # Get existing tags for this tenant
-                stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id)
-                existing_tags = db_session.scalars(stmt).all()
+                tags_stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id)
+                existing_tags = db_session.scalars(tags_stmt).all()
 
                 return render_template(
                     "property_form.html",
@@ -650,7 +656,7 @@ def create_property(tenant_id):
     try:
         # Validate form data
         is_valid, error_message, parsed_data = _validate_property_form(request)
-        if not is_valid:
+        if not is_valid or parsed_data is None:
             flash(error_message, "error")
             return redirect(request.url)
 
@@ -689,7 +695,7 @@ def create_property(tenant_id):
 @authorized_properties_bp.route("/<tenant_id>/authorized-properties/<property_id>/edit", methods=["GET", "POST"])
 @log_admin_action("edit_property")
 @require_tenant_access()
-def edit_property(tenant_id, property_id):
+def edit_property(tenant_id: str, property_id: str) -> str | Response:
     """Edit an existing authorized property."""
     if request.method == "GET":
         try:
@@ -701,19 +707,19 @@ def edit_property(tenant_id, property_id):
                     return redirect(url_for("core.admin_dashboard"))
 
                 # Get the property to edit
-                stmt = select(AuthorizedProperty).where(
+                prop_stmt = select(AuthorizedProperty).where(
                     AuthorizedProperty.tenant_id == tenant_id,
                     AuthorizedProperty.property_id == property_id,
                 )
-                property_obj = db_session.scalars(stmt).first()
+                property_obj = db_session.scalars(prop_stmt).first()
 
                 if not property_obj:
                     flash(PROPERTY_ERROR_MESSAGES["property_not_found"], "error")
                     return redirect(url_for("authorized_properties.list_authorized_properties", tenant_id=tenant_id))
 
                 # Get existing tags for this tenant
-                stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id)
-                existing_tags = db_session.scalars(stmt).all()
+                tags_stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id)
+                existing_tags = db_session.scalars(tags_stmt).all()
 
                 return render_template(
                     "property_form.html",
@@ -734,7 +740,7 @@ def edit_property(tenant_id, property_id):
     try:
         # Validate form data
         is_valid, error_message, parsed_data = _validate_property_form(request)
-        if not is_valid:
+        if not is_valid or parsed_data is None:
             flash(error_message, "error")
             return redirect(request.url)
 
@@ -742,11 +748,11 @@ def edit_property(tenant_id, property_id):
 
         with get_db_session() as db_session:
             # Get the property to update
-            stmt = select(AuthorizedProperty).where(
+            update_stmt = select(AuthorizedProperty).where(
                 AuthorizedProperty.tenant_id == tenant_id,
                 AuthorizedProperty.property_id == property_id,
             )
-            property_obj = db_session.scalars(stmt).first()
+            property_obj = db_session.scalars(update_stmt).first()
 
             if not property_obj:
                 flash(PROPERTY_ERROR_MESSAGES["property_not_found"], "error")
@@ -761,7 +767,7 @@ def edit_property(tenant_id, property_id):
             property_obj.verification_status = "pending"  # Reset verification status
             property_obj.verification_checked_at = None
             property_obj.verification_error = None
-            property_obj.updated_at = datetime.now(UTC)
+            property_obj.updated_at = datetime.now(UTC)  # type: ignore[assignment]
 
             db_session.commit()
 

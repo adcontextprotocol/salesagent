@@ -283,10 +283,10 @@ class PushNotificationService:
             # Find media buy mapping for any step in this workflow
             step_ids = [s.step_id for s in workflow_steps]
             logger.info(f"[WEBHOOK DEBUG] 3️⃣ Querying ObjectWorkflowMapping for step_ids={step_ids}")
-            stmt = select(ObjectWorkflowMapping).where(
+            mapping_stmt = select(ObjectWorkflowMapping).where(
                 and_(ObjectWorkflowMapping.step_id.in_(step_ids), ObjectWorkflowMapping.object_type == "media_buy")
             )
-            mapping = db.scalars(stmt).first()
+            mapping = db.scalars(mapping_stmt).first()
 
             if not mapping:
                 logger.warning(f"[WEBHOOK DEBUG] ❌ EARLY RETURN: No media buy associated with workflow {workflow_id}")

@@ -74,9 +74,10 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
 
         # Try to get signals from all configured agents via registry
         try:
+            # Use provided tenant_id (required parameter, cannot be None)
             signals = await self.registry.get_signals(
                 brief=brief,
-                tenant_id=tenant_id or self.tenant_id,
+                tenant_id=tenant_id,
                 principal_id=principal_id,
                 context=context,
                 principal_data=principal_data,
@@ -108,7 +109,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         products = []
 
         # Group signals by category for better organization
-        signals_by_category = {}
+        signals_by_category: dict[str, list[dict[str, Any]]] = {}
         for signal in signals:
             category = signal.get("category") or "general"
             if category not in signals_by_category:
@@ -179,6 +180,10 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             description=product_description,
             formats=["display_300x250", "display_728x90", "video_pre_roll"],  # Standard format IDs
             delivery_type="non_guaranteed",  # Signals products are typically programmatic
+            floor_cpm=None,  # Optional - using pricing_options instead
+            recommended_cpm=None,  # Optional - using pricing_options instead
+            measurement=None,  # Optional - signals products don't include measurement
+            creative_policy=None,  # Optional - signals products don't include creative policy
             is_custom=True,  # These are custom products created from signals
             brief_relevance=f"Generated from {len(signals)} signals in {category} category for: {brief[:100]}...",
             property_tags=["all_inventory"],  # Required per AdCP spec (using property_tags instead of properties)
@@ -188,16 +193,19 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
                 PricingOption(
                     pricing_option_id="cpm_usd_auction",
                     pricing_model="cpm",  # type: ignore[arg-type]  # String literal matches PricingModel enum
+                    rate=None,  # Optional - auction-based pricing doesn't have fixed rate
                     currency="USD",
                     is_fixed=False,
-                    supported=True,  # Required field - signals products are supported
                     price_guidance=PriceGuidance(
                         floor=float(adjusted_price),
+                        p25=None,  # Optional percentile
                         p50=float(adjusted_price) * 1.2,
                         p75=float(adjusted_price) * 1.5,
                         p90=float(adjusted_price) * 1.8,  # Required field
                     ),
+                    parameters=None,  # Optional - no additional parameters needed
                     min_spend_per_package=100.0,
+                    supported=True,  # Required field - signals products are supported
                     unsupported_reason=None,  # Optional field
                 )
             ],

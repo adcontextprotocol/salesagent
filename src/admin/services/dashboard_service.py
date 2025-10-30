@@ -148,10 +148,10 @@ class DashboardService:
                 # Transform for template consumption
                 for media_buy in recent_buys:
                     # Calculate estimated spend based on flight duration and status
-                    media_buy.spend = self._calculate_estimated_spend(media_buy)
+                    media_buy.spend = self._calculate_estimated_spend(media_buy)  # type: ignore[attr-defined]
 
                     # Calculate relative time with proper timezone handling
-                    media_buy.created_at_relative = self._format_relative_time(media_buy.created_at)
+                    media_buy.created_at_relative = self._format_relative_time(media_buy.created_at)  # type: ignore[attr-defined]
 
                     # Add advertiser name from eager-loaded principal
                     media_buy.advertiser_name = media_buy.principal.name if media_buy.principal else "Unknown"
@@ -160,9 +160,9 @@ class DashboardService:
                     readiness = MediaBuyReadinessService.get_readiness_state(
                         media_buy.media_buy_id, self.tenant_id, db_session
                     )
-                    media_buy.readiness_state = readiness["state"]
-                    media_buy.is_ready = readiness["is_ready_to_activate"]
-                    media_buy.readiness_details = readiness
+                    media_buy.readiness_state = readiness["state"]  # type: ignore[attr-defined]
+                    media_buy.is_ready = readiness["is_ready_to_activate"]  # type: ignore[attr-defined]
+                    media_buy.readiness_details = readiness  # type: ignore[attr-defined]
 
                 return list(recent_buys)
 

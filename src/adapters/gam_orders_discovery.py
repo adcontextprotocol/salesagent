@@ -393,16 +393,17 @@ class LineItem:
                 targeting = None
 
         # Extract creative placeholders
-        creative_placeholders = None
+        creative_placeholders: list[dict[str, Any]] | None = None
         if "creativePlaceholders" in gam_line_item and gam_line_item["creativePlaceholders"] is not None:
             try:
-                creative_placeholders = []
+                creative_placeholders_list: list[dict[str, Any]] = []
                 for cp in gam_line_item["creativePlaceholders"]:
                     if cp is not None:
                         try:
-                            creative_placeholders.append(serialize_object(cp))
+                            creative_placeholders_list.append(serialize_object(cp))
                         except Exception as e:
                             logger.warning(f"Failed to serialize creative placeholder: {e}")
+                creative_placeholders = creative_placeholders_list
             except Exception as e:
                 logger.warning(
                     f"Failed to process creative placeholders for line item {gam_line_item.get('id', 'unknown')}: {e}"
@@ -410,16 +411,17 @@ class LineItem:
                 creative_placeholders = None
 
         # Extract frequency caps
-        frequency_caps = None
+        frequency_caps: list[dict[str, Any]] | None = None
         if "frequencyCaps" in gam_line_item and gam_line_item["frequencyCaps"] is not None:
             try:
-                frequency_caps = []
+                frequency_caps_list: list[dict[str, Any]] = []
                 for fc in gam_line_item["frequencyCaps"]:
                     if fc is not None:
                         try:
-                            frequency_caps.append(serialize_object(fc))
+                            frequency_caps_list.append(serialize_object(fc))
                         except Exception as e:
                             logger.warning(f"Failed to serialize frequency cap: {e}")
+                frequency_caps = frequency_caps_list
             except Exception as e:
                 logger.warning(
                     f"Failed to process frequency caps for line item {gam_line_item.get('id', 'unknown')}: {e}"
@@ -633,13 +635,13 @@ class GAMOrdersDiscovery:
         self.last_sync = datetime.now()
 
         # Group line items by order
-        line_items_by_order = {}
+        line_items_by_order: dict[str, list[LineItem]] = {}
         for li in line_items:
             if li.order_id not in line_items_by_order:
                 line_items_by_order[li.order_id] = []
             line_items_by_order[li.order_id].append(li)
 
-        summary = {
+        summary: dict[str, Any] = {
             "tenant_id": self.tenant_id,
             "sync_time": self.last_sync.isoformat(),
             "duration_seconds": (self.last_sync - start_time).total_seconds(),
@@ -653,23 +655,30 @@ class GAMOrdersDiscovery:
         }
 
         # Count orders by status
+        orders_by_status: dict[str, int] = {}
         for order in orders:
             status = order.status.value
-            if status not in summary["orders"]["by_status"]:
-                summary["orders"]["by_status"][status] = 0
-            summary["orders"]["by_status"][status] += 1
+            if status not in orders_by_status:
+                orders_by_status[status] = 0
+            orders_by_status[status] += 1
+        summary["orders"]["by_status"] = orders_by_status
 
         # Count line items by status and type
+        line_items_by_status: dict[str, int] = {}
+        line_items_by_type: dict[str, int] = {}
         for li in line_items:
             status = li.status.value
-            if status not in summary["line_items"]["by_status"]:
-                summary["line_items"]["by_status"][status] = 0
-            summary["line_items"]["by_status"][status] += 1
+            if status not in line_items_by_status:
+                line_items_by_status[status] = 0
+            line_items_by_status[status] += 1
 
             li_type = li.line_item_type
-            if li_type not in summary["line_items"]["by_type"]:
-                summary["line_items"]["by_type"][li_type] = 0
-            summary["line_items"]["by_type"][li_type] += 1
+            if li_type not in line_items_by_type:
+                line_items_by_type[li_type] = 0
+            line_items_by_type[li_type] += 1
+
+        summary["line_items"]["by_status"] = line_items_by_status
+        summary["line_items"]["by_type"] = line_items_by_type
 
         logger.info(f"Orders sync completed: {summary}")
         return summary
