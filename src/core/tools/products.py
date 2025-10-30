@@ -32,6 +32,9 @@ from src.core.testing_hooks import apply_testing_hooks, get_testing_context
 from src.core.tool_context import ToolContext
 from src.core.validation_helpers import format_validation_error, safe_parse_json_field
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
+from src.core.schemas_generated._schemas_v1_core_push_notification_config_json import (
+    PushNotificationConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -511,6 +514,7 @@ async def get_products(
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
     filters: dict | None = None,
+    push_notification_config: PushNotificationConfig | None = None,
     context: Context | ToolContext | None = None,
 ):
     """Get available products matching the brief.
