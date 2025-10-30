@@ -2,6 +2,9 @@
 """Integration tests for AdCP spec compliance verification."""
 
 import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 

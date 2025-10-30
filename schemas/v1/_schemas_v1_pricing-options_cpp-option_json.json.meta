@@ -1,6 +1,7 @@
 {
-  "etag": "W/\"68f98531-7b8\"",
-  "last-modified": "Thu, 23 Oct 2025 01:30:25 GMT",
-  "downloaded_at": "2025-10-25T20:48:02.648875",
-  "schema_ref": "/schemas/v1/pricing-options/cpp-option.json"
+  "etag": "W/\"6901f913-7b8\"",
+  "last-modified": "Wed, 29 Oct 2025 11:22:59 GMT",
+  "downloaded_at": "2025-10-30T10:35:42.297275",
+  "schema_ref": "/schemas/v1/pricing-options/cpp-option.json",
+  "content_hash": "40274e4126088ac618050cf96d10913e94ce85e6f8c76bffc38ad8388af42e76"
 }

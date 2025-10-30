@@ -1,6 +1,7 @@
 {
-  "etag": "W/\"68f98531-851\"",
-  "last-modified": "Thu, 23 Oct 2025 01:30:25 GMT",
-  "downloaded_at": "2025-10-25T20:48:02.487701",
-  "schema_ref": "/schemas/v1/pricing-options/vcpm-auction-option.json"
+  "etag": "W/\"6901f913-851\"",
+  "last-modified": "Wed, 29 Oct 2025 11:22:59 GMT",
+  "downloaded_at": "2025-10-30T10:35:42.143865",
+  "schema_ref": "/schemas/v1/pricing-options/vcpm-auction-option.json",
+  "content_hash": "4fa13c9d3f7cf731e6a9ea7cb36e726d7a98d128daa63b4a1e5d2c3ac6a18a58"
 }

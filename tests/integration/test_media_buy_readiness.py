@@ -3,6 +3,9 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+
 from sqlalchemy import delete
 
 from src.admin.services.media_buy_readiness_service import MediaBuyReadinessService

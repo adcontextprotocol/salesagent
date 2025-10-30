@@ -34,26 +34,6 @@ class TestBudgetFormatCompatibility:
         assert budget_amount == Decimal("5000.0")
         assert isinstance(package.budget, float)
 
-    def test_package_budget_as_budget_object(self):
-        """Test Package with budget as Budget object (REMOVED - not supported).
-
-        Per AdCP v2.2.0, Package.budget is float | None, NOT Budget object.
-        This test is skipped as it tests an invalid scenario.
-        """
-        import pytest
-
-        pytest.skip("Package.budget is float | None per AdCP spec, not Budget object")
-
-    def test_package_budget_as_dict(self):
-        """Test Package with budget as dict (REMOVED - not supported).
-
-        Per AdCP v2.2.0, Package.budget is float | None, NOT dict.
-        This test is skipped as it tests an invalid scenario.
-        """
-        import pytest
-
-        pytest.skip("Package.budget is float | None per AdCP spec, not dict")
-
     def test_request_budget_as_number_with_currency_field(self):
         """Test CreateMediaBuyRequest with budget as number (legacy format).
 

@@ -3437,6 +3437,11 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
     adcp_version: str = Field(
         default="1.0.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version for this request"
     )
+    publisher_domains: list[str] | None = Field(
+        None,
+        description="Filter to specific publisher domains (optional). If omitted, returns all publishers this agent represents.",
+        min_length=1,
+    )
     tags: list[str] | None = Field(None, description="Filter properties by specific tags (optional)")
 
     @model_validator(mode="before")

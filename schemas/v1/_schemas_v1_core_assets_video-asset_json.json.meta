@@ -1,6 +1,7 @@
 {
-  "etag": "W/\"68f98531-3ef\"",
-  "last-modified": "Thu, 23 Oct 2025 01:30:25 GMT",
-  "downloaded_at": "2025-10-25T20:48:03.266655",
-  "schema_ref": "/schemas/v1/core/assets/video-asset.json"
+  "etag": "W/\"6901f913-3ef\"",
+  "last-modified": "Wed, 29 Oct 2025 11:22:59 GMT",
+  "downloaded_at": "2025-10-30T10:35:42.964389",
+  "schema_ref": "/schemas/v1/core/assets/video-asset.json",
+  "content_hash": "2c5d81878a00da9739934e631822dd3eef780579c1adefd72969f945429d5b8e"
 }

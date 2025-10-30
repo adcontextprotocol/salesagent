@@ -39,14 +39,14 @@ from src.core.schemas import (
 # via brand_manifest. Full brand_card implementation will be added in a separate PR.
 # This allows us to continue testing other schemas while we work on the brand_card feature.
 SCHEMA_TO_MODEL_MAP = {
-    "tests/e2e/schemas/v1/_schemas_v1_media-buy_get-products-request_json.json": GetProductsRequest,
-    # "tests/e2e/schemas/v1/_schemas_v1_media-buy_create-media-buy-request_json.json": CreateMediaBuyRequest,  # Skipped - pending brand_card implementation
-    "tests/e2e/schemas/v1/_schemas_v1_media-buy_update-media-buy-request_json.json": UpdateMediaBuyRequest,
-    "tests/e2e/schemas/v1/_schemas_v1_media-buy_get-media-buy-delivery-request_json.json": GetMediaBuyDeliveryRequest,
-    "tests/e2e/schemas/v1/_schemas_v1_media-buy_sync-creatives-request_json.json": SyncCreativesRequest,
-    "tests/e2e/schemas/v1/_schemas_v1_media-buy_list-creatives-request_json.json": ListCreativesRequest,
-    "tests/e2e/schemas/v1/_schemas_v1_signals_get-signals-request_json.json": GetSignalsRequest,
-    "tests/e2e/schemas/v1/_schemas_v1_properties_list-authorized-properties-request_json.json": ListAuthorizedPropertiesRequest,
+    "schemas/v1/_schemas_v1_media-buy_get-products-request_json.json": GetProductsRequest,
+    # "schemas/v1/_schemas_v1_media-buy_create-media-buy-request_json.json": CreateMediaBuyRequest,  # Skipped - pending brand_card implementation
+    "schemas/v1/_schemas_v1_media-buy_update-media-buy-request_json.json": UpdateMediaBuyRequest,
+    "schemas/v1/_schemas_v1_media-buy_get-media-buy-delivery-request_json.json": GetMediaBuyDeliveryRequest,
+    "schemas/v1/_schemas_v1_media-buy_sync-creatives-request_json.json": SyncCreativesRequest,
+    "schemas/v1/_schemas_v1_media-buy_list-creatives-request_json.json": ListCreativesRequest,
+    "schemas/v1/_schemas_v1_signals_get-signals-request_json.json": GetSignalsRequest,
+    "schemas/v1/_schemas_v1_media-buy_list-authorized-properties-request_json.json": ListAuthorizedPropertiesRequest,
 }
 
 
