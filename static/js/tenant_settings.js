@@ -26,7 +26,8 @@ const config = (function() {
         a2aPort: configEl.dataset.a2aPort || '8091',
         isProduction: configEl.dataset.isProduction === 'true',
         virtualHost: configEl.dataset.virtualHost || '',
-        subdomain: configEl.dataset.subdomain || ''
+        subdomain: configEl.dataset.subdomain || '',
+        salesAgentDomain: configEl.dataset.salesAgentDomain || 'sales-agent.example.com'
     };
 })();
 
@@ -886,7 +887,7 @@ function generateA2ACode() {
         : `http://localhost:${config.a2aPort}`;
 
     const agentUriAlt = config.isProduction
-        ? `https://${config.subdomain}.sales-agent.scope3.com`
+        ? `https://${config.subdomain}.${config.salesAgentDomain}`
         : `http://localhost:${config.a2aPort}`;
 
     const code = `
@@ -1173,11 +1174,11 @@ function copyA2AConfig(principalId, principalName, accessToken) {
     if (config.isProduction) {
         // Production: Use subdomain or virtual host
         if (config.subdomain) {
-            a2aUrl = `https://${config.subdomain}.sales-agent.scope3.com/a2a`;
+            a2aUrl = `https://${config.subdomain}.${config.salesAgentDomain}/a2a`;
         } else if (config.virtualHost) {
             a2aUrl = `https://${config.virtualHost}/a2a`;
         } else {
-            a2aUrl = `https://sales-agent.scope3.com/a2a`;
+            a2aUrl = `https://${config.salesAgentDomain}/a2a`;
         }
     } else {
         // Development: Use localhost with configured port
@@ -1229,11 +1230,11 @@ function copyMCPConfig(principalId, principalName, accessToken) {
     if (config.isProduction) {
         // Production: Use subdomain or virtual host
         if (config.subdomain) {
-            mcpUrl = `https://${config.subdomain}.sales-agent.scope3.com/mcp`;
+            mcpUrl = `https://${config.subdomain}.${config.salesAgentDomain}/mcp`;
         } else if (config.virtualHost) {
             mcpUrl = `https://${config.virtualHost}/mcp`;
         } else {
-            mcpUrl = `https://sales-agent.scope3.com/mcp`;
+            mcpUrl = `https://${config.salesAgentDomain}/mcp`;
         }
     } else {
         // Development: Use localhost with MCP port (8080)

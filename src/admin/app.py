@@ -34,6 +34,11 @@ from src.admin.blueprints.signals_agents import signals_agents_bp
 from src.admin.blueprints.tenants import tenants_bp
 from src.admin.blueprints.users import users_bp
 from src.admin.blueprints.workflows import workflows_bp
+from src.core.domain_config import (
+    get_session_cookie_domain,
+    get_tenant_url,
+    is_sales_agent_domain,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -111,7 +116,7 @@ def create_app(config=None):
         app.config["SESSION_COOKIE_HTTPONLY"] = False  # Allow EventSource to access cookies
         app.config["SESSION_COOKIE_SAMESITE"] = "None"  # Required for EventSource cross-origin requests
         app.config["SESSION_COOKIE_PATH"] = "/admin/"  # Ensure cookies work for all /admin/* paths
-        app.config["SESSION_COOKIE_DOMAIN"] = ".sales-agent.scope3.com"  # Allow cookies across subdomains for OAuth
+        app.config["SESSION_COOKIE_DOMAIN"] = get_session_cookie_domain()  # Allow cookies across subdomains for OAuth
     else:
         app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in dev
         app.config["SESSION_COOKIE_HTTPONLY"] = True  # Standard setting for dev
@@ -188,8 +193,8 @@ def create_app(config=None):
             logger.debug(f"No Apx-Incoming-Host header for /admin request: {request.path}")
             return None  # Not from Approximated, allow normal routing
 
-        # Check if it's an external domain (not ending in .sales-agent.scope3.com)
-        if apx_host.endswith(".sales-agent.scope3.com"):
+        # Check if it's an external domain (not part of sales agent domain)
+        if is_sales_agent_domain(apx_host):
             logger.debug(f"Subdomain request to /admin, allowing: {apx_host}")
             return None  # Subdomain request, allow normal routing
 
@@ -212,7 +217,7 @@ def create_app(config=None):
         )
 
         if os.environ.get("PRODUCTION") == "true":
-            redirect_url = f"https://{tenant_subdomain}.sales-agent.scope3.com{path_with_admin}"
+            redirect_url = f"{get_tenant_url(tenant_subdomain)}{path_with_admin}"
         else:
             # Local dev: Use localhost with port
             port = os.environ.get("ADMIN_UI_PORT", "8001")

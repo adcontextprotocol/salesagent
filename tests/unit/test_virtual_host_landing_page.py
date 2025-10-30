@@ -133,16 +133,16 @@ class TestVirtualHostLandingPage:
         assert "http://localhost:8080/a2a" in html_content
         assert "http://localhost:8080/.well-known/agent.json" in html_content
 
-    def test_landing_page_scope3_integration(self):
-        """Test that landing page includes Scope3 link for buying agents."""
-        tenant = {"name": "Scope3 Test Publisher", "subdomain": "scope3test"}
+    def test_landing_page_basic_content(self):
+        """Test that landing page includes basic content elements."""
+        tenant = {"name": "Test Publisher", "subdomain": "testpub"}
 
         html_content = generate_tenant_landing_page(tenant)
 
-        # Check for Scope3 integration
-        assert "Need a Buying Agent?" in html_content
-        assert "scope3.com" in html_content
-        assert "Get Agent from Scope3" in html_content
+        # Check for basic landing page content
+        assert "Test Publisher" in html_content
+        assert "AdCP" in html_content
+        assert "testpub" in html_content
 
     def test_landing_page_admin_dashboard_link(self):
         """Test that landing page includes admin dashboard link."""

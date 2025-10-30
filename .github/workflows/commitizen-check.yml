@@ -28,6 +28,7 @@ jobs:
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           uv sync
+          uv pip install commitizen
 
       - name: Check commits follow conventional commit format
         run: |

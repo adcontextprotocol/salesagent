@@ -12,6 +12,7 @@ from sqlalchemy import or_, select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AdapterConfig, CurrencyLimit, Principal, Tenant, User
+from src.core.domain_config import extract_subdomain_from_host, get_sales_agent_domain, is_sales_agent_domain
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +53,10 @@ def landing():
                 return redirect(url_for("auth.login"))
 
         # Check subdomain routing
-        if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
-            tenant_subdomain = host.split(".")[0]
-            if tenant_subdomain and tenant_subdomain != "sales-agent":
+        if is_sales_agent_domain(host) and not host.startswith("admin."):
+            tenant_subdomain = extract_subdomain_from_host(host)
+            sales_domain = get_sales_agent_domain()
+            if tenant_subdomain and tenant_subdomain != sales_domain.split(".")[0]:
                 tenant = db_session.scalars(select(Tenant).filter_by(subdomain=tenant_subdomain)).first()
                 if tenant:
                     # On a tenant subdomain - redirect to login instead

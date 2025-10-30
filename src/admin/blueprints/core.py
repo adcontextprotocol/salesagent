@@ -14,6 +14,12 @@ from src.admin.utils import require_auth  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Tenant
+from src.core.domain_config import (
+    extract_subdomain_from_host,
+    get_a2a_server_url,
+    get_mcp_server_url,
+    is_sales_agent_domain,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +40,9 @@ def get_tenant_from_hostname():
             tenant = db_session.scalars(select(Tenant).filter_by(virtual_host=approximated_host)).first()
             return tenant
 
-    # Fallback to direct domain routing (sales-agent.scope3.com)
-    if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
-        tenant_subdomain = host.split(".")[0]
+    # Fallback to direct domain routing
+    if is_sales_agent_domain(host) and not host.startswith("admin."):
+        tenant_subdomain = extract_subdomain_from_host(host)
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(subdomain=tenant_subdomain)).first()
             return tenant
@@ -56,13 +62,13 @@ def index():
         logger.info(f"[LANDING DEBUG] Host: {host}, Apx-Incoming-Host: {approximated_host}, Path: {request.path}")
         logger.info(f"[LANDING DEBUG] All headers: {dict(request.headers)}")
 
-        # admin.sales-agent.scope3.com should go to login
+        # Admin domain should go to login
         if (approximated_host and approximated_host.startswith("admin.")) or host.startswith("admin."):
             logger.info("[LANDING DEBUG] Detected admin domain, redirecting to login")
             return redirect(url_for("auth.login"))
 
         # Check if we're on an external virtual host (via Approximated)
-        if approximated_host and not approximated_host.endswith(".sales-agent.scope3.com"):
+        if approximated_host and not is_sales_agent_domain(approximated_host):
             # External domain detected - check if tenant exists for this virtual host
             logger.info(f"[LANDING DEBUG] External domain detected: {approximated_host}, checking for tenant")
             tenant = get_tenant_from_hostname()
@@ -79,14 +85,14 @@ def index():
                 )
                 return render_template("landing.html")
 
-        # Check if we're on a tenant-specific subdomain (*.sales-agent.scope3.com)
+        # Check if we're on a tenant-specific subdomain
         tenant = get_tenant_from_hostname()
         if tenant:
             # Subdomain tenants redirect to login
             logger.info(f"[LANDING DEBUG] Tenant subdomain detected: {tenant.tenant_id}, redirecting to login")
             return redirect(url_for("auth.login"))
 
-        # Main domain (sales-agent.scope3.com) - show signup landing
+        # Main domain - show signup landing
         logger.info("[LANDING DEBUG] Main domain detected, redirecting to /signup")
         return redirect(url_for("public.landing"))
 
@@ -364,9 +370,9 @@ def mcp_test():
 
     # Get server URLs - use production URLs if in production, otherwise localhost
     if os.environ.get("PRODUCTION") == "true":
-        # In production, both servers are accessible at the virtual host domain
-        mcp_server_url = "https://sales-agent.scope3.com/mcp"  # Remove trailing slash
-        a2a_server_url = "https://sales-agent.scope3.com/a2a"
+        # In production, both servers are accessible at the configured domain
+        mcp_server_url = get_mcp_server_url()
+        a2a_server_url = get_a2a_server_url()
     else:
         # In development, use localhost with the configured ports from environment
         # Default to common development ports if not set

@@ -11,6 +11,13 @@ from sqlalchemy import select
 from src.admin.utils import is_super_admin  # type: ignore[attr-defined]
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
+from src.core.domain_config import (
+    extract_subdomain_from_host,
+    get_oauth_redirect_uri,
+    get_sales_agent_url,
+    get_super_admin_domain,
+    is_sales_agent_domain,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +91,12 @@ def login():
                     f"Detected tenant context from Approximated headers: {approximated_host} -> {tenant_context}"
                 )
 
-    # Fallback to direct domain routing (sales-agent.scope3.com)
+    # Fallback to direct domain routing
     if not tenant_context:
         tenant_subdomain = None
-        if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
-            # Extract tenant subdomain (e.g., "scribd" from "scribd.sales-agent.scope3.com")
-            tenant_subdomain = host.split(".")[0]
+        if is_sales_agent_domain(host) and not host.startswith("admin."):
+            # Extract tenant subdomain from configured domain
+            tenant_subdomain = extract_subdomain_from_host(host)
 
         if tenant_subdomain:
             # Look up tenant by subdomain
@@ -177,7 +184,7 @@ def tenant_google_auth(tenant_id):
     # Always use the registered OAuth redirect URI for Google (no modifications allowed)
     if os.environ.get("PRODUCTION") == "true":
         # For production, always use the exact registered redirect URI
-        redirect_uri = "https://sales-agent.scope3.com/admin/auth/google/callback"
+        redirect_uri = get_oauth_redirect_uri()
     else:
         # Development fallback
         redirect_uri = url_for("auth.google_callback", _external=True)
@@ -259,7 +266,8 @@ def google_callback():
         email_domain = email.split("@")[1] if "@" in email else ""
 
         # Check if user is super admin
-        if email_domain == "scope3.com" or is_super_admin(email):
+        super_admin_domain = get_super_admin_domain()
+        if email_domain == super_admin_domain or is_super_admin(email):
             session["is_super_admin"] = True
             session["role"] = "super_admin"
             flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
@@ -474,7 +482,7 @@ def gam_authorize(tenant_id):
 
         # Determine callback URI
         if os.environ.get("PRODUCTION") == "true":
-            callback_uri = "https://sales-agent.scope3.com/admin/auth/gam/callback"
+            callback_uri = f"{get_sales_agent_url()}/admin/auth/gam/callback"
         else:
             callback_uri = url_for("auth.gam_callback", _external=True)
 
@@ -541,7 +549,7 @@ def gam_callback():
 
         # Determine callback URI (must match the one used in authorization)
         if os.environ.get("PRODUCTION") == "true":
-            callback_uri = "https://sales-agent.scope3.com/admin/auth/gam/callback"
+            callback_uri = f"{get_sales_agent_url()}/admin/auth/gam/callback"
         else:
             callback_uri = url_for("auth.gam_callback", _external=True)
 

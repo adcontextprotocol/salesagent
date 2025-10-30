@@ -21,6 +21,7 @@ from src.admin.utils import get_tenant_config_from_db, require_auth, require_ten
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Tenant, User
+from src.core.domain_config import get_sales_agent_domain
 from src.core.validation import sanitize_form_data, validate_form_data
 from src.services.setup_checklist_service import SetupChecklistService
 
@@ -362,6 +363,7 @@ def tenant_settings(tenant_id, section=None):
                 admin_port=admin_port,
                 is_production=is_production,
                 script_name=script_name,
+                sales_agent_domain=get_sales_agent_domain(),
                 authorized_domains=authorized_domains,
                 authorized_emails=authorized_emails,
                 product_count=product_count,

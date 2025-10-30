@@ -1,6 +1,7 @@
 {
-  "etag": "W/\"68ffaa97-1ce0\"",
-  "last-modified": "Mon, 27 Oct 2025 17:23:35 GMT",
-  "downloaded_at": "2025-10-27T20:50:42.491975",
-  "schema_ref": "/schemas/v1/core/webhook-payload.json"
+  "etag": "W/\"6901f913-1ce0\"",
+  "last-modified": "Wed, 29 Oct 2025 11:22:59 GMT",
+  "downloaded_at": "2025-10-29T12:14:52.976640",
+  "schema_ref": "/schemas/v1/core/webhook-payload.json",
+  "content_hash": "3037a3a80eb9e20dc2034a6701bf871e944f910e3ea1fec0885361ed06ace8eb"
 }
