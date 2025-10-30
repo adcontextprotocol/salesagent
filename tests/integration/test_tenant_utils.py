@@ -1,7 +1,17 @@
-"""Integration tests for tenant serialization utilities."""
+"""Integration tests for tenant serialization utilities.
+
+These tests focus on testing OUR serialize_tenant_to_dict() function's business logic,
+specifically the JSON deserialization behavior via safe_json_loads().
+
+Tests that were deleted (they only tested dict structure/assignment):
+- test_serialize_tenant_includes_all_expected_fields: Just checked keys exist
+- test_serialize_tenant_field_values: Tested assignment (result["name"] == tenant.name)
+- test_serialize_tenant_model_column_coverage: Duplicate of first test
+
+Per CLAUDE.md: "Test YOUR code's logic and behavior, not Python/SQLAlchemy."
+"""
 
 import pytest
-from sqlalchemy import inspect
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
@@ -9,94 +19,12 @@ from src.core.utils.tenant_utils import serialize_tenant_to_dict
 
 
 @pytest.mark.requires_db
-def test_serialize_tenant_includes_all_expected_fields(integration_db):
-    """Ensure serialization includes all expected Tenant fields."""
-    with get_db_session() as session:
-        # Create test tenant
-        tenant = Tenant(
-            tenant_id="test",
-            name="Test Tenant",
-            subdomain="test",
-            virtual_host="test.example.com",
-            ad_server="mock",
-            enable_axe_signals=True,
-            authorized_emails=["admin@test.com"],
-            authorized_domains=["test.com"],
-            slack_webhook_url="https://slack.com/webhook",
-            admin_token="test_admin_token",
-            auto_approve_formats=["display_300x250"],
-            human_review_required=True,
-            slack_audit_webhook_url="https://slack.com/audit",
-            hitl_webhook_url="https://hitl.com/webhook",
-            policy_settings={"key": "value"},
-            signals_agent_config={"config": "value"},
-            approval_mode="auto",
-            gemini_api_key="test_api_key",
-            creative_review_criteria="test criteria",
-        )
-        session.add(tenant)
-        session.flush()
+def test_serialize_tenant_json_fields_are_deserialized(integration_db):
+    """Test JSON fields are returned as Python objects (lists/dicts), not strings.
 
-        # Serialize
-        result = serialize_tenant_to_dict(tenant)
-
-        # Check all important fields are included
-        expected_fields = {
-            "tenant_id",
-            "name",
-            "subdomain",
-            "virtual_host",
-            "ad_server",
-            "enable_axe_signals",
-            "authorized_emails",
-            "authorized_domains",
-            "slack_webhook_url",
-            "admin_token",
-            "auto_approve_formats",
-            "human_review_required",
-            "slack_audit_webhook_url",
-            "hitl_webhook_url",
-            "policy_settings",
-            "signals_agent_config",
-            "approval_mode",
-            "gemini_api_key",
-            "creative_review_criteria",
-        }
-
-        for field in expected_fields:
-            assert field in result, f"Missing field: {field}"
-
-
-@pytest.mark.requires_db
-def test_serialize_tenant_field_values(integration_db):
-    """Verify serialized field values match Tenant model."""
-    with get_db_session() as session:
-        tenant = Tenant(
-            tenant_id="test",
-            name="Test Tenant",
-            subdomain="test",
-            ad_server="gam",
-            gemini_api_key="gemini_key_123",
-            approval_mode="manual",
-            creative_review_criteria="Must be brand safe",
-        )
-        session.add(tenant)
-        session.flush()
-
-        result = serialize_tenant_to_dict(tenant)
-
-        assert result["tenant_id"] == "test"
-        assert result["name"] == "Test Tenant"
-        assert result["subdomain"] == "test"
-        assert result["ad_server"] == "gam"
-        assert result["gemini_api_key"] == "gemini_key_123"
-        assert result["approval_mode"] == "manual"
-        assert result["creative_review_criteria"] == "Must be brand safe"
-
-
-@pytest.mark.requires_db
-def test_serialize_tenant_json_fields(integration_db):
-    """Verify JSON fields are properly deserialized."""
+    This tests the critical safe_json_loads() behavior in serialize_tenant_to_dict().
+    JSONType columns should automatically deserialize, but this verifies the contract.
+    """
     with get_db_session() as session:
         tenant = Tenant(
             tenant_id="test",
@@ -113,7 +41,7 @@ def test_serialize_tenant_json_fields(integration_db):
 
         result = serialize_tenant_to_dict(tenant)
 
-        # Verify JSON fields are lists/dicts, not strings
+        # TEST: safe_json_loads() returns Python objects, not JSON strings
         assert isinstance(result["authorized_emails"], list)
         assert result["authorized_emails"] == ["admin@test.com", "user@test.com"]
 
@@ -125,14 +53,18 @@ def test_serialize_tenant_json_fields(integration_db):
 
         assert isinstance(result["policy_settings"], dict)
         assert result["policy_settings"]["enabled"] is True
+        assert result["policy_settings"]["max_duration"] == 30
 
         assert isinstance(result["signals_agent_config"], dict)
         assert result["signals_agent_config"]["endpoint"] == "https://api.example.com"
 
 
 @pytest.mark.requires_db
-def test_serialize_tenant_nullable_fields(integration_db):
-    """Verify nullable fields are handled correctly."""
+def test_serialize_tenant_nullable_fields_have_defaults(integration_db):
+    """Test nullable fields get appropriate defaults when not provided.
+
+    This tests the safe_json_loads() default parameter behavior.
+    """
     with get_db_session() as session:
         tenant = Tenant(
             tenant_id="test",
@@ -145,61 +77,12 @@ def test_serialize_tenant_nullable_fields(integration_db):
 
         result = serialize_tenant_to_dict(tenant)
 
-        # Nullable fields should be present but None or empty defaults
-        assert "subdomain" in result
-        assert "virtual_host" in result
-        assert "slack_webhook_url" in result
-        assert "admin_token" in result
+        # TEST: safe_json_loads() provides default empty lists for array fields
         assert result["authorized_emails"] == []  # Default empty list
         assert result["authorized_domains"] == []  # Default empty list
+        assert result["auto_approve_formats"] == []  # Default empty list
 
-
-@pytest.mark.requires_db
-def test_serialize_tenant_model_column_coverage(integration_db):
-    """Ensure serialization covers key Tenant model columns."""
-    with get_db_session() as session:
-        # Get all Tenant model columns
-        tenant_columns = {col.name for col in inspect(Tenant).columns}
-
-        # Create test tenant
-        tenant = Tenant(tenant_id="test", name="Test", subdomain="test_coverage")
-        session.add(tenant)
-        session.flush()
-
-        # Serialize
-        result = serialize_tenant_to_dict(tenant)
-
-        # These are the critical fields that must be in the serialization
-        # (excludes internal fields like created_at, updated_at, is_active)
-        # Note: max_daily_budget has been moved to currency_limits table
-        critical_fields = {
-            "tenant_id",
-            "name",
-            "subdomain",
-            "virtual_host",
-            "ad_server",
-            "enable_axe_signals",
-            "authorized_emails",
-            "authorized_domains",
-            "slack_webhook_url",
-            "admin_token",
-            "auto_approve_formats",
-            "human_review_required",
-            "slack_audit_webhook_url",
-            "hitl_webhook_url",
-            "policy_settings",
-            "signals_agent_config",
-            "approval_mode",
-            "gemini_api_key",
-            "creative_review_criteria",
-        }
-
-        # Verify all critical fields are in result
-        for field in critical_fields:
-            assert field in result, f"Critical field missing: {field}"
-
-        # Verify we're not missing any obvious tenant columns
-        # (Allow for internal fields like is_active, created_at to be excluded)
-        serialized_keys = set(result.keys())
-        for col in ["tenant_id", "name", "ad_server", "approval_mode"]:
-            assert col in serialized_keys, f"Expected column {col} in serialized result"
+        # TEST: Nullable scalar fields are None (no default)
+        assert result["virtual_host"] is None
+        assert result["slack_webhook_url"] is None
+        assert result["admin_token"] is None
