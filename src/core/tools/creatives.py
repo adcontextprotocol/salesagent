@@ -19,6 +19,8 @@ from pydantic import ValidationError
 from rich.console import Console
 from sqlalchemy import select
 
+from src.core.tool_context import ToolContext
+
 logger = logging.getLogger(__name__)
 console = Console()
 
@@ -44,7 +46,7 @@ def _sync_creatives_impl(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
 
@@ -87,9 +89,7 @@ def _sync_creatives_impl(
         tenant = get_current_tenant()
         if not tenant or tenant.get("tenant_id") != context.tenant_id:
             # Tenant context wasn't set properly - this shouldn't happen but handle it
-            logger.warning(
-                f"Warning: Tenant context mismatch, setting from ToolContext: {context.tenant_id}"
-            )
+            logger.warning(f"Warning: Tenant context mismatch, setting from ToolContext: {context.tenant_id}")
             # We need to load the tenant properly - for now use the ID from context
             tenant = {"tenant_id": context.tenant_id}
     else:
@@ -181,7 +181,9 @@ def _sync_creatives_impl(
                                 for asset_id, asset_data in assets.items():
                                     if isinstance(asset_data, dict) and asset_data.get("url"):
                                         url = asset_data["url"]
-                                        logger.debug(f"[sync_creatives] Extracted URL from assets.{asset_id}.url (fallback)")
+                                        logger.debug(
+                                            f"[sync_creatives] Extracted URL from assets.{asset_id}.url (fallback)"
+                                        )
                                         break
 
                         schema_data["content_uri"] = url or f"asset://{creative.get('creative_id')}"
@@ -251,7 +253,9 @@ def _sync_creatives_impl(
 
                     if existing_creative:
                         # Update existing creative (respects patch vs full upsert)
-                        existing_creative.updated_at = datetime.now(UTC)
+                        # Update updated_at timestamp
+                        now = datetime.now(UTC)
+                        existing_creative.updated_at = now  # type: ignore[assignment]
 
                         # Track changes for result
                         changes = []
@@ -260,7 +264,9 @@ def _sync_creatives_impl(
                         if patch:
                             # Patch mode: only update provided fields
                             if creative.get("name") is not None and creative.get("name") != existing_creative.name:
-                                existing_creative.name = creative.get("name")
+                                name_value = creative.get("name")
+                                if name_value is not None:
+                                    existing_creative.name = str(name_value)
                                 changes.append("name")
                             if creative.get("format_id") or creative.get("format"):
                                 # Use validated format_value (already auto-upgraded from string)
@@ -275,7 +281,9 @@ def _sync_creatives_impl(
                         else:
                             # Full upsert mode: replace all fields
                             if creative.get("name") != existing_creative.name:
-                                existing_creative.name = creative.get("name")
+                                name_value = creative.get("name")
+                                if name_value is not None:
+                                    existing_creative.name = str(name_value)
                                 changes.append("name")
                             # Use validated format_value (already auto-upgraded from string)
                             new_agent_url, new_format = _extract_format_namespace(format_value)
@@ -380,7 +388,9 @@ def _sync_creatives_impl(
                                     if priority_key in assets and isinstance(assets[priority_key], dict):
                                         url = assets[priority_key].get("url")
                                         if url:
-                                            logger.debug(f"[sync_creatives] Extracted URL from assets.{priority_key}.url for data storage")
+                                            logger.debug(
+                                                f"[sync_creatives] Extracted URL from assets.{priority_key}.url for data storage"
+                                            )
                                             break
 
                                 # Priority 2: First available asset URL
@@ -388,7 +398,9 @@ def _sync_creatives_impl(
                                     for asset_id, asset_data in assets.items():
                                         if isinstance(asset_data, dict) and asset_data.get("url"):
                                             url = asset_data["url"]
-                                            logger.debug(f"[sync_creatives] Extracted URL from assets.{asset_id}.url for data storage (fallback)")
+                                            logger.debug(
+                                                f"[sync_creatives] Extracted URL from assets.{asset_id}.url for data storage (fallback)"
+                                            )
                                             break
 
                             data = {
@@ -625,7 +637,7 @@ def _sync_creatives_impl(
                                             f"url={bool(data.get('url'))}, "
                                             f"width={data.get('width')}, "
                                             f"height={data.get('height')}, "
-                                            f"variants={len(preview_result.get('previews', []))}"
+                                            f"variants={len(preview_result.get('previews', []) if preview_result else [])}"
                                         )
                                     else:
                                         # Preview generation returned no previews
@@ -1196,15 +1208,13 @@ def _sync_creatives_impl(
                     # Note: We need to join with MediaBuy to verify tenant_id
                     from sqlalchemy import join
 
-                    stmt = (
+                    package_stmt = (
                         select(MediaPackage, MediaBuy)
-                        .select_from(
-                            join(MediaPackage, MediaBuy, MediaPackage.media_buy_id == MediaBuy.media_buy_id)
-                        )
+                        .select_from(join(MediaPackage, MediaBuy, MediaPackage.media_buy_id == MediaBuy.media_buy_id))
                         .where(MediaPackage.package_id == package_id)
                         .where(MediaBuy.tenant_id == tenant["tenant_id"])
                     )
-                    result = session.execute(stmt).first()
+                    result = session.execute(package_stmt).first()
 
                     media_buy_id = None
                     actual_package_id = None
@@ -1271,21 +1281,22 @@ def _sync_creatives_impl(
                     )
 
                     # Track successful assignment
-                    assignments_by_creative[creative_id].append(actual_package_id)
+                    if actual_package_id is not None:
+                        assignments_by_creative[creative_id].append(actual_package_id)
 
             session.commit()
 
     # Update creative results with assignment information (per AdCP spec)
-    for result in results:
-        if result.creative_id in assignments_by_creative:
-            assigned_packages = assignments_by_creative[result.creative_id]
+    for sync_result in results:
+        if sync_result.creative_id in assignments_by_creative:
+            assigned_packages = assignments_by_creative[sync_result.creative_id]
             if assigned_packages:
-                result.assigned_to = assigned_packages
+                sync_result.assigned_to = assigned_packages
 
-        if result.creative_id in assignment_errors_by_creative:
-            errors = assignment_errors_by_creative[result.creative_id]
+        if sync_result.creative_id in assignment_errors_by_creative:
+            errors = assignment_errors_by_creative[sync_result.creative_id]
             if errors:
-                result.assignment_errors = errors
+                sync_result.assignment_errors = errors
 
     # Create workflow steps for creatives requiring approval
     if creatives_needing_approval:
@@ -1294,11 +1305,18 @@ def _sync_creatives_impl(
 
         ctx_manager = get_context_manager()
 
+        # Ensure principal_id is available (should always be set by this point)
+        if principal_id is None:
+            raise ToolError("Principal ID required for workflow creation")
+
         # Get or create persistent context for this operation
         # is_async=True because we're creating workflow steps that need tracking
         persistent_ctx = ctx_manager.get_or_create_context(
             principal_id=principal_id, tenant_id=tenant["tenant_id"], is_async=True
         )
+
+        if persistent_ctx is None:
+            raise ToolError("Failed to create workflow context")
 
         with get_db_session() as session:
             for creative_info in creatives_needing_approval:
@@ -1347,9 +1365,7 @@ def _sync_creatives_impl(
                 session.add(mapping)
 
             session.commit()
-            logger.info(
-                f"📋 Created {len(creatives_needing_approval)} workflow steps for creative approval"
-            )
+            logger.info(f"📋 Created {len(creatives_needing_approval)} workflow steps for creative approval")
 
         # Send Slack notification for pending/rejected creative reviews
         # Note: For ai-powered mode, notifications are sent AFTER AI review completes (with AI reasoning)
@@ -1370,13 +1386,18 @@ def _sync_creatives_impl(
                 status = creative_info.get("status", "pending")
                 ai_review_reason = creative_info.get("ai_review_reason")
 
+                # Ensure required fields are strings
+                creative_id_str = str(creative_info.get("creative_id", "unknown"))
+                format_str = str(creative_info.get("format", "unknown"))
+                principal_name_str = str(principal_id) if principal_id else "unknown"
+
                 if status == "rejected":
                     # For rejected creatives, send a different notification
                     # TODO: Add notify_creative_rejected method to SlackNotifier
                     notifier.notify_creative_pending(
-                        creative_id=creative_info["creative_id"],
-                        principal_name=principal_id,
-                        format_type=creative_info["format"],
+                        creative_id=creative_id_str,
+                        principal_name=principal_name_str,
+                        format_type=format_str,
                         media_buy_id=None,
                         tenant_id=tenant["tenant_id"],
                         ai_review_reason=ai_review_reason,
@@ -1384,9 +1405,9 @@ def _sync_creatives_impl(
                 else:
                     # For pending creatives (human review required)
                     notifier.notify_creative_pending(
-                        creative_id=creative_info["creative_id"],
-                        principal_name=principal_id,
-                        format_type=creative_info["format"],
+                        creative_id=creative_id_str,
+                        principal_name=principal_name_str,
+                        format_type=format_str,
                         media_buy_id=None,
                         tenant_id=tenant["tenant_id"],
                         ai_review_reason=ai_review_reason,
@@ -1407,10 +1428,13 @@ def _sync_creatives_impl(
         if len(failed_creatives) > 5:
             error_message += f" (and {len(failed_creatives) - 5} more)"
 
+    # Ensure principal_id is string for audit logging
+    principal_id_str = str(principal_id) if principal_id else "unknown"
+
     audit_logger.log_operation(
         operation="sync_creatives",
-        principal_name=principal_id,
-        principal_id=principal_id,
+        principal_name=principal_id_str,
+        principal_id=principal_id_str,
         adapter_id="N/A",
         success=len(failed_creatives) == 0,
         error=error_message,
@@ -1425,8 +1449,8 @@ def _sync_creatives_impl(
 
     # Log activity
     # Activity logging imported at module level
-
-    log_tool_activity(context, "sync_creatives", start_time)
+    if context is not None:
+        log_tool_activity(context, "sync_creatives", start_time)
 
     # Build message
     message = f"Synced {created_count + updated_count} creatives"
@@ -1452,17 +1476,18 @@ def _sync_creatives_impl(
             from src.core.database.models import Principal as DBPrincipal
 
             # Get principal info for audit log
-            stmt = select(DBPrincipal).filter_by(tenant_id=tenant["tenant_id"], principal_id=principal_id)
-            principal = audit_session.scalars(stmt).first()
+            principal_stmt = select(DBPrincipal).filter_by(tenant_id=tenant["tenant_id"], principal_id=principal_id)
+            principal = audit_session.scalars(principal_stmt).first()
 
             if principal:
                 # Create audit logger and log the operation
                 audit_logger = get_audit_logger("sync_creatives", tenant["tenant_id"])
+                principal_id_str = str(principal_id) if principal_id else "unknown"
                 audit_logger.log_operation(
                     operation="sync_creatives",
                     principal_name=principal.name,
-                    principal_id=principal_id,
-                    adapter_id=principal_id,  # Use principal_id as adapter_id for consistency
+                    principal_id=principal_id_str,
+                    adapter_id=principal_id_str,  # Use principal_id as adapter_id for consistency
                     success=(failed_count == 0),
                     details={
                         "created_count": created_count,
@@ -1495,7 +1520,7 @@ def sync_creatives(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict | None = None,
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ):
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
 
@@ -1547,7 +1572,7 @@ def _list_creatives_impl(
     limit: int = 50,
     sort_by: str = "created_date",
     sort_order: str = "desc",
-    context: Context | None = None,
+    context: Context | ToolContext | None = None,
 ) -> ListCreativesResponse:
     """List and search creative library (AdCP spec endpoint).
 
@@ -1596,6 +1621,13 @@ def _list_creatives_impl(
             raise ToolError(f"Invalid created_before date format: {created_before}")
 
     # Create request object from individual parameters (MCP-compliant)
+    # Validate sort_order is valid Literal
+    from typing import Literal, cast
+
+    valid_sort_order: Literal["asc", "desc"] = cast(
+        Literal["asc", "desc"], sort_order if sort_order in ["asc", "desc"] else "desc"
+    )
+
     try:
         req = ListCreativesRequest(
             media_buy_id=media_buy_id,
@@ -1616,7 +1648,7 @@ def _list_creatives_impl(
             page=page,
             limit=min(limit, 1000),  # Enforce max limit
             sort_by=sort_by,
-            sort_order=sort_order,
+            sort_order=valid_sort_order,
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creatives request")) from e
@@ -1685,16 +1717,19 @@ def _list_creatives_impl(
 
         # Get total count before pagination
         from sqlalchemy import func
+        from sqlalchemy.orm import InstrumentedAttribute
 
-        total_count = session.scalar(select(func.count()).select_from(stmt.subquery()))
+        total_count_result = session.scalar(select(func.count()).select_from(stmt.subquery()))
+        total_count = int(total_count_result) if total_count_result is not None else 0
 
         # Apply sorting
+        sort_column: InstrumentedAttribute
         if req.sort_by == "name":
-            sort_column = DBCreative.name
+            sort_column = DBCreative.name  # type: ignore[assignment]
         elif req.sort_by == "status":
-            sort_column = DBCreative.status
+            sort_column = DBCreative.status  # type: ignore[assignment]
         else:  # Default to created_date
-            sort_column = DBCreative.created_at
+            sort_column = DBCreative.created_at  # type: ignore[assignment]
 
         if req.sort_order == "asc":
             stmt = stmt.order_by(sort_column.asc())
@@ -1707,49 +1742,59 @@ def _list_creatives_impl(
 
         # Convert to schema objects
         for db_creative in db_creatives:
-            # Create schema object with correct field names and data field access
-            schema_data = {
-                "creative_id": db_creative.creative_id,
-                "name": db_creative.name,
-                "format_id": {  # Structured format_id per AdCP v2.4 spec
-                    "agent_url": db_creative.agent_url,
-                    "id": db_creative.format,
-                },
-                "click_through_url": db_creative.data.get("click_url") if db_creative.data else None,  # From data field
-                "width": db_creative.data.get("width") if db_creative.data else None,
-                "height": db_creative.data.get("height") if db_creative.data else None,
-                "duration": db_creative.data.get("duration") if db_creative.data else None,
-                "status": db_creative.status,
-                "template_variables": db_creative.data.get("template_variables", {}) if db_creative.data else {},
-                "principal_id": db_creative.principal_id,
-                "created_at": db_creative.created_at or datetime.now(UTC),
-                "updated_at": db_creative.updated_at or datetime.now(UTC),
-            }
-
             # Handle content_uri - required field even for snippet creatives
             # For snippet creatives, provide an HTML-looking URL to pass validation
             snippet = db_creative.data.get("snippet") if db_creative.data else None
             if snippet:
-                schema_data.update(
-                    {
-                        "snippet": snippet,
-                        "snippet_type": db_creative.data.get("snippet_type") if db_creative.data else None,
-                        # Use HTML snippet-looking URL to pass _is_html_snippet() validation
-                        "content_uri": (
-                            db_creative.data.get("url") or "<script>/* Snippet-based creative */</script>"
-                            if db_creative.data
-                            else "<script>/* Snippet-based creative */</script>"
-                        ),
-                    }
+                content_uri = (
+                    db_creative.data.get("url") or "<script>/* Snippet-based creative */</script>"
+                    if db_creative.data
+                    else "<script>/* Snippet-based creative */</script>"
                 )
             else:
-                schema_data["content_uri"] = (
+                content_uri = (
                     db_creative.data.get("url") or "https://placeholder.example.com/missing.jpg"
                     if db_creative.data
                     else "https://placeholder.example.com/missing.jpg"
                 )
 
-            creative = Creative(**schema_data)
+            # Build Creative directly with explicit types to satisfy mypy
+            from src.core.schemas import FormatId
+
+            format_obj = FormatId(agent_url=db_creative.agent_url or "", id=db_creative.format or "")
+
+            # Ensure datetime fields are datetime (not SQLAlchemy DateTime)
+            created_at_dt: datetime = (
+                db_creative.created_at if isinstance(db_creative.created_at, datetime) else datetime.now(UTC)
+            )
+            updated_at_dt: datetime = (
+                db_creative.updated_at if isinstance(db_creative.updated_at, datetime) else datetime.now(UTC)
+            )
+
+            creative = Creative(
+                creative_id=db_creative.creative_id,
+                name=db_creative.name,
+                format_id=format_obj,
+                content_uri=content_uri,
+                media_url=None,  # Optional field with None default
+                click_through_url=db_creative.data.get("click_url") if db_creative.data else None,
+                width=db_creative.data.get("width") if db_creative.data else None,
+                height=db_creative.data.get("height") if db_creative.data else None,
+                duration=db_creative.data.get("duration") if db_creative.data else None,
+                status=db_creative.status,
+                platform_id=None,  # Optional field with None default
+                review_feedback=None,  # Optional field with None default
+                compliance=None,  # Optional field with None default
+                package_assignments=None,  # Optional field with None default
+                assets=None,  # Optional field with None default
+                template_variables=db_creative.data.get("template_variables", {}) if db_creative.data else {},
+                delivery_settings=None,  # Optional field with None default
+                principal_id=db_creative.principal_id,
+                created_at=created_at_dt,
+                updated_at=updated_at_dt,
+                snippet=snippet,
+                snippet_type=db_creative.data.get("snippet_type") if db_creative.data else None,
+            )
             creatives.append(creative)
 
     # Calculate pagination info
@@ -1778,8 +1823,8 @@ def _list_creatives_impl(
 
     # Log activity
     # Activity logging imported at module level
-
-    log_tool_activity(context, "list_creatives", start_time)
+    if context is not None:
+        log_tool_activity(context, "list_creatives", start_time)
 
     message = f"Found {len(creatives)} creatives"
     if total_count > len(creatives):
@@ -1849,7 +1894,7 @@ def list_creatives(
     sort_by: str = "created_date",
     sort_order: str = "desc",
     webhook_url: str | None = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """List and filter creative assets from the centralized library.
 
@@ -1893,7 +1938,7 @@ def sync_creatives_raw(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """Sync creative assets to the centralized creative library (raw function for A2A server use).
 
@@ -1937,7 +1982,7 @@ def list_creatives_raw(
     limit: int = 50,
     sort_by: str = "created_date",
     sort_order: str = "desc",
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """List creative assets with filtering and pagination (raw function for A2A server use).
 

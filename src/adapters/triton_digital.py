@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -145,7 +145,9 @@ class TritonDigital(AdServerAdapter):
             self.log(f"[red]Error: {error_msg}[/red]")
             return CreateMediaBuyResponse(
                 buyer_ref=request.buyer_ref or "unknown",
-                errors=[Error(code="unsupported_targeting", message=error_msg)],
+                media_buy_id=None,
+                creative_deadline=None,
+                errors=[Error(code="unsupported_targeting", message=error_msg, details=None)],
             )
 
         # Generate a media buy ID
@@ -164,7 +166,7 @@ class TritonDigital(AdServerAdapter):
             else:
                 # Fallback to legacy package.cpm
                 rate = p.cpm
-            total_budget += (rate * p.impressions / 1000)
+            total_budget += rate * p.impressions / 1000
 
         if self.dry_run:
             self.log(f"Would call: POST {self.base_url}/campaigns")
@@ -182,7 +184,9 @@ class TritonDigital(AdServerAdapter):
                 # Get pricing for this package
                 pricing_info = package_pricing_info.get(package.package_id) if package_pricing_info else None
                 if pricing_info:
-                    rate = pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                    rate = (
+                        pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                    )
                 else:
                     rate = package.cpm
 
@@ -229,7 +233,9 @@ class TritonDigital(AdServerAdapter):
                 # Get pricing for this package
                 pricing_info = package_pricing_info.get(package.package_id) if package_pricing_info else None
                 if pricing_info:
-                    rate = pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                    rate = (
+                        pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                    )
                 else:
                     rate = package.cpm
 
@@ -264,7 +270,7 @@ class TritonDigital(AdServerAdapter):
                     matching_req_package = request.packages[package_idx]
 
                 # Build package response with ALL package data
-                package_dict = {
+                package_dict: dict[str, object] = {
                     "package_id": package.package_id,
                     "product_id": package.product_id,
                     "name": package.name,
@@ -286,7 +292,11 @@ class TritonDigital(AdServerAdapter):
                     elif hasattr(matching_req_package.budget, "model_dump"):
                         package_dict["budget"] = matching_req_package.budget.model_dump()
                     else:
-                        package_dict["budget"] = dict(matching_req_package.budget) if isinstance(matching_req_package.budget, dict) else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        package_dict["budget"] = (
+                            dict(matching_req_package.budget)
+                            if isinstance(matching_req_package.budget, dict)
+                            else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        )
 
                 # Add targeting_overlay from package if available
                 if package.targeting_overlay:
@@ -310,14 +320,17 @@ class TritonDigital(AdServerAdapter):
                 if request.packages and idx < len(request.packages):
                     matching_req_package = request.packages[idx]
 
-                package_dict = {
-                    "package_id": package.package_id,
-                    "product_id": package.product_id,
-                    "name": package.name,
-                    "delivery_type": package.delivery_type,
-                    "cpm": package.cpm,
-                    "impressions": package.impressions,
-                }
+                package_dict = cast(
+                    dict[str, object],
+                    {
+                        "package_id": package.package_id,
+                        "product_id": package.product_id,
+                        "name": package.name,
+                        "delivery_type": package.delivery_type,
+                        "cpm": package.cpm,
+                        "impressions": package.impressions,
+                    },
+                )
 
                 # Add buyer_ref from request package if available
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
@@ -331,7 +344,11 @@ class TritonDigital(AdServerAdapter):
                     elif hasattr(matching_req_package.budget, "model_dump"):
                         package_dict["budget"] = matching_req_package.budget.model_dump()
                     else:
-                        package_dict["budget"] = dict(matching_req_package.budget) if isinstance(matching_req_package.budget, dict) else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        package_dict["budget"] = (
+                            dict(matching_req_package.budget)
+                            if isinstance(matching_req_package.budget, dict)
+                            else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        )
 
                 # Add targeting_overlay from package if available
                 if package.targeting_overlay:
@@ -453,7 +470,7 @@ class TritonDigital(AdServerAdapter):
         if self.dry_run:
             self.log(f"Would call: GET {self.base_url}/campaigns/{media_buy_id}")
             self.log("Would check campaign active status and dates")
-            return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, status="active")
+            return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, buyer_ref="", status="active")
         else:
             try:
                 # Extract campaign ID from media_buy_id
@@ -471,11 +488,11 @@ class TritonDigital(AdServerAdapter):
                 if end_date < today:
                     status = "completed"
 
-                return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, status=status)
+                return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, buyer_ref="", status=status)
 
             except requests.exceptions.RequestException as e:
                 self.log(f"Error checking Triton Campaign status: {e}")
-                return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, status="unknown")
+                return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, buyer_ref="", status="unknown")
 
     def get_media_buy_delivery(
         self, media_buy_id: str, date_range: ReportingPeriod, today: datetime
@@ -491,15 +508,18 @@ class TritonDigital(AdServerAdapter):
             self.log(f"Would call: POST {self.base_url}/reports")
             self.log("  Report Request: {")
             self.log("    'reportType': 'FLIGHT',")
-            self.log(f"    'startDate': '{date_range.start.isoformat()}',")
-            self.log(f"    'endDate': '{date_range.end.isoformat()}',")
+            # date_range.start and .end are ISO 8601 strings, use them directly
+            self.log(f"    'startDate': '{date_range.start}',")
+            self.log(f"    'endDate': '{date_range.end}',")
             self.log(f"    'filters': {{'campaigns': ['{media_buy_id}']}},")
             self.log("    'columns': ['flightName', 'impressions', 'totalRevenue']")
             self.log("  }")
             self.log("Would poll for report completion and download results")
 
             # Simulate response based on campaign progress
-            days_elapsed = (today.date() - date_range.start).days
+            # Parse ISO string to datetime, then extract date
+            start_dt = datetime.fromisoformat(date_range.start.replace("Z", "+00:00"))
+            days_elapsed = (today.date() - start_dt.date()).days
             progress_factor = min(days_elapsed / 14, 1.0)  # Assume 14-day campaigns
 
             # Calculate simulated delivery for audio campaigns
@@ -518,10 +538,11 @@ class TritonDigital(AdServerAdapter):
                 currency="USD",
             )
         else:
+            # date_range.start and .end are already ISO 8601 strings
             report_payload = {
                 "reportType": "FLIGHT",
-                "startDate": date_range.start.isoformat(),
-                "endDate": date_range.end.isoformat(),
+                "startDate": date_range.start,
+                "endDate": date_range.end,
                 "filters": {"campaigns": [media_buy_id]},
                 "columns": ["flightName", "impressions", "totalRevenue"],
             }
@@ -567,7 +588,9 @@ class TritonDigital(AdServerAdapter):
                     total_impressions += impressions
                     total_spend += spend
 
-                    by_package.append(PackageDelivery(package_id=package_name, impressions=impressions, spend=spend))
+                    by_package.append(
+                        AdapterPackageDelivery(package_id=package_name, impressions=impressions, spend=spend)
+                    )
 
                 return AdapterGetMediaBuyDeliveryResponse(
                     media_buy_id=media_buy_id,
@@ -627,10 +650,12 @@ class TritonDigital(AdServerAdapter):
             return UpdateMediaBuyResponse(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
+                implementation_date=None,
                 errors=[
                     Error(
                         code="unsupported_action",
                         message=f"Action '{action}' not supported. Supported actions: {REQUIRED_UPDATE_ACTIONS}",
+                        details=None,
                     )
                 ],
             )
@@ -670,6 +695,7 @@ class TritonDigital(AdServerAdapter):
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
                 implementation_date=today,
+                errors=None,
             )
         else:
             try:
@@ -677,7 +703,7 @@ class TritonDigital(AdServerAdapter):
 
                 if action in ["pause_media_buy", "resume_media_buy"]:
                     # Update campaign status
-                    update_payload = {"active": action == "resume_media_buy"}
+                    update_payload: dict[str, Any] = {"active": action == "resume_media_buy"}
                     response = requests.put(
                         f"{self.base_url}/campaigns/{campaign_id}", headers=self.headers, json=update_payload
                     )
@@ -696,13 +722,16 @@ class TritonDigital(AdServerAdapter):
                         return UpdateMediaBuyResponse(
                             media_buy_id=media_buy_id,
                             buyer_ref=buyer_ref,
-                            errors=[Error(code="flight_not_found", message=f"Flight '{package_id}' not found")],
+                            implementation_date=None,
+                            errors=[
+                                Error(code="flight_not_found", message=f"Flight '{package_id}' not found", details=None)
+                            ],
                         )
 
                     # Update flight status
-                    update_payload = {"active": action == "resume_package"}
+                    flight_update_payload: dict[str, Any] = {"active": action == "resume_package"}
                     response = requests.put(
-                        f"{self.base_url}/flights/{flight['id']}", headers=self.headers, json=update_payload
+                        f"{self.base_url}/flights/{flight['id']}", headers=self.headers, json=flight_update_payload
                     )
                     response.raise_for_status()
 
@@ -723,7 +752,10 @@ class TritonDigital(AdServerAdapter):
                         return UpdateMediaBuyResponse(
                             media_buy_id=media_buy_id,
                             buyer_ref=buyer_ref,
-                            errors=[Error(code="flight_not_found", message=f"Flight '{package_id}' not found")],
+                            implementation_date=None,
+                            errors=[
+                                Error(code="flight_not_found", message=f"Flight '{package_id}' not found", details=None)
+                            ],
                         )
 
                     # Calculate impressions based on action
@@ -734,9 +766,9 @@ class TritonDigital(AdServerAdapter):
                     else:  # update_package_impressions
                         new_impressions = budget  # budget param contains impressions
 
-                    update_payload = {"goal": {"type": "IMPRESSIONS", "value": new_impressions}}
+                    goal_update_payload: dict[str, Any] = {"goal": {"type": "IMPRESSIONS", "value": new_impressions}}
                     response = requests.put(
-                        f"{self.base_url}/flights/{flight['id']}", headers=self.headers, json=update_payload
+                        f"{self.base_url}/flights/{flight['id']}", headers=self.headers, json=goal_update_payload
                     )
                     response.raise_for_status()
 
@@ -744,6 +776,7 @@ class TritonDigital(AdServerAdapter):
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
                     implementation_date=today,
+                    errors=None,
                 )
 
             except requests.exceptions.RequestException as e:
@@ -751,5 +784,6 @@ class TritonDigital(AdServerAdapter):
                 return UpdateMediaBuyResponse(
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
-                    errors=[Error(code="api_error", message=str(e))],
+                    implementation_date=None,
+                    errors=[Error(code="api_error", message=str(e), details=None)],
                 )

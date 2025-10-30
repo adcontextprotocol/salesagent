@@ -10,6 +10,7 @@ Used by DynamicPricingService to calculate floor_cpm, recommended_cpm, estimated
 
 import logging
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import and_, select
@@ -145,14 +146,14 @@ class FormatMetricsAggregationService:
         Calculates CPM percentiles and aggregates by country + format.
         """
         # Group by country + creative_size
-        metrics_by_format = {}
+        metrics_by_format: dict[tuple[str, str], dict[str, Any]] = {}
         for row in report_data:
             key = (row["country_code"], row["creative_size"])
             if key not in metrics_by_format:
                 metrics_by_format[key] = {
                     "impressions": 0,
                     "clicks": 0,
-                    "revenue_micros": 0,
+                    "revenue_micros": 0.0,
                     "line_items": [],
                 }
 
@@ -171,15 +172,18 @@ class FormatMetricsAggregationService:
 
         for (country_code, creative_size), data in metrics_by_format.items():
             # Calculate CPM metrics
-            total_impressions = data["impressions"]
-            total_revenue_micros = data["revenue_micros"]
+            total_impressions: int = data["impressions"]
+            total_clicks: int = data["clicks"]
+            total_revenue_micros: float = data["revenue_micros"]
+            line_item_list: list[float] = data["line_items"]
+
             # Revenue is in micros (1/1,000,000 dollar), convert to dollars then to CPM
-            average_cpm = (
+            average_cpm: float | None = (
                 (total_revenue_micros / 1_000_000 / total_impressions) * 1000 if total_impressions > 0 else None
             )
 
             # Calculate percentiles from line item CPMs
-            line_item_cpms = sorted(data["line_items"])
+            line_item_cpms: list[float] = sorted(line_item_list)
             median_cpm = self._calculate_percentile(line_item_cpms, 50)
             p75_cpm = self._calculate_percentile(line_item_cpms, 75)
             p90_cpm = self._calculate_percentile(line_item_cpms, 90)
@@ -199,14 +203,14 @@ class FormatMetricsAggregationService:
             if existing:
                 # Update existing record
                 existing.total_impressions = total_impressions
-                existing.total_clicks = data["clicks"]
+                existing.total_clicks = total_clicks
                 existing.total_revenue_micros = int(total_revenue_micros)
-                existing.average_cpm = average_cpm
-                existing.median_cpm = median_cpm
-                existing.p75_cpm = p75_cpm
-                existing.p90_cpm = p90_cpm
+                existing.average_cpm = Decimal(str(average_cpm)) if average_cpm is not None else None
+                existing.median_cpm = Decimal(str(median_cpm)) if median_cpm is not None else None
+                existing.p75_cpm = Decimal(str(p75_cpm)) if p75_cpm is not None else None
+                existing.p90_cpm = Decimal(str(p90_cpm)) if p90_cpm is not None else None
                 existing.line_item_count = len(line_item_cpms)
-                existing.last_updated = datetime.now()
+                existing.last_updated = datetime.now()  # type: ignore[assignment]
                 rows_updated += 1
             else:
                 # Create new record
@@ -217,12 +221,12 @@ class FormatMetricsAggregationService:
                     period_start=start_date.date(),
                     period_end=end_date.date(),
                     total_impressions=total_impressions,
-                    total_clicks=data["clicks"],
+                    total_clicks=total_clicks,
                     total_revenue_micros=int(total_revenue_micros),
-                    average_cpm=average_cpm,
-                    median_cpm=median_cpm,
-                    p75_cpm=p75_cpm,
-                    p90_cpm=p90_cpm,
+                    average_cpm=Decimal(str(average_cpm)) if average_cpm is not None else None,
+                    median_cpm=Decimal(str(median_cpm)) if median_cpm is not None else None,
+                    p75_cpm=Decimal(str(p75_cpm)) if p75_cpm is not None else None,
+                    p90_cpm=Decimal(str(p90_cpm)) if p90_cpm is not None else None,
                     line_item_count=len(line_item_cpms),
                 )
                 self.db.add(metric)
@@ -284,7 +288,12 @@ def aggregate_all_tenants(period_days: int = 30) -> dict[str, Any]:
         )
         tenants = db_session.execute(stmt).all()
 
-        summary = {"total_tenants": len(tenants), "successful": 0, "failed": 0, "details": []}
+        summary: dict[str, Any] = {
+            "total_tenants": len(tenants),
+            "successful": 0,
+            "failed": 0,
+            "details": [],
+        }
 
         for tenant, adapter_config in tenants:
             tenant_id = tenant.tenant_id
@@ -292,11 +301,11 @@ def aggregate_all_tenants(period_days: int = 30) -> dict[str, Any]:
 
             try:
                 # Initialize GAM client
-                auth_manager = GAMAuthManager(
-                    network_code=adapter_config.gam_network_code,
-                    refresh_token=adapter_config.gam_refresh_token,
-                )
-                client_manager = GAMClientManager(auth_manager)
+                auth_config = {
+                    "refresh_token": adapter_config.gam_refresh_token,
+                }
+                auth_manager = GAMAuthManager(auth_config)
+                client_manager = GAMClientManager(auth_config, adapter_config.gam_network_code)
                 gam_client = client_manager.get_client()
 
                 # Aggregate metrics

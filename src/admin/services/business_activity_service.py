@@ -116,7 +116,7 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
                         continue  # Skip if no skill info
 
                     # Extract the primary skill (first one)
-                    primary_skill = skills[0] if skills else "unknown"
+                    primary_skill = skills[0] if skills else "unknown"  # type: ignore[index]
 
                     # Make it human-readable based on skill name
                     if "create_media_buy" in primary_skill:

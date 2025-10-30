@@ -27,13 +27,16 @@ from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json 
     GetProductsRequest as GetProductsRequestGenerated,
 )
 from src.core.testing_hooks import apply_testing_hooks, get_testing_context
+from src.core.tool_context import ToolContext
 from src.core.validation_helpers import format_validation_error, safe_parse_json_field
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 
 logger = logging.getLogger(__name__)
 
 
-async def _get_products_impl(req: GetProductsRequestGenerated, context: Context) -> GetProductsResponse:
+async def _get_products_impl(
+    req: GetProductsRequestGenerated, context: Context | ToolContext | None
+) -> GetProductsResponse:
     """Shared implementation for get_products.
 
     Contains all business logic for product discovery including policy checks,
@@ -58,20 +61,24 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
         if isinstance(testing_ctx_raw, dict):
             from src.core.testing_hooks import AdCPTestContext
 
-            testing_ctx = AdCPTestContext(**testing_ctx_raw)
+            testing_ctx: AdCPTestContext | None = AdCPTestContext(**testing_ctx_raw)
         else:
             testing_ctx = testing_ctx_raw
-        principal_id = context.principal_id
-        tenant = {"tenant_id": context.tenant_id}  # Simplified tenant info
+        principal_id: str | None = context.principal_id
+        tenant: dict[str, Any] = {"tenant_id": context.tenant_id}  # Simplified tenant info
     else:
         # Legacy path - extract from FastMCP Context
+        if context is None:
+            raise ToolError("Context is required")
         testing_ctx = get_testing_context(context)
         # For discovery endpoints, authentication is optional
         # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
         logger.info("[GET_PRODUCTS] About to call get_principal_from_context")
-        principal_id, tenant = get_principal_from_context(
+        principal_id_temp, tenant_temp = get_principal_from_context(
             context, require_valid_token=False
         )  # Returns (None, tenant) if no/invalid auth
+        principal_id = principal_id_temp
+        tenant = tenant_temp if tenant_temp else {}
         logger.info(f"[GET_PRODUCTS] principal_id returned: {principal_id}, tenant: {tenant}")
 
         # Set tenant context explicitly in this async context (ContextVar propagation fix)
@@ -227,10 +234,11 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
 
             # Log policy violation for audit trail and compliance
             audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+            principal_name = principal_id if principal_id else "anonymous"
             audit_logger.log_operation(
                 operation="get_products_policy_violation",
-                principal_name=principal_id,
-                principal_id=principal_id,
+                principal_name=principal_name,
+                principal_id=principal_name,
                 adapter_id="policy_engine",
                 success=False,
                 details={
@@ -243,9 +251,10 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
             )
 
         # Raise error for policy violations - explicit failure, not silent return
+        restrictions_list = policy_result.restrictions if policy_result.restrictions else []
         raise ToolError(
             "POLICY_VIOLATION",
-            f"Request violates content policy: {policy_result.reason}. Restrictions: {', '.join(policy_result.restrictions)}",
+            f"Request violates content policy: {policy_result.reason}. Restrictions: {', '.join(restrictions_list)}",
         )
 
     # Determine product catalog configuration
@@ -263,7 +272,8 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
             import json
 
             try:
-                signals_config = json.loads(signals_config)
+                signals_config_parsed: dict[str, Any] = json.loads(signals_config)
+                signals_config = signals_config_parsed
             except json.JSONDecodeError:
                 logger.error(f"Invalid signals_agent_config JSON for tenant {tenant['tenant_id']}")
                 signals_config = {}
@@ -303,8 +313,9 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
     }
 
     logger.info(f"[GET_PRODUCTS] Calling provider.get_products for tenant_id={tenant['tenant_id']}")
+    brief_text = req.brief if req.brief else ""
     products = await provider.get_products(
-        brief=req.brief,
+        brief=brief_text,
         tenant_id=tenant["tenant_id"],
         principal_id=principal_id,
         principal_data=principal_data,
@@ -374,13 +385,15 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
                         product_format_ids.add(format_id)
                     elif isinstance(format_id, dict):
                         # Dict with 'id' key (from database)
-                        product_format_ids.add(format_id.get("id"))
+                        dict_id = format_id.get("id")
+                        if dict_id is not None:
+                            product_format_ids.add(dict_id)
                     elif hasattr(format_id, "id"):
                         # FormatId object (has .id attribute, not .format_id)
                         product_format_ids.add(format_id.id)
 
                 # req.filters.format_ids contains FormatId objects, extract .id from them
-                request_format_ids = set()
+                request_format_ids: set[str] = set()
                 for fmt_id in req.filters.format_ids:
                     if isinstance(fmt_id, str):
                         request_format_ids.add(fmt_id)
@@ -388,7 +401,9 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
                         # FormatId object
                         request_format_ids.add(fmt_id.id)
                     elif isinstance(fmt_id, dict):
-                        request_format_ids.add(fmt_id.get("id"))
+                        dict_id = fmt_id.get("id")
+                        if dict_id is not None:
+                            request_format_ids.add(dict_id)
 
                 if not any(fmt_id in product_format_ids for fmt_id in request_format_ids):
                     continue
@@ -464,7 +479,7 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
 
     # Apply testing hooks to response
     response_data = {"products": [p.model_dump_internal() for p in eligible_products]}
-    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")
+    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")  # type: ignore[arg-type]
 
     # Reconstruct products from modified data
     modified_products = [Product(**p) for p in response_data["products"]]
@@ -506,14 +521,14 @@ async def _get_products_impl(req: GetProductsRequestGenerated, context: Context)
             product.pricing_options = []
 
     # Response __str__() will generate appropriate message based on content
-    return GetProductsResponse(products=modified_products)
+    return GetProductsResponse(products=modified_products, errors=None)
 
 
 async def get_products(
     brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
     brief: str = "",
     filters: dict | None = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ):
     """Get available products matching the brief.
 
@@ -562,7 +577,7 @@ async def get_products_raw(
     min_exposures: int | None = None,
     filters: dict | None = None,
     strategy_id: str | None = None,
-    context: Context = None,
+    context: Context | ToolContext | None = None,
 ) -> GetProductsResponse:
     """Get available products matching the brief.
 

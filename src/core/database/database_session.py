@@ -26,7 +26,7 @@ _session_factory = None
 _scoped_session = None
 
 # Track database health
-_last_health_check = 0
+_last_health_check: float = 0.0
 _health_check_interval = 60  # Check health every 60 seconds
 _is_healthy = True
 

@@ -16,9 +16,9 @@ class ActivityFeed:
 
     def __init__(self):
         # Store active WebSocket connections per tenant
-        self.connections: dict[str, set[weakref.ref]] = {}
+        self.connections: dict[str, set[weakref.ref[Any]]] = {}
         # Store recent activities per tenant (for new connections)
-        self.recent_activities: dict[str, deque] = {}
+        self.recent_activities: dict[str, deque[dict[str, Any]]] = {}
         self.max_recent = 50
 
     def add_connection(self, tenant_id: str, websocket):

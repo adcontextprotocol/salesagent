@@ -23,13 +23,25 @@ from src.core.schemas import (
 # NOTE: Xandr adapter needs full refactor - it's using old schemas and patterns
 # The other methods (get_media_buy_status, get_media_buy_delivery, etc.) still use old schemas
 # that no longer exist. Only create_media_buy has been updated to match the current API.
+#
+# TODO: Complete Xandr adapter refactor to use current AdCP schemas throughout
+# - Replace MediaBuy/MediaBuyDetails stubs with proper schema classes
+# - Update all methods to match current API patterns
+# - Add comprehensive test coverage
+# - Remove this entire stub section
 
 
 # Temporary stubs for old schemas until Xandr adapter is properly refactored
 class MediaBuy:
     """Temporary stub for MediaBuy until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    media_buy_id: str
+    platform_id: str
+    order_name: str
+    status: str
+    details: Any | None
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -37,7 +49,10 @@ class MediaBuy:
 class MediaBuyDetails:
     """Temporary stub for MediaBuyDetails until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    total_budget: float | None
+    status: str | None
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -45,7 +60,16 @@ class MediaBuyDetails:
 class MediaBuyStatus:
     """Temporary stub for MediaBuyStatus until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    media_buy_id: str
+    order_status: str
+    package_statuses: list[Any]
+    total_budget: float
+    total_spent: float
+    start_date: datetime
+    end_date: datetime
+    approval_status: str
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -53,7 +77,11 @@ class MediaBuyStatus:
 class PackageStatus:
     """Temporary stub for PackageStatus until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    state: str
+    is_editable: bool
+    delivery_percentage: float
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -61,7 +89,15 @@ class PackageStatus:
 class MediaBuyDeliveryData:
     """Temporary stub for MediaBuyDeliveryData until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    media_buy_id: str
+    reporting_period: Any
+    totals: Any
+    hourly_delivery: list[Any]
+    creative_delivery: list[Any]
+    pacing: Any
+    alerts: list[Any]
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -69,7 +105,10 @@ class MediaBuyDeliveryData:
 class ReportingPeriod:
     """Temporary stub for ReportingPeriod until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    start: datetime
+    end: datetime
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -77,7 +116,11 @@ class ReportingPeriod:
 class HourlyDelivery:
     """Temporary stub for HourlyDelivery until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    hour: datetime
+    impressions: int
+    spend: float
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -85,7 +128,13 @@ class HourlyDelivery:
 class CreativeDelivery:
     """Temporary stub for CreativeDelivery until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    creative_id: str
+    creative_name: str
+    impressions: int
+    clicks: int
+    spend: float
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -93,7 +142,13 @@ class CreativeDelivery:
 class PacingAnalysis:
     """Temporary stub for PacingAnalysis until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    daily_target_spend: float
+    actual_daily_spend: float
+    pacing_index: float
+    projected_delivery: float
+    recommendation: str
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -101,7 +156,12 @@ class PacingAnalysis:
 class PerformanceAlert:
     """Temporary stub for PerformanceAlert until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    level: str
+    metric: str
+    message: str
+    recommendation: str
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -109,7 +169,13 @@ class PerformanceAlert:
 class DeliveryMetrics:
     """Temporary stub for DeliveryMetrics until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    impressions: int
+    clicks: int
+    spend: float
+    cpm: float
+    ctr: float
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -117,7 +183,17 @@ class DeliveryMetrics:
 class CreativeAsset:
     """Temporary stub for CreativeAsset until xandr.py is properly refactored."""
 
-    def __init__(self, **kwargs):
+    creative_id: str
+    name: str
+    format: str
+    width: int | None
+    height: int | None
+    media_url: str
+    click_url: str
+    duration: int | None
+    package_assignments: list[str]
+
+    def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -260,63 +336,62 @@ class XandrAdapter(AdServerAdapter):
                 Product(
                     product_id="xandr_display_standard",
                     name="Display - Standard Banners",
-                    description="Standard display banner placements",
+                    description="Standard display banner placements (supports geo, device, os, browser targeting)",
                     formats=["display_728x90", "display_300x250", "display_320x50"],
-                    targeting_template={
-                        "geo": ["country", "region", "city", "postal_code"],
-                        "device": ["desktop", "mobile", "tablet"],
-                        "os": ["windows", "mac", "ios", "android"],
-                        "browser": ["chrome", "safari", "firefox", "edge"],
-                    },
-                    delivery_type="standard",
-                    is_guaranteed=False,
-                    min_spend=1000.0,
-                    cpm_range={"min": 0.50, "max": 20.0},
+                    delivery_type="non_guaranteed",
+                    floor_cpm=0.50,
+                    recommended_cpm=10.0,
+                    property_tags=["all_inventory"],
+                    measurement=None,
+                    creative_policy=None,
+                    brief_relevance=None,
+                    properties=None,
+                    estimated_exposures=None,
                 ),
                 Product(
                     product_id="xandr_video_instream",
                     name="Video - In-Stream",
-                    description="Pre-roll, mid-roll, and post-roll video",
+                    description="Pre-roll, mid-roll, and post-roll video (supports geo, device, content targeting)",
                     formats=["video_16x9", "video_9x16"],
-                    targeting_template={
-                        "geo": ["country", "region", "city"],
-                        "device": ["desktop", "mobile", "tablet", "ctv"],
-                        "content": ["genre", "rating", "language"],
-                    },
-                    delivery_type="standard",
-                    is_guaranteed=False,
-                    min_spend=5000.0,
-                    cpm_range={"min": 10.0, "max": 50.0},
+                    delivery_type="non_guaranteed",
+                    floor_cpm=10.0,
+                    recommended_cpm=30.0,
+                    property_tags=["all_inventory"],
+                    measurement=None,
+                    creative_policy=None,
+                    brief_relevance=None,
+                    properties=None,
+                    estimated_exposures=None,
                 ),
                 Product(
                     product_id="xandr_native",
                     name="Native Advertising",
-                    description="Native ad placements",
+                    description="Native ad placements (supports geo, device, context targeting)",
                     formats=["native_1x1", "native_1.2x1"],
-                    targeting_template={
-                        "geo": ["country", "region", "city"],
-                        "device": ["desktop", "mobile", "tablet"],
-                        "context": ["category", "keywords"],
-                    },
-                    delivery_type="standard",
-                    is_guaranteed=False,
-                    min_spend=2000.0,
-                    cpm_range={"min": 2.0, "max": 25.0},
+                    delivery_type="non_guaranteed",
+                    floor_cpm=2.0,
+                    recommended_cpm=15.0,
+                    property_tags=["all_inventory"],
+                    measurement=None,
+                    creative_policy=None,
+                    brief_relevance=None,
+                    properties=None,
+                    estimated_exposures=None,
                 ),
                 Product(
                     product_id="xandr_deals",
                     name="Private Marketplace Deals",
-                    description="Access to premium inventory through deals",
+                    description="Access to premium inventory through deals (pricing varies by deal)",
                     formats=["display_300x250", "display_728x90", "video_16x9"],
-                    targeting_template={
-                        "geo": ["country", "region", "city"],
-                        "device": ["desktop", "mobile", "tablet"],
-                        "deals": ["deal_id"],
-                    },
-                    delivery_type="standard",
-                    is_guaranteed=False,
-                    min_spend=10000.0,
-                    price_guidance={"model": "cpm_range", "details": "Varies by deal"},
+                    delivery_type="non_guaranteed",
+                    floor_cpm=5.0,
+                    recommended_cpm=25.0,
+                    property_tags=["all_inventory"],
+                    measurement=None,
+                    creative_policy=None,
+                    brief_relevance=None,
+                    properties=None,
+                    estimated_exposures=None,
                 ),
             ]
 
@@ -351,9 +426,11 @@ class XandrAdapter(AdServerAdapter):
                 )
 
             return CreateMediaBuyResponse(
-                buyer_ref=request.buyer_ref,
+                buyer_ref=request.buyer_ref or "",
                 media_buy_id=f"xandr_pending_{task_id}",
                 packages=package_responses,
+                creative_deadline=None,
+                errors=None,
             )
 
         try:
@@ -364,6 +441,9 @@ class XandrAdapter(AdServerAdapter):
                 days = 1
 
             # Create insertion order
+            if not self.advertiser_id:
+                raise ValueError("Advertiser ID is required for Xandr operations")
+
             io_data = {
                 "insertion-order": {
                     "name": request.campaign_name or f"AdCP Campaign {request.buyer_ref}",
@@ -390,10 +470,15 @@ class XandrAdapter(AdServerAdapter):
 
             # Create line items for each package
             for package in packages:
+                if not self.advertiser_id:
+                    raise ValueError("Advertiser ID is required for creating line items")
+
                 # Get pricing for this package
                 pricing_info = package_pricing_info.get(package.package_id) if package_pricing_info else None
                 if pricing_info:
-                    rate = pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                    rate = (
+                        pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                    )
                 else:
                     rate = package.cpm
 
@@ -416,7 +501,12 @@ class XandrAdapter(AdServerAdapter):
 
                 # Apply targeting
                 if request.targeting_overlay:
-                    li_data["line-item"]["profile_id"] = self._create_targeting_profile(request.targeting_overlay)
+                    targeting_dict = (
+                        request.targeting_overlay.model_dump()
+                        if hasattr(request.targeting_overlay, "model_dump")
+                        else dict(request.targeting_overlay)
+                    )
+                    li_data["line-item"]["profile_id"] = self._create_targeting_profile(targeting_dict)
 
                 li_response = self._make_request("POST", "/line-item", li_data)
                 li_id = li_response["response"]["line-item"]["id"]
@@ -429,21 +519,16 @@ class XandrAdapter(AdServerAdapter):
                     }
                 )
 
-            # Log the operation
-            self._log_operation(
-                "create_media_buy", True, {"insertion_order_id": io_id, "line_item_count": len(package_responses)}
-            )
-
             return CreateMediaBuyResponse(
-                buyer_ref=request.buyer_ref,
+                buyer_ref=request.buyer_ref or "",
                 media_buy_id=f"xandr_io_{io_id}",
                 creative_deadline=datetime.now(UTC) + timedelta(days=2),
                 packages=package_responses,
+                errors=None,
             )
 
         except Exception as e:
             logger.error(f"Failed to create Xandr media buy: {e}")
-            self._log_operation("create_media_buy", False, {"error": str(e)})
             raise
 
     def _map_inventory_type(self, product_id: str) -> str:
@@ -472,26 +557,26 @@ class XandrAdapter(AdServerAdapter):
         if "geo" in targeting:
             geo = targeting["geo"]
             if "countries" in geo:
-                profile_data["profile"]["country_targets"] = [{"country": c} for c in geo["countries"]]
+                profile_data["profile"]["country_targets"] = geo["countries"]  # type: ignore[assignment]
             if "regions" in geo:
-                profile_data["profile"]["region_targets"] = [{"region": r} for r in geo["regions"]]
+                profile_data["profile"]["region_targets"] = geo["regions"]  # type: ignore[assignment]
             if "cities" in geo:
-                profile_data["profile"]["city_targets"] = [{"city": c} for c in geo["cities"]]
+                profile_data["profile"]["city_targets"] = geo["cities"]  # type: ignore[assignment]
 
         if "device_types" in targeting:
-            # Map to Xandr device types
-            device_map = {"desktop": 1, "mobile": 2, "tablet": 3, "ctv": 4}
-            profile_data["profile"]["device_type_targets"] = [device_map.get(d, 1) for d in targeting["device_types"]]
+            # Map to Xandr device types - convert to strings for API
+            device_map = {"desktop": "1", "mobile": "2", "tablet": "3", "ctv": "4"}
+            profile_data["profile"]["device_type_targets"] = [device_map.get(d, "1") for d in targeting["device_types"]]
 
         response = self._make_request("POST", "/profile", profile_data)
         return response["response"]["profile"]["id"]
 
-    def update_media_buy(self, media_buy_id: str, updates: MediaBuyDetails) -> MediaBuy:
+    def update_media_buy(self, media_buy_id: str, updates: MediaBuyDetails) -> MediaBuy:  # type: ignore[override]
         """Update insertion order in Xandr."""
         if self._requires_manual_approval("update_media_buy"):
             task_id = self._create_human_task(
                 "update_media_buy",
-                {"media_buy_id": media_buy_id, "updates": updates.dict(), "principal": self.principal.name},
+                {"media_buy_id": media_buy_id, "updates": str(updates), "principal": self.principal.name},
             )
 
             # Return current state with pending status
@@ -574,7 +659,7 @@ class XandrAdapter(AdServerAdapter):
             logger.error(f"Failed to get Xandr media buy status: {e}")
             raise
 
-    def get_media_buy_delivery(self, media_buy_id: str, period: ReportingPeriod) -> MediaBuyDeliveryData:
+    def get_media_buy_delivery(self, media_buy_id: str, period: ReportingPeriod) -> MediaBuyDeliveryData:  # type: ignore[override]
         """Get delivery data from Xandr reporting."""
         try:
             io_id = media_buy_id.replace("xandr_io_", "")
@@ -615,12 +700,15 @@ class XandrAdapter(AdServerAdapter):
             report_data = self._make_request("GET", f"/report-download?id={report_id}")
 
             # Process report data
-            hourly_data = []
-            creative_data = []
+            hourly_data: list[HourlyDelivery] = []
+            creative_data: list[CreativeDelivery] = []
             total_impressions = 0
-            total_spend = 0
+            total_spend = 0.0
 
             for row in report_data.get("data", []):
+                # Type guard: row should be dict[str, Any]
+                if not isinstance(row, dict):
+                    continue
                 hour_data = HourlyDelivery(
                     hour=datetime.fromisoformat(row["hour"]), impressions=row["imps"], spend=row["media_cost"]
                 )
@@ -720,9 +808,12 @@ class XandrAdapter(AdServerAdapter):
 
     def add_creatives(self, media_buy_id: str, assets: list[CreativeAsset]) -> dict[str, str]:
         """Upload creatives to Xandr."""
-        creative_mapping = {}
+        creative_mapping: dict[str, str] = {}
 
         try:
+            if not self.advertiser_id:
+                raise ValueError("Advertiser ID is required for creating creatives")
+
             for asset in assets:
                 # Create creative
                 creative_data = {
@@ -909,6 +1000,9 @@ class XandrAdapter(AdServerAdapter):
     def get_reporting_data(self, start_date: datetime, end_date: datetime) -> dict[str, Any]:
         """Get comprehensive reporting data for the advertiser."""
         try:
+            if not self.advertiser_id:
+                raise ValueError("Advertiser ID is required for reporting")
+
             # Create advertiser-level report
             report_data = {
                 "report": {
@@ -958,11 +1052,11 @@ class XandrAdapter(AdServerAdapter):
             report_data = self._make_request("GET", f"/report-download?id={report_id}")
 
             # Process and aggregate data
-            summary = {
+            summary: dict[str, Any] = {
                 "total_impressions": 0,
                 "total_clicks": 0,
-                "total_spend": 0,
-                "total_revenue": 0,
+                "total_spend": 0.0,
+                "total_revenue": 0.0,
                 "video_starts": 0,
                 "video_completions": 0,
                 "by_insertion_order": {},
@@ -970,6 +1064,9 @@ class XandrAdapter(AdServerAdapter):
             }
 
             for row in report_data.get("data", []):
+                # Type guard: row should be dict[str, Any]
+                if not isinstance(row, dict):
+                    continue
                 # Aggregate totals
                 summary["total_impressions"] += row.get("imps", 0)
                 summary["total_clicks"] += row.get("clicks", 0)
@@ -1066,9 +1163,12 @@ class XandrAdapter(AdServerAdapter):
             report_data = self._make_request("GET", f"/report-download?id={report_id}")
 
             # Process creative data
-            creative_performance = []
+            creative_performance: list[dict[str, Any]] = []
 
             for row in report_data.get("data", []):
+                # Type guard: row should be dict[str, Any]
+                if not isinstance(row, dict):
+                    continue
                 impressions = row.get("imps", 0)
                 clicks = row.get("clicks", 0)
                 spend = row.get("media_cost", 0)

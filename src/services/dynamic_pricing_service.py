@@ -153,7 +153,8 @@ class DynamicPricingService:
 
         # Calculate estimated monthly impressions
         # Average daily impressions * 30 days
-        period_days = (metrics[0].period_end - metrics[0].period_start).days
+        # SQLAlchemy Date type maps to Python date, which supports subtraction
+        period_days = (metrics[0].period_end - metrics[0].period_start).days  # type: ignore[operator]
         if period_days > 0:
             daily_impressions = total_impressions / period_days
             estimated_monthly_impressions = int(daily_impressions * 30)

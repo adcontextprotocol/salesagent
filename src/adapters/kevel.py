@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -235,7 +235,7 @@ class Kevel(AdServerAdapter):
                 # Fallback to legacy package.cpm
                 rate = package.cpm
 
-            total_budget += (rate * package.impressions / 1000)
+            total_budget += rate * package.impressions / 1000
 
         if self.dry_run:
             self.log(f"Would call: POST {self.base_url}/campaign")
@@ -253,7 +253,9 @@ class Kevel(AdServerAdapter):
                 # Get pricing for this package
                 pricing_info = package_pricing_info.get(package.package_id) if package_pricing_info else None
                 if pricing_info:
-                    rate = pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                    rate = (
+                        pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                    )
                     pricing_model = pricing_info.get("pricing_model", "cpm")
                 else:
                     rate = package.cpm
@@ -290,7 +292,7 @@ class Kevel(AdServerAdapter):
         else:
             # Create campaign in Kevel
             campaign_payload = {
-                "AdvertiserId": int(self.advertiser_id),
+                "AdvertiserId": int(self.advertiser_id) if self.advertiser_id else 0,
                 "Name": f"AdCP Campaign {media_buy_id}",
                 "StartDate": start_time.isoformat(),
                 "EndDate": end_time.isoformat(),
@@ -310,7 +312,9 @@ class Kevel(AdServerAdapter):
                 # Get pricing for this package
                 pricing_info = package_pricing_info.get(package.package_id) if package_pricing_info else None
                 if pricing_info:
-                    rate = pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                    rate = (
+                        pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
+                    )
                 else:
                     rate = package.cpm
 
@@ -356,7 +360,7 @@ class Kevel(AdServerAdapter):
                     matching_req_package = request.packages[package_idx]
 
                 # Build package response with ALL package data
-                package_dict = {
+                package_dict: dict[str, object] = {
                     "package_id": package.package_id,
                     "product_id": package.product_id,
                     "name": package.name,
@@ -378,7 +382,11 @@ class Kevel(AdServerAdapter):
                     elif hasattr(matching_req_package.budget, "model_dump"):
                         package_dict["budget"] = matching_req_package.budget.model_dump()
                     else:
-                        package_dict["budget"] = dict(matching_req_package.budget) if isinstance(matching_req_package.budget, dict) else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        package_dict["budget"] = (
+                            dict(matching_req_package.budget)
+                            if isinstance(matching_req_package.budget, dict)
+                            else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        )
 
                 # Add targeting_overlay from package if available
                 if package.targeting_overlay:
@@ -402,14 +410,17 @@ class Kevel(AdServerAdapter):
                 if request.packages and idx < len(request.packages):
                     matching_req_package = request.packages[idx]
 
-                package_dict = {
-                    "package_id": package.package_id,
-                    "product_id": package.product_id,
-                    "name": package.name,
-                    "delivery_type": package.delivery_type,
-                    "cpm": package.cpm,
-                    "impressions": package.impressions,
-                }
+                package_dict = cast(
+                    dict[str, object],
+                    {
+                        "package_id": package.package_id,
+                        "product_id": package.product_id,
+                        "name": package.name,
+                        "delivery_type": package.delivery_type,
+                        "cpm": package.cpm,
+                        "impressions": package.impressions,
+                    },
+                )
 
                 # Add buyer_ref from request package if available
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
@@ -423,7 +434,11 @@ class Kevel(AdServerAdapter):
                     elif hasattr(matching_req_package.budget, "model_dump"):
                         package_dict["budget"] = matching_req_package.budget.model_dump()
                     else:
-                        package_dict["budget"] = dict(matching_req_package.budget) if isinstance(matching_req_package.budget, dict) else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        package_dict["budget"] = (
+                            dict(matching_req_package.budget)
+                            if isinstance(matching_req_package.budget, dict)
+                            else {"total": float(matching_req_package.budget), "currency": "USD"}
+                        )
 
                 # Add targeting_overlay from package if available
                 if package.targeting_overlay:
@@ -590,14 +605,22 @@ class Kevel(AdServerAdapter):
         if self.dry_run:
             self.log(f"Would call: POST {self.base_url}/report/queue")
             self.log("  Report Request: {")
-            self.log(f"    'StartDate': '{date_range.start.isoformat()}',")
-            self.log(f"    'EndDate': '{date_range.end.isoformat()}',")
+            self.log(f"    'StartDate': '{date_range.start}',")
+            self.log(f"    'EndDate': '{date_range.end}',")
             self.log("    'GroupBy': ['day', 'campaign', 'flight'],")
             self.log(f"    'Filter': {{'CampaignId': '{media_buy_id}'}}")
             self.log("  }")
 
             # Simulate response based on campaign progress
-            days_elapsed = (today.date() - date_range.start).days
+            # date_range.start and date_range.end are ISO 8601 strings, convert to date
+            from datetime import datetime as dt
+
+            start_date = (
+                dt.fromisoformat(date_range.start.replace("Z", "+00:00")).date()
+                if isinstance(date_range.start, str)
+                else date_range.start
+            )
+            days_elapsed = (today.date() - start_date).days
             progress_factor = min(days_elapsed / 14, 1.0)  # Assume 14-day campaigns
 
             # Calculate simulated delivery
@@ -618,8 +641,8 @@ class Kevel(AdServerAdapter):
         else:
             # Queue a report in Kevel
             report_request = {
-                "StartDate": date_range.start.isoformat(),
-                "EndDate": date_range.end.isoformat(),
+                "StartDate": date_range.start,  # Already ISO 8601 string
+                "EndDate": date_range.end,  # Already ISO 8601 string
                 "GroupBy": ["day", "campaign", "flight"],
                 "Filter": {"CampaignId": media_buy_id},
             }
@@ -697,10 +720,12 @@ class Kevel(AdServerAdapter):
             return UpdateMediaBuyResponse(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
+                implementation_date=None,
                 errors=[
                     Error(
                         code="unsupported_action",
                         message=f"Action '{action}' not supported. Supported actions: {REQUIRED_UPDATE_ACTIONS}",
+                        details=None,
                     )
                 ],
             )
@@ -740,6 +765,7 @@ class Kevel(AdServerAdapter):
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
                 implementation_date=today,
+                errors=None,
             )
         else:
             try:
@@ -767,7 +793,10 @@ class Kevel(AdServerAdapter):
                         return UpdateMediaBuyResponse(
                             media_buy_id=media_buy_id,
                             buyer_ref=buyer_ref,
-                            errors=[Error(code="flight_not_found", message=f"Flight '{package_id}' not found")],
+                            implementation_date=None,
+                            errors=[
+                                Error(code="flight_not_found", message=f"Flight '{package_id}' not found", details=None)
+                            ],
                         )
 
                     # Update flight status
@@ -794,7 +823,10 @@ class Kevel(AdServerAdapter):
                         return UpdateMediaBuyResponse(
                             media_buy_id=media_buy_id,
                             buyer_ref=buyer_ref,
-                            errors=[Error(code="flight_not_found", message=f"Flight '{package_id}' not found")],
+                            implementation_date=None,
+                            errors=[
+                                Error(code="flight_not_found", message=f"Flight '{package_id}' not found", details=None)
+                            ],
                         )
 
                     # Calculate impressions based on action
@@ -806,9 +838,9 @@ class Kevel(AdServerAdapter):
                         new_impressions = budget  # budget param contains impressions
 
                     # Update flight impressions
-                    update_payload = {"Impressions": new_impressions}
+                    impressions_payload: dict[str, int] = {"Impressions": new_impressions}
                     update_response = requests.put(
-                        f"{self.base_url}/flight/{flight['Id']}", headers=self.headers, json=update_payload
+                        f"{self.base_url}/flight/{flight['Id']}", headers=self.headers, json=impressions_payload
                     )
                     update_response.raise_for_status()
 
@@ -816,6 +848,7 @@ class Kevel(AdServerAdapter):
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
                     implementation_date=today,
+                    errors=None,
                 )
 
             except requests.exceptions.RequestException as e:
@@ -823,5 +856,6 @@ class Kevel(AdServerAdapter):
                 return UpdateMediaBuyResponse(
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
-                    errors=[Error(code="api_error", message=str(e))],
+                    implementation_date=None,
+                    errors=[Error(code="api_error", message=str(e), details=None)],
                 )

@@ -32,7 +32,7 @@ class TestScenario:
     hitl_outcome: str | None = None  # "approve", "reject"
 
     # Creative-specific
-    creative_actions: list[dict] = None  # [{creative_index: 0, action: "approve"}, ...]
+    creative_actions: list[dict] | None = None  # [{creative_index: 0, action: "approve"}, ...]
 
     # Delivery-specific
     delivery_profile: str | None = None

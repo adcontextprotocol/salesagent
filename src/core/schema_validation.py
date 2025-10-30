@@ -17,25 +17,21 @@ from src.core.domain_config import get_sales_agent_url
 class SchemaMetadata(BaseModel):
     """Metadata about the JSON Schema for API response validation."""
 
-    schema_url: str = None
+    schema_url: str | None = None
     schema_version: str = "draft-2020-12"
     adcp_version: str = "2.4"
-    response_type: str = None
+    response_type: str | None = None
     validation_enabled: bool = True
 
 
 class ResponseWithSchema(BaseModel):
     """Base response model that can include schema validation metadata."""
 
-    model_config = ConfigDict(
-        # Don't include schema metadata in model dump by default
-        # It will be added separately to avoid polluting the core response
-        exclude={"_schema"}
-    )
+    model_config = ConfigDict()
 
     # Core response data (this will be populated by subclasses)
-    # Schema metadata (optional)
-    _schema: SchemaMetadata = None
+    # Schema metadata (optional, private field that won't be included in dumps)
+    _schema: SchemaMetadata | None = None
 
 
 def get_model_schema(model_class: type[BaseModel]) -> dict[str, Any]:
@@ -50,7 +46,7 @@ def get_model_schema(model_class: type[BaseModel]) -> dict[str, Any]:
     return model_class.model_json_schema()
 
 
-def get_schema_reference(model_class: type[BaseModel], base_url: str = None) -> str:
+def get_schema_reference(model_class: type[BaseModel], base_url: str | None = None) -> str:
     """Generate schema reference URL for a model.
 
     Args:
@@ -67,7 +63,7 @@ def get_schema_reference(model_class: type[BaseModel], base_url: str = None) -> 
     return urljoin(base_url, f"/schemas/adcp/v2.4/{schema_name}.json")
 
 
-def create_schema_metadata(model_class: type[BaseModel], base_url: str = None) -> SchemaMetadata:
+def create_schema_metadata(model_class: type[BaseModel], base_url: str | None = None) -> SchemaMetadata:
     """Create schema metadata for a response model.
 
     Args:
@@ -87,7 +83,10 @@ def create_schema_metadata(model_class: type[BaseModel], base_url: str = None) -
 
 
 def enhance_response_with_schema(
-    response_data: dict[str, Any], model_class: type[BaseModel], include_full_schema: bool = False, base_url: str = None
+    response_data: dict[str, Any],
+    model_class: type[BaseModel],
+    include_full_schema: bool = False,
+    base_url: str | None = None,
 ) -> dict[str, Any]:
     """Enhance API response with JSON Schema validation metadata.
 
@@ -199,7 +198,7 @@ def create_schema_registry() -> dict[str, dict[str, Any]]:
     )
 
     # Core response models to include in schema registry
-    response_models = [
+    response_models: list[type[BaseModel]] = [
         GetProductsResponse,
         ListCreativeFormatsResponse,
         ListAuthorizedPropertiesResponse,
@@ -212,7 +211,7 @@ def create_schema_registry() -> dict[str, dict[str, Any]]:
         UpdatePerformanceIndexResponse,
     ]
 
-    schema_registry = {}
+    schema_registry: dict[str, dict[str, Any]] = {}
     for model_class in response_models:
         schema_name = model_class.__name__.lower().replace("response", "")
         schema_registry[schema_name] = get_model_schema(model_class)

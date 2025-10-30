@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import requests
 from requests.exceptions import RequestException
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AuthorizedProperty
@@ -296,7 +297,9 @@ class PropertyVerificationService:
         except Exception:
             return url1.lower().strip() == url2.lower().strip()
 
-    def _update_verification_status(self, session, property_obj: AuthorizedProperty, status: str, error: str | None):
+    def _update_verification_status(
+        self, session: Session, property_obj: AuthorizedProperty, status: str, error: str | None
+    ) -> None:
         """Update the verification status of a property in the database.
 
         Args:
@@ -306,9 +309,9 @@ class PropertyVerificationService:
             error: Error message (if any)
         """
         property_obj.verification_status = status
-        property_obj.verification_checked_at = datetime.now(UTC)
+        property_obj.verification_checked_at = datetime.now(UTC)  # type: ignore[assignment]
         property_obj.verification_error = error
-        property_obj.updated_at = datetime.now(UTC)
+        property_obj.updated_at = datetime.now(UTC)  # type: ignore[assignment]
         session.commit()
 
     def verify_all_properties(self, tenant_id: str, agent_url: str) -> dict[str, Any]:
@@ -321,7 +324,7 @@ class PropertyVerificationService:
         Returns:
             Dictionary with verification results
         """
-        results = {"total_checked": 0, "verified": 0, "failed": 0, "errors": []}
+        results: dict[str, Any] = {"total_checked": 0, "verified": 0, "failed": 0, "errors": []}
 
         try:
             with get_db_session() as session:

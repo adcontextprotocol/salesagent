@@ -33,7 +33,7 @@ class MCPProductCatalog(ProductCatalogProvider):
         self.upstream_auth_header = config.get("upstream_auth_header", "Authorization")
         self.tool_name = config.get("tool_name", "get_products")
         self.timeout = config.get("timeout", 30)
-        self.client = None
+        self.client: Client[StreamableHttpTransport] | None = None
 
     async def initialize(self) -> None:
         """Initialize the MCP client connection."""
@@ -42,8 +42,9 @@ class MCPProductCatalog(ProductCatalogProvider):
             headers[self.upstream_auth_header] = self.upstream_token
 
         transport = StreamableHttpTransport(url=self.upstream_url, headers=headers)
-        self.client = Client(transport=transport)
-        await self.client.__aenter__()
+        client = Client(transport=transport)
+        await client.__aenter__()
+        self.client = client
 
     async def shutdown(self) -> None:
         """Clean up the MCP client connection."""
@@ -74,7 +75,7 @@ class MCPProductCatalog(ProductCatalogProvider):
             await self.initialize()
 
         # Prepare the request for the upstream tool
-        request_data = {
+        request_data: dict[str, Any] = {
             "brief": brief,
             "tenant_id": tenant_id,
         }
@@ -89,13 +90,18 @@ class MCPProductCatalog(ProductCatalogProvider):
             request_data["context"] = context
 
         # Call the upstream tool
+        if not self.client:
+            return []
+
         try:
             result = await asyncio.wait_for(self.client.call_tool(self.tool_name, request_data), timeout=self.timeout)
 
             # Convert the result to Product objects
+            # CallToolResult is a dict-like object
             products = []
-            for product_data in result.get("products", []):
-                products.append(Product(**product_data))
+            if isinstance(result, dict):
+                for product_data in result.get("products", []):
+                    products.append(Product(**product_data))
 
             return products
 

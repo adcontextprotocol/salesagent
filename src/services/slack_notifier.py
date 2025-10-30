@@ -81,12 +81,16 @@ class SlackNotifier:
         if not self.enabled:
             return False
 
-        payload = {"text": text}
+        payload: dict[str, Any] = {"text": text}
         if blocks:
             payload["blocks"] = blocks
 
         # Use webhook delivery service with retry logic
         from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
+
+        # Ensure webhook_url is not None before creating delivery
+        if not self.webhook_url:
+            return False
 
         delivery = WebhookDelivery(
             webhook_url=self.webhook_url,
@@ -134,7 +138,7 @@ class SlackNotifier:
             True if notification sent successfully
         """
         # Create formatted message with blocks
-        blocks = [
+        blocks: list[dict[str, Any]] = [
             {"type": "header", "text": {"type": "plain_text", "text": "🔔 New Task Requires Approval"}},
             {
                 "type": "section",
@@ -218,7 +222,7 @@ class SlackNotifier:
         emoji = "✅" if success else "❌"
         status = "Completed" if success else "Failed"
 
-        blocks = [
+        blocks: list[dict[str, Any]] = [
             {"type": "header", "text": {"type": "plain_text", "text": f"{emoji} Task {status}"}},
             {
                 "type": "section",
@@ -273,7 +277,7 @@ class SlackNotifier:
         Returns:
             True if notification sent successfully
         """
-        blocks = [
+        blocks: list[dict[str, Any]] = [
             {"type": "header", "text": {"type": "plain_text", "text": "🎨 New Creative Pending Approval"}},
             {
                 "type": "section",
@@ -286,7 +290,10 @@ class SlackNotifier:
         ]
 
         if media_buy_id:
-            blocks[1]["fields"].append({"type": "mrkdwn", "text": f"*Media Buy:*\n`{media_buy_id}`"})
+            # Type-safe access to fields array
+            section_fields = blocks[1].get("fields")
+            if isinstance(section_fields, list):
+                section_fields.append({"type": "mrkdwn", "text": f"*Media Buy:*\n`{media_buy_id}`"})
 
         # Add AI review reason if available
         if ai_review_reason:
@@ -332,7 +339,7 @@ class SlackNotifier:
 
         fallback_text = f"New {format_type} creative from {principal_name} pending approval"
 
-        return self.send_message(fallback_text, blocks)
+        return self.send_message(fallback_text, blocks, tenant_id=tenant_id)
 
     def notify_audit_log(
         self,
@@ -379,10 +386,12 @@ class SlackNotifier:
             header_text = "Audit Log"
 
         # Create message blocks
-        blocks = [{"type": "header", "text": {"type": "plain_text", "text": f"{emoji} {header_text}"}}]
+        blocks: list[dict[str, Any]] = [
+            {"type": "header", "text": {"type": "plain_text", "text": f"{emoji} {header_text}"}}
+        ]
 
         # Add main info section
-        fields = [
+        fields: list[dict[str, str]] = [
             {"type": "mrkdwn", "text": f"*Operation:*\n{operation}"},
             {"type": "mrkdwn", "text": f"*Principal:*\n{principal_name}"},
         ]
@@ -404,9 +413,6 @@ class SlackNotifier:
             if detail_text:
                 blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*Details:*\n{detail_text}"}})
 
-        # Add color attachment for visual indicator
-        attachments = [{"color": color, "blocks": blocks}]
-
         # Add timestamp
         blocks.append(
             {
@@ -420,13 +426,20 @@ class SlackNotifier:
             }
         )
 
+        # Add color attachment for visual indicator
+        attachments: list[dict[str, Any]] = [{"color": color, "blocks": blocks}]
+
         # Fallback text
         fallback_text = f"{emoji} {operation} by {principal_name} - {'Success' if success else 'Failed'}"
 
         # Send to audit webhook with retry logic
-        payload = {"text": fallback_text, "attachments": attachments}
+        payload: dict[str, Any] = {"text": fallback_text, "attachments": attachments}
 
         from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
+
+        # Ensure audit_webhook_url is not None before creating delivery
+        if not self.audit_webhook_url:
+            return False
 
         delivery = WebhookDelivery(
             webhook_url=self.audit_webhook_url,
@@ -685,17 +698,23 @@ class SlackNotifier:
         fallback_text = f"{config['emoji']} {config['title']}: {media_buy_id or 'pending'} by {principal_name}"
 
         # Use attachment for color coding
-        attachments = [{"color": config["color"], "blocks": blocks}] if config["color"] != "good" else None
+        attachments_list: list[dict[str, Any]] | None = (
+            [{"color": config["color"], "blocks": blocks}] if config["color"] != "good" else None
+        )
 
         # Build payload
-        payload = {"text": fallback_text}
-        if attachments:
-            payload["attachments"] = attachments
+        payload: dict[str, Any] = {"text": fallback_text}
+        if attachments_list:
+            payload["attachments"] = attachments_list
         else:
             payload["blocks"] = blocks
 
         # Send message with retry logic
         from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
+
+        # Ensure webhook_url is not None before creating delivery
+        if not self.webhook_url:
+            return False
 
         delivery = WebhookDelivery(
             webhook_url=self.webhook_url,

@@ -21,6 +21,8 @@ from fastmcp.server.context import Context
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel
 
+from src.core.tool_context import ToolContext
+
 
 class CampaignEvent(str, Enum):
     """Campaign lifecycle and error events that can be jumped to."""
@@ -234,7 +236,7 @@ class NextEventCalculator:
 class SimulatedSpendTracker:
     """Tracks simulated spending across test sessions."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._session_spend: dict[str, float] = {}
 
     def update_spend(self, session_id: str, amount: float):
@@ -255,7 +257,7 @@ class SimulatedSpendTracker:
 class TestSessionManager:
     """Manages isolated test sessions to prevent cross-contamination."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._sessions: dict[str, dict[str, Any]] = {}
         self._spend_tracker = SimulatedSpendTracker()
 
@@ -478,8 +480,23 @@ class DeliverySimulator:
 _session_manager = TestSessionManager()
 
 
-def get_testing_context(context: Context) -> TestContext:
-    """Get testing context from FastMCP context."""
+def get_testing_context(context: Context | ToolContext) -> TestContext:
+    """Get testing context from FastMCP context or ToolContext.
+
+    Args:
+        context: Either FastMCP Context or ToolContext
+
+    Returns:
+        TestContext with testing hooks configuration
+    """
+    # Handle ToolContext (already has testing_context as dict)
+    if isinstance(context, ToolContext):
+        if context.testing_context:
+            # Convert dict back to TestContext object
+            return TestContext(**context.testing_context)
+        return TestContext()
+
+    # Handle FastMCP Context (extract from headers)
     return TestContext.from_context(context)
 
 

@@ -93,24 +93,24 @@ def format_targeting_for_display(targeting: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Formatted targeting summary
     """
-    display = {}
+    display: dict[str, Any] = {}
 
     # Geography targeting
     if "geoTargeting" in targeting:
         geo = targeting["geoTargeting"]
-        geo_display = {}
+        geo_display: dict[str, Any] = {}
 
         if "targetedLocations" in geo:
             locations = [loc.get("displayName", loc.get("id", "Unknown")) for loc in geo["targetedLocations"]]
             geo_display["included"] = locations[:5]  # Show first 5
             if len(locations) > 5:
-                geo_display["included_count"] = len(locations)
+                geo_display["included_total"] = len(locations)
 
         if "excludedLocations" in geo:
             excluded = [loc.get("displayName", loc.get("id", "Unknown")) for loc in geo["excludedLocations"]]
             geo_display["excluded"] = excluded[:3]  # Show first 3
             if len(excluded) > 3:
-                geo_display["excluded_count"] = len(excluded)
+                geo_display["excluded_total"] = len(excluded)
 
         if geo_display:
             display["geography"] = geo_display
@@ -118,7 +118,7 @@ def format_targeting_for_display(targeting: dict[str, Any]) -> dict[str, Any]:
     # Technology targeting
     if "technologyTargeting" in targeting:
         tech = targeting["technologyTargeting"]
-        tech_display = {}
+        tech_display: dict[str, Any] = {}
 
         if "deviceCategories" in tech:
             devices = [dev.get("displayName", dev.get("id", "Unknown")) for dev in tech["deviceCategories"]]
@@ -138,7 +138,7 @@ def format_targeting_for_display(targeting: dict[str, Any]) -> dict[str, Any]:
     # Custom targeting
     if "customTargeting" in targeting:
         custom = targeting["customTargeting"]
-        custom_display = {}
+        custom_display: dict[str, str] = {}
 
         for key_id, value_ids in custom.items():
             # In a real implementation, you'd look up key/value names
@@ -151,7 +151,7 @@ def format_targeting_for_display(targeting: dict[str, Any]) -> dict[str, Any]:
     if "dayPartTargeting" in targeting:
         daypart = targeting["dayPartTargeting"]
         if "dayParts" in daypart:
-            day_parts = []
+            day_parts: list[str] = []
             for part in daypart["dayParts"]:
                 day = part.get("dayOfWeek", "Unknown")
                 start_hour = part.get("startTime", {}).get("hour", 0)

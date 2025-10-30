@@ -64,7 +64,7 @@ def _build_auth_headers(auth: dict[str, Any] | None, auth_header: str | None = N
         >>> _build_auth_headers({"type": "bearer", "credentials": "token"}, "X-Custom-Auth")
         {"X-Custom-Auth": "Bearer token"}
     """
-    headers = {}
+    headers: dict[str, str] = {}
 
     if not auth:
         return headers

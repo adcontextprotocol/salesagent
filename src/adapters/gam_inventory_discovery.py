@@ -619,20 +619,21 @@ class GAMInventoryDiscovery:
         root_units = [unit for unit in self.ad_units.values() if unit.parent_id is None]
 
         def build_node(unit: AdUnit) -> dict[str, Any]:
-            node = {
+            children: list[dict[str, Any]] = []
+            node: dict[str, Any] = {
                 "id": unit.id,
                 "name": unit.name,
                 "code": unit.ad_unit_code,
                 "status": unit.status.value,
                 "sizes": unit.sizes,
                 "explicitly_targeted": unit.explicitly_targeted,
-                "children": [],
+                "children": children,
             }
 
             # Find children
             for child_unit in self.ad_units.values():
                 if child_unit.parent_id == unit.id:
-                    node["children"].append(build_node(child_unit))
+                    children.append(build_node(child_unit))
 
             return node
 
@@ -715,13 +716,13 @@ class GAMInventoryDiscovery:
         Returns:
             List of suggested ad units with relevance scores
         """
-        suggestions = []
+        suggestions: list[dict[str, Any]] = []
 
         targetable_units = self.get_targetable_ad_units(min_sizes=creative_sizes)
 
         for unit in targetable_units:
-            score = 0
-            reasons = []
+            score: int = 0
+            reasons: list[str] = []
 
             # Score based on explicit targeting
             if unit.explicitly_targeted:
@@ -753,8 +754,8 @@ class GAMInventoryDiscovery:
                     {"ad_unit": unit.to_dict(), "score": score, "reasons": reasons, "path": " > ".join(unit.path)}
                 )
 
-        # Sort by score descending
-        suggestions.sort(key=lambda x: x["score"], reverse=True)
+        # Sort by score descending (score is guaranteed to be int)
+        suggestions.sort(key=lambda x: x["score"], reverse=True)  # type: ignore[arg-type]
 
         return suggestions
 
@@ -857,7 +858,7 @@ class GAMInventoryDiscovery:
         logger.info(f"Starting selective inventory sync for tenant {self.tenant_id}: {sync_types}")
 
         start_time = datetime.now()
-        summary = {
+        summary: dict[str, Any] = {
             "tenant_id": self.tenant_id,
             "sync_time": datetime.now().isoformat(),
             "sync_types": sync_types,

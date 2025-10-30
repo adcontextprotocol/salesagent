@@ -108,7 +108,7 @@ class GAMValidator:
         Returns:
             List of validation error messages (empty if valid)
         """
-        issues = []
+        issues: list[str] = []
 
         media_data = asset.get("media_data")
         if media_data is None:
@@ -298,7 +298,7 @@ class GAMValidator:
 
     def _validate_file_extension(self, url: str, format_type: str) -> list[str]:
         """Validate file extension against allowed extensions for the format."""
-        issues = []
+        issues: list[str] = []
 
         parsed_url = urlparse(url)
         file_path = parsed_url.path.lower()
@@ -338,19 +338,19 @@ class GAMValidator:
             return "native"
         elif asset.get("media_url") or asset.get("url"):
             # Determine type based on URL or format
-            url = asset.get("media_url") or asset.get("url")
+            url = asset.get("media_url") or asset.get("url") or ""
             format_type = asset.get("format", "")
 
             # Check for HTML5 first
             if (
                 any(url.lower().endswith(ext) for ext in self.ALLOWED_EXTENSIONS["html5"])
-                or "html5" in format_type.lower()
-                or "rich_media" in format_type.lower()
+                or (format_type and "html5" in format_type.lower())
+                or (format_type and "rich_media" in format_type.lower())
             ):
                 return "html5"
             elif any(url.lower().endswith(ext) for ext in self.ALLOWED_EXTENSIONS["video"]):
                 return "video"
-            elif "video" in format_type.lower():
+            elif format_type and "video" in format_type.lower():
                 return "video"
             else:
                 return "display"

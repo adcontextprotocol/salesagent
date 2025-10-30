@@ -162,7 +162,7 @@ class CreativeAgentRegistry:
                 max_retries=3,
             ) as client:
                 # Build parameters for list_creative_formats
-                params = {}
+                params: dict[str, Any] = {}
                 if max_width is not None:
                     params["max_width"] = max_width
                 if max_height is not None:

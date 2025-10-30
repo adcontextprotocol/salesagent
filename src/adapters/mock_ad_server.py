@@ -659,7 +659,7 @@ class MockAdServer(AdServerAdapter):
         # Per AdCP v2.2.0: budget is at package level
         from src.core.schemas import extract_budget_amount
 
-        total_budget = 0
+        total_budget = 0.0
         for p in packages:
             # First try to get budget from package (AdCP v2.2.0)
             if p.budget:
