@@ -2029,10 +2029,30 @@ async def _create_media_buy_impl(
                         clean_url = url.rstrip("/")
                         return f"{clean_url}/{fid}"
 
+                    def _has_supported_key(url: str | None, fid: str) -> bool:
+                        """Check if (url, fid) is supported, allowing an '/mcp' URL variant.
+
+                        This does not mutate any of the underlying key sets; it only checks
+                        for the presence of either the exact key or an alternative where
+                        '/mcp' is appended to the end of the URL path.
+                        """
+                        # Exact match first
+                        if (url, fid) in product_format_keys:
+                            return True
+
+                        # If URL provided, also try with '/mcp' appended (idempotent if already present)
+                        if url:
+                            base = url.rstrip("/")
+                            mcp_url = base if base.endswith("/mcp") else f"{base}/mcp"
+                            if (mcp_url, fid) in product_format_keys:
+                                return True
+
+                        return False
+
                     unsupported_formats = [
                         format_display(url, fid)
                         for url, fid in requested_format_keys
-                        if (url, fid) not in product_format_keys
+                        if not _has_supported_key(url, fid)
                     ]
 
                     if unsupported_formats:
