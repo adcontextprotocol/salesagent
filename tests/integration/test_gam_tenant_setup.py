@@ -32,7 +32,6 @@ from src.core.database.models import AdapterConfig, Tenant
 class TestGAMTenantSetup:
     """Test GAM tenant setup and configuration flow."""
 
-    @pytest.mark.skip_ci
     def test_gam_tenant_creation_without_network_code(self, test_database):
         """
         Test that a GAM tenant can be created without providing network code upfront.
@@ -77,7 +76,6 @@ class TestGAMTenantSetup:
             assert adapter_config.gam_network_code is None  # network_code should be null initially
             assert adapter_config.gam_refresh_token == "test_refresh_token_123"  # refresh_token should be stored
 
-    @pytest.mark.skip_ci
     def test_gam_tenant_creation_with_network_code(self, test_database):
         """
         Test that a GAM tenant can be created WITH network code provided upfront.
