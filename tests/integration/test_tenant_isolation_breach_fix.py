@@ -65,7 +65,7 @@ def test_tenant_isolation_with_valid_subdomain(integration_db):
     }
 
     with patch("src.core.auth.get_http_headers", return_value={}):
-        principal_id = get_principal_from_context(context)
+        principal_id, tenant = get_principal_from_context(context)
 
     assert principal_id == "adv_wonderstruck"
 
@@ -87,7 +87,7 @@ def test_tenant_isolation_with_valid_subdomain(integration_db):
     }
 
     with patch("src.core.auth.get_http_headers", return_value={}):
-        principal_id2 = get_principal_from_context(context2)
+        principal_id2, tenant2 = get_principal_from_context(context2)
 
     assert principal_id2 == "adv_test_agent"
 

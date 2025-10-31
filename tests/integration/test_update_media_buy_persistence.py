@@ -71,7 +71,7 @@ def test_tenant_setup(integration_db):
             principal_id=principal_id,
             name="Test Advertiser Persist",
             access_token=token,
-            platform_mappings={"mock_ad_server": {"advertiser_id": "adv_persist"}},
+            platform_mappings={"mock": {"id": "adv_persist"}},
         )
         session.add(principal)
 

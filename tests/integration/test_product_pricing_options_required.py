@@ -25,7 +25,7 @@ from src.core.schemas import Product as ProductSchema
 @pytest.mark.requires_db
 def test_get_product_catalog_loads_pricing_options(integration_db):
     """Test that get_product_catalog() loads pricing_options relationship."""
-    from src.core.context_management import set_current_tenant
+    from src.core.config_loader import set_current_tenant
 
     # Create test tenant
     unique_id = str(uuid.uuid4())[:8]
@@ -150,13 +150,16 @@ def test_product_query_with_eager_loading(integration_db):
         session.add(pricing_option)
         session.commit()
 
+    # Store tenant_id before session closes
+    tenant_id = f"test_tenant_{unique_id}"
+
     # Query product with eager loading (simulating get_product_catalog pattern)
     with get_db_session() as session:
         from sqlalchemy.orm import selectinload
 
         stmt = (
             select(ProductModel)
-            .filter_by(tenant_id=tenant.tenant_id, product_id="test_eager_load")
+            .filter_by(tenant_id=tenant_id, product_id="test_eager_load")
             .options(selectinload(ProductModel.pricing_options))
         )
 
@@ -219,9 +222,12 @@ def test_product_without_eager_loading_fails_validation(integration_db):
         session.add(pricing_option)
         session.commit()
 
+    # Store tenant_id before session closes
+    tenant_id = f"test_tenant_{unique_id}"
+
     # Query product WITHOUT eager loading (the bug scenario)
     with get_db_session() as session:
-        stmt = select(ProductModel).filter_by(tenant_id=tenant.tenant_id, product_id="test_no_eager_load")
+        stmt = select(ProductModel).filter_by(tenant_id=tenant_id, product_id="test_no_eager_load")
         # NOTE: No .options(selectinload(...)) here - this is the bug!
 
         loaded_product = session.scalars(stmt).first()

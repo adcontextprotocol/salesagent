@@ -136,7 +136,7 @@ def test_global_token_lookup_sets_tenant_from_principal(integration_db):
         mock_get_headers.return_value = mock_context.meta["headers"]
 
         # Call get_principal_from_context
-        principal_id = get_principal_from_context(mock_context)
+        principal_id, tenant_ctx = get_principal_from_context(mock_context)
 
         # Verify principal was found
         assert principal_id == "principal_global"
