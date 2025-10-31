@@ -259,7 +259,20 @@ def google_callback():
         session["user_name"] = user.get("name", email)
         session["user_picture"] = user.get("picture", "")
 
-        # Check if this is a signup flow
+        # Check if user is super admin FIRST (before signup flow check)
+        # Super admins should never be redirected to signup/onboarding
+        email_domain = email.split("@")[1] if "@" in email else ""
+        super_admin_domain = get_super_admin_domain()
+        if email_domain == super_admin_domain or is_super_admin(email):
+            session["is_super_admin"] = True
+            session["role"] = "super_admin"
+            # Clear any signup flow state for super admins
+            session.pop("signup_flow", None)
+            session.pop("signup_step", None)
+            flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
+            return redirect(url_for("core.index"))
+
+        # Check if this is a signup flow (only for non-super-admin users)
         if session.get("signup_flow"):
             # Redirect to onboarding wizard for new tenant signup
             flash(f"Welcome {user.get('name', email)}!", "success")
@@ -268,16 +281,6 @@ def google_callback():
         # Unified flow: Always show tenant selector (with option to create new tenant)
         # No distinction between signup and login - keeps UX simple and consistent
         from src.admin.domain_access import get_user_tenant_access
-
-        email_domain = email.split("@")[1] if "@" in email else ""
-
-        # Check if user is super admin
-        super_admin_domain = get_super_admin_domain()
-        if email_domain == super_admin_domain or is_super_admin(email):
-            session["is_super_admin"] = True
-            session["role"] = "super_admin"
-            flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
-            return redirect(url_for("core.index"))
 
         # Get all accessible tenants
         tenant_access = get_user_tenant_access(email)
