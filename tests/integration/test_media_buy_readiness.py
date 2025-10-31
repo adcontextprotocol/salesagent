@@ -153,6 +153,7 @@ class TestMediaBuyReadinessService:
                 raw_request={"packages": [{"package_id": "pkg_1", "product_id": "prod_1"}]},
             )
             session.add(media_buy)
+            session.flush()  # Ensure media buy exists before creating creative assignment
 
             # Create pending creative
             creative = Creative(
@@ -215,6 +216,7 @@ class TestMediaBuyReadinessService:
                 raw_request={"packages": [{"package_id": "pkg_1", "product_id": "prod_1"}]},
             )
             session.add(media_buy)
+            session.flush()  # Ensure media buy exists before creating creative assignment
 
             # Create approved creative
             creative = Creative(
@@ -277,6 +279,7 @@ class TestMediaBuyReadinessService:
                 raw_request={"packages": [{"package_id": "pkg_1", "product_id": "prod_1"}]},
             )
             session.add(media_buy)
+            session.flush()  # Ensure media buy exists before creating creative assignment
 
             # Create approved creative
             creative = Creative(
