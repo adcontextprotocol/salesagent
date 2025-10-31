@@ -1751,18 +1751,7 @@ REJECT - Creative cannot be approved:
                 </p>
 
                 <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/signals">
-                    <div class="checkbox-group">
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="signals_enabled" name="signals_enabled"
-                                   {% if tenant.signals_agent_config and tenant.signals_agent_config.enabled %}checked{% endif %}>
-                            <span class="checkbox-custom"></span>
-                            <span class="checkbox-text">Enable Signals Discovery</span>
-                        </label>
-                        <small>When enabled, the sales agent will query the upstream signals agent for intelligent product customization</small>
-                    </div>
-
-                    <div id="signals-config" class="signals-config-section"
-                         style="{% if not (tenant.signals_agent_config and tenant.signals_agent_config.enabled) %}display: none;{% endif %}">
+                    <div id="signals-config" class="signals-config-section">
 
                         <div class="form-group">
                             <label for="signals_upstream_url">Upstream Signals Agent URL</label>

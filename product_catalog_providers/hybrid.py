@@ -135,7 +135,8 @@ class HybridProductCatalog(ProductCatalogProvider):
                 else:
                     config = json.loads(tenant.signals_agent_config)
 
-                return config.get("enabled", False)
+                # Signals discovery is configured if upstream_url is present
+                return bool(config.get("upstream_url"))
 
         except Exception as e:
             logger.error(f"Error checking signals configuration: {e}")

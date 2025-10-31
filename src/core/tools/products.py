@@ -278,8 +278,8 @@ async def _get_products_impl(
                 logger.error(f"Invalid signals_agent_config JSON for tenant {tenant['tenant_id']}")
                 signals_config = {}
 
-        # If signals discovery is enabled, use hybrid provider
-        if isinstance(signals_config, dict) and signals_config.get("enabled", False):
+        # If signals discovery is configured (has upstream_url), use hybrid provider
+        if isinstance(signals_config, dict) and signals_config.get("upstream_url"):
             logger.info(f"Using hybrid provider with signals discovery for tenant {tenant['tenant_id']}")
             catalog_config = {
                 "provider": "hybrid",

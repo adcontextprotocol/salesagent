@@ -468,7 +468,6 @@ def update_signals(tenant_id):
 
     try:
         # Get form data
-        enabled = request.form.get("signals_enabled") == "on"
         upstream_url = request.form.get("signals_upstream_url", "").strip()
         upstream_token = request.form.get("signals_auth_token", "").strip()
         auth_header = request.form.get("signals_auth_header", "x-adcp-auth").strip()
@@ -476,9 +475,9 @@ def update_signals(tenant_id):
         forward_promoted_offering = request.form.get("signals_forward_offering") == "on"
         fallback_to_database = request.form.get("signals_fallback") == "on"
 
-        # Validate required fields if enabled
-        if enabled and not upstream_url:
-            flash("Upstream URL is required when signals discovery is enabled", "error")
+        # Validate required fields
+        if not upstream_url:
+            flash("Upstream URL is required", "error")
             return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
 
         # Validate timeout range
@@ -486,9 +485,8 @@ def update_signals(tenant_id):
             flash("Timeout must be between 5 and 120 seconds", "error")
             return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
 
-        # Create configuration object
+        # Create configuration object (no 'enabled' field - presence of upstream_url indicates it's configured)
         signals_config = {
-            "enabled": enabled,
             "upstream_url": upstream_url,
             "upstream_token": upstream_token,
             "auth_header": auth_header,
@@ -509,10 +507,7 @@ def update_signals(tenant_id):
             tenant.updated_at = datetime.now(UTC)
             db_session.commit()
 
-            if enabled:
-                flash("Signals discovery agent configured successfully", "success")
-            else:
-                flash("Signals discovery agent disabled", "info")
+            flash("Signals discovery agent configured successfully", "success")
 
     except ValueError as e:
         logger.error(f"Invalid timeout value: {e}")

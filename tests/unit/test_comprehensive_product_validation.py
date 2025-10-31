@@ -32,12 +32,12 @@ async def test_all_providers():
     providers_to_test = [
         {"name": "Database Provider", "config": {"provider": "database", "config": {}}},
         {
-            "name": "Hybrid Provider (no signals)",
+            "name": "Hybrid Provider (no signals URL)",
             "config": {
                 "provider": "hybrid",
                 "config": {
                     "database": {},
-                    "signals_discovery": {"enabled": False},
+                    "signals_discovery": {},  # No upstream_url, so signals disabled
                     "ranking_strategy": "database_first",
                     "max_products": 10,
                 },
@@ -47,7 +47,7 @@ async def test_all_providers():
             "name": "Signals Provider (fallback mode)",
             "config": {
                 "provider": "signals",
-                "config": {"enabled": False, "fallback_to_database": True},  # Will fallback to database
+                "config": {"fallback_to_database": True},  # No upstream_url, will fallback to database
             },
         },
         {
