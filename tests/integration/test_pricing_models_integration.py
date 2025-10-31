@@ -194,13 +194,18 @@ def setup_tenant_with_pricing_products(integration_db):
 
     # Cleanup
     with get_db_session() as session:
-        from sqlalchemy import delete
+        from sqlalchemy import delete, select
 
         from src.core.database.models import MediaBuy, MediaPackage
 
         # Delete in correct order to respect foreign keys
         # 1. Delete child records first (MediaPackage references MediaBuy)
-        session.execute(delete(MediaPackage).where(MediaPackage.tenant_id == "test_pricing_tenant"))
+        # Note: MediaPackage doesn't have tenant_id directly, must filter by media_buy_id
+        tenant_media_buy_ids = session.scalars(
+            select(MediaBuy.media_buy_id).where(MediaBuy.tenant_id == "test_pricing_tenant")
+        ).all()
+        if tenant_media_buy_ids:
+            session.execute(delete(MediaPackage).where(MediaPackage.media_buy_id.in_(tenant_media_buy_ids)))
         session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == "test_pricing_tenant"))
 
         # 2. Delete product-related records
