@@ -56,6 +56,7 @@ def test_tenant_isolation_with_subdomain_and_cross_tenant_token(integration_db):
             tenant_id="tenant_test_agent",
             name="Test Agent Principal",
             access_token="test_agent_principal_token",
+            platform_mappings={},
         )
         session.add(principal)
         session.commit()
@@ -115,6 +116,7 @@ def test_global_token_lookup_sets_tenant_from_principal(integration_db):
             tenant_id="tenant_global",
             name="Global Principal",
             access_token="global_principal_token",
+            platform_mappings={},
         )
         session.add(principal)
         session.commit()

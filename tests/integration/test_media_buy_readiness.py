@@ -160,6 +160,7 @@ class TestMediaBuyReadinessService:
                 tenant_id=test_tenant,
                 principal_id=test_principal,
                 name="Pending Creative",
+                agent_url="https://test-agent.example.com",
                 format="display_300x250",
                 status="pending",  # Pending approval
                 data={},
@@ -221,6 +222,7 @@ class TestMediaBuyReadinessService:
                 tenant_id=test_tenant,
                 principal_id=test_principal,
                 name="Approved Creative",
+                agent_url="https://test-agent.example.com",
                 format="display_300x250",
                 status="approved",
                 data={},
@@ -282,6 +284,7 @@ class TestMediaBuyReadinessService:
                 tenant_id=test_tenant,
                 principal_id=test_principal,
                 name="Live Creative",
+                agent_url="https://test-agent.example.com",
                 format="display_300x250",
                 status="approved",
                 data={},

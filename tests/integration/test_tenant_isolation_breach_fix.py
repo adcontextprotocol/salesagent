@@ -43,12 +43,14 @@ def test_tenant_isolation_with_valid_subdomain(integration_db):
             tenant_id="tenant_wonderstruck",
             name="Wonderstruck Advertiser",
             access_token="wonderstruck_token_abc123",
+            platform_mappings={},
         )
         principal2 = Principal(
             principal_id="adv_test_agent",
             tenant_id="tenant_test_agent",
             name="Test Agent Advertiser",
             access_token="test_agent_token_xyz789",
+            platform_mappings={},
         )
         session.add_all([principal1, principal2])
         session.commit()
@@ -129,6 +131,7 @@ def test_cross_tenant_token_rejected(integration_db):
             tenant_id="tenant_wonderstruck",
             name="Wonderstruck Advertiser",
             access_token="wonderstruck_token_abc123",
+            platform_mappings={},
         )
         session.add(principal1)
         session.commit()
