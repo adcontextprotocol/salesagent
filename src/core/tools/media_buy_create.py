@@ -1145,9 +1145,9 @@ async def _create_media_buy_impl(
 
         if req.packages:
             for package in req.packages:
-                # Check product_id field per AdCP spec
-                if not package.product_id:
-                    error_msg = f"Package {package.buyer_ref} must specify product_id."
+                # Check product_id field (single) or products field (array) per AdCP spec
+                if not package.product_id and not package.products:
+                    error_msg = f"Package {package.buyer_ref} must specify product_id or products."
                     raise ValueError(error_msg)
 
             # Check for duplicate product_ids across packages

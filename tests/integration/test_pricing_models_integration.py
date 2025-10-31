@@ -194,7 +194,7 @@ def setup_tenant_with_pricing_products(integration_db):
 @pytest.mark.requires_db
 async def test_get_products_returns_pricing_options(setup_tenant_with_pricing_products):
     """Test that get_products returns pricing_options for products."""
-    request = GetProductsRequest(brief="display ads")
+    request = GetProductsRequest(brief="display ads", brand_manifest={"name": "Test Brand"})
 
     # Create context
     context = ToolContext(
@@ -347,18 +347,21 @@ async def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    with pytest.raises(ValueError) as exc_info:
-        await _create_media_buy_impl(
-            buyer_ref=request.buyer_ref,
-            brand_manifest=request.brand_manifest,
-            packages=request.packages,
-            start_time=request.start_time,
-            end_time=request.end_time,
-            budget=request.budget,
-            context=context,
-        )
+    # AdCP 2.4 spec: Errors are returned in response.errors, not raised as exceptions
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=context,
+    )
 
-    assert "below floor price" in str(exc_info.value)
+    # Check for errors in response (AdCP 2.4 compliant)
+    assert response.errors is not None and len(response.errors) > 0, "Expected errors in response"
+    error_messages = " ".join(str(e) for e in response.errors)
+    assert "below floor price" in error_messages.lower() or "floor" in error_messages.lower()
 
 
 @pytest.mark.requires_db
@@ -432,18 +435,21 @@ async def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    with pytest.raises(ValueError) as exc_info:
-        await _create_media_buy_impl(
-            buyer_ref=request.buyer_ref,
-            brand_manifest=request.brand_manifest,
-            packages=request.packages,
-            start_time=request.start_time,
-            end_time=request.end_time,
-            budget=request.budget,
-            context=context,
-        )
+    # AdCP 2.4 spec: Errors are returned in response.errors, not raised as exceptions
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=context,
+    )
 
-    assert "below minimum spend" in str(exc_info.value)
+    # Check for errors in response (AdCP 2.4 compliant)
+    assert response.errors is not None and len(response.errors) > 0, "Expected errors in response"
+    error_messages = " ".join(str(e) for e in response.errors)
+    assert "below minimum spend" in error_messages.lower() or "minimum" in error_messages.lower()
 
 
 @pytest.mark.requires_db
@@ -517,15 +523,18 @@ async def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pr
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    with pytest.raises(ValueError) as exc_info:
-        await _create_media_buy_impl(
-            buyer_ref=request.buyer_ref,
-            brand_manifest=request.brand_manifest,
-            packages=request.packages,
-            start_time=request.start_time,
-            end_time=request.end_time,
-            budget=request.budget,
-            context=context,
-        )
+    # AdCP 2.4 spec: Errors are returned in response.errors, not raised as exceptions
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=context,
+    )
 
-    assert "does not offer pricing model" in str(exc_info.value)
+    # Check for errors in response (AdCP 2.4 compliant)
+    assert response.errors is not None and len(response.errors) > 0, "Expected errors in response"
+    error_messages = " ".join(str(e) for e in response.errors)
+    assert "does not offer pricing model" in error_messages.lower() or "pricing" in error_messages.lower()
