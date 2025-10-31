@@ -131,7 +131,7 @@ class TestMCPToolRoundtripMinimal:
                 update_content = (
                     update_result.structured_content if hasattr(update_result, "structured_content") else update_result
                 )
-                assert "status" in update_content
+                assert "media_buy_id" in update_content
                 # Should not get TypeError: combine() argument 1 must be datetime.date, not None
 
     async def test_get_media_buy_delivery_minimal(self, mcp_client):
