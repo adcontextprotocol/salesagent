@@ -31,8 +31,8 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
             principal_id="test_principal",
             tenant_id="test_tenant",
             name="Test Advertiser",
-            type="advertiser",
-            token="test_token",
+            access_token="test_token",
+            platform_mappings={},
         )
         session.add(principal)
 
@@ -170,8 +170,8 @@ def test_update_media_buy_replaces_creatives(integration_db):
             principal_id="test_principal",
             tenant_id="test_tenant",
             name="Test Advertiser",
-            type="advertiser",
-            token="test_token",
+            access_token="test_token",
+            platform_mappings={},
         )
         session.add(principal)
 
@@ -319,8 +319,8 @@ def test_update_media_buy_rejects_missing_creatives(integration_db):
             principal_id="test_principal",
             tenant_id="test_tenant",
             name="Test Advertiser",
-            type="advertiser",
-            token="test_token",
+            access_token="test_token",
+            platform_mappings={},
         )
         session.add(principal)
 
