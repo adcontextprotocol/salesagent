@@ -3,6 +3,7 @@
 Tests that GAM adapter properly enforces CPM-only restriction.
 """
 
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -17,6 +18,7 @@ from src.core.database.models import (
     Tenant,
 )
 from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
+from src.core.tool_context import ToolContext
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # Tests are now AdCP 2.4 compliant (removed status field, using errors field)
@@ -198,13 +200,18 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-02-01T00:00:00Z",
-        end_time="2025-02-28T23:59:59Z",
+        start_time="2026-02-01T00:00:00Z",
+        end_time="2026-02-28T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
-        principal_id = "test_advertiser"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_gam_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
@@ -217,7 +224,7 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
             start_time=request.start_time,
             end_time=request.end_time,
             budget=request.budget,
-            context=MockContext(),
+            context=context,
         )
 
     error_msg = str(exc_info.value)
@@ -244,13 +251,18 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-02-01T00:00:00Z",
-        end_time="2025-02-28T23:59:59Z",
+        start_time="2026-02-01T00:00:00Z",
+        end_time="2026-02-28T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
-        principal_id = "test_advertiser"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_gam_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     # This should succeed
     response = await _create_media_buy_impl(
@@ -287,13 +299,18 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
         ],
         budget={"total": 15000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-02-01T00:00:00Z",
-        end_time="2025-02-28T23:59:59Z",
+        start_time="2026-02-01T00:00:00Z",
+        end_time="2026-02-28T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
-        principal_id = "test_advertiser"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_gam_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     # This should fail with clear error about GAM not supporting CPP
     with pytest.raises(Exception) as exc_info:
@@ -304,7 +321,7 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
             start_time=request.start_time,
             end_time=request.end_time,
             budget=request.budget,
-            context=MockContext(),
+            context=context,
         )
 
     error_msg = str(exc_info.value)
@@ -329,13 +346,18 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-02-01T00:00:00Z",
-        end_time="2025-02-28T23:59:59Z",
+        start_time="2026-02-01T00:00:00Z",
+        end_time="2026-02-28T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
-        principal_id = "test_advertiser"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_gam_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     # This should succeed - buyer chose CPM from multi-option product
     response = await _create_media_buy_impl(

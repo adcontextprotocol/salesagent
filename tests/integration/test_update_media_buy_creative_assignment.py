@@ -82,7 +82,8 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
             tenant_id="test_tenant",
             principal_id="test_principal",
             name="Creative 1",
-            creative_type="display",
+            agent_url="https://creative.adcontextprotocol.org",
+            format="display",
             status="ready",
             data={"platform_creative_id": "gam_123"},
         )
@@ -91,7 +92,8 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
             tenant_id="test_tenant",
             principal_id="test_principal",
             name="Creative 2",
-            creative_type="display",
+            agent_url="https://creative.adcontextprotocol.org",
+            format="display",
             status="ready",
             data={"platform_creative_id": "gam_456"},
         )
@@ -103,7 +105,6 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
     mock_context.headers = {"x-adcp-auth": "test_token"}
 
     with (
-        patch("src.core.main._verify_principal"),
         patch("src.core.main._get_principal_id_from_context", return_value="test_principal"),
         patch("src.core.main.get_current_tenant", return_value={"tenant_id": "test_tenant"}),
         patch("src.core.main.get_principal_object", return_value=principal),
@@ -236,24 +237,30 @@ def test_update_media_buy_replaces_creatives(integration_db):
             tenant_id="test_tenant",
             principal_id="test_principal",
             name="Creative 1",
-            creative_type="display",
+            agent_url="https://creative.adcontextprotocol.org",
+            format="display",
             status="ready",
+            data={},
         )
         creative2 = DBCreative(
             creative_id="creative_2",
             tenant_id="test_tenant",
             principal_id="test_principal",
             name="Creative 2",
-            creative_type="display",
+            agent_url="https://creative.adcontextprotocol.org",
+            format="display",
             status="ready",
+            data={},
         )
         creative3 = DBCreative(
             creative_id="creative_3",
             tenant_id="test_tenant",
             principal_id="test_principal",
             name="Creative 3",
-            creative_type="display",
+            agent_url="https://creative.adcontextprotocol.org",
+            format="display",
             status="ready",
+            data={},
         )
         session.add_all([creative1, creative2, creative3])
 
@@ -273,7 +280,6 @@ def test_update_media_buy_replaces_creatives(integration_db):
     mock_context.headers = {"x-adcp-auth": "test_token"}
 
     with (
-        patch("src.core.main._verify_principal"),
         patch("src.core.main._get_principal_id_from_context", return_value="test_principal"),
         patch("src.core.main.get_current_tenant", return_value={"tenant_id": "test_tenant"}),
         patch("src.core.main.get_principal_object", return_value=principal),
@@ -400,7 +406,6 @@ def test_update_media_buy_rejects_missing_creatives(integration_db):
     mock_context.headers = {"x-adcp-auth": "test_token"}
 
     with (
-        patch("src.core.main._verify_principal"),
         patch("src.core.main._get_principal_id_from_context", return_value="test_principal"),
         patch("src.core.main.get_current_tenant", return_value={"tenant_id": "test_tenant"}),
         patch("src.core.main.get_principal_object", return_value=principal),

@@ -3,14 +3,16 @@
 Tests the full flow: create product with pricing_options → get products → create media buy.
 """
 
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import CurrencyLimit, PricingOption, Product, Tenant
+from src.core.database.models import CurrencyLimit, PricingOption, Principal, Product, Tenant
 from src.core.schema_adapters import GetProductsRequest
 from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
+from src.core.tool_context import ToolContext
 from src.core.tools.media_buy_create import _create_media_buy_impl
 from src.core.tools.products import _get_products_impl
 from tests.utils.database_helpers import create_tenant_with_timestamps
@@ -39,6 +41,16 @@ def setup_tenant_with_pricing_products(integration_db):
             max_daily_package_spend=Decimal("50000.00"),
         )
         session.add(currency_limit)
+
+        # Add principal for authentication
+        principal = Principal(
+            tenant_id="test_pricing_tenant",
+            principal_id="test_advertiser",
+            name="Test Advertiser",
+            access_token="test_token",
+            platform_mappings={"mock": {"advertiser_id": "mock_adv_123"}},
+        )
+        session.add(principal)
 
         # Product 1: CPM fixed rate
         product_cpm_fixed = Product(
@@ -184,11 +196,17 @@ async def test_get_products_returns_pricing_options(setup_tenant_with_pricing_pr
     """Test that get_products returns pricing_options for products."""
     request = GetProductsRequest(brief="display ads")
 
-    # Mock context
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_token"}})()
+    # Create context
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_pricing_tenant",
+        principal_id="test_advertiser",
+        tool_name="get_products",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
-    response = await _get_products_impl(request, MockContext())
+    response = await _get_products_impl(request, context)
 
     assert response.products is not None
     assert len(response.products) > 0
@@ -229,13 +247,18 @@ async def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-02-01T00:00:00Z",
-        end_time="2025-02-28T23:59:59Z",
+        start_time="2026-02-01T00:00:00Z",
+        end_time="2026-02-28T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_token"}})()
-        principal_id = "test_principal"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_pricing_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     response = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
@@ -244,7 +267,7 @@ async def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     assert response.media_buy_id is not None
@@ -268,13 +291,18 @@ async def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_prici
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-02-01T00:00:00Z",
-        end_time="2025-02-28T23:59:59Z",
+        start_time="2026-02-01T00:00:00Z",
+        end_time="2026-02-28T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_token"}})()
-        principal_id = "test_principal"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_pricing_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     response = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
@@ -283,7 +311,7 @@ async def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_prici
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     assert response.media_buy_id is not None
@@ -306,13 +334,18 @@ async def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-02-01T00:00:00Z",
-        end_time="2025-02-28T23:59:59Z",
+        start_time="2026-02-01T00:00:00Z",
+        end_time="2026-02-28T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_token"}})()
-        principal_id = "test_principal"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_pricing_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     with pytest.raises(ValueError) as exc_info:
         await _create_media_buy_impl(
@@ -322,7 +355,7 @@ async def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_
             start_time=request.start_time,
             end_time=request.end_time,
             budget=request.budget,
-            context=MockContext(),
+            context=context,
         )
 
     assert "below floor price" in str(exc_info.value)
@@ -344,13 +377,18 @@ async def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_prod
         ],
         budget={"total": 8000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-02-01T00:00:00Z",
-        end_time="2025-02-28T23:59:59Z",
+        start_time="2026-02-01T00:00:00Z",
+        end_time="2026-02-28T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_token"}})()
-        principal_id = "test_principal"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_pricing_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     response = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
@@ -359,7 +397,7 @@ async def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_prod
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     assert response.media_buy_id is not None
@@ -381,13 +419,18 @@ async def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_
         ],
         budget={"total": 3000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-02-01T00:00:00Z",
-        end_time="2025-02-28T23:59:59Z",
+        start_time="2026-02-01T00:00:00Z",
+        end_time="2026-02-28T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_token"}})()
-        principal_id = "test_principal"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_pricing_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     with pytest.raises(ValueError) as exc_info:
         await _create_media_buy_impl(
@@ -397,7 +440,7 @@ async def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_
             start_time=request.start_time,
             end_time=request.end_time,
             budget=request.budget,
-            context=MockContext(),
+            context=context,
         )
 
     assert "below minimum spend" in str(exc_info.value)
@@ -419,13 +462,18 @@ async def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_prici
         ],
         budget={"total": 15000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-02-01T00:00:00Z",
-        end_time="2025-02-28T23:59:59Z",
+        start_time="2026-02-01T00:00:00Z",
+        end_time="2026-02-28T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_token"}})()
-        principal_id = "test_principal"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_pricing_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     response = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
@@ -434,7 +482,7 @@ async def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_prici
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     assert response.media_buy_id is not None
@@ -456,13 +504,18 @@ async def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pr
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-02-01T00:00:00Z",
-        end_time="2025-02-28T23:59:59Z",
+        start_time="2026-02-01T00:00:00Z",
+        end_time="2026-02-28T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_token"}})()
-        principal_id = "test_principal"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_pricing_tenant",
+        principal_id="test_advertiser",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     with pytest.raises(ValueError) as exc_info:
         await _create_media_buy_impl(
@@ -472,7 +525,7 @@ async def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pr
             start_time=request.start_time,
             end_time=request.end_time,
             budget=request.budget,
-            context=MockContext(),
+            context=context,
         )
 
     assert "does not offer pricing model" in str(exc_info.value)

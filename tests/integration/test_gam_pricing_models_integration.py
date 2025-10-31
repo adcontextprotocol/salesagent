@@ -4,6 +4,7 @@ Tests end-to-end flow of creating media buys with different pricing models
 and verifying correct GAM line item configuration.
 """
 
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -19,6 +20,7 @@ from src.core.database.models import (
     Tenant,
 )
 from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
+from src.core.tool_context import ToolContext
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # Tests are now AdCP 2.4 compliant (removed status field, using errors field)
@@ -234,13 +236,18 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-03-01T00:00:00Z",
-        end_time="2025-03-31T23:59:59Z",
+        start_time="2026-03-01T00:00:00Z",
+        end_time="2026-03-31T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_advertiser_pricing"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_gam_pricing_tenant",
+        principal_id="test_advertiser_pricing",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     response = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
@@ -249,7 +256,7 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     # Verify response (AdCP 2.4 compliant)
@@ -284,13 +291,18 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
         ],
         budget={"total": 5000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-03-01T00:00:00Z",
-        end_time="2025-03-31T23:59:59Z",
+        start_time="2026-03-01T00:00:00Z",
+        end_time="2026-03-31T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_advertiser_pricing"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_gam_pricing_tenant",
+        principal_id="test_advertiser_pricing",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     response = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
@@ -299,7 +311,7 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     # Verify response (AdCP 2.4 compliant)
@@ -335,13 +347,18 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
         ],
         budget={"total": 12000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-03-01T00:00:00Z",
-        end_time="2025-03-31T23:59:59Z",
+        start_time="2026-03-01T00:00:00Z",
+        end_time="2026-03-31T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_advertiser_pricing"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_gam_pricing_tenant",
+        principal_id="test_advertiser_pricing",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     response = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
@@ -350,7 +367,7 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     # Verify response (AdCP 2.4 compliant)
@@ -391,9 +408,14 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
         end_time="2025-03-10T23:59:59Z",  # 10 days
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_advertiser_pricing"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_gam_pricing_tenant",
+        principal_id="test_advertiser_pricing",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     response = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
@@ -402,7 +424,7 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     # Verify response (AdCP 2.4 compliant)
@@ -452,13 +474,18 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
         ],
         budget={"total": 20000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-03-01T00:00:00Z",
-        end_time="2025-03-31T23:59:59Z",
+        start_time="2026-03-01T00:00:00Z",
+        end_time="2026-03-31T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_advertiser_pricing"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_gam_pricing_tenant",
+        principal_id="test_advertiser_pricing",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     response = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
@@ -467,7 +494,7 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     # Verify response (AdCP 2.4 compliant)
@@ -517,13 +544,18 @@ async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_
         ],
         budget={"total": 4000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-03-01T00:00:00Z",
-        end_time="2025-03-31T23:59:59Z",
+        start_time="2026-03-01T00:00:00Z",
+        end_time="2026-03-31T23:59:59Z",
     )
 
-    class MockContext:
-        http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_advertiser_pricing"
+    context = ToolContext(
+        context_id="test_ctx",
+        tenant_id="test_gam_pricing_tenant",
+        principal_id="test_advertiser_pricing",
+        tool_name="create_media_buy",
+        request_timestamp=datetime.now(UTC),
+        testing_context={"dry_run": True, "test_session_id": "test_session"},
+    )
 
     response = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
@@ -532,7 +564,7 @@ async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     # Verify response (AdCP 2.4 compliant)

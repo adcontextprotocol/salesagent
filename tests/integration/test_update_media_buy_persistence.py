@@ -120,12 +120,16 @@ def test_update_media_buy_with_database_persisted_buy(test_tenant_setup):
             principal_id=principal_id,
             media_buy_id=media_buy_id,
             buyer_ref="original_ref",
+            order_name="Test Order",
+            advertiser_name="Test Advertiser",
             status="active",
+            start_date=today,
+            end_date=today + timedelta(days=30),
             start_time=today,
             end_time=today + timedelta(days=30),
-            total_budget=1000.0,
+            budget=1000.0,
             currency="USD",
-            config={},
+            raw_request={},
         )
         session.add(media_buy)
         session.commit()

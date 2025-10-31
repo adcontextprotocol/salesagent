@@ -306,11 +306,11 @@ def populated_db(integration_db):
 
 @pytest.fixture
 def sample_tenant(integration_db):
-    """Create a sample tenant for testing."""
+    """Create a sample tenant for testing with required currency and property configuration."""
     from datetime import UTC, datetime
 
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import Tenant
+    from src.core.database.models import AuthorizedProperty, CurrencyLimit, PropertyTag, Tenant
 
     now = datetime.now(UTC)
     with get_db_session() as session:
@@ -330,6 +330,38 @@ def sample_tenant(integration_db):
             updated_at=now,
         )
         session.add(tenant)
+        session.commit()
+
+        # Add required CurrencyLimit (required for media buys)
+        currency_limit = CurrencyLimit(
+            tenant_id=tenant.tenant_id,
+            currency_code="USD",
+            max_daily_package_spend=10000.0,
+            min_package_budget=100.0,
+        )
+        session.add(currency_limit)
+
+        # Add required PropertyTag (required for product property_tags references)
+        property_tag = PropertyTag(
+            tenant_id=tenant.tenant_id,
+            tag_id="all_inventory",
+            name="All Inventory",
+            description="All available ad inventory",
+        )
+        session.add(property_tag)
+
+        # Add required AuthorizedProperty (required for setup checklist)
+        auth_property = AuthorizedProperty(
+            tenant_id=tenant.tenant_id,
+            property_id="example_property",
+            property_type="website",
+            name="Example Property",
+            identifiers=[{"type": "domain", "value": "example.com"}],
+            publisher_domain="example.com",
+            verification_status="verified",
+        )
+        session.add(auth_property)
+
         session.commit()
 
         return {
