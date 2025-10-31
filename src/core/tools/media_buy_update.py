@@ -226,13 +226,19 @@ def _update_media_buy_impl(
     principal = get_principal_object(principal_id)  # Now guaranteed to be str
     if not principal:
         error_msg = f"Principal {principal_id} not found"
-        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-        return UpdateMediaBuyResponse(
+        response_data = UpdateMediaBuyResponse(
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
             implementation_date=None,
             errors=[{"code": "principal_not_found", "message": error_msg}],
         )
+        ctx_manager.update_workflow_step(
+            step.step_id,
+            status="failed",
+            response_data=response_data.model_dump(),
+            error_message=error_msg,
+        )
+        return response_data
 
     # Extract testing context for dry_run and testing_context parameters
     testing_ctx = get_testing_context(context)
@@ -249,18 +255,19 @@ def _update_media_buy_impl(
     )
 
     if manual_approval_required and "update_media_buy" in manual_approval_operations:
-        # Workflow step already created above - update its status
-        ctx_manager.update_workflow_step(
-            step.step_id,
-            status="requires_approval",
-            add_comment={"user": "system", "comment": "Publisher requires manual approval for all media buy updates"},
-        )
-
-        return UpdateMediaBuyResponse(
+        # Build response first, then persist on workflow step, then return
+        response_data = UpdateMediaBuyResponse(
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
             implementation_date=None,
         )
+        ctx_manager.update_workflow_step(
+            step.step_id,
+            status="requires_approval",
+            response_data=response_data.model_dump(),
+            add_comment={"user": "system", "comment": "Publisher requires manual approval for all media buy updates"},
+        )
+        return response_data
 
     # Validate currency limits if flight dates or budget changes
     # This prevents workarounds where buyers extend flight to bypass daily max
@@ -300,13 +307,14 @@ def _update_media_buy_impl(
 
                 if not currency_limit:
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
-                    ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                    return UpdateMediaBuyResponse(
+                    response_data = UpdateMediaBuyResponse(
                         media_buy_id=req.media_buy_id or "",
                         buyer_ref=req.buyer_ref or "",
                         implementation_date=None,
                         errors=[{"code": "currency_not_supported", "message": error_msg}],
                     )
+                    ctx_manager.update_workflow_step(step.step_id, status="failed", response_data=response_data, error_message=error_msg)
+                    return response_data
 
                 # Calculate new flight duration
                 start = req.start_time if req.start_time else media_buy.start_time
@@ -363,13 +371,19 @@ def _update_media_buy_impl(
                                     f"exceeds maximum ({currency_limit.max_daily_package_spend} {request_currency}). "
                                     f"Flight date changes that reduce daily budget are not allowed to bypass limits."
                                 )
-                                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                                return UpdateMediaBuyResponse(
+                                response_data = UpdateMediaBuyResponse(
                                     media_buy_id=req.media_buy_id or "",
                                     buyer_ref=req.buyer_ref or "",
                                     implementation_date=None,
                                     errors=[{"code": "budget_limit_exceeded", "message": error_msg}],
                                 )
+                                ctx_manager.update_workflow_step(
+                                    step.step_id,
+                                    status="failed",
+                                    response_data=response_data.model_dump(),
+                                    error_message=error_msg,
+                                )
+                                return response_data
 
     # Handle campaign-level updates
     if req.active is not None:
@@ -402,13 +416,15 @@ def _update_media_buy_impl(
                 )
                 if result.errors:
                     error_message = result.errors[0].message if result.errors else "Update failed"
+                    response_data = UpdateMediaBuyResponse(**result.model_dump())
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
+                        response_data=response_data.model_dump(),
                         error_message=error_message,
                     )
                     # Convert schemas.UpdateMediaBuyResponse to schema_adapters.UpdateMediaBuyResponse
-                    return UpdateMediaBuyResponse(**result.model_dump())
+                    return response_data
 
             # Handle budget updates
             if pkg_update.budget is not None:
@@ -433,13 +449,15 @@ def _update_media_buy_impl(
                 )
                 if result.errors:
                     error_message = result.errors[0].message if result.errors else "Update failed"
+                    response_data = UpdateMediaBuyResponse(**result.model_dump())
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
+                        response_data=response_data.model_dump(),
                         error_message=error_message,
                     )
                     # Convert schemas.UpdateMediaBuyResponse to schema_adapters.UpdateMediaBuyResponse
-                    return UpdateMediaBuyResponse(**result.model_dump())
+                    return response_data
 
                 # Track budget update in affected_packages
                 affected_packages_list.append(
@@ -454,13 +472,19 @@ def _update_media_buy_impl(
                 # Validate package_id is provided
                 if not pkg_update.package_id:
                     error_msg = "package_id is required when updating creative_ids"
-                    ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                    return UpdateMediaBuyResponse(
+                    response_data = UpdateMediaBuyResponse(
                         media_buy_id=req.media_buy_id or "",
                         buyer_ref=req.buyer_ref or "",
                         implementation_date=None,
                         errors=[{"code": "missing_package_id", "message": error_msg}],
                     )
+                    ctx_manager.update_workflow_step(
+                        step.step_id,
+                        status="failed",
+                        response_data=response_data.model_dump(),
+                        error_message=error_msg,
+                    )
+                    return response_data
 
                 from sqlalchemy import select
 
@@ -485,13 +509,19 @@ def _update_media_buy_impl(
 
                     if not media_buy_obj:
                         error_msg = f"Media buy '{req.media_buy_id}' not found"
-                        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                        return UpdateMediaBuyResponse(
+                        response_data = UpdateMediaBuyResponse(
                             media_buy_id=req.media_buy_id or "",
                             buyer_ref=req.buyer_ref or "",
                             implementation_date=None,
                             errors=[{"code": "media_buy_not_found", "message": error_msg}],
                         )
+                        ctx_manager.update_workflow_step(
+                            step.step_id,
+                            status="failed",
+                            response_data=response_data.model_dump(),
+                            error_message=error_msg,
+                        )
+                        return response_data
 
                     # Use the actual internal media_buy_id
                     actual_media_buy_id = media_buy_obj.media_buy_id
@@ -507,13 +537,19 @@ def _update_media_buy_impl(
 
                     if missing_ids:
                         error_msg = f"Creative IDs not found: {', '.join(missing_ids)}"
-                        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-                        return UpdateMediaBuyResponse(
+                        response_data = UpdateMediaBuyResponse(
                             media_buy_id=req.media_buy_id or "",
                             buyer_ref=req.buyer_ref or "",
                             implementation_date=None,
                             errors=[{"code": "creatives_not_found", "message": error_msg}],
                         )
+                        ctx_manager.update_workflow_step(
+                            step.step_id,
+                            status="failed",
+                            response_data=response_data.model_dump(),
+                            error_message=error_msg,
+                        )
+                        return response_data
 
                     # Get existing assignments for this package
                     assignment_stmt = select(DBAssignment).where(
@@ -579,13 +615,19 @@ def _update_media_buy_impl(
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
-            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return UpdateMediaBuyResponse(
+            response_data = UpdateMediaBuyResponse(
                 media_buy_id=req.media_buy_id or "",
                 buyer_ref=req.buyer_ref or "",
                 implementation_date=None,
                 errors=[{"code": "invalid_budget", "message": error_msg}],
             )
+            ctx_manager.update_workflow_step(
+                step.step_id,
+                status="failed",
+                response_data=response_data.model_dump(),
+                error_message=error_msg,
+            )
+            return response_data
 
         # Persist top-level budget update to database
         # Note: In-memory media_buys dict removed after refactor
@@ -646,30 +688,25 @@ def _update_media_buy_impl(
         session.add(mapping)
         session.commit()
 
-    # Update workflow step with success
-    ctx_manager.update_workflow_step(
-        step.step_id,
-        status="completed",
-        response_data={
-            "status": "accepted",
-            "updates_applied": {
-                "campaign_level": req.active is not None,
-                "package_count": len(req.packages) if req.packages else 0,
-                "budget": req.budget is not None,
-                "flight_dates": req.start_time is not None or req.end_time is not None,
-            },
-        },
-    )
-
-    # Build affected_packages from stored results
+    # Build final response first
     logger.info(f"[update_media_buy] Final affected_packages before return: {affected_packages_list}")
 
-    return UpdateMediaBuyResponse(
+    response_data = UpdateMediaBuyResponse(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
         implementation_date=None,
         affected_packages=affected_packages_list if affected_packages_list else None,
+        
     )
+
+    # Persist success with response data, then return
+    ctx_manager.update_workflow_step(
+        step.step_id,
+        status="completed",
+        response_data=response_data.model_dump(),
+    )
+
+    return response_data
 
 
 def update_media_buy(

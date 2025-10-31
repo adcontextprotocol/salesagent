@@ -1481,14 +1481,19 @@ async def _create_media_buy_impl(
                 raise ValueError(error_msg)
 
     except (ValueError, PermissionError) as e:
-        # Update workflow step as failed
-        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
-
-        # Return error response (protocol layer will add status="failed")
-        return CreateMediaBuyResponse(
+        # Build error response first, then persist it on the workflow step, then return
+        response_data = CreateMediaBuyResponse(
             buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
             errors=[Error(code="validation_error", message=str(e), details=None)],
         )
+        ctx_manager.update_workflow_step(
+            step.step_id,
+            status="failed",
+            response_data=response_data.model_dump(mode="json", by_alias=True),
+            error_message=str(e),
+        )
+
+        return response_data
 
     # Principal already validated earlier (before context creation) to avoid foreign key errors
 
@@ -1543,12 +1548,7 @@ async def _create_media_buy_impl(
         product_auto_create = True  # Will be set correctly when we get products later
 
         if manual_approval_required and "create_media_buy" in manual_approval_operations:
-            # Update existing workflow step to require approval
-            ctx_manager.update_workflow_step(
-                step.step_id,
-                status="requires_approval",
-                add_comment={"user": "system", "comment": "Manual approval required for media buy creation"},
-            )
+            # Defer workflow step update until the response is constructed below
 
             # Workflow step already created above - no need for separate task
             # Generate permanent media buy ID (not "pending_xxx")
@@ -1851,13 +1851,19 @@ async def _create_media_buy_impl(
             # The workflow_step_id in packages indicates approval is required
             # buyer_ref is required by schema, but mypy needs explicit check
             response_buyer_ref = req.buyer_ref if req.buyer_ref else "unknown"
-            return CreateMediaBuyResponse(
+            response_data = CreateMediaBuyResponse(
                 buyer_ref=response_buyer_ref,
                 media_buy_id=media_buy_id,
                 creative_deadline=None,
                 packages=pending_packages,
                 workflow_step_id=step.step_id,  # Client can track approval via this ID
             )
+            ctx_manager.update_workflow_step(
+                step.step_id,
+                status="requires_approval",
+                response_data=response_data.model_dump(mode="json", by_alias=True),
+            )
+            return response_data
 
         # Get products for the media buy to check product-level auto-creation settings
         # Lazy import to avoid circular dependency with main.py
@@ -1920,11 +1926,17 @@ async def _create_media_buy_impl(
                 error_detail = "GAM configuration validation failed:\n" + "\n".join(
                     f"  • {err}" for err in config_errors
                 )
-                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
-                return CreateMediaBuyResponse(
+                response_data = CreateMediaBuyResponse(
                     buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
                     errors=[Error(code="invalid_configuration", message=err, details=None) for err in config_errors],
                 )
+                ctx_manager.update_workflow_step(
+                    step.step_id,
+                    status="failed",
+                    response_data=response_data.model_dump(mode="json", by_alias=True),
+                    error_message=error_detail,
+                )
+                return response_data
 
         product_auto_create = all(
             p.implementation_config.get("auto_create_enabled", True) if p.implementation_config else True
@@ -2014,12 +2026,18 @@ async def _create_media_buy_impl(
             except Exception as e:
                 logger.warning(f"⚠️ Failed to send configuration approval Slack notification: {e}")
 
-            return CreateMediaBuyResponse(
+            response_data = CreateMediaBuyResponse(
                 buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
                 media_buy_id=media_buy_id,
                 packages=response_packages,  # Include packages with buyer_ref
                 workflow_step_id=step.step_id,
             )
+            ctx_manager.update_workflow_step(
+                step.step_id,
+                status="requires_approval",
+                response_data=response_data.model_dump(mode="json", by_alias=True),
+            )
+            return response_data
 
         # Continue with synchronized media buy creation
 
@@ -2243,11 +2261,17 @@ async def _create_media_buy_impl(
         # Defensive null check: ensure start_time and end_time are set
         if not req.start_time or not req.end_time:
             error_msg = "start_time and end_time are required but were not properly set"
-            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return CreateMediaBuyResponse(
+            response_data = CreateMediaBuyResponse(
                 buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
                 errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
             )
+            ctx_manager.update_workflow_step(
+                step.step_id,
+                status="failed",
+                response_data=response_data.model_dump(mode="json", by_alias=True),
+                error_message=error_msg,
+            )
+            return response_data
 
         # Call adapter using shared creation logic
         # Note: start_time variable already resolved from 'asap' to actual datetime if needed
@@ -2784,8 +2808,12 @@ async def _create_media_buy_impl(
             errors=filtered_data.get("errors"),
         )
 
-        # Mark workflow step as completed on success
-        ctx_manager.update_workflow_step(step.step_id, status="completed")
+        # Mark workflow step as completed on success and persist the response
+        ctx_manager.update_workflow_step(
+            step.step_id,
+            status="completed",
+            response_data=modified_response.model_dump(mode="json", by_alias=True),
+        )
 
         # Send Slack notification for successful media buy creation
         try:
