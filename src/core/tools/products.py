@@ -14,12 +14,14 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
+from sqlalchemy import select
 
 # Imports for implementation
 from product_catalog_providers.factory import get_product_catalog_provider
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import set_current_tenant
+from src.core.database.database_session import get_db_session
 from src.core.schema_adapters import GetProductsResponse
 from src.core.schema_helpers import create_get_products_request
 from src.core.schemas import Product
@@ -227,8 +229,6 @@ async def _get_products_impl(
         and advertising_policy.get("require_manual_review", False)
     ):
         # Create a manual review task
-        from src.core.database.database_session import get_db_session
-
         with get_db_session() as session:
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
@@ -258,44 +258,28 @@ async def _get_products_impl(
         )
 
     # Determine product catalog configuration
-    # Priority: 1) explicit product_catalog config, 2) legacy signals_agent_config, 3) default to database
+    # Priority: 1) explicit product_catalog config, 2) check signals_agents table, 3) default to database
     if tenant.get("product_catalog"):
         # Use explicit product_catalog configuration (new pattern)
         catalog_config = tenant["product_catalog"]
         logger.debug(f"Using explicit product_catalog config: {catalog_config}")
-    elif tenant.get("signals_agent_config"):
-        # Legacy: signals_agent_config in tenant dict → use hybrid provider
-        signals_config = tenant["signals_agent_config"]
-
-        # Parse signals config if it's a string (SQLite) vs dict (PostgreSQL JSONB)
-        if isinstance(signals_config, str):
-            import json
-
-            try:
-                signals_config_parsed: dict[str, Any] = json.loads(signals_config)
-                signals_config = signals_config_parsed
-            except json.JSONDecodeError:
-                logger.error(f"Invalid signals_agent_config JSON for tenant {tenant['tenant_id']}")
-                signals_config = {}
-
-        # If signals discovery is enabled, use hybrid provider
-        if isinstance(signals_config, dict) and signals_config.get("enabled", False):
-            logger.info(f"Using hybrid provider with signals discovery for tenant {tenant['tenant_id']}")
-            catalog_config = {
-                "provider": "hybrid",
-                "config": {
-                    "database": {},  # Use database provider defaults
-                    "signals_discovery": signals_config,
-                    "ranking_strategy": "signals_first",  # Prioritize signals-enhanced products
-                    "max_products": 20,
-                    "deduplicate": True,
-                },
-            }
-        else:
-            catalog_config = {"provider": "database", "config": {}}
     else:
-        # Default to database provider
-        catalog_config = {"provider": "database", "config": {}}
+        # Check if tenant has any enabled signals agents
+        from src.core.database.models import SignalsAgent
+
+        with get_db_session() as db_session:
+            stmt = select(SignalsAgent).filter_by(tenant_id=tenant["tenant_id"], enabled=True)
+            enabled_agents = db_session.scalars(stmt).all()
+
+        if enabled_agents:
+            # Use signals discovery provider with enabled agents
+            logger.info(
+                f"Using signals provider with {len(enabled_agents)} enabled agent(s) for tenant {tenant['tenant_id']}"
+            )
+            catalog_config = {"provider": "signals", "config": {}}
+        else:
+            # Default to database provider
+            catalog_config = {"provider": "database", "config": {}}
 
     # Get the product catalog provider for this tenant
     # Factory expects a dict with "product_catalog" key, not the catalog_config directly
@@ -326,7 +310,6 @@ async def _get_products_impl(
     # Enrich products with dynamic pricing (AdCP PR #79)
     # Calculate floor_cpm, recommended_cpm, estimated_exposures from cached metrics
     try:
-        from src.core.database.database_session import get_db_session
         from src.services.dynamic_pricing_service import DynamicPricingService
 
         # Extract country from request if available (future enhancement: parse from targeting)
@@ -623,7 +606,6 @@ def get_product_catalog() -> list[Product]:
     from sqlalchemy.orm import selectinload
 
     from src.core.config_loader import get_current_tenant
-    from src.core.database.database_session import get_db_session
     from src.core.database.models import Product as ModelProduct
     from src.core.schemas import PricingOption as PricingOptionSchema
 
