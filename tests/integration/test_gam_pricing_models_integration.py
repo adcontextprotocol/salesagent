@@ -44,9 +44,7 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             tenant_id="test_gam_pricing_tenant",
             adapter_type="google_ad_manager",
             gam_network_code="123456",
-            gam_advertiser_id="gam_adv_123",
             gam_trafficker_id="gam_traffic_456",
-            dry_run=True,  # Dry run mode
         )
         session.add(adapter_config)
 
@@ -62,8 +60,8 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
         property_tag = PropertyTag(
             tenant_id="test_gam_pricing_tenant",
             tag_id="all_inventory",
-            tag_name="All Inventory",
-            metadata={"description": "All available inventory"},
+            name="All Inventory",
+            description="All available inventory",
         )
         session.add(property_tag)
 

@@ -115,7 +115,12 @@ class TestGAMOrderLifecycleIntegration:
             allowed_actions = ["submit_for_approval", "archive_order"]
             for action in allowed_actions:
                 response = regular_adapter.update_media_buy(
-                    media_buy_id="12345", action=action, package_id=None, budget=None, today=datetime.now()
+                    media_buy_id="12345",
+                    buyer_ref="test-buyer-ref",
+                    action=action,
+                    package_id=None,
+                    budget=None,
+                    today=datetime.now(),
                 )
                 # AdCP 2.4: Success = no errors (or empty errors list)
                 assert response.errors == [] or response.errors is None
@@ -123,7 +128,12 @@ class TestGAMOrderLifecycleIntegration:
 
             # Admin-only action should fail for regular user
             response = regular_adapter.update_media_buy(
-                media_buy_id="12345", action="approve_order", package_id=None, budget=None, today=datetime.now()
+                media_buy_id="12345",
+                buyer_ref="test-buyer-ref",
+                action="approve_order",
+                package_id=None,
+                budget=None,
+                today=datetime.now(),
             )
             # AdCP 2.4: Failure = has errors
             assert response.errors is not None and len(response.errors) > 0
@@ -141,7 +151,12 @@ class TestGAMOrderLifecycleIntegration:
                 tenant_id="test",
             )
             response = admin_adapter.update_media_buy(
-                media_buy_id="12345", action="approve_order", package_id=None, budget=None, today=datetime.now()
+                media_buy_id="12345",
+                buyer_ref="test-buyer-ref",
+                action="approve_order",
+                package_id=None,
+                budget=None,
+                today=datetime.now(),
             )
             # AdCP 2.4: Success = no errors
             assert response.errors == [] or response.errors is None
@@ -191,7 +206,12 @@ class TestGAMOrderLifecycleIntegration:
             # Test activation with non-guaranteed items (should succeed)
             with patch.object(adapter, "_check_order_has_guaranteed_items", return_value=(False, [])):
                 response = adapter.update_media_buy(
-                    media_buy_id="12345", action="activate_order", package_id=None, budget=None, today=datetime.now()
+                    media_buy_id="12345",
+                    buyer_ref="test-buyer-ref",
+                    action="activate_order",
+                    package_id=None,
+                    budget=None,
+                    today=datetime.now(),
                 )
                 # AdCP 2.4: Success = no errors
                 assert response.errors == [] or response.errors is None
@@ -205,6 +225,7 @@ class TestGAMOrderLifecycleIntegration:
                 ):
                     response = adapter.update_media_buy(
                         media_buy_id="12345",
+                        buyer_ref="test-buyer-ref",
                         action="activate_order",
                         package_id=None,
                         budget=None,

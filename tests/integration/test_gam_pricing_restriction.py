@@ -13,6 +13,7 @@ from src.core.database.models import (
     PricingOption,
     Principal,
     Product,
+    PropertyTag,
     Tenant,
 )
 from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
@@ -44,6 +45,15 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
         )
         session.add(currency_limit)
 
+        # Add property tag (required for products)
+        property_tag = PropertyTag(
+            tenant_id="test_gam_tenant",
+            tag_id="all_inventory",
+            name="All Inventory",
+            description="All available inventory",
+        )
+        session.add(property_tag)
+
         # Create principal
         principal = Principal(
             tenant_id="test_gam_tenant",
@@ -62,6 +72,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             description="Video inventory with CPCV pricing",
             formats=["video_instream"],
             delivery_type="non_guaranteed",
+            property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={},
         )
@@ -90,6 +101,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             description="Display inventory with CPM pricing",
             formats=["display_300x250"],
             delivery_type="guaranteed",
+            property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={},
         )
@@ -118,6 +130,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             description="Multiple pricing models (some unsupported)",
             formats=["display_300x250", "video_instream"],
             delivery_type="non_guaranteed",
+            property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={},
         )
@@ -160,7 +173,9 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
     with get_db_session() as session:
         session.query(PricingOption).filter_by(tenant_id="test_gam_tenant").delete()
         session.query(Product).filter_by(tenant_id="test_gam_tenant").delete()
+        session.query(PropertyTag).filter_by(tenant_id="test_gam_tenant").delete()
         session.query(Principal).filter_by(tenant_id="test_gam_tenant").delete()
+        session.query(CurrencyLimit).filter_by(tenant_id="test_gam_tenant").delete()
         session.query(Tenant).filter_by(tenant_id="test_gam_tenant").delete()
         session.commit()
 

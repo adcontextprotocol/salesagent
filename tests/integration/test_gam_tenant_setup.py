@@ -55,6 +55,8 @@ class TestGAMTenantSetup:
             auto_approve_all = False
             max_daily_budget = 15000
             admin_token = "test_admin_token"
+            authorized_domain = []
+            admin_email = []
 
         args = Args()
 
@@ -98,6 +100,8 @@ class TestGAMTenantSetup:
             auto_approve_all = False
             max_daily_budget = 20000
             admin_token = "test_admin_token_2"
+            authorized_domain = []
+            admin_email = []
 
         args = Args()
 

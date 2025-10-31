@@ -15,7 +15,7 @@ from src.core.tools.media_buy_update import _update_media_buy_impl
 def test_update_media_buy_assigns_creatives_to_package(integration_db):
     """Test that update_media_buy can assign creatives to a package."""
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import MediaBuy, Principal, Product, Tenant
+    from src.core.database.models import MediaBuy, Principal, Product, PropertyTag, Tenant
 
     with get_db_session() as session:
         # Create tenant
@@ -26,13 +26,22 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
         )
         session.add(tenant)
 
+        # Create property tag (required for products)
+        property_tag = PropertyTag(
+            tenant_id="test_tenant",
+            tag_id="all_inventory",
+            name="All Inventory",
+            description="All available inventory",
+        )
+        session.add(property_tag)
+
         # Create principal
         principal = Principal(
             principal_id="test_principal",
             tenant_id="test_tenant",
             name="Test Advertiser",
             access_token="test_token",
-            platform_mappings={},
+            platform_mappings={"mock": {"id": "test_advertiser"}},
         )
         session.add(principal)
 
@@ -41,8 +50,11 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
             product_id="test_product",
             tenant_id="test_tenant",
             name="Test Product",
-            base_price=10.0,
-            currency="USD",
+            description="Test product for creative assignment",
+            formats=["display_300x250"],
+            targeting_template={},
+            delivery_type="guaranteed",
+            property_tags=["all_inventory"],
         )
         session.add(product)
 
@@ -154,7 +166,7 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
 def test_update_media_buy_replaces_creatives(integration_db):
     """Test that update_media_buy can replace existing creative assignments."""
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import MediaBuy, Principal, Product, Tenant
+    from src.core.database.models import MediaBuy, Principal, Product, PropertyTag, Tenant
 
     with get_db_session() as session:
         # Create tenant
@@ -165,13 +177,22 @@ def test_update_media_buy_replaces_creatives(integration_db):
         )
         session.add(tenant)
 
+        # Create property tag (required for products)
+        property_tag = PropertyTag(
+            tenant_id="test_tenant",
+            tag_id="all_inventory",
+            name="All Inventory",
+            description="All available inventory",
+        )
+        session.add(property_tag)
+
         # Create principal
         principal = Principal(
             principal_id="test_principal",
             tenant_id="test_tenant",
             name="Test Advertiser",
             access_token="test_token",
-            platform_mappings={},
+            platform_mappings={"mock": {"id": "test_advertiser"}},
         )
         session.add(principal)
 
@@ -180,8 +201,11 @@ def test_update_media_buy_replaces_creatives(integration_db):
             product_id="test_product",
             tenant_id="test_tenant",
             name="Test Product",
-            base_price=10.0,
-            currency="USD",
+            description="Test product for creative assignment",
+            formats=["display_300x250"],
+            targeting_template={},
+            delivery_type="guaranteed",
+            property_tags=["all_inventory"],
         )
         session.add(product)
 
@@ -303,7 +327,7 @@ def test_update_media_buy_replaces_creatives(integration_db):
 def test_update_media_buy_rejects_missing_creatives(integration_db):
     """Test that update_media_buy rejects requests with non-existent creative IDs."""
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import MediaBuy, Principal, Product, Tenant
+    from src.core.database.models import MediaBuy, Principal, Product, PropertyTag, Tenant
 
     with get_db_session() as session:
         # Create tenant
@@ -314,13 +338,22 @@ def test_update_media_buy_rejects_missing_creatives(integration_db):
         )
         session.add(tenant)
 
+        # Create property tag (required for products)
+        property_tag = PropertyTag(
+            tenant_id="test_tenant",
+            tag_id="all_inventory",
+            name="All Inventory",
+            description="All available inventory",
+        )
+        session.add(property_tag)
+
         # Create principal
         principal = Principal(
             principal_id="test_principal",
             tenant_id="test_tenant",
             name="Test Advertiser",
             access_token="test_token",
-            platform_mappings={},
+            platform_mappings={"mock": {"id": "test_advertiser"}},
         )
         session.add(principal)
 
@@ -329,8 +362,11 @@ def test_update_media_buy_rejects_missing_creatives(integration_db):
             product_id="test_product",
             tenant_id="test_tenant",
             name="Test Product",
-            base_price=10.0,
-            currency="USD",
+            description="Test product for creative assignment",
+            formats=["display_300x250"],
+            targeting_template={},
+            delivery_type="guaranteed",
+            property_tags=["all_inventory"],
         )
         session.add(product)
 
