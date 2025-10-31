@@ -432,6 +432,7 @@ def get_media_buy_delivery(
             status_filter=status_filter,
             start_date=start_date,
             end_date=end_date,
+            push_notification_config=push_notification_config,
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="get_media_buy_delivery request")) from e
@@ -470,6 +471,7 @@ def get_media_buy_delivery_raw(
         status_filter=status_filter,
         start_date=start_date,
         end_date=end_date,
+        push_notification_config=None,
     )
 
     # Call the implementation

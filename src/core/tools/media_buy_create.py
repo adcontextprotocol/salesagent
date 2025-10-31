@@ -2772,13 +2772,10 @@ async def _create_media_buy_impl(
         # Apply testing hooks to response with campaign information (resolved from 'asap' if needed)
         campaign_info = {"start_date": start_time, "end_date": end_time, "total_budget": total_budget}
 
-        response_data = (
-            adcp_response.model_dump_internal()
-            if hasattr(adcp_response, "model_dump_internal")
-            else adcp_response.model_dump()
-        )
+        # Always convert to a dict for testing hooks and further processing
+        response_dict: dict[str, Any] = adcp_response.model_dump_internal()
 
-        response_data = apply_testing_hooks(response_data, testing_ctx, "create_media_buy", campaign_info)
+        response_dict = apply_testing_hooks(response_dict, testing_ctx, "create_media_buy", campaign_info)
 
         # Reconstruct response from modified data
         # Filter out testing hook fields that aren't part of CreateMediaBuyResponse schema
@@ -2791,7 +2788,7 @@ async def _create_media_buy_impl(
             "errors",
             "workflow_step_id",
         }
-        filtered_data = {k: v for k, v in response_data.items() if k in valid_fields}
+        filtered_data = {k: v for k, v in response_dict.items() if k in valid_fields}
 
         # Ensure required fields are present (validator compliance)
         if "status" not in filtered_data:

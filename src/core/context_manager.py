@@ -620,7 +620,7 @@ class ContextManager(DatabaseManager):
                     # build push notification config from step request data
                     from uuid import uuid4
 
-                    cfg_dict = step.request_data.get("push_notification_config") or {}
+                    cfg_dict = (step.request_data or {}).get("push_notification_config") or {}
                     url = cfg_dict.get("url")
                     if not url:
                         console.print("[red]No push notification URL present; skipping webhook[/red]")
@@ -660,7 +660,7 @@ class ContextManager(DatabaseManager):
                                 service.send_notification(
                                     push_notification_config=push_notification_config,
                                     task_id=step.step_id,
-                                    task_type=step.tool_name,
+                                    task_type=step.tool_name or mapping.action or 'unknown',
                                     status=new_status,
                                     result=step.response_data,
                                     error=step.error_message,
@@ -681,7 +681,7 @@ class ContextManager(DatabaseManager):
                                 service.send_notification(
                                     push_notification_config=push_notification_config,
                                     task_id=step.step_id,
-                                    task_type=step.tool_name,
+                                    task_type=step.tool_name or mapping.action or 'unknown',
                                     status=new_status,
                                     result=step.response_data,
                                     error=step.error_message,

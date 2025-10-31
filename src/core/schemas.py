@@ -2602,7 +2602,9 @@ class GetMediaBuyDeliveryRequest(AdCPBaseModel):
     end_date: str | None = Field(
         None, description="End date for reporting period (YYYY-MM-DD)", pattern=r"^\d{4}-\d{2}-\d{2}$"
     )
-    push_notification_config: PushNotificationConfig | None = None,
+    push_notification_config: PushNotificationConfig | None = Field(
+        None, description="Push notification configuration for async task updates."
+    )
 
 
 # AdCP-compliant delivery models
