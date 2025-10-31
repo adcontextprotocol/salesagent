@@ -313,7 +313,7 @@ def _update_media_buy_impl(
                         implementation_date=None,
                         errors=[{"code": "currency_not_supported", "message": error_msg}],
                     )
-                    ctx_manager.update_workflow_step(step.step_id, status="failed", response_data=response_data, error_message=error_msg)
+                    ctx_manager.update_workflow_step(step.step_id, status="failed", response_data=response_data.model_dump(), error_message=error_msg)
                     return response_data
 
                 # Calculate new flight duration
