@@ -196,9 +196,19 @@ def setup_tenant_with_pricing_products(integration_db):
     with get_db_session() as session:
         from sqlalchemy import delete
 
+        from src.core.database.models import MediaBuy, MediaPackage
+
+        # Delete in correct order to respect foreign keys
+        # 1. Delete child records first (MediaPackage references MediaBuy)
+        session.execute(delete(MediaPackage).where(MediaPackage.tenant_id == "test_pricing_tenant"))
+        session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == "test_pricing_tenant"))
+
+        # 2. Delete product-related records
         session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_pricing_tenant"))
         session.execute(delete(Product).where(Product.tenant_id == "test_pricing_tenant"))
         session.execute(delete(PropertyTag).where(PropertyTag.tenant_id == "test_pricing_tenant"))
+
+        # 3. Delete principal and tenant records
         session.execute(delete(Principal).where(Principal.tenant_id == "test_pricing_tenant"))
         session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "test_pricing_tenant"))
         session.execute(delete(Tenant).where(Tenant.tenant_id == "test_pricing_tenant"))
