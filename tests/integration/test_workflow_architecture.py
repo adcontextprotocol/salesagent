@@ -153,7 +153,7 @@ def test_workflow_architecture(integration_db, sample_tenant, sample_principal):
             if updated_step and updated_step.comments:
                 console.print(f"  Comments: {len(updated_step.comments)}")
                 for comment in updated_step.comments:
-                    console.print(f"    - {comment['user']}: {comment['comment']}")
+                    console.print(f"    - {comment['user']}: {comment['text']}")
 
             console.print("\n[yellow]Test 8: Complete approval step[/yellow]")
             ctx_mgr.update_workflow_step(
