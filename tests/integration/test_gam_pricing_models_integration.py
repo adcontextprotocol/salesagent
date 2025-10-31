@@ -214,11 +214,12 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
 
 
 @pytest.mark.requires_db
-def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_with_all_pricing_models):
+async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_with_all_pricing_models):
     """Test CPM guaranteed creates STANDARD line item with priority 8."""
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
     request = CreateMediaBuyRequest(
+        buyer_ref="test_buyer_cpm",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
@@ -237,18 +238,9 @@ def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_with_all
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
+        principal_id = "test_gam_pricing_principal"
 
-    with get_db_session() as session:
-        tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_pricing_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-        principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_pricing_tenant").first()
-
-    response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
@@ -264,11 +256,12 @@ def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_with_all
 
 
 @pytest.mark.requires_db
-def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_gam_tenant_with_all_pricing_models):
+async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_gam_tenant_with_all_pricing_models):
     """Test CPC creates PRICE_PRIORITY line item with CLICKS goal unit."""
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
     request = CreateMediaBuyRequest(
+        buyer_ref="test_buyer_cpc",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
@@ -287,18 +280,9 @@ def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_gam_ten
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
+        principal_id = "test_gam_pricing_principal"
 
-    with get_db_session() as session:
-        tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_pricing_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-        principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_pricing_tenant").first()
-
-    response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
@@ -315,11 +299,12 @@ def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_gam_ten
 
 
 @pytest.mark.requires_db
-def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(setup_gam_tenant_with_all_pricing_models):
+async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(setup_gam_tenant_with_all_pricing_models):
     """Test VCPM creates STANDARD line item with VIEWABLE_IMPRESSIONS goal."""
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
     request = CreateMediaBuyRequest(
+        buyer_ref="test_buyer_vcpm",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
@@ -338,18 +323,9 @@ def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(setup_gam
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
+        principal_id = "test_gam_pricing_principal"
 
-    with get_db_session() as session:
-        tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_pricing_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-        principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_pricing_tenant").first()
-
-    response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
@@ -366,12 +342,13 @@ def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(setup_gam
 
 
 @pytest.mark.requires_db
-def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_pricing_models):
+async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_pricing_models):
     """Test FLAT_RATE converts to CPD (cost per day) correctly."""
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
     # 10 day campaign: $5000 total = $500/day
     request = CreateMediaBuyRequest(
+        buyer_ref="test_buyer_flatrate",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
@@ -390,18 +367,9 @@ def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_pricin
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
+        principal_id = "test_gam_pricing_principal"
 
-    with get_db_session() as session:
-        tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_pricing_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-        principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_pricing_tenant").first()
-
-    response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
@@ -418,11 +386,12 @@ def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_pricin
 
 
 @pytest.mark.requires_db
-def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_pricing_models):
+async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_pricing_models):
     """Test creating media buy with multiple packages using different pricing models."""
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
     request = CreateMediaBuyRequest(
+        buyer_ref="test_buyer_multi",
         brand_manifest={"name": "https://example.com/campaign"},
         packages=[
             Package(
@@ -455,18 +424,9 @@ def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_pricin
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
+        principal_id = "test_gam_pricing_principal"
 
-    with get_db_session() as session:
-        tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_pricing_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-        principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_pricing_tenant").first()
-
-    response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
@@ -480,7 +440,7 @@ def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_pricin
 
 
 @pytest.mark.requires_db
-def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_pricing_models):
+async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_pricing_models):
     """Test auction-based CPC (non-fixed) creates PRICE_PRIORITY line item."""
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
@@ -501,6 +461,7 @@ def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_pricin
         session.commit()
 
     request = CreateMediaBuyRequest(
+        buyer_ref="test_buyer_auction",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
@@ -520,18 +481,9 @@ def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_pricin
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
+        principal_id = "test_gam_pricing_principal"
 
-    with get_db_session() as session:
-        tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_pricing_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-        principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_pricing_tenant").first()
-
-    response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
