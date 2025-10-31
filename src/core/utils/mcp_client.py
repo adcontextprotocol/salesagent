@@ -4,7 +4,8 @@ This module provides a single, standardized way to create MCP clients for
 communicating with external agents (creative agents, signals agents, etc.).
 
 Key features:
-- Consistent URL handling (respects user's URL, no suffix appending)
+- Consistent URL handling (uses user's URL; if it fails after retries, does one
+  final fallback attempt by appending "/mcp" when missing)
 - Standardized auth header building
 - Built-in retry logic with exponential backoff
 - Proper error handling and logging
@@ -138,65 +139,85 @@ async def create_mcp_client(
             result = await client.call_tool("list_creative_formats", {})
             formats = result.structured_content
     """
-    # Strip trailing slashes only - preserve the actual path
+    # Strip trailing slashes only - preserve the actual path (no mutation besides trimming)
     agent_url = agent_url.rstrip("/")
 
     # Build auth headers
     headers = _build_auth_headers(auth, auth_header)
 
-    # Retry loop with exponential backoff
+    # Prepare connection candidates: primary URL first, then a single '/mcp' fallback (if missing)
+    primary_url = agent_url
+    fallback_url = None
+    if not primary_url.endswith("/mcp"):
+        fallback_url = f"{primary_url}/mcp"
+
+    candidates: list[tuple[str, int]] = [(primary_url, max_retries)]
+    if fallback_url:
+        # Per requirement: try once again with '/mcp' after primary retries fail
+        candidates.append((fallback_url, 1))
+
+    # Retry loop(s) with exponential backoff for primary; single attempt for fallback
     retry_delay = 1.0  # seconds
     last_exception = None
+    attempted_urls: list[str] = []
 
-    for attempt in range(max_retries):
-        try:
-            # Create transport and client
-            transport = StreamableHttpTransport(url=agent_url, headers=headers)
-            client = Client(transport=transport)
+    for current_url, attempts in candidates:
+        attempted_urls.append(current_url)
 
-            # Use client's built-in context manager
-            async with client:
-                # Success! Yield the connected client
-                logger.debug(f"MCP client connected to {agent_url} on attempt {attempt + 1}")
-                yield client
-                return
+        for attempt in range(attempts):
+            try:
+                # Create transport and client
+                transport = StreamableHttpTransport(url=current_url, headers=headers)
+                client = Client(transport=transport)
 
-        except Exception as e:
-            last_exception = e
-            error_msg = str(e)
+                # Use client's built-in context manager
+                async with client:
+                    # Success! Yield the connected client
+                    logger.debug(
+                        f"MCP client connected to {current_url} on attempt {attempt + 1}"
+                    )
+                    yield client
+                    return
 
-            # Check for known compatibility issues
-            if "notifications/initialized" in error_msg:
+            except Exception as e:
+                last_exception = e
+                error_msg = str(e)
+
+                # Check for known compatibility issues
+                if "notifications/initialized" in error_msg:
+                    logger.warning(
+                        f"MCP SDK compatibility issue with {current_url}: "
+                        f"Server doesn't support 'notifications/initialized' notification. "
+                        f"This is a known issue between FastMCP SDK versions."
+                    )
+                    raise MCPCompatibilityError(
+                        f"MCP SDK compatibility issue with {current_url}: "
+                        f"Server doesn't support notifications/initialized notification. "
+                        f"The agent may need to upgrade their FastMCP version to match the client."
+                    ) from e
+
+                # Log and retry for this candidate
                 logger.warning(
-                    f"MCP SDK compatibility issue with {agent_url}: "
-                    f"Server doesn't support 'notifications/initialized' notification. "
-                    f"This is a known issue between FastMCP SDK versions."
-                )
-                raise MCPCompatibilityError(
-                    f"MCP SDK compatibility issue with {agent_url}: "
-                    f"Server doesn't support notifications/initialized notification. "
-                    f"The agent may need to upgrade their FastMCP version to match the client."
-                ) from e
-
-            # Log and retry
-            logger.warning(
-                f"MCP connection attempt {attempt + 1}/{max_retries} failed for {agent_url}: "
-                f"{type(e).__name__}: {e}"
-            )
-
-            if attempt < max_retries - 1:
-                # Exponential backoff
-                await asyncio.sleep(retry_delay * (2**attempt))
-            else:
-                # Final attempt failed
-                logger.error(
-                    f"All {max_retries} connection attempts failed for {agent_url}. "
-                    f"Last error: {type(e).__name__}: {e}"
-                )
-                raise MCPConnectionError(
-                    f"Failed to connect to MCP agent at {agent_url} after {max_retries} attempts: "
+                    f"MCP connection attempt {attempt + 1}/{attempts} failed for {current_url}: "
                     f"{type(e).__name__}: {e}"
-                ) from last_exception
+                )
+
+                if attempt < attempts - 1:
+                    # Exponential backoff for primary candidate only (attempts > 1)
+                    await asyncio.sleep(retry_delay * (2**attempt))
+                else:
+                    # Exhausted attempts for this candidate; move to next (if any)
+                    logger.error(
+                        f"All {attempts} connection attempt(s) failed for {current_url}. "
+                        f"Last error: {type(e).__name__}: {e}"
+                    )
+                    break
+
+    # If we reach here, all candidates failed — preserve legacy error format regardless of fallback
+    raise MCPConnectionError(
+        f"Failed to connect to MCP agent at {agent_url} after {max_retries} attempts: "
+        f"{type(last_exception).__name__ if last_exception else 'UnknownError'}: {last_exception}"
+    ) from last_exception
 
 
 async def check_mcp_agent_connection(

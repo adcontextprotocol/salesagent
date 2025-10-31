@@ -1,6 +1,8 @@
 """Context persistence manager for A2A protocol support."""
 
+import logging
 import uuid
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,7 +10,10 @@ from rich.console import Console
 from sqlalchemy import select
 
 from src.core.database.database_session import DatabaseManager
-from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep
+from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep, PushNotificationConfig
+from src.services.protocol_webhook_service import get_protocol_webhook_service
+
+logger = logging.getLogger(__name__)
 
 console = Console()
 
@@ -612,62 +617,82 @@ class ContextManager(DatabaseManager):
                 )
 
                 for webhook_config in webhooks:
-                    # Build notification payload
-                    # Use tool_name for operation identification, mapping.action for workflow action context
-                    payload = {
-                        "step_id": step.step_id,
-                        "object_type": mapping.object_type,
-                        "object_id": mapping.object_id,
-                        "operation": step.tool_name or mapping.action,  # Tool name is the actual operation
-                        "action": mapping.action,  # Workflow action (e.g., "approval_required", "created")
-                        "status": new_status,
-                        "step_type": step.step_type,
-                        "owner": step.owner,
-                        "timestamp": datetime.now(UTC).isoformat(),
-                    }
+                    # build push notification config from step request data
+                    from uuid import uuid4
 
-                    # Add optional fields if present
-                    if step.error_message:
-                        payload["error_message"] = step.error_message
-                    if step.response_data:
-                        payload["response_data"] = step.response_data
+                    cfg_dict = (step.request_data or {}).get("push_notification_config") or {}
+                    url = cfg_dict.get("url")
+                    if not url:
+                        console.print("[red]No push notification URL present; skipping webhook[/red]")
+                        continue
+
+                    authentication = cfg_dict.get("authentication") or {}
+                    schemes = authentication.get("schemes") or []
+                    auth_type = schemes[0] if isinstance(schemes, list) and schemes else None
+                    auth_token = authentication.get("credentials")
+
+                    # Derive principal/tenant from the step context if available
+                    context_obj = getattr(step, "context", None)
+                    derived_tenant_id = tenant_id or (getattr(context_obj, "tenant_id", None))
+                    derived_principal_id = getattr(context_obj, "principal_id", None)
+
+                    push_notification_config = PushNotificationConfig(
+                        id=cfg_dict.get("id") or f"pnc_{uuid4().hex[:16]}",
+                        tenant_id=derived_tenant_id,
+                        principal_id=derived_principal_id,
+                        url=url,
+                        authentication_type=auth_type,
+                        authentication_token=auth_token,
+                        is_active=True,
+                    )
+
+                    service = get_protocol_webhook_service()
 
                     console.print(
-                        f"[cyan]📤 Sending webhook to {webhook_config.url} for {mapping.object_type} {mapping.object_id}[/cyan]"
+                        f"[cyan]📤 Sending webhook to {push_notification_config.url} for {mapping.object_type} {mapping.object_id}[/cyan]"
                     )
 
                     try:
-                        # Build headers with authentication
-                        headers = {"Content-Type": "application/json"}
-
-                        # Add HMAC signature if configured
-                        if webhook_config.authentication_type == "hmac_sha256" and webhook_config.webhook_secret:
-                            secret = webhook_config.webhook_secret
-                            if secret:
-                                from src.core.webhook_authenticator import WebhookAuthenticator
-
-                                auth_headers = WebhookAuthenticator.sign_payload(payload, secret)
-                                headers.update(auth_headers)
-                                console.print("[cyan]🔐 Added HMAC signature to webhook[/cyan]")
-
-                        response = requests.post(
-                            webhook_config.url,
-                            json=payload,
-                            timeout=10,
-                            headers=headers,
-                        )
-
-                        if response.status_code in [200, 201, 202, 204]:
-                            console.print(f"[green]✅ Webhook sent successfully to {webhook_config.url}[/green]")
-                        else:
-                            console.print(
-                                f"[yellow]⚠️ Webhook returned status {response.status_code}: {response.text[:200]}[/yellow]"
+                        # If we're already in an event loop, schedule the send; otherwise run it directly
+                        try:
+                            loop = asyncio.get_running_loop()
+                            task = loop.create_task(
+                                service.send_notification(
+                                    push_notification_config=push_notification_config,
+                                    task_id=step.step_id,
+                                    task_type=step.tool_name or mapping.action or 'unknown',
+                                    status=new_status,
+                                    result=step.response_data,
+                                    error=step.error_message,
+                                )
                             )
 
+                            def _log_task_result(t: asyncio.Task) -> None:
+                                try:
+                                    t.result()
+                                    console.print(f"[green]✅ Webhook sent successfully for {push_notification_config.url}[/green]")
+                                except Exception as e:  # noqa: BLE001
+                                    console.print(f"[red]❌ Webhook failed for {push_notification_config.url}: {str(e)}[/red]")
+
+                            task.add_done_callback(_log_task_result)
+                        except RuntimeError:
+                            # No running loop; safe to run synchronously
+                            asyncio.run(
+                                service.send_notification(
+                                    push_notification_config=push_notification_config,
+                                    task_id=step.step_id,
+                                    task_type=step.tool_name or mapping.action or 'unknown',
+                                    status=new_status,
+                                    result=step.response_data,
+                                    error=step.error_message,
+                                )
+                            )
+                            console.print(f"[green]✅ Webhook sent successfully for {push_notification_config.url}[/green]")
+
                     except requests.exceptions.Timeout:
-                        console.print(f"[red]❌ Webhook timeout for {webhook_config.url}[/red]")
+                        console.print(f"[red]❌ Webhook timeout for {push_notification_config.url}[/red]")
                     except requests.exceptions.RequestException as e:
-                        console.print(f"[red]❌ Webhook failed for {webhook_config.url}: {str(e)}[/red]")
+                        console.print(f"[red]❌ Webhook failed for {push_notification_config.url}: {str(e)}[/red]")
 
         except Exception as e:
             console.print(f"[red]Error sending push notifications: {e}[/red]")

@@ -11,7 +11,10 @@
                     <h2><i class="fas fa-bell"></i> Webhook Delivery Activity</h2>
                     <p class="text-muted">Monitor delivery webhook notifications for {{ tenant.name }}</p>
                 </div>
-                <div>
+                <div class="d-flex gap-2">
+                    <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/principals" class="btn btn-outline-primary">
+                        <i class="fas fa-plug"></i> Manage Webhooks
+                    </a>
                     <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}" class="btn btn-secondary">
                         <i class="fas fa-arrow-left"></i> Back to Dashboard
                     </a>

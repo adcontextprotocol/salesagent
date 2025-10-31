@@ -8,7 +8,9 @@ from enum import Enum
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
-
+from src.core.schemas_generated._schemas_v1_core_push_notification_config_json import (
+    PushNotificationConfig,
+)
 
 class AdCPBaseModel(BaseModel):
     """Base model for all AdCP request/response schemas.
@@ -2599,6 +2601,9 @@ class GetMediaBuyDeliveryRequest(AdCPBaseModel):
     )
     end_date: str | None = Field(
         None, description="End date for reporting period (YYYY-MM-DD)", pattern=r"^\d{4}-\d{2}-\d{2}$"
+    )
+    push_notification_config: PushNotificationConfig | None = Field(
+        None, description="Push notification configuration for async task updates."
     )
 
 

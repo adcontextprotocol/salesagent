@@ -243,8 +243,16 @@ class MockAdServer(AdServerAdapter):
                     )
                     self.log(f"✅ Auto-completed task {step_id}")
                 else:
+                    response_data = {
+                        "status": "rejected",
+                        "auto_completed": False,
+                        "reason": rejection_reason,
+                    }
                     ctx_manager.update_workflow_step(
-                        step_id, status="failed", error=f"Auto-rejected: {rejection_reason}"
+                        step_id,
+                        status="failed",
+                        response_data=response_data,
+                        error_message=f"Auto-rejected: {rejection_reason}",
                     )
                     self.log(f"❌ Auto-rejected task {step_id}: {rejection_reason}")
 
