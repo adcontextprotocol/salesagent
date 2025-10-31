@@ -403,6 +403,7 @@ def sample_principal(integration_db, sample_tenant):
 def sample_products(integration_db, sample_tenant):
     """Create sample products that comply with AdCP protocol."""
     from src.core.database.database_session import get_db_session
+    from src.core.database.models import PricingOption as PricingOptionModel
     from src.core.database.models import Product
 
     with get_db_session() as session:
@@ -445,6 +446,33 @@ def sample_products(integration_db, sample_tenant):
 
         for product in products:
             session.add(product)
+        session.commit()
+
+        # Create pricing_options for each product (required per AdCP PR #88)
+        # Note: Database model uses auto-increment 'id', not 'pricing_option_id'
+        pricing_options = [
+            PricingOptionModel(
+                tenant_id=sample_tenant["tenant_id"],
+                product_id="guaranteed_display",
+                pricing_model="cpm",
+                rate=15.0,
+                currency="USD",
+                is_fixed=True,
+                price_guidance=None,  # Not used for fixed pricing
+            ),
+            PricingOptionModel(
+                tenant_id=sample_tenant["tenant_id"],
+                product_id="non_guaranteed_video",
+                pricing_model="cpm",
+                rate=None,  # Auction-based pricing has no fixed rate
+                currency="USD",
+                is_fixed=False,
+                price_guidance={"floor": 10.0, "p50": 20.0, "p75": 30.0, "p90": 40.0},
+            ),
+        ]
+
+        for pricing_option in pricing_options:
+            session.add(pricing_option)
         session.commit()
 
         return [p.product_id for p in products]

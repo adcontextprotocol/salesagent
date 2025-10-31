@@ -769,6 +769,16 @@ class MockAdServer(AdServerAdapter):
             pkg_dict = pkg.model_dump(mode="python", exclude_none=False)
             self.log(f"[DEBUG] MockAdapter: Package {idx} model_dump() = {pkg_dict}")
             self.log(f"[DEBUG] MockAdapter: Package {idx} has package_id = {pkg_dict.get('package_id')}")
+
+            # CRITICAL: Ensure package_id is set (required for AdCP response)
+            # If package doesn't have package_id yet, generate one
+            if not pkg_dict.get("package_id"):
+                import uuid
+
+                generated_package_id = f"pkg_{idx}_{uuid.uuid4().hex[:8]}"
+                pkg_dict["package_id"] = generated_package_id
+                self.log(f"[DEBUG] MockAdapter: Generated package_id for package {idx}: {generated_package_id}")
+
             # Add buyer_ref from original request package if available
             if request.packages and idx < len(request.packages):
                 pkg_dict["buyer_ref"] = request.packages[idx].buyer_ref
