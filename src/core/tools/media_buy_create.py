@@ -1960,14 +1960,25 @@ async def _create_media_buy_impl(
         packages = []
         for idx, pkg in enumerate(req.packages, 1):  # Iterate over request packages
             # Find the product for this package (from schema catalog, not database model)
+            # Package can have either product_id (singular) or products (array) per AdCP spec
+            pkg_product_id: str | None = None
+            if pkg.products and len(pkg.products) > 0:
+                pkg_product_id = pkg.products[0]  # Use first product from array
+            elif pkg.product_id:
+                pkg_product_id = pkg.product_id  # Use singular product_id
+
+            if not pkg_product_id:
+                error_msg = f"Package {idx} has neither product_id nor products field set"
+                raise ValueError(error_msg)
+
             pkg_product: Product | None = None
             for p in products_in_buy:
-                if p.product_id == pkg.product_id:
+                if p.product_id == pkg_product_id:
                     pkg_product = p
                     break
 
             if not pkg_product:
-                error_msg = f"Package {idx} references unknown product_id: {pkg.product_id}"
+                error_msg = f"Package {idx} references unknown product_id: {pkg_product_id}"
                 raise ValueError(error_msg)
 
             # Determine format_ids to use
