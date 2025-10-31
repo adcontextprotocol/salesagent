@@ -203,13 +203,15 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
 
     # Cleanup
     with get_db_session() as session:
-        session.query(PricingOption).filter_by(tenant_id="test_gam_pricing_tenant").delete()
-        session.query(Product).filter_by(tenant_id="test_gam_pricing_tenant").delete()
-        session.query(PropertyTag).filter_by(tenant_id="test_gam_pricing_tenant").delete()
-        session.query(Principal).filter_by(tenant_id="test_gam_pricing_tenant").delete()
-        session.query(AdapterConfig).filter_by(tenant_id="test_gam_pricing_tenant").delete()
-        session.query(CurrencyLimit).filter_by(tenant_id="test_gam_pricing_tenant").delete()
-        session.query(Tenant).filter_by(tenant_id="test_gam_pricing_tenant").delete()
+        from sqlalchemy import delete
+
+        session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_gam_pricing_tenant"))
+        session.execute(delete(Product).where(Product.tenant_id == "test_gam_pricing_tenant"))
+        session.execute(delete(PropertyTag).where(PropertyTag.tenant_id == "test_gam_pricing_tenant"))
+        session.execute(delete(Principal).where(Principal.tenant_id == "test_gam_pricing_tenant"))
+        session.execute(delete(AdapterConfig).where(AdapterConfig.tenant_id == "test_gam_pricing_tenant"))
+        session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "test_gam_pricing_tenant"))
+        session.execute(delete(Tenant).where(Tenant.tenant_id == "test_gam_pricing_tenant"))
         session.commit()
 
 
