@@ -14,6 +14,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
+from sqlalchemy import select
 
 # Imports for implementation
 from product_catalog_providers.factory import get_product_catalog_provider
@@ -258,44 +259,28 @@ async def _get_products_impl(
         )
 
     # Determine product catalog configuration
-    # Priority: 1) explicit product_catalog config, 2) legacy signals_agent_config, 3) default to database
+    # Priority: 1) explicit product_catalog config, 2) check signals_agents table, 3) default to database
     if tenant.get("product_catalog"):
         # Use explicit product_catalog configuration (new pattern)
         catalog_config = tenant["product_catalog"]
         logger.debug(f"Using explicit product_catalog config: {catalog_config}")
-    elif tenant.get("signals_agent_config"):
-        # Legacy: signals_agent_config in tenant dict → use hybrid provider
-        signals_config = tenant["signals_agent_config"]
-
-        # Parse signals config if it's a string (SQLite) vs dict (PostgreSQL JSONB)
-        if isinstance(signals_config, str):
-            import json
-
-            try:
-                signals_config_parsed: dict[str, Any] = json.loads(signals_config)
-                signals_config = signals_config_parsed
-            except json.JSONDecodeError:
-                logger.error(f"Invalid signals_agent_config JSON for tenant {tenant['tenant_id']}")
-                signals_config = {}
-
-        # If signals discovery is configured (has upstream_url), use hybrid provider
-        if isinstance(signals_config, dict) and signals_config.get("upstream_url"):
-            logger.info(f"Using hybrid provider with signals discovery for tenant {tenant['tenant_id']}")
-            catalog_config = {
-                "provider": "hybrid",
-                "config": {
-                    "database": {},  # Use database provider defaults
-                    "signals_discovery": signals_config,
-                    "ranking_strategy": "signals_first",  # Prioritize signals-enhanced products
-                    "max_products": 20,
-                    "deduplicate": True,
-                },
-            }
-        else:
-            catalog_config = {"provider": "database", "config": {}}
     else:
-        # Default to database provider
-        catalog_config = {"provider": "database", "config": {}}
+        # Check if tenant has any enabled signals agents
+        from src.core.database.models import SignalsAgent
+
+        with get_db_session() as db_session:
+            stmt = select(SignalsAgent).filter_by(tenant_id=tenant["tenant_id"], enabled=True)
+            enabled_agents = db_session.scalars(stmt).all()
+
+        if enabled_agents:
+            # Use signals discovery provider with enabled agents
+            logger.info(
+                f"Using signals provider with {len(enabled_agents)} enabled agent(s) for tenant {tenant['tenant_id']}"
+            )
+            catalog_config = {"provider": "signals", "config": {}}
+        else:
+            # Default to database provider
+            catalog_config = {"provider": "database", "config": {}}
 
     # Get the product catalog provider for this tenant
     # Factory expects a dict with "product_catalog" key, not the catalog_config directly

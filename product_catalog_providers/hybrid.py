@@ -123,20 +123,12 @@ class HybridProductCatalog(ProductCatalogProvider):
     async def _is_signals_enabled(self, tenant_id: str) -> bool:
         """Check if signals discovery is enabled for the tenant."""
         try:
+            from src.core.database.models import SignalsAgent
+
             with get_db_session() as db_session:
-                stmt = select(Tenant).filter_by(tenant_id=tenant_id)
-                tenant = db_session.scalars(stmt).first()
-                if not tenant or not tenant.signals_agent_config:
-                    return False
-
-                # Parse signals configuration
-                if isinstance(tenant.signals_agent_config, dict):
-                    config = tenant.signals_agent_config
-                else:
-                    config = json.loads(tenant.signals_agent_config)
-
-                # Signals discovery is configured if upstream_url is present
-                return bool(config.get("upstream_url"))
+                stmt = select(SignalsAgent).filter_by(tenant_id=tenant_id, enabled=True)
+                enabled_agents = db_session.scalars(stmt).all()
+                return len(enabled_agents) > 0
 
         except Exception as e:
             logger.error(f"Error checking signals configuration: {e}")
