@@ -21,7 +21,7 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
         # Create tenant
         tenant = Tenant(
             tenant_id="test_tenant",
-            organization_name="Test Org",
+            name="Test Org",
             subdomain="test",
         )
         session.add(tenant)
@@ -160,7 +160,7 @@ def test_update_media_buy_replaces_creatives(integration_db):
         # Create tenant
         tenant = Tenant(
             tenant_id="test_tenant",
-            organization_name="Test Org",
+            name="Test Org",
             subdomain="test",
         )
         session.add(tenant)
@@ -309,7 +309,7 @@ def test_update_media_buy_rejects_missing_creatives(integration_db):
         # Create tenant
         tenant = Tenant(
             tenant_id="test_tenant",
-            organization_name="Test Org",
+            name="Test Org",
             subdomain="test",
         )
         session.add(tenant)
