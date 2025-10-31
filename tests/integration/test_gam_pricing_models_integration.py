@@ -231,8 +231,8 @@ def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_with_all
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-03-01",
-        flight_end_date="2025-03-31",
+        start_time="2025-03-01T00:00:00Z",
+        end_time="2025-03-31T23:59:59Z",
     )
 
     class MockContext:
@@ -281,8 +281,8 @@ def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_gam_ten
         ],
         budget={"total": 5000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-03-01",
-        flight_end_date="2025-03-31",
+        start_time="2025-03-01T00:00:00Z",
+        end_time="2025-03-31T23:59:59Z",
     )
 
     class MockContext:
@@ -332,8 +332,8 @@ def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(setup_gam
         ],
         budget={"total": 12000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-03-01",
-        flight_end_date="2025-03-31",
+        start_time="2025-03-01T00:00:00Z",
+        end_time="2025-03-31T23:59:59Z",
     )
 
     class MockContext:
@@ -384,8 +384,8 @@ def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_pricin
         ],
         budget={"total": 5000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-03-01",
-        flight_end_date="2025-03-10",  # 10 days
+        start_time="2025-03-01T00:00:00Z",
+        end_time="2025-03-10T23:59:59Z",  # 10 days
     )
 
     class MockContext:
@@ -449,8 +449,8 @@ def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_pricin
         ],
         budget={"total": 20000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-03-01",
-        flight_end_date="2025-03-31",
+        start_time="2025-03-01T00:00:00Z",
+        end_time="2025-03-31T23:59:59Z",
     )
 
     class MockContext:
@@ -514,8 +514,8 @@ def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_pricin
         ],
         budget={"total": 4000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-03-01",
-        flight_end_date="2025-03-31",
+        start_time="2025-03-01T00:00:00Z",
+        end_time="2025-03-31T23:59:59Z",
     )
 
     class MockContext:

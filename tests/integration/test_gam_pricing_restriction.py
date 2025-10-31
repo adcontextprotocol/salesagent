@@ -195,8 +195,8 @@ def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
     )
 
     class MockContext:
@@ -242,8 +242,8 @@ def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
     )
 
     class MockContext:
@@ -286,8 +286,8 @@ def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cp
         ],
         budget={"total": 15000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
     )
 
     class MockContext:
@@ -329,8 +329,8 @@ def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cp
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
     )
 
     class MockContext:

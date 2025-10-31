@@ -180,7 +180,7 @@ def setup_tenant_with_pricing_products(integration_db):
 
 
 @pytest.mark.requires_db
-def test_get_products_returns_pricing_options(setup_tenant_with_pricing_products):
+async def test_get_products_returns_pricing_options(setup_tenant_with_pricing_products):
     """Test that get_products returns pricing_options for products."""
     request = GetProductsRequest(brief="display ads")
 
@@ -188,10 +188,7 @@ def test_get_products_returns_pricing_options(setup_tenant_with_pricing_products
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_token"}})()
 
-    tenant = {"tenant_id": "test_pricing_tenant", "name": "Test"}
-    principal = type("Principal", (), {"principal_id": "test_principal", "tenant_id": "test_pricing_tenant"})()
-
-    response = _get_products_impl(request, MockContext(), tenant, principal)
+    response = await _get_products_impl(request, MockContext())
 
     assert response.products is not None
     assert len(response.products) > 0
@@ -231,8 +228,8 @@ def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing_produ
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
     )
 
     class MockContext:
@@ -271,8 +268,8 @@ def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_pricing_pro
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
     )
 
     class MockContext:
@@ -311,8 +308,8 @@ def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_pricin
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
     )
 
     class MockContext:
@@ -350,8 +347,8 @@ def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_products):
         ],
         budget={"total": 8000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
     )
 
     class MockContext:
@@ -389,8 +386,8 @@ def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_produc
         ],
         budget={"total": 3000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
     )
 
     class MockContext:
@@ -428,8 +425,8 @@ def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_pricing_pro
         ],
         budget={"total": 15000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
     )
 
     class MockContext:
@@ -467,8 +464,8 @@ def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pricing_
         ],
         budget={"total": 10000.0, "currency": "USD"},
         currency="USD",
-        flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28",
+        start_time="2025-02-01T00:00:00Z",
+        end_time="2025-02-28T23:59:59Z",
     )
 
     class MockContext:

@@ -1046,6 +1046,7 @@ class GoogleAdManager(AdServerAdapter):
                         media_buy_id=media_buy_id,
                         buyer_ref=buyer_ref,
                         implementation_date=today,
+                        workflow_step_id=step_id,
                         errors=[],
                     )
                 else:
