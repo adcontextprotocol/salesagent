@@ -193,7 +193,7 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_gam_cpcv"],
+                product_id="prod_gam_cpcv",  # Use product_id instead of products array
                 pricing_model=PricingModel.CPCV,  # Not supported by GAM
                 budget=10000.0,
             )
@@ -244,7 +244,7 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_gam_cpm"],
+                product_id="prod_gam_cpm",  # Use product_id instead of products array
                 pricing_model=PricingModel.CPM,  # Supported by GAM
                 budget=10000.0,
             )
@@ -272,7 +272,7 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     # Verify response (AdCP 2.4 compliant)
@@ -292,7 +292,7 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_gam_multi"],
+                product_id="prod_gam_multi",  # Use product_id instead of products array
                 pricing_model=PricingModel.CPP,  # Not supported by GAM
                 budget=15000.0,
             )
@@ -339,7 +339,7 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
         packages=[
             Package(
                 package_id="pkg_1",
-                products=["prod_gam_multi"],
+                product_id="prod_gam_multi",  # Use product_id instead of products array
                 pricing_model=PricingModel.CPM,  # Supported by GAM
                 budget=10000.0,
             )
@@ -367,7 +367,7 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=MockContext(),
+        context=context,
     )
 
     # Verify response (AdCP 2.4 compliant)

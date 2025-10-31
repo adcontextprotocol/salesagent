@@ -43,6 +43,7 @@ from src.core.schemas import (
     CreateMediaBuyRequest,
     CreativeStatus,
     Error,
+    FormatId,
     MediaPackage,
     Package,
     Principal,
@@ -2050,7 +2051,20 @@ async def _create_media_buy_impl(
 
             # Fallback to product's formats if no request format_ids
             if not format_ids_to_use:
-                format_ids_to_use = list(product.formats) if product.formats else []  # type: ignore[arg-type]
+                if product.formats:
+                    # Convert product.formats to FormatId objects if they're strings
+                    format_ids_to_use = []
+                    # Get default creative agent URL from tenant config (tenant is dict[str, Any])
+                    default_agent_url = tenant.get("creative_agent_url") or "https://creative.adcontextprotocol.org"
+                    for fmt in product.formats:
+                        if isinstance(fmt, str):
+                            # Convert legacy string format to FormatId object
+                            format_ids_to_use.append(FormatId(agent_url=default_agent_url, id=fmt))
+                        else:
+                            # Already a FormatId or FormatReference object
+                            format_ids_to_use.append(fmt)  # type: ignore[arg-type]
+                else:
+                    format_ids_to_use = []
 
             # Get CPM from pricing_options
             cpm = 10.0  # Default

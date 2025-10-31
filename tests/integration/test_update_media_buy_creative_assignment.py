@@ -35,7 +35,7 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
         )
         session.add(property_tag)
 
-        # Create principal
+        # Create principal (MUST be flushed before creatives due to FK constraint)
         principal = Principal(
             principal_id="test_principal",
             tenant_id="test_tenant",
@@ -44,6 +44,7 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
             platform_mappings={"mock": {"id": "test_advertiser"}},
         )
         session.add(principal)
+        session.flush()  # Ensure principal exists before creating creatives
 
         # Create product
         product = Product(
@@ -76,7 +77,7 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
         )
         session.add(media_buy)
 
-        # Create creatives
+        # Create creatives (FK to principal now satisfied)
         creative1 = DBCreative(
             creative_id="creative_1",
             tenant_id="test_tenant",
@@ -190,7 +191,7 @@ def test_update_media_buy_replaces_creatives(integration_db):
         )
         session.add(property_tag)
 
-        # Create principal
+        # Create principal (MUST be flushed before creatives due to FK constraint)
         principal = Principal(
             principal_id="test_principal",
             tenant_id="test_tenant",
@@ -199,6 +200,7 @@ def test_update_media_buy_replaces_creatives(integration_db):
             platform_mappings={"mock": {"id": "test_advertiser"}},
         )
         session.add(principal)
+        session.flush()  # Ensure principal exists before creating creatives
 
         # Create product
         product = Product(
@@ -231,7 +233,7 @@ def test_update_media_buy_replaces_creatives(integration_db):
         )
         session.add(media_buy)
 
-        # Create creatives
+        # Create creatives (FK to principal now satisfied)
         creative1 = DBCreative(
             creative_id="creative_1",
             tenant_id="test_tenant",
@@ -359,7 +361,7 @@ def test_update_media_buy_rejects_missing_creatives(integration_db):
         )
         session.add(property_tag)
 
-        # Create principal
+        # Create principal (MUST be flushed before creatives due to FK constraint)
         principal = Principal(
             principal_id="test_principal",
             tenant_id="test_tenant",
@@ -368,6 +370,7 @@ def test_update_media_buy_rejects_missing_creatives(integration_db):
             platform_mappings={"mock": {"id": "test_advertiser"}},
         )
         session.add(principal)
+        session.flush()  # Ensure principal exists before creating creatives
 
         # Create product
         product = Product(
