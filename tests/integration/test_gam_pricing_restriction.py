@@ -13,11 +13,13 @@ from src.core.database.models import (
     PricingOption,
     Principal,
     Product,
+    Tenant,
 )
+from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
-# TODO: Fix failing tests and remove skip_ci (see GitHub issue #XXX)
-pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.skip_ci]
+# Tests are now AdCP 2.4 compliant (removed status field, using errors field)
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 @pytest.fixture
@@ -246,8 +248,10 @@ def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
     # This should succeed
     response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
 
+    # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
-    assert response.status in ["active", "pending"]
+    # Success = no errors (or empty errors list)
+    assert response.errors == [] or response.errors is None
 
 
 @pytest.mark.requires_db
@@ -331,5 +335,7 @@ def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cp
     # This should succeed - buyer chose CPM from multi-option product
     response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
 
+    # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
-    assert response.status in ["active", "pending"]
+    # Success = no errors (or empty errors list)
+    assert response.errors == [] or response.errors is None
