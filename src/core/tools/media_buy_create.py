@@ -1247,7 +1247,10 @@ async def _create_media_buy_impl(
             if req.packages:
                 for idx, package in enumerate(req.packages):
                     # Get product ID for this package (AdCP spec: single product per package)
-                    package_product_ids = [package.product_id] if package.product_id else []
+                    # Check both products array (AdCP 2.4) and product_id (legacy)
+                    package_product_ids = (
+                        package.products if package.products else ([package.product_id] if package.product_id else [])
+                    )
 
                     # Validate pricing for the product
                     if package_product_ids:

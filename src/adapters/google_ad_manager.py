@@ -109,10 +109,12 @@ class GoogleAdManager(AdServerAdapter):
 
         # advertiser_id is only required for order/campaign operations, not inventory sync
 
-        if not self.key_file and not self.service_account_json and not self.refresh_token:
-            raise ValueError(
-                "GAM config requires either 'service_account_key_file', 'service_account_json', or 'refresh_token'"
-            )
+        # Skip auth validation in dry_run mode (for testing)
+        if not self.dry_run:
+            if not self.key_file and not self.service_account_json and not self.refresh_token:
+                raise ValueError(
+                    "GAM config requires either 'service_account_key_file', 'service_account_json', or 'refresh_token'"
+                )
 
         # Initialize modular components
         if not self.dry_run:

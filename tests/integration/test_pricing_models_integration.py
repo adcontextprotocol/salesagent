@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import CurrencyLimit, PricingOption, Principal, Product, Tenant
+from src.core.database.models import CurrencyLimit, PricingOption, Principal, Product, PropertyTag, Tenant
 from src.core.schema_adapters import GetProductsRequest
 from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
 from src.core.tool_context import ToolContext
@@ -33,6 +33,15 @@ def setup_tenant_with_pricing_products(integration_db):
         )
         session.add(tenant)
         session.flush()
+
+        # Add property tag (required for products)
+        property_tag = PropertyTag(
+            tenant_id="test_pricing_tenant",
+            tag_id="all_inventory",
+            name="All Inventory",
+            description="All available inventory",
+        )
+        session.add(property_tag)
 
         # Add currency limit
         currency_limit = CurrencyLimit(
@@ -185,9 +194,14 @@ def setup_tenant_with_pricing_products(integration_db):
 
     # Cleanup
     with get_db_session() as session:
-        session.query(PricingOption).filter_by(tenant_id="test_pricing_tenant").delete()
-        session.query(Product).filter_by(tenant_id="test_pricing_tenant").delete()
-        session.query(Tenant).filter_by(tenant_id="test_pricing_tenant").delete()
+        from sqlalchemy import delete
+
+        session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_pricing_tenant"))
+        session.execute(delete(Product).where(Product.tenant_id == "test_pricing_tenant"))
+        session.execute(delete(PropertyTag).where(PropertyTag.tenant_id == "test_pricing_tenant"))
+        session.execute(delete(Principal).where(Principal.tenant_id == "test_pricing_tenant"))
+        session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "test_pricing_tenant"))
+        session.execute(delete(Tenant).where(Tenant.tenant_id == "test_pricing_tenant"))
         session.commit()
 
 

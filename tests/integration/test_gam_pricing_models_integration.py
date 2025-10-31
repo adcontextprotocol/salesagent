@@ -13,6 +13,8 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import (
     AdapterConfig,
     CurrencyLimit,
+    MediaBuy,
+    MediaPackage,
     PricingOption,
     Principal,
     Product,
@@ -73,7 +75,7 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             principal_id="test_advertiser_pricing",
             name="Test Advertiser - Pricing",
             access_token="test_gam_pricing_token",
-            platform_mappings={"google_ad_manager": {"advertiser_id": "gam_adv_123"}},
+            platform_mappings={"google_ad_manager": {"advertiser_id": "123456789"}},
         )
         session.add(principal)
 
@@ -91,6 +93,7 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
                 "targeted_ad_unit_ids": ["ad_unit_123"],
                 "line_item_type": "STANDARD",
                 "priority": 8,
+                "creative_placeholders": [{"width": 300, "height": 250}],
             },
         )
         session.add(product_cpm)
@@ -121,6 +124,12 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             targeting_template={},
             implementation_config={
                 "targeted_ad_unit_ids": ["ad_unit_123"],
+                "line_item_type": "PRICE_PRIORITY",
+                "priority": 12,
+                "creative_placeholders": [
+                    {"width": 300, "height": 250},
+                    {"width": 728, "height": 90},
+                ],
             },
         )
         session.add(product_cpc)
@@ -151,6 +160,9 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             targeting_template={},
             implementation_config={
                 "targeted_ad_unit_ids": ["ad_unit_123"],
+                "line_item_type": "STANDARD",
+                "priority": 8,
+                "creative_placeholders": [{"width": 300, "height": 250}],
             },
         )
         session.add(product_vcpm)
@@ -181,6 +193,12 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             targeting_template={},
             implementation_config={
                 "targeted_ad_unit_ids": ["ad_unit_homepage"],
+                "line_item_type": "SPONSORSHIP",
+                "priority": 4,
+                "creative_placeholders": [
+                    {"width": 728, "height": 90},
+                    {"width": 300, "height": 600},
+                ],
             },
         )
         session.add(product_flat)
@@ -205,8 +223,16 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
 
     # Cleanup
     with get_db_session() as session:
-        from sqlalchemy import delete
+        from sqlalchemy import delete, select
 
+        # Delete media packages first (join through media_buy to filter by tenant)
+        media_buy_ids_stmt = select(MediaBuy.media_buy_id).where(MediaBuy.tenant_id == "test_gam_pricing_tenant")
+        media_buy_ids = [row[0] for row in session.execute(media_buy_ids_stmt)]
+        if media_buy_ids:
+            session.execute(delete(MediaPackage).where(MediaPackage.media_buy_id.in_(media_buy_ids)))
+
+        # Delete in order of foreign key dependencies
+        session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == "test_gam_pricing_tenant"))
         session.execute(delete(PricingOption).where(PricingOption.tenant_id == "test_gam_pricing_tenant"))
         session.execute(delete(Product).where(Product.tenant_id == "test_gam_pricing_tenant"))
         session.execute(delete(PropertyTag).where(PropertyTag.tenant_id == "test_gam_pricing_tenant"))
@@ -404,8 +430,8 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
         ],
         budget={"total": 5000.0, "currency": "USD"},
         currency="USD",
-        start_time="2025-03-01T00:00:00Z",
-        end_time="2025-03-10T23:59:59Z",  # 10 days
+        start_time="2026-03-01T00:00:00Z",
+        end_time="2026-03-10T23:59:59Z",  # 10 days
     )
 
     context = ToolContext(

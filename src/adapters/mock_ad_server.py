@@ -289,7 +289,12 @@ class MockAdServer(AdServerAdapter):
             self.log(f"⚠️ Webhook failed for {step_id}: {e}")
 
     def _validate_media_buy_request(
-        self, request: CreateMediaBuyRequest, packages: list[MediaPackage], start_time: datetime, end_time: datetime
+        self,
+        request: CreateMediaBuyRequest,
+        packages: list[MediaPackage],
+        start_time: datetime,
+        end_time: datetime,
+        package_pricing_info: dict[str, dict] | None = None,
     ):
         """Validate media buy request with GAM-like validation rules."""
         errors = []
@@ -310,8 +315,18 @@ class MockAdServer(AdServerAdapter):
         # This allows test scenarios to run without configuring ad unit IDs
 
         # Goal validation (like GAM limits)
+        # Note: For CPCV/CPV pricing, impressions are calculated as if CPM which inflates the number
+        # Mock adapter allows higher limits for these pricing models
         for package in packages:
-            if package.impressions > 1000000:  # Mock limit
+            # Get pricing model from package_pricing_info if available
+            pricing_model = None
+            if package_pricing_info and package.package_id in package_pricing_info:
+                pricing_model = package_pricing_info[package.package_id].get("pricing_model")
+
+            # Apply higher limit for video-based pricing models (CPCV, CPV)
+            limit = 100000000 if pricing_model in ["cpcv", "cpv"] else 1000000
+
+            if package.impressions > limit:  # Mock limit
                 errors.append(
                     f"ReservationDetailsError.PERCENTAGE_UNITS_BOUGHT_TOO_HIGH @ lineItem[0].primaryGoal.units; trigger:'{package.impressions}'"
                 )
@@ -471,7 +486,7 @@ class MockAdServer(AdServerAdapter):
                 )
 
         # GAM-like validation (based on real GAM behavior)
-        self._validate_media_buy_request(request, packages, start_time, end_time)
+        self._validate_media_buy_request(request, packages, start_time, end_time, package_pricing_info)
 
         # If no AI scenario or scenario accepts, proceed with normal flow
         # HITL Mode Processing
