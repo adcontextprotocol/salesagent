@@ -240,9 +240,17 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_gam_pricing_principal"
+        principal_id = "test_advertiser_pricing"
 
-    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=MockContext(),
+    )
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
@@ -282,9 +290,17 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_gam_pricing_principal"
+        principal_id = "test_advertiser_pricing"
 
-    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=MockContext(),
+    )
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
@@ -325,9 +341,17 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_gam_pricing_principal"
+        principal_id = "test_advertiser_pricing"
 
-    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=MockContext(),
+    )
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
@@ -369,9 +393,17 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_gam_pricing_principal"
+        principal_id = "test_advertiser_pricing"
 
-    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=MockContext(),
+    )
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
@@ -426,9 +458,17 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_gam_pricing_principal"
+        principal_id = "test_advertiser_pricing"
 
-    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=MockContext(),
+    )
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
@@ -483,9 +523,17 @@ async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_pricing_token"}})()
-        principal_id = "test_gam_pricing_principal"
+        principal_id = "test_advertiser_pricing"
 
-    response = await _create_media_buy_impl(**request.model_dump(exclude={"currency"}), context=MockContext())
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=MockContext(),
+    )
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None

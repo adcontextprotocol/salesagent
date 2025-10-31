@@ -183,9 +183,10 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
 
 
 @pytest.mark.requires_db
-def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
+async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPCV pricing model with clear error."""
     request = CreateMediaBuyRequest(
+        buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
@@ -203,23 +204,21 @@ def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
+        principal_id = "test_advertiser"
 
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
-    with get_db_session() as session:
-        tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-
-        principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_tenant").first()
-
     # This should fail with a clear error about GAM not supporting CPCV
     with pytest.raises(Exception) as exc_info:
-        _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+        await _create_media_buy_impl(
+            buyer_ref=request.buyer_ref,
+            brand_manifest=request.brand_manifest,
+            packages=request.packages,
+            start_time=request.start_time,
+            end_time=request.end_time,
+            budget=request.budget,
+            context=MockContext(),
+        )
 
     error_msg = str(exc_info.value)
     # Should mention GAM limitation and CPCV
@@ -228,11 +227,12 @@ def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_product):
 
 
 @pytest.mark.requires_db
-def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
+async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM pricing model."""
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
     request = CreateMediaBuyRequest(
+        buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
@@ -250,20 +250,18 @@ def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
-
-    with get_db_session() as session:
-        tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-
-        principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_tenant").first()
+        principal_id = "test_advertiser"
 
     # This should succeed
-    response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=MockContext(),
+    )
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
@@ -272,11 +270,12 @@ def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_product):
 
 
 @pytest.mark.requires_db
-def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
+async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter rejects CPP when buyer chooses it from multi-pricing product."""
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
     request = CreateMediaBuyRequest(
+        buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
@@ -294,32 +293,31 @@ def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_non_cp
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
-
-    with get_db_session() as session:
-        tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-
-        principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_tenant").first()
+        principal_id = "test_advertiser"
 
     # This should fail with clear error about GAM not supporting CPP
     with pytest.raises(Exception) as exc_info:
-        _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+        await _create_media_buy_impl(
+            buyer_ref=request.buyer_ref,
+            brand_manifest=request.brand_manifest,
+            packages=request.packages,
+            start_time=request.start_time,
+            end_time=request.end_time,
+            budget=request.budget,
+            context=MockContext(),
+        )
 
     error_msg = str(exc_info.value)
     assert "cpp" in error_msg.lower() or "pricing" in error_msg.lower()
 
 
 @pytest.mark.requires_db
-def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
+async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cpm_product):
     """Test that GAM adapter accepts CPM when buyer chooses it from multi-pricing product."""
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
     request = CreateMediaBuyRequest(
+        buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
             Package(
@@ -337,20 +335,18 @@ def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_non_cp
 
     class MockContext:
         http_request = type("Request", (), {"headers": {"x-adcp-auth": "test_gam_token"}})()
-
-    with get_db_session() as session:
-        tenant_obj = session.query(Tenant).filter_by(tenant_id="test_gam_tenant").first()
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "config": tenant_obj.config,
-            "ad_server": tenant_obj.ad_server,
-        }
-
-        principal_obj = session.query(Principal).filter_by(tenant_id="test_gam_tenant").first()
+        principal_id = "test_advertiser"
 
     # This should succeed - buyer chose CPM from multi-option product
-    response = _create_media_buy_impl(request, MockContext(), tenant, principal_obj)
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=MockContext(),
+    )
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None

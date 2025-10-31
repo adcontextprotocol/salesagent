@@ -64,12 +64,15 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
             tenant_id="test_tenant",
             principal_id="test_principal",
             buyer_ref="buyer_ref_123",
-            product_ids=["test_product"],
-            total_budget=1000.0,
-            currency="USD",
+            order_name="Test Order",
+            advertiser_name="Test Advertiser",
+            start_date="2025-11-01",
+            end_date="2025-11-30",
             start_time="2025-11-01T00:00:00Z",
             end_time="2025-11-30T23:59:59Z",
-            packages=[{"package_id": "pkg_default", "impressions": 100000}],
+            raw_request={
+                "packages": [{"package_id": "pkg_default", "impressions": 100000, "products": ["test_product"]}]
+            },
         )
         session.add(media_buy)
 
@@ -215,12 +218,15 @@ def test_update_media_buy_replaces_creatives(integration_db):
             tenant_id="test_tenant",
             principal_id="test_principal",
             buyer_ref="buyer_ref_456",
-            product_ids=["test_product"],
-            total_budget=1000.0,
-            currency="USD",
+            order_name="Test Order",
+            advertiser_name="Test Advertiser",
+            start_date="2025-11-01",
+            end_date="2025-11-30",
             start_time="2025-11-01T00:00:00Z",
             end_time="2025-11-30T23:59:59Z",
-            packages=[{"package_id": "pkg_default", "impressions": 100000}],
+            raw_request={
+                "packages": [{"package_id": "pkg_default", "impressions": 100000, "products": ["test_product"]}]
+            },
         )
         session.add(media_buy)
 
@@ -376,12 +382,15 @@ def test_update_media_buy_rejects_missing_creatives(integration_db):
             tenant_id="test_tenant",
             principal_id="test_principal",
             buyer_ref="buyer_ref_789",
-            product_ids=["test_product"],
-            total_budget=1000.0,
-            currency="USD",
+            order_name="Test Order",
+            advertiser_name="Test Advertiser",
+            start_date="2025-11-01",
+            end_date="2025-11-30",
             start_time="2025-11-01T00:00:00Z",
             end_time="2025-11-30T23:59:59Z",
-            packages=[{"package_id": "pkg_default", "impressions": 100000}],
+            raw_request={
+                "packages": [{"package_id": "pkg_default", "impressions": 100000, "products": ["test_product"]}]
+            },
         )
         session.add(media_buy)
         session.commit()

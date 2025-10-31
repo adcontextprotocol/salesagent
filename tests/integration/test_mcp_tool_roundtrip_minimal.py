@@ -60,6 +60,7 @@ class TestMCPToolRoundtripMinimal:
             result = await mcp_client.call_tool(
                 "create_media_buy",
                 {
+                    "buyer_ref": "test_buyer_minimal",
                     "brand_manifest": {"name": "Test Product"},
                     "packages": [
                         {
@@ -98,6 +99,7 @@ class TestMCPToolRoundtripMinimal:
             create_result = await mcp_client.call_tool(
                 "create_media_buy",
                 {
+                    "buyer_ref": "test_buyer_update",
                     "brand_manifest": {"name": "Test Product"},
                     "packages": [
                         {
