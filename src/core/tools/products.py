@@ -21,6 +21,7 @@ from product_catalog_providers.factory import get_product_catalog_provider
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import set_current_tenant
+from src.core.database.database_session import get_db_session
 from src.core.schema_adapters import GetProductsResponse
 from src.core.schema_helpers import create_get_products_request
 from src.core.schemas import Product
@@ -228,8 +229,6 @@ async def _get_products_impl(
         and advertising_policy.get("require_manual_review", False)
     ):
         # Create a manual review task
-        from src.core.database.database_session import get_db_session
-
         with get_db_session() as session:
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
@@ -311,7 +310,6 @@ async def _get_products_impl(
     # Enrich products with dynamic pricing (AdCP PR #79)
     # Calculate floor_cpm, recommended_cpm, estimated_exposures from cached metrics
     try:
-        from src.core.database.database_session import get_db_session
         from src.services.dynamic_pricing_service import DynamicPricingService
 
         # Extract country from request if available (future enhancement: parse from targeting)
@@ -608,7 +606,6 @@ def get_product_catalog() -> list[Product]:
     from sqlalchemy.orm import selectinload
 
     from src.core.config_loader import get_current_tenant
-    from src.core.database.database_session import get_db_session
     from src.core.database.models import Product as ModelProduct
     from src.core.schemas import PricingOption as PricingOptionSchema
 
