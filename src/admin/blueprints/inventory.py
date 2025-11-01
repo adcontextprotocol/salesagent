@@ -735,7 +735,67 @@ def get_inventory_tree(tenant_id):
 
             logger.info(f"Built tree with {len(root_units)} root units")
 
-            return jsonify({"root_units": root_units, "total_units": len(all_units), "root_count": len(root_units)})
+            # Get counts for other inventory types (for Quick Stats)
+            placements_stmt = (
+                select(func.count())
+                .select_from(GAMInventory)
+                .where(
+                    GAMInventory.tenant_id == tenant_id,
+                    GAMInventory.inventory_type == "placement",
+                    GAMInventory.status == "ACTIVE",
+                )
+            )
+            placements_count = db_session.scalar(placements_stmt) or 0
+
+            labels_stmt = (
+                select(func.count())
+                .select_from(GAMInventory)
+                .where(
+                    GAMInventory.tenant_id == tenant_id,
+                    GAMInventory.inventory_type == "label",
+                    GAMInventory.status == "ACTIVE",
+                )
+            )
+            labels_count = db_session.scalar(labels_stmt) or 0
+
+            targeting_stmt = (
+                select(func.count())
+                .select_from(GAMInventory)
+                .where(
+                    GAMInventory.tenant_id == tenant_id,
+                    GAMInventory.inventory_type == "custom_targeting_key",
+                    GAMInventory.status == "ACTIVE",
+                )
+            )
+            targeting_count = db_session.scalar(targeting_stmt) or 0
+
+            segments_stmt = (
+                select(func.count())
+                .select_from(GAMInventory)
+                .where(
+                    GAMInventory.tenant_id == tenant_id,
+                    GAMInventory.inventory_type == "audience_segment",
+                    GAMInventory.status == "ACTIVE",
+                )
+            )
+            segments_count = db_session.scalar(segments_stmt) or 0
+
+            logger.info(
+                f"Inventory counts - Ad Units: {len(all_units)}, Placements: {placements_count}, "
+                f"Labels: {labels_count}, Targeting Keys: {targeting_count}, Audience Segments: {segments_count}"
+            )
+
+            return jsonify(
+                {
+                    "root_units": root_units,
+                    "total_units": len(all_units),
+                    "root_count": len(root_units),
+                    "placements": placements_count,
+                    "labels": labels_count,
+                    "custom_targeting_keys": targeting_count,
+                    "audience_segments": segments_count,
+                }
+            )
 
     except Exception as e:
         logger.error(f"Error building inventory tree for tenant {tenant_id}: {e}", exc_info=True)
