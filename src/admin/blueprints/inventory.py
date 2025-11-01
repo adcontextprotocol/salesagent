@@ -42,6 +42,7 @@ def targeting_browser(tenant_id):
 @require_tenant_access(api_mode=True)
 def get_targeting_data(tenant_id):
     """Get all targeting data (custom targeting keys, audience segments, labels) from database."""
+    logger.info(f"Targeting data request for tenant: {tenant_id}")
     try:
         with get_db_session() as db_session:
             from src.core.database.models import GAMInventory
@@ -140,7 +141,7 @@ def get_targeting_data(tenant_id):
             )
 
     except Exception as e:
-        logger.error(f"Error fetching targeting data: {e}")
+        logger.error(f"Error fetching targeting data for tenant {tenant_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
