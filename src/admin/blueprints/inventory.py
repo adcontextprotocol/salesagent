@@ -678,6 +678,70 @@ def get_sync_status(tenant_id):
         return jsonify({"error": str(e)}), 500
 
 
+@inventory_bp.route("/api/tenant/<tenant_id>/inventory/tree", methods=["GET"])
+@require_tenant_access(api_mode=True)
+def get_inventory_tree(tenant_id):
+    """Get ad unit hierarchy tree structure for tree view.
+
+    Returns:
+        JSON with hierarchical tree of ad units including parent-child relationships
+    """
+    logger.info(f"Inventory tree request for tenant: {tenant_id}")
+    try:
+        with get_db_session() as db_session:
+            from src.core.database.models import GAMInventory
+
+            # Get all ad units (active only by default)
+            stmt = select(GAMInventory).where(
+                GAMInventory.tenant_id == tenant_id,
+                GAMInventory.inventory_type == "ad_unit",
+                GAMInventory.status == "ACTIVE",
+            )
+            all_units = db_session.scalars(stmt).all()
+
+            logger.info(f"Found {len(all_units)} active ad units in database")
+
+            # Build tree structure
+            units_by_id = {}
+            root_units = []
+
+            # First pass: create all unit objects
+            for unit in all_units:
+                metadata = unit.inventory_metadata or {}
+                if not isinstance(metadata, dict):
+                    metadata = {}
+
+                unit_obj = {
+                    "id": unit.inventory_id,
+                    "name": unit.name,
+                    "status": unit.status,
+                    "code": metadata.get("ad_unit_code", ""),
+                    "path": unit.path or [unit.name],
+                    "parent_id": metadata.get("parent_id"),
+                    "has_children": metadata.get("has_children", False),
+                    "children": [],
+                }
+                units_by_id[unit.inventory_id] = unit_obj
+
+            # Second pass: build hierarchy
+            for _unit_id, unit_obj in units_by_id.items():
+                parent_id = unit_obj.get("parent_id")
+                if parent_id and parent_id in units_by_id:
+                    # This is a child unit
+                    units_by_id[parent_id]["children"].append(unit_obj)
+                else:
+                    # This is a root unit (no parent or parent not found)
+                    root_units.append(unit_obj)
+
+            logger.info(f"Built tree with {len(root_units)} root units")
+
+            return jsonify({"root_units": root_units, "total_units": len(all_units), "root_count": len(root_units)})
+
+    except Exception as e:
+        logger.error(f"Error building inventory tree for tenant {tenant_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @inventory_bp.route("/api/tenant/<tenant_id>/inventory-list", methods=["GET"])
 @require_tenant_access(api_mode=True)
 def get_inventory_list(tenant_id):
