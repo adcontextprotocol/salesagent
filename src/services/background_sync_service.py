@@ -340,13 +340,18 @@ def _run_sync_thread(
             logger.info(f"[{sync_id}] Wrote {targeting_count} targeting keys to database")
 
             # Phase 5: Audience Segments (fetch → write → clear memory)
+            # NOTE: Audience segments ALWAYS use full sync because GAM API doesn't support
+            # lastModifiedDateTime filtering (returns ParseError.UNPARSABLE).
+            # This is a known GAM API limitation, not a bug in our code.
             update_progress("Discovering Audience Segments", 5 + phase_offset)
-            audience_segments = discovery.discover_audience_segments(since=last_sync_time)
+            audience_segments = discovery.discover_audience_segments(since=None)  # Always None = full sync
             update_progress("Writing Audience Segments to DB", 5 + phase_offset, len(audience_segments))
             inventory_service._write_inventory_batch(tenant_id, "audience_segment", audience_segments, sync_time)
             segments_count = len(audience_segments)
             discovery.audience_segments.clear()  # Clear from memory
-            logger.info(f"[{sync_id}] Wrote {segments_count} audience segments to database")
+            logger.info(
+                f"[{sync_id}] Wrote {segments_count} audience segments to database (always full sync - GAM API limitation)"
+            )
 
             # Phase 6: Mark stale inventory
             update_progress("Marking Stale Inventory", 6 + phase_offset)

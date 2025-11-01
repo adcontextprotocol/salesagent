@@ -535,23 +535,27 @@ def add_product(tenant_id):
                             loop = asyncio.get_running_loop()
                             # Already in async context, run in thread pool
                             import concurrent.futures
+
                             with concurrent.futures.ThreadPoolExecutor() as executor:
-                                future = executor.submit(lambda: asyncio.run(registry.list_all_formats(tenant_id=tenant_id)))
+                                future = executor.submit(
+                                    lambda: asyncio.run(registry.list_all_formats(tenant_id=tenant_id))
+                                )
                                 available_formats = future.result()
                         except RuntimeError:
                             # No running loop, safe to create one
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
                             try:
-                                available_formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant_id))
+                                available_formats = loop.run_until_complete(
+                                    registry.list_all_formats(tenant_id=tenant_id)
+                                )
                             finally:
                                 loop.close()
 
                         # Build set of valid format IDs for quick lookup
                         # Format objects have format_id (FormatId object with agent_url and id)
                         valid_format_ids = {
-                            f"{fmt.format_id.agent_url}|{fmt.format_id.id}"
-                            for fmt in available_formats
+                            f"{fmt.format_id.agent_url}|{fmt.format_id.id}" for fmt in available_formats
                         }
                         logger.info(f"[DEBUG] Found {len(valid_format_ids)} valid formats for tenant {tenant_id}")
                         logger.info(f"[DEBUG] Sample valid format IDs: {list(valid_format_ids)[:5]}")
@@ -574,8 +578,8 @@ def add_product(tenant_id):
 
                         # Normalize agent_url by ensuring it has a trailing slash
                         # Form submits without trailing slash, but Format objects have trailing slash
-                        if not agent_url.endswith('/'):
-                            agent_url_normalized = agent_url + '/'
+                        if not agent_url.endswith("/"):
+                            agent_url_normalized = agent_url + "/"
                         else:
                             agent_url_normalized = agent_url
 
@@ -584,7 +588,9 @@ def add_product(tenant_id):
                         # Validate format exists (using normalized URL)
                         if normalized_fmt_str not in valid_format_ids:
                             invalid_formats.append(format_id)
-                            logger.warning(f"Invalid format ID selected: {format_id} from {agent_url} (normalized: {agent_url_normalized})")
+                            logger.warning(
+                                f"Invalid format ID selected: {format_id} from {agent_url} (normalized: {agent_url_normalized})"
+                            )
                             logger.warning(f"Looking for: {normalized_fmt_str} in valid_format_ids")
                             continue
 
@@ -595,7 +601,7 @@ def add_product(tenant_id):
                         flash(
                             f"Invalid format IDs: {', '.join(invalid_formats)}. "
                             f"These formats are not available for this tenant. Please select valid formats.",
-                            "error"
+                            "error",
                         )
                         return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
@@ -632,6 +638,7 @@ def add_product(tenant_id):
 
                     # Add ad unit/placement targeting if provided
                     ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
+                    validated_ad_unit_ids = []
                     if ad_unit_ids:
                         # Parse comma-separated IDs
                         id_list = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
@@ -648,13 +655,60 @@ def add_product(tenant_id):
                             # Redirect to form instead of re-rendering to avoid missing context
                             return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
+                        # Validate ad unit IDs exist in inventory
+                        from src.core.database.models import GAMInventory
+
+                        existing_ad_units = db_session.scalars(
+                            select(GAMInventory).filter(
+                                GAMInventory.tenant_id == tenant_id,
+                                GAMInventory.inventory_type == "ad_unit",
+                                GAMInventory.inventory_id.in_(id_list),
+                            )
+                        ).all()
+
+                        existing_ids = {unit.inventory_id for unit in existing_ad_units}
+                        missing_ids = set(id_list) - existing_ids
+
+                        if missing_ids:
+                            flash(
+                                f"Ad unit IDs not found in synced inventory: {', '.join(missing_ids)}. "
+                                f"Please sync inventory first or use existing ad unit IDs.",
+                                "warning",
+                            )
+                            # Continue anyway - they might be valid in GAM but not synced yet
+
+                        validated_ad_unit_ids = id_list
                         base_config["targeted_ad_unit_ids"] = id_list
 
                     placement_ids = form_data.get("targeted_placement_ids", "").strip()
+                    validated_placement_ids = []
                     if placement_ids:
-                        base_config["targeted_placement_ids"] = [
-                            id.strip() for id in placement_ids.split(",") if id.strip()
-                        ]
+                        id_list = [id.strip() for id in placement_ids.split(",") if id.strip()]
+
+                        # Validate placement IDs exist in inventory
+                        from src.core.database.models import GAMInventory
+
+                        existing_placements = db_session.scalars(
+                            select(GAMInventory).filter(
+                                GAMInventory.tenant_id == tenant_id,
+                                GAMInventory.inventory_type == "placement",
+                                GAMInventory.inventory_id.in_(id_list),
+                            )
+                        ).all()
+
+                        existing_ids = {p.inventory_id for p in existing_placements}
+                        missing_ids = set(id_list) - existing_ids
+
+                        if missing_ids:
+                            flash(
+                                f"Placement IDs not found in synced inventory: {', '.join(missing_ids)}. "
+                                f"Please sync inventory first or use existing placement IDs.",
+                                "warning",
+                            )
+                            # Continue anyway - they might be valid in GAM but not synced yet
+
+                        validated_placement_ids = id_list
+                        base_config["targeted_placement_ids"] = id_list
 
                     base_config["include_descendants"] = form_data.get("include_descendants") == "on"
 
@@ -824,6 +878,38 @@ def add_product(tenant_id):
                         )
                         db_session.add(pricing_option)
 
+                # Create inventory mappings for GAM ad units and placements
+                if adapter_type == "google_ad_manager":
+                    # Save ad unit mappings
+                    if validated_ad_unit_ids:
+                        logger.info(
+                            f"Creating {len(validated_ad_unit_ids)} ad unit mappings for product {product.product_id}"
+                        )
+                        for idx, ad_unit_id in enumerate(validated_ad_unit_ids):
+                            mapping = ProductInventoryMapping(
+                                tenant_id=tenant_id,
+                                product_id=product.product_id,
+                                inventory_type="ad_unit",
+                                inventory_id=ad_unit_id,
+                                is_primary=(idx == 0),  # First ad unit is primary
+                            )
+                            db_session.add(mapping)
+
+                    # Save placement mappings
+                    if validated_placement_ids:
+                        logger.info(
+                            f"Creating {len(validated_placement_ids)} placement mappings for product {product.product_id}"
+                        )
+                        for idx, placement_id in enumerate(validated_placement_ids):
+                            mapping = ProductInventoryMapping(
+                                tenant_id=tenant_id,
+                                product_id=product.product_id,
+                                inventory_type="placement",
+                                inventory_id=placement_id,
+                                is_primary=(idx == 0),  # First placement is primary
+                            )
+                            db_session.add(mapping)
+
                 db_session.commit()
 
                 flash(f"Product '{product.name}' created successfully!", "success")
@@ -936,6 +1022,7 @@ def edit_product(tenant_id, product_id):
                     loop = asyncio.get_running_loop()
                     # Already in async context, run in thread pool
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         future = executor.submit(lambda: asyncio.run(registry.list_all_formats(tenant_id=tenant_id)))
                         available_formats = future.result()
@@ -949,10 +1036,7 @@ def edit_product(tenant_id, product_id):
                         loop.close()
 
                 # Build set of valid format IDs for quick lookup
-                valid_format_ids = {
-                    f"{fmt.format_id.agent_url}|{fmt.format_id.id}"
-                    for fmt in available_formats
-                }
+                valid_format_ids = {f"{fmt.format_id.agent_url}|{fmt.format_id.id}" for fmt in available_formats}
                 logger.info(f"[DEBUG] Found {len(valid_format_ids)} valid formats for tenant {tenant_id}")
 
                 # Validate and convert formats
@@ -966,8 +1050,8 @@ def edit_product(tenant_id, product_id):
                     agent_url, format_id = fmt_str.split("|", 1)
 
                     # Normalize agent_url by ensuring it has a trailing slash
-                    if not agent_url.endswith('/'):
-                        agent_url_normalized = agent_url + '/'
+                    if not agent_url.endswith("/"):
+                        agent_url_normalized = agent_url + "/"
                     else:
                         agent_url_normalized = agent_url
 
@@ -985,7 +1069,7 @@ def edit_product(tenant_id, product_id):
                     flash(
                         f"Invalid format IDs: {', '.join(invalid_formats)}. "
                         f"These formats are not available for this tenant.",
-                        "error"
+                        "error",
                     )
                     return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
 
@@ -1453,9 +1537,7 @@ def assign_inventory_to_product(tenant_id, product_id):
 
         with get_db_session() as db_session:
             # Verify product exists
-            product = db_session.scalars(
-                select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)
-            ).first()
+            product = db_session.scalars(select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)).first()
 
             if not product:
                 return jsonify({"error": "Product not found"}), 404
@@ -1463,9 +1545,7 @@ def assign_inventory_to_product(tenant_id, product_id):
             # Verify inventory exists
             inventory = db_session.scalars(
                 select(GAMInventory).filter_by(
-                    tenant_id=tenant_id,
-                    inventory_id=inventory_id,
-                    inventory_type=inventory_type
+                    tenant_id=tenant_id, inventory_id=inventory_id, inventory_type=inventory_type
                 )
             ).first()
 
@@ -1475,10 +1555,7 @@ def assign_inventory_to_product(tenant_id, product_id):
             # Check if mapping already exists
             existing = db_session.scalars(
                 select(ProductInventoryMapping).filter_by(
-                    tenant_id=tenant_id,
-                    product_id=product_id,
-                    inventory_id=inventory_id,
-                    inventory_type=inventory_type
+                    tenant_id=tenant_id, product_id=product_id, inventory_id=inventory_id, inventory_type=inventory_type
                 )
             ).first()
 
@@ -1493,7 +1570,7 @@ def assign_inventory_to_product(tenant_id, product_id):
                     product_id=product_id,
                     inventory_id=inventory_id,
                     inventory_type=inventory_type,
-                    is_primary=is_primary
+                    is_primary=is_primary,
                 )
                 db_session.add(mapping)
                 db_session.commit()
@@ -1507,10 +1584,7 @@ def assign_inventory_to_product(tenant_id, product_id):
 
             # Get all inventory mappings for this product
             all_mappings = db_session.scalars(
-                select(ProductInventoryMapping).filter_by(
-                    tenant_id=tenant_id,
-                    product_id=product_id
-                )
+                select(ProductInventoryMapping).filter_by(tenant_id=tenant_id, product_id=product_id)
             ).all()
 
             # Build targeted_ad_unit_ids and targeted_placement_ids from mappings
@@ -1520,9 +1594,7 @@ def assign_inventory_to_product(tenant_id, product_id):
             for m in all_mappings:
                 inv = db_session.scalars(
                     select(GAMInventory).filter_by(
-                        tenant_id=tenant_id,
-                        inventory_id=m.inventory_id,
-                        inventory_type=m.inventory_type
+                        tenant_id=tenant_id, inventory_id=m.inventory_id, inventory_type=m.inventory_type
                     )
                 ).first()
 
@@ -1543,17 +1615,24 @@ def assign_inventory_to_product(tenant_id, product_id):
             db_session.commit()
 
             if existing:
-                return jsonify({
-                    "message": "Inventory assignment updated",
-                    "mapping_id": existing.id,
-                    "inventory_name": inventory.name
-                })
+                return jsonify(
+                    {
+                        "message": "Inventory assignment updated",
+                        "mapping_id": existing.id,
+                        "inventory_name": inventory.name,
+                    }
+                )
             else:
-                return jsonify({
-                    "message": "Inventory assigned to product successfully",
-                    "mapping_id": mapping.id,
-                    "inventory_name": inventory.name
-                }), 201
+                return (
+                    jsonify(
+                        {
+                            "message": "Inventory assigned to product successfully",
+                            "mapping_id": mapping.id,
+                            "inventory_name": inventory.name,
+                        }
+                    ),
+                    201,
+                )
 
     except Exception as e:
         logger.error(f"Error assigning inventory to product: {e}", exc_info=True)
@@ -1569,19 +1648,14 @@ def get_product_inventory(tenant_id, product_id):
 
         with get_db_session() as db_session:
             # Verify product exists
-            product = db_session.scalars(
-                select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)
-            ).first()
+            product = db_session.scalars(select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)).first()
 
             if not product:
                 return jsonify({"error": "Product not found"}), 404
 
             # Get all mappings for this product
             mappings = db_session.scalars(
-                select(ProductInventoryMapping).filter_by(
-                    tenant_id=tenant_id,
-                    product_id=product_id
-                )
+                select(ProductInventoryMapping).filter_by(tenant_id=tenant_id, product_id=product_id)
             ).all()
 
             # Fetch inventory details for each mapping
@@ -1589,22 +1663,22 @@ def get_product_inventory(tenant_id, product_id):
             for mapping in mappings:
                 inventory = db_session.scalars(
                     select(GAMInventory).filter_by(
-                        tenant_id=tenant_id,
-                        inventory_id=mapping.inventory_id,
-                        inventory_type=mapping.inventory_type
+                        tenant_id=tenant_id, inventory_id=mapping.inventory_id, inventory_type=mapping.inventory_type
                     )
                 ).first()
 
                 if inventory:
-                    result.append({
-                        "mapping_id": mapping.id,
-                        "inventory_id": inventory.inventory_id,
-                        "inventory_name": inventory.name,
-                        "inventory_type": mapping.inventory_type,
-                        "is_primary": mapping.is_primary,
-                        "status": inventory.status,
-                        "path": inventory.path
-                    })
+                    result.append(
+                        {
+                            "mapping_id": mapping.id,
+                            "inventory_id": inventory.inventory_id,
+                            "inventory_name": inventory.name,
+                            "inventory_type": mapping.inventory_type,
+                            "is_primary": mapping.is_primary,
+                            "status": inventory.status,
+                            "path": inventory.path,
+                        }
+                    )
 
             return jsonify({"inventory": result, "count": len(result)})
 
@@ -1623,9 +1697,7 @@ def unassign_inventory_from_product(tenant_id, product_id, mapping_id):
 
         with get_db_session() as db_session:
             # Find the mapping
-            stmt = select(ProductInventoryMapping).filter_by(
-                id=mapping_id, tenant_id=tenant_id, product_id=product_id
-            )
+            stmt = select(ProductInventoryMapping).filter_by(id=mapping_id, tenant_id=tenant_id, product_id=product_id)
             mapping = db_session.scalars(stmt).first()
 
             if not mapping:
@@ -1645,17 +1717,12 @@ def unassign_inventory_from_product(tenant_id, product_id, mapping_id):
 
             from src.core.database.models import GAMInventory
 
-            product = db_session.scalars(
-                select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)
-            ).first()
+            product = db_session.scalars(select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)).first()
 
             if product and product.implementation_config:
                 # Get remaining inventory mappings
                 remaining_mappings = db_session.scalars(
-                    select(ProductInventoryMapping).filter_by(
-                        tenant_id=tenant_id,
-                        product_id=product_id
-                    )
+                    select(ProductInventoryMapping).filter_by(tenant_id=tenant_id, product_id=product_id)
                 ).all()
 
                 # Rebuild targeted IDs from remaining mappings
@@ -1665,9 +1732,7 @@ def unassign_inventory_from_product(tenant_id, product_id, mapping_id):
                 for m in remaining_mappings:
                     inv = db_session.scalars(
                         select(GAMInventory).filter_by(
-                            tenant_id=tenant_id,
-                            inventory_id=m.inventory_id,
-                            inventory_type=m.inventory_type
+                            tenant_id=tenant_id, inventory_id=m.inventory_id, inventory_type=m.inventory_type
                         )
                     ).first()
 

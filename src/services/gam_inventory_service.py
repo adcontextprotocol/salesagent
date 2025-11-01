@@ -151,9 +151,19 @@ class GAMInventoryService:
 
         # Flush remaining ad units
         flush_batch()
-        logger.info("Completed saving ad units")
+        logger.info(f"Completed saving ad units: {len(discovery.ad_units)} total")
 
         # Process placements
+        placements_count = len(discovery.placements)
+        logger.info(f"Processing {placements_count} placements for database save")
+
+        if placements_count == 0:
+            logger.warning(
+                f"No placements found in discovery object for tenant {tenant_id}. "
+                f"This could indicate: (1) no placements exist in GAM, (2) placement discovery failed, "
+                f"or (3) all placements are ARCHIVED"
+            )
+
         for placement in discovery.placements.values():
             item_data = {
                 "tenant_id": tenant_id,
@@ -185,7 +195,7 @@ class GAMInventoryService:
 
         # Flush remaining placements
         flush_batch()
-        logger.info("Completed saving placements")
+        logger.info(f"Completed saving placements: {placements_count} total processed")
 
         # Process labels
         for label in discovery.labels.values():
