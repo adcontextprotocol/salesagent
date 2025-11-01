@@ -80,37 +80,52 @@ def get_targeting_data(tenant_id):
             custom_keys = []
             for row in custom_keys_rows:
                 metadata = row.inventory_metadata or {}
+                # Ensure metadata is a dict (handle both None and non-dict cases)
+                if not isinstance(metadata, dict):
+                    logger.warning(f"Invalid metadata for custom_targeting_key {row.inventory_id}: {type(metadata)}")
+                    metadata = {}
+
                 custom_keys.append(
                     {
                         "id": row.inventory_id,
                         "name": row.name,
-                        "display_name": metadata.get("display_name") if metadata else row.name,
-                        "status": row.status,
-                        "type": metadata.get("type") if metadata else None,
+                        "display_name": metadata.get("display_name", row.name),  # Fallback to name
+                        "status": row.status or "UNKNOWN",  # Handle None status
+                        "type": metadata.get("type", "UNKNOWN"),  # Provide default type
                     }
                 )
 
             audiences = []
             for row in audience_segments_rows:
                 metadata = row.inventory_metadata or {}
+                # Ensure metadata is a dict
+                if not isinstance(metadata, dict):
+                    logger.warning(f"Invalid metadata for audience_segment {row.inventory_id}: {type(metadata)}")
+                    metadata = {}
+
                 audiences.append(
                     {
                         "id": row.inventory_id,
                         "name": row.name,
-                        "description": metadata.get("description") if metadata else None,
-                        "status": row.status,
-                        "size": metadata.get("size") if metadata else None,
+                        "description": metadata.get("description"),
+                        "status": row.status or "UNKNOWN",
+                        "size": metadata.get("size"),
                     }
                 )
 
             labels = []
             for row in labels_rows:
                 metadata = row.inventory_metadata or {}
+                # Ensure metadata is a dict
+                if not isinstance(metadata, dict):
+                    logger.warning(f"Invalid metadata for label {row.inventory_id}: {type(metadata)}")
+                    metadata = {}
+
                 labels.append(
                     {
                         "id": row.inventory_id,
                         "name": row.name,
-                        "description": metadata.get("description") if metadata else None,
+                        "description": metadata.get("description"),
                         "is_active": row.status == "ACTIVE",
                     }
                 )
@@ -561,6 +576,107 @@ def sync_inventory(tenant_id):
         return jsonify({"error": str(e)}), 500
 
 
+@inventory_bp.route("/api/tenant/<tenant_id>/inventory-stats", methods=["GET"])
+@require_tenant_access(api_mode=True)
+def get_inventory_stats(tenant_id):
+    """Get inventory statistics by type and status for debugging.
+
+    Returns:
+        JSON with counts grouped by inventory_type and status
+    """
+    try:
+        with get_db_session() as db_session:
+            # Get counts by inventory_type and status
+            stmt = (
+                select(GAMInventory.inventory_type, GAMInventory.status, func.count())
+                .filter(GAMInventory.tenant_id == tenant_id)
+                .group_by(GAMInventory.inventory_type, GAMInventory.status)
+            )
+            results = db_session.execute(stmt).all()
+
+            # Format results
+            stats = {}
+            for inv_type, status, count in results:
+                if inv_type not in stats:
+                    stats[inv_type] = {}
+                stats[inv_type][status] = count
+
+            return jsonify({"tenant_id": tenant_id, "stats": stats})
+
+    except Exception as e:
+        logger.error(f"Error fetching inventory stats: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@inventory_bp.route("/api/tenant/<tenant_id>/sync-status", methods=["GET"])
+@require_tenant_access(api_mode=True)
+def get_sync_status(tenant_id):
+    """Get detailed sync status for each inventory type.
+
+    Returns:
+        JSON with per-type sync status including last sync time, counts, and errors
+    """
+    try:
+        with get_db_session() as db_session:
+            # Define inventory types we track
+            inventory_types = ["ad_unit", "placement", "label", "custom_targeting_key", "audience_segment"]
+
+            sync_status = {}
+
+            for inv_type in inventory_types:
+                # Get total count for this type
+                count_stmt = (
+                    select(func.count())
+                    .select_from(GAMInventory)
+                    .where(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == inv_type)
+                )
+                total_count = db_session.scalar(count_stmt) or 0
+
+                # Get count by status
+                status_stmt = (
+                    select(GAMInventory.status, func.count())
+                    .filter(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == inv_type)
+                    .group_by(GAMInventory.status)
+                )
+                status_results = db_session.execute(status_stmt).all()
+                status_counts = dict(status_results)
+
+                # Get last sync time for this type
+                last_sync_stmt = (
+                    select(GAMInventory.last_synced)
+                    .filter(GAMInventory.tenant_id == tenant_id, GAMInventory.inventory_type == inv_type)
+                    .order_by(GAMInventory.last_synced.desc())
+                    .limit(1)
+                )
+                last_synced = db_session.scalar(last_sync_stmt)
+
+                # Get most recent sync job for this tenant
+                from src.core.database.models import SyncJob
+
+                last_job_stmt = (
+                    select(SyncJob)
+                    .filter(SyncJob.tenant_id == tenant_id, SyncJob.sync_type == "inventory")
+                    .order_by(SyncJob.started_at.desc())
+                    .limit(1)
+                )
+                last_job = db_session.scalars(last_job_stmt).first()
+
+                sync_status[inv_type] = {
+                    "total_count": total_count,
+                    "status_counts": status_counts,
+                    "last_synced": last_synced.isoformat() if last_synced else None,
+                    "last_job_status": last_job.status if last_job else None,
+                    "last_job_time": last_job.started_at.isoformat() if last_job and last_job.started_at else None,
+                    "last_job_error": last_job.error_message if last_job and last_job.error_message else None,
+                }
+
+            return jsonify({"tenant_id": tenant_id, "sync_status": sync_status})
+
+    except Exception as e:
+        logger.error(f"Error fetching sync status: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @inventory_bp.route("/api/tenant/<tenant_id>/inventory-list", methods=["GET"])
 @require_tenant_access(api_mode=True)
 def get_inventory_list(tenant_id):
@@ -569,7 +685,7 @@ def get_inventory_list(tenant_id):
     Query Parameters:
         type: Filter by inventory_type ('ad_unit' or 'placement', defaults to both)
         search: Filter by name (case-insensitive partial match)
-        status: Filter by status (default: 'ACTIVE')
+        status: Filter by status (default: 'ACTIVE', use 'ALL' for all statuses)
 
     Returns:
         JSON array of inventory items with id, name, type, path, status
@@ -579,7 +695,26 @@ def get_inventory_list(tenant_id):
         search = request.args.get("search", "").strip()
         status = request.args.get("status", "ACTIVE")
 
+        logger.info(
+            f"Inventory list query: tenant={tenant_id}, type={inventory_type or 'all'}, "
+            f"search='{search}', status={status}"
+        )
+
         with get_db_session() as db_session:
+            # First, get total counts before filtering (for diagnostics)
+            total_stmt = select(func.count()).select_from(GAMInventory).filter(GAMInventory.tenant_id == tenant_id)
+            total_count = db_session.scalar(total_stmt) or 0
+
+            # Get counts by type before filtering
+            type_counts_stmt = (
+                select(GAMInventory.inventory_type, func.count())
+                .filter(GAMInventory.tenant_id == tenant_id)
+                .group_by(GAMInventory.inventory_type)
+            )
+            type_counts = dict(db_session.execute(type_counts_stmt).all())
+
+            logger.info(f"Total inventory in DB: {total_count}, by type: {type_counts}")
+
             # Build query
             stmt = select(GAMInventory).filter(GAMInventory.tenant_id == tenant_id)
 
@@ -590,8 +725,8 @@ def get_inventory_list(tenant_id):
                 # Default to ad_unit and placement only
                 stmt = stmt.filter(GAMInventory.inventory_type.in_(["ad_unit", "placement"]))
 
-            # Filter by status
-            if status:
+            # Filter by status (allow 'ALL' to skip status filter)
+            if status and status.upper() != "ALL":
                 stmt = stmt.filter(GAMInventory.status == status)
 
             # Filter by search term
@@ -611,6 +746,11 @@ def get_inventory_list(tenant_id):
 
             items = db_session.scalars(stmt).all()
 
+            logger.info(
+                f"Query returned {len(items)} items after filtering "
+                f"(filters: type={inventory_type or 'all'}, status={status}, search='{search}')"
+            )
+
             # Format response
             result = []
             for item in items:
@@ -625,6 +765,7 @@ def get_inventory_list(tenant_id):
                     }
                 )
 
+            logger.info(f"Returning {len(result)} formatted inventory items to UI")
             return jsonify({"items": result, "count": len(result), "has_more": len(result) >= 500})
 
     except Exception as e:
