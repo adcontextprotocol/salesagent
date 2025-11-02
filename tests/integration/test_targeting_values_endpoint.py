@@ -80,7 +80,7 @@ def test_get_targeting_values_endpoint(authenticated_admin_session, integration_
         ),
     ]
 
-    with patch("src.admin.blueprints.inventory.GAMInventoryDiscovery") as mock_gam_class:
+    with patch("src.adapters.gam_inventory_discovery.GAMInventoryDiscovery") as mock_gam_class:
         mock_gam_instance = MagicMock()
         mock_gam_instance.discover_custom_targeting_values_for_key.return_value = mock_values
         mock_gam_class.return_value = mock_gam_instance
@@ -159,7 +159,7 @@ def test_get_targeting_values_empty_result(authenticated_admin_session, integrat
         db_session.commit()
 
     # Mock GAM client to return no values
-    with patch("src.admin.blueprints.inventory.GAMInventoryDiscovery") as mock_gam_class:
+    with patch("src.adapters.gam_inventory_discovery.GAMInventoryDiscovery") as mock_gam_class:
         mock_gam_instance = MagicMock()
         mock_gam_instance.discover_custom_targeting_values_for_key.return_value = []
         mock_gam_class.return_value = mock_gam_instance
