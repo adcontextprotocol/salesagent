@@ -540,12 +540,11 @@
         <!-- Targeting Configuration Widget -->
         <h3 style="margin-top: 2rem;">Targeting Configuration (Optional)</h3>
         <div class="alert" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 1rem; margin-bottom: 1rem;">
-            <strong>💡 Tip:</strong> Configure targeting to define the default audience and placement criteria for this product.
-            This helps buyers understand who will see their ads and where they'll appear.
+            <strong>💡 Tip:</strong> Configure custom targeting (key-value pairs) to define who will see ads for this product.
         </div>
 
-        {# Targeting widget with external JavaScript #}
-        {% include 'components/targeting_selector_widget.html' %}
+        {# Simple targeting selector - matches existing UI patterns #}
+        {% include 'components/targeting_selector_simple.html' %}
         <input type="hidden" id="targeting-data" name="targeting_template" value="">
 
         <div style="margin-top: 2rem;">
@@ -554,15 +553,6 @@
         </div>
     </form>
 </div>
-
-<script>
-// Initialize targeting widget after page load
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof TargetingWidget !== 'undefined') {
-        window.targetingWidget = new TargetingWidget('{{ tenant_id }}');
-    }
-});
-</script>
 
 <script>
 function updatePricingFields() {
