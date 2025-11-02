@@ -145,6 +145,80 @@ def get_targeting_data(tenant_id):
         return jsonify({"error": str(e)}), 500
 
 
+@inventory_bp.route("/api/tenant/<tenant_id>/targeting/values/<key_id>", methods=["GET"])
+@require_tenant_access(api_mode=True)
+def get_targeting_values(tenant_id, key_id):
+    """Get custom targeting values for a specific key by querying GAM in real-time.
+
+    Since inventory sync doesn't fetch values by default (for performance),
+    this endpoint queries GAM directly to get fresh values on-demand.
+
+    Args:
+        tenant_id: Tenant identifier
+        key_id: Custom targeting key ID
+
+    Returns:
+        JSON array of custom targeting values with their metadata
+    """
+    try:
+        with get_db_session() as db_session:
+            from src.core.database.models import GAMInventory, Tenant
+
+            # Get tenant and verify it has GAM configured
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                return jsonify({"error": "Tenant not found"}), 404
+
+            # Verify key exists in our database
+            key_stmt = select(GAMInventory).where(
+                GAMInventory.tenant_id == tenant_id,
+                GAMInventory.inventory_type == "custom_targeting_key",
+                GAMInventory.inventory_id == key_id,
+            )
+            key_row = db_session.scalars(key_stmt).first()
+
+            if not key_row:
+                return jsonify({"error": "Custom targeting key not found"}), 404
+
+            # Query GAM in real-time for values
+            adapter_config = tenant.adapter_config
+            if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
+                return jsonify({"error": "GAM not configured for this tenant"}), 400
+
+            # Initialize GAM adapter to query values
+            from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
+
+            gam_client = GAMInventoryDiscovery(
+                network_code=adapter_config.gam_network_code,
+                refresh_token=adapter_config.gam_refresh_token,
+                tenant_id=tenant_id,
+            )
+
+            # Fetch values from GAM (max 1000 to avoid timeout)
+            gam_values = gam_client.discover_custom_targeting_values_for_key(key_id, max_values=1000)
+
+            # Transform to frontend format
+            values = []
+            for gam_value in gam_values:
+                values.append(
+                    {
+                        "id": gam_value.id,
+                        "name": gam_value.name,
+                        "display_name": gam_value.display_name or gam_value.name,
+                        "match_type": gam_value.match_type or "EXACT",
+                        "status": gam_value.status or "ACTIVE",
+                        "key_id": key_id,
+                        "key_name": key_row.name,
+                    }
+                )
+
+            return jsonify({"values": values, "count": len(values)})
+
+    except Exception as e:
+        logger.error(f"Error fetching targeting values for key {key_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @inventory_bp.route("/tenant/<tenant_id>/inventory")
 @require_tenant_access()
 def inventory_browser(tenant_id):
