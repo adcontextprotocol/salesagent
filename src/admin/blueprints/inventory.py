@@ -42,6 +42,7 @@ def targeting_browser(tenant_id):
 @require_tenant_access(api_mode=True)
 def get_targeting_data(tenant_id):
     """Get all targeting data (custom targeting keys, audience segments, labels) from database."""
+    logger.info(f"Targeting data request for tenant: {tenant_id}")
     try:
         with get_db_session() as db_session:
             from src.core.database.models import GAMInventory
@@ -140,7 +141,81 @@ def get_targeting_data(tenant_id):
             )
 
     except Exception as e:
-        logger.error(f"Error fetching targeting data: {e}")
+        logger.error(f"Error fetching targeting data for tenant {tenant_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@inventory_bp.route("/api/tenant/<tenant_id>/targeting/values/<key_id>", methods=["GET"])
+@require_tenant_access(api_mode=True)
+def get_targeting_values(tenant_id, key_id):
+    """Get custom targeting values for a specific key by querying GAM in real-time.
+
+    Since inventory sync doesn't fetch values by default (for performance),
+    this endpoint queries GAM directly to get fresh values on-demand.
+
+    Args:
+        tenant_id: Tenant identifier
+        key_id: Custom targeting key ID
+
+    Returns:
+        JSON array of custom targeting values with their metadata
+    """
+    try:
+        with get_db_session() as db_session:
+            from src.core.database.models import GAMInventory, Tenant
+
+            # Get tenant and verify it has GAM configured
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                return jsonify({"error": "Tenant not found"}), 404
+
+            # Verify key exists in our database
+            key_stmt = select(GAMInventory).where(
+                GAMInventory.tenant_id == tenant_id,
+                GAMInventory.inventory_type == "custom_targeting_key",
+                GAMInventory.inventory_id == key_id,
+            )
+            key_row = db_session.scalars(key_stmt).first()
+
+            if not key_row:
+                return jsonify({"error": "Custom targeting key not found"}), 404
+
+            # Query GAM in real-time for values
+            adapter_config = tenant.adapter_config
+            if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
+                return jsonify({"error": "GAM not configured for this tenant"}), 400
+
+            # Initialize GAM adapter to query values
+            from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
+
+            gam_client = GAMInventoryDiscovery(
+                network_code=adapter_config.gam_network_code,
+                refresh_token=adapter_config.gam_refresh_token,
+                tenant_id=tenant_id,
+            )
+
+            # Fetch values from GAM (max 1000 to avoid timeout)
+            gam_values = gam_client.discover_custom_targeting_values_for_key(key_id, max_values=1000)
+
+            # Transform to frontend format
+            values = []
+            for gam_value in gam_values:
+                values.append(
+                    {
+                        "id": gam_value.id,
+                        "name": gam_value.name,
+                        "display_name": gam_value.display_name or gam_value.name,
+                        "match_type": gam_value.match_type or "EXACT",
+                        "status": gam_value.status or "ACTIVE",
+                        "key_id": key_id,
+                        "key_name": key_row.name,
+                    }
+                )
+
+            return jsonify({"values": values, "count": len(values)})
+
+    except Exception as e:
+        logger.error(f"Error fetching targeting values for key {key_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
@@ -748,6 +823,130 @@ def get_sync_status(tenant_id):
 
     except Exception as e:
         logger.error(f"Error fetching sync status: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@inventory_bp.route("/api/tenant/<tenant_id>/inventory/tree", methods=["GET"])
+@require_tenant_access(api_mode=True)
+def get_inventory_tree(tenant_id):
+    """Get ad unit hierarchy tree structure for tree view.
+
+    Returns:
+        JSON with hierarchical tree of ad units including parent-child relationships
+    """
+    logger.info(f"Inventory tree request for tenant: {tenant_id}")
+    try:
+        with get_db_session() as db_session:
+            from src.core.database.models import GAMInventory
+
+            # Get all ad units (active only by default)
+            stmt = select(GAMInventory).where(
+                GAMInventory.tenant_id == tenant_id,
+                GAMInventory.inventory_type == "ad_unit",
+                GAMInventory.status == "ACTIVE",
+            )
+            all_units = db_session.scalars(stmt).all()
+
+            logger.info(f"Found {len(all_units)} active ad units in database")
+
+            # Build tree structure
+            units_by_id = {}
+            root_units = []
+
+            # First pass: create all unit objects
+            for unit in all_units:
+                metadata = unit.inventory_metadata or {}
+                if not isinstance(metadata, dict):
+                    metadata = {}
+
+                unit_obj = {
+                    "id": unit.inventory_id,
+                    "name": unit.name,
+                    "status": unit.status,
+                    "code": metadata.get("ad_unit_code", ""),
+                    "path": unit.path or [unit.name],
+                    "parent_id": metadata.get("parent_id"),
+                    "has_children": metadata.get("has_children", False),
+                    "children": [],
+                }
+                units_by_id[unit.inventory_id] = unit_obj
+
+            # Second pass: build hierarchy
+            for _unit_id, unit_obj in units_by_id.items():
+                parent_id = unit_obj.get("parent_id")
+                if parent_id and parent_id in units_by_id:
+                    # This is a child unit
+                    units_by_id[parent_id]["children"].append(unit_obj)
+                else:
+                    # This is a root unit (no parent or parent not found)
+                    root_units.append(unit_obj)
+
+            logger.info(f"Built tree with {len(root_units)} root units")
+
+            # Get counts for other inventory types (for Quick Stats)
+            placements_stmt = (
+                select(func.count())
+                .select_from(GAMInventory)
+                .where(
+                    GAMInventory.tenant_id == tenant_id,
+                    GAMInventory.inventory_type == "placement",
+                    GAMInventory.status == "ACTIVE",
+                )
+            )
+            placements_count = db_session.scalar(placements_stmt) or 0
+
+            labels_stmt = (
+                select(func.count())
+                .select_from(GAMInventory)
+                .where(
+                    GAMInventory.tenant_id == tenant_id,
+                    GAMInventory.inventory_type == "label",
+                    GAMInventory.status == "ACTIVE",
+                )
+            )
+            labels_count = db_session.scalar(labels_stmt) or 0
+
+            targeting_stmt = (
+                select(func.count())
+                .select_from(GAMInventory)
+                .where(
+                    GAMInventory.tenant_id == tenant_id,
+                    GAMInventory.inventory_type == "custom_targeting_key",
+                    GAMInventory.status == "ACTIVE",
+                )
+            )
+            targeting_count = db_session.scalar(targeting_stmt) or 0
+
+            segments_stmt = (
+                select(func.count())
+                .select_from(GAMInventory)
+                .where(
+                    GAMInventory.tenant_id == tenant_id,
+                    GAMInventory.inventory_type == "audience_segment",
+                    GAMInventory.status == "ACTIVE",
+                )
+            )
+            segments_count = db_session.scalar(segments_stmt) or 0
+
+            logger.info(
+                f"Inventory counts - Ad Units: {len(all_units)}, Placements: {placements_count}, "
+                f"Labels: {labels_count}, Targeting Keys: {targeting_count}, Audience Segments: {segments_count}"
+            )
+
+            return jsonify(
+                {
+                    "root_units": root_units,
+                    "total_units": len(all_units),
+                    "root_count": len(root_units),
+                    "placements": placements_count,
+                    "labels": labels_count,
+                    "custom_targeting_keys": targeting_count,
+                    "audience_segments": segments_count,
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error building inventory tree for tenant {tenant_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
