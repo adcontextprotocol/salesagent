@@ -188,13 +188,17 @@ class TestFormatConversionApproval:
                 end_time=now + timedelta(days=7),
                 status="pending_approval",
                 raw_request={
+                    "buyer_ref": "test_buyer_ref",
+                    "brand_manifest": "https://example.com/brand-manifest.json",
+                    "start_time": (now + timedelta(days=1)).isoformat(),
+                    "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
                             "budget": 1000.0,
                         }
-                    ]
+                    ],
                 },
             )
             session.add(media_buy)
@@ -272,13 +276,17 @@ class TestFormatConversionApproval:
                 end_time=now + timedelta(days=7),
                 status="pending_approval",
                 raw_request={
+                    "buyer_ref": "test_buyer_ref",
+                    "brand_manifest": "https://example.com/brand-manifest.json",
+                    "start_time": (now + timedelta(days=1)).isoformat(),
+                    "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
                             "budget": 1000.0,
                         }
-                    ]
+                    ],
                 },
             )
             session.add(media_buy)
@@ -355,13 +363,17 @@ class TestFormatConversionApproval:
                 end_time=now + timedelta(days=7),
                 status="pending_approval",
                 raw_request={
+                    "buyer_ref": "test_buyer_ref",
+                    "brand_manifest": "https://example.com/brand-manifest.json",
+                    "start_time": (now + timedelta(days=1)).isoformat(),
+                    "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
                             "budget": 1000.0,
                         }
-                    ]
+                    ],
                 },
             )
             session.add(media_buy)
@@ -437,13 +449,17 @@ class TestFormatConversionApproval:
                 end_time=now + timedelta(days=7),
                 status="pending_approval",
                 raw_request={
+                    "buyer_ref": "test_buyer_ref",
+                    "brand_manifest": "https://example.com/brand-manifest.json",
+                    "start_time": (now + timedelta(days=1)).isoformat(),
+                    "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
                             "budget": 1000.0,
                         }
-                    ]
+                    ],
                 },
             )
             session.add(media_buy)
@@ -522,13 +538,17 @@ class TestFormatConversionApproval:
                 end_time=now + timedelta(days=7),
                 status="pending_approval",
                 raw_request={
+                    "buyer_ref": "test_buyer_ref",
+                    "brand_manifest": "https://example.com/brand-manifest.json",
+                    "start_time": (now + timedelta(days=1)).isoformat(),
+                    "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
                             "budget": 1000.0,
                         }
-                    ]
+                    ],
                 },
             )
             session.add(media_buy)
@@ -605,13 +625,17 @@ class TestFormatConversionApproval:
                 end_time=now + timedelta(days=7),
                 status="pending_approval",
                 raw_request={
+                    "buyer_ref": "test_buyer_ref",
+                    "brand_manifest": "https://example.com/brand-manifest.json",
+                    "start_time": (now + timedelta(days=1)).isoformat(),
+                    "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
                             "budget": 1500.0,
                         }
-                    ]
+                    ],
                 },
             )
             session.add(media_buy)
@@ -687,13 +711,17 @@ class TestFormatConversionApproval:
                 end_time=now + timedelta(days=7),
                 status="pending_approval",
                 raw_request={
+                    "buyer_ref": "test_buyer_ref",
+                    "brand_manifest": "https://example.com/brand-manifest.json",
+                    "start_time": (now + timedelta(days=1)).isoformat(),
+                    "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
                             "budget": 1000.0,
                         }
-                    ]
+                    ],
                 },
             )
             session.add(media_buy)
@@ -764,13 +792,17 @@ class TestFormatConversionApproval:
                 end_time=now + timedelta(days=7),
                 status="pending_approval",
                 raw_request={
+                    "buyer_ref": "test_buyer_ref",
+                    "brand_manifest": "https://example.com/brand-manifest.json",
+                    "start_time": (now + timedelta(days=1)).isoformat(),
+                    "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
                             "budget": 1000.0,
                         }
-                    ]
+                    ],
                 },
             )
             session.add(media_buy)
@@ -857,13 +889,17 @@ class TestFormatConversionApproval:
                 end_time=now + timedelta(days=7),
                 status="pending_approval",
                 raw_request={
+                    "buyer_ref": "test_buyer_ref",
+                    "brand_manifest": "https://example.com/brand-manifest.json",
+                    "start_time": (now + timedelta(days=1)).isoformat(),
+                    "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
                             "budget": 2000.0,
                         }
-                    ]
+                    ],
                 },
             )
             session.add(media_buy)
@@ -934,13 +970,17 @@ class TestFormatConversionApproval:
                 end_time=now + timedelta(days=7),
                 status="pending_approval",
                 raw_request={
+                    "buyer_ref": "test_buyer_ref",
+                    "brand_manifest": "https://example.com/brand-manifest.json",
+                    "start_time": (now + timedelta(days=1)).isoformat(),
+                    "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
                             "budget": 1000.0,
                         }
-                    ]
+                    ],
                 },
             )
             session.add(media_buy)
