@@ -126,7 +126,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         const response = await fetch(`/api/tenant/${tenantId}/targeting/all`);
         const data = await response.json();
 
-        availableKeys = data.custom_targeting_keys || [];
+        availableKeys = data.customKeys || [];
 
         // Populate keys dropdown
         const keySelect = document.getElementById('targeting-key-select');
