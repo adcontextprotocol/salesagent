@@ -1,16 +1,15 @@
-<!-- Targeting Selector Widget - Reusable Component
+<!-- Targeting Selector Widget V2 - Simplified with External JS
 
-     Usage:
-     {% include 'components/targeting_selector_widget.html' with context %}
+     This version splits the widget into:
+     - Minimal HTML structure (this file)
+     - External CSS (inline in this file for now)
+     - External JavaScript (static/js/targeting_widget.js)
 
-     In your form:
-     <div id="targeting-widget-container"></div>
-     <input type="hidden" id="targeting-data" name="targeting_template" value="">
-
-     JavaScript will populate the hidden field with selected targeting as JSON.
+     This avoids the RecursionError caused by large template includes in CI.
 -->
 
 <style>
+/* Targeting Widget Styles */
 .targeting-widget {
     border: 1px solid #dee2e6;
     border-radius: 8px;
@@ -49,108 +48,127 @@
 }
 
 .targeting-tab.active {
-    color: #0066cc;
-    border-bottom-color: #0066cc;
+    color: #007bff;
+    border-bottom-color: #007bff;
 }
 
-.targeting-content {
+.targeting-tab-content {
+    min-height: 300px;
+}
+
+.tab-pane {
     display: none;
 }
 
-.targeting-content.active {
+.tab-pane.active {
     display: block;
 }
 
-.key-value-selector {
+.kv-selector {
     display: grid;
-    grid-template-columns: 300px 1fr;
+    grid-template-columns: 1fr 2fr;
     gap: 1rem;
-    min-height: 400px;
+    height: 400px;
 }
 
-.keys-list {
-    background: white;
+.kv-keys, .kv-values {
     border: 1px solid #dee2e6;
     border-radius: 4px;
-    max-height: 400px;
+    padding: 1rem;
+    background: white;
     overflow-y: auto;
 }
 
-.key-item {
+.kv-keys h5, .kv-values h5 {
+    margin-top: 0;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    color: #666;
+}
+
+.search-input {
+    width: 100%;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.kv-key-item {
     padding: 0.75rem;
-    border-bottom: 1px solid #eee;
+    margin-bottom: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
     cursor: pointer;
     transition: background 0.2s;
 }
 
-.key-item:hover {
-    background: #f8f9fa;
+.kv-key-item:hover {
+    background: #e9ecef;
 }
 
-.key-item.selected {
-    background: #e7f3ff;
-    border-left: 3px solid #0066cc;
+.kv-key-item strong {
+    display: block;
+    color: #333;
 }
 
-.key-item h6 {
-    margin: 0 0 0.25rem 0;
-    font-size: 0.95rem;
-}
-
-.key-item small {
+.kv-key-item small {
     color: #666;
     font-size: 0.85rem;
 }
 
-.values-container {
-    background: white;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    padding: 1rem;
-}
-
-.values-grid {
+.kv-values-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 0.5rem;
-    margin-top: 1rem;
 }
 
 .value-checkbox {
     display: flex;
     align-items: center;
+    gap: 0.5rem;
     padding: 0.5rem;
     background: #f8f9fa;
-    border: 1px solid #dee2e6;
     border-radius: 4px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: background 0.2s;
 }
 
 .value-checkbox:hover {
     background: #e9ecef;
 }
 
-.value-checkbox input[type="checkbox"] {
-    margin-right: 0.5rem;
+.value-checkbox input {
+    cursor: pointer;
 }
 
-.value-checkbox.checked {
-    background: #d1ecf1;
-    border-color: #0066cc;
+.empty-state, .error-state, .info-message, .loading {
+    padding: 2rem;
+    text-align: center;
+    color: #666;
+}
+
+.error-state {
+    color: #dc3545;
+}
+
+.info-message {
+    color: #007bff;
 }
 
 .selected-summary {
-    background: white;
-    border: 1px solid #0066cc;
-    border-radius: 4px;
+    margin-top: 1.5rem;
     padding: 1rem;
-    margin-top: 1rem;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
 }
 
 .selected-summary h5 {
-    margin: 0 0 0.5rem 0;
-    color: #0066cc;
+    margin-top: 0;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    color: #666;
 }
 
 .selected-tags {
@@ -159,461 +177,70 @@
     gap: 0.5rem;
 }
 
-.selected-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
+.targeting-tag {
+    display: inline-block;
     padding: 0.25rem 0.75rem;
-    background: #0066cc;
+    background: #007bff;
     color: white;
-    border-radius: 16px;
+    border-radius: 12px;
     font-size: 0.85rem;
 }
 
-.selected-tag button {
-    background: none;
-    border: none;
-    color: white;
-    cursor: pointer;
-    padding: 0;
-    font-size: 1rem;
-    line-height: 1;
+.device-types {
+    padding: 1rem;
 }
 
-.empty-state {
-    text-align: center;
-    padding: 2rem;
+.device-types label {
+    display: block;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem;
+    cursor: pointer;
+}
+
+.device-types input {
+    margin-right: 0.5rem;
+}
+
+.audience-list {
+    padding: 1rem;
+}
+
+.audience-item {
+    display: flex;
+    align-items: start;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.audience-item:hover {
+    background: #e9ecef;
+}
+
+.audience-item input {
+    margin-top: 0.25rem;
+}
+
+.audience-item strong {
+    display: block;
+}
+
+.audience-item small {
     color: #666;
+    font-size: 0.85rem;
 }
 </style>
 
+<!-- Minimal HTML Structure -->
 <div class="targeting-widget" id="targeting-widget">
-    <h4>Targeting Configuration</h4>
-
-    <div class="targeting-tabs">
-        <button class="targeting-tab active" data-tab="key-value">
-            Custom Key-Value Pairs
-        </button>
-        <button class="targeting-tab" data-tab="geography">
-            Geography
-        </button>
-        <button class="targeting-tab" data-tab="device">
-            Device & Platform
-        </button>
-        <button class="targeting-tab" data-tab="audience">
-            Audiences
-        </button>
-    </div>
-
-    <!-- Key-Value Pairs Tab -->
-    <div class="targeting-content active" data-content="key-value">
-        <div class="key-value-selector">
-            <div class="keys-list" id="kv-keys-list">
-                <div class="empty-state">Loading keys...</div>
-            </div>
-            <div class="values-container">
-                <div id="kv-values-header">
-                    <p class="empty-state">Select a key to choose values</p>
-                </div>
-                <div class="values-grid" id="kv-values-grid"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Geography Tab -->
-    <div class="targeting-content" data-content="geography">
-        <div style="padding: 1rem; background: white; border-radius: 4px;">
-            <div class="form-group">
-                <label>Countries</label>
-                <select id="geo-countries" multiple style="width: 100%; height: 200px;">
-                    <!-- Will be populated by JavaScript -->
-                </select>
-                <small>Hold Ctrl/Cmd to select multiple</small>
-            </div>
-        </div>
-    </div>
-
-    <!-- Device Tab -->
-    <div class="targeting-content" data-content="device">
-        <div style="padding: 1rem; background: white; border-radius: 4px;">
-            <div class="form-group">
-                <label>Device Types</label>
-                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                        <input type="checkbox" value="desktop" class="device-type"> Desktop
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                        <input type="checkbox" value="mobile" class="device-type"> Mobile
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                        <input type="checkbox" value="tablet" class="device-type"> Tablet
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                        <input type="checkbox" value="ctv" class="device-type"> Connected TV
-                    </label>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Audience Tab -->
-    <div class="targeting-content" data-content="audience">
-        <div style="padding: 1rem; background: white; border-radius: 4px;">
-            <div id="audience-segments-container">
-                <div class="empty-state">Loading audience segments...</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Selected Targeting Summary -->
-    <div class="selected-summary" id="targeting-summary" style="display: none;">
-        <h5>Selected Targeting</h5>
-        <div class="selected-tags" id="targeting-tags"></div>
-    </div>
+    <h4>🎯 Targeting Configuration</h4>
+    <p style="margin: 0; color: #666; font-size: 0.9rem;">Select targeting criteria for this product</p>
+    <!-- Content will be populated by JavaScript -->
 </div>
 
-<script>
-// Targeting Widget Controller
-class TargetingWidget {
-    constructor(tenantId, containerId = 'targeting-widget') {
-        this.tenantId = tenantId;
-        this.container = document.getElementById(containerId);
-        this.selectedTargeting = {
-            key_value_pairs: {},
-            geo_country_any_of: [],
-            device_type_any_of: [],
-            audiences_any_of: []
-        };
-        this.targetingKeys = [];
-        this.targetingValues = {};
-        this.currentKey = null;
-
-        this.init();
-    }
-
-    async init() {
-        this.setupTabHandlers();
-        await this.loadTargetingData();
-        this.setupEventListeners();
-    }
-
-    setupTabHandlers() {
-        const tabs = this.container.querySelectorAll('.targeting-tab');
-        const contents = this.container.querySelectorAll('.targeting-content');
-
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                const targetTab = tab.dataset.tab;
-
-                // Update active states
-                tabs.forEach(t => t.classList.remove('active'));
-                contents.forEach(c => c.classList.remove('active'));
-
-                tab.classList.add('active');
-                const content = this.container.querySelector(`[data-content="${targetTab}"]`);
-                if (content) content.classList.add('active');
-            });
-        });
-    }
-
-    async loadTargetingData() {
-        try {
-            // Load custom targeting keys
-            const response = await fetch(`/api/tenant/${this.tenantId}/targeting/all`, {
-                credentials: 'same-origin'
-            });
-
-            if (!response.ok) throw new Error('Failed to load targeting data');
-
-            const data = await response.json();
-            this.targetingKeys = data.customKeys || [];
-
-            this.renderKeys();
-            this.renderAudiences(data.audiences || []);
-
-        } catch (error) {
-            console.error('Error loading targeting data:', error);
-            document.getElementById('kv-keys-list').innerHTML =
-                '<div class="empty-state" style="color: #e74c3c;">Failed to load targeting options</div>';
-        }
-    }
-
-    renderKeys() {
-        const keysList = document.getElementById('kv-keys-list');
-
-        if (this.targetingKeys.length === 0) {
-            keysList.innerHTML = '<div class="empty-state">No custom targeting keys available.<br>Sync inventory to load keys.</div>';
-            return;
-        }
-
-        keysList.innerHTML = this.targetingKeys.map(key => `
-            <div class="key-item" data-key-id="${key.id}">
-                <h6>${key.display_name || key.name}</h6>
-                <small>${key.type} • ${key.name}</small>
-            </div>
-        `).join('');
-
-        // Add click handlers
-        keysList.querySelectorAll('.key-item').forEach(item => {
-            item.addEventListener('click', () => this.selectKey(item.dataset.keyId));
-        });
-    }
-
-    async selectKey(keyId) {
-        this.currentKey = keyId;
-        const key = this.targetingKeys.find(k => k.id === keyId);
-
-        // Update UI
-        this.container.querySelectorAll('.key-item').forEach(item => {
-            item.classList.toggle('selected', item.dataset.keyId === keyId);
-        });
-
-        // Show loading state
-        document.getElementById('kv-values-header').innerHTML = '<p class="empty-state">Loading values...</p>';
-        document.getElementById('kv-values-grid').innerHTML = '';
-
-        try {
-            // Load values for this key
-            const response = await fetch(`/api/tenant/${this.tenantId}/targeting/values/${keyId}`, {
-                credentials: 'same-origin'
-            });
-
-            if (!response.ok) throw new Error('Failed to load values');
-
-            const data = await response.json();
-            this.targetingValues[keyId] = data.values || [];
-
-            this.renderValues(key, data.values || []);
-
-        } catch (error) {
-            console.error('Error loading values:', error);
-            document.getElementById('kv-values-header').innerHTML =
-                '<p class="empty-state" style="color: #e74c3c;">Failed to load values</p>';
-        }
-    }
-
-    renderValues(key, values) {
-        const header = document.getElementById('kv-values-header');
-        const grid = document.getElementById('kv-values-grid');
-
-        header.innerHTML = `
-            <h5 style="margin: 0 0 0.5rem 0;">${key.display_name || key.name}</h5>
-            <p style="margin: 0; color: #666; font-size: 0.9rem;">Select values to include in targeting</p>
-        `;
-
-        if (values.length === 0) {
-            grid.innerHTML = '<div class="empty-state">No values available for this key</div>';
-            return;
-        }
-
-        grid.innerHTML = values.map(value => {
-            const isChecked = this.selectedTargeting.key_value_pairs[key.name]?.includes(value.name);
-            return `
-                <label class="value-checkbox ${isChecked ? 'checked' : ''}" data-key="${key.name}" data-value="${value.name}">
-                    <input type="checkbox" ${isChecked ? 'checked' : ''}>
-                    <span>${value.display_name || value.name}</span>
-                </label>
-            `;
-        }).join('');
-
-        // Add change handlers
-        grid.querySelectorAll('.value-checkbox input').forEach(checkbox => {
-            checkbox.addEventListener('change', (e) => {
-                const label = e.target.closest('.value-checkbox');
-                const keyName = label.dataset.key;
-                const valueName = label.dataset.value;
-
-                label.classList.toggle('checked', e.target.checked);
-                this.toggleKeyValue(keyName, valueName, e.target.checked);
-            });
-        });
-    }
-
-    toggleKeyValue(keyName, valueName, isChecked) {
-        if (!this.selectedTargeting.key_value_pairs[keyName]) {
-            this.selectedTargeting.key_value_pairs[keyName] = [];
-        }
-
-        if (isChecked) {
-            if (!this.selectedTargeting.key_value_pairs[keyName].includes(valueName)) {
-                this.selectedTargeting.key_value_pairs[keyName].push(valueName);
-            }
-        } else {
-            this.selectedTargeting.key_value_pairs[keyName] =
-                this.selectedTargeting.key_value_pairs[keyName].filter(v => v !== valueName);
-
-            // Remove key if no values selected
-            if (this.selectedTargeting.key_value_pairs[keyName].length === 0) {
-                delete this.selectedTargeting.key_value_pairs[keyName];
-            }
-        }
-
-        this.updateSummary();
-        this.updateHiddenField();
-    }
-
-    renderAudiences(audiences) {
-        const container = document.getElementById('audience-segments-container');
-
-        if (audiences.length === 0) {
-            container.innerHTML = '<div class="empty-state">No audience segments available.<br>Sync inventory to load segments.</div>';
-            return;
-        }
-
-        container.innerHTML = `
-            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
-                ${audiences.map(audience => `
-                    <label class="value-checkbox" data-audience="${audience.id}">
-                        <input type="checkbox" class="audience-checkbox">
-                        <div>
-                            <strong>${audience.name}</strong>
-                            ${audience.size ? `<br><small>${audience.size.toLocaleString()} users</small>` : ''}
-                        </div>
-                    </label>
-                `).join('')}
-            </div>
-        `;
-
-        // Add change handlers
-        container.querySelectorAll('.audience-checkbox').forEach(checkbox => {
-            checkbox.addEventListener('change', (e) => {
-                const label = e.target.closest('.value-checkbox');
-                const audienceId = label.dataset.audience;
-
-                label.classList.toggle('checked', e.target.checked);
-                this.toggleAudience(audienceId, e.target.checked);
-            });
-        });
-    }
-
-    toggleAudience(audienceId, isChecked) {
-        if (isChecked) {
-            if (!this.selectedTargeting.audiences_any_of.includes(audienceId)) {
-                this.selectedTargeting.audiences_any_of.push(audienceId);
-            }
-        } else {
-            this.selectedTargeting.audiences_any_of =
-                this.selectedTargeting.audiences_any_of.filter(id => id !== audienceId);
-        }
-
-        this.updateSummary();
-        this.updateHiddenField();
-    }
-
-    setupEventListeners() {
-        // Device type checkboxes
-        this.container.querySelectorAll('.device-type').forEach(checkbox => {
-            checkbox.addEventListener('change', (e) => {
-                const device = e.target.value;
-                if (e.target.checked) {
-                    if (!this.selectedTargeting.device_type_any_of.includes(device)) {
-                        this.selectedTargeting.device_type_any_of.push(device);
-                    }
-                } else {
-                    this.selectedTargeting.device_type_any_of =
-                        this.selectedTargeting.device_type_any_of.filter(d => d !== device);
-                }
-                this.updateSummary();
-                this.updateHiddenField();
-            });
-        });
-    }
-
-    updateSummary() {
-        const summary = document.getElementById('targeting-summary');
-        const tags = document.getElementById('targeting-tags');
-
-        let html = '';
-
-        // Key-value pairs
-        Object.entries(this.selectedTargeting.key_value_pairs).forEach(([key, values]) => {
-            values.forEach(value => {
-                html += `
-                    <span class="selected-tag">
-                        ${key}: ${value}
-                        <button type="button" onclick="targetingWidget.removeKeyValue('${key}', '${value}')">×</button>
-                    </span>
-                `;
-            });
-        });
-
-        // Device types
-        this.selectedTargeting.device_type_any_of.forEach(device => {
-            html += `
-                <span class="selected-tag">
-                    Device: ${device}
-                    <button type="button" onclick="targetingWidget.removeDevice('${device}')">×</button>
-                </span>
-            `;
-        });
-
-        // Audiences
-        this.selectedTargeting.audiences_any_of.forEach(audienceId => {
-            html += `
-                <span class="selected-tag">
-                    Audience: ${audienceId}
-                    <button type="button" onclick="targetingWidget.removeAudience('${audienceId}')">×</button>
-                </span>
-            `;
-        });
-
-        if (html) {
-            tags.innerHTML = html;
-            summary.style.display = 'block';
-        } else {
-            summary.style.display = 'none';
-        }
-    }
-
-    removeKeyValue(key, value) {
-        this.toggleKeyValue(key, value, false);
-        // Update checkbox if visible
-        const checkbox = this.container.querySelector(`.value-checkbox[data-key="${key}"][data-value="${value}"] input`);
-        if (checkbox) checkbox.checked = false;
-    }
-
-    removeDevice(device) {
-        this.selectedTargeting.device_type_any_of =
-            this.selectedTargeting.device_type_any_of.filter(d => d !== device);
-        const checkbox = this.container.querySelector(`.device-type[value="${device}"]`);
-        if (checkbox) checkbox.checked = false;
-        this.updateSummary();
-        this.updateHiddenField();
-    }
-
-    removeAudience(audienceId) {
-        this.toggleAudience(audienceId, false);
-        const checkbox = this.container.querySelector(`.value-checkbox[data-audience="${audienceId}"] input`);
-        if (checkbox) checkbox.checked = false;
-    }
-
-    updateHiddenField() {
-        const hiddenField = document.getElementById('targeting-data');
-        if (hiddenField) {
-            // Only include non-empty targeting
-            const targeting = {};
-            if (Object.keys(this.selectedTargeting.key_value_pairs).length > 0) {
-                targeting.key_value_pairs = this.selectedTargeting.key_value_pairs;
-            }
-            if (this.selectedTargeting.geo_country_any_of.length > 0) {
-                targeting.geo_country_any_of = this.selectedTargeting.geo_country_any_of;
-            }
-            if (this.selectedTargeting.device_type_any_of.length > 0) {
-                targeting.device_type_any_of = this.selectedTargeting.device_type_any_of;
-            }
-            if (this.selectedTargeting.audiences_any_of.length > 0) {
-                targeting.audiences_any_of = this.selectedTargeting.audiences_any_of;
-            }
-
-            hiddenField.value = JSON.stringify(targeting);
-        }
-    }
-
-    getSelectedTargeting() {
-        return this.selectedTargeting;
-    }
-}
-
-// Initialize widget when tenant_id is available
-let targetingWidget;
-</script>
+<!-- Load External JavaScript -->
+<script src="{{ url_for('static', filename='js/targeting_widget.js') }}"></script>
