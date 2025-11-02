@@ -127,8 +127,8 @@
             This helps buyers understand who will see their ads and where they'll appear.
         </div>
 
-        {# Targeting widget temporarily disabled due to CI recursion error #}
-        {# {% include 'components/targeting_selector_widget.html' %} #}
+        {# Targeting widget v2 with external JavaScript #}
+        {% include 'components/targeting_selector_widget_v2.html' %}
         <input type="hidden" id="targeting-data" name="targeting_template" value="{{ product.targeting_template | tojson if product.targeting_template else '{}' }}">
 
         <div style="margin-top: 2rem;">
