@@ -544,8 +544,8 @@
             This helps buyers understand who will see their ads and where they'll appear.
         </div>
 
-        {# Targeting widget temporarily disabled due to CI recursion error #}
-        {# {% include 'components/targeting_selector_widget.html' %} #}
+        {# Testing minimal widget to isolate recursion issue #}
+        {% include 'components/targeting_selector_widget_minimal.html' %}
         <input type="hidden" id="targeting-data" name="targeting_template" value="">
 
         <div style="margin-top: 2rem;">
