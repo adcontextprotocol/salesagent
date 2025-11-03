@@ -236,6 +236,17 @@ async function loadKeyValues(keyId) {
 
         availableValues[keyId] = data.values || [];
 
+        // Debug: Log the first few values to see what data we're getting
+        if (data.values && data.values.length > 0) {
+            console.log('[DEBUG] Sample targeting values received:', data.values.slice(0, 3));
+            console.log('[DEBUG] First value structure:', {
+                id: data.values[0].id,
+                name: data.values[0].name,
+                display_name: data.values[0].display_name,
+                key_name: data.values[0].key_name
+            });
+        }
+
         // Sort values alphabetically by display name
         const sortedValues = [...data.values].sort((a, b) => {
             const nameA = (a.display_name || a.name).toLowerCase();
@@ -258,15 +269,34 @@ async function loadKeyValues(keyId) {
             const valueName = value.name || value.id;
             const displayName = value.display_name || '';
 
+            // Debug for first few values
+            if (sortedValues.indexOf(value) < 3) {
+                console.log(`[DEBUG] Value ${sortedValues.indexOf(value)}:`, {
+                    valueName,
+                    displayName,
+                    'displayName !== valueName': displayName !== valueName,
+                    'displayName.match(/^\\d+$/)': displayName ? displayName.match(/^\d+$/) : null
+                });
+            }
+
             // If display_name exists and is different from name, show both
             if (displayName && displayName !== valueName && !displayName.match(/^\d+$/)) {
-                option.textContent = `${valueName} - ${displayName}`;
+                option.textContent = `${displayName} (${valueName})`;
+                if (sortedValues.indexOf(value) < 3) {
+                    console.log(`[DEBUG] Using format: "${displayName} (${valueName})"`);
+                }
             } else if (displayName && !displayName.match(/^\d+$/)) {
                 // Display name is meaningful (not just a number), use it
                 option.textContent = displayName;
+                if (sortedValues.indexOf(value) < 3) {
+                    console.log(`[DEBUG] Using display name only: "${displayName}"`);
+                }
             } else {
                 // Fallback to name
                 option.textContent = valueName;
+                if (sortedValues.indexOf(value) < 3) {
+                    console.log(`[DEBUG] Using name only (fallback): "${valueName}"`);
+                }
             }
 
             option.dataset.keyId = keyId;
