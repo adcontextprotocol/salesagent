@@ -833,6 +833,23 @@ function debugFormSubmission(event) {
         // Don't prevent submission, just log the issue
     }
 
+    // Debug targeting data
+    const targetingField = document.getElementById('targeting-data');
+    if (targetingField) {
+        console.log('[DEBUG] Form submission - targeting_template field value:', targetingField.value);
+        try {
+            const targetingData = JSON.parse(targetingField.value);
+            console.log('[DEBUG] Form submission - parsed targeting data:', targetingData);
+            if (targetingData.key_value_pairs) {
+                console.log('[DEBUG] Form submission - key_value_pairs:', targetingData.key_value_pairs);
+            }
+        } catch (e) {
+            console.error('[DEBUG] Failed to parse targeting data:', e);
+        }
+    } else {
+        console.error('[DEBUG] targeting-data field not found!');
+    }
+
     // Continue with form submission
     return true;
 }
