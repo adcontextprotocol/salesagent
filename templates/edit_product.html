@@ -120,20 +120,17 @@
         </div>
         {% endif %}
 
-        <!-- Targeting Configuration Widget -->
-        <h3 style="margin-top: 2rem;">Targeting Configuration (Optional)</h3>
-        <div class="alert" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 1rem; margin-bottom: 1rem;">
-            <strong>💡 Tip:</strong> Configure custom targeting (key-value pairs) to define who will see ads for this product.
+        <!-- Custom Targeting (Optional) -->
+        <h3 style="margin-top: 2rem;">
+            <i class="fas fa-bullseye"></i> Custom Targeting (Optional)
+        </h3>
+        <div class="alert alert-info" style="background: #fff9e6; border-left: 4px solid #ffc107; padding: 1rem; margin-bottom: 1rem;">
+            <strong>💡 Who Sees This:</strong> Configure custom targeting (key-value pairs) to define which audience segments will see ads for this product.
+            <br><small style="color: #666;">Example: sport=basketball, genre=action, age=18-34</small>
         </div>
 
         {# Simple targeting selector - matches existing UI patterns #}
-        <div style="background: #ffcccc; padding: 1rem; border: 2px solid red; margin: 1rem 0;">
-            <strong>DEBUG: About to include targeting selector widget</strong>
-        </div>
         {% include 'components/targeting_selector_simple.html' %}
-        <div style="background: #ccffcc; padding: 1rem; border: 2px solid green; margin: 1rem 0;">
-            <strong>DEBUG: Finished including targeting selector widget</strong>
-        </div>
         <input type="hidden" id="targeting-data" name="targeting_template" value="{{ product.targeting_template | tojson if product.targeting_template else '{}' }}">
 
         <div style="margin-top: 2rem;">
