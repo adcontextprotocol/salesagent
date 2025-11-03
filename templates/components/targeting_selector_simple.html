@@ -123,7 +123,9 @@ let availableValues = {};
 document.addEventListener('DOMContentLoaded', async function() {
     try {
         const tenantId = '{{ tenant_id }}';
-        const response = await fetch(`/api/tenant/${tenantId}/targeting/all`);
+        const response = await fetch(`/api/tenant/${tenantId}/targeting/all`, {
+            credentials: 'same-origin'
+        });
         const data = await response.json();
 
         availableKeys = data.customKeys || [];
@@ -169,7 +171,9 @@ async function loadKeyValues(keyId) {
 
     try {
         const tenantId = '{{ tenant_id }}';
-        const response = await fetch(`/api/tenant/${tenantId}/targeting/values/${keyId}`);
+        const response = await fetch(`/api/tenant/${tenantId}/targeting/values/${keyId}`, {
+            credentials: 'same-origin'
+        });
         const data = await response.json();
 
         availableValues[keyId] = data.values || [];
