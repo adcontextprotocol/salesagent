@@ -724,6 +724,20 @@ def add_product(tenant_id):
                     gam_config_service = GAMProductConfigService()
                     implementation_config = gam_config_service.generate_default_config(delivery_type, formats)
 
+                # Parse targeting template from form (includes custom targeting key-value pairs)
+                targeting_template_json = form_data.get("targeting_template", "{}")
+                try:
+                    targeting_template = json.loads(targeting_template_json) if targeting_template_json else {}
+                except json.JSONDecodeError:
+                    targeting_template = {}
+
+                # If targeting template has key_value_pairs, copy to implementation_config for GAM
+                if targeting_template.get("key_value_pairs"):
+                    if "custom_targeting_keys" not in implementation_config:
+                        implementation_config["custom_targeting_keys"] = {}
+                    # Merge key-value pairs into implementation_config for GAM adapter
+                    implementation_config["custom_targeting_keys"].update(targeting_template["key_value_pairs"])
+
                 # Build product kwargs, excluding None values for JSON fields that have database constraints
                 product_kwargs = {
                     "product_id": form_data.get("product_id") or f"prod_{uuid.uuid4().hex[:8]}",
@@ -732,7 +746,7 @@ def add_product(tenant_id):
                     "description": form_data.get("description", ""),
                     "formats": formats,
                     "delivery_type": delivery_type,
-                    "targeting_template": {},
+                    "targeting_template": targeting_template,
                     "implementation_config": implementation_config,
                 }
 
@@ -1171,10 +1185,28 @@ def edit_product(tenant_id, product_id):
                         if form_data.get("priority"):
                             base_config["priority"] = int(form_data["priority"])
 
+                        # Parse targeting template from form (includes custom targeting key-value pairs)
+                        targeting_template_json = form_data.get("targeting_template", "{}")
+                        try:
+                            targeting_template = json.loads(targeting_template_json) if targeting_template_json else {}
+                        except json.JSONDecodeError:
+                            targeting_template = {}
+
+                        # If targeting template has key_value_pairs, copy to implementation_config for GAM
+                        if targeting_template.get("key_value_pairs"):
+                            if "custom_targeting_keys" not in base_config:
+                                base_config["custom_targeting_keys"] = {}
+                            # Merge key-value pairs into implementation_config for GAM adapter
+                            base_config["custom_targeting_keys"].update(targeting_template["key_value_pairs"])
+
+                        # Store targeting_template in product
+                        product.targeting_template = targeting_template
+
                         product.implementation_config = base_config
                         from sqlalchemy.orm import attributes
 
                         attributes.flag_modified(product, "implementation_config")
+                        attributes.flag_modified(product, "targeting_template")
 
                 # Update pricing options (AdCP PR #88)
                 # Note: min_spend is now stored in pricing_options[].min_spend_per_package
