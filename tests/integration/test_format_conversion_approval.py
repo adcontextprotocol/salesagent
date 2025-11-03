@@ -16,6 +16,7 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import (
     CurrencyLimit,
     MediaBuy,
+    MediaPackage,
     PricingOption,
     Principal,
     Product,
@@ -23,6 +24,23 @@ from src.core.database.models import (
     Tenant,
 )
 from src.core.tools.media_buy_create import execute_approved_media_buy
+
+
+def create_media_package(media_buy_id: str, package_id: str, product_id: str, budget: float, tenant_id: str):
+    """Helper function to create MediaPackage record (required for execute_approved_media_buy)."""
+    with get_db_session() as session:
+        media_package = MediaPackage(
+            media_buy_id=media_buy_id,
+            package_id=package_id,
+            budget=Decimal(str(budget)),
+            package_config={
+                "package_id": package_id,
+                "product_id": product_id,
+                "budget": budget,
+            },
+        )
+        session.add(media_package)
+        session.commit()
 
 
 @pytest.fixture
@@ -204,6 +222,9 @@ class TestFormatConversionApproval:
             session.add(media_buy)
             session.commit()
 
+        # Create MediaPackage record (required by execute_approved_media_buy)
+        create_media_package(media_buy_id, "pkg_1", product_id, 1000.0, test_tenant)
+
         # Execute approval
         success, message = execute_approved_media_buy(media_buy_id, test_tenant)
 
@@ -292,6 +313,9 @@ class TestFormatConversionApproval:
             session.add(media_buy)
             session.commit()
 
+        # Create MediaPackage record (required by execute_approved_media_buy)
+        create_media_package(media_buy_id, "pkg_1", product_id, 1000.0, test_tenant)
+
         # Execute approval - should fail
         success, message = execute_approved_media_buy(media_buy_id, test_tenant)
 
@@ -379,6 +403,9 @@ class TestFormatConversionApproval:
             session.add(media_buy)
             session.commit()
 
+        # Create MediaPackage record (required by execute_approved_media_buy)
+        create_media_package(media_buy_id, "pkg_1", product_id, 1000.0, test_tenant)
+
         # Execute approval - should fail
         success, message = execute_approved_media_buy(media_buy_id, test_tenant)
 
@@ -464,6 +491,9 @@ class TestFormatConversionApproval:
             )
             session.add(media_buy)
             session.commit()
+
+        # Create MediaPackage record (required by execute_approved_media_buy)
+        create_media_package(media_buy_id, "pkg_1", product_id, 1000.0, test_tenant)
 
         # Execute approval - should fail
         success, message = execute_approved_media_buy(media_buy_id, test_tenant)
@@ -554,6 +584,9 @@ class TestFormatConversionApproval:
             session.add(media_buy)
             session.commit()
 
+        # Create MediaPackage record (required by execute_approved_media_buy)
+        create_media_package(media_buy_id, "pkg_1", product_id, 1000.0, test_tenant)
+
         # Execute approval - should fail
         success, message = execute_approved_media_buy(media_buy_id, test_tenant)
 
@@ -641,6 +674,9 @@ class TestFormatConversionApproval:
             session.add(media_buy)
             session.commit()
 
+        # Create MediaPackage record (required by execute_approved_media_buy)
+        create_media_package(media_buy_id, "pkg_1", product_id, 1000.0, test_tenant)
+
         # Execute approval
         success, message = execute_approved_media_buy(media_buy_id, test_tenant)
 
@@ -727,6 +763,9 @@ class TestFormatConversionApproval:
             session.add(media_buy)
             session.commit()
 
+        # Create MediaPackage record (required by execute_approved_media_buy)
+        create_media_package(media_buy_id, "pkg_1", product_id, 1000.0, test_tenant)
+
         # Execute approval - should fail
         success, message = execute_approved_media_buy(media_buy_id, test_tenant)
 
@@ -807,6 +846,9 @@ class TestFormatConversionApproval:
             )
             session.add(media_buy)
             session.commit()
+
+        # Create MediaPackage record (required by execute_approved_media_buy)
+        create_media_package(media_buy_id, "pkg_1", product_id, 1000.0, test_tenant)
 
         # Execute approval - should fail
         success, message = execute_approved_media_buy(media_buy_id, test_tenant)
@@ -905,6 +947,9 @@ class TestFormatConversionApproval:
             session.add(media_buy)
             session.commit()
 
+        # Create MediaPackage record (required by execute_approved_media_buy)
+        create_media_package(media_buy_id, "pkg_1", product_id, 1000.0, test_tenant)
+
         # Execute approval - should succeed
         success, message = execute_approved_media_buy(media_buy_id, test_tenant)
 
@@ -985,6 +1030,9 @@ class TestFormatConversionApproval:
             )
             session.add(media_buy)
             session.commit()
+
+        # Create MediaPackage record (required by execute_approved_media_buy)
+        create_media_package(media_buy_id, "pkg_1", product_id, 1000.0, test_tenant)
 
         # Execute approval - should fail
         success, message = execute_approved_media_buy(media_buy_id, test_tenant)
