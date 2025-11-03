@@ -174,12 +174,16 @@ document.addEventListener('DOMContentLoaded', async function() {
                         })
                         .then(response => response.json())
                         .then(data => {
-                            // Map value names to display names
+                            // Map value names to display info (both name and display_name)
                             const values = data.values || [];
                             values.forEach(value => {
                                 const valueName = value.name || value.id;
                                 const displayName = value.display_name || valueName;
-                                window.targetingDisplayNames[keyName].values[valueName] = displayName;
+                                // Store both the name and display name for proper formatting
+                                window.targetingDisplayNames[keyName].values[valueName] = {
+                                    name: valueName,
+                                    displayName: displayName
+                                };
                             });
                         })
                         .catch(err => {
@@ -306,7 +310,11 @@ function addSelectedValues() {
                 values: {}
             };
         }
-        window.targetingDisplayNames[keyName].values[valueName] = valueDisplayName;
+        // Store both name and display name for proper formatting
+        window.targetingDisplayNames[keyName].values[valueName] = {
+            name: valueName,
+            displayName: valueDisplayName
+        };
 
         // Add value if not already present (using internal name for API)
         if (!selectedTargeting[keyName].includes(valueName)) {
@@ -333,8 +341,25 @@ function updateDisplay() {
         const keyDisplay = window.targetingDisplayNames?.[key]?.keyDisplay || key;
 
         values.forEach(value => {
-            // Get display name for value (fallback to internal name if not found)
-            const valueDisplay = window.targetingDisplayNames?.[key]?.values?.[value] || value;
+            // Get display info for value (can be object with name+displayName, or just a string)
+            const valueInfo = window.targetingDisplayNames?.[key]?.values?.[value];
+            let valueDisplay;
+
+            if (valueInfo && typeof valueInfo === 'object') {
+                // New format: object with name and displayName
+                const name = valueInfo.name || value;
+                const displayName = valueInfo.displayName || name;
+
+                // Format as "Display Name (ID)" if they're different, otherwise just show one
+                if (displayName && displayName !== name && !displayName.match(/^\d+$/)) {
+                    valueDisplay = `${displayName} (${name})`;
+                } else {
+                    valueDisplay = displayName || name;
+                }
+            } else {
+                // Legacy format: plain string or missing
+                valueDisplay = valueInfo || value;
+            }
 
             html += `
                 <span class="selected-item">
