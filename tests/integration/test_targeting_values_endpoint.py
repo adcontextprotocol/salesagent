@@ -81,18 +81,34 @@ def test_get_targeting_values_endpoint(authenticated_admin_session, integration_
     ]
 
     with patch("src.adapters.gam_inventory_discovery.GAMInventoryDiscovery") as mock_gam_class:
-        mock_gam_instance = MagicMock()
-        mock_gam_instance.discover_custom_targeting_values_for_key.return_value = mock_values
-        mock_gam_class.return_value = mock_gam_instance
+        with patch("googleads.ad_manager.AdManagerClient") as mock_ad_manager_client:
+            with patch("googleads.oauth2.GoogleRefreshTokenClient") as mock_oauth_client:
+                mock_gam_instance = MagicMock()
+                mock_gam_instance.discover_custom_targeting_values_for_key.return_value = mock_values
+                mock_gam_class.return_value = mock_gam_instance
 
-        # Make request to API endpoint
-        response = authenticated_admin_session.get(f"/api/tenant/test_tenant/targeting/values/{key_id}")
+                # Make request to API endpoint
+                response = authenticated_admin_session.get(f"/api/tenant/test_tenant/targeting/values/{key_id}")
 
-        # Validate GAM was called correctly
-        mock_gam_class.assert_called_once_with(
-            network_code="123456", refresh_token="test_refresh_token", tenant_id="test_tenant"
-        )
-        mock_gam_instance.discover_custom_targeting_values_for_key.assert_called_once_with(key_id, max_values=1000)
+                # Validate OAuth client was created correctly
+                mock_oauth_client.assert_called_once()
+                oauth_call_kwargs = mock_oauth_client.call_args.kwargs
+                assert oauth_call_kwargs["refresh_token"] == "test_refresh_token"
+
+                # Validate AdManager client was created correctly
+                mock_ad_manager_client.assert_called_once()
+                ad_manager_call_args = mock_ad_manager_client.call_args
+                assert ad_manager_call_args.kwargs["network_code"] == "123456"
+
+                # Validate GAMInventoryDiscovery was instantiated with client and tenant_id
+                mock_gam_class.assert_called_once()
+                gam_call_kwargs = mock_gam_class.call_args.kwargs
+                assert "client" in gam_call_kwargs
+                assert gam_call_kwargs["tenant_id"] == "test_tenant"
+
+                mock_gam_instance.discover_custom_targeting_values_for_key.assert_called_once_with(
+                    key_id, max_values=1000
+                )
 
     # Validate response
     assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.data}"

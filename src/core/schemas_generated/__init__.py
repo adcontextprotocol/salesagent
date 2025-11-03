@@ -1,4 +1,4 @@
-# SCHEMA_HASH: e0e8152aa4ab03df7efc72ffa03c965f
+# SCHEMA_HASH: 8ad0a9cfe4d61f0754f99f6a70266739
 """
 Auto-generated Pydantic models from AdCP JSON schemas.
 
