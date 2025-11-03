@@ -99,6 +99,8 @@ from src.core.tools import (
 )
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
+from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -321,12 +323,36 @@ class AdCPRequestHandler(RequestHandler):
                 return
 
             webhook_config = task.metadata["push_notification_config"]
-            webhook_service = get_protocol_webhook_service()
+            push_notification_service = get_protocol_webhook_service()
 
-            await webhook_service.send_notification(
-                webhook_config=webhook_config,
+            # build push notification config from step request data
+            from uuid import uuid4
+
+            cfg_dict = webhook_config.get("push_notification_config") or {}
+            url = cfg_dict.get("url")
+            if not url:
+                logger.info("[red]No push notification URL present; skipping webhook[/red]")
+                return
+
+            authentication = cfg_dict.get("authentication") or {}
+            schemes = authentication.get("schemes") or []
+            auth_type = schemes[0] if isinstance(schemes, list) and schemes else None
+            auth_token = authentication.get("credentials")
+
+            push_notification_config = DBPushNotificationConfig(
+                id=cfg_dict.get("id") or f"pnc_{uuid4().hex[:16]}",
+                tenant_id="",
+                principal_id="",
+                url=url,
+                authentication_type=auth_type,
+                authentication_token=auth_token,
+                is_active=True,
+            )
+
+            await push_notification_service.send_notification(
+                push_notification_config=push_notification_config,
                 task_id=task.id,
-                task_type="task",  # TODO: figure out how to pass task_type. We need to pass this, because adcp client expects 'task_type' to figure out how to handle the response.
+                task_type="task",
                 status=status,
                 result=result,
                 error=error,
@@ -913,8 +939,7 @@ class AdCPRequestHandler(RequestHandler):
         from a2a.types import InvalidParamsError, TaskNotFoundError
 
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
-
+        
         try:
             # Get authentication token
             auth_token = self._get_auth_token()

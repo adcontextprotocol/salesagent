@@ -71,6 +71,7 @@ from src.core.schemas import (
 )
 from src.core.testing_hooks import TestingContext, apply_testing_hooks, get_testing_context
 from src.core.tool_context import ToolContext
+from src.core.helpers.adapter_helpers import get_adapter
 
 # Import get_product_catalog from main (after refactor)
 from src.core.validation_helpers import format_validation_error
@@ -192,8 +193,6 @@ def _execute_adapter_media_buy_creation(
     Raises:
         Exception: If adapter creation fails (with detailed logging)
     """
-    from src.core.helpers.adapter_helpers import get_adapter
-
     # Get adapter using helper (loads config from DB and respects tenant context)
     dry_run = testing_ctx.dry_run if testing_ctx else False
     adapter = get_adapter(principal, dry_run=dry_run, testing_context=testing_ctx)
@@ -943,7 +942,6 @@ async def _validate_and_convert_format_ids(
     return validated_format_ids
 
 
-from src.core.helpers.adapter_helpers import get_adapter
 from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
 from src.services.slack_notifier import get_slack_notifier
 
@@ -2126,10 +2124,30 @@ async def _create_media_buy_impl(
                     clean_url = url.rstrip("/")
                     return f"{clean_url}/{fid}"
 
+                def _has_supported_key(url: str | None, fid: str) -> bool:
+                    """Check if (url, fid) is supported, allowing an '/mcp' URL variant.
+
+                    This does not mutate any of the underlying key sets; it only checks
+                    for the presence of either the exact key or an alternative where
+                    '/mcp' is appended to the end of the URL path.
+                    """
+                    # Exact match first
+                    if (url, fid) in product_format_keys:
+                        return True
+
+                    # If URL provided, also try with '/mcp' appended (idempotent if already present)
+                    if url:
+                        base = url.rstrip("/")
+                        mcp_url = base if base.endswith("/mcp") else f"{base}/mcp"
+                        if (mcp_url, fid) in product_format_keys:
+                            return True
+
+                    return False
+
                 unsupported_formats = [
                     format_display(url, fid)
                     for url, fid in requested_format_keys
-                    if (url, fid) not in product_format_keys
+                    if not _has_supported_key(url, fid)
                 ]
 
                 if unsupported_formats:

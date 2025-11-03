@@ -8,8 +8,9 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
+ 
 
-from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
+from src.core.database.models import ObjectWorkflowMapping, WorkflowStep, PushNotificationConfig as DBPushNotificationConfig
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 # TODO: Missing module - these functions need to be implemented
@@ -170,18 +171,57 @@ async def _call_webhook_for_creative_status(
             )
             return False
 
-        webhook_config = step.request_data.get("push_notification_config")
+
+        # build push notification config from step request data
+        # this is because we don't store push notification config in the database when creating the creative
+        from uuid import uuid4
+
+        cfg_dict = step.request_data.get("push_notification_config") or {}
+        url = cfg_dict.get("url")
+        if not url:
+            logger.error(f"No push notification URL present for creative {creative_id}")
+            return False
+
+        authentication = cfg_dict.get("authentication") or {}
+        schemes = authentication.get("schemes") or []
+        auth_type = schemes[0] if isinstance(schemes, list) and schemes else None
+        auth_token = authentication.get("credentials")
+
+        # Derive principal/tenant from the step context if available
+        context_obj = getattr(step, "context", None)
+        derived_tenant_id = tenant_id or (getattr(context_obj, "tenant_id", None))
+        derived_principal_id = getattr(context_obj, "principal_id", None)
+
+        push_notification_config = DBPushNotificationConfig(
+            id=cfg_dict.get("id") or f"pnc_{uuid4().hex[:16]}",
+            tenant_id=derived_tenant_id,
+            principal_id=derived_principal_id,
+            url=url,
+            authentication_type=auth_type,
+            authentication_token=auth_token,
+            is_active=True,
+        )
 
         service = get_protocol_webhook_service()
         try:
+            logger.info(f'tool name: {step.tool_name}')
+            logger.info(f'task id: {step.step_id}')
+            logger.info(f'task type: {step.tool_name}')
+            logger.info(f'status: completed')
+            logger.info(f'result: {result}')
+            logger.info(f'error: None')
+            logger.info(f'push_notification_config: {push_notification_config}')
+
             await service.send_notification(
-                webhook_config=webhook_config,
+                push_notification_config=push_notification_config,
                 task_id=step.step_id,
                 task_type=step.tool_name,
                 status="completed",
                 result=result,
                 error=None,
             )
+
+            logger.info(f"Successfully sent protocol webhook for creative {creative_id}")
 
             return True
         except Exception as send_e:

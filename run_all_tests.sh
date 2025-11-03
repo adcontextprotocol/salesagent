@@ -21,6 +21,19 @@ NC='\033[0m' # No Color
 
 # Determine test mode
 MODE=${1:-ci}  # Default to ci if no argument
+# Optional: pytest target (file/dir/node id) and extra args passthrough
+# Usage examples:
+#   ./run_all_tests.sh ci tests/integration/test_file.py -k TestName -v
+#   ./run_all_tests.sh ci tests/integration/test_file.py::TestClass::test_case -vv
+
+# Capture optional pytest target and args without shifting global arguments
+PYTEST_TARGET="${2:-}"
+if [ $# -ge 3 ]; then
+  # All args from the 3rd onward
+  PYTEST_ARGS="${@:3}"
+else
+  PYTEST_ARGS=""
+fi
 
 echo "🧪 Running tests in '$MODE' mode..."
 echo ""
@@ -267,48 +280,60 @@ if [ "$MODE" == "ci" ]; then
     echo -e "${GREEN}✅ Imports validated${NC}"
     echo ""
 
-    echo "🧪 Step 2/4: Running unit tests..."
-    # Unit tests should run without DATABASE_URL to ensure they don't accidentally use real DB
-    if ! env -u DATABASE_URL ADCP_TESTING=true uv run pytest tests/unit/ -q --tb=line -q; then
-        echo -e "${RED}❌ Unit tests failed!${NC}"
-        exit 1
+    # If a specific integration test target is provided, skip unit tests for speed
+    if [ -z "$PYTEST_TARGET" ]; then
+        echo "🧪 Step 2/4: Running unit tests..."
+        # Unit tests should run without DATABASE_URL to ensure they don't accidentally use real DB
+        if ! env -u DATABASE_URL ADCP_TESTING=true uv run pytest tests/unit/ -q --tb=line -q; then
+            echo -e "${RED}❌ Unit tests failed!${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}✅ Unit tests passed${NC}"
+        echo ""
+    else
+        echo "🧪 Skipping unit tests (specific integration target provided)"
     fi
-    echo -e "${GREEN}✅ Unit tests passed${NC}"
-    echo ""
 
     echo "🔗 Step 3/5: Running integration tests (WITH database)..."
-    # Run ALL integration tests (including requires_db) - exactly like CI
+    # Determine default target when none provided
+    TARGET_TO_RUN=${PYTEST_TARGET:-tests/integration/}
     # Keep DATABASE_URL set so integration tests can access the PostgreSQL container
-    if ! DATABASE_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/integration/ -q --tb=line -m "not requires_server and not skip_ci" \
+    if ! DATABASE_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest "$TARGET_TO_RUN" -q --tb=line -m "not requires_server and not skip_ci" \
           --ignore=tests/integration/test_a2a_error_responses.py \
           --ignore=tests/integration/test_a2a_skill_invocation.py \
-          --ignore=tests/integration/test_get_products_format_id_filter.py; then
+          --ignore=tests/integration/test_get_products_format_id_filter.py \
+          $PYTEST_ARGS; then
         echo -e "${RED}❌ Integration tests failed!${NC}"
         exit 1
     fi
     echo -e "${GREEN}✅ Integration tests passed${NC}"
     echo ""
 
-    echo "🔗 Step 4/5: Running integration_v2 tests (WITH database)..."
-    # Run integration_v2 tests with PostgreSQL access
-    if ! DATABASE_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/integration_v2/ -q --tb=line -q -m "not requires_server and not skip_ci"; then
-        echo -e "${RED}❌ Integration V2 tests failed!${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}✅ Integration V2 tests passed${NC}"
-    echo ""
+    # If a specific integration test target is provided, skip integration_v2 and e2e for speed
+    if [ -z "$PYTEST_TARGET" ]; then
+        echo "🔗 Step 4/5: Running integration_v2 tests (WITH database)..."
+        # Run integration_v2 tests with PostgreSQL access
+        if ! DATABASE_URL="$DATABASE_URL" ADCP_TESTING=true uv run pytest tests/integration_v2/ -q --tb=line -q -m "not requires_server and not skip_ci"; then
+            echo -e "${RED}❌ Integration V2 tests failed!${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}✅ Integration V2 tests passed${NC}"
+        echo ""
 
-    echo "�� Step 5/5: Running e2e tests..."
-    # E2E tests now use the ALREADY RUNNING Docker stack (no duplicate setup!)
-    # Pass flag to tell E2E tests to use existing services
-    # conftest.py will start/stop services with --build flag to ensure fresh images
-    # Explicitly set standard ports (overrides any workspace-specific CONDUCTOR_* vars)
-    if ! ADCP_SALES_PORT=$MCP_PORT A2A_PORT=$A2A_PORT ADMIN_UI_PORT=$ADMIN_PORT POSTGRES_PORT=$POSTGRES_PORT ADCP_TESTING=true GEMINI_API_KEY="${GEMINI_API_KEY:-test_key}" uv run pytest tests/e2e/ -q --tb=line -q; then
-        echo -e "${RED}❌ E2E tests failed!${NC}"
-        exit 1
+        echo "�� Step 5/5: Running e2e tests..."
+        # E2E tests now use the ALREADY RUNNING Docker stack (no duplicate setup!)
+        # Pass flag to tell E2E tests to use existing services
+        # conftest.py will start/stop services with --build flag to ensure fresh images
+        # Explicitly set standard ports (overrides any workspace-specific CONDUCTOR_* vars)
+        if ! ADCP_SALES_PORT=$MCP_PORT A2A_PORT=$A2A_PORT ADMIN_UI_PORT=$ADMIN_PORT POSTGRES_PORT=$POSTGRES_PORT ADCP_TESTING=true GEMINI_API_KEY="${GEMINI_API_KEY:-test_key}" uv run pytest tests/e2e/ -q --tb=line -q; then
+            echo -e "${RED}❌ E2E tests failed!${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}✅ E2E tests passed${NC}"
+        echo ""
+    else
+        echo "�� Skipping integration_v2 and e2e tests (specific integration target provided)"
     fi
-    echo -e "${GREEN}✅ E2E tests passed${NC}"
-    echo ""
 
     echo -e "${GREEN}✅ All CI tests passed!${NC}"
     echo ""
