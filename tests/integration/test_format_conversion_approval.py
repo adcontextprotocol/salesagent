@@ -338,6 +338,22 @@ class TestFormatConversionApproval:
                 },
             )
             session.add(media_buy)
+
+            db_package = MediaPackage(
+                media_buy_id=media_buy_id,
+                package_id="pkg_1",
+                package_config={
+                    "package_id": "pkg_1",
+                    "product_id": product_id,
+                    "budget": 1000.0,
+                },
+                # Dual-write: populate dedicated columns
+                budget=1000.0,
+                bid_price=10.0,
+                pacing=None,
+            )
+            session.add(db_package)
+            
             session.commit()
 
         # Create MediaPackage record (required by execute_approved_media_buy)
@@ -436,6 +452,23 @@ class TestFormatConversionApproval:
                 },
             )
             session.add(media_buy)
+
+            db_package = MediaPackage(
+                media_buy_id=media_buy_id,
+                package_id="pkg_1",
+                package_config={
+                    "package_id": "pkg_1",
+                    "product_id": product_id,
+                    "budget": 1000.0,
+                },
+                # Dual-write: populate dedicated columns
+                budget=1000.0,
+                bid_price=10.0,
+                pacing=None,
+            )
+            session.add(db_package)
+            
+
             session.commit()
 
         # Create MediaPackage record (required by execute_approved_media_buy)
@@ -533,6 +566,22 @@ class TestFormatConversionApproval:
                 },
             )
             session.add(media_buy)
+
+            db_package = MediaPackage(
+                media_buy_id=media_buy_id,
+                package_id="pkg_1",
+                package_config={
+                    "package_id": "pkg_1",
+                    "product_id": product_id,
+                    "budget": 1000.0,
+                },
+                # Dual-write: populate dedicated columns
+                budget=1000.0,
+                bid_price=10.0,
+                pacing=None,
+            )
+            session.add(db_package)
+
             session.commit()
 
         # Create MediaPackage record (required by execute_approved_media_buy)
@@ -633,6 +682,22 @@ class TestFormatConversionApproval:
                 },
             )
             session.add(media_buy)
+
+            db_package = MediaPackage(
+                media_buy_id=media_buy_id,
+                package_id="pkg_1",
+                package_config={
+                    "package_id": "pkg_1",
+                    "product_id": product_id,
+                    "budget": 1000.0,
+                },
+                # Dual-write: populate dedicated columns
+                budget=1000.0,
+                bid_price=10.0,
+                pacing=None,
+            )
+            session.add(db_package)
+
             session.commit()
 
         # Create MediaPackage record (required by execute_approved_media_buy)
@@ -731,6 +796,22 @@ class TestFormatConversionApproval:
                 },
             )
             session.add(media_buy)
+
+            db_package = MediaPackage(
+                media_buy_id=media_buy_id,
+                package_id="pkg_1",
+                package_config={
+                    "package_id": "pkg_1",
+                    "product_id": product_id,
+                    "budget": 1000.0,
+                },
+                # Dual-write: populate dedicated columns
+                budget=1000.0,
+                bid_price=10.0,
+                pacing=None,
+            )
+            session.add(db_package)
+
             session.commit()
 
         # Create MediaPackage record (required by execute_approved_media_buy)
@@ -828,6 +909,22 @@ class TestFormatConversionApproval:
                 },
             )
             session.add(media_buy)
+
+            db_package = MediaPackage(
+                media_buy_id=media_buy_id,
+                package_id="pkg_1",
+                package_config={
+                    "package_id": "pkg_1",
+                    "product_id": product_id,
+                    "budget": 1000.0,
+                },
+                # Dual-write: populate dedicated columns
+                budget=1000.0,
+                bid_price=10.0,
+                pacing=None,
+            )
+            session.add(db_package)
+
             session.commit()
 
         # Create MediaPackage record (required by execute_approved_media_buy)
@@ -920,6 +1017,22 @@ class TestFormatConversionApproval:
                 },
             )
             session.add(media_buy)
+
+            db_package = MediaPackage(
+                media_buy_id=media_buy_id,
+                package_id="pkg_1",
+                package_config={
+                    "package_id": "pkg_1",
+                    "product_id": product_id,
+                    "budget": 1000.0,
+                },
+                # Dual-write: populate dedicated columns
+                budget=1000.0,
+                bid_price=10.0,
+                pacing=None,
+            )
+            session.add(db_package)
+
             session.commit()
 
         # Create MediaPackage record (required by execute_approved_media_buy)
@@ -1028,6 +1141,22 @@ class TestFormatConversionApproval:
                 },
             )
             session.add(media_buy)
+
+            db_package = MediaPackage(
+                media_buy_id=media_buy_id,
+                package_id="pkg_1",
+                package_config={
+                    "package_id": "pkg_1",
+                    "product_id": product_id,
+                    "budget": 1000.0,
+                },
+                # Dual-write: populate dedicated columns
+                budget=1000.0,
+                bid_price=10.0,
+                pacing=None,
+            )
+            session.add(db_package)
+
             session.commit()
 
         # Create MediaPackage record (required by execute_approved_media_buy)
@@ -1120,6 +1249,22 @@ class TestFormatConversionApproval:
                 },
             )
             session.add(media_buy)
+
+            db_package = MediaPackage(
+                media_buy_id=media_buy_id,
+                package_id="pkg_1",
+                package_config={
+                    "package_id": "pkg_1",
+                    "product_id": product_id,
+                    "budget": 1000.0,
+                },
+                # Dual-write: populate dedicated columns
+                budget=1000.0,
+                bid_price=10.0,
+                pacing=None,
+            )
+            session.add(db_package)
+
             session.commit()
 
         # Create MediaPackage record (required by execute_approved_media_buy)
