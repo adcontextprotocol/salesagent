@@ -537,6 +537,9 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
             from src.core.database.models import Creative as CreativeModel
             from src.core.database.models import CreativeAssignment
 
+            # Import adapter helper here (used for both creative upload and order approval)
+            from src.core.helpers.adapter_helpers import get_adapter
+
             # Get all creative assignments for this media buy
             stmt_assignments = select(CreativeAssignment).filter_by(media_buy_id=media_buy_id)
             assignments = session.scalars(stmt_assignments).all()
@@ -620,9 +623,6 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                         continue
 
                     assets.append(asset)
-
-                # Import adapter helper at this scope level for both creative upload and order approval
-                from src.core.helpers.adapter_helpers import get_adapter
 
                 if assets:
                     logger.info(f"[APPROVAL] Uploading {len(assets)} creatives to adapter")
