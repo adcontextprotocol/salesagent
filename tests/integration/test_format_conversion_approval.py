@@ -161,6 +161,8 @@ class TestFormatConversionApproval:
         product_id = "prod_format_ref"
         media_buy_id = "mb_format_ref"
 
+        print(f"test_tenant: {test_tenant}")
+
         with get_db_session() as session:
             # Create product with FormatReference-style dict (has format_id field)
             product = Product(
@@ -193,6 +195,7 @@ class TestFormatConversionApproval:
 
             # Create media buy
             now = datetime.now(UTC)
+            
             media_buy = MediaBuy(
                 tenant_id=test_tenant,
                 media_buy_id=media_buy_id,
@@ -219,8 +222,26 @@ class TestFormatConversionApproval:
                     ],
                 },
             )
+
             session.add(media_buy)
+            
+            db_package = MediaPackage(
+                media_buy_id=media_buy_id,
+                package_id="pkg_1",
+                package_config={
+                    "package_id": "pkg_1",
+                    "product_id": product_id,
+                    "budget": 1000.0,
+                },
+                # Dual-write: populate dedicated columns
+                budget=1000.0,
+                bid_price=10.0,
+                pacing=None,
+            )
+            session.add(db_package)
+
             session.commit()
+            
 
         # Create MediaPackage record (required by execute_approved_media_buy)
         create_media_package(media_buy_id, "pkg_1", product_id, 1000.0, test_tenant)
@@ -229,21 +250,19 @@ class TestFormatConversionApproval:
         success, message = execute_approved_media_buy(media_buy_id, test_tenant)
 
         assert success, f"Approval should succeed: {message}"
-        # Success returns (True, None), so no message to check
-
+        
         # Cleanup
         with get_db_session() as session:
-            # Delete MediaPackage first (foreign key constraint to MediaBuy)
-            stmt_pkg = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
-            packages = session.scalars(stmt_pkg).all()
-            for pkg in packages:
-                session.delete(pkg)
-
-            # Then delete MediaBuy
+            stmt_packages = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            packages = session.scalars(stmt_packages).all()
+            for package in packages:
+                session.delete(package)
+            
             stmt_mb = select(MediaBuy).filter_by(media_buy_id=media_buy_id)
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
+            
 
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
