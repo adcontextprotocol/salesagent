@@ -22,6 +22,8 @@ from typing import Any
 
 import pytest
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
+
 from src.core.schemas import (
     Budget,
     Creative,

@@ -12,8 +12,9 @@ from sqlalchemy import inspect
 
 from src.core.database.models import MediaBuy, Product, Tenant
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
-@pytest.mark.integration
+
 class TestSchemaFieldValidation:
     """Validate that field references in code match actual database schema."""
 

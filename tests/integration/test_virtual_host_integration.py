@@ -1,6 +1,10 @@
 """Integration tests for virtual host functionality."""
 
+import pytest
+
 from src.core.config_loader import get_tenant_by_virtual_host
+
+pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 class TestVirtualHostIntegration:
