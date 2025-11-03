@@ -48,8 +48,6 @@ from a2a.types import (
 )
 from a2a.utils.errors import ServerError
 
-from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
-
 # Restore paths and add parent directories for local imports
 sys.path = original_path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -100,6 +98,8 @@ from src.core.tools import (
     update_performance_index_raw as core_update_performance_index_tool,
 )
 from src.services.protocol_webhook_service import get_protocol_webhook_service
+
+from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
