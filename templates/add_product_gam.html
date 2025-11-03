@@ -851,26 +851,48 @@ function debugFormSubmission(event) {
     }
 
     // Debug placement data
+    console.log('[DEBUG] ===== PLACEMENT DEBUG START =====');
     const placementsField = document.getElementById('targeted_placement_ids');
+    console.log('[DEBUG] Placements field element:', placementsField);
     if (placementsField) {
-        console.log('[DEBUG] Form submission - targeted_placement_ids field value:', placementsField.value);
-        const placementIds = placementsField.value.split(',').filter(Boolean);
+        const placementValue = placementsField.value;
+        console.log('[DEBUG] Form submission - targeted_placement_ids field value:', placementValue);
+        console.log('[DEBUG] Form submission - placement value type:', typeof placementValue);
+        console.log('[DEBUG] Form submission - placement value length:', placementValue.length);
+        const placementIds = placementValue.split(',').filter(Boolean);
         console.log('[DEBUG] Form submission - placement IDs array:', placementIds);
         console.log('[DEBUG] Form submission - placement count:', placementIds.length);
+
+        if (placementIds.length === 0 && placementValue) {
+            console.warn('[DEBUG] Placement field has value but split resulted in empty array!');
+        }
     } else {
         console.error('[DEBUG] targeted_placement_ids field not found!');
+        console.error('[DEBUG] Available form fields:', Array.from(document.getElementById('product-form').elements).map(e => e.id || e.name));
     }
+    console.log('[DEBUG] ===== PLACEMENT DEBUG END =====');
 
     // Debug ad unit data
+    console.log('[DEBUG] ===== AD UNIT DEBUG START =====');
     const adUnitsField = document.getElementById('targeted_ad_unit_ids');
+    console.log('[DEBUG] Ad units field element:', adUnitsField);
     if (adUnitsField) {
-        console.log('[DEBUG] Form submission - targeted_ad_unit_ids field value:', adUnitsField.value);
-        const adUnitIds = adUnitsField.value.split(',').filter(Boolean);
+        const adUnitValue = adUnitsField.value;
+        console.log('[DEBUG] Form submission - targeted_ad_unit_ids field value:', adUnitValue);
+        console.log('[DEBUG] Form submission - ad unit value type:', typeof adUnitValue);
+        console.log('[DEBUG] Form submission - ad unit value length:', adUnitValue.length);
+        const adUnitIds = adUnitValue.split(',').filter(Boolean);
         console.log('[DEBUG] Form submission - ad unit IDs array:', adUnitIds);
         console.log('[DEBUG] Form submission - ad unit count:', adUnitIds.length);
+
+        if (adUnitIds.length === 0 && adUnitValue) {
+            console.warn('[DEBUG] Ad unit field has value but split resulted in empty array!');
+        }
     } else {
         console.error('[DEBUG] targeted_ad_unit_ids field not found!');
+        console.error('[DEBUG] Available form fields:', Array.from(document.getElementById('product-form').elements).map(e => e.id || e.name));
     }
+    console.log('[DEBUG] ===== AD UNIT DEBUG END =====');
 
     // Continue with form submission
     return true;
