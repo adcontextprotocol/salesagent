@@ -186,13 +186,26 @@ def get_targeting_values(tenant_id, key_id):
                 return jsonify({"error": "GAM not configured for this tenant"}), 400
 
             # Initialize GAM adapter to query values
+            import os
+
+            from googleads import ad_manager, oauth2
+
             from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
 
-            gam_client = GAMInventoryDiscovery(
-                network_code=adapter_config.gam_network_code,
+            # Create OAuth client
+            oauth2_client = oauth2.GoogleRefreshTokenClient(
+                client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
+                client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
                 refresh_token=adapter_config.gam_refresh_token,
-                tenant_id=tenant_id,
             )
+
+            # Create Ad Manager client
+            gam_ad_manager_client = ad_manager.AdManagerClient(
+                oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
+            )
+
+            # Create inventory discovery instance
+            gam_client = GAMInventoryDiscovery(client=gam_ad_manager_client, tenant_id=tenant_id)
 
             # Fetch values from GAM (max 1000 to avoid timeout)
             gam_values = gam_client.discover_custom_targeting_values_for_key(key_id, max_values=1000)
