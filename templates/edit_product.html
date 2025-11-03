@@ -10,7 +10,7 @@
     <div class="alert alert-error">{{ error }}</div>
     {% endif %}
 
-    <form method="POST">
+    <form method="POST" onsubmit="debugFormSubmission(event)">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label for="name">Product Name *</label>
@@ -141,6 +141,29 @@
 </div>
 
 <script>
+// Debug form submission to diagnose targeting persistence issue
+function debugFormSubmission(event) {
+    // Log all form data for debugging
+    const targetingField = document.getElementById('targeting-data');
+    if (targetingField) {
+        console.log('[DEBUG] Form submission - targeting_template field value:', targetingField.value);
+        try {
+            const targetingData = JSON.parse(targetingField.value);
+            console.log('[DEBUG] Form submission - parsed targeting data:', targetingData);
+            if (targetingData.key_value_pairs) {
+                console.log('[DEBUG] Form submission - key_value_pairs:', targetingData.key_value_pairs);
+            }
+        } catch (e) {
+            console.error('[DEBUG] Failed to parse targeting data:', e);
+        }
+    } else {
+        console.error('[DEBUG] targeting-data field not found!');
+    }
+
+    // Let form submit normally
+    return true;
+}
+
 function updatePricingFields() {
     const deliveryType = document.getElementById('delivery_type').value;
     const cpmGroup = document.getElementById('cpm-group');
