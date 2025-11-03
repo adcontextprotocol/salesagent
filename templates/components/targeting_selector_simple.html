@@ -130,6 +130,13 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         availableKeys = data.customKeys || [];
 
+        // Sort keys alphabetically by display name
+        availableKeys.sort((a, b) => {
+            const nameA = (a.display_name || a.name).toLowerCase();
+            const nameB = (b.display_name || b.name).toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+
         // Populate keys dropdown
         const keySelect = document.getElementById('targeting-key-select');
         availableKeys.forEach(key => {
