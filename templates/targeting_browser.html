@@ -4,6 +4,11 @@
 
 {% block content %}
 <style>
+    /* Ensure tab-content wrapper is always visible */
+    .targeting-browser .tab-content {
+        display: block !important;
+    }
+
     /* Fix Bootstrap tab visibility - allow proper tab switching */
     .targeting-browser .tab-pane {
         display: none;
