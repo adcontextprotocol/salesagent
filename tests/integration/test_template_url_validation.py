@@ -76,6 +76,10 @@ class TestTemplateUrlValidation:
                             test_params["property_id"] = "test_property"
                         if "config_id" in params:
                             test_params["config_id"] = "test_config"
+                        if "agent_id" in params:
+                            test_params["agent_id"] = "test_agent"
+                        if "filename" in params:
+                            test_params["filename"] = "test.js"
 
                         # Try to build the URL
                         url = url_for(endpoint, **test_params)
