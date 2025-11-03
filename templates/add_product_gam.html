@@ -850,6 +850,28 @@ function debugFormSubmission(event) {
         console.error('[DEBUG] targeting-data field not found!');
     }
 
+    // Debug placement data
+    const placementsField = document.getElementById('targeted_placement_ids');
+    if (placementsField) {
+        console.log('[DEBUG] Form submission - targeted_placement_ids field value:', placementsField.value);
+        const placementIds = placementsField.value.split(',').filter(Boolean);
+        console.log('[DEBUG] Form submission - placement IDs array:', placementIds);
+        console.log('[DEBUG] Form submission - placement count:', placementIds.length);
+    } else {
+        console.error('[DEBUG] targeted_placement_ids field not found!');
+    }
+
+    // Debug ad unit data
+    const adUnitsField = document.getElementById('targeted_ad_unit_ids');
+    if (adUnitsField) {
+        console.log('[DEBUG] Form submission - targeted_ad_unit_ids field value:', adUnitsField.value);
+        const adUnitIds = adUnitsField.value.split(',').filter(Boolean);
+        console.log('[DEBUG] Form submission - ad unit IDs array:', adUnitIds);
+        console.log('[DEBUG] Form submission - ad unit count:', adUnitIds.length);
+    } else {
+        console.error('[DEBUG] targeted_ad_unit_ids field not found!');
+    }
+
     // Continue with form submission
     return true;
 }
