@@ -233,11 +233,19 @@ class TestFormatConversionApproval:
 
         # Cleanup
         with get_db_session() as session:
+            # Delete MediaPackage first (foreign key constraint to MediaBuy)
+            stmt_pkg = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            packages = session.scalars(stmt_pkg).all()
+            for pkg in packages:
+                session.delete(pkg)
+
+            # Then delete MediaBuy
             stmt_mb = select(MediaBuy).filter_by(media_buy_id=media_buy_id)
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
 
+            # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
             if product:
@@ -325,11 +333,19 @@ class TestFormatConversionApproval:
 
         # Cleanup
         with get_db_session() as session:
+            # Delete MediaPackage first (foreign key constraint to MediaBuy)
+            stmt_pkg = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            packages = session.scalars(stmt_pkg).all()
+            for pkg in packages:
+                session.delete(pkg)
+
+            # Then delete MediaBuy
             stmt_mb = select(MediaBuy).filter_by(media_buy_id=media_buy_id)
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
 
+            # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
             if product:
@@ -414,11 +430,19 @@ class TestFormatConversionApproval:
 
         # Cleanup
         with get_db_session() as session:
+            # Delete MediaPackage first (foreign key constraint to MediaBuy)
+            stmt_pkg = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            packages = session.scalars(stmt_pkg).all()
+            for pkg in packages:
+                session.delete(pkg)
+
+            # Then delete MediaBuy
             stmt_mb = select(MediaBuy).filter_by(media_buy_id=media_buy_id)
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
 
+            # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
             if product:
@@ -504,11 +528,19 @@ class TestFormatConversionApproval:
 
         # Cleanup
         with get_db_session() as session:
+            # Delete MediaPackage first (foreign key constraint to MediaBuy)
+            stmt_pkg = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            packages = session.scalars(stmt_pkg).all()
+            for pkg in packages:
+                session.delete(pkg)
+
+            # Then delete MediaBuy
             stmt_mb = select(MediaBuy).filter_by(media_buy_id=media_buy_id)
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
 
+            # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
             if product:
@@ -596,11 +628,19 @@ class TestFormatConversionApproval:
 
         # Cleanup
         with get_db_session() as session:
+            # Delete MediaPackage first (foreign key constraint to MediaBuy)
+            stmt_pkg = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            packages = session.scalars(stmt_pkg).all()
+            for pkg in packages:
+                session.delete(pkg)
+
+            # Then delete MediaBuy
             stmt_mb = select(MediaBuy).filter_by(media_buy_id=media_buy_id)
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
 
+            # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
             if product:
@@ -685,11 +725,19 @@ class TestFormatConversionApproval:
 
         # Cleanup
         with get_db_session() as session:
+            # Delete MediaPackage first (foreign key constraint to MediaBuy)
+            stmt_pkg = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            packages = session.scalars(stmt_pkg).all()
+            for pkg in packages:
+                session.delete(pkg)
+
+            # Then delete MediaBuy
             stmt_mb = select(MediaBuy).filter_by(media_buy_id=media_buy_id)
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
 
+            # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
             if product:
@@ -774,11 +822,19 @@ class TestFormatConversionApproval:
 
         # Cleanup
         with get_db_session() as session:
+            # Delete MediaPackage first (foreign key constraint to MediaBuy)
+            stmt_pkg = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            packages = session.scalars(stmt_pkg).all()
+            for pkg in packages:
+                session.delete(pkg)
+
+            # Then delete MediaBuy
             stmt_mb = select(MediaBuy).filter_by(media_buy_id=media_buy_id)
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
 
+            # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
             if product:
@@ -858,11 +914,19 @@ class TestFormatConversionApproval:
 
         # Cleanup
         with get_db_session() as session:
+            # Delete MediaPackage first (foreign key constraint to MediaBuy)
+            stmt_pkg = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            packages = session.scalars(stmt_pkg).all()
+            for pkg in packages:
+                session.delete(pkg)
+
+            # Then delete MediaBuy
             stmt_mb = select(MediaBuy).filter_by(media_buy_id=media_buy_id)
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
 
+            # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
             if product:
@@ -958,11 +1022,19 @@ class TestFormatConversionApproval:
 
         # Cleanup
         with get_db_session() as session:
+            # Delete MediaPackage first (foreign key constraint to MediaBuy)
+            stmt_pkg = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            packages = session.scalars(stmt_pkg).all()
+            for pkg in packages:
+                session.delete(pkg)
+
+            # Then delete MediaBuy
             stmt_mb = select(MediaBuy).filter_by(media_buy_id=media_buy_id)
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
 
+            # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
             if product:
@@ -1042,11 +1114,19 @@ class TestFormatConversionApproval:
 
         # Cleanup
         with get_db_session() as session:
+            # Delete MediaPackage first (foreign key constraint to MediaBuy)
+            stmt_pkg = select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+            packages = session.scalars(stmt_pkg).all()
+            for pkg in packages:
+                session.delete(pkg)
+
+            # Then delete MediaBuy
             stmt_mb = select(MediaBuy).filter_by(media_buy_id=media_buy_id)
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
 
+            # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
             if product:
