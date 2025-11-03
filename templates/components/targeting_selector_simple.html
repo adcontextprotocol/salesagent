@@ -216,7 +216,23 @@ async function loadKeyValues(keyId) {
         sortedValues.forEach(value => {
             const option = document.createElement('option');
             option.value = value.id;
-            option.textContent = value.display_name || value.name;
+
+            // Show both name and display_name for context
+            // Format: "name - display_name" or just "display_name" if name is numeric/ID-like
+            const valueName = value.name || value.id;
+            const displayName = value.display_name || '';
+
+            // If display_name exists and is different from name, show both
+            if (displayName && displayName !== valueName && !displayName.match(/^\d+$/)) {
+                option.textContent = `${valueName} - ${displayName}`;
+            } else if (displayName && !displayName.match(/^\d+$/)) {
+                // Display name is meaningful (not just a number), use it
+                option.textContent = displayName;
+            } else {
+                // Fallback to name
+                option.textContent = valueName;
+            }
+
             option.dataset.keyId = keyId;
             option.dataset.keyName = value.key_name || '';
             option.dataset.keyDisplayName = keyDisplayName;

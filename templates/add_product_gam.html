@@ -84,15 +84,18 @@
 
         <!-- Section 3: Creative Formats -->
         <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Creative Formats</h3>
-        <p style="color: #666; margin-bottom: 1.5rem;">Select ad units first, then choose matching creative formats. Click the ⓘ icon on each format to learn more.</p>
+        <p style="color: #666; margin-bottom: 0.5rem;">Choose creative formats for this product. Click the ⓘ icon on each format to learn more.</p>
 
-        <!-- Message shown before ad units are selected -->
-        <div id="formats-placeholder" style="{% if product and product.formats %}display: none;{% else %}padding: 2rem; background: #f8f9fa; border: 2px dashed #ddd; border-radius: 4px; text-align: center; color: #666;{% endif %}">
-            <p style="margin: 0; font-size: 1.1rem;">↑ Select ad units above to see compatible creative formats</p>
+        <!-- Auto-map button (shown when inventory is selected) -->
+        <div id="auto-map-button-container" style="margin-bottom: 1rem;">
+            <button type="button" id="auto-map-formats-btn" class="btn btn-secondary btn-sm" onclick="autoMapFormatsToInventory()" style="display: none;">
+                <span id="auto-map-icon">🎯</span> Map to Selected Inventory
+            </button>
+            <span id="auto-map-status" style="margin-left: 0.5rem; color: #666; font-size: 0.9rem;"></span>
         </div>
 
-        <!-- Search box for formats (shown when formats are visible) -->
-        <div id="format-search-box" style="display: {% if product and product.formats %}block{% else %}none{% endif %}; margin-bottom: 1rem;">
+        <!-- Search box for formats -->
+        <div id="format-search-box" style="margin-bottom: 1rem;">
             <input type="text" id="format-search-input" placeholder="Search formats by name, type, or size..."
                    style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;"
                    onkeyup="filterGAMFormats()">
@@ -194,133 +197,6 @@
     </form>
 </div>
 
-<!-- ============================================================
-     ASSIGNED INVENTORY (Ad Units & Placements) - WHERE ADS APPEAR
-
-     This section shows which ad units and placements from GAM are assigned
-     to this product. This controls WHERE ads will appear on your properties.
-
-     This is SEPARATE from custom targeting (which controls WHO sees the ads).
-
-     Example: If you want ads to appear on your homepage banner and sidebar,
-     you'd assign those ad units here via the Inventory Browser.
-
-     Note: This section only appears in EDIT mode, not when creating a new product.
-     ============================================================ -->
-{% if product %}
-<div class="card" id="inventory" style="margin-top: 2rem;">
-    <h3 style="margin-top: 0; border-bottom: 2px solid #28a745; padding-bottom: 0.5rem;">📦 Assigned Inventory</h3>
-    <p style="color: #666; margin-bottom: 1.5rem;">
-        <strong>Where Ads Appear:</strong> Ad units and placements from GAM that are assigned to this product.
-        <br><small style="color: #666;">Example: Homepage Banner, Sidebar Ad Unit, Article Page Placement</small>
-        <br>
-        <a href="{{ url_for('inventory.inventory_browser', tenant_id=tenant_id) }}" style="color: #007bff; text-decoration: none;">
-            Browse Inventory →
-        </a>
-    </p>
-
-    {% if assigned_inventory and assigned_inventory|length > 0 %}
-    <table style="width: 100%; margin-top: 1rem;">
-        <thead>
-            <tr>
-                <th>Type</th>
-                <th>Name</th>
-                <th>Path</th>
-                <th>Inventory ID</th>
-                <th>Primary</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in assigned_inventory %}
-            <tr id="inventory-row-{{ item.mapping_id }}">
-                <td>
-                    <span class="badge" style="background: {% if item.inventory_type == 'ad_unit' %}#007bff{% else %}#28a745{% endif %};">
-                        {{ item.inventory_type|replace('_', ' ')|title }}
-                    </span>
-                </td>
-                <td><strong>{{ item.name }}</strong></td>
-                <td>
-                    {% if item.path %}
-                        <code style="font-size: 0.85rem; color: #666;">{{ ' > '.join(item.path) }}</code>
-                    {% else %}
-                        <span style="color: #999;">-</span>
-                    {% endif %}
-                </td>
-                <td><code style="font-size: 0.85rem;">{{ item.inventory_id }}</code></td>
-                <td>
-                    {% if item.is_primary %}
-                        <span class="badge" style="background: #ffc107; color: #333;">Primary</span>
-                    {% else %}
-                        <span style="color: #999;">-</span>
-                    {% endif %}
-                </td>
-                <td>
-                    <button onclick="unassignInventory({{ item.mapping_id }}, '{{ item.name }}')"
-                            class="btn btn-sm"
-                            style="background: #dc3545; color: white; border: none; padding: 0.25rem 0.75rem;">
-                        Remove
-                    </button>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <div style="padding: 2rem; background: #f8f9fa; border: 2px dashed #ddd; border-radius: 4px; text-align: center; color: #666;">
-        <p style="margin: 0; font-size: 1.1rem;">No inventory assigned to this product yet</p>
-        <p style="margin: 0.5rem 0 0 0;">
-            Use the
-            <a href="{{ url_for('inventory.inventory_browser', tenant_id=tenant_id) }}" style="color: #007bff; text-decoration: none; font-weight: 600;">
-                Inventory Browser
-            </a>
-            to assign ad units or placements to this product
-        </p>
-    </div>
-    {% endif %}
-</div>
-
-<script>
-async function unassignInventory(mappingId, itemName) {
-    if (!confirm(`Remove "${itemName}" from this product?`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/tenant/{{ tenant_id }}/products/{{ product.product_id }}/inventory/${mappingId}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
-
-        const result = await response.json();
-
-        if (response.ok && result.success) {
-            // Remove the row from the table
-            const row = document.getElementById(`inventory-row-${mappingId}`);
-            if (row) {
-                row.remove();
-            }
-
-            // Check if table is now empty
-            const tbody = document.querySelector('#inventory tbody');
-            if (tbody && tbody.children.length === 0) {
-                // Reload page to show "no inventory" message
-                window.location.reload();
-            }
-
-            alert('Inventory removed successfully');
-        } else {
-            alert(`Failed to remove inventory: ${result.message || 'Unknown error'}`);
-        }
-    } catch (error) {
-        console.error('Error removing inventory:', error);
-        alert('An error occurred while removing inventory');
-    }
-}
-</script>
-{% endif %}
 
 <style>
 .format-card input[type="checkbox"]:checked + strong {
@@ -425,13 +301,13 @@ function applyInventorySelection() {
     if (currentPickerType === 'ad_unit') {
         document.getElementById('targeted_ad_unit_ids').value = selectedIds.join(',');
         updateSelectedDisplay('selected-ad-units', selectedNames, selectedIds);
-
-        // Auto-suggest creative formats based on ad unit sizes
-        autoSuggestFormats(checkboxes);
     } else {
         document.getElementById('targeted_placement_ids').value = selectedIds.join(',');
         updateSelectedDisplay('selected-placements', selectedNames, selectedIds);
     }
+
+    // Show/hide auto-map button based on inventory selection
+    updateAutoMapButton();
 
     closeInventoryPicker();
 }
@@ -529,23 +405,31 @@ async function autoSuggestFormats(selectedCheckboxes) {
         }
     }
 
-    // Hide placeholder and show formats container
-    const placeholder = document.getElementById('formats-placeholder');
+    // Always show formats, but only show search targets if we have constraints
     const container = document.getElementById('formats-container');
     const searchTargets = document.getElementById('format-search-targets');
     const searchTargetList = document.getElementById('search-target-list');
     const searchBox = document.getElementById('format-search-box');
 
+    container.style.display = 'block';
+    searchBox.style.display = 'block';
+
+    // If no constraints, show all formats without filtering
     if (adUnitConstraints.length === 0) {
-        placeholder.style.display = 'block';
-        container.style.display = 'none';
         searchTargets.style.display = 'none';
-        searchBox.style.display = 'none';
+        // Show all formats
+        const formatCheckboxes = document.querySelectorAll('#formats-container input[type="checkbox"]');
+        formatCheckboxes.forEach(checkbox => {
+            const card = checkbox.closest('.format-card');
+            if (card) {
+                card.style.display = 'block';
+            }
+        });
+        updateFormatSummary(formatCheckboxes.length);
         return;
     }
 
-    placeholder.style.display = 'none';
-    searchBox.style.display = 'block';
+    searchTargets.style.display = 'block';
 
     // Helper: Check if format fits within any ad unit constraint
     function formatFitsConstraint(formatWidth, formatHeight, formatType) {
@@ -662,6 +546,76 @@ async function autoSuggestFormats(selectedCheckboxes) {
     }
 }
 
+// Update auto-map button visibility based on selected inventory
+function updateAutoMapButton() {
+    const adUnits = document.getElementById('targeted_ad_unit_ids').value;
+    const placements = document.getElementById('targeted_placement_ids').value;
+    const button = document.getElementById('auto-map-formats-btn');
+    const status = document.getElementById('auto-map-status');
+
+    // Show button if either ad units or placements are selected
+    if (adUnits || placements) {
+        button.style.display = 'inline-block';
+        status.textContent = '';
+    } else {
+        button.style.display = 'none';
+        status.textContent = '';
+    }
+}
+
+// Wrapper function called by the "Map to Selected Inventory" button
+async function autoMapFormatsToInventory() {
+    const button = document.getElementById('auto-map-formats-btn');
+    const icon = document.getElementById('auto-map-icon');
+    const status = document.getElementById('auto-map-status');
+
+    // Collect all selected ad unit checkboxes
+    const adUnitCheckboxes = Array.from(document.querySelectorAll('#inventory-picker-container input[type="checkbox"]:checked'));
+
+    if (adUnitCheckboxes.length === 0) {
+        // No ad units selected in picker, but there might be IDs in the hidden field
+        // For now, just show a message
+        status.textContent = 'No ad units found to map';
+        status.style.color = '#dc3545';
+        setTimeout(() => {
+            status.textContent = '';
+        }, 3000);
+        return;
+    }
+
+    // Show loading state
+    button.disabled = true;
+    icon.textContent = '⏳';
+    status.textContent = 'Mapping...';
+    status.style.color = '#666';
+
+    try {
+        await autoSuggestFormats(adUnitCheckboxes);
+
+        // Show success
+        icon.textContent = '✅';
+        status.textContent = 'Formats mapped successfully!';
+        status.style.color = '#28a745';
+
+        setTimeout(() => {
+            icon.textContent = '🎯';
+            status.textContent = '';
+        }, 3000);
+    } catch (error) {
+        console.error('Error mapping formats:', error);
+        icon.textContent = '❌';
+        status.textContent = 'Error mapping formats';
+        status.style.color = '#dc3545';
+
+        setTimeout(() => {
+            icon.textContent = '🎯';
+            status.textContent = '';
+        }, 3000);
+    } finally {
+        button.disabled = false;
+    }
+}
+
 function updateFormatSummary(matchingCount) {
     const summary = document.getElementById('format-summary');
     const countSpan = document.getElementById('format-count');
@@ -748,6 +702,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 300);
         });
     }
+
+    // Show auto-map button if inventory is already selected (edit mode)
+    updateAutoMapButton();
 
     // Add event listeners to format checkboxes to update summary
     const formatsContainer = document.getElementById('formats-container');
@@ -874,6 +831,23 @@ function debugFormSubmission(event) {
     if (formatValues.length === 0) {
         console.error('[DEBUG] NO FORMATS CHECKED ON SUBMIT!');
         // Don't prevent submission, just log the issue
+    }
+
+    // Debug targeting data
+    const targetingField = document.getElementById('targeting-data');
+    if (targetingField) {
+        console.log('[DEBUG] Form submission - targeting_template field value:', targetingField.value);
+        try {
+            const targetingData = JSON.parse(targetingField.value);
+            console.log('[DEBUG] Form submission - parsed targeting data:', targetingData);
+            if (targetingData.key_value_pairs) {
+                console.log('[DEBUG] Form submission - key_value_pairs:', targetingData.key_value_pairs);
+            }
+        } catch (e) {
+            console.error('[DEBUG] Failed to parse targeting data:', e);
+        }
+    } else {
+        console.error('[DEBUG] targeting-data field not found!');
     }
 
     // Continue with form submission
