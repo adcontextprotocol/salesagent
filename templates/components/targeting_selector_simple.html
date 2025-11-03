@@ -150,23 +150,55 @@ document.addEventListener('DOMContentLoaded', async function() {
         const existingData = document.getElementById('targeting-data').value;
         if (existingData && existingData !== '{}') {
             try {
-                selectedTargeting = JSON.parse(existingData).key_value_pairs || {};
+                const parsedData = JSON.parse(existingData);
+                selectedTargeting = parsedData.key_value_pairs || {};
 
                 // Build display names for existing targeting
-                // Note: For existing data, we'll show the internal names until values are loaded
-                // This is acceptable since it's rare and will be corrected on next selection
+                // We need to load the values from the API to get display names
                 window.targetingDisplayNames = {};
+
+                // Load display names for all existing keys
+                const keyLoadPromises = [];
                 for (const keyName of Object.keys(selectedTargeting)) {
                     const key = availableKeys.find(k => k.name === keyName);
                     if (key) {
+                        // Initialize display names structure
                         window.targetingDisplayNames[keyName] = {
                             keyDisplay: key.display_name || key.name,
                             values: {}
                         };
+
+                        // Load values for this key to get display names
+                        const promise = fetch(`{{ script_name }}/api/tenant/${tenantId}/targeting/values/${key.id}`, {
+                            credentials: 'same-origin'
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            // Map value names to display names
+                            const values = data.values || [];
+                            values.forEach(value => {
+                                const valueName = value.name || value.id;
+                                const displayName = value.display_name || valueName;
+                                window.targetingDisplayNames[keyName].values[valueName] = displayName;
+                            });
+                        })
+                        .catch(err => {
+                            console.warn(`Failed to load display names for key ${keyName}:`, err);
+                        });
+
+                        keyLoadPromises.push(promise);
                     }
                 }
 
-                updateDisplay();
+                // Wait for all display names to load, then update display
+                Promise.all(keyLoadPromises).then(() => {
+                    updateDisplay();
+                }).catch(err => {
+                    console.error('Error loading targeting display names:', err);
+                    // Still show the targeting, just with internal names
+                    updateDisplay();
+                });
+
             } catch (e) {
                 console.error('Error parsing existing targeting:', e);
             }
