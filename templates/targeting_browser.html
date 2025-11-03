@@ -529,17 +529,17 @@ function renderAudiences() {
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <h5 class="card-title">${audience.name}</h5>
-                        <span class="badge bg-${audience.type === 'FIRST_PARTY' ? 'success' : 'info'}">
+                        ${audience.type ? `<span class="badge bg-${audience.type === 'FIRST_PARTY' ? 'success' : 'info'}">
                             ${audience.type.replace('_', ' ')}
-                        </span>
+                        </span>` : ''}
                     </div>
                     ${audience.description ? `<p class="card-text small">${audience.description}</p>` : ''}
                     <div class="mt-auto">
                         ${audience.size ? `<p class="mb-1"><small>Size: ${audience.size.toLocaleString()}</small></p>` : ''}
                         ${audience.data_provider_name ? `<p class="mb-1"><small>Provider: ${audience.data_provider_name}</small></p>` : ''}
                         <p class="mb-0">
-                            <span class="badge bg-secondary">${audience.segment_type}</span>
-                            ${audience.status !== 'ACTIVE' ? `<span class="badge bg-warning">${audience.status}</span>` : ''}
+                            ${audience.segment_type ? `<span class="badge bg-secondary">${audience.segment_type}</span>` : ''}
+                            ${audience.status && audience.status !== 'ACTIVE' ? `<span class="badge bg-warning">${audience.status}</span>` : ''}
                         </p>
                     </div>
                 </div>
