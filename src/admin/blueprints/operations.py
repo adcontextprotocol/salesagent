@@ -377,14 +377,14 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                             # Compute flight window
                             if media_buy.start_time:
                                 start_time = (
-                                    media_buy.start_time
+                                    media_buy.start_time.astimezone(UTC)
                                     if media_buy.start_time.tzinfo
                                     else media_buy.start_time.replace(tzinfo=UTC)
                                 )
 
                             if media_buy.end_time:
                                 end_time = (
-                                    media_buy.end_time
+                                    media_buy.end_time.astimezone(UTC)
                                     if media_buy.end_time.tzinfo
                                     else media_buy.end_time.replace(tzinfo=UTC)
                                 )
@@ -397,7 +397,7 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                             else:
                                 media_buy.status = "active"
                         else:
-                            # No start or end time - set to scheduled
+                            # No start or end time - set to active
                             media_buy.status = "active"
                     else:
                         # Keep it in a state that shows it needs creative approval
