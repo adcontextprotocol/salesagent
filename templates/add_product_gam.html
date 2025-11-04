@@ -1061,6 +1061,10 @@ function filterGAMFormats() {
             .then(response => response.json())
             .then(data => {
                 if (data.items) {
+                    console.log('[DEBUG] Placement API returned', data.items.length, 'items');
+                    console.log('[DEBUG] Looking for placement IDs:', placementIds);
+                    console.log('[DEBUG] Sample API item IDs:', data.items.slice(0, 5).map(i => i.id));
+
                     // Cache placement data in inventoryCache for size extraction
                     data.items.forEach(item => {
                         inventoryCache.placements.set(item.id, item);
@@ -1068,6 +1072,7 @@ function filterGAMFormats() {
 
                     const names = placementIds.map(id => {
                         const item = data.items.find(i => i.id === id);
+                        console.log(`[DEBUG] Looking for ID "${id}": ${item ? `FOUND name="${item.name}"` : 'NOT FOUND'}`);
                         return item ? item.name : id;
                     });
                     updateSelectedDisplay('selected-placements', names, placementIds);
