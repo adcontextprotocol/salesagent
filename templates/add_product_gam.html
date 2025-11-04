@@ -348,9 +348,6 @@ function applyInventorySelection() {
     // Extract sizes from selected inventory and update UI
     extractSizesFromInventory();
 
-    // Show/hide auto-map button based on inventory selection
-    updateAutoMapButton();
-
     closeInventoryPicker();
 }
 
@@ -613,76 +610,6 @@ async function autoSuggestFormats(selectedCheckboxes) {
     }
 }
 
-// Update auto-map button visibility based on selected inventory
-function updateAutoMapButton() {
-    const adUnits = document.getElementById('targeted_ad_unit_ids').value;
-    const placements = document.getElementById('targeted_placement_ids').value;
-    const button = document.getElementById('auto-map-formats-btn');
-    const status = document.getElementById('auto-map-status');
-
-    // Show button if either ad units or placements are selected
-    if (adUnits || placements) {
-        button.style.display = 'inline-block';
-        status.textContent = '';
-    } else {
-        button.style.display = 'none';
-        status.textContent = '';
-    }
-}
-
-// Wrapper function called by the "Map to Selected Inventory" button
-async function autoMapFormatsToInventory() {
-    const button = document.getElementById('auto-map-formats-btn');
-    const icon = document.getElementById('auto-map-icon');
-    const status = document.getElementById('auto-map-status');
-
-    // Collect all selected ad unit checkboxes
-    const adUnitCheckboxes = Array.from(document.querySelectorAll('#inventory-picker-container input[type="checkbox"]:checked'));
-
-    if (adUnitCheckboxes.length === 0) {
-        // No ad units selected in picker, but there might be IDs in the hidden field
-        // For now, just show a message
-        status.textContent = 'No ad units found to map';
-        status.style.color = '#dc3545';
-        setTimeout(() => {
-            status.textContent = '';
-        }, 3000);
-        return;
-    }
-
-    // Show loading state
-    button.disabled = true;
-    icon.textContent = '⏳';
-    status.textContent = 'Mapping...';
-    status.style.color = '#666';
-
-    try {
-        await autoSuggestFormats(adUnitCheckboxes);
-
-        // Show success
-        icon.textContent = '✅';
-        status.textContent = 'Formats mapped successfully!';
-        status.style.color = '#28a745';
-
-        setTimeout(() => {
-            icon.textContent = '🎯';
-            status.textContent = '';
-        }, 3000);
-    } catch (error) {
-        console.error('Error mapping formats:', error);
-        icon.textContent = '❌';
-        status.textContent = 'Error mapping formats';
-        status.style.color = '#dc3545';
-
-        setTimeout(() => {
-            icon.textContent = '🎯';
-            status.textContent = '';
-        }, 3000);
-    } finally {
-        button.disabled = false;
-    }
-}
-
 function updateFormatSummary(matchingCount) {
     const summary = document.getElementById('format-summary');
     const countSpan = document.getElementById('format-count');
@@ -769,9 +696,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 300);
         });
     }
-
-    // Show auto-map button if inventory is already selected (edit mode)
-    updateAutoMapButton();
 
     // Add event listeners to format checkboxes to update summary
     const formatsContainer = document.getElementById('formats-container');
