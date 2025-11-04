@@ -299,11 +299,16 @@ function loadInventory(type, search = '') {
                 : new Set((document.getElementById('targeted_placement_ids').value || '').split(',').filter(Boolean));
 
             list.innerHTML = data.items.map(item => {
-                // Extract sizes for ad units
-                let sizesHtml = '';
+                // Extract metadata display
+                let metadataHtml = '';
                 if (type === 'ad_unit' && item.metadata && item.metadata.sizes && item.metadata.sizes.length > 0) {
-                    const sizeStrings = item.metadata.sizes.map(s => `${s.width}x${s.height}`).join(', ');
-                    sizesHtml = `<br><small style="color: #28a745; font-weight: 500;">Sizes: ${sizeStrings}</small>`;
+                    // Show sizes for ad units
+                    const sizeStrings = item.metadata.sizes.map(s => `${s.width}×${s.height}`).join(', ');
+                    metadataHtml = `<br><small style="color: #28a745; font-weight: 500;">Sizes: ${sizeStrings}</small>`;
+                } else if (type === 'placement' && item.metadata && item.metadata.ad_unit_ids) {
+                    // Show ad unit count for placements
+                    const count = item.metadata.ad_unit_ids.length;
+                    metadataHtml = `<br><small style="color: #2196f3; font-weight: 500;">${count} ad ${count === 1 ? 'unit' : 'units'}</small>`;
                 }
 
                 return `
@@ -317,7 +322,7 @@ function loadInventory(type, search = '') {
                     <div style="flex: 1;">
                         <strong>${item.name}</strong>
                         ${item.path && item.path.length > 1 ? `<br><small style="color: #666;">${item.path.join(' > ')}</small>` : ''}
-                        ${sizesHtml}
+                        ${metadataHtml}
                     </div>
                 </label>
             `}).join('');
