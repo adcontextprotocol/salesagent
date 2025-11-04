@@ -932,13 +932,18 @@ def get_inventory_list(tenant_id):
             # Build query
             stmt = select(GAMInventory).filter(GAMInventory.tenant_id == tenant_id)
 
-            # Filter by specific IDs if provided (bypass other filters and limit)
+            # Filter by specific IDs if provided (bypass search, status, and limit filters)
             if ids_param:
                 ids_list = [id.strip() for id in ids_param.split(",") if id.strip()]
                 if ids_list:
                     logger.info(f"Filtering by specific IDs: {ids_list}")
                     stmt = stmt.filter(GAMInventory.inventory_id.in_(ids_list))
-                    # Skip other filters when fetching specific IDs
+
+                    # Still apply type filter if specified
+                    if inventory_type:
+                        logger.info(f"Applying type filter: {inventory_type}")
+                        stmt = stmt.filter(GAMInventory.inventory_type == inventory_type)
+
                     items = db_session.scalars(stmt).all()
 
                     # Format response
@@ -955,7 +960,9 @@ def get_inventory_list(tenant_id):
                             }
                         )
 
-                    logger.info(f"Returned {len(result)} items for specific IDs")
+                    logger.info(
+                        f"Returned {len(result)} items for specific IDs (requested {len(ids_list)}, found {len(result)})"
+                    )
                     return jsonify({"items": result, "total": len(result)})
 
             # Filter by type if specified
