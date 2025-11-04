@@ -956,7 +956,7 @@ def get_inventory_list(tenant_id):
                                 "type": item.inventory_type,
                                 "path": item.path or [],
                                 "status": item.status,
-                                "metadata": item.metadata or {},
+                                "metadata": item.inventory_metadata or {},
                             }
                         )
 
