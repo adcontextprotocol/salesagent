@@ -898,6 +898,7 @@ def get_inventory_list(tenant_id):
         type: Filter by inventory_type ('ad_unit' or 'placement', defaults to both)
         search: Filter by name (case-insensitive partial match)
         status: Filter by status (default: 'ACTIVE', use 'ALL' for all statuses)
+        ids: Comma-separated list of inventory_ids to fetch (bypasses 500 limit)
 
     Returns:
         JSON array of inventory items with id, name, type, path, status
@@ -906,6 +907,7 @@ def get_inventory_list(tenant_id):
         inventory_type = request.args.get("type")  # 'ad_unit' or 'placement' or None for both
         search = request.args.get("search", "").strip()
         status = request.args.get("status", "ACTIVE")
+        ids_param = request.args.get("ids", "").strip()  # Comma-separated IDs
 
         logger.info(
             f"Inventory list query: tenant={tenant_id}, type={inventory_type or 'all'}, "
@@ -929,6 +931,32 @@ def get_inventory_list(tenant_id):
 
             # Build query
             stmt = select(GAMInventory).filter(GAMInventory.tenant_id == tenant_id)
+
+            # Filter by specific IDs if provided (bypass other filters and limit)
+            if ids_param:
+                ids_list = [id.strip() for id in ids_param.split(",") if id.strip()]
+                if ids_list:
+                    logger.info(f"Filtering by specific IDs: {ids_list}")
+                    stmt = stmt.filter(GAMInventory.inventory_id.in_(ids_list))
+                    # Skip other filters when fetching specific IDs
+                    items = db_session.scalars(stmt).all()
+
+                    # Format response
+                    result = []
+                    for item in items:
+                        result.append(
+                            {
+                                "id": item.inventory_id,
+                                "name": item.name,
+                                "type": item.inventory_type,
+                                "path": item.path or [],
+                                "status": item.status,
+                                "metadata": item.metadata or {},
+                            }
+                        )
+
+                    logger.info(f"Returned {len(result)} items for specific IDs")
+                    return jsonify({"items": result, "total": len(result)})
 
             # Filter by type if specified
             if inventory_type:

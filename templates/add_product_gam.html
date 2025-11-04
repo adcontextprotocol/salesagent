@@ -1014,23 +1014,30 @@ function filterGAMFormats() {
 
     // Set ad units and placements - fetch actual names from inventory
     if (config.targeted_ad_unit_ids && config.targeted_ad_unit_ids.length > 0) {
-        document.getElementById('targeted_ad_unit_ids').value = config.targeted_ad_unit_ids.join(',');
+        const adUnitIds = config.targeted_ad_unit_ids;
+        document.getElementById('targeted_ad_unit_ids').value = adUnitIds.join(',');
 
-        // Fetch ad unit names and metadata (include ALL statuses to find archived/inactive items)
-        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit&status=ALL`)
+        // Fetch specific ad units by IDs (bypasses 500-item limit)
+        const adUnitIdsParam = adUnitIds.join(',');
+        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit&ids=${encodeURIComponent(adUnitIdsParam)}`)
             .then(response => response.json())
             .then(data => {
+                console.log('[DEBUG] Ad unit API returned', data.items.length, 'items');
+                console.log('[DEBUG] Looking for ad unit IDs:', adUnitIds);
+                console.log('[DEBUG] Sample API item IDs:', data.items.slice(0, 5).map(i => i.id));
+
                 if (data.items) {
                     // Cache ad unit data in inventoryCache for size extraction
                     data.items.forEach(item => {
                         inventoryCache.adUnits.set(item.id, item);
                     });
 
-                    const names = config.targeted_ad_unit_ids.map(id => {
+                    const names = adUnitIds.map(id => {
                         const item = data.items.find(i => i.id === id);
+                        console.log(`[DEBUG] Looking for ID "${id}": ${item ? `FOUND name="${item.name}"` : 'NOT FOUND'}`);
                         return item ? item.name : id;
                     });
-                    updateSelectedDisplay('selected-ad-units', names, config.targeted_ad_unit_ids);
+                    updateSelectedDisplay('selected-ad-units', names, adUnitIds);
                     console.log('Populated ad units:', names);
 
                     // Extract sizes and show formats (same as when applying selection)
@@ -1040,7 +1047,7 @@ function filterGAMFormats() {
             .catch(error => {
                 console.error('Failed to fetch ad unit names:', error);
                 // Fallback to IDs
-                updateSelectedDisplay('selected-ad-units', config.targeted_ad_unit_ids, config.targeted_ad_unit_ids);
+                updateSelectedDisplay('selected-ad-units', adUnitIds, adUnitIds);
             });
     }
 
@@ -1056,8 +1063,9 @@ function filterGAMFormats() {
         console.log('[DEBUG] config.targeted_placement_ids array:', placementIds);
         document.getElementById('targeted_placement_ids').value = placementIdsValue;
 
-        // Fetch placement names and metadata (include ALL statuses to find archived/inactive items)
-        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=placement&status=ALL`)
+        // Fetch specific placement names by ID (bypasses 500-item limit)
+        const placementIdsParam = placementIds.join(',');
+        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=placement&ids=${encodeURIComponent(placementIdsParam)}`)
             .then(response => response.json())
             .then(data => {
                 if (data.items) {
