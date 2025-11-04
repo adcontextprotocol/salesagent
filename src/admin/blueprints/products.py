@@ -1143,70 +1143,79 @@ def edit_product(tenant_id, product_id):
                     elif line_item_type in ["PRICE_PRIORITY", "HOUSE"]:
                         product.delivery_type = "non_guaranteed"
 
-                    # Update implementation_config with GAM-specific fields
-                    if adapter_type == "google_ad_manager":
-                        from src.services.gam_product_config_service import GAMProductConfigService
+                # Update implementation_config with GAM-specific fields
+                # Note: This must run even if line_item_type is not present (automatic mode)
+                if adapter_type == "google_ad_manager":
+                    from src.services.gam_product_config_service import GAMProductConfigService
 
+                    # Start with existing config to preserve fields not in the form
+                    base_config = product.implementation_config.copy() if product.implementation_config else {}
+
+                    # Only regenerate default config if we have line_item_type (explicit mode)
+                    # Otherwise, preserve existing config structure
+                    if line_item_type:
                         gam_config_service = GAMProductConfigService()
-                        base_config = gam_config_service.generate_default_config(product.delivery_type, formats)
+                        default_config = gam_config_service.generate_default_config(product.delivery_type, formats)
+                        # Merge default config into base_config (preserving other fields)
+                        base_config.update(default_config)
 
-                        # Add ad unit/placement targeting if provided
-                        ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
-                        if ad_unit_ids:
-                            # Parse comma-separated IDs
-                            id_list = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
+                    # Add ad unit/placement targeting if provided
+                    ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
+                    if ad_unit_ids:
+                        # Parse comma-separated IDs
+                        id_list = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
 
-                            # Validate that all IDs are numeric (GAM requires numeric IDs)
-                            invalid_ids = [id for id in id_list if not id.isdigit()]
-                            if invalid_ids:
-                                flash(
-                                    f"Invalid ad unit IDs: {', '.join(invalid_ids)}. "
-                                    f"Ad unit IDs must be numeric (e.g., '23312403859'). "
-                                    f"Use 'Browse Ad Units' to select valid ad units.",
-                                    "error",
-                                )
-                                return redirect(
-                                    url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id)
-                                )
+                        # Validate that all IDs are numeric (GAM requires numeric IDs)
+                        invalid_ids = [id for id in id_list if not id.isdigit()]
+                        if invalid_ids:
+                            flash(
+                                f"Invalid ad unit IDs: {', '.join(invalid_ids)}. "
+                                f"Ad unit IDs must be numeric (e.g., '23312403859'). "
+                                f"Use 'Browse Ad Units' to select valid ad units.",
+                                "error",
+                            )
+                            return redirect(
+                                url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id)
+                            )
 
-                            base_config["targeted_ad_unit_ids"] = id_list
+                        base_config["targeted_ad_unit_ids"] = id_list
 
-                        placement_ids = form_data.get("targeted_placement_ids", "").strip()
-                        if placement_ids:
-                            base_config["targeted_placement_ids"] = [
-                                id.strip() for id in placement_ids.split(",") if id.strip()
-                            ]
+                    placement_ids = form_data.get("targeted_placement_ids", "").strip()
+                    if placement_ids:
+                        base_config["targeted_placement_ids"] = [
+                            id.strip() for id in placement_ids.split(",") if id.strip()
+                        ]
 
-                        base_config["include_descendants"] = form_data.get("include_descendants") == "on"
+                    base_config["include_descendants"] = form_data.get("include_descendants") == "on"
 
-                        # Add GAM settings
-                        if form_data.get("line_item_type"):
-                            base_config["line_item_type"] = form_data["line_item_type"]
-                        if form_data.get("priority"):
-                            base_config["priority"] = int(form_data["priority"])
+                    # Add GAM settings
+                    if form_data.get("line_item_type"):
+                        base_config["line_item_type"] = form_data["line_item_type"]
+                    if form_data.get("priority"):
+                        base_config["priority"] = int(form_data["priority"])
 
-                        # Parse targeting template from form (includes custom targeting key-value pairs)
-                        targeting_template_json = form_data.get("targeting_template", "{}")
-                        try:
-                            targeting_template = json.loads(targeting_template_json) if targeting_template_json else {}
-                        except json.JSONDecodeError:
-                            targeting_template = {}
+                    # Parse targeting template from form (includes custom targeting key-value pairs)
+                    targeting_template_json = form_data.get("targeting_template", "{}")
+                    try:
+                        targeting_template = json.loads(targeting_template_json) if targeting_template_json else {}
+                    except json.JSONDecodeError:
+                        targeting_template = {}
 
-                        # If targeting template has key_value_pairs, copy to implementation_config for GAM
-                        if targeting_template.get("key_value_pairs"):
-                            if "custom_targeting_keys" not in base_config:
-                                base_config["custom_targeting_keys"] = {}
-                            # Merge key-value pairs into implementation_config for GAM adapter
-                            base_config["custom_targeting_keys"].update(targeting_template["key_value_pairs"])
+                    # If targeting template has key_value_pairs, copy to implementation_config for GAM
+                    if targeting_template.get("key_value_pairs"):
+                        if "custom_targeting_keys" not in base_config:
+                            base_config["custom_targeting_keys"] = {}
+                        # Merge key-value pairs into implementation_config for GAM adapter
+                        base_config["custom_targeting_keys"].update(targeting_template["key_value_pairs"])
 
-                        # Store targeting_template in product
-                        product.targeting_template = targeting_template
+                    # Store targeting_template in product
+                    product.targeting_template = targeting_template
 
-                        product.implementation_config = base_config
-                        from sqlalchemy.orm import attributes
+                    product.implementation_config = base_config
+                    from sqlalchemy.orm import attributes
 
-                        attributes.flag_modified(product, "implementation_config")
-                        attributes.flag_modified(product, "targeting_template")
+                    attributes.flag_modified(product, "implementation_config")
+                    attributes.flag_modified(product, "targeting_template")
 
                 # Update pricing options (AdCP PR #88)
                 # Note: min_spend is now stored in pricing_options[].min_spend_per_package
