@@ -101,6 +101,26 @@
                    onkeyup="filterGAMFormats()">
         </div>
 
+        <!-- Size filter panel (shown when inventory selected) -->
+        <div id="size-filter-panel" style="display: none; margin-bottom: 1rem; padding: 1rem; background: #f0f7ff; border: 2px solid #d0e7ff; border-radius: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <strong style="color: #1976d2;">💡 Sizes from your selected inventory:</strong>
+                <button type="button" id="select-all-matching-btn" class="btn btn-primary btn-sm" onclick="selectAllMatchingFormats()" style="display: none;">
+                    ✓ Select all matching formats
+                </button>
+            </div>
+            <div id="size-chips-container" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;">
+                <!-- Size chips populated by JavaScript -->
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span id="matching-formats-count" style="color: #666; font-size: 0.9rem;">0 matching / 0 total formats</span>
+                <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0; cursor: pointer;">
+                    <input type="checkbox" id="show-only-matching-toggle" onchange="toggleShowOnlyMatching()">
+                    <span style="font-size: 0.9rem;">Show only matching</span>
+                </label>
+            </div>
+        </div>
+
         <!-- Size-type combos being searched (shown after ad units selected) -->
         <div id="format-search-targets" style="display: none; padding: 1rem; background: #e7f3ff; border: 1px solid #90caf9; border-radius: 4px; margin-bottom: 1rem;">
             <strong style="color: #1565c0;">Looking for formats:</strong>
@@ -264,6 +284,15 @@ function loadInventory(type, search = '') {
                 return;
             }
 
+            // Cache all items for later use (including metadata)
+            data.items.forEach(item => {
+                if (type === 'ad_unit') {
+                    inventoryCache.adUnits.set(item.id, item);
+                } else {
+                    inventoryCache.placements.set(item.id, item);
+                }
+            });
+
             // Get currently selected IDs
             const selectedIds = type === 'ad_unit'
                 ? new Set((document.getElementById('targeted_ad_unit_ids').value || '').split(',').filter(Boolean))
@@ -314,6 +343,9 @@ function applyInventorySelection() {
         updateSelectedDisplay('selected-placements', selectedNames, selectedIds);
     }
 
+    // Extract sizes from selected inventory and update UI
+    extractSizesFromInventory();
+
     // Show/hide auto-map button based on inventory selection
     updateAutoMapButton();
 
@@ -322,15 +354,40 @@ function applyInventorySelection() {
 
 function updateSelectedDisplay(containerId, names, ids) {
     const container = document.getElementById(containerId);
+    const isAdUnit = containerId === 'selected-ad-units';
+
     if (names.length === 0) {
         container.innerHTML = '<span style="color: #999;">No items selected</span>';
     } else {
-        container.innerHTML = names.map((name, idx) => `
-            <span class="selected-item" style="display: inline-block; background: #e7f3ff; padding: 0.25rem 0.5rem; margin: 0.25rem; border-radius: 4px;">
-                ${name}
-                <button type="button" onclick="removeSelectedItem('${containerId}', '${ids[idx]}')" style="border: none; background: none; color: #666; cursor: pointer; margin-left: 0.25rem;">×</button>
-            </span>
-        `).join('');
+        container.innerHTML = names.map((name, idx) => {
+            const id = ids[idx];
+            let sizesText = '';
+
+            // Show sizes inline for ad units
+            if (isAdUnit) {
+                const item = inventoryCache.adUnits.get(id);
+                if (item && item.metadata && item.metadata.sizes && item.metadata.sizes.length > 0) {
+                    const sizeStrings = item.metadata.sizes
+                        .map(s => `${s.width}×${s.height}`)
+                        .join(', ');
+                    sizesText = ` <small style="color: #28a745; font-weight: 500;">(${sizeStrings})</small>`;
+                }
+            } else {
+                // Show ad unit count for placements
+                const item = inventoryCache.placements.get(id);
+                if (item && item.metadata && item.metadata.ad_unit_ids) {
+                    const count = item.metadata.ad_unit_ids.length;
+                    sizesText = ` <small style="color: #666;">(${count} ad ${count === 1 ? 'unit' : 'units'})</small>`;
+                }
+            }
+
+            return `
+                <span class="selected-item" style="display: inline-block; background: #e7f3ff; padding: 0.25rem 0.5rem; margin: 0.25rem; border-radius: 4px;">
+                    ${name}${sizesText}
+                    <button type="button" onclick="removeSelectedItem('${containerId}', '${id}')" style="border: none; background: none; color: #666; cursor: pointer; margin-left: 0.25rem;">×</button>
+                </span>
+            `;
+        }).join('');
     }
 }
 
@@ -1170,6 +1227,276 @@ window.onclick = function(event) {
         modal.style.display = 'none';
     }
 }
+
+// ============================================================================
+// Creative Format Size Filtering Functions
+// ============================================================================
+
+/**
+ * Extract all sizes from selected ad units and placements
+ */
+async function extractSizesFromInventory() {
+    // Clear previous sizes
+    inventoryCache.extractedSizes.clear();
+    inventoryCache.sizeUnitCounts.clear();
+
+    // Get selected ad unit and placement IDs
+    const adUnitIds = (document.getElementById('targeted_ad_unit_ids').value || '').split(',').filter(Boolean);
+    const placementIds = (document.getElementById('targeted_placement_ids').value || '').split(',').filter(Boolean);
+
+    // Extract sizes from ad units directly
+    adUnitIds.forEach(id => {
+        const item = inventoryCache.adUnits.get(id);
+        if (item && item.metadata && item.metadata.sizes) {
+            item.metadata.sizes.forEach(size => {
+                const sizeKey = `${size.width}x${size.height}`;
+                inventoryCache.extractedSizes.add(sizeKey);
+                inventoryCache.sizeUnitCounts.set(
+                    sizeKey,
+                    (inventoryCache.sizeUnitCounts.get(sizeKey) || 0) + 1
+                );
+            });
+        }
+    });
+
+    // For placements, need to lookup their ad units and get sizes
+    for (const placementId of placementIds) {
+        const placement = inventoryCache.placements.get(placementId);
+        if (placement && placement.metadata && placement.metadata.ad_unit_ids) {
+            // Need to fetch these ad units if not already cached
+            for (const adUnitId of placement.metadata.ad_unit_ids) {
+                let adUnit = inventoryCache.adUnits.get(adUnitId);
+
+                // If not cached, fetch it
+                if (!adUnit) {
+                    try {
+                        const response = await fetch(
+                            `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`
+                        );
+                        const data = await response.json();
+                        data.items.forEach(item => {
+                            inventoryCache.adUnits.set(item.id, item);
+                        });
+                        adUnit = inventoryCache.adUnits.get(adUnitId);
+                    } catch (error) {
+                        console.warn(`Failed to fetch ad unit ${adUnitId}:`, error);
+                        continue;
+                    }
+                }
+
+                // Extract sizes from this ad unit
+                if (adUnit && adUnit.metadata && adUnit.metadata.sizes) {
+                    adUnit.metadata.sizes.forEach(size => {
+                        const sizeKey = `${size.width}x${size.height}`;
+                        inventoryCache.extractedSizes.add(sizeKey);
+                        inventoryCache.sizeUnitCounts.set(
+                            sizeKey,
+                            (inventoryCache.sizeUnitCounts.get(sizeKey) || 0) + 1
+                        );
+                    });
+                }
+            }
+        }
+    }
+
+    // Update UI
+    updateSizeChipsPanel();
+    updateFormatMatchIndicators();
+}
+
+/**
+ * Update the size chips panel display
+ */
+function updateSizeChipsPanel() {
+    const panel = document.getElementById('size-filter-panel');
+
+    if (inventoryCache.extractedSizes.size === 0) {
+        panel.style.display = 'none';
+        return;
+    }
+
+    panel.style.display = 'block';
+
+    // Sort sizes by count (most common first), then alphabetically
+    const sortedSizes = Array.from(inventoryCache.extractedSizes).sort((a, b) => {
+        const countA = inventoryCache.sizeUnitCounts.get(a) || 0;
+        const countB = inventoryCache.sizeUnitCounts.get(b) || 0;
+        if (countB !== countA) return countB - countA;
+        return a.localeCompare(b);
+    });
+
+    const chipsContainer = document.getElementById('size-chips-container');
+    chipsContainer.innerHTML = sortedSizes.map(sizeKey => {
+        const count = inventoryCache.sizeUnitCounts.get(sizeKey) || 0;
+        const displaySize = sizeKey.replace('x', '×');
+
+        return `
+            <button type="button" class="size-chip active" data-size="${sizeKey}">
+                <span class="size-label">${displaySize}</span>
+                <span class="unit-count">(${count} ${count === 1 ? 'unit' : 'units'})</span>
+            </button>
+        `;
+    }).join('');
+
+    // Update matching count
+    updateMatchingFormatsCount();
+}
+
+/**
+ * Add match indicators to format cards
+ */
+function updateFormatMatchIndicators() {
+    const formatCards = document.querySelectorAll('.format-card');
+
+    formatCards.forEach(card => {
+        const formatName = card.querySelector('.format-checkbox')?.value || '';
+        const formatLabel = card.querySelector('.format-name')?.textContent || '';
+
+        // Extract sizes from format name/label
+        const formatSizes = extractSizesFromFormatName(formatLabel + ' ' + formatName);
+
+        // Check if any format size matches inventory sizes
+        const matches = formatSizes.some(size => inventoryCache.extractedSizes.has(size));
+
+        card.classList.toggle('matches-inventory', matches);
+    });
+}
+
+/**
+ * Extract size strings from format name (e.g., "Display 300x250" -> ["300x250"])
+ */
+function extractSizesFromFormatName(formatText) {
+    const sizes = [];
+    // Match patterns like 300x250, 300×250, 300 x 250
+    const matches = formatText.matchAll(/(\d+)\s*[x×]\s*(\d+)/gi);
+    for (const match of matches) {
+        sizes.push(`${match[1]}x${match[2]}`);
+    }
+    return sizes;
+}
+
+/**
+ * Update the count of matching formats
+ */
+function updateMatchingFormatsCount() {
+    const matchingCards = document.querySelectorAll('.format-card.matches-inventory');
+    const totalCards = document.querySelectorAll('.format-card').length;
+
+    const countEl = document.getElementById('matching-formats-count');
+    if (countEl) {
+        countEl.textContent = `${matchingCards.length} matching / ${totalCards} total formats`;
+    }
+
+    // Update "Select all matching" button text
+    const selectBtn = document.getElementById('select-all-matching-btn');
+    if (selectBtn) {
+        if (matchingCards.length > 0) {
+            selectBtn.textContent = `✓ Select all ${matchingCards.length} matching ${matchingCards.length === 1 ? 'format' : 'formats'}`;
+            selectBtn.style.display = 'inline-block';
+        } else {
+            selectBtn.style.display = 'none';
+        }
+    }
+}
+
+/**
+ * Select all formats that match inventory sizes
+ */
+function selectAllMatchingFormats() {
+    const matchingCards = document.querySelectorAll('.format-card.matches-inventory');
+    let selectedCount = 0;
+
+    matchingCards.forEach(card => {
+        const checkbox = card.querySelector('.format-checkbox');
+        if (checkbox && !checkbox.checked) {
+            checkbox.checked = true;
+            selectedCount++;
+
+            // Trigger the toggleFormat function
+            const formatId = checkbox.value;
+            const formatName = card.querySelector('.format-name')?.textContent || formatId;
+            const agentUrl = checkbox.dataset.agentUrl || '';
+
+            // Update selected formats tracking
+            if (window.selectedFormats) {
+                window.selectedFormats.add(formatId);
+            }
+        }
+    });
+
+    // Show feedback
+    if (selectedCount > 0) {
+        showToast(`Selected ${selectedCount} matching ${selectedCount === 1 ? 'format' : 'formats'}`, 'success');
+    }
+
+    // Update hidden field
+    updateHiddenFormatsField();
+}
+
+/**
+ * Toggle show only matching formats
+ */
+function toggleShowOnlyMatching() {
+    const toggle = document.getElementById('show-only-matching-toggle');
+    const showOnlyMatching = toggle.checked;
+
+    const formatCards = document.querySelectorAll('.format-card');
+
+    formatCards.forEach(card => {
+        if (showOnlyMatching) {
+            // Hide non-matching cards
+            if (!card.classList.contains('matches-inventory')) {
+                card.style.display = 'none';
+            } else {
+                card.style.display = '';
+            }
+        } else {
+            // Show all cards
+            card.style.display = '';
+        }
+    });
+}
+
+/**
+ * Show a toast notification
+ */
+function showToast(message, type = 'info') {
+    // Simple toast implementation
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        background: ${type === 'success' ? '#28a745' : '#007bff'};
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 4px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        z-index: 10000;
+        animation: slideIn 0.3s ease-out;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease-in';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+/**
+ * Update hidden formats field (helper for selectAllMatchingFormats)
+ */
+function updateHiddenFormatsField() {
+    const checkboxes = document.querySelectorAll('.format-checkbox:checked');
+    const formats = Array.from(checkboxes).map(cb => {
+        const agentUrl = cb.dataset.agentUrl || '';
+        const formatId = cb.value;
+        return agentUrl ? `${agentUrl}|${formatId}` : formatId;
+    });
+    document.getElementById('formats-hidden').value = formats.join(',');
+}
+
 </script>
 
 <!-- Format Info Modal -->
@@ -1204,5 +1531,117 @@ window.onclick = function(event) {
     </div>
 </div>
 {% endif %}
+
+<style>
+/* Size chips styling */
+.size-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    background: white;
+    border: 2px solid #2196f3;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.9rem;
+}
+
+.size-chip:hover {
+    background: #e3f2fd;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.size-chip .size-label {
+    font-weight: 600;
+    color: #1976d2;
+}
+
+.size-chip .unit-count {
+    color: #666;
+    font-size: 0.85rem;
+}
+
+/* Format card match indicator */
+.format-card.matches-inventory {
+    position: relative;
+    background: #f0f7ff !important;
+    border: 2px solid #4caf50 !important;
+}
+
+.format-card.matches-inventory::before {
+    content: '●';
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    color: #4caf50;
+    font-size: 1.2rem;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Toast notification */
+.toast-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 1rem 1.5rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    animation: slideIn 0.3s ease;
+}
+
+.toast-notification.success {
+    border-left: 4px solid #4caf50;
+}
+
+.toast-notification.error {
+    border-left: 4px solid #f44336;
+}
+
+.toast-notification.info {
+    border-left: 4px solid #2196f3;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+}
+
+.toast-notification.hiding {
+    animation: slideOut 0.3s ease forwards;
+}
+</style>
 
 {% endblock %}
