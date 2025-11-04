@@ -215,6 +215,14 @@
 </style>
 
 <script>
+// Global inventory cache - stores full metadata for selected items
+const inventoryCache = {
+    adUnits: new Map(), // id -> {id, name, metadata: {sizes: [{width, height}]}}
+    placements: new Map(), // id -> {id, name, metadata: {ad_unit_ids: []}}
+    extractedSizes: new Set(), // All unique sizes from selected inventory
+    sizeUnitCounts: new Map() // size -> count of units with that size
+};
+
 // Inventory picker functionality
 let currentPickerType = null;
 
