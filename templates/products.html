@@ -155,12 +155,25 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if product.inventory_count > 0 %}
+                    {% if product.inventory_details.total > 0 %}
                         <a href="{{ url_for('products.edit_product', tenant_id=tenant_id, product_id=product.product_id) }}#inventory"
-                           class="badge"
-                           style="background: #28a745; color: white; text-decoration: none;"
+                           style="text-decoration: none; display: block;"
                            title="Click to view assigned inventory">
-                            {{ product.inventory_count }} assigned
+                            {% if product.inventory_details.ad_units > 0 %}
+                                <span class="badge" style="background: #28a745; margin-right: 0.25rem;">
+                                    {{ product.inventory_details.ad_units }} ad unit{{ 's' if product.inventory_details.ad_units != 1 else '' }}
+                                </span>
+                            {% endif %}
+                            {% if product.inventory_details.placements > 0 %}
+                                <span class="badge" style="background: #17a2b8; margin-right: 0.25rem;">
+                                    {{ product.inventory_details.placements }} placement{{ 's' if product.inventory_details.placements != 1 else '' }}
+                                </span>
+                            {% endif %}
+                            {% if product.inventory_details.custom_keys > 0 %}
+                                <span class="badge" style="background: #6f42c1; color: white; margin-right: 0.25rem;">
+                                    {{ product.inventory_details.custom_keys }} custom key{{ 's' if product.inventory_details.custom_keys != 1 else '' }}
+                                </span>
+                            {% endif %}
                         </a>
                     {% else %}
                         <span style="color: #999;">None</span>

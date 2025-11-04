@@ -308,20 +308,30 @@ def list_products(tenant_id):
                 .all()
             )
 
-            # Get inventory counts for all products in one query
+            # Get inventory details for all products (breakdown by type)
             from src.core.database.models import ProductInventoryMapping
 
-            inventory_counts = {}
+            inventory_details = {}
             for product in products:
-                count = db_session.scalar(
-                    select(func.count())
-                    .select_from(ProductInventoryMapping)
-                    .where(
+                # Get all mappings for this product
+                mappings = db_session.scalars(
+                    select(ProductInventoryMapping).where(
                         ProductInventoryMapping.tenant_id == tenant_id,
                         ProductInventoryMapping.product_id == product.product_id,
                     )
-                )
-                inventory_counts[product.product_id] = count or 0
+                ).all()
+
+                # Count by inventory type
+                ad_unit_count = sum(1 for m in mappings if m.inventory_type == "ad_unit")
+                placement_count = sum(1 for m in mappings if m.inventory_type == "placement")
+                custom_key_count = sum(1 for m in mappings if m.inventory_type == "custom_key")
+
+                inventory_details[product.product_id] = {
+                    "total": len(mappings),
+                    "ad_units": ad_unit_count,
+                    "placements": placement_count,
+                    "custom_keys": custom_key_count,
+                }
 
             # Convert products to dict format for template
             products_list = []
@@ -461,7 +471,15 @@ def list_products(tenant_id):
                         else json.loads(product.implementation_config) if product.implementation_config else {}
                     ),
                     "created_at": product.created_at if hasattr(product, "created_at") else None,
-                    "inventory_count": inventory_counts.get(product.product_id, 0),
+                    "inventory_details": inventory_details.get(
+                        product.product_id,
+                        {
+                            "total": 0,
+                            "ad_units": 0,
+                            "placements": 0,
+                            "custom_keys": 0,
+                        },
+                    ),
                 }
                 products_list.append(product_dict)
 
@@ -924,6 +942,24 @@ def add_product(tenant_id):
                             )
                             db_session.add(mapping)
 
+                    # Save custom targeting key mappings
+                    if implementation_config.get("custom_targeting_keys"):
+                        custom_keys = implementation_config["custom_targeting_keys"]
+                        logger.info(
+                            f"Creating {len(custom_keys)} custom targeting key mappings for product {product.product_id}"
+                        )
+                        for _idx, (key, value) in enumerate(custom_keys.items()):
+                            # Store as "key=value" format in inventory_id
+                            custom_key_id = f"{key}={value}"
+                            mapping = ProductInventoryMapping(
+                                tenant_id=tenant_id,
+                                product_id=product.product_id,
+                                inventory_type="custom_key",
+                                inventory_id=custom_key_id,
+                                is_primary=False,
+                            )
+                            db_session.add(mapping)
+
                 db_session.commit()
 
                 flash(f"Product '{product.name}' created successfully!", "success")
@@ -1216,6 +1252,54 @@ def edit_product(tenant_id, product_id):
 
                     attributes.flag_modified(product, "implementation_config")
                     attributes.flag_modified(product, "targeting_template")
+
+                    # Sync inventory mappings based on implementation_config
+                    # Delete all existing mappings first
+                    from src.core.database.models import ProductInventoryMapping
+
+                    existing_mappings = db_session.scalars(
+                        select(ProductInventoryMapping).filter_by(tenant_id=tenant_id, product_id=product_id)
+                    ).all()
+                    for mapping in existing_mappings:
+                        db_session.delete(mapping)
+
+                    # Recreate mappings from implementation_config
+                    # Ad units
+                    if base_config.get("targeted_ad_unit_ids"):
+                        for idx, ad_unit_id in enumerate(base_config["targeted_ad_unit_ids"]):
+                            mapping = ProductInventoryMapping(
+                                tenant_id=tenant_id,
+                                product_id=product_id,
+                                inventory_type="ad_unit",
+                                inventory_id=ad_unit_id,
+                                is_primary=(idx == 0),
+                            )
+                            db_session.add(mapping)
+
+                    # Placements
+                    if base_config.get("targeted_placement_ids"):
+                        for idx, placement_id in enumerate(base_config["targeted_placement_ids"]):
+                            mapping = ProductInventoryMapping(
+                                tenant_id=tenant_id,
+                                product_id=product_id,
+                                inventory_type="placement",
+                                inventory_id=placement_id,
+                                is_primary=(idx == 0),
+                            )
+                            db_session.add(mapping)
+
+                    # Custom targeting keys
+                    if base_config.get("custom_targeting_keys"):
+                        for key, value in base_config["custom_targeting_keys"].items():
+                            custom_key_id = f"{key}={value}"
+                            mapping = ProductInventoryMapping(
+                                tenant_id=tenant_id,
+                                product_id=product_id,
+                                inventory_type="custom_key",
+                                inventory_id=custom_key_id,
+                                is_primary=False,
+                            )
+                            db_session.add(mapping)
 
                 # Update pricing options (AdCP PR #88)
                 # Note: min_spend is now stored in pricing_options[].min_spend_per_package
