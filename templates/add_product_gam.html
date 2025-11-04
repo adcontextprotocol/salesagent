@@ -962,6 +962,10 @@ function filterGAMFormats() {
 (function() {
     const product = {{ product | tojson }};
     const config = product.implementation_config || {};
+    console.log('[DEBUG] Product object:', product);
+    console.log('[DEBUG] Implementation config:', config);
+    console.log('[DEBUG] targeted_placement_ids type:', typeof config.targeted_placement_ids);
+    console.log('[DEBUG] targeted_placement_ids value:', config.targeted_placement_ids);
 
     // Line item type is now automatically determined from pricing model - no need to set it
 
@@ -1027,25 +1031,35 @@ function filterGAMFormats() {
     }
 
     if (config.targeted_placement_ids && config.targeted_placement_ids.length > 0) {
-        document.getElementById('targeted_placement_ids').value = config.targeted_placement_ids.join(',');
+        // Handle both string and array formats
+        let placementIds = config.targeted_placement_ids;
+        if (typeof placementIds === 'string') {
+            console.log('[DEBUG] targeted_placement_ids is a STRING, converting to array');
+            placementIds = placementIds.split(',').map(id => id.trim()).filter(Boolean);
+        }
+        const placementIdsValue = Array.isArray(placementIds) ? placementIds.join(',') : placementIds;
+        console.log('[DEBUG] Setting targeted_placement_ids hidden field:', placementIdsValue);
+        console.log('[DEBUG] config.targeted_placement_ids array:', placementIds);
+        document.getElementById('targeted_placement_ids').value = placementIdsValue;
 
         // Fetch placement names
         fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=placement`)
             .then(response => response.json())
             .then(data => {
                 if (data.items) {
-                    const names = config.targeted_placement_ids.map(id => {
+                    const names = placementIds.map(id => {
                         const item = data.items.find(i => i.id === id);
                         return item ? item.name : id;
                     });
-                    updateSelectedDisplay('selected-placements', names, config.targeted_placement_ids);
+                    updateSelectedDisplay('selected-placements', names, placementIds);
                     console.log('Populated placements:', names);
+                    console.log('Populated placement IDs:', placementIds);
                 }
             })
             .catch(error => {
                 console.error('Failed to fetch placement names:', error);
                 // Fallback to IDs
-                updateSelectedDisplay('selected-placements', config.targeted_placement_ids, config.targeted_placement_ids);
+                updateSelectedDisplay('selected-placements', placementIds, placementIds);
             });
     }
 
