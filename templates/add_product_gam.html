@@ -115,7 +115,7 @@
         </div>
 
         <!-- Format selection actions (shown with formats) -->
-        <div id="format-actions" style="display: {% if product and product.formats %}flex{% else %}none{% endif %}; gap: 0.5rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap;">
+        <div id="format-actions" style="display: flex; gap: 0.5rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap;">
             <button type="button" id="select-all-formats-btn" class="btn btn-secondary btn-sm" onclick="selectAllFormats()">
                 ✓ Select All
             </button>
@@ -128,8 +128,8 @@
             <span style="color: #666; font-size: 0.85rem; margin-left: 0.5rem;">Select formats that match your inventory</span>
         </div>
 
-        <!-- Formats container (hidden until ad units selected, or shown if editing product with formats) -->
-        <div id="formats-container" style="display: {% if product and product.formats %}grid{% else %}none{% endif %}; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem; max-height: 500px; overflow-y: auto; padding: 1rem; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
+        <!-- Formats container (always visible) -->
+        <div id="formats-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem; max-height: 500px; overflow-y: auto; padding: 1rem; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
             {% for format in formats %}
             <label class="format-card"
                    data-format-id="{{ format.id }}"
