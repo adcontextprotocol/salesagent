@@ -84,14 +84,16 @@
 
         <!-- Section 3: Creative Formats -->
         <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Creative Formats</h3>
-        <p style="color: #666; margin-bottom: 0.5rem;">Choose creative formats for this product. Click the ⓘ icon on each format to learn more.</p>
+        <p style="color: #666; margin-bottom: 1rem;">Choose creative formats for this product. Click the ⓘ icon on each format to learn more.</p>
 
-        <!-- Auto-map button (shown when inventory is selected) -->
-        <div id="auto-map-button-container" style="margin-bottom: 1rem;">
-            <button type="button" id="auto-map-formats-btn" class="btn btn-secondary btn-sm" onclick="autoMapFormatsToInventory()" style="display: none;">
-                <span id="auto-map-icon">🎯</span> Map to Selected Inventory
+        <!-- Format actions -->
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+            <button type="button" id="select-all-formats-btn" class="btn btn-secondary btn-sm" onclick="selectAllFormats()">
+                ✓ Select All
             </button>
-            <span id="auto-map-status" style="margin-left: 0.5rem; color: #666; font-size: 0.9rem;"></span>
+            <button type="button" id="deselect-all-formats-btn" class="btn btn-secondary btn-sm" onclick="deselectAllFormats()">
+                ✗ Deselect All
+            </button>
         </div>
 
         <!-- Search box for formats -->
@@ -103,12 +105,7 @@
 
         <!-- Size filter panel (shown when inventory selected) -->
         <div id="size-filter-panel" style="display: none; margin-bottom: 1rem; padding: 1rem; background: #f0f7ff; border: 2px solid #d0e7ff; border-radius: 6px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                <strong style="color: #1976d2;">💡 Sizes from your selected inventory:</strong>
-                <button type="button" id="select-all-matching-btn" class="btn btn-primary btn-sm" onclick="selectAllMatchingFormats()" style="display: none;">
-                    ✓ Select all matching formats
-                </button>
-            </div>
+            <strong style="color: #1976d2; margin-bottom: 0.75rem; display: block;">💡 Sizes from your selected inventory:</strong>
             <div id="size-chips-container" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;">
                 <!-- Size chips populated by JavaScript -->
             </div>
@@ -1396,16 +1393,54 @@ function updateMatchingFormatsCount() {
     if (countEl) {
         countEl.textContent = `${matchingCards.length} matching / ${totalCards} total formats`;
     }
+}
 
-    // Update "Select all matching" button text
-    const selectBtn = document.getElementById('select-all-matching-btn');
-    if (selectBtn) {
-        if (matchingCards.length > 0) {
-            selectBtn.textContent = `✓ Select all ${matchingCards.length} matching ${matchingCards.length === 1 ? 'format' : 'formats'}`;
-            selectBtn.style.display = 'inline-block';
-        } else {
-            selectBtn.style.display = 'none';
+/**
+ * Select all visible formats
+ */
+function selectAllFormats() {
+    const formatCards = document.querySelectorAll('.format-card');
+    let selectedCount = 0;
+
+    formatCards.forEach(card => {
+        // Skip hidden cards
+        if (card.style.display === 'none') return;
+
+        const checkbox = card.querySelector('input[type="checkbox"]');
+        if (checkbox && !checkbox.checked) {
+            checkbox.checked = true;
+            selectedCount++;
         }
+    });
+
+    // Update the hidden field and summary
+    updateHiddenFormatsField();
+
+    if (selectedCount > 0) {
+        showToast(`Selected ${selectedCount} ${selectedCount === 1 ? 'format' : 'formats'}`, 'success');
+    }
+}
+
+/**
+ * Deselect all formats
+ */
+function deselectAllFormats() {
+    const formatCards = document.querySelectorAll('.format-card');
+    let deselectedCount = 0;
+
+    formatCards.forEach(card => {
+        const checkbox = card.querySelector('input[type="checkbox"]');
+        if (checkbox && checkbox.checked) {
+            checkbox.checked = false;
+            deselectedCount++;
+        }
+    });
+
+    // Update the hidden field and summary
+    updateHiddenFormatsField();
+
+    if (deselectedCount > 0) {
+        showToast(`Deselected ${deselectedCount} ${deselectedCount === 1 ? 'format' : 'formats'}`, 'info');
     }
 }
 
@@ -1573,30 +1608,9 @@ function updateHiddenFormatsField() {
     font-size: 0.85rem;
 }
 
-/* Format card match indicator */
+/* Format card match indicator - subtle background only */
 .format-card.matches-inventory {
-    position: relative;
     background: #f0f7ff !important;
-    border: 2px solid #4caf50 !important;
-}
-
-.format-card.matches-inventory::before {
-    content: '●';
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    color: #4caf50;
-    font-size: 1.2rem;
-    animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.5;
-    }
 }
 
 /* Toast notification */
