@@ -576,8 +576,12 @@ def add_product(tenant_id):
                             f"{fmt.format_id.agent_url}|{fmt.format_id.id}" for fmt in available_formats
                         }
                         logger.info(f"[DEBUG] Found {len(valid_format_ids)} valid formats for tenant {tenant_id}")
-                        logger.info(f"[DEBUG] Sample valid format IDs: {list(valid_format_ids)[:5]}")
+                        sample_ids = list(valid_format_ids)[:5]
+                        logger.info(f"[DEBUG] Sample valid format IDs: {sample_ids}")
                         logger.info(f"[DEBUG] Form submitted formats_raw: {formats_raw}")
+                        # Log the first submitted format to see exact structure
+                        if formats_raw:
+                            logger.info(f"[DEBUG] First submitted format: '{formats_raw[0]}'")
                     except Exception as e:
                         logger.error(f"Failed to fetch available formats: {e}")
                         flash("Unable to validate formats. Please try again.", "error")

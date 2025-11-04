@@ -86,16 +86,6 @@
         <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Creative Formats</h3>
         <p style="color: #666; margin-bottom: 1rem;">Choose creative formats for this product. Click the ⓘ icon on each format to learn more.</p>
 
-        <!-- Format actions -->
-        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-            <button type="button" id="select-all-formats-btn" class="btn btn-secondary btn-sm" onclick="selectAllFormats()">
-                ✓ Select All
-            </button>
-            <button type="button" id="deselect-all-formats-btn" class="btn btn-secondary btn-sm" onclick="deselectAllFormats()">
-                ✗ Deselect All
-            </button>
-        </div>
-
         <!-- Search box for formats -->
         <div id="format-search-box" style="margin-bottom: 1rem;">
             <input type="text" id="format-search-input" placeholder="Search formats by name, type, or size..."
@@ -122,6 +112,20 @@
         <div id="format-search-targets" style="display: none; padding: 1rem; background: #e7f3ff; border: 1px solid #90caf9; border-radius: 4px; margin-bottom: 1rem;">
             <strong style="color: #1565c0;">Looking for formats:</strong>
             <div id="search-target-list" style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
+        </div>
+
+        <!-- Format selection actions (shown with formats) -->
+        <div id="format-actions" style="display: {% if product and product.formats %}flex{% else %}none{% endif %}; gap: 0.5rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap;">
+            <button type="button" id="select-all-formats-btn" class="btn btn-secondary btn-sm" onclick="selectAllFormats()">
+                ✓ Select All
+            </button>
+            <button type="button" id="select-matching-formats-btn" class="btn btn-primary btn-sm" onclick="selectAllMatchingFormats()" style="display: none;">
+                ✓ Select All Matching
+            </button>
+            <button type="button" id="deselect-all-formats-btn" class="btn btn-secondary btn-sm" onclick="deselectAllFormats()">
+                ✗ Deselect All
+            </button>
+            <span style="color: #666; font-size: 0.85rem; margin-left: 0.5rem;">Select formats that match your inventory</span>
         </div>
 
         <!-- Formats container (hidden until ad units selected, or shown if editing product with formats) -->
@@ -541,6 +545,12 @@ async function autoSuggestFormats(selectedCheckboxes) {
     // Filter and display matching formats
     const formatCards = document.querySelectorAll('.format-card');
     container.style.display = 'grid';
+
+    // Show format actions
+    const formatActions = document.getElementById('format-actions');
+    if (formatActions) {
+        formatActions.style.display = 'flex';
+    }
     let matchingCount = 0;
     let autoCheckedCount = 0;
 
@@ -1001,17 +1011,25 @@ function filterGAMFormats() {
     if (config.targeted_ad_unit_ids && config.targeted_ad_unit_ids.length > 0) {
         document.getElementById('targeted_ad_unit_ids').value = config.targeted_ad_unit_ids.join(',');
 
-        // Fetch ad unit names
+        // Fetch ad unit names and metadata
         fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`)
             .then(response => response.json())
             .then(data => {
                 if (data.items) {
+                    // Cache ad unit data in inventoryCache for size extraction
+                    data.items.forEach(item => {
+                        inventoryCache.adUnits.set(item.id, item);
+                    });
+
                     const names = config.targeted_ad_unit_ids.map(id => {
                         const item = data.items.find(i => i.id === id);
                         return item ? item.name : id;
                     });
                     updateSelectedDisplay('selected-ad-units', names, config.targeted_ad_unit_ids);
                     console.log('Populated ad units:', names);
+
+                    // Extract sizes and show formats (same as when applying selection)
+                    extractSizesFromInventory();
                 }
             })
             .catch(error => {
@@ -1033,11 +1051,16 @@ function filterGAMFormats() {
         console.log('[DEBUG] config.targeted_placement_ids array:', placementIds);
         document.getElementById('targeted_placement_ids').value = placementIdsValue;
 
-        // Fetch placement names
+        // Fetch placement names and metadata
         fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=placement`)
             .then(response => response.json())
             .then(data => {
                 if (data.items) {
+                    // Cache placement data in inventoryCache for size extraction
+                    data.items.forEach(item => {
+                        inventoryCache.placements.set(item.id, item);
+                    });
+
                     const names = placementIds.map(id => {
                         const item = data.items.find(i => i.id === id);
                         return item ? item.name : id;
@@ -1045,6 +1068,9 @@ function filterGAMFormats() {
                     updateSelectedDisplay('selected-placements', names, placementIds);
                     console.log('Populated placements:', names);
                     console.log('Populated placement IDs:', placementIds);
+
+                    // Extract sizes and show formats (same as when applying selection)
+                    extractSizesFromInventory();
                 }
             })
             .catch(error => {
@@ -1062,12 +1088,17 @@ function filterGAMFormats() {
 
     // Set creative formats
     if (product.formats && product.formats.length > 0) {
-        product.formats.forEach(format => {
+        console.log('[DEBUG] Product formats:', product.formats);
+        product.formats.forEach((format, index) => {
             // Handle both FormatReference objects and legacy string format
             let formatId, agentUrl;
             if (typeof format === 'object') {
                 formatId = format.format_id || format.id;
                 agentUrl = format.agent_url;
+                if (index === 0) {
+                    console.log('[DEBUG] First format object:', format);
+                    console.log('[DEBUG] Extracted formatId:', formatId, 'agentUrl:', agentUrl);
+                }
             } else {
                 formatId = format;
                 agentUrl = 'https://creative.adcontextprotocol.org'; // default
@@ -1085,7 +1116,7 @@ function filterGAMFormats() {
                 checkbox.checked = true;
                 console.log('Checked format:', formatId);
             } else {
-                console.warn('Format checkbox not found for:', formatId);
+                console.warn('Format checkbox not found for:', formatId, '(format object:', format, ')');
             }
         });
     }
@@ -1186,29 +1217,43 @@ async function extractSizesFromInventory() {
     });
 
     // For placements, need to lookup their ad units and get sizes
+    // First, check which ad units need fetching
+    let needsFetch = false;
     for (const placementId of placementIds) {
         const placement = inventoryCache.placements.get(placementId);
         if (placement && placement.metadata && placement.metadata.ad_unit_ids) {
-            // Need to fetch these ad units if not already cached
             for (const adUnitId of placement.metadata.ad_unit_ids) {
-                let adUnit = inventoryCache.adUnits.get(adUnitId);
-
-                // If not cached, fetch it
-                if (!adUnit) {
-                    try {
-                        const response = await fetch(
-                            `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`
-                        );
-                        const data = await response.json();
-                        data.items.forEach(item => {
-                            inventoryCache.adUnits.set(item.id, item);
-                        });
-                        adUnit = inventoryCache.adUnits.get(adUnitId);
-                    } catch (error) {
-                        console.warn(`Failed to fetch ad unit ${adUnitId}:`, error);
-                        continue;
-                    }
+                if (!inventoryCache.adUnits.has(adUnitId)) {
+                    needsFetch = true;
+                    break;
                 }
+            }
+            if (needsFetch) break;
+        }
+    }
+
+    // Fetch all ad units once if needed (more efficient than per-unit fetches)
+    if (needsFetch) {
+        try {
+            const response = await fetch(
+                `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`
+            );
+            const data = await response.json();
+            data.items.forEach(item => {
+                inventoryCache.adUnits.set(item.id, item);
+            });
+        } catch (error) {
+            console.error('Failed to fetch ad units for placement sizes:', error);
+            showToast('Could not load ad unit sizes from placements', 'error');
+        }
+    }
+
+    // Now extract sizes from all placement ad units
+    for (const placementId of placementIds) {
+        const placement = inventoryCache.placements.get(placementId);
+        if (placement && placement.metadata && placement.metadata.ad_unit_ids) {
+            for (const adUnitId of placement.metadata.ad_unit_ids) {
+                const adUnit = inventoryCache.adUnits.get(adUnitId);
 
                 // Extract sizes from this ad unit
                 if (adUnit && adUnit.metadata && adUnit.metadata.sizes) {
@@ -1291,6 +1336,13 @@ function updateFormatMatchIndicators() {
 
     // Update the count after adding indicators
     updateMatchingFormatsCount();
+
+    // Show/hide the "Select All Matching" button
+    const matchingCount = document.querySelectorAll('.format-card.matches-inventory').length;
+    const selectMatchingBtn = document.getElementById('select-matching-formats-btn');
+    if (selectMatchingBtn) {
+        selectMatchingBtn.style.display = matchingCount > 0 ? 'inline-block' : 'none';
+    }
 }
 
 /**
@@ -1337,8 +1389,8 @@ function selectAllFormats() {
         }
     });
 
-    // Update the hidden field and summary
-    updateHiddenFormatsField();
+    // Update the summary
+    updateFormatSummary();
 
     if (selectedCount > 0) {
         showToast(`Selected ${selectedCount} ${selectedCount === 1 ? 'format' : 'formats'}`, 'success');
@@ -1360,8 +1412,8 @@ function deselectAllFormats() {
         }
     });
 
-    // Update the hidden field and summary
-    updateHiddenFormatsField();
+    // Update the summary
+    updateFormatSummary();
 
     if (deselectedCount > 0) {
         showToast(`Deselected ${deselectedCount} ${deselectedCount === 1 ? 'format' : 'formats'}`, 'info');
@@ -1376,20 +1428,10 @@ function selectAllMatchingFormats() {
     let selectedCount = 0;
 
     matchingCards.forEach(card => {
-        const checkbox = card.querySelector('.format-checkbox');
+        const checkbox = card.querySelector('input[type="checkbox"]');
         if (checkbox && !checkbox.checked) {
             checkbox.checked = true;
             selectedCount++;
-
-            // Trigger the toggleFormat function
-            const formatId = checkbox.value;
-            const formatName = card.querySelector('.format-name')?.textContent || formatId;
-            const agentUrl = checkbox.dataset.agentUrl || '';
-
-            // Update selected formats tracking
-            if (window.selectedFormats) {
-                window.selectedFormats.add(formatId);
-            }
         }
     });
 
@@ -1398,8 +1440,8 @@ function selectAllMatchingFormats() {
         showToast(`Selected ${selectedCount} matching ${selectedCount === 1 ? 'format' : 'formats'}`, 'success');
     }
 
-    // Update hidden field
-    updateHiddenFormatsField();
+    // Update summary
+    updateFormatSummary();
 }
 
 /**
@@ -1451,19 +1493,6 @@ function showToast(message, type = 'info') {
         toast.style.animation = 'slideOut 0.3s ease-in';
         setTimeout(() => toast.remove(), 300);
     }, 3000);
-}
-
-/**
- * Update hidden formats field (helper for selectAllMatchingFormats)
- */
-function updateHiddenFormatsField() {
-    const checkboxes = document.querySelectorAll('.format-checkbox:checked');
-    const formats = Array.from(checkboxes).map(cb => {
-        const agentUrl = cb.dataset.agentUrl || '';
-        const formatId = cb.value;
-        return agentUrl ? `${agentUrl}|${formatId}` : formatId;
-    });
-    document.getElementById('formats-hidden').value = formats.join(',');
 }
 
 </script>
