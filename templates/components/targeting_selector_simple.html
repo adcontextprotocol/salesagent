@@ -150,23 +150,59 @@ document.addEventListener('DOMContentLoaded', async function() {
         const existingData = document.getElementById('targeting-data').value;
         if (existingData && existingData !== '{}') {
             try {
-                selectedTargeting = JSON.parse(existingData).key_value_pairs || {};
+                const parsedData = JSON.parse(existingData);
+                selectedTargeting = parsedData.key_value_pairs || {};
 
                 // Build display names for existing targeting
-                // Note: For existing data, we'll show the internal names until values are loaded
-                // This is acceptable since it's rare and will be corrected on next selection
+                // We need to load the values from the API to get display names
                 window.targetingDisplayNames = {};
+
+                // Load display names for all existing keys
+                const keyLoadPromises = [];
                 for (const keyName of Object.keys(selectedTargeting)) {
                     const key = availableKeys.find(k => k.name === keyName);
                     if (key) {
+                        // Initialize display names structure
                         window.targetingDisplayNames[keyName] = {
                             keyDisplay: key.display_name || key.name,
                             values: {}
                         };
+
+                        // Load values for this key to get display names
+                        const promise = fetch(`{{ script_name }}/api/tenant/${tenantId}/targeting/values/${key.id}`, {
+                            credentials: 'same-origin'
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            // Map value names to display info (both name and display_name)
+                            const values = data.values || [];
+                            values.forEach(value => {
+                                const valueName = value.name || value.id;
+                                const displayName = value.display_name || valueName;
+                                // Store both the name and display name for proper formatting
+                                window.targetingDisplayNames[keyName].values[valueName] = {
+                                    name: valueName,
+                                    displayName: displayName
+                                };
+                            });
+                        })
+                        .catch(err => {
+                            console.warn(`Failed to load display names for key ${keyName}:`, err);
+                        });
+
+                        keyLoadPromises.push(promise);
                     }
                 }
 
-                updateDisplay();
+                // Wait for all display names to load, then update display
+                Promise.all(keyLoadPromises).then(() => {
+                    updateDisplay();
+                }).catch(err => {
+                    console.error('Error loading targeting display names:', err);
+                    // Still show the targeting, just with internal names
+                    updateDisplay();
+                });
+
             } catch (e) {
                 console.error('Error parsing existing targeting:', e);
             }
@@ -200,6 +236,17 @@ async function loadKeyValues(keyId) {
 
         availableValues[keyId] = data.values || [];
 
+        // Debug: Log the first few values to see what data we're getting
+        if (data.values && data.values.length > 0) {
+            console.log('[DEBUG] Sample targeting values received:', data.values.slice(0, 3));
+            console.log('[DEBUG] First value structure:', {
+                id: data.values[0].id,
+                name: data.values[0].name,
+                display_name: data.values[0].display_name,
+                key_name: data.values[0].key_name
+            });
+        }
+
         // Sort values alphabetically by display name
         const sortedValues = [...data.values].sort((a, b) => {
             const nameA = (a.display_name || a.name).toLowerCase();
@@ -222,15 +269,34 @@ async function loadKeyValues(keyId) {
             const valueName = value.name || value.id;
             const displayName = value.display_name || '';
 
+            // Debug for first few values
+            if (sortedValues.indexOf(value) < 3) {
+                console.log(`[DEBUG] Value ${sortedValues.indexOf(value)}:`, {
+                    valueName,
+                    displayName,
+                    'displayName !== valueName': displayName !== valueName,
+                    'displayName.match(/^\\d+$/)': displayName ? displayName.match(/^\d+$/) : null
+                });
+            }
+
             // If display_name exists and is different from name, show both
             if (displayName && displayName !== valueName && !displayName.match(/^\d+$/)) {
-                option.textContent = `${valueName} - ${displayName}`;
+                option.textContent = `${displayName} (${valueName})`;
+                if (sortedValues.indexOf(value) < 3) {
+                    console.log(`[DEBUG] Using format: "${displayName} (${valueName})"`);
+                }
             } else if (displayName && !displayName.match(/^\d+$/)) {
                 // Display name is meaningful (not just a number), use it
                 option.textContent = displayName;
+                if (sortedValues.indexOf(value) < 3) {
+                    console.log(`[DEBUG] Using display name only: "${displayName}"`);
+                }
             } else {
                 // Fallback to name
                 option.textContent = valueName;
+                if (sortedValues.indexOf(value) < 3) {
+                    console.log(`[DEBUG] Using name only (fallback): "${valueName}"`);
+                }
             }
 
             option.dataset.keyId = keyId;
@@ -274,7 +340,11 @@ function addSelectedValues() {
                 values: {}
             };
         }
-        window.targetingDisplayNames[keyName].values[valueName] = valueDisplayName;
+        // Store both name and display name for proper formatting
+        window.targetingDisplayNames[keyName].values[valueName] = {
+            name: valueName,
+            displayName: valueDisplayName
+        };
 
         // Add value if not already present (using internal name for API)
         if (!selectedTargeting[keyName].includes(valueName)) {
@@ -301,8 +371,25 @@ function updateDisplay() {
         const keyDisplay = window.targetingDisplayNames?.[key]?.keyDisplay || key;
 
         values.forEach(value => {
-            // Get display name for value (fallback to internal name if not found)
-            const valueDisplay = window.targetingDisplayNames?.[key]?.values?.[value] || value;
+            // Get display info for value (can be object with name+displayName, or just a string)
+            const valueInfo = window.targetingDisplayNames?.[key]?.values?.[value];
+            let valueDisplay;
+
+            if (valueInfo && typeof valueInfo === 'object') {
+                // New format: object with name and displayName
+                const name = valueInfo.name || value;
+                const displayName = valueInfo.displayName || name;
+
+                // Format as "Display Name (ID)" if they're different, otherwise just show one
+                if (displayName && displayName !== name && !displayName.match(/^\d+$/)) {
+                    valueDisplay = `${displayName} (${name})`;
+                } else {
+                    valueDisplay = displayName || name;
+                }
+            } else {
+                // Legacy format: plain string or missing
+                valueDisplay = valueInfo || value;
+            }
 
             html += `
                 <span class="selected-item">
