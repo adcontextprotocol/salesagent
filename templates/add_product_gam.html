@@ -1342,9 +1342,6 @@ function updateSizeChipsPanel() {
             </button>
         `;
     }).join('');
-
-    // Update matching count
-    updateMatchingFormatsCount();
 }
 
 /**
@@ -1354,17 +1351,25 @@ function updateFormatMatchIndicators() {
     const formatCards = document.querySelectorAll('.format-card');
 
     formatCards.forEach(card => {
-        const formatName = card.querySelector('.format-checkbox')?.value || '';
-        const formatLabel = card.querySelector('.format-name')?.textContent || '';
+        // Get dimensions from data attribute (most reliable source)
+        const dataDimensions = card.getAttribute('data-dimensions') || '';
 
-        // Extract sizes from format name/label
-        const formatSizes = extractSizesFromFormatName(formatLabel + ' ' + formatName);
+        // Also try to extract from format name/label as fallback
+        const formatName = card.querySelector('.format-checkbox')?.value || '';
+        const formatLabel = card.querySelector('strong')?.textContent || '';
+        const allText = `${dataDimensions} ${formatLabel} ${formatName}`;
+
+        // Extract sizes from all available sources
+        const formatSizes = extractSizesFromFormatName(allText);
 
         // Check if any format size matches inventory sizes
         const matches = formatSizes.some(size => inventoryCache.extractedSizes.has(size));
 
         card.classList.toggle('matches-inventory', matches);
     });
+
+    // Update the count after adding indicators
+    updateMatchingFormatsCount();
 }
 
 /**
