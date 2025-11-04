@@ -1016,8 +1016,8 @@ function filterGAMFormats() {
     if (config.targeted_ad_unit_ids && config.targeted_ad_unit_ids.length > 0) {
         document.getElementById('targeted_ad_unit_ids').value = config.targeted_ad_unit_ids.join(',');
 
-        // Fetch ad unit names and metadata
-        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`)
+        // Fetch ad unit names and metadata (include ALL statuses to find archived/inactive items)
+        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit&status=ALL`)
             .then(response => response.json())
             .then(data => {
                 if (data.items) {
@@ -1056,8 +1056,8 @@ function filterGAMFormats() {
         console.log('[DEBUG] config.targeted_placement_ids array:', placementIds);
         document.getElementById('targeted_placement_ids').value = placementIdsValue;
 
-        // Fetch placement names and metadata
-        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=placement`)
+        // Fetch placement names and metadata (include ALL statuses to find archived/inactive items)
+        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=placement&status=ALL`)
             .then(response => response.json())
             .then(data => {
                 if (data.items) {
