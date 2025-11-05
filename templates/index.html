@@ -8,7 +8,6 @@
         <h2>Accounts</h2>
         <div>
             {% if session.role == 'super_admin' %}
-            <a href="{{ script_name }}/mcp-test" class="btn btn-secondary">MCP Protocol Test</a>
             <a href="{{ script_name }}/settings" class="btn btn-secondary">Settings</a>
             {% endif %}
             <a href="{{ script_name }}/create_tenant" class="btn">Create New Account</a>

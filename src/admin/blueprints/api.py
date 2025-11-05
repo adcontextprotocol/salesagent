@@ -1,11 +1,8 @@
 """API management blueprint."""
 
-import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
-from fastmcp.client import Client
-from fastmcp.client.transports import StreamableHttpTransport
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func, select, text
 
@@ -365,82 +362,6 @@ def gam_get_advertisers():
     GAM advertiser fetching - implement in phase 2."""
     # Placeholder implementation
     return jsonify({"error": "Not yet implemented"}), 501
-
-
-@api_bp.route("/mcp-test/call", methods=["POST"])
-@require_auth(admin_only=True)
-@log_admin_action("mcp_test_call")
-def mcp_test_call():
-    """Execute MCP protocol test call.
-
-    This endpoint allows super admins to test MCP protocol calls
-    through the Admin UI's protocol test interface.
-    """
-    try:
-        data = request.json
-        server_url = data.get("server_url")
-        tool_name = data.get("tool")  # The template sends 'tool' not 'method'
-        params = data.get("params", {})
-        auth_token = data.get("access_token")  # The template sends 'access_token'
-
-        if not all([server_url, tool_name, auth_token]):
-            return (
-                jsonify({"success": False, "error": "Missing required fields: server_url, tool, and access_token"}),
-                400,
-            )
-
-        # Get tenant from token
-        with get_db_session() as db_session:
-            principal = db_session.scalars(select(Principal).filter_by(access_token=auth_token)).first()
-            if not principal:
-                return jsonify({"success": False, "error": "Invalid auth token"}), 401
-
-            tenant_id = principal.tenant_id
-
-        # Create MCP client with proper headers
-        headers = {"x-adcp-auth": auth_token, "x-adcp-tenant": tenant_id}
-
-        # Make async call to MCP server
-        async def call_mcp():
-            transport = StreamableHttpTransport(url=server_url, headers=headers)
-            client = Client(transport=transport)
-
-            async with client:
-                # Pass params directly as per MCP specification (no req wrapper)
-                tool_params = params
-                result = await client.call_tool(tool_name, tool_params)
-
-                # Extract the structured content from the result
-                if hasattr(result, "structured_content"):
-                    return result.structured_content
-                elif hasattr(result, "content"):
-                    if isinstance(result.content, list) and len(result.content) > 0:
-                        return result.content[0].text if hasattr(result.content[0], "text") else str(result.content[0])
-                    return result.content
-                else:
-                    return str(result)
-
-        # Run the async function
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            result = loop.run_until_complete(call_mcp())
-            return jsonify({"success": True, "result": result})
-        except Exception as e:
-            logger.error(f"MCP call failed: {str(e)}")
-            return jsonify(
-                {
-                    "success": False,
-                    "error": str(e),
-                    "details": {"tool": tool_name, "server_url": server_url, "params": params},
-                }
-            )
-        finally:
-            loop.close()
-
-    except Exception as e:
-        logger.error(f"MCP test call error: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @api_bp.route("/gam/test-connection", methods=["POST"])

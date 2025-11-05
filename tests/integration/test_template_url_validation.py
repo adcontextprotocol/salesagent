@@ -102,7 +102,6 @@ class TestTemplateUrlValidation:
         """Test that critical admin routes exist and are registered."""
         critical_routes = [
             ("tenant_management_settings.tenant_management_settings", "/settings"),  # Tenant management settings
-            ("core.mcp_test", "/mcp-test"),  # MCP protocol test
             ("core.index", "/"),  # Main dashboard
             ("auth.login", "/login"),  # Login page
             ("auth.logout", "/logout"),  # Logout
