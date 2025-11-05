@@ -1267,6 +1267,9 @@ def edit_product(tenant_id, product_id):
                     for mapping in existing_mappings:
                         db_session.delete(mapping)
 
+                    # Flush deletes to avoid unique constraint violations
+                    db_session.flush()
+
                     # Recreate mappings from implementation_config
                     # Ad units
                     if base_config.get("targeted_ad_unit_ids"):

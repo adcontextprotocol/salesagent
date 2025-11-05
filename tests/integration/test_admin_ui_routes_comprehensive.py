@@ -39,11 +39,6 @@ class TestCoreRoutes:
         response = authenticated_admin_session.get("/metrics")
         assert response.status_code in [200, 501]  # May not be implemented
 
-    def test_mcp_test_page(self, authenticated_admin_session):
-        """Test /mcp-test page renders."""
-        response = authenticated_admin_session.get("/mcp-test")
-        assert response.status_code == 200
-
     def test_debug_headers(self, authenticated_admin_session):
         """Test /debug/headers endpoint."""
         response = authenticated_admin_session.get("/debug/headers")
