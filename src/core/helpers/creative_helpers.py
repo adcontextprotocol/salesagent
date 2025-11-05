@@ -116,30 +116,63 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
     """
 
     # Base asset object with common fields
+    # Note: creative.format_id returns string via FormatId.__str__() (returns just the id field)
+    # creative.format is the actual FormatId object
+    format_str = str(creative.format_id)  # Convert FormatId to string ID
+
     asset: dict[str, Any] = {
         "creative_id": creative.creative_id,
         "name": creative.name,
-        "format": creative.format_id,  # Use property that returns format ID string
+        "format": format_str,  # Adapter expects string format ID
         "package_assignments": package_assignments,
     }
 
     # Extract data from assets dict (AdCP v1 spec)
     assets_dict = creative.assets if isinstance(creative.assets, dict) else {}
 
-    # Find primary media asset (image, video, html, etc.)
-    # Priority order: common asset roles
+    # Determine format type from format_id (declarative, not heuristic)
+    # Format IDs follow pattern: {type}_{variant} (e.g., display_300x250, video_instream_15s, native_content_feed)
+    format_type = format_str.split("_")[0] if "_" in format_str else "display"  # Default to display
+
+    # Find primary media asset based on format type (declarative role mapping)
     primary_asset = None
     primary_role = None
-    for role in ["banner_image", "image", "video", "video_file", "main", "creative", "content"]:
-        if role in assets_dict:
-            primary_asset = assets_dict[role]
-            primary_role = role
-            break
 
-    # If no common role found, use first asset
+    # Declarative role mapping by format type
+    if format_type == "video":
+        # Video formats: Look for video asset first
+        for role in ["video_file", "video", "main", "creative"]:
+            if role in assets_dict:
+                primary_asset = assets_dict[role]
+                primary_role = role
+                break
+    elif format_type == "native":
+        # Native formats: Look for native content assets
+        for role in ["main", "creative", "content"]:
+            if role in assets_dict:
+                primary_asset = assets_dict[role]
+                primary_role = role
+                break
+    else:  # display (image, html5, javascript, vast)
+        # Display formats: Look for image/banner first, then code-based assets
+        for role in ["banner_image", "image", "main", "creative", "content"]:
+            if role in assets_dict:
+                primary_asset = assets_dict[role]
+                primary_role = role
+                break
+
+    # Fallback: If no asset found with expected roles, use first non-tracking asset
     if not primary_asset and assets_dict:
-        primary_role = next(iter(assets_dict.keys()))
-        primary_asset = assets_dict[primary_role]
+        for role, asset_data in assets_dict.items():
+            # Skip tracking pixels and clickthrough URLs
+            if isinstance(asset_data, dict) and asset_data.get("url_type") not in [
+                "tracker_pixel",
+                "tracker_script",
+                "clickthrough",
+            ]:
+                primary_role = role
+                primary_asset = asset_data
+                break
 
     if primary_asset and isinstance(primary_asset, dict) and primary_role:
         # Detect asset type from AdCP v1 spec structure (no asset_type field in spec)
@@ -209,9 +242,8 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
             # Per spec: tracker_pixel for impression tracking, tracker_script for SDK
             if url_type in ["tracker_pixel", "tracker_script"]:
                 tracking_urls.setdefault("impression", []).append(asset_data["url"])  # type: ignore[union-attr]
-            elif url_type == "clickthrough" and "click_url" not in asset:
-                # Also capture clickthrough as click tracking
-                tracking_urls["click"] = asset_data["url"]
+            # Note: clickthrough URLs go to asset["click_url"], not tracking_urls
+            # (already extracted above in the click URL extraction section)
 
     if tracking_urls:
         asset["delivery_settings"] = {"tracking_urls": tracking_urls}
