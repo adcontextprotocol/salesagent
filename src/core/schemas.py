@@ -1298,13 +1298,28 @@ class FormatId(BaseModel):
 
 
 class Creative(BaseModel):
-    """Individual creative asset in the creative library - AdCP spec compliant."""
+    """Individual creative asset - hybrid model for AdCP protocol and internal use.
 
-    # Core identification fields
+    **Architecture Note:** This is a hybrid model that serves multiple purposes:
+    1. **AdCP Input**: Accepts CreativeAsset per official spec (creative_id, name, format_id, assets)
+    2. **Internal Storage**: Adds metadata (principal_id, timestamps, status) for workflow
+    3. **Response Output**: Filters internal fields via model_dump() for AdCP compliance
+
+    Internal fields (principal_id, created_at, etc.) are **optional on input** (buyers don't
+    provide them), **added during processing** (sales agent populates), and **excluded from
+    output** (model_dump() filters them).
+
+    This allows accepting pure AdCP CreativeAsset objects (per spec) while maintaining rich
+    internal state for approval workflows, audit trails, and multi-tenancy.
+
+    See docs/architecture/creative-model-architecture.md for detailed explanation.
+
+    Official AdCP spec: https://adcontextprotocol.org/schemas/v1/core/creative-asset.json
+    """
+
+    # === AdCP v1 Spec Required Fields ===
     creative_id: str
     name: str
-
-    # AdCP spec compliant fields
     format: FormatId = Field(
         alias="format_id", description="Creative format identifier with agent_url namespace (AdCP v2.4+)"
     )
