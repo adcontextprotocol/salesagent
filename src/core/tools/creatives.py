@@ -1748,11 +1748,11 @@ def _list_creatives_impl(
                     # Detect asset type and build appropriate asset structure
                     main_asset: dict[str, Any] = {"url": content_uri}
                     if db_creative.data:
-                        if "width" in db_creative.data:
+                        if "width" in db_creative.data and db_creative.data["width"] is not None:
                             main_asset["width"] = db_creative.data["width"]
-                        if "height" in db_creative.data:
+                        if "height" in db_creative.data and db_creative.data["height"] is not None:
                             main_asset["height"] = db_creative.data["height"]
-                        if "duration" in db_creative.data:
+                        if "duration" in db_creative.data and db_creative.data["duration"] is not None:
                             main_asset["duration_ms"] = int(db_creative.data["duration"] * 1000)
                     assets_dict["main"] = main_asset
 
