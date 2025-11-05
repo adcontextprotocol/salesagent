@@ -16,8 +16,6 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Tenant
 from src.core.domain_config import (
     extract_subdomain_from_host,
-    get_a2a_server_url,
-    get_mcp_server_url,
     is_sales_agent_domain,
 )
 
@@ -329,66 +327,6 @@ def create_tenant():
 def send_static(path):
     """Serve static files."""
     return send_from_directory("static", path)
-
-
-@core_bp.route("/mcp-test")
-@require_auth(admin_only=True)
-def mcp_test():
-    """MCP protocol testing interface for super admins."""
-    # Get all tenants and their principals
-    with get_db_session() as db_session:
-        # Get tenants
-        stmt = select(Tenant).filter_by(is_active=True).order_by(Tenant.name)
-        tenant_objs = db_session.scalars(stmt).all()
-        tenants = []
-        for tenant in tenant_objs:
-            tenants.append(
-                {
-                    "tenant_id": tenant.tenant_id,
-                    "name": tenant.name,
-                    "subdomain": tenant.subdomain,
-                }
-            )
-
-        # Get all principals with their tenant info
-        stmt = select(Principal).join(Tenant).where(Tenant.is_active).order_by(Tenant.name, Principal.name)
-        principal_objs = db_session.scalars(stmt).all()
-        principals = []
-        for principal in principal_objs:
-            # Get the tenant name via relationship or separate query
-            stmt = select(Tenant.name).filter_by(tenant_id=principal.tenant_id)
-            tenant_name = db_session.scalar(stmt)
-            principals.append(
-                {
-                    "principal_id": principal.principal_id,
-                    "name": principal.name,
-                    "tenant_id": principal.tenant_id,
-                    "access_token": principal.access_token,
-                    "tenant_name": tenant_name,
-                }
-            )
-
-    # Get server URLs - use production URLs if in production, otherwise localhost
-    if os.environ.get("PRODUCTION") == "true":
-        # In production, both servers are accessible at the configured domain
-        mcp_server_url = get_mcp_server_url()
-        a2a_server_url = get_a2a_server_url()
-    else:
-        # In development, use localhost with the configured ports from environment
-        # Default to common development ports if not set
-        mcp_port = int(os.environ.get("ADCP_SALES_PORT", 8080))
-        a2a_port = int(os.environ.get("A2A_PORT", 8091))
-        mcp_server_url = f"http://localhost:{mcp_port}/mcp"  # Remove trailing slash
-        a2a_server_url = f"http://localhost:{a2a_port}/a2a"
-
-    return render_template(
-        "mcp_test.html",
-        tenants=tenants,
-        principals=principals,
-        server_url=mcp_server_url,  # Keep legacy name for MCP server
-        mcp_server_url=mcp_server_url,
-        a2a_server_url=a2a_server_url,
-    )
 
 
 @core_bp.route("/admin/tenant/<tenant_id>/reactivate", methods=["POST"])
