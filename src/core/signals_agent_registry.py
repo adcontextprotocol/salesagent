@@ -246,12 +246,15 @@ class SignalsAgentRegistry:
         logger.info(f"get_signals: Returning {len(all_signals)} total signals")
         return all_signals
 
-    async def test_connection(self, agent_url: str, auth: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def test_connection(
+        self, agent_url: str, auth: dict[str, Any] | None = None, auth_header: str | None = None
+    ) -> dict[str, Any]:
         """Test connection to a signals agent.
 
         Args:
             agent_url: URL of the signals agent
             auth: Optional authentication configuration
+            auth_header: Optional custom auth header name
 
         Returns:
             dict with success status and message/error
@@ -263,6 +266,7 @@ class SignalsAgentRegistry:
                 name="Test Agent",
                 enabled=True,
                 auth=auth,
+                auth_header=auth_header,
                 timeout=30,
             )
 

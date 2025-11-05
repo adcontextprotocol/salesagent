@@ -266,7 +266,9 @@ def test_signals_agent(tenant_id, agent_id):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                result = loop.run_until_complete(registry.test_connection(agent.agent_url, auth=auth))
+                result = loop.run_until_complete(
+                    registry.test_connection(agent.agent_url, auth=auth, auth_header=agent.auth_header)
+                )
 
                 if result.get("success"):
                     return jsonify(
