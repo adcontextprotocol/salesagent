@@ -1551,9 +1551,32 @@ async function extractSizesFromInventory() {
         }
 
         // Recursively extract sizes from children (for hierarchical ad units)
+        // Children are stored as full objects from the tree API
         if (item.children && Array.isArray(item.children)) {
             item.children.forEach(child => {
-                if (child.id) {
+                // Child has sizes directly from tree API
+                if (child.sizes && Array.isArray(child.sizes)) {
+                    child.sizes.forEach(size => {
+                        const sizeKey = `${size.width}x${size.height}`;
+                        inventoryCache.extractedSizes.add(sizeKey);
+                        inventoryCache.sizeUnitCounts.set(
+                            sizeKey,
+                            (inventoryCache.sizeUnitCounts.get(sizeKey) || 0) + 1
+                        );
+                    });
+                }
+                // Recursively process grandchildren if they exist
+                if (child.children && Array.isArray(child.children)) {
+                    // Cache this child so we can process its children recursively
+                    if (!inventoryCache.adUnits.has(child.id)) {
+                        inventoryCache.adUnits.set(child.id, {
+                            id: child.id,
+                            name: child.name,
+                            path: child.path,
+                            metadata: { sizes: child.sizes || [] },
+                            children: child.children || []
+                        });
+                    }
                     extractSizesFromUnit(child.id);
                 }
             });
