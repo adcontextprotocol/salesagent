@@ -8,9 +8,11 @@ from enum import Enum
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+
 from src.core.schemas_generated._schemas_v1_core_push_notification_config_json import (
     PushNotificationConfig,
 )
+
 
 class AdCPBaseModel(BaseModel):
     """Base model for all AdCP request/response schemas.
@@ -1306,7 +1308,11 @@ class Creative(BaseModel):
     format: FormatId = Field(
         alias="format_id", description="Creative format identifier with agent_url namespace (AdCP v2.4+)"
     )
-    url: str = Field(alias="content_uri", description="URL of the creative content per AdCP spec")
+    url: str | None = Field(
+        None,
+        alias="content_uri",
+        description="URL of the creative content per AdCP spec (optional for asset-based creatives)",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -1403,10 +1409,11 @@ class Creative(BaseModel):
     )
 
     # Internal fields (not in AdCP spec, but available for internal use)
-    principal_id: str  # Internal - not in AdCP spec
+    # Made optional to support inline creatives in create_media_buy (sales agent adds these)
+    principal_id: str | None = None  # Internal - not in AdCP spec
     group_id: str | None = None  # Internal - not in AdCP spec
-    created_at: datetime  # Internal timestamp
-    updated_at: datetime  # Internal timestamp
+    created_at: datetime | None = None  # Internal timestamp
+    updated_at: datetime | None = None  # Internal timestamp
     has_macros: bool | None = False  # Internal processing
     macro_validation: dict[str, Any] | None = None  # Internal processing
     asset_mapping: dict[str, str] | None = Field(default_factory=dict)  # Internal mapping
@@ -1428,7 +1435,7 @@ class Creative(BaseModel):
         return self.format.id
 
     @property
-    def content_uri(self) -> str:
+    def content_uri(self) -> str | None:
         """Backward compatibility for content_uri.
 
         DEPRECATED: Use url instead.
@@ -1538,7 +1545,7 @@ class Creative(BaseModel):
             return "native"
         elif self.media_url or (self.url and not self._is_html_snippet(self.url)):
             return "hosted_asset"
-        elif self._is_html_snippet(self.url):
+        elif self.url and self._is_html_snippet(self.url):
             # Auto-detect from URL for legacy support
             return "third_party_tag"
         else:
@@ -1557,7 +1564,7 @@ class Creative(BaseModel):
         """Get the snippet content for third-party creatives (AdCP v1.3+ field)."""
         if self.snippet:
             return self.snippet
-        elif self._is_html_snippet(self.url):
+        elif self.url and self._is_html_snippet(self.url):
             return self.url  # Auto-detect from URL
         return None
 
@@ -1565,7 +1572,7 @@ class Creative(BaseModel):
         """Get native template variables (AdCP v1.3+ field)."""
         return self.template_variables
 
-    def get_primary_content_url(self) -> str:
+    def get_primary_content_url(self) -> str | None:
         """Get the primary content URL for hosted assets."""
         return self.media_url or self.url
 

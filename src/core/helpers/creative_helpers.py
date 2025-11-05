@@ -145,7 +145,9 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
     elif creative_type == "vast":
         # VAST reference
         asset["snippet"] = creative.get_snippet_content() or creative.url
-        asset["snippet_type"] = creative.snippet_type or ("vast_xml" if ".xml" in creative.url else "vast_url")
+        asset["snippet_type"] = creative.snippet_type or (
+            "vast_xml" if creative.url and ".xml" in creative.url else "vast_url"
+        )
 
     else:  # hosted_asset
         # Traditional hosted asset (image/video)
