@@ -1,0 +1,251 @@
+<!-- ============================================================================
+     HIERARCHICAL TREE VIEW JAVASCRIPT
+     Reusable tree view functionality for inventory selection
+
+     Usage:
+     {% include 'partials/hierarchical_tree_scripts.html' with {
+         'tree_api_url': url_for('inventory.get_inventory_tree', tenant_id=tenant_id),
+         'container_id': 'inventory-list',
+         'selected_field_id': 'targeted_ad_unit_ids',
+         'checkbox_class': 'tree-checkbox',
+         'cache_name': 'inventoryCache',
+         'on_change_callback': 'handleSelectionChange'
+     } %}
+     ============================================================================ -->
+
+<script>
+// Guard against double-loading
+let isLoadingTree = false;
+
+/**
+ * Load hierarchical tree structure with optional search
+ * @param {string} searchTerm - Optional search filter
+ * @param {string} treeApiUrl - API endpoint for tree data
+ * @param {string} containerId - DOM element ID for tree container
+ * @param {string} selectedFieldId - DOM element ID for selected items field
+ * @param {object} inventoryCache - Cache object for storing loaded items
+ */
+function loadInventoryTree(searchTerm = '', treeApiUrl, containerId, selectedFieldId, inventoryCache) {
+    if (isLoadingTree) {
+        return;
+    }
+
+    isLoadingTree = true;
+    const container = document.getElementById(containerId);
+
+    // Build URL with search parameter if provided
+    const url = searchTerm ? `${treeApiUrl}?search=${encodeURIComponent(searchTerm)}` : treeApiUrl;
+
+    // Show loading indicator
+    container.innerHTML = `<div class="tree-loading">
+        <div class="spinner-border spinner-border-sm" role="status" style="margin-right: 0.5rem;"></div>
+        ${searchTerm ? 'Searching...' : 'Loading...'}
+    </div>`;
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                container.innerHTML = `<div class="tree-empty text-danger">${data.error}</div>`;
+                isLoadingTree = false;
+                return;
+            }
+
+            if (!data.root_units || data.root_units.length === 0) {
+                if (searchTerm) {
+                    container.innerHTML = `<div class="tree-empty">No items found matching "${searchTerm}".</div>`;
+                } else {
+                    container.innerHTML = `<div class="tree-empty">No items found.</div>`;
+                }
+                isLoadingTree = false;
+                return;
+            }
+
+            // Get currently selected IDs
+            const field = document.getElementById(selectedFieldId);
+            const fieldValue = field ? field.value : '';
+            const selectedIds = new Set(fieldValue.split(',').filter(Boolean));
+
+            // Render tree
+            container.innerHTML = renderTree(data.root_units, selectedIds, 0, data.search_active, inventoryCache);
+
+            // Auto-expand based on context
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    if (data.search_active) {
+                        expandAllTreeNodes();
+                    } else if (selectedIds.size > 0) {
+                        expandToSelected();
+                    }
+                }, 200);
+            });
+
+            isLoadingTree = false;
+        })
+        .catch(error => {
+            container.innerHTML = `<div class="tree-empty text-danger">Error loading: ${error.message}</div>`;
+            isLoadingTree = false;
+        });
+}
+
+/**
+ * Render hierarchical tree (recursive)
+ * @param {Array} units - Tree nodes to render
+ * @param {Set} selectedIds - Set of selected item IDs
+ * @param {number} depth - Current tree depth
+ * @param {boolean} searchActive - Whether search is active
+ * @param {object} inventoryCache - Cache object for storing items
+ * @returns {string} HTML string
+ */
+function renderTree(units, selectedIds, depth = 0, searchActive = false, inventoryCache) {
+    return units.map(unit => {
+        const hasChildren = unit.children && unit.children.length > 0;
+        const isChecked = selectedIds.has(unit.id);
+        const matchedSearch = unit.matched_search || false;
+
+        // Store unit in cache
+        if (inventoryCache && !inventoryCache.has(unit.id)) {
+            inventoryCache.set(unit.id, {
+                id: unit.id,
+                name: unit.name,
+                path: unit.path,
+                metadata: unit.metadata || {}
+            });
+        }
+
+        const highlightClass = matchedSearch ? 'search-match' : '';
+
+        let html = `
+            <div class="tree-node ${highlightClass}" data-unit-id="${unit.id}" data-depth="${depth}">
+                <div class="tree-node-header">
+                    ${hasChildren ? `
+                        <span class="tree-toggle" onclick="event.stopPropagation(); toggleTreeNode('${unit.id}')">
+                            <span class="toggle-icon">▶</span>
+                            <span class="loading-spinner"></span>
+                        </span>
+                    ` : '<span class="tree-spacer"></span>'}
+                    <label class="tree-node-label" onclick="event.stopPropagation();">
+                        <input type="checkbox"
+                               class="tree-checkbox"
+                               value="${unit.id}"
+                               data-name="${unit.name}"
+                               data-path='${JSON.stringify(unit.path || [unit.name])}'
+                               ${isChecked ? 'checked' : ''}
+                               onchange="handleTreeCheckboxChange(this)">
+                        <div class="tree-node-content">
+                            <span class="tree-node-name">
+                                ${unit.name}
+                                ${unit.code && unit.code !== unit.name ? `<span class="tree-node-code">${unit.code}</span>` : ''}
+                            </span>
+                        </div>
+                    </label>
+                </div>
+                ${hasChildren ? `
+                    <div class="tree-children">
+                        ${renderTree(unit.children, selectedIds, depth + 1, searchActive, inventoryCache)}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+
+        return html;
+    }).join('');
+}
+
+/**
+ * Toggle tree node expand/collapse
+ */
+function toggleTreeNode(unitId) {
+    const node = document.querySelector(`.tree-node[data-unit-id="${unitId}"]`);
+    if (!node) return;
+
+    const children = node.querySelector('.tree-children');
+    const toggle = node.querySelector('.tree-toggle');
+    const toggleIcon = node.querySelector('.toggle-icon');
+
+    if (!children || !toggle || !toggleIcon) return;
+
+    const isExpanded = children.style.display === 'block';
+
+    if (isExpanded) {
+        children.style.display = 'none';
+        toggleIcon.textContent = '▶';
+        toggle.classList.remove('loading');
+    } else {
+        toggle.classList.add('loading');
+        setTimeout(() => {
+            children.style.display = 'block';
+            toggleIcon.textContent = '▼';
+            setTimeout(() => toggle.classList.remove('loading'), 150);
+        }, 50);
+    }
+}
+
+/**
+ * Handle checkbox change (override this function for custom behavior)
+ */
+function handleTreeCheckboxChange(checkbox) {
+    // Default: no-op - selection applied on form submission
+}
+
+/**
+ * Expand all tree nodes
+ */
+function expandAllTreeNodes() {
+    document.querySelectorAll('.tree-children').forEach(children => {
+        children.style.display = 'block';
+    });
+    document.querySelectorAll('.toggle-icon').forEach(toggle => {
+        toggle.textContent = '▼';
+    });
+}
+
+/**
+ * Collapse all tree nodes
+ */
+function collapseAllTreeNodes() {
+    document.querySelectorAll('.tree-children').forEach(children => {
+        children.style.display = 'none';
+    });
+    document.querySelectorAll('.toggle-icon').forEach(toggle => {
+        toggle.textContent = '▶';
+    });
+}
+
+/**
+ * Expand tree to show selected items
+ */
+function expandToSelected() {
+    collapseAllTreeNodes();
+
+    const checkedBoxes = document.querySelectorAll('.tree-checkbox:checked');
+    if (checkedBoxes.length === 0) return;
+
+    checkedBoxes.forEach(checkbox => {
+        let node = checkbox.closest('.tree-node');
+        const ancestors = [];
+        let current = node;
+
+        while (current) {
+            ancestors.unshift(current);
+            const parentChildren = current.parentElement;
+            if (parentChildren && parentChildren.classList.contains('tree-children')) {
+                current = parentChildren.closest('.tree-node');
+            } else {
+                break;
+            }
+        }
+
+        ancestors.forEach(ancestor => {
+            const childrenContainer = ancestor.querySelector(':scope > .tree-children');
+            if (childrenContainer) {
+                childrenContainer.style.display = 'block';
+            }
+            const toggle = ancestor.querySelector(':scope > .tree-node-header > .tree-toggle > .toggle-icon');
+            if (toggle) {
+                toggle.textContent = '▼';
+            }
+        });
+    });
+}
+</script>
