@@ -11,6 +11,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -140,61 +141,27 @@ def _sync_creatives_impl(
             try:
                 # First, validate the creative against the schema before database operations
                 try:
-                    # Create temporary schema object for validation
-                    # Map input fields to schema field names
+                    # Create temporary schema object for validation (AdCP v1 spec compliant)
+                    # Only include AdCP spec fields + internal fields
                     schema_data = {
                         "creative_id": creative.get("creative_id") or str(uuid.uuid4()),
                         "name": creative.get("name", ""),  # Ensure name is never None
                         "format_id": creative.get("format_id") or creative.get("format"),  # Support both field names
-                        "click_through_url": creative.get("click_url") or creative.get("click_through_url"),
-                        "width": creative.get("width"),
-                        "height": creative.get("height"),
-                        "duration": creative.get("duration"),
+                        "assets": creative.get("assets", {}),  # Required by AdCP v1 spec
+                        # Internal fields (added by sales agent)
                         "principal_id": principal_id,
                         "created_at": datetime.now(UTC),
                         "updated_at": datetime.now(UTC),
                         "status": "pending",
                     }
 
-                    # Handle assets vs media content
-                    if creative.get("assets"):
-                        # Asset-based creative (new AdCP format)
-                        # Extract URL from assets in priority order:
-                        # 1. Top-level url (backward compat)
-                        # 2. assets.main.url (common convention)
-                        # 3. Common asset_ids (image, video, creative, content)
-                        # 4. First asset with a URL (any asset_id)
-                        url = creative.get("url")
-                        if not url and creative.get("assets"):
-                            assets = creative["assets"]
-
-                            # Priority 1: Try common asset_ids that typically have the primary creative
-                            for priority_key in ["main", "image", "video", "creative", "content"]:
-                                if priority_key in assets and isinstance(assets[priority_key], dict):
-                                    url = assets[priority_key].get("url")
-                                    if url:
-                                        logger.debug(f"[sync_creatives] Extracted URL from assets.{priority_key}.url")
-                                        break
-
-                            # Priority 2: If still no URL, take first available asset's URL
-                            if not url:
-                                for asset_id, asset_data in assets.items():
-                                    if isinstance(asset_data, dict) and asset_data.get("url"):
-                                        url = asset_data["url"]
-                                        logger.debug(
-                                            f"[sync_creatives] Extracted URL from assets.{asset_id}.url (fallback)"
-                                        )
-                                        break
-
-                        schema_data["content_uri"] = url or f"asset://{creative.get('creative_id')}"
-                    else:
-                        # Media-based creative (legacy)
-                        schema_data["content_uri"] = (
-                            creative.get("url") or "https://placeholder.example.com/missing.jpg"
-                        )
-
-                    if creative.get("template_variables"):
-                        schema_data["template_variables"] = creative.get("template_variables")
+                    # Add optional AdCP v1 fields if provided
+                    if creative.get("inputs"):
+                        schema_data["inputs"] = creative.get("inputs")
+                    if creative.get("tags"):
+                        schema_data["tags"] = creative.get("tags")
+                    if creative.get("approved") is not None:
+                        schema_data["approved"] = creative.get("approved")
 
                     # Validate by creating a Creative schema object
                     # This will fail if required fields are missing or invalid (like empty name)
@@ -1771,29 +1738,44 @@ def _list_creatives_impl(
                 db_creative.updated_at if isinstance(db_creative.updated_at, datetime) else datetime.now(UTC)
             )
 
+            # AdCP v1 spec compliant - only spec fields
+            # Reconstruct assets dict from database data
+            assets_dict = db_creative.data.get("assets", {}) if db_creative.data else {}
+            if not assets_dict:
+                # Legacy data: reconstruct assets dict from old fields
+                assets_dict = {}
+                if content_uri:
+                    # Detect asset type and build appropriate asset structure
+                    main_asset: dict[str, Any] = {"url": content_uri}
+                    if db_creative.data:
+                        if "width" in db_creative.data:
+                            main_asset["width"] = db_creative.data["width"]
+                        if "height" in db_creative.data:
+                            main_asset["height"] = db_creative.data["height"]
+                        if "duration" in db_creative.data:
+                            main_asset["duration_ms"] = int(db_creative.data["duration"] * 1000)
+                    assets_dict["main"] = main_asset
+
+                # Add click URL if present
+                if db_creative.data and "click_url" in db_creative.data:
+                    assets_dict["click_url"] = {
+                        "url": db_creative.data["click_url"],
+                        "url_type": "clickthrough",
+                    }
+
             creative = Creative(
                 creative_id=db_creative.creative_id,
                 name=db_creative.name,
                 format_id=format_obj,
-                content_uri=content_uri,
-                media_url=None,  # Optional field with None default
-                click_through_url=db_creative.data.get("click_url") if db_creative.data else None,
-                width=db_creative.data.get("width") if db_creative.data else None,
-                height=db_creative.data.get("height") if db_creative.data else None,
-                duration=db_creative.data.get("duration") if db_creative.data else None,
+                assets=assets_dict,
+                inputs=db_creative.data.get("inputs") if db_creative.data else None,
+                tags=db_creative.data.get("tags") if db_creative.data else None,
+                approved=db_creative.data.get("approved") if db_creative.data else None,
+                # Internal fields
                 status=db_creative.status,
-                platform_id=None,  # Optional field with None default
-                review_feedback=None,  # Optional field with None default
-                compliance=None,  # Optional field with None default
-                package_assignments=None,  # Optional field with None default
-                assets=None,  # Optional field with None default
-                template_variables=db_creative.data.get("template_variables", {}) if db_creative.data else {},
-                delivery_settings=None,  # Optional field with None default
                 principal_id=db_creative.principal_id,
                 created_at=created_at_dt,
                 updated_at=updated_at_dt,
-                snippet=snippet,
-                snippet_type=db_creative.data.get("snippet_type") if db_creative.data else None,
             )
             creatives.append(creative)
 

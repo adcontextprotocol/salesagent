@@ -110,64 +110,111 @@ def _validate_creative_assets(assets: Any) -> dict[str, dict[str, Any]] | None:
 
 
 def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: list[str]) -> dict[str, Any]:
-    """Convert AdCP v1.3+ Creative object to format expected by ad server adapters."""
+    """Convert AdCP v1 Creative object to format expected by ad server adapters.
 
-    # Base asset object with common fields - type annotation for mypy
+    Extracts data from the assets dict to build adapter-compatible format.
+    """
+
+    # Base asset object with common fields
     asset: dict[str, Any] = {
         "creative_id": creative.creative_id,
         "name": creative.name,
-        "format": creative.get_format_string(),  # Handle both string and FormatId object
+        "format": creative.format_id,  # Use property that returns format ID string
         "package_assignments": package_assignments,
     }
 
-    # Determine creative type using AdCP v1.3+ logic
-    creative_type = creative.get_creative_type()
+    # Extract data from assets dict (AdCP v1 spec)
+    assets_dict = creative.assets if isinstance(creative.assets, dict) else {}
 
-    if creative_type == "third_party_tag":
-        # Third-party tag creative - use AdCP v1.3+ snippet fields
-        snippet = creative.get_snippet_content()
-        if not snippet:
-            raise ValueError(f"No snippet found for third-party creative {creative.creative_id}")
+    # Find primary media asset (image, video, html, etc.)
+    # Priority order: common asset roles
+    primary_asset = None
+    primary_role = None
+    for role in ["banner_image", "image", "video", "video_file", "main", "creative", "content"]:
+        if role in assets_dict:
+            primary_asset = assets_dict[role]
+            primary_role = role
+            break
 
-        asset["snippet"] = snippet
-        asset["snippet_type"] = creative.snippet_type or _detect_snippet_type(snippet)
-        asset["url"] = creative.url  # Keep URL for fallback
+    # If no common role found, use first asset
+    if not primary_asset and assets_dict:
+        primary_role = next(iter(assets_dict.keys()))
+        primary_asset = assets_dict[primary_role]
 
-    elif creative_type == "native":
-        # Native creative - use AdCP v1.3+ template_variables field
-        template_vars = creative.get_template_variables_dict()
-        if not template_vars:
-            raise ValueError(f"No template_variables found for native creative {creative.creative_id}")
+    if primary_asset and isinstance(primary_asset, dict) and primary_role:
+        # Detect asset type from AdCP v1 spec structure (no asset_type field in spec)
+        # Detection based on presence of specific fields per asset schema
 
-        asset["template_variables"] = template_vars
-        asset["url"] = creative.url  # Fallback URL
+        # Check for VAST first (role name hint)
+        if "vast" in primary_role.lower():
+            # VAST asset (has content XOR url per spec)
+            # Per spec: VAST must have EITHER content OR url, never both
+            if "content" in primary_asset:
+                asset["snippet"] = primary_asset["content"]
+                asset["snippet_type"] = "vast_xml"
+            elif "url" in primary_asset:
+                asset["snippet"] = primary_asset["url"]
+                asset["snippet_type"] = "vast_url"
 
-    elif creative_type == "vast":
-        # VAST reference
-        asset["snippet"] = creative.get_snippet_content() or creative.url
-        asset["snippet_type"] = creative.snippet_type or (
-            "vast_xml" if creative.url and ".xml" in creative.url else "vast_url"
-        )
+            # Extract VAST duration if present (duration_ms → seconds)
+            if "duration_ms" in primary_asset:
+                asset["duration"] = primary_asset["duration_ms"] / 1000.0
 
-    else:  # hosted_asset
-        # Traditional hosted asset (image/video)
-        asset["media_url"] = creative.get_primary_content_url()
-        asset["url"] = asset["media_url"]  # For backward compatibility
+        elif "content" in primary_asset and "url" not in primary_asset:
+            # HTML or JavaScript asset (has content, no url)
+            asset["snippet"] = primary_asset["content"]
+            # Detect if JavaScript based on role or module_type
+            if "javascript" in primary_role.lower() or "module_type" in primary_asset:
+                asset["snippet_type"] = "javascript"
+            else:
+                asset["snippet_type"] = "html"
 
-    # Add common optional fields
-    if creative.click_url:
-        asset["click_url"] = creative.click_url
-    if creative.width:
-        asset["width"] = creative.width
-    if creative.height:
-        asset["height"] = creative.height
-    if creative.duration:
-        asset["duration"] = creative.duration
+        elif "url" in primary_asset:
+            # Image or Video asset (has url, no content)
+            asset["media_url"] = primary_asset["url"]
+            asset["url"] = primary_asset["url"]  # For backward compatibility
 
-    # Always preserve delivery_settings (including tracking_urls) for all creative types
-    # This ensures impression trackers from buyers flow through to ad servers
-    if creative.delivery_settings:
-        asset["delivery_settings"] = creative.delivery_settings
+            # Extract dimensions (common to image and video)
+            if "width" in primary_asset:
+                asset["width"] = primary_asset["width"]
+            if "height" in primary_asset:
+                asset["height"] = primary_asset["height"]
+
+            # Extract video duration (duration_ms → seconds)
+            if "duration_ms" in primary_asset:
+                asset["duration"] = primary_asset["duration_ms"] / 1000.0
+
+    # Extract click URL from assets (URL asset with url_type="clickthrough")
+    for _role, asset_data in assets_dict.items():
+        if isinstance(asset_data, dict):
+            # Check for clickthrough URL (per AdCP spec: url_type="clickthrough")
+            if asset_data.get("url_type") == "clickthrough" and "url" in asset_data:
+                asset["click_url"] = asset_data["url"]
+                break
+
+    # If no url_type found, fall back to role name matching
+    if "click_url" not in asset:
+        for role in ["click_url", "clickthrough", "click", "landing_page"]:
+            if role in assets_dict:
+                click_asset = assets_dict[role]
+                if isinstance(click_asset, dict) and "url" in click_asset:
+                    asset["click_url"] = click_asset["url"]
+                    break
+
+    # Extract tracking URLs from assets (per AdCP spec: url_type field)
+    tracking_urls: dict[str, list[str] | str] = {}
+    for _role, asset_data in assets_dict.items():
+        if isinstance(asset_data, dict) and "url" in asset_data:
+            url_type = asset_data.get("url_type", "")
+            # Per spec: tracker_pixel for impression tracking, tracker_script for SDK
+            if url_type in ["tracker_pixel", "tracker_script"]:
+                tracking_urls.setdefault("impression", []).append(asset_data["url"])  # type: ignore[union-attr]
+            elif url_type == "clickthrough" and "click_url" not in asset:
+                # Also capture clickthrough as click tracking
+                tracking_urls["click"] = asset_data["url"]
+
+    if tracking_urls:
+        asset["delivery_settings"] = {"tracking_urls": tracking_urls}
 
     return asset
 

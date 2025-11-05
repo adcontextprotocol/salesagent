@@ -63,7 +63,14 @@ class MockCreativeEngine(CreativeEngineAdapter):
                         )
                     )
                 # Suggest shorter version for long videos
-                if creative.metadata and creative.metadata.get("duration", 0) > 15:
+                # Extract duration from assets dict if available
+                duration_ms = 0
+                for asset_data in (creative.assets or {}).values():
+                    if isinstance(asset_data, dict) and "duration_ms" in asset_data:
+                        duration_ms = asset_data["duration_ms"]
+                        break
+
+                if duration_ms / 1000.0 > 15:
                     suggested_adaptations.append(
                         CreativeAdaptation(
                             adaptation_id=f"adapt_{creative.creative_id}_6s",

@@ -584,92 +584,70 @@ class TestAdCPContract:
         # Note: aee_signals was passed but might be mapped to key_value_pairs in the Targeting model
 
     def test_creative_adcp_compliance(self):
-        """Test that Creative model complies with AdCP creative-asset schema."""
-        # Test creating a Creative with required AdCP fields
+        """Test that Creative model complies with AdCP v1 creative-asset schema."""
+        # Test creating a Creative with required AdCP v1 fields (strict spec compliance)
         creative = Creative(
             creative_id="test_creative_123",
             name="Test AdCP Creative",
-            format_id="display_300x250",
-            content_uri="https://example.com/creative.jpg",
-            click_through_url="https://example.com/landing",
+            format_id=FormatId(agent_url="https://creatives.adcontextprotocol.org", id="display_300x250"),
+            assets={
+                "banner_image": {
+                    "url": "https://example.com/creative.jpg",
+                    "width": 300,
+                    "height": 250,
+                    "asset_type": "image",
+                },
+                "click_url": {"url": "https://example.com/landing", "url_type": "clickthrough"},
+            },
+            tags=["display", "banner"],
+            # Internal fields (optional, added by sales agent)
             principal_id="test_principal",
             created_at=datetime.now(),
             updated_at=datetime.now(),
-            width=300,
-            height=250,
-            duration=None,  # Not applicable for display
             status="approved",
-            platform_id="platform_abc123",
-            review_feedback="Approved for all placements",
         )
 
-        # Test AdCP-compliant model_dump (external response)
+        # Test AdCP-compliant model_dump (external response - excludes internal fields)
         adcp_response = creative.model_dump()
 
-        # Verify required AdCP fields are present
-        adcp_required_fields = ["creative_id", "name", "format"]
+        # Verify required AdCP v1 fields are present
+        adcp_required_fields = ["creative_id", "name", "format", "assets"]
         for field in adcp_required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify AdCP optional fields are present
-        adcp_optional_fields = [
-            "url",
-            "media_url",
-            "click_url",
-            "duration",
-            "width",
-            "height",
-            "status",
-            "platform_id",
-            "review_feedback",
-            "compliance",
-            "package_assignments",
-            "assets",
-        ]
-        for field in adcp_optional_fields:
-            assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
+        # Verify AdCP v1 optional fields (present if provided, omitted if None per AdCP spec)
+        # Tags was provided, so should be present
+        assert "tags" in adcp_response, "Tags should be present when provided"
+        assert adcp_response["tags"] == ["display", "banner"]
+        # Inputs and approved were not provided, so should be omitted (exclude_none=True)
+        # This is correct AdCP behavior - optional fields should be omitted if not set
 
-        # Verify internal fields are excluded from AdCP response
-        internal_fields = [
-            "principal_id",
-            "group_id",
-            "created_at",
-            "updated_at",
-            "has_macros",
-            "macro_validation",
-            "asset_mapping",
-            "metadata",
-        ]
+        # Verify internal fields are EXCLUDED from AdCP response
+        internal_fields = ["principal_id", "created_at", "updated_at", "status"]
         for field in internal_fields:
             assert field not in adcp_response, f"Internal field '{field}' exposed in AdCP response"
 
-        # Verify AdCP-specific requirements
-        assert adcp_response["media_url"] == adcp_response["url"], "media_url should default to url"
-        assert adcp_response["compliance"]["status"] == "pending", "Default compliance status should be 'pending'"
-        assert isinstance(adcp_response["compliance"]["issues"], list), "Compliance issues should be a list"
-
-        # Format is now a FormatId object per AdCP v2.4
+        # Verify format is FormatId object
         assert isinstance(adcp_response["format"], dict), "Format should be FormatId object"
         assert adcp_response["format"]["id"] == "display_300x250", "Format ID should be display_300x250"
         assert "agent_url" in adcp_response["format"], "Format should have agent_url"
+
+        # Verify assets dict is present
+        assert isinstance(adcp_response["assets"], dict), "Assets should be a dict"
+        assert "banner_image" in adcp_response["assets"], "Assets should have banner_image"
+        assert adcp_response["assets"]["banner_image"]["url"] == "https://example.com/creative.jpg"
 
         # Test internal model_dump includes all fields
         internal_response = creative.model_dump_internal()
         for field in internal_fields:
             assert field in internal_response, f"Internal field '{field}' missing from internal response"
 
-        # Verify field count expectations (flexible to allow AdCP spec evolution)
-        assert len(adcp_response) >= 12, f"AdCP response should have at least 12 core fields, got {len(adcp_response)}"
-        assert len(internal_response) >= len(
-            adcp_response
-        ), "Internal response should have at least as many fields as external response"
-
-        # Verify internal response has more fields than external (due to internal fields)
+        # Verify internal response has more fields than external
         internal_only_fields = set(internal_response.keys()) - set(adcp_response.keys())
         assert (
-            len(internal_only_fields) >= 4
-        ), f"Expected at least 4 internal-only fields, got {len(internal_only_fields)}"
+            len(internal_only_fields) >= 2
+        ), f"Expected at least 2 internal-only fields, got {len(internal_only_fields)}"
 
     def test_signal_adcp_compliance(self):
         """Test that Signal model complies with AdCP get-signals-response schema."""
@@ -1101,16 +1079,23 @@ class TestAdCPContract:
 
     def test_sync_creatives_request_adcp_compliance(self):
         """Test that SyncCreativesRequest model complies with AdCP v2.4 sync-creatives schema."""
-        # Create Creative objects with all required fields (using media content, not snippet)
+        # Create Creative objects with AdCP v1 spec-compliant format
         creative = Creative(
             creative_id="creative_123",
             name="Test Creative",
-            format_id="display_300x250",  # Uses format_id alias for format field
-            content_uri="https://example.com/creative.jpg",  # Uses content_uri alias for url field
-            principal_id="principal_456",
-            # Note: Don't use snippet here as it's mutually exclusive with media_url/content_uri
-            click_through_url="https://example.com/click",  # Uses click_through_url alias
+            format_id=FormatId(agent_url="https://creatives.adcontextprotocol.org", id="display_300x250"),
+            assets={
+                "banner_image": {
+                    "url": "https://example.com/creative.jpg",
+                    "width": 300,
+                    "height": 250,
+                    "asset_type": "image",
+                },
+                "click_url": {"url": "https://example.com/click", "url_type": "clickthrough"},
+            },
             tags=["sports", "premium"],
+            # Internal fields (added by sales agent during processing)
+            principal_id="principal_456",
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )
@@ -1148,12 +1133,16 @@ class TestAdCPContract:
         assert isinstance(adcp_response["creatives"], list), "Creatives must be an array"
         assert len(adcp_response["creatives"]) > 0, "Creatives array must not be empty"
 
-        # Test creative object structure
+        # Test creative object structure (AdCP v1 spec)
         creative_obj = adcp_response["creatives"][0]
-        creative_required_fields = ["creative_id", "name", "format", "url"]  # AdCP spec field names
+        creative_required_fields = ["creative_id", "name", "format", "assets"]  # AdCP v1 spec required fields
         for field in creative_required_fields:
             assert field in creative_obj, f"Creative required field '{field}' missing"
             assert creative_obj[field] is not None, f"Creative required field '{field}' is None"
+
+        # Verify assets structure
+        assert isinstance(creative_obj["assets"], dict), "Assets must be a dict"
+        assert "banner_image" in creative_obj["assets"], "Assets should contain banner_image"
 
         # Verify assignments structure (dict of creative_id → package_ids)
         if adcp_response.get("assignments"):
@@ -1283,11 +1272,19 @@ class TestAdCPContract:
         creative1 = Creative(
             creative_id="creative_123",
             name="Test Creative 1",
-            format_id="display_300x250",
-            content_uri="https://example.com/creative1.jpg",
+            format_id=FormatId(agent_url="https://creatives.adcontextprotocol.org", id="display_300x250"),
+            assets={
+                "banner_image": {
+                    "url": "https://example.com/creative1.jpg",
+                    "width": 300,
+                    "height": 250,
+                    "asset_type": "image",
+                }
+            },
+            tags=["sports"],
+            # Internal fields
             principal_id="principal_1",
             status="approved",
-            tags=["sports"],
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )
@@ -1295,12 +1292,19 @@ class TestAdCPContract:
         creative2 = Creative(
             creative_id="creative_456",
             name="Test Creative 2",
-            format_id="video_1280x720",
-            content_uri="https://example.com/creative2.mp4",
+            format_id=FormatId(agent_url="https://creatives.adcontextprotocol.org", id="video_1280x720"),
+            assets={
+                "video_file": {
+                    "url": "https://example.com/creative2.mp4",
+                    "width": 1280,
+                    "height": 720,
+                    "asset_type": "video",
+                }
+            },
+            tags=["premium"],
+            # Internal fields
             principal_id="principal_1",
             status="pending_review",
-            # Note: Not using snippet as it's mutually exclusive with content_uri
-            tags=["premium"],
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )

@@ -336,7 +336,8 @@ class TestPydanticSchemaAlignment:
         required_in_schema.discard("adcp_version")
 
         if not required_in_schema:
-            pytest.skip("No required fields in schema")
+            # No required fields in schema - nothing to test, which is fine
+            return
 
         # Try to create model without required fields
         try:
