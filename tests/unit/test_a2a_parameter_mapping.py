@@ -175,6 +175,50 @@ class TestA2AParameterMapping:
             assert "media_buy_ids" in call_kwargs, "Should pass 'media_buy_ids' (plural) per AdCP spec"
             assert call_kwargs["media_buy_ids"] == parameters["media_buy_ids"]
 
+    def test_get_media_buy_delivery_optional_media_buy_ids(self):
+        """
+        Test that get_media_buy_delivery works without media_buy_ids.
+
+        Per AdCP spec, all parameters are optional. When media_buy_ids is omitted,
+        the server should return delivery data for all media buys the requester
+        has access to, filtered by the provided criteria (status_filter, dates, etc).
+        """
+        from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
+
+        handler = AdCPRequestHandler()
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_tenant,
+            patch("src.a2a_server.adcp_a2a_server.core_get_media_buy_delivery_tool") as mock_delivery,
+        ):
+            mock_principal.return_value = "principal_123"
+            mock_tenant.return_value = {"tenant_id": "tenant_123"}
+            mock_delivery.return_value = {"media_buys": []}
+
+            # AdCP request with filters but no media_buy_ids
+            parameters = {
+                "status_filter": "active",
+                "start_date": "2025-01-01",
+                "end_date": "2025-01-31",
+            }
+
+            import asyncio
+
+            result = asyncio.run(
+                handler._handle_get_media_buy_delivery_skill(parameters=parameters, auth_token="test_token")
+            )
+
+            # Verify core function was called with filters
+            mock_delivery.assert_called_once()
+            call_kwargs = mock_delivery.call_args.kwargs
+
+            # Should pass None for media_buy_ids and include filters
+            assert call_kwargs["media_buy_ids"] is None, "media_buy_ids should be None when omitted"
+            assert call_kwargs["status_filter"] == "active", "Should pass status_filter"
+            assert call_kwargs["start_date"] == "2025-01-01", "Should pass start_date"
+            assert call_kwargs["end_date"] == "2025-01-31", "Should pass end_date"
+
     def test_create_media_buy_validates_required_adcp_parameters(self):
         """
         Test that create_media_buy validates required AdCP parameters.
