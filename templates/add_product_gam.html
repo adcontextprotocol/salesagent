@@ -233,6 +233,232 @@
     border-color: #007bff;
     background-color: #f8f9fa;
 }
+
+/* ============================================================================
+   HIERARCHICAL TREE VIEW STYLES
+   Modern tree picker with clear visual hierarchy and consistent indentation
+   ============================================================================ */
+
+/* Tree container - provides consistent spacing */
+#inventory-list {
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* Tree node - base structure */
+.tree-node {
+    position: relative;
+}
+
+/* Tree node depth indicators - consistent indentation via CSS classes
+   NOTE: Use direct child selector to prevent padding cascade */
+.tree-node[data-depth="0"] > .tree-node-header { padding-left: 12px; }
+.tree-node[data-depth="1"] > .tree-node-header { padding-left: 36px; }
+.tree-node[data-depth="2"] > .tree-node-header { padding-left: 60px; }
+.tree-node[data-depth="3"] > .tree-node-header { padding-left: 84px; }
+.tree-node[data-depth="4"] > .tree-node-header { padding-left: 108px; }
+.tree-node[data-depth="5"] > .tree-node-header { padding-left: 132px; }
+.tree-node[data-depth="6"] > .tree-node-header { padding-left: 156px; }
+
+/* Tree node header - interactive area
+   NOTE: padding-left is set per-depth via data-depth selectors above */
+.tree-node-header {
+    display: flex;
+    align-items: center;
+    padding-top: 8px;
+    padding-right: 12px;
+    padding-bottom: 8px;
+    /* padding-left set by data-depth selector */
+    margin: 0;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+    min-height: 40px;
+}
+
+.tree-node-header:hover {
+    background-color: #f8f9fa;
+    border-bottom-color: #e0e0e0;
+}
+
+/* Expand/collapse toggle icon */
+.tree-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.tree-toggle:hover {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.tree-toggle .toggle-icon {
+    font-size: 10px;
+    color: #666;
+    transition: transform 0.2s ease;
+    display: inline-block;
+}
+
+.tree-toggle:hover .toggle-icon {
+    color: #1976d2;
+}
+
+/* Loading spinner for tree expansion */
+.tree-toggle .loading-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid #e0e0e0;
+    border-top: 2px solid #1976d2;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    display: none;
+}
+
+.tree-toggle.loading .loading-spinner {
+    display: block;
+}
+
+.tree-toggle.loading .toggle-icon {
+    display: none;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Spacer for nodes without children */
+.tree-spacer {
+    display: inline-block;
+    width: 20px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+/* Tree children container - provides visual connection */
+.tree-children {
+    position: relative;
+    display: none;
+}
+
+.tree-children::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(to bottom, #e0e0e0 0%, #e0e0e0 100%);
+}
+
+/* Label container for checkbox + text */
+.tree-node-label {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    cursor: pointer;
+    margin: 0;
+    padding: 0;
+    min-height: 24px;
+}
+
+/* Checkbox styling */
+.ad-unit-checkbox {
+    margin: 0 8px 0 0;
+    cursor: pointer;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+}
+
+/* Text content container */
+.tree-node-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0; /* Allow text truncation */
+}
+
+.tree-node-name {
+    font-weight: 500;
+    color: #333;
+    transition: color 0.15s ease;
+}
+
+.tree-node-code {
+    color: #999;
+    margin-left: 8px;
+    font-size: 12px;
+}
+
+/* Checked state styling */
+.ad-unit-checkbox:checked ~ .tree-node-content .tree-node-name {
+    font-weight: 600;
+    color: #1976d2;
+}
+
+.tree-node-header:has(.ad-unit-checkbox:checked) {
+    background-color: #e3f2fd;
+}
+
+/* Search highlighting - nodes that match search */
+.tree-node.search-match > .tree-node-header {
+    background-color: #fff9e6;
+    border-left: 3px solid #ffc107;
+}
+
+.tree-node.search-match > .tree-node-header .tree-node-name {
+    font-weight: 600;
+    color: #f57c00;
+}
+
+/* Empty state styling */
+.tree-empty {
+    padding: 3rem 2rem;
+    text-align: center;
+    color: #999;
+    font-size: 14px;
+}
+
+/* Loading state */
+.tree-loading {
+    padding: 3rem 2rem;
+    text-align: center;
+    color: #666;
+}
+
+/* Accessibility improvements */
+.tree-toggle:focus,
+.ad-unit-checkbox:focus {
+    outline: 2px solid #1976d2;
+    outline-offset: 2px;
+}
+
+/* Smooth expand/collapse animation */
+.tree-children[style*="display: block"] {
+    animation: expandTree 0.2s ease-out;
+}
+
+@keyframes expandTree {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 </style>
 
 <script>
@@ -251,7 +477,22 @@ function openInventoryPicker(type) {
     currentPickerType = type;
     const modal = document.getElementById('inventory-picker-modal');
     const title = document.getElementById('picker-modal-title');
+    const treeControls = document.getElementById('tree-controls');
+
     title.textContent = type === 'ad_unit' ? 'Select Ad Units' : 'Select Placements';
+
+    // Show/hide tree controls based on type
+    if (type === 'ad_unit') {
+        treeControls.style.display = 'flex';
+    } else {
+        treeControls.style.display = 'none';
+    }
+
+    // Clear search
+    const searchInput = document.getElementById('picker-search');
+    if (searchInput) {
+        searchInput.value = '';
+    }
 
     // Load inventory
     loadInventory(type);
@@ -269,7 +510,87 @@ function loadInventory(type, search = '') {
     const list = document.getElementById('inventory-list');
     list.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;">Loading...</div>';
 
-    const url = `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=${type}${search ? '&search=' + encodeURIComponent(search) : ''}`;
+    if (type === 'ad_unit') {
+        // Load hierarchical tree for ad units
+        loadInventoryTree();
+    } else {
+        // Load flat list for placements (keep existing behavior)
+        const url = `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=${type}${search ? '&search=' + encodeURIComponent(search) : ''}`;
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #dc3545;">${data.error}</div>`;
+                    return;
+                }
+
+                if (data.items.length === 0) {
+                    const inventoryUrl = "{{ url_for('inventory.inventory_browser', tenant_id=tenant_id) }}";
+                    list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #666;">No items found. <a href="${inventoryUrl}">Sync inventory</a> first.</div>`;
+                    return;
+                }
+
+                // Cache all items for later use (including metadata)
+                data.items.forEach(item => {
+                    inventoryCache.placements.set(item.id, item);
+                });
+
+                // Get currently selected IDs
+                const fieldId = 'targeted_placement_ids';
+                const field = document.getElementById(fieldId);
+                const fieldValue = field ? field.value : '';
+                const selectedIds = new Set(fieldValue.split(',').filter(Boolean));
+
+                list.innerHTML = data.items.map(item => {
+                    // Show ad unit count for placements
+                    let metadataHtml = '';
+                    if (item.metadata && item.metadata.ad_unit_ids) {
+                        const count = item.metadata.ad_unit_ids.length;
+                        metadataHtml = `<br><small style="color: #2196f3; font-weight: 500;">${count} ad ${count === 1 ? 'unit' : 'units'}</small>`;
+                    }
+
+                    return `
+                    <label class="inventory-item" style="display: flex; align-items: center; padding: 0.75rem; border-bottom: 1px solid #eee; cursor: pointer;">
+                        <input type="checkbox"
+                               value="${item.id}"
+                               data-sizes='${item.metadata && item.metadata.sizes ? JSON.stringify(item.metadata.sizes) : '[]'}'
+                               data-path='${item.path ? JSON.stringify(item.path) : '[]'}'
+                               ${selectedIds.has(item.id) ? 'checked' : ''}
+                               style="margin-right: 0.75rem;">
+                        <div style="flex: 1;">
+                            <strong>${item.name}</strong> <small style="color: #666;">(${item.id})</small>
+                            ${item.path && item.path.length > 1 ? `<br><small style="color: #666;">${item.path.join(' > ')}</small>` : ''}
+                            ${metadataHtml}
+                        </div>
+                    </label>
+                `}).join('');
+            })
+            .catch(error => {
+                list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #dc3545;">Error loading inventory: ${error.message}</div>`;
+            });
+    }
+}
+
+// Load hierarchical tree structure for ad units with optional search
+let isLoadingTree = false; // Guard against double-loading
+function loadInventoryTree(searchTerm = '') {
+    if (isLoadingTree) {
+        return;
+    }
+
+    isLoadingTree = true;
+    const list = document.getElementById('inventory-list');
+
+    // Build URL with search parameter if provided
+    const baseUrl = `{{ url_for('inventory.get_inventory_tree', tenant_id=tenant_id) }}`;
+    const url = searchTerm ? `${baseUrl}?search=${encodeURIComponent(searchTerm)}` : baseUrl;
+
+    // Show loading indicator
+    list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #666;">
+        <div class="spinner-border spinner-border-sm" role="status" style="margin-right: 0.5rem;"></div>
+        ${searchTerm ? 'Searching...' : 'Loading ad units...'}
+    </div>`;
 
     fetch(url)
         .then(response => response.json())
@@ -279,69 +600,301 @@ function loadInventory(type, search = '') {
                 return;
             }
 
-            if (data.items.length === 0) {
-                const inventoryUrl = "{{ url_for('inventory.inventory_browser', tenant_id=tenant_id) }}";
-                list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #666;">No items found. <a href="${inventoryUrl}">Sync inventory</a> first.</div>`;
+            if (!data.root_units || data.root_units.length === 0) {
+                if (searchTerm) {
+                    list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #666;">No ad units found matching "${searchTerm}".</div>`;
+                } else {
+                    const inventoryUrl = "{{ url_for('inventory.inventory_browser', tenant_id=tenant_id) }}";
+                    list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #666;">No ad units found. <a href="${inventoryUrl}">Sync inventory</a> first.</div>`;
+                }
                 return;
             }
 
-            // Cache all items for later use (including metadata)
-            data.items.forEach(item => {
-                if (type === 'ad_unit') {
-                    inventoryCache.adUnits.set(item.id, item);
-                } else {
-                    inventoryCache.placements.set(item.id, item);
-                }
+            // Get currently selected IDs
+            const field = document.getElementById('targeted_ad_unit_ids');
+            const fieldValue = field ? field.value : '';
+            const selectedIds = new Set(fieldValue.split(',').filter(Boolean));
+
+            // Render tree (will be auto-expanded if search is active)
+            list.innerHTML = renderAdUnitTree(data.root_units, selectedIds, 0, data.search_active);
+
+            // Auto-expand based on context
+            // Use requestAnimationFrame + setTimeout to ensure DOM is fully rendered
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    if (data.search_active) {
+                        // Search active: expand all to show matches
+                        expandAllTreeNodes();
+                    } else if (selectedIds.size > 0) {
+                        // No search but items selected: expand to selected
+                        expandToSelected();
+                    }
+                    // Otherwise keep collapsed (default)
+                }, 200);
             });
 
-            // Get currently selected IDs
-            const fieldId = type === 'ad_unit' ? 'targeted_ad_unit_ids' : 'targeted_placement_ids';
-            const field = document.getElementById(fieldId);
-            const fieldValue = field ? field.value : '';
-            console.log(`[DEBUG] Loading ${type} picker - field value:`, fieldValue);
-            const selectedIds = new Set(fieldValue.split(',').filter(Boolean));
-            console.log(`[DEBUG] Loading ${type} picker - selectedIds Set:`, Array.from(selectedIds));
-
-            list.innerHTML = data.items.map(item => {
-                // Extract metadata display
-                let metadataHtml = '';
-                if (type === 'ad_unit' && item.metadata && item.metadata.sizes && item.metadata.sizes.length > 0) {
-                    // Show sizes for ad units
-                    const sizeStrings = item.metadata.sizes.map(s => `${s.width}×${s.height}`).join(', ');
-                    metadataHtml = `<br><small style="color: #28a745; font-weight: 500;">Sizes: ${sizeStrings}</small>`;
-                } else if (type === 'placement' && item.metadata && item.metadata.ad_unit_ids) {
-                    // Show ad unit count for placements
-                    const count = item.metadata.ad_unit_ids.length;
-                    metadataHtml = `<br><small style="color: #2196f3; font-weight: 500;">${count} ad ${count === 1 ? 'unit' : 'units'}</small>`;
-                }
-
-                return `
-                <label class="inventory-item" style="display: flex; align-items: center; padding: 0.75rem; border-bottom: 1px solid #eee; cursor: pointer;">
-                    <input type="checkbox"
-                           value="${item.id}"
-                           data-sizes='${item.metadata && item.metadata.sizes ? JSON.stringify(item.metadata.sizes) : '[]'}'
-                           data-path='${item.path ? JSON.stringify(item.path) : '[]'}'
-                           ${selectedIds.has(item.id) ? 'checked' : ''}
-                           style="margin-right: 0.75rem;">
-                    <div style="flex: 1;">
-                        <strong>${item.name}</strong> <small style="color: #666;">(${item.id})</small>
-                        ${item.path && item.path.length > 1 ? `<br><small style="color: #666;">${item.path.join(' > ')}</small>` : ''}
-                        ${metadataHtml}
-                    </div>
-                </label>
-            `}).join('');
+            isLoadingTree = false; // Reset guard
         })
         .catch(error => {
             list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #dc3545;">Error loading inventory: ${error.message}</div>`;
+            isLoadingTree = false; // Reset guard on error
         });
+}
+
+// Render hierarchical ad unit tree (recursive)
+function renderAdUnitTree(units, selectedIds, depth = 0, searchActive = false) {
+    return units.map(unit => {
+        const hasChildren = unit.children && unit.children.length > 0;
+        const isChecked = selectedIds.has(unit.id);
+        const matchedSearch = unit.matched_search || false;
+
+        // Store unit in cache for later use
+        if (!inventoryCache.adUnits.has(unit.id)) {
+            inventoryCache.adUnits.set(unit.id, {
+                id: unit.id,
+                name: unit.name,
+                path: unit.path,
+                metadata: { sizes: [] } // Will be populated when needed
+            });
+        }
+
+        // Add highlight class if this node matched the search
+        const highlightClass = matchedSearch ? 'search-match' : '';
+
+        // Build HTML using CSS classes for styling
+        let html = `
+            <div class="tree-node ${highlightClass}" data-unit-id="${unit.id}" data-depth="${depth}">
+                <div class="tree-node-header">
+                    ${hasChildren ? `
+                        <span class="tree-toggle" onclick="event.stopPropagation(); toggleTreeNode('${unit.id}')">
+                            <span class="toggle-icon">▶</span>
+                            <span class="loading-spinner"></span>
+                        </span>
+                    ` : '<span class="tree-spacer"></span>'}
+                    <label class="tree-node-label" onclick="event.stopPropagation();">
+                        <input type="checkbox"
+                               class="ad-unit-checkbox"
+                               value="${unit.id}"
+                               data-name="${unit.name}"
+                               data-path='${JSON.stringify(unit.path || [unit.name])}'
+                               ${isChecked ? 'checked' : ''}
+                               onchange="handleTreeCheckboxChange(this)">
+                        <div class="tree-node-content">
+                            <span class="tree-node-name">
+                                ${unit.name}
+                                ${unit.code && unit.code !== unit.name ? `<span class="tree-node-code">${unit.code}</span>` : ''}
+                            </span>
+                        </div>
+                    </label>
+                </div>
+                ${hasChildren ? `
+                    <div class="tree-children">
+                        ${renderAdUnitTree(unit.children, selectedIds, depth + 1, searchActive)}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+
+        return html;
+    }).join('');
+}
+
+// Toggle tree node expand/collapse with loading indicator
+function toggleTreeNode(unitId) {
+    const node = document.querySelector(`.tree-node[data-unit-id="${unitId}"]`);
+    if (!node) return;
+
+    const children = node.querySelector('.tree-children');
+    const toggle = node.querySelector('.tree-toggle');
+    const toggleIcon = node.querySelector('.toggle-icon');
+
+    if (!children || !toggle || !toggleIcon) return;
+
+    // Check if currently expanded (display is 'block', not 'none' or empty)
+    const isExpanded = children.style.display === 'block';
+
+    if (isExpanded) {
+        // Collapse - immediate, no loading needed
+        children.style.display = 'none';
+        toggleIcon.textContent = '▶';
+        toggle.classList.remove('loading');
+    } else {
+        // Expand - show loading spinner briefly for visual feedback
+        toggle.classList.add('loading');
+
+        // Use setTimeout to show spinner and allow UI to update
+        setTimeout(() => {
+            children.style.display = 'block';
+            toggleIcon.textContent = '▼';
+
+            // Remove loading after a short delay to ensure visibility
+            setTimeout(() => {
+                toggle.classList.remove('loading');
+            }, 150);
+        }, 50);
+    }
+}
+
+// Handle tree checkbox change
+function handleTreeCheckboxChange(checkbox) {
+    // Just update the checked state - selection will be applied on "Apply Selection"
+    // No need to do anything special here
+}
+
+// Expand all tree nodes
+function expandAllTreeNodes() {
+    const allChildren = document.querySelectorAll('.tree-children');
+    const allToggles = document.querySelectorAll('.toggle-icon');
+
+    allChildren.forEach(children => {
+        children.style.display = 'block';
+    });
+
+    allToggles.forEach(toggle => {
+        toggle.textContent = '▼';
+    });
+}
+
+// Collapse all tree nodes
+function collapseAllTreeNodes() {
+    const allChildren = document.querySelectorAll('.tree-children');
+    const allToggles = document.querySelectorAll('.toggle-icon');
+
+    allChildren.forEach(children => {
+        children.style.display = 'none';
+    });
+
+    allToggles.forEach(toggle => {
+        toggle.textContent = '▶';
+    });
+}
+
+// Expand tree to show selected items
+function expandToSelected() {
+    // First collapse all
+    collapseAllTreeNodes();
+
+    // Find all checked checkboxes
+    const checkedBoxes = document.querySelectorAll('#inventory-list .ad-unit-checkbox:checked');
+
+    if (checkedBoxes.length === 0) {
+        return;
+    }
+
+    // For each checked box, expand the path from root to that node
+    checkedBoxes.forEach(checkbox => {
+        let node = checkbox.closest('.tree-node');
+
+        // Collect all ancestor nodes first
+        const ancestors = [];
+        let current = node;
+
+        while (current) {
+            ancestors.unshift(current); // Add to front (so root is first)
+
+            // Find parent by going up through .tree-children
+            const parentChildren = current.parentElement;
+            if (parentChildren && parentChildren.classList.contains('tree-children')) {
+                current = parentChildren.closest('.tree-node');
+            } else {
+                // Reached root
+                break;
+            }
+        }
+
+        // Now expand from root down to the selected node
+        ancestors.forEach(ancestor => {
+            // Find this ancestor's children container
+            const childrenContainer = ancestor.querySelector(':scope > .tree-children');
+            if (childrenContainer) {
+                childrenContainer.style.display = 'block';
+            }
+
+            // Update toggle icon
+            const toggle = ancestor.querySelector(':scope > .tree-node-header > .tree-toggle > .toggle-icon');
+            if (toggle) {
+                toggle.textContent = '▼';
+            }
+        });
+    });
+}
+
+// Search and filter tree nodes
+function searchTreeNodes(searchTerm) {
+    const term = searchTerm.toLowerCase().trim();
+    const allNodes = document.querySelectorAll('.tree-node');
+
+    if (!term) {
+        // Show all nodes and collapse all
+        allNodes.forEach(node => {
+            node.style.display = 'block';
+        });
+        collapseAllTreeNodes();
+        return;
+    }
+
+    // First pass: mark matching nodes
+    allNodes.forEach(node => {
+        const header = node.querySelector('.tree-node-header');
+        const text = header ? header.textContent.toLowerCase() : '';
+        const matches = text.includes(term);
+
+        node.dataset.matches = matches ? 'true' : 'false';
+        node.dataset.hasMatchingChild = 'false';
+    });
+
+    // Second pass: mark parents with matching children
+    allNodes.forEach(node => {
+        if (node.dataset.matches === 'true') {
+            // Mark all parents as having matching children
+            let parent = node.parentElement;
+            while (parent && parent.classList.contains('tree-children')) {
+                const parentNode = parent.closest('.tree-node');
+                if (parentNode) {
+                    parentNode.dataset.hasMatchingChild = 'true';
+                    parent = parentNode.parentElement;
+                } else {
+                    break;
+                }
+            }
+        }
+    });
+
+    // Third pass: show/hide based on matches
+    allNodes.forEach(node => {
+        const matches = node.dataset.matches === 'true';
+        const hasMatchingChild = node.dataset.hasMatchingChild === 'true';
+
+        if (matches || hasMatchingChild) {
+            node.style.display = 'block';
+            // Expand to show matching children
+            if (hasMatchingChild) {
+                const children = node.querySelector('.tree-children');
+                const toggle = node.querySelector('.toggle-icon');
+                if (children && toggle) {
+                    children.style.display = 'block';
+                    toggle.textContent = '▼';
+                }
+            }
+        } else {
+            node.style.display = 'none';
+        }
+    });
 }
 
 function applyInventorySelection() {
     const checkboxes = document.querySelectorAll('#inventory-list input[type="checkbox"]:checked');
     const selectedIds = Array.from(checkboxes).map(cb => cb.value);
     const selectedNames = Array.from(checkboxes).map(cb => {
+        // For tree nodes, get name from data attribute or label text
+        const dataName = cb.getAttribute('data-name');
+        if (dataName) {
+            return dataName;
+        }
+        // Fallback: get from label (for flat list items)
         const label = cb.closest('label');
-        return label.querySelector('strong').textContent;
+        const strong = label ? label.querySelector('strong') : null;
+        return strong ? strong.textContent : cb.value;
     });
 
     if (currentPickerType === 'ad_unit') {
@@ -352,8 +905,10 @@ function applyInventorySelection() {
         updateSelectedDisplay('selected-placements', selectedNames, selectedIds);
     }
 
-    // Extract sizes from selected inventory and update UI
-    extractSizesFromInventory();
+    // Extract sizes from selected inventory and update UI (if function exists)
+    if (typeof extractSizesFromInventory === 'function') {
+        extractSizesFromInventory();
+    }
 
     closeInventoryPicker();
 }
@@ -655,43 +1210,10 @@ async function removeSelectedItem(containerId, idToRemove) {
 
     updateSelectedDisplay(containerId, selectedNames, newIds);
 
-    // If removing ad units, refresh format suggestions
-    if (isAdUnit) {
-        // Get remaining selected ad units from the inventory list
-        const remainingCheckboxes = [];
-        // We need to re-fetch to get the checkboxes with size data
-        if (newIds.length > 0) {
-            try {
-                const url = `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`;
-                const response = await fetch(url);
-                const data = await response.json();
-
-                if (data.items) {
-                    // Create virtual checkboxes for remaining items
-                    data.items.forEach(item => {
-                        if (newIds.includes(item.id)) {
-                            const virtualCheckbox = {
-                                getAttribute: (attr) => {
-                                    if (attr === 'data-sizes') {
-                                        return item.metadata && item.metadata.sizes ? JSON.stringify(item.metadata.sizes) : '[]';
-                                    }
-                                    if (attr === 'data-path') {
-                                        return item.path ? JSON.stringify(item.path) : '[]';
-                                    }
-                                    return null;
-                                },
-                                closest: () => ({ querySelector: () => ({ textContent: { trim: () => item.name }}) })
-                            };
-                            remainingCheckboxes.push(virtualCheckbox);
-                        }
-                    });
-                }
-            } catch (e) {
-                console.warn('Failed to refresh format suggestions:', e);
-            }
-        }
-
-        await autoSuggestFormats(remainingCheckboxes);
+    // Extract sizes from remaining selected inventory (both ad units and placements)
+    // This ensures format sizes update when items are removed
+    if (typeof extractSizesFromInventory === 'function') {
+        await extractSizesFromInventory();
     }
 }
 
@@ -703,7 +1225,11 @@ document.addEventListener('DOMContentLoaded', function() {
         searchInput.addEventListener('input', function() {
             clearTimeout(searchTimeout);
             searchTimeout = setTimeout(() => {
-                if (currentPickerType) {
+                if (currentPickerType === 'ad_unit') {
+                    // For tree view, reload from server with search parameter
+                    loadInventoryTree(this.value);
+                } else {
+                    // For flat list (placements), reload from server
                     loadInventory(currentPickerType, this.value);
                 }
             }, 300);
@@ -936,10 +1462,21 @@ function filterGAMFormats() {
 
 <!-- Inventory Picker Modal -->
 <div id="inventory-picker-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: white; border-radius: 8px; width: 90%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column;">
+    <div style="background: white; border-radius: 8px; width: 90%; max-width: 700px; max-height: 80vh; display: flex; flex-direction: column;">
         <!-- Header -->
-        <div style="padding: 1.5rem; border-bottom: 1px solid #ddd;">
+        <div style="padding: 1.5rem; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
             <h3 id="picker-modal-title" style="margin: 0;">Select Items</h3>
+            <div id="tree-controls" style="display: none; gap: 0.5rem;">
+                <button type="button" onclick="expandToSelected()" class="btn btn-sm btn-primary" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">
+                    Expand to Selected
+                </button>
+                <button type="button" onclick="expandAllTreeNodes()" class="btn btn-sm btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">
+                    Expand All
+                </button>
+                <button type="button" onclick="collapseAllTreeNodes()" class="btn btn-sm btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">
+                    Collapse All
+                </button>
+            </div>
         </div>
 
         <!-- Search -->

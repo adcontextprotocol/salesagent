@@ -770,10 +770,26 @@ def get_sync_status(tenant_id):
 def get_inventory_tree(tenant_id):
     """Get ad unit hierarchy tree structure for tree view.
 
+    Query Parameters:
+        search (str, optional): Search term to filter ad units by name or path
+
     Returns:
         JSON with hierarchical tree of ad units including parent-child relationships
     """
-    logger.info(f"Inventory tree request for tenant: {tenant_id}")
+    from flask import current_app, request
+
+    search = request.args.get("search", "").strip()
+
+    # Use cache if available (5 minute TTL) - only cache when no search
+    cache = getattr(current_app, "cache", None)
+    if cache and not search:
+        cache_key = f"inventory_tree:v2:{tenant_id}"  # v2: added search_active/matching_count fields
+        cached_result = cache.get(cache_key)
+        if cached_result:
+            logger.info(f"Returning cached inventory tree for tenant: {tenant_id}")
+            return cached_result
+
+    logger.info(f"Building inventory tree for tenant: {tenant_id}, search: '{search}'")
     try:
         with get_db_session() as db_session:
             from src.core.database.models import GAMInventory
@@ -784,13 +800,72 @@ def get_inventory_tree(tenant_id):
                 GAMInventory.inventory_type == "ad_unit",
                 GAMInventory.status == "ACTIVE",
             )
-            all_units = db_session.scalars(stmt).all()
 
-            logger.info(f"Found {len(all_units)} active ad units in database")
+            # If search term provided, filter by name or path
+            if search:
+                stmt = stmt.where(
+                    or_(
+                        GAMInventory.name.ilike(f"%{search}%"),
+                        func.cast(GAMInventory.path, String).ilike(f"%{search}%"),
+                    )
+                )
+
+            matching_units = db_session.scalars(stmt).all()
+
+            logger.info(f"Found {len(matching_units)} matching ad units")
+
+            # If search is active, we need to include all ancestor nodes
+            # to build the proper tree hierarchy
+            if search and matching_units:
+                # Collect all parent IDs from matching units
+                ancestor_ids = set()
+                for unit in matching_units:
+                    metadata = unit.inventory_metadata or {}
+                    if isinstance(metadata, dict):
+                        parent_id = metadata.get("parent_id")
+                        # Walk up the tree to get all ancestors
+                        while parent_id:
+                            if parent_id not in ancestor_ids:
+                                ancestor_ids.add(parent_id)
+                                # Fetch the parent to get its parent_id
+                                parent_stmt = select(GAMInventory).where(
+                                    GAMInventory.tenant_id == tenant_id,
+                                    GAMInventory.inventory_id == parent_id,
+                                )
+                                parent_unit = db_session.scalars(parent_stmt).first()
+                                if parent_unit:
+                                    parent_metadata = parent_unit.inventory_metadata or {}
+                                    if isinstance(parent_metadata, dict):
+                                        parent_id = parent_metadata.get("parent_id")
+                                    else:
+                                        break
+                                else:
+                                    break
+                            else:
+                                break
+
+                # Fetch all ancestor nodes
+                if ancestor_ids:
+                    ancestor_stmt = select(GAMInventory).where(
+                        GAMInventory.tenant_id == tenant_id,
+                        GAMInventory.inventory_id.in_(ancestor_ids),
+                    )
+                    ancestor_units = db_session.scalars(ancestor_stmt).all()
+                    all_units = list(matching_units) + list(ancestor_units)
+                    logger.info(f"Added {len(ancestor_units)} ancestor nodes for tree structure")
+                else:
+                    all_units = list(matching_units)
+            else:
+                all_units = matching_units
+
+            logger.info(f"Building tree from {len(all_units)} total nodes")
 
             # Build tree structure
             units_by_id = {}
             root_units = []
+
+            # Track which units matched the search (for highlighting)
+            matching_ids = {unit.inventory_id for unit in matching_units} if search else set()
 
             # First pass: create all unit objects
             for unit in all_units:
@@ -806,6 +881,7 @@ def get_inventory_tree(tenant_id):
                     "path": unit.path or [unit.name],
                     "parent_id": metadata.get("parent_id"),
                     "has_children": metadata.get("has_children", False),
+                    "matched_search": unit.inventory_id in matching_ids,  # Flag for highlighting
                     "children": [],
                 }
                 units_by_id[unit.inventory_id] = unit_obj
@@ -872,7 +948,7 @@ def get_inventory_tree(tenant_id):
                 f"Labels: {labels_count}, Targeting Keys: {targeting_count}, Audience Segments: {segments_count}"
             )
 
-            return jsonify(
+            result = jsonify(
                 {
                     "root_units": root_units,
                     "total_units": len(all_units),
@@ -881,8 +957,16 @@ def get_inventory_tree(tenant_id):
                     "labels": labels_count,
                     "custom_targeting_keys": targeting_count,
                     "audience_segments": segments_count,
+                    "search_active": bool(search),  # Flag to indicate filtered results
+                    "matching_count": len(matching_ids) if search else 0,
                 }
             )
+
+            # Cache the result for 5 minutes - only when no search
+            if cache and not search:
+                cache.set(cache_key, result, timeout=300)
+
+            return result
 
     except Exception as e:
         logger.error(f"Error building inventory tree for tenant {tenant_id}: {e}", exc_info=True)
@@ -902,13 +986,24 @@ def get_inventory_list(tenant_id):
     Returns:
         JSON array of inventory items with id, name, type, path, status
     """
+    from flask import current_app
+
     try:
         inventory_type = request.args.get("type")  # 'ad_unit' or 'placement' or None for both
         search = request.args.get("search", "").strip()
         status = request.args.get("status", "ACTIVE")
 
+        # Use cache if available and no search term (5 minute TTL)
+        cache = getattr(current_app, "cache", None)
+        if cache and not search:
+            cache_key = f"inventory_list:{tenant_id}:{inventory_type or 'all'}:{status}"
+            cached_result = cache.get(cache_key)
+            if cached_result:
+                logger.info(f"Returning cached inventory list for tenant: {tenant_id}")
+                return cached_result
+
         logger.info(
-            f"Inventory list query: tenant={tenant_id}, type={inventory_type or 'all'}, "
+            f"Building inventory list: tenant={tenant_id}, type={inventory_type or 'all'}, "
             f"search='{search}', status={status}"
         )
 
@@ -978,7 +1073,13 @@ def get_inventory_list(tenant_id):
                 )
 
             logger.info(f"Returning {len(result)} formatted inventory items to UI")
-            return jsonify({"items": result, "count": len(result), "has_more": len(result) >= 500})
+            response = jsonify({"items": result, "count": len(result), "has_more": len(result) >= 500})
+
+            # Cache the result for 5 minutes (only if no search term)
+            if cache and not search:
+                cache.set(cache_key, response, timeout=300)
+
+            return response
 
     except Exception as e:
         logger.error(f"Error fetching inventory list: {e}", exc_info=True)
