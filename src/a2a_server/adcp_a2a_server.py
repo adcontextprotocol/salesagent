@@ -61,6 +61,7 @@ from sqlalchemy import select
 from src.core.audit_logger import get_audit_logger
 from src.core.auth_utils import get_principal_from_token
 from src.core.config_loader import get_current_tenant
+from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
 from src.core.domain_config import get_a2a_server_url, get_sales_agent_domain
 from src.core.schemas import (
     GetSignalsRequest,
@@ -98,8 +99,6 @@ from src.core.tools import (
     update_performance_index_raw as core_update_performance_index_tool,
 )
 from src.services.protocol_webhook_service import get_protocol_webhook_service
-
-from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -939,7 +938,7 @@ class AdCPRequestHandler(RequestHandler):
         from a2a.types import InvalidParamsError, TaskNotFoundError
 
         from src.core.database.database_session import get_db_session
-        
+
         try:
             # Get authentication token
             auth_token = self._get_auth_token()
@@ -1864,7 +1863,15 @@ class AdCPRequestHandler(RequestHandler):
     async def _handle_get_media_buy_delivery_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit get_media_buy_delivery skill invocation (CRITICAL for monitoring).
 
-        Accepts media_buy_ids (plural, per AdCP v1.6.0 spec) or media_buy_id (singular, legacy).
+        Per AdCP spec, all parameters are optional:
+        - media_buy_ids (plural, per AdCP v1.6.0 spec) or media_buy_id (singular, legacy)
+        - buyer_refs: Filter by buyer reference IDs
+        - status_filter: Filter by status (active, pending, paused, completed, failed, all)
+        - start_date: Start date for reporting period (YYYY-MM-DD)
+        - end_date: End date for reporting period (YYYY-MM-DD)
+
+        When no media_buy_ids are provided, returns delivery data for all media buys
+        the requester has access to, filtered by the provided criteria.
         """
         try:
             # Create ToolContext from A2A auth info
@@ -1881,18 +1888,19 @@ class AdCPRequestHandler(RequestHandler):
                 if media_buy_id:
                     media_buy_ids = [media_buy_id]
 
-            # Validate that we have at least one ID
-            if not media_buy_ids:
-                return {
-                    "success": False,
-                    "message": "Missing required parameter: 'media_buy_ids' (or 'media_buy_id' for single buy)",
-                    "required_parameters": ["media_buy_ids"],
-                    "received_parameters": list(parameters.keys()),
-                }
+            # Extract other optional parameters
+            buyer_refs = parameters.get("buyer_refs")
+            status_filter = parameters.get("status_filter")
+            start_date = parameters.get("start_date")
+            end_date = parameters.get("end_date")
 
-            # Call core function directly with spec-compliant plural parameter
+            # Call core function with all parameters (all are optional per AdCP spec)
             response = core_get_media_buy_delivery_tool(
                 media_buy_ids=media_buy_ids,
+                buyer_refs=buyer_refs,
+                status_filter=status_filter,
+                start_date=start_date,
+                end_date=end_date,
                 context=self._tool_context_to_mcp_context(tool_context),
             )
 
