@@ -445,7 +445,8 @@ function renderAdUnitTree(units, selectedIds, depth = 0, searchActive = false) {
                 id: unit.id,
                 name: unit.name,
                 path: unit.path,
-                metadata: { sizes: unit.sizes || [] } // Sizes from tree API response
+                metadata: { sizes: unit.sizes || [] }, // Sizes from tree API response
+                children: unit.children || [] // Store children for recursive size extraction
             });
         }
 
@@ -1532,10 +1533,13 @@ async function extractSizesFromInventory() {
     const adUnitIds = (document.getElementById('targeted_ad_unit_ids').value || '').split(',').filter(Boolean);
     const placementIds = (document.getElementById('targeted_placement_ids').value || '').split(',').filter(Boolean);
 
-    // Extract sizes from ad units directly
-    adUnitIds.forEach(id => {
-        const item = inventoryCache.adUnits.get(id);
-        if (item && item.metadata && item.metadata.sizes) {
+    // Helper function to recursively extract sizes from an ad unit and its children
+    const extractSizesFromUnit = (unitId) => {
+        const item = inventoryCache.adUnits.get(unitId);
+        if (!item) return;
+
+        // Extract sizes from this unit
+        if (item.metadata && item.metadata.sizes) {
             item.metadata.sizes.forEach(size => {
                 const sizeKey = `${size.width}x${size.height}`;
                 inventoryCache.extractedSizes.add(sizeKey);
@@ -1545,6 +1549,20 @@ async function extractSizesFromInventory() {
                 );
             });
         }
+
+        // Recursively extract sizes from children (for hierarchical ad units)
+        if (item.children && Array.isArray(item.children)) {
+            item.children.forEach(child => {
+                if (child.id) {
+                    extractSizesFromUnit(child.id);
+                }
+            });
+        }
+    };
+
+    // Extract sizes from ad units directly (including their children)
+    adUnitIds.forEach(id => {
+        extractSizesFromUnit(id);
     });
 
     // For placements, need to lookup their ad units and get sizes
