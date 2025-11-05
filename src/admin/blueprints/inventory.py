@@ -882,6 +882,7 @@ def get_inventory_tree(tenant_id):
                     "parent_id": metadata.get("parent_id"),
                     "has_children": metadata.get("has_children", False),
                     "matched_search": unit.inventory_id in matching_ids,  # Flag for highlighting
+                    "sizes": metadata.get("sizes", []),  # Include sizes for format matching
                     "children": [],
                 }
                 units_by_id[unit.inventory_id] = unit_obj

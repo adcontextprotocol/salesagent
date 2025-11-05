@@ -439,13 +439,13 @@ function renderAdUnitTree(units, selectedIds, depth = 0, searchActive = false) {
         const isChecked = selectedIds.has(unit.id);
         const matchedSearch = unit.matched_search || false;
 
-        // Store unit in cache for later use
+        // Store unit in cache for later use with sizes from tree API
         if (!inventoryCache.adUnits.has(unit.id)) {
             inventoryCache.adUnits.set(unit.id, {
                 id: unit.id,
                 name: unit.name,
                 path: unit.path,
-                metadata: { sizes: [] } // Will be populated when needed
+                metadata: { sizes: unit.sizes || [] } // Sizes from tree API response
             });
         }
 
