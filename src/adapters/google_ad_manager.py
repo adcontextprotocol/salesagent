@@ -697,34 +697,15 @@ class GoogleAdManager(AdServerAdapter):
             error_msg = f"Order created but failed to create line items: {str(e)}"
             self.log(f"[red]Error: {error_msg}[/red]")
 
-            # Build package responses even on error so downstream code can access package data
-            package_responses = []
-            for idx, package in enumerate(packages):
-                matching_req_package = None
-                if request.packages and idx < len(request.packages):
-                    matching_req_package = request.packages[idx]
-
-                error_package_dict: dict[str, Any] = {
-                    "package_id": package.package_id,
-                    "product_id": package.product_id,
-                    "name": package.name,
-                }
-
-                if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
-                    error_package_dict["buyer_ref"] = matching_req_package.buyer_ref
-
-                # Add creative_ids from package if available (from uploaded inline creatives)
-                if package.creative_ids:
-                    error_package_dict["creative_ids"] = list(package.creative_ids)
-
-                package_responses.append(error_package_dict)
-
+            # CRITICAL: Return media_buy_id=None to indicate failure
+            # Even though order was created, line items failed, so media buy is not functional
+            # Per AdCP spec: errors present → media_buy_id must be None
             return CreateMediaBuyResponse(
                 buyer_ref=request.buyer_ref or "",
-                media_buy_id=order_id,
+                media_buy_id=None,  # NULL because creation failed
                 creative_deadline=None,
                 errors=[Error(code="line_item_creation_failed", message=error_msg, details=None)],
-                packages=package_responses,
+                packages=[],  # No packages since line items weren't created
             )
 
         # Check if activation approval is needed (guaranteed line items require human approval)
