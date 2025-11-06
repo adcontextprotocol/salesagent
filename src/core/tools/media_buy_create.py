@@ -2559,17 +2559,9 @@ async def _create_media_buy_impl(
                                             "Please ensure creatives are properly synced before creating media buys."
                                         )
                                         logger.error(f"[AUTO-APPROVAL] {error_msg}")
-                                        return CreateMediaBuyResponse(
-                                            buyer_ref=buyer_ref or "",
-                                            media_buy_id=None,
-                                            creative_deadline=None,
-                                            errors=[
-                                                Error(
-                                                    code="invalid_creatives",
-                                                    message=error_msg,
-                                                    details={"creative_errors": validation_errors},
-                                                )
-                                            ],
+                                        # Raise exception for MCP - this will be caught and returned as error response
+                                        raise ToolError(
+                                            "INVALID_CREATIVES", error_msg, {"creative_errors": validation_errors}
                                         )
 
                                     # Upload to GAM using adapter's add_creative_assets method
