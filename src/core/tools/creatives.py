@@ -152,7 +152,7 @@ def _sync_creatives_impl(
                         "principal_id": principal_id,
                         "created_at": datetime.now(UTC),
                         "updated_at": datetime.now(UTC),
-                        "status": "pending",
+                        "status": "pending_review",
                     }
 
                     # Add optional AdCP v1 fields if provided
@@ -274,8 +274,8 @@ def _sync_creatives_impl(
                                     _ai_review_tasks,
                                 )
 
-                                # Set status to pending immediately
-                                existing_creative.status = "pending"
+                                # Set status to pending_review for AI review
+                                existing_creative.status = "pending_review"
                                 needs_approval = True
 
                                 # Submit background task
@@ -308,7 +308,7 @@ def _sync_creatives_impl(
                                     f"[sync_creatives] Submitted AI review for {existing_creative.creative_id} (task: {task_id})"
                                 )
                             else:  # require-human
-                                existing_creative.status = "pending"
+                                existing_creative.status = "pending_review"
                                 needs_approval = True
                         else:
                             needs_approval = False
@@ -1025,8 +1025,8 @@ def _sync_creatives_impl(
 
                         # Determine creative status based on approval mode
 
-                        # Create initial creative with pending status for AI review
-                        creative_status = "pending"
+                        # Create initial creative with pending_review status (will be updated based on approval mode)
+                        creative_status = "pending_review"
                         needs_approval = False
 
                         # Extract agent_url and format ID from format_id field
@@ -1065,8 +1065,8 @@ def _sync_creatives_impl(
                                 _ai_review_tasks,
                             )
 
-                            # Set status to pending immediately
-                            db_creative.status = "pending"
+                            # Set status to pending_review for AI review
+                            db_creative.status = "pending_review"
                             needs_approval = True
 
                             # Submit background task
@@ -1096,7 +1096,7 @@ def _sync_creatives_impl(
                                 f"[sync_creatives] Submitted AI review for new creative {db_creative.creative_id} (task: {task_id})"
                             )
                         else:  # require-human
-                            db_creative.status = "pending"
+                            db_creative.status = "pending_review"
                             needs_approval = True
 
                         # Track creatives needing approval for workflow creation
@@ -1288,10 +1288,10 @@ def _sync_creatives_impl(
         with get_db_session() as session:
             for creative_info in creatives_needing_approval:
                 # Build appropriate comment based on status
-                status = creative_info.get("status", "pending")
+                status = creative_info.get("status", "pending_review")
                 if status == "rejected":
                     comment = f"Creative '{creative_info['name']}' (format: {creative_info['format']}) was rejected by AI review"
-                elif status == "pending":
+                elif status == "pending_review":
                     if approval_mode == "ai-powered":
                         comment = f"Creative '{creative_info['name']}' (format: {creative_info['format']}) requires human review per AI recommendation"
                     else:
@@ -1350,7 +1350,7 @@ def _sync_creatives_impl(
             notifier = get_slack_notifier(tenant_config)
 
             for creative_info in creatives_needing_approval:
-                status = creative_info.get("status", "pending")
+                status = creative_info.get("status", "pending_review")
                 ai_review_reason = creative_info.get("ai_review_reason")
 
                 # Ensure required fields are strings
