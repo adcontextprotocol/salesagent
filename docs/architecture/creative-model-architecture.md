@@ -222,13 +222,116 @@ If the codebase grows significantly, we might refactor to:
 
 But for now, the hybrid model is the right balance of simplicity and functionality.
 
+## AdCP v1 Asset Types and Adapter Mappings
+
+### Asset Type Reference (from AdCP v1 spec)
+
+The `assets` field in the Creative model is a dictionary of asset objects, each conforming to one of these AdCP v1 asset schemas:
+
+#### 1. **Image Asset** (`image-asset.json`)
+- **Required**: `url`
+- **Optional**: `width`, `height`, `format`, `alt_text`
+- **Use case**: Static image creatives (banners, display ads)
+
+#### 2. **Video Asset** (`video-asset.json`)
+- **Required**: `url`
+- **Optional**: `width`, `height`, `duration_ms`, `format`, `bitrate_kbps`
+- **Use case**: Hosted video creatives (MP4, WebM)
+
+#### 3. **HTML Asset** (`html-asset.json`)
+- **Required**: `content`
+- **Optional**: `version`
+- **Use case**: HTML5 banner ads, rich media
+
+#### 4. **JavaScript Asset** (`javascript-asset.json`)
+- **Required**: `content`
+- **Optional**: `module_type` (esm, commonjs, script)
+- **Use case**: JavaScript-based ads, interactive creatives
+
+#### 5. **VAST Asset** (`vast-asset.json`)
+- **Required**: `url` XOR `content` (exactly one)
+- **Optional**: `vast_version`, `vpaid_enabled`, `duration_ms`, `tracking_events`
+- **Use case**: Third-party video ad serving
+
+#### 6. **URL Asset** (`url-asset.json`)
+- **Required**: `url`
+- **Optional**: `url_type` (clickthrough, tracker_pixel, tracker_script), `description`
+- **Use cases**:
+  - `clickthrough`: Landing page URL (where user goes on click)
+  - `tracker_pixel`: Impression/event tracking pixel
+  - `tracker_script`: Measurement SDK (OMID, verification)
+
+### Conversion Logic for Ad Server Adapters
+
+When converting AdCP creatives to ad server formats (GAM, Kevel, etc.), the adapter uses these mappings:
+
+#### GAM/Google Ad Manager
+
+**Image/Video Creatives** (hosted assets):
+```
+AdCP assets → GAM format:
+  assets["banner_image"].url → media_url, url
+  assets["banner_image"].width → width
+  assets["banner_image"].height → height
+  assets["video_file"].duration_ms → duration (convert ms to seconds)
+  assets[*].url_type="clickthrough" → click_url
+```
+
+**HTML/JavaScript Creatives** (third-party):
+```
+AdCP assets → GAM format:
+  assets[*].content (where type=html|javascript) → snippet
+  snippet_type = "html" or "javascript"
+```
+
+**VAST Creatives** (video third-party):
+```
+AdCP assets → GAM format:
+  assets[*].content (where type=vast) → snippet
+  assets[*].url (where type=vast) → snippet (if no content)
+  snippet_type = "vast_xml" (if content) or "vast_url" (if url)
+```
+
+**Tracking URLs**:
+```
+AdCP assets → GAM format:
+  assets[*].url_type="tracker_pixel" → delivery_settings.tracking_urls.impression[]
+  assets[*].url_type="clickthrough" → click_url (landing page, not tracking)
+```
+
+### Asset Role Naming Conventions
+
+When processing creatives, the adapter looks for assets using these common role names (in priority order):
+
+**Primary asset detection by format type:**
+- **Display formats** (`display_*`): `banner_image`, `image`, `main`, `creative`, `content`
+- **Video formats** (`video_*`): `video_file`, `video`, `main`, `creative`
+- **Native formats** (`native_*`): `main`, `creative`, `content`
+
+**Special-purpose assets:**
+- `html_content`, `javascript_code` - Code assets
+- `vast_tag`, `vast` - VAST third-party tags
+- `click_url`, `clickthrough` - Landing page URL
+- `impression_tracker`, `tracker_*` - Tracking pixels
+
+### Important Notes
+
+1. **Duration field**: AdCP uses `duration_ms` (milliseconds), GAM uses seconds - conversion happens in adapter
+2. **VAST oneOf**: VAST must have EITHER url OR content, never both (per AdCP spec)
+3. **URL type detection**: Use `url_type` field to distinguish clickthrough from trackers
+4. **Multiple trackers**: Multiple impression trackers are collected into an array
+5. **No asset_type field**: AdCP doesn't have top-level asset_type - type is inferred from format_id prefix (display_*, video_*, native_*)
+6. **Clickthrough vs Tracking**: Clickthrough URLs (`url_type="clickthrough"`) go to `click_url` for landing pages, NOT to tracking_urls
+
 ## Related Files
 
 - `src/core/schemas.py::Creative` - The hybrid model
 - `src/core/database/models.py::Creative` - Database ORM model
 - `src/core/tools/creatives.py::_sync_creatives_impl()` - Handles creative processing
+- `src/core/helpers/creative_helpers.py::_convert_creative_to_adapter_asset()` - AdCP to adapter conversion
 - `schemas/v1/_schemas_v1_core_creative-asset_json.json` - Official AdCP spec
 - `tests/unit/test_adcp_contract.py` - AdCP compliance tests
+- `tests/unit/test_creative_conversion_assets.py` - Asset conversion tests
 
 ## Summary
 
@@ -236,5 +339,6 @@ The `Creative` class is intentionally designed as a hybrid model to:
 - ✅ Accept AdCP-compliant input (only spec fields required)
 - ✅ Store internal metadata (principal_id, timestamps, status)
 - ✅ Return AdCP-compliant responses (internal fields filtered)
+- ✅ Convert assets to adapter formats (using declarative format type detection)
 
 Internal fields are **optional on input**, **added during processing**, and **excluded from output**. This architecture allows the sales agent to accept pure AdCP CreativeAsset objects while maintaining rich internal state for workflow management.
