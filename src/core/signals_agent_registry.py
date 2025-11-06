@@ -219,7 +219,7 @@ class SignalsAgentRegistry:
 
         except ADCPTimeoutError as e:
             logger.error(f"Request timed out for {agent.name}: {e.message}")
-            raise RuntimeError(f"Request timed out after {e.timeout}s") from e
+            raise RuntimeError(f"Request timed out: {e.message}") from e
 
         except ADCPConnectionError as e:
             logger.error(f"Connection failed for {agent.name}: {e.message}")

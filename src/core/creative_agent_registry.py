@@ -240,7 +240,7 @@ class CreativeAgentRegistry:
             raise RuntimeError(f"Authentication failed: {e.message}") from e
         except ADCPTimeoutError as e:
             logger.error(f"Request to creative agent {agent.name} timed out: {e.message}")
-            raise RuntimeError(f"Request timed out after {e.timeout}s") from e
+            raise RuntimeError(f"Request timed out: {e.message}") from e
         except ADCPConnectionError as e:
             logger.error(f"Failed to connect to creative agent {agent.name}: {e.message}")
             raise RuntimeError(f"Connection failed: {e.message}") from e
