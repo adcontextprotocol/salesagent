@@ -84,7 +84,7 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
         gam_inventory_1 = GAMInventory(
             tenant_id="test_gam_pricing_tenant",
             inventory_type="ad_unit",
-            inventory_id="ad_unit_123",
+            inventory_id="23312403856",
             name="Test Ad Unit 123",
             path=["test", "path"],
             status="active",
@@ -95,7 +95,7 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
         gam_inventory_2 = GAMInventory(
             tenant_id="test_gam_pricing_tenant",
             inventory_type="ad_unit",
-            inventory_id="ad_unit_homepage",
+            inventory_id="45623890123",
             name="Homepage Ad Unit",
             path=["homepage"],
             status="active",
@@ -114,7 +114,7 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={
-                "targeted_ad_unit_ids": ["ad_unit_123"],
+                "targeted_ad_unit_ids": ["23312403856"],
                 "line_item_type": "STANDARD",
                 "priority": 8,
                 "creative_placeholders": [{"width": 300, "height": 250}],
@@ -147,7 +147,7 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={
-                "targeted_ad_unit_ids": ["ad_unit_123"],
+                "targeted_ad_unit_ids": ["23312403856"],
                 "line_item_type": "PRICE_PRIORITY",
                 "priority": 12,
                 "creative_placeholders": [
@@ -183,7 +183,7 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={
-                "targeted_ad_unit_ids": ["ad_unit_123"],
+                "targeted_ad_unit_ids": ["23312403856"],
                 "line_item_type": "STANDARD",
                 "priority": 8,
                 "creative_placeholders": [{"width": 300, "height": 250}],
@@ -216,7 +216,7 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={
-                "targeted_ad_unit_ids": ["ad_unit_homepage"],
+                "targeted_ad_unit_ids": ["45623890123"],
                 "line_item_type": "SPONSORSHIP",
                 "priority": 4,
                 "creative_placeholders": [
