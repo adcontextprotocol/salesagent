@@ -473,34 +473,48 @@ def test_gam_connection():
                 # Get company service for advertisers
                 company_service = client.GetService("CompanyService", version="v202505")
 
-                # Build a statement to get advertisers
+                # Build a statement to get advertisers with pagination
                 from googleads import ad_manager as gam_utils
 
                 statement_builder = gam_utils.StatementBuilder()
                 statement_builder.Where("type = :type")
                 statement_builder.WithBindVariable("type", "ADVERTISER")
-                statement_builder.Limit(100)
 
-                # Get companies
-                logger.info("Calling getCompaniesByStatement for ADVERTISER companies")
-                response = company_service.getCompaniesByStatement(statement_builder.ToStatement())
-                logger.info(f"getCompaniesByStatement response: {response}")
-
+                # Fetch ALL advertisers with pagination (not just first 100)
                 companies = []
-                if response and hasattr(response, "results"):
-                    logger.info(f"Found {len(response.results)} companies")
-                    for company in response.results:
-                        logger.info(f"Company: id={company.id}, name={company.name}, type={company.type}")
-                        companies.append(
-                            {
-                                "id": company.id,
-                                "name": company.name,
-                                "type": company.type,
-                            }
-                        )
-                else:
-                    logger.info("No companies found in response")
+                total_result_set_size = 0
+                logger.info("Fetching ADVERTISER companies with pagination...")
 
+                while True:
+                    response = company_service.getCompaniesByStatement(statement_builder.ToStatement())
+
+                    if response and hasattr(response, "results"):
+                        total_result_set_size = int(getattr(response, "totalResultSetSize", 0))
+                        logger.info(
+                            f"Fetched {len(response.results)} companies "
+                            f"(offset: {statement_builder.offset}, total: {total_result_set_size})"
+                        )
+
+                        for company in response.results:
+                            logger.info(f"Company: id={company.id}, name={company.name}, type={company.type}")
+                            companies.append(
+                                {
+                                    "id": company.id,
+                                    "name": company.name,
+                                    "type": company.type,
+                                }
+                            )
+
+                        statement_builder.offset += len(response.results)
+
+                        # Check if we've fetched all results
+                        if statement_builder.offset >= total_result_set_size:
+                            break
+                    else:
+                        logger.info("No companies found in response")
+                        break
+
+                logger.info(f"Fetched total of {len(companies)} advertisers from GAM")
                 result["companies"] = companies
 
                 # Get current user info
