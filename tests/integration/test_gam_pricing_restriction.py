@@ -12,6 +12,7 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import (
     AdapterConfig,
     CurrencyLimit,
+    GAMInventory,
     MediaBuy,
     MediaPackage,
     PricingOption,
@@ -78,6 +79,18 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
         )
         session.add(principal)
 
+        # Add GAM inventory (required for product validation)
+        gam_inventory = GAMInventory(
+            tenant_id="test_gam_tenant",
+            inventory_type="ad_unit",
+            inventory_id="test_ad_unit_456",
+            name="Test Ad Unit for Pricing Tests",
+            path=["test"],
+            status="active",
+            inventory_metadata={},
+        )
+        session.add(gam_inventory)
+
         # Create product with CPCV pricing (not supported by GAM)
         product = Product(
             tenant_id="test_gam_tenant",
@@ -88,7 +101,10 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             delivery_type="non_guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
-            implementation_config={},
+            implementation_config={
+                "targeted_ad_unit_ids": ["test_ad_unit_456"],
+                "creative_placeholders": [{"width": 300, "height": 250}],
+            },
         )
         session.add(product)
         session.flush()
@@ -117,7 +133,10 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             delivery_type="guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
-            implementation_config={},
+            implementation_config={
+                "targeted_ad_unit_ids": ["test_ad_unit_456"],
+                "creative_placeholders": [{"width": 300, "height": 250}],
+            },
         )
         session.add(product_cpm)
         session.flush()
@@ -146,7 +165,10 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             delivery_type="non_guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
-            implementation_config={},
+            implementation_config={
+                "targeted_ad_unit_ids": ["test_ad_unit_456"],
+                "creative_placeholders": [{"width": 300, "height": 250}],
+            },
         )
         session.add(product_multi)
         session.flush()

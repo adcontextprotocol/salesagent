@@ -13,6 +13,7 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import (
     AdapterConfig,
     CurrencyLimit,
+    GAMInventory,
     MediaBuy,
     MediaPackage,
     PricingOption,
@@ -78,6 +79,29 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             platform_mappings={"google_ad_manager": {"advertiser_id": "123456789"}},
         )
         session.add(principal)
+
+        # Add GAM inventory (required for product validation)
+        gam_inventory_1 = GAMInventory(
+            tenant_id="test_gam_pricing_tenant",
+            inventory_type="ad_unit",
+            inventory_id="ad_unit_123",
+            name="Test Ad Unit 123",
+            path=["test", "path"],
+            status="active",
+            inventory_metadata={},
+        )
+        session.add(gam_inventory_1)
+
+        gam_inventory_2 = GAMInventory(
+            tenant_id="test_gam_pricing_tenant",
+            inventory_type="ad_unit",
+            inventory_id="ad_unit_homepage",
+            name="Homepage Ad Unit",
+            path=["homepage"],
+            status="active",
+            inventory_metadata={},
+        )
+        session.add(gam_inventory_2)
 
         # Product 1: CPM pricing (guaranteed)
         product_cpm = Product(
