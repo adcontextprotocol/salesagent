@@ -923,9 +923,18 @@ class GAMOrdersManager:
             company_service = self.client_manager.get_service("CompanyService")
             statement_builder = ad_manager.StatementBuilder()
 
+            # Sanitize and validate search query
+            if search_query:
+                # Strip whitespace and limit length to prevent abuse
+                search_query = search_query.strip()[:100]
+                if not search_query:
+                    # If query is empty after stripping, treat as no search
+                    search_query = None
+
             # Build WHERE clause
             if search_query:
                 # Use LIKE filter for name search (case-insensitive wildcard matching)
+                # Note: WithBindVariable() properly escapes the search string, preventing SQL injection
                 statement_builder.Where("type = :type AND name LIKE :search")
                 statement_builder.WithBindVariable("type", "ADVERTISER")
                 statement_builder.WithBindVariable("search", f"%{search_query}%")
