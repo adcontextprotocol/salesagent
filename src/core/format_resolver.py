@@ -122,10 +122,27 @@ def _get_product_format_override(tenant_id: str, product_id: str, format_id: str
         if format_id not in format_overrides:
             return None
 
-        # Get base format from creative agent registry
+        # Get base format from creative agent registry (WITHOUT product_id to avoid recursion)
+        from src.core.creative_agent_registry import get_creative_agent_registry
+
+        registry = get_creative_agent_registry()
+
         try:
-            base_format = get_format(format_id, tenant_id=tenant_id)
-        except ValueError:
+            # Search all agents for this format
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                all_formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant_id))
+                base_format = None
+                for fmt in all_formats:
+                    if fmt.format_id == format_id or (hasattr(fmt.format_id, "id") and fmt.format_id.id == format_id):
+                        base_format = fmt
+                        break
+                if not base_format:
+                    raise ValueError(f"Format {format_id} not found in any agent")
+            finally:
+                loop.close()
+        except (ValueError, Exception) as e:
             return None
 
         # Apply override to base format

@@ -194,6 +194,11 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
                 "line_item_type": "PRICE_PRIORITY",
                 "priority": 12,
                 "creative_placeholders": [{"width": 300, "height": 250}],
+                "format_overrides": {
+                    "video_standard_30s": {
+                        "platform_config": {"gam": {"creative_placeholder": {"width": 640, "height": 480}}},
+                    }
+                },
             },
         )
         session.add(product_multi)

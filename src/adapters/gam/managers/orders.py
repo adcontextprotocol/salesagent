@@ -494,8 +494,12 @@ class GAMOrdersManager:
                     format_display = f"{agent_url}/{format_id_str}" if agent_url else format_id_str
 
                     try:
+                        # Pass product_id (not package_id) to enable format_overrides lookup
+                        product_id_for_format = (
+                            package.product_id if hasattr(package, "product_id") else package.package_id
+                        )
                         format_obj = get_format(
-                            format_id_str, agent_url=agent_url, tenant_id=tenant_id, product_id=package.package_id
+                            format_id_str, agent_url=agent_url, tenant_id=tenant_id, product_id=product_id_for_format
                         )
                     except ValueError as e:
                         error_msg = f"Format lookup failed for '{format_display}': {e}"
@@ -767,9 +771,12 @@ class GAMOrdersManager:
                 raise ValueError(error_msg)
 
             # Build line item object
+            # In dry-run mode, order_id is a string like 'dry_run_order_123'; use a dummy numeric ID
+            # In real mode, order_id is numeric string that can be converted
+            order_id_int = 999999999 if (self.dry_run and not order_id.isdigit()) else int(order_id)
             line_item = {
                 "name": line_item_name,
-                "orderId": int(order_id),
+                "orderId": order_id_int,
                 "targeting": line_item_targeting,
                 "creativePlaceholders": creative_placeholders,
                 "lineItemType": line_item_type,
