@@ -717,7 +717,7 @@ def authenticated_admin_session(admin_client, integration_db):
 
 @pytest.fixture
 def test_tenant_with_data(integration_db):
-    """Create a test tenant in the database with proper configuration."""
+    """Create a test tenant in the database with proper configuration and all required setup data."""
     from datetime import UTC, datetime
 
     from src.core.database.database_session import get_db_session
@@ -737,10 +737,16 @@ def test_tenant_with_data(integration_db):
             auto_approve_formats=[],  # JSONType expects list, not json.dumps()
             human_review_required=False,
             policy_settings={},  # JSONType expects dict, not json.dumps()
+            authorized_emails=["test@example.com"],  # Required for access control
             created_at=now,
             updated_at=now,
         )
         db_session.add(tenant)
+        db_session.flush()
+
+        # Add all required setup data using the centralized helper
+        add_required_setup_data(db_session, tenant_data["tenant_id"])
+
         db_session.commit()
 
     return tenant_data
