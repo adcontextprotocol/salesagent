@@ -493,15 +493,17 @@ function showInventoryDetail(item, type) {
         html += `<tr><th>Path:</th><td>${item.path.join(' > ')}</td></tr>`;
     }
 
-    if (item.metadata) {
-        if (item.metadata.sizes && item.metadata.sizes.length > 0) {
-            html += '<tr><th>Sizes:</th><td>';
-            item.metadata.sizes.forEach(size => {
-                html += `<span class="inventory-size">${size.width}x${size.height}</span>`;
-            });
-            html += '</td></tr>';
-        }
+    // Sizes can be at top level (from tree API) or in metadata (from search API)
+    const sizes = item.sizes || (item.metadata && item.metadata.sizes) || [];
+    if (sizes.length > 0) {
+        html += '<tr><th>Sizes:</th><td>';
+        sizes.forEach(size => {
+            html += `<span class="inventory-size">${size.width}x${size.height}</span>`;
+        });
+        html += '</td></tr>';
+    }
 
+    if (item.metadata) {
         if (item.metadata.ad_unit_code) {
             html += `<tr><th>Ad Unit Code:</th><td><code>${item.metadata.ad_unit_code}</code></td></tr>`;
         }

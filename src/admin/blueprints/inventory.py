@@ -949,6 +949,15 @@ def get_inventory_tree(tenant_id):
                 f"Labels: {labels_count}, Targeting Keys: {targeting_count}, Audience Segments: {segments_count}"
             )
 
+            # Get last sync time from most recent inventory item
+            last_sync_stmt = (
+                select(GAMInventory.last_synced)
+                .where(GAMInventory.tenant_id == tenant_id)
+                .order_by(GAMInventory.last_synced.desc())
+                .limit(1)
+            )
+            last_sync = db_session.scalar(last_sync_stmt)
+
             result = jsonify(
                 {
                     "root_units": root_units,
@@ -960,6 +969,7 @@ def get_inventory_tree(tenant_id):
                     "audience_segments": segments_count,
                     "search_active": bool(search),  # Flag to indicate filtered results
                     "matching_count": len(matching_ids) if search else 0,
+                    "last_sync": last_sync.isoformat() if last_sync else None,
                 }
             )
 
