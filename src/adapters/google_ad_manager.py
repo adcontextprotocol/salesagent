@@ -15,7 +15,7 @@ __all__ = [
 import logging
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from flask import Flask
 
@@ -446,6 +446,49 @@ class GoogleAdManager(AdServerAdapter):
                     }
                 else:
                     logger.error(f"Product NOT FOUND for package_id: {package.package_id}")
+
+        # Validate products have required inventory targeting BEFORE creating order
+        # This prevents the "hidden failure" where order is created but line items fail
+        for package in packages:
+            product_config = products_map.get(package.package_id)
+            if not product_config:
+                error_msg = (
+                    f"Product configuration missing for package '{package.package_id}'. "
+                    f"Product must exist in database with valid configuration before media buy creation."
+                )
+                self.log(f"[red]Error: {error_msg}[/red]")
+                return CreateMediaBuyResponse(
+                    buyer_ref=request.buyer_ref or "",
+                    media_buy_id=None,
+                    creative_deadline=None,
+                    errors=[Error(code="product_not_configured", message=error_msg, details=None)],
+                )
+
+            # Cast to dict to satisfy mypy (products_map values are dict[str, Any])
+            product_impl_config = cast(dict[str, Any], product_config.get("implementation_config", {}))
+            has_ad_units = product_impl_config.get("targeted_ad_unit_ids")
+            has_placements = product_impl_config.get("targeted_placement_ids")
+
+            if not has_ad_units and not has_placements:
+                pkg_product_id = product_config.get("product_id", package.package_id)
+                error_msg = (
+                    f"Product '{pkg_product_id}' (package '{package.package_id}') is not configured with inventory targeting. "
+                    f"GAM requires all products to have either ad units or placements configured. "
+                    f"\n\n⚠️  SETUP REQUIRED: Please configure this product's inventory before accepting media buy requests."
+                    f"\n\nTo fix:"
+                    f"\n  1. Go to Admin UI → Products → '{pkg_product_id}'"
+                    f"\n  2. Click 'Sync Inventory' to load ad units from GAM"
+                    f"\n  3. Assign ad units or placements to this product"
+                    f"\n  4. Save changes"
+                    f"\n\nAlternatively, for testing you can use Mock adapter instead of GAM (set ad_server='mock' on tenant)."
+                )
+                self.log(f"[red]Error: {error_msg}[/red]")
+                return CreateMediaBuyResponse(
+                    buyer_ref=request.buyer_ref or "",
+                    media_buy_id=None,
+                    creative_deadline=None,
+                    errors=[Error(code="product_not_configured", message=error_msg, details=None)],
+                )
 
         # Validate targeting
         unsupported_features = self._validate_targeting(request.targeting_overlay)
