@@ -61,12 +61,29 @@ http-server = [
 ]
 
 [[package]]
+name = "adcp"
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "a2a-sdk" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "pydantic" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9a/06/155bb01c899a1b00efc9660db62a3dd01e1577add70b8bdfbe06ff1ba62b/adcp-1.0.1.tar.gz", hash = "sha256:7fe2256b4b17b9a94b5541c6d8d359a1f22f386b59643b0477e492958f4681cd", size = 44148, upload-time = "2025-11-06T18:09:26.991Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/26/8a/0cf04f8befbc27c44c14e8c3d616c9f9ea817fab262cd8a488647c507450/adcp-1.0.1-py3-none-any.whl", hash = "sha256:ff3ebdd20edbb8ed7e5a51c645e53f11bce202ba53cbc507dc5b9709f0b3fb8e", size = 43221, upload-time = "2025-11-06T18:09:25.694Z" },
+]
+
+[[package]]
 name = "adcp-sales-agent"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "a2a-cli" },
     { name = "a2a-sdk", extra = ["http-server"] },
+    { name = "adcp" },
     { name = "aiohttp" },
     { name = "alembic" },
     { name = "authlib" },
@@ -143,6 +160,7 @@ dev = [
 requires-dist = [
     { name = "a2a-cli", specifier = ">=0.2.0" },
     { name = "a2a-sdk", extras = ["http-server"], specifier = ">=0.3.10" },
+    { name = "adcp", specifier = "==1.0.1" },
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "alembic", specifier = ">=1.13.0" },
     { name = "allure-pytest", marker = "extra == 'ui-tests'", specifier = "==2.13.5" },
