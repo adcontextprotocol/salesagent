@@ -2582,11 +2582,16 @@ async def _create_media_buy_impl(
                                             logger.info(
                                                 f"Updated creative {creative_id} with platform_creative_id={uploaded_status.creative_id}"
                                             )
+                                except ToolError:
+                                    # Re-raise ToolError - validation failures should fail the entire operation
+                                    raise
                                 except Exception as upload_error:
+                                    # Other exceptions (network errors, etc.) - log and fail
                                     logger.error(f"Failed to upload creative {creative_id} to GAM: {upload_error}")
-                                    logger.warning(
-                                        f"Database assignment will be created for {creative_id}, but GAM association will be skipped until creative is uploaded manually."
-                                    )
+                                    raise ToolError(
+                                        "CREATIVE_UPLOAD_FAILED",
+                                        f"Failed to upload creative {creative_id} to GAM: {str(upload_error)}",
+                                    ) from upload_error
 
                             # Create database assignment
                             assignment_id = f"assign_{uuid.uuid4().hex[:12]}"
