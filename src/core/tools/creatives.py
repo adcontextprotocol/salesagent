@@ -1479,7 +1479,7 @@ def _sync_creatives_impl(
     )
 
 
-def sync_creatives(
+async def sync_creatives(
     creatives: list[dict],
     patch: bool = False,
     assignments: dict | None = None,
@@ -1855,7 +1855,7 @@ def _list_creatives_impl(
     )
 
 
-def list_creatives(
+async def list_creatives(
     media_buy_id: str = None,
     buyer_ref: str = None,
     status: str = None,

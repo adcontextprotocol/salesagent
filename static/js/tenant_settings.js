@@ -24,6 +24,7 @@ const config = (function() {
         tenantId: configEl.dataset.tenantId || '',
         activeAdapter: configEl.dataset.activeAdapter || '',
         a2aPort: configEl.dataset.a2aPort || '8091',
+        mcpPort: configEl.dataset.mcpPort || '8080',
         isProduction: configEl.dataset.isProduction === 'true',
         virtualHost: configEl.dataset.virtualHost || '',
         subdomain: configEl.dataset.subdomain || '',
@@ -1237,8 +1238,8 @@ function copyMCPConfig(principalId, principalName, accessToken) {
             mcpUrl = `https://${config.salesAgentDomain}/mcp`;
         }
     } else {
-        // Development: Use localhost with MCP port (8080)
-        mcpUrl = `http://localhost:8080/mcp`;
+        // Development: Use localhost with configured MCP port
+        mcpUrl = `http://localhost:${config.mcpPort}/mcp`;
     }
 
     // Create the MCP configuration JSON
