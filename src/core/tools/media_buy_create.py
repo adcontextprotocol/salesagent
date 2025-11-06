@@ -750,7 +750,7 @@ def _validate_pricing_model_selection(
             "rate": float(first_option.rate) if first_option.rate else None,
             "currency": first_option.currency or campaign_currency or "USD",
             "is_fixed": first_option.is_fixed,
-            "bid_price": None,
+            "bid_price": float(package.bid_price) if package.bid_price else None,
         }
 
     # Find matching pricing option
