@@ -562,8 +562,9 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                 # Create creative map
                 creative_map = {c.creative_id: c for c in creatives}
 
-                # Build assets list for adapter
+                # Build assets list for adapter and collect all validation errors
                 assets = []
+                all_validation_errors = []
                 for creative_id, package_ids in packages_by_creative.items():
                     creative = creative_map.get(creative_id)
                     if not creative:
@@ -605,32 +606,30 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                     }
 
                     # GAM requires width, height, and url for creative upload
-                    # Validate required fields - FAIL FAST, collect errors
-                    validation_errors = []
+                    # Validate required fields and accumulate all errors
                     if not asset["width"] or not asset["height"]:
-                        validation_errors.append(
-                            f"Creative {creative_id} missing dimensions (width={asset['width']}, height={asset['height']}, format={creative.format})"
-                        )
+                        error = f"Creative {creative_id} missing dimensions (width={asset['width']}, height={asset['height']}, format={creative.format})"
+                        all_validation_errors.append(error)
+                        logger.error(f"[APPROVAL] {error}")
                     if not asset["url"]:
-                        validation_errors.append(f"Creative {creative_id} missing required URL field")
+                        error = f"Creative {creative_id} missing required URL field"
+                        all_validation_errors.append(error)
+                        logger.error(f"[APPROVAL] {error}")
 
-                    if validation_errors:
-                        # Collect all errors before failing
-                        for err in validation_errors:
-                            logger.error(f"[APPROVAL] {err}")
-                        # Skip this creative but continue checking others to collect all errors
+                    # Skip invalid creatives but continue checking others
+                    if any(err.startswith(f"Creative {creative_id}") for err in all_validation_errors):
                         continue
 
                     assets.append(asset)
 
-                # Check if we have any valid creatives to upload
-                if not assets:
+                # If we found validation errors, fail with complete error list
+                if all_validation_errors:
                     error_msg = (
-                        "Cannot approve media buy: all creatives are missing required fields. "
-                        "At least one creative must have valid dimensions and URL."
+                        f"Cannot approve media buy: {len(all_validation_errors)} creatives have validation errors:\n"
+                        + "\n".join(f"  • {err}" for err in all_validation_errors)
+                        + "\n\nAll creatives must have dimensions (width/height) and a content URL."
                     )
                     logger.error(f"[APPROVAL] {error_msg}")
-                    # Return failure tuple - this will be handled by the caller
                     return False, error_msg
 
                 if assets:
@@ -732,13 +731,11 @@ def _validate_pricing_model_selection(
     """
     from decimal import Decimal
 
-    # Debug logging to see what we receive
-    logger.info("[PRICING VALIDATION] Package data received:")
-    logger.info(f"  - product_id: {package.product_id}")
-    logger.info(f"  - pricing_option_id: {package.pricing_option_id}")
-    logger.info(f"  - pricing_model: {package.pricing_model}")
-    logger.info(f"  - bid_price: {package.bid_price}")
-    logger.info(f"  - budget: {package.budget}")
+    # Log pricing validation details at debug level
+    logger.debug(
+        f"[PRICING] Package {package.product_id}: pricing_option={package.pricing_option_id}, "
+        f"model={package.pricing_model}, bid_price={package.bid_price}, budget={package.budget}"
+    )
 
     # All products must have pricing_options
     if not product.pricing_options or len(product.pricing_options) == 0:
@@ -1017,23 +1014,8 @@ async def _create_media_buy_impl(
     """
     request_start_time = time.time()
 
-    # DEBUG: Log incoming push_notification_config
-    logger.info(f"🐛 create_media_buy called with push_notification_config={push_notification_config}")
-    logger.info(f"🐛 push_notification_config type: {type(push_notification_config)}")
-    if push_notification_config:
-        logger.info(f"🐛 push_notification_config contents: {push_notification_config}")
-
     # Create request object from individual parameters (MCP-compliant)
     # Validate early with helpful error messages
-
-    # DEBUG: Log what packages look like BEFORE Pydantic parsing
-    logger.info(f"🐛 RAW packages parameter type: {type(packages)}")
-    logger.info(f"🐛 RAW packages parameter value: {packages}")
-    if packages and len(packages) > 0:
-        logger.info(f"🐛 First package type: {type(packages[0])}")
-        logger.info(f"🐛 First package value: {packages[0]}")
-        if isinstance(packages[0], dict):
-            logger.info(f"🐛 First package keys: {packages[0].keys()}")
 
     try:
         req = CreateMediaBuyRequest(
@@ -1672,18 +1654,13 @@ async def _create_media_buy_impl(
             # Remap package_pricing_info from index-based keys to actual package IDs
             # Note: pending_packages loop used enumerate(req.packages, 1) but pricing used enumerate(req.packages) starting at 0
             package_pricing_info = {}
-            logger.info(f"[PRICING DEBUG] package_pricing_info_by_index: {package_pricing_info_by_index}")
-            logger.info(f"[PRICING DEBUG] pending_packages count: {len(pending_packages)}")
+            # Map pricing info from package index to package_id
             for pkg_idx, pkg_data in enumerate(pending_packages):
-                # pricing_info_by_index uses 0-based index (from req.packages enumeration)
                 if pkg_idx in package_pricing_info_by_index:
                     package_pricing_info[pkg_data["package_id"]] = package_pricing_info_by_index[pkg_idx]
-                    logger.info(
-                        f"[PRICING DEBUG] Mapped pricing idx {pkg_idx} -> package_id {pkg_data['package_id']}: {package_pricing_info_by_index[pkg_idx]}"
-                    )
                 else:
-                    logger.warning(f"[PRICING DEBUG] No pricing info for idx {pkg_idx}")
-            logger.info(f"[PRICING DEBUG] Final package_pricing_info: {package_pricing_info}")
+                    logger.warning(f"No pricing info found for package index {pkg_idx}")
+            logger.debug(f"[PRICING] Mapped {len(package_pricing_info)} package pricing info")
 
             # Create media buy record in the database with permanent ID
             # Status is "pending_approval" but the ID is final
@@ -2275,18 +2252,13 @@ async def _create_media_buy_impl(
         # Remap package_pricing_info from index-based keys to actual package IDs
         # Note: packages loop used enumerate(products_in_buy, 1) but pricing used enumerate(req.packages) starting at 0
         package_pricing_info = {}
-        logger.info(f"[PRICING DEBUG AUTO] package_pricing_info_by_index: {package_pricing_info_by_index}")
-        logger.info(f"[PRICING DEBUG AUTO] packages count: {len(packages)}")
+        # Map pricing info from index to package_id
         for pkg_idx, pkg in enumerate(packages):
-            # pricing_info_by_index uses 0-based index (from req.packages enumeration)
             if pkg_idx in package_pricing_info_by_index:
                 package_pricing_info[pkg.package_id] = package_pricing_info_by_index[pkg_idx]
-                logger.info(
-                    f"[PRICING DEBUG AUTO] Mapped pricing idx {pkg_idx} -> package_id {pkg.package_id}: {package_pricing_info_by_index[pkg_idx]}"
-                )
             else:
-                logger.warning(f"[PRICING DEBUG AUTO] No pricing info for idx {pkg_idx}")
-        logger.info(f"[PRICING DEBUG AUTO] Final package_pricing_info: {package_pricing_info}")
+                logger.warning(f"No pricing info found for package index {pkg_idx}")
+        logger.debug(f"[PRICING] Mapped {len(package_pricing_info)} package pricing info")
 
         # Create the media buy using the adapter (SYNCHRONOUS operation)
         # Defensive null check: ensure start_time and end_time are set
