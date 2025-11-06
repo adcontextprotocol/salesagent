@@ -55,6 +55,7 @@ from src.core.database.models import MediaBuy
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 from src.core.helpers import get_principal_id_from_context, log_tool_activity
+from src.core.helpers.adapter_helpers import get_adapter
 from src.core.helpers.creative_helpers import _convert_creative_to_adapter_asset, process_and_upload_package_creatives
 from src.core.schema_adapters import CreateMediaBuyResponse
 from src.core.schemas import (
@@ -71,7 +72,6 @@ from src.core.schemas import (
 )
 from src.core.testing_hooks import TestingContext, apply_testing_hooks, get_testing_context
 from src.core.tool_context import ToolContext
-from src.core.helpers.adapter_helpers import get_adapter
 
 # Import get_product_catalog from main (after refactor)
 from src.core.validation_helpers import format_validation_error
@@ -722,6 +722,14 @@ def _validate_pricing_model_selection(
     """
     from decimal import Decimal
 
+    # Debug logging to see what we receive
+    logger.info("[PRICING VALIDATION] Package data received:")
+    logger.info(f"  - product_id: {package.product_id}")
+    logger.info(f"  - pricing_option_id: {package.pricing_option_id}")
+    logger.info(f"  - pricing_model: {package.pricing_model}")
+    logger.info(f"  - bid_price: {package.bid_price}")
+    logger.info(f"  - budget: {package.budget}")
+
     # All products must have pricing_options
     if not product.pricing_options or len(product.pricing_options) == 0:
         raise ToolError(
@@ -1213,7 +1221,7 @@ async def _create_media_buy_impl(
         product_ids = req.get_product_ids()
         logger.info(f"DEBUG: Extracted product_ids: {product_ids}")
         logger.info(
-            f"DEBUG: Request packages: {[{'package_id': p.package_id, 'product_id': p.product_id, 'buyer_ref': p.buyer_ref} for p in (req.packages or [])]}"
+            f"DEBUG: Request packages: {[{'package_id': p.package_id, 'product_id': p.product_id, 'buyer_ref': p.buyer_ref, 'bid_price': p.bid_price, 'pricing_option_id': p.pricing_option_id} for p in (req.packages or [])]}"
         )
         if not product_ids:
             error_msg = "At least one product is required."
@@ -2124,30 +2132,33 @@ async def _create_media_buy_impl(
                     clean_url = url.rstrip("/")
                     return f"{clean_url}/{fid}"
 
-                def _has_supported_key(url: str | None, fid: str) -> bool:
+                def _has_supported_key(url: str | None, fid: str, keys: set = product_format_keys) -> bool:
                     """Check if (url, fid) is supported, allowing an '/mcp' URL variant.
 
                     This does not mutate any of the underlying key sets; it only checks
                     for the presence of either the exact key or an alternative where
                     '/mcp' is appended to the end of the URL path.
+
+                    Args:
+                        url: The format URL to check
+                        fid: The format ID to check
+                        keys: The set of supported (url, fid) tuples (bound at function definition)
                     """
                     # Exact match first
-                    if (url, fid) in product_format_keys:
+                    if (url, fid) in keys:
                         return True
 
                     # If URL provided, also try with '/mcp' appended (idempotent if already present)
                     if url:
                         base = url.rstrip("/")
                         mcp_url = base if base.endswith("/mcp") else f"{base}/mcp"
-                        if (mcp_url, fid) in product_format_keys:
+                        if (mcp_url, fid) in keys:
                             return True
 
                     return False
 
                 unsupported_formats = [
-                    format_display(url, fid)
-                    for url, fid in requested_format_keys
-                    if not _has_supported_key(url, fid)
+                    format_display(url, fid) for url, fid in requested_format_keys if not _has_supported_key(url, fid)
                 ]
 
                 if unsupported_formats:
