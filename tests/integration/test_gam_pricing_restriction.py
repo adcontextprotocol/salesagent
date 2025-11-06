@@ -103,6 +103,8 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             targeting_template={},
             implementation_config={
                 "targeted_ad_unit_ids": ["test_ad_unit_456"],
+                "line_item_type": "STANDARD",
+                "priority": 8,
                 "creative_placeholders": [{"width": 300, "height": 250}],
             },
         )
@@ -135,6 +137,8 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             targeting_template={},
             implementation_config={
                 "targeted_ad_unit_ids": ["test_ad_unit_456"],
+                "line_item_type": "STANDARD",
+                "priority": 8,
                 "creative_placeholders": [{"width": 300, "height": 250}],
             },
         )
@@ -167,6 +171,8 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             targeting_template={},
             implementation_config={
                 "targeted_ad_unit_ids": ["test_ad_unit_456"],
+                "line_item_type": "PRICE_PRIORITY",
+                "priority": 12,
                 "creative_placeholders": [{"width": 300, "height": 250}],
             },
         )
