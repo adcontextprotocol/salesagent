@@ -80,10 +80,11 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
         session.add(principal)
 
         # Add GAM inventory (required for product validation)
+        # Note: Using numeric ID as GAM requires numeric ad unit IDs
         gam_inventory = GAMInventory(
             tenant_id="test_gam_tenant",
             inventory_type="ad_unit",
-            inventory_id="test_ad_unit_456",
+            inventory_id="23312403856",
             name="Test Ad Unit for Pricing Tests",
             path=["test"],
             status="active",
@@ -102,7 +103,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={
-                "targeted_ad_unit_ids": ["test_ad_unit_456"],
+                "targeted_ad_unit_ids": ["23312403856"],
                 "line_item_type": "STANDARD",
                 "priority": 8,
                 "creative_placeholders": [{"width": 300, "height": 250}],
@@ -136,7 +137,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={
-                "targeted_ad_unit_ids": ["test_ad_unit_456"],
+                "targeted_ad_unit_ids": ["23312403856"],
                 "line_item_type": "STANDARD",
                 "priority": 8,
                 "creative_placeholders": [{"width": 300, "height": 250}],
@@ -170,7 +171,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={
-                "targeted_ad_unit_ids": ["test_ad_unit_456"],
+                "targeted_ad_unit_ids": ["23312403856"],
                 "line_item_type": "PRICE_PRIORITY",
                 "priority": 12,
                 "creative_placeholders": [{"width": 300, "height": 250}],
