@@ -66,6 +66,9 @@ from src.core.domain_config import get_a2a_server_url, get_sales_agent_domain
 from src.core.schemas import (
     GetSignalsRequest,
 )
+from src.core.schemas_generated._schemas_v1_enums_creative_status_json import (
+    CreativeStatus as CreativeStatusEnum,
+)
 from src.core.testing_hooks import AdCPTestContext
 from src.core.tool_context import ToolContext
 from src.core.tools import (
@@ -801,10 +804,11 @@ class AdCPRequestHandler(RequestHandler):
                     )
                 ]
 
-            # Mark task as completed
-            task.status = TaskStatus(state=TaskState.completed)
+            # Determine task status based on operation result
+            # For sync_creatives, check if any creatives are pending review
+            task_state = TaskState.completed
+            task_status_str = "completed"
 
-            # Send protocol-level webhook notification if configured
             result_data = {}
             if task.artifacts:
                 # Extract result from artifacts
@@ -814,7 +818,22 @@ class AdCPRequestHandler(RequestHandler):
                             if hasattr(part, "data") and part.data:
                                 result_data[artifact.name] = part.data
 
-            await self._send_protocol_webhook(task, status="completed", result=result_data)
+                                # Check if this is a sync_creatives response with pending creatives
+                                if artifact.name == "result" and isinstance(part.data, dict):
+                                    creatives = part.data.get("creatives", [])
+                                    if any(
+                                        c.get("status") == CreativeStatusEnum.pending_review.value
+                                        for c in creatives
+                                        if isinstance(c, dict)
+                                    ):
+                                        task_state = TaskState.submitted
+                                        task_status_str = "submitted"
+
+            # Mark task with appropriate status
+            task.status = TaskStatus(state=task_state)
+
+            # Send protocol-level webhook notification if configured
+            await self._send_protocol_webhook(task, status=task_status_str, result=result_data)
 
         except ServerError:
             # Re-raise ServerError as-is (will be caught by JSON-RPC handler)
