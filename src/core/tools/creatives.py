@@ -36,6 +36,9 @@ from src.core.helpers import (
 )
 from src.core.schema_adapters import ListCreativesResponse, SyncCreativesResponse
 from src.core.schemas import Creative, SyncCreativeResult
+from src.core.schemas_generated._schemas_v1_enums_creative_status_json import (
+    CreativeStatus as CreativeStatusEnum,
+)
 from src.core.validation_helpers import format_validation_error, run_async_in_sync_context
 
 
@@ -152,7 +155,7 @@ def _sync_creatives_impl(
                         "principal_id": principal_id,
                         "created_at": datetime.now(UTC),
                         "updated_at": datetime.now(UTC),
-                        "status": "pending_review",
+                        "status": CreativeStatusEnum.pending_review.value,
                     }
 
                     # Add optional AdCP v1 fields if provided
@@ -263,7 +266,7 @@ def _sync_creatives_impl(
                         creative_format = creative.get("format_id") or creative.get("format")
                         if creative_format:  # Only update approval status if format is provided
                             if approval_mode == "auto-approve":
-                                existing_creative.status = "approved"
+                                existing_creative.status = CreativeStatusEnum.approved.value
                                 needs_approval = False
                             elif approval_mode == "ai-powered":
                                 # Submit to background AI review (async)
@@ -275,7 +278,7 @@ def _sync_creatives_impl(
                                 )
 
                                 # Set status to pending_review for AI review
-                                existing_creative.status = "pending_review"
+                                existing_creative.status = CreativeStatusEnum.pending_review.value
                                 needs_approval = True
 
                                 # Submit background task
@@ -308,7 +311,7 @@ def _sync_creatives_impl(
                                     f"[sync_creatives] Submitted AI review for {existing_creative.creative_id} (task: {task_id})"
                                 )
                             else:  # require-human
-                                existing_creative.status = "pending_review"
+                                existing_creative.status = CreativeStatusEnum.pending_review.value
                                 needs_approval = True
                         else:
                             needs_approval = False
@@ -1026,7 +1029,7 @@ def _sync_creatives_impl(
                         # Determine creative status based on approval mode
 
                         # Create initial creative with pending_review status (will be updated based on approval mode)
-                        creative_status = "pending_review"
+                        creative_status = CreativeStatusEnum.pending_review.value
                         needs_approval = False
 
                         # Extract agent_url and format ID from format_id field
@@ -1054,7 +1057,7 @@ def _sync_creatives_impl(
 
                         # Now apply approval mode logic
                         if approval_mode == "auto-approve":
-                            db_creative.status = "approved"
+                            db_creative.status = CreativeStatusEnum.approved.value
                             needs_approval = False
                         elif approval_mode == "ai-powered":
                             # Submit to background AI review (async)
@@ -1066,7 +1069,7 @@ def _sync_creatives_impl(
                             )
 
                             # Set status to pending_review for AI review
-                            db_creative.status = "pending_review"
+                            db_creative.status = CreativeStatusEnum.pending_review.value
                             needs_approval = True
 
                             # Submit background task
@@ -1096,7 +1099,7 @@ def _sync_creatives_impl(
                                 f"[sync_creatives] Submitted AI review for new creative {db_creative.creative_id} (task: {task_id})"
                             )
                         else:  # require-human
-                            db_creative.status = "pending_review"
+                            db_creative.status = CreativeStatusEnum.pending_review.value
                             needs_approval = True
 
                         # Track creatives needing approval for workflow creation
@@ -1288,10 +1291,10 @@ def _sync_creatives_impl(
         with get_db_session() as session:
             for creative_info in creatives_needing_approval:
                 # Build appropriate comment based on status
-                status = creative_info.get("status", "pending_review")
-                if status == "rejected":
+                status = creative_info.get("status", CreativeStatusEnum.pending_review.value)
+                if status == CreativeStatusEnum.rejected.value:
                     comment = f"Creative '{creative_info['name']}' (format: {creative_info['format']}) was rejected by AI review"
-                elif status == "pending_review":
+                elif status == CreativeStatusEnum.pending_review.value:
                     if approval_mode == "ai-powered":
                         comment = f"Creative '{creative_info['name']}' (format: {creative_info['format']}) requires human review per AI recommendation"
                     else:
@@ -1350,7 +1353,7 @@ def _sync_creatives_impl(
             notifier = get_slack_notifier(tenant_config)
 
             for creative_info in creatives_needing_approval:
-                status = creative_info.get("status", "pending_review")
+                status = creative_info.get("status", CreativeStatusEnum.pending_review.value)
                 ai_review_reason = creative_info.get("ai_review_reason")
 
                 # Ensure required fields are strings
@@ -1358,7 +1361,7 @@ def _sync_creatives_impl(
                 format_str = str(creative_info.get("format", "unknown"))
                 principal_name_str = str(principal_id) if principal_id else "unknown"
 
-                if status == "rejected":
+                if status == CreativeStatusEnum.rejected.value:
                     # For rejected creatives, send a different notification
                     # TODO: Add notify_creative_rejected method to SlackNotifier
                     notifier.notify_creative_pending(
