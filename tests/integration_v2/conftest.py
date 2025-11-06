@@ -211,9 +211,9 @@ def sample_tenant(integration_db):
             tenant_id=tenant_data["tenant_id"],
             property_id="test_property_1",
             property_type="website",
-            name="Test Property",
-            identifiers=[{"type": "domain", "value": "example.com"}],
-            publisher_domain="example.com",
+            name="Fixture Default Property",  # Unique name to avoid conflicts with test assertions
+            identifiers=[{"type": "domain", "value": "fixture-default.example.com"}],
+            publisher_domain="fixture-default.example.com",
             verification_status="verified",
         )
         session.add(authorized_property)
@@ -376,9 +376,9 @@ def add_required_setup_data(session, tenant_id: str):
             tenant_id=tenant_id,
             property_id=f"{tenant_id}_property_1",
             property_type="website",
-            name="Test Property",
-            identifiers=[{"type": "domain", "value": "example.com"}],
-            publisher_domain="example.com",
+            name="Fixture Default Property",  # Unique name to avoid conflicts with test assertions
+            identifiers=[{"type": "domain", "value": "fixture-default.example.com"}],
+            publisher_domain="fixture-default.example.com",
             verification_status="verified",
         )
         session.add(authorized_property)

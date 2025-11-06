@@ -325,9 +325,9 @@ def test_tenant_with_data(integration_db):
             tenant_id=tenant_id,
             property_id=f"{tenant_id}_property_1",
             property_type="website",
-            name="Test Property",
-            identifiers=[{"type": "domain", "value": "example.com"}],
-            publisher_domain="example.com",
+            name="Fixture Default Property",  # Unique name to avoid conflicts with test assertions
+            identifiers=[{"type": "domain", "value": "fixture-default.example.com"}],
+            publisher_domain="fixture-default.example.com",
             verification_status="verified",
         )
         db_session.add(auth_property)
