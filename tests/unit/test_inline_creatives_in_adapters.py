@@ -61,7 +61,6 @@ class TestInlineCreativesInAdapters:
                             name="Test Creative 1",
                             format_id=FormatId(agent_url="https://creative.test", id="display_300x250"),
                             assets={"main": {"url": "https://example.com/ad1.png", "width": 300, "height": 250}},
-                            content_uri="https://example.com/ad1.png",
                             principal_id="principal_123",
                             created_at=datetime.now(UTC),
                             updated_at=datetime.now(UTC),

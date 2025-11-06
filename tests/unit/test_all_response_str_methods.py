@@ -152,8 +152,15 @@ class TestResponseStrMethods:
         creative = Creative(
             creative_id="cr1",
             name="Test Creative",
-            format_id="display_300x250",
-            content_uri="https://example.com/creative.jpg",
+            format_id=FormatId(agent_url="https://creatives.adcontextprotocol.org", id="display_300x250"),
+            assets={
+                "banner_image": {
+                    "url": "https://example.com/creative.jpg",
+                    "width": 300,
+                    "height": 250,
+                    "asset_type": "image",
+                }
+            },
             principal_id="prin_123",
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),

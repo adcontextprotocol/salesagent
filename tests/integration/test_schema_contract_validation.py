@@ -318,47 +318,61 @@ class TestCreativeSchemaContract:
         return AdCPSchemaContractValidator()
 
     def test_creative_adcp_contract_compliance(self, validator):
-        """Test Creative schema AdCP spec compliance."""
+        """Test Creative schema AdCP v1 spec compliance."""
         from datetime import datetime
 
+        from src.core.schemas import FormatId
+
+        # Use actual field name 'format' instead of alias 'format_id'
         test_data = {
             "creative_id": "creative_contract_test",
             "name": "Creative Contract Test",
-            "format_id": "display_300x250",
+            "format": FormatId(agent_url="https://creatives.adcontextprotocol.org", id="display_300x250"),
+            "assets": {
+                "banner_image": {
+                    "url": "https://example.com/creative.jpg",
+                    "width": 300,
+                    "height": 250,
+                }
+            },
             "status": "approved",
-            "content_uri": "https://example.com/creative.jpg",
             "principal_id": "test_principal",
-            "width": 300,
-            "height": 250,
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         }
 
-        # AdCP spec required fields for creatives
-        adcp_spec_fields = {"creative_id", "name", "format", "status", "url"}
+        # AdCP v1 spec required fields for creatives
+        adcp_spec_fields = {"creative_id", "name", "format", "assets"}
 
         validator.validate_schema_contract(Creative, test_data, adcp_spec_fields)
 
     def test_video_creative_contract(self, validator):
-        """Test video creative specific contract requirements."""
+        """Test video creative specific contract requirements (AdCP v1 compliant)."""
         from datetime import datetime
 
+        from src.core.schemas import FormatId
+
+        # Use actual field name 'format' instead of alias 'format_id'
         test_data = {
             "creative_id": "video_contract_test",
             "name": "Video Creative Contract Test",
-            "format_id": "video_640x480",
+            "format": FormatId(agent_url="https://creatives.adcontextprotocol.org", id="video_640x480"),
+            "assets": {
+                "video_file": {
+                    "url": "https://example.com/video.mp4",
+                    "width": 1920,
+                    "height": 1080,
+                    "duration_ms": 30000,  # 30 seconds in milliseconds
+                }
+            },
             "status": "pending",
-            "content_uri": "https://example.com/video.mp4",
             "principal_id": "test_principal",
-            "width": 1920,
-            "height": 1080,
-            "duration": 30.0,
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         }
 
-        # Video creatives have additional required fields
-        adcp_spec_fields = {"creative_id", "name", "format", "status", "url", "duration"}
+        # AdCP v1 spec required fields for creatives (duration_ms is in assets)
+        adcp_spec_fields = {"creative_id", "name", "format", "assets"}
 
         validator.validate_schema_contract(Creative, test_data, adcp_spec_fields)
 

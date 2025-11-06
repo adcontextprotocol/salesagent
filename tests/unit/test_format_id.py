@@ -30,15 +30,22 @@ def test_creative_upgrades_string_format():
         creative_id="c1",
         name="Test Creative",
         format_id="display_300x250",  # Legacy string - auto-upgraded
-        content_uri="https://example.com/creative.jpg",
+        assets={
+            "banner_image": {
+                "url": "https://example.com/creative.jpg",
+                "width": 300,
+                "height": 250,
+                "asset_type": "image",
+            }
+        },
         principal_id="p1",
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
     # Should be automatically upgraded to FormatId object
     assert isinstance(creative.format, FormatId)
-    assert creative.get_format_string() == "display_300x250"
-    assert creative.get_format_agent_url() == "https://creative.adcontextprotocol.org"
+    assert creative.format_id == "display_300x250"
+    assert creative.format_agent_url == "https://creative.adcontextprotocol.org"
 
 
 def test_creative_accepts_format_id_object():
@@ -48,14 +55,21 @@ def test_creative_accepts_format_id_object():
         creative_id="c1",
         name="Test Creative",
         format_id=format_id,
-        content_uri="https://example.com/creative.jpg",
+        assets={
+            "banner_image": {
+                "url": "https://example.com/creative.jpg",
+                "width": 300,
+                "height": 250,
+                "asset_type": "image",
+            }
+        },
         principal_id="p1",
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
     assert isinstance(creative.format, FormatId)
-    assert creative.get_format_string() == "display_300x250"
-    assert creative.get_format_agent_url() == "https://creative.adcontextprotocol.org"
+    assert creative.format_id == "display_300x250"
+    assert creative.format_agent_url == "https://creative.adcontextprotocol.org"
 
 
 def test_creative_from_dict_with_format_id_object():
@@ -64,14 +78,21 @@ def test_creative_from_dict_with_format_id_object():
         "creative_id": "c1",
         "name": "Test Creative",
         "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
-        "content_uri": "https://example.com/creative.jpg",
+        "assets": {
+            "banner_image": {
+                "url": "https://example.com/creative.jpg",
+                "width": 300,
+                "height": 250,
+                "asset_type": "image",
+            }
+        },
         "principal_id": "p1",
         "created_at": datetime.now(),
         "updated_at": datetime.now(),
     }
     creative = Creative(**data)
-    assert creative.get_format_string() == "display_300x250"
-    assert creative.get_format_agent_url() == "https://creative.adcontextprotocol.org"
+    assert creative.format_id == "display_300x250"
+    assert creative.format_agent_url == "https://creative.adcontextprotocol.org"
 
 
 def test_creative_upgrades_dict_without_agent_url():
@@ -80,15 +101,22 @@ def test_creative_upgrades_dict_without_agent_url():
         creative_id="c1",
         name="Test Creative",
         format_id={"id": "display_300x250"},  # Missing agent_url - auto-upgraded
-        content_uri="https://example.com/creative.jpg",
+        assets={
+            "banner_image": {
+                "url": "https://example.com/creative.jpg",
+                "width": 300,
+                "height": 250,
+                "asset_type": "image",
+            }
+        },
         principal_id="p1",
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
     # Should be automatically upgraded with default agent_url
     assert isinstance(creative.format, FormatId)
-    assert creative.get_format_string() == "display_300x250"
-    assert creative.get_format_agent_url() == "https://creative.adcontextprotocol.org"
+    assert creative.format_id == "display_300x250"
+    assert creative.format_agent_url == "https://creative.adcontextprotocol.org"
 
 
 def test_extract_format_namespace():

@@ -8,9 +8,11 @@ from enum import Enum
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+
 from src.core.schemas_generated._schemas_v1_core_push_notification_config_json import (
     PushNotificationConfig,
 )
+
 
 class AdCPBaseModel(BaseModel):
     """Base model for all AdCP request/response schemas.
@@ -34,8 +36,13 @@ class AdCPBaseModel(BaseModel):
 
         # In non-production, validate strictly (forbid extra fields)
         if not is_production():
-            # Get all valid field names for this model (access from class, not instance)
+            # Get all valid field names AND aliases for this model
             valid_fields = set(self.__class__.model_fields.keys())
+            # Also add field aliases
+            for _field_name, field_info in self.__class__.model_fields.items():
+                if field_info.alias:
+                    valid_fields.add(field_info.alias)
+
             provided_fields = set(data.keys())
             extra_fields = provided_fields - valid_fields
 
@@ -1295,314 +1302,97 @@ class FormatId(BaseModel):
         return f"FormatId(id='{self.id}', agent_url='{self.agent_url}')"
 
 
-class Creative(BaseModel):
-    """Individual creative asset in the creative library - AdCP spec compliant."""
+class Creative(AdCPBaseModel):
+    """Individual creative asset - STRICT AdCP v1 spec compliance.
 
-    # Core identification fields
-    creative_id: str
-    name: str
+    **BREAKING CHANGE:** This model now enforces strict AdCP v1 specification compliance.
+    Only fields defined in the official spec are accepted. Legacy fields (media_url, width,
+    height, snippet, etc.) have been REMOVED.
 
-    # AdCP spec compliant fields
-    format: FormatId = Field(
-        alias="format_id", description="Creative format identifier with agent_url namespace (AdCP v2.4+)"
+    **AdCP v1 Spec Fields:**
+    - Required: creative_id, name, format_id, assets
+    - Optional: inputs, tags, approved
+    - Internal: principal_id, created_at, updated_at, status (added by sales agent)
+
+    **Migration Guide:**
+    - Old: media_url, width, height → New: Put in assets dict
+    - Old: click_url → New: Use URL asset with url_type="clickthrough"
+    - Old: snippet → New: Use HTML asset in assets dict
+    - Old: template_variables → New: Use text/image assets
+
+    Official spec: https://adcontextprotocol.org/schemas/v1/core/creative-asset.json
+    """
+
+    # === AdCP v1 Spec Required Fields ===
+    creative_id: str = Field(description="Unique identifier for the creative")
+    name: str = Field(description="Human-readable creative name")
+    format: FormatId = Field(alias="format_id", description="Creative format identifier with agent_url namespace")
+    assets: dict[str, dict[str, Any]] = Field(
+        description="Assets required by the format, keyed by asset_role. "
+        "Values can be image, video, audio, text, html, css, javascript, vast, daast, url, or promoted-offerings assets."
     )
-    url: str = Field(alias="content_uri", description="URL of the creative content per AdCP spec")
+
+    # === AdCP v1 Spec Optional Fields ===
+    inputs: list[dict[str, Any]] | None = Field(
+        None,
+        description="Preview contexts for generative formats - defines what scenarios to generate previews for",
+    )
+    tags: list[str] | None = Field(None, description="User-defined tags for organization and searchability")
+    approved: bool | None = Field(
+        None,
+        description="For generative creatives: set to true to approve and finalize, "
+        "false to request regeneration. Omit for non-generative creatives.",
+    )
 
     @model_validator(mode="before")
     @classmethod
     def validate_format_id(cls, values):
-        """Validate and upgrade format_id to AdCP v2.4 namespaced format.
-
-        Automatically upgrades legacy string format_id to FormatId object with agent_url.
-        Uses cached format mappings or defaults to AdCP reference implementation.
-        """
+        """Validate and upgrade format_id to AdCP namespaced format."""
         from src.core.format_cache import upgrade_legacy_format_id
 
         format_val = values.get("format_id") or values.get("format")
         if format_val is not None:
             try:
-                # Upgrade to FormatId object (handles strings, dicts, objects)
                 upgraded = upgrade_legacy_format_id(format_val)
-                # Set both format_id and format to ensure consistency
                 values["format_id"] = upgraded
                 values["format"] = upgraded
             except ValueError as e:
                 raise ValueError(f"Invalid format_id: {e}")
         return values
 
-    media_url: str | None = Field(None, description="Alternative media URL (typically same as url)")
-    click_url: str | None = Field(None, alias="click_through_url", description="Landing page URL per AdCP spec")
+    # === Internal Fields (not in AdCP spec) ===
+    # These fields are added by the sales agent for workflow management
+    # Buyers should NOT provide these - they are populated during processing
+    principal_id: str | None = None  # Associates creative with advertiser
+    created_at: datetime | None = None  # Audit trail timestamp
+    updated_at: datetime | None = None  # Audit trail timestamp
+    status: str = Field(default="pending", description="Workflow status: pending, approved, rejected")
 
-    # Content dimensions and properties (AdCP spec)
-    duration: float | None = Field(None, description="Duration in seconds (for video/audio)", gt=-1)
-    width: int | None = Field(None, description="Width in pixels (for video/display)", gt=-1)
-    height: int | None = Field(None, description="Height in pixels (for video/display)", gt=-1)
-
-    # Creative status and review (AdCP spec)
-    status: str = Field(default="pending", description="Creative status per AdCP spec")
-    platform_id: str | None = Field(None, description="Platform-specific ID assigned to the creative")
-    review_feedback: str | None = Field(None, description="Feedback from platform review (if any)")
-
-    # Compliance information (AdCP spec)
-    compliance: dict[str, Any] | None = Field(None, description="Compliance review status")
-
-    # Package assignments (AdCP spec)
-    package_assignments: list[str] | None = Field(
-        None, description="Package IDs or buyer_refs to assign this creative to"
-    )
-
-    # Multi-asset support (AdCP spec v2.4+)
-    # Assets are keyed by asset_id from the format's asset_requirements
-    # Example: {"main_image": {"asset_type": "image", "url": "..."}, "logo": {"asset_type": "image", "url": "..."}}
-    assets: dict[str, dict[str, Any]] | None = Field(
-        None,
-        description="Assets keyed by asset_id from format asset_requirements (AdCP v2.4+). "
-        "Keys MUST match asset_id values from the format specification.",
-    )
-
-    # === AdCP v1.3+ Creative Management Fields ===
-    # Fully compliant with AdCP specification for third-party tags and native creatives
-
-    snippet: str | None = Field(
-        None, description="HTML/JS/VAST snippet for third-party creatives (mutually exclusive with media_url)"
-    )
-
-    snippet_type: Literal["html", "javascript", "vast_xml", "vast_url"] | None = Field(
-        None, description="Type of snippet content (required when snippet is provided)"
-    )
-
-    template_variables: dict[str, Any] | None = Field(
-        None,
-        description="Variables for native ad templates per AdCP spec",
-        examples=[
-            {
-                "headline": "Amazing Product",
-                "body": "This product will change your life",
-                "main_image_url": "https://cdn.example.com/product.jpg",
-                "logo_url": "https://cdn.example.com/logo.png",
-                "cta_text": "Shop Now",
-                "advertiser_name": "Brand Name",
-                "price": "$99.99",
-                "star_rating": "4.5",
-            }
-        ],
-    )
-
-    # Platform-specific extension (not in core AdCP spec)
-    delivery_settings: dict[str, Any] | None = Field(
-        None,
-        description="Platform-specific delivery configuration (extension)",
-        examples=[
-            {
-                "safe_frame_compatible": True,
-                "ssl_required": True,
-                "orientation_lock": "FREE_ORIENTATION",
-                "tracking_urls": ["https://..."],
-            }
-        ],
-    )
-
-    # Internal fields (not in AdCP spec, but available for internal use)
-    principal_id: str  # Internal - not in AdCP spec
-    group_id: str | None = None  # Internal - not in AdCP spec
-    created_at: datetime  # Internal timestamp
-    updated_at: datetime  # Internal timestamp
-    has_macros: bool | None = False  # Internal processing
-    macro_validation: dict[str, Any] | None = None  # Internal processing
-    asset_mapping: dict[str, str] | None = Field(default_factory=dict)  # Internal mapping
-    metadata: dict[str, Any] | None = Field(default_factory=dict)  # Internal metadata
-
-    # Backward compatibility properties (deprecated)
+    # Helper properties
     @property
     def format_id(self) -> str:
-        """Backward compatibility for format_id.
-
-        DEPRECATED: Use format instead.
-        This property will be removed in a future version.
-        """
-        warnings.warn(
-            "format_id is deprecated and will be removed in a future version. Use format instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+        """Get format ID string from FormatId object."""
         return self.format.id
 
     @property
-    def content_uri(self) -> str:
-        """Backward compatibility for content_uri.
-
-        DEPRECATED: Use url instead.
-        This property will be removed in a future version.
-        """
-        warnings.warn(
-            "content_uri is deprecated and will be removed in a future version. Use url instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.url
-
-    @property
-    def click_through_url(self) -> str | None:
-        """Backward compatibility for click_through_url.
-
-        DEPRECATED: Use click_url instead.
-        This property will be removed in a future version.
-        """
-        warnings.warn(
-            "click_through_url is deprecated and will be removed in a future version. Use click_url instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.click_url
-
-    def get_format_string(self) -> str:
-        """Get format ID string from FormatId object.
-
-        Returns:
-            String format identifier (e.g., "display_300x250")
-        """
-        return self.format.id
-
-    def get_format_agent_url(self) -> str:
-        """Get agent URL from FormatId object.
-
-        Returns:
-            Agent URL string (e.g., "https://creative.adcontextprotocol.org")
-        """
+    def format_agent_url(self) -> str:
+        """Get agent URL from FormatId object."""
         return self.format.agent_url
 
     def model_dump(self, **kwargs):
-        """Override to provide AdCP-compliant responses while preserving internal fields."""
-        # Default to excluding internal fields for AdCP compliance
+        """Override to exclude internal fields by default for AdCP compliance."""
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
-            # Add internal fields to exclude by default for AdCP compliance
-            exclude.update(
-                {
-                    "principal_id",
-                    "group_id",
-                    "created_at",
-                    "updated_at",
-                    "has_macros",
-                    "macro_validation",
-                    "asset_mapping",
-                    "metadata",
-                    # Extended delivery fields (our implementation-specific extensions)
-                    # These can be included by explicitly requesting them
-                    "content_type",
-                    "content",
-                    "delivery_settings",
-                }
-            )
+            # Exclude internal fields from responses
+            exclude.update({"principal_id", "created_at", "updated_at", "status"})
             kwargs["exclude"] = exclude
-
-        data = super().model_dump(**kwargs)
-
-        # Ensure media_url defaults to url if not set (AdCP spec requirement)
-        if "media_url" in data and data["media_url"] is None and "url" in data:
-            data["media_url"] = data["url"]
-
-        # Set default compliance status if not provided
-        if "compliance" in data and data["compliance"] is None:
-            data["compliance"] = {"status": "pending", "issues": []}
-
-        return data
+        return super().model_dump(**kwargs)
 
     def model_dump_internal(self, **kwargs):
-        """Dump including internal fields for database storage and internal processing."""
-        # Don't exclude internal fields
-        kwargs.pop("exclude", None)  # Remove any exclude parameter
-        data = super().model_dump(**kwargs)
-
-        # For internal dumps, also include alias field names for backward compatibility
-        # This ensures that tests expecting both field names can access them
-        if "format" in data:
-            data["format_id"] = data["format"]
-        if "url" in data:
-            data["content_uri"] = data["url"]
-        if "click_url" in data:
-            data["click_through_url"] = data["click_url"]
-
-        return data
-
-    # === AdCP v1.3+ Helper Methods ===
-
-    def get_creative_type(self) -> str:
-        """Determine the creative type based on AdCP v1.3+ fields."""
-        if self.snippet and self.snippet_type:
-            if self.snippet_type in ["vast_xml", "vast_url"]:
-                return "vast"
-            else:
-                return "third_party_tag"
-        elif self.template_variables:
-            return "native"
-        elif self.media_url or (self.url and not self._is_html_snippet(self.url)):
-            return "hosted_asset"
-        elif self._is_html_snippet(self.url):
-            # Auto-detect from URL for legacy support
-            return "third_party_tag"
-        else:
-            return "hosted_asset"  # Default
-
-    def _is_html_snippet(self, content: str) -> bool:
-        """Detect if content is HTML/JS snippet rather than URL."""
-        if not content:
-            return False
-
-        # Check for HTML/JS indicators
-        html_indicators = ["<script", "<iframe", "<ins", "<div", "<span", "document.write", "innerHTML"]
-        return any(indicator in content for indicator in html_indicators)
-
-    def get_snippet_content(self) -> str | None:
-        """Get the snippet content for third-party creatives (AdCP v1.3+ field)."""
-        if self.snippet:
-            return self.snippet
-        elif self._is_html_snippet(self.url):
-            return self.url  # Auto-detect from URL
-        return None
-
-    def get_template_variables_dict(self) -> dict[str, Any] | None:
-        """Get native template variables (AdCP v1.3+ field)."""
-        return self.template_variables
-
-    def get_primary_content_url(self) -> str:
-        """Get the primary content URL for hosted assets."""
-        return self.media_url or self.url
-
-    def set_third_party_snippet(self, snippet: str, snippet_type: str, settings: dict[str, Any] | None = None) -> None:
-        """Convenience method to set up a third-party tag creative (AdCP v1.3+)."""
-        self.snippet = snippet
-        self.snippet_type = snippet_type  # type: ignore[assignment]
-        if settings:
-            self.delivery_settings = settings
-
-    def set_native_template_variables(
-        self, template_vars: dict[str, Any], settings: dict[str, Any] | None = None
-    ) -> None:
-        """Convenience method to set up a native creative (AdCP v1.3+)."""
-        self.template_variables = template_vars
-        if settings:
-            self.delivery_settings = settings
-
-    @model_validator(mode="after")
-    def validate_creative_fields(self) -> "Creative":
-        """Validate AdCP creative field requirements and mutual exclusivity."""
-        # Check mutual exclusivity: media_url XOR snippet
-        has_media = bool(self.media_url or (self.url and not self._is_html_snippet(self.url)))
-        has_snippet = bool(self.snippet)
-
-        if has_media and has_snippet:
-            raise ValueError("Creative cannot have both media content and snippet - they are mutually exclusive")
-
-        # Validate snippet_type is provided when snippet is present
-        if self.snippet and not self.snippet_type:
-            raise ValueError("snippet_type is required when snippet is provided")
-
-        # Validate snippet_type values
-        if self.snippet_type and not self.snippet:
-            raise ValueError("snippet is required when snippet_type is provided")
-
-        return self
+        """Dump including internal fields for database storage."""
+        # Don't exclude anything
+        kwargs.pop("exclude", None)
+        return super().model_dump(**kwargs)
 
 
 class CreativeAdaptation(BaseModel):

@@ -251,18 +251,18 @@ class TestCreativeSchemaRoundtrip:
         return SchemaRoundtripValidator()
 
     def test_display_creative_roundtrip(self, validator):
-        """Test roundtrip for display creative."""
+        """Test roundtrip for display creative (AdCP v1 compliant)."""
         from datetime import datetime
+
+        from src.core.schemas import FormatId
 
         test_data = {
             "creative_id": "display_creative_roundtrip",
             "name": "Display Creative Roundtrip Test",
-            "format_id": "display_300x250",
+            "format_id": FormatId(agent_url="https://creatives.adcontextprotocol.org", id="display_300x250"),
+            "assets": {"banner_image": {"url": "https://example.com/creative.jpg", "width": 300, "height": 250}},
             "status": "pending",
-            "content_uri": "https://example.com/creative.jpg",
             "principal_id": "test_principal",
-            "width": 300,
-            "height": 250,
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         }
@@ -270,19 +270,25 @@ class TestCreativeSchemaRoundtrip:
         validator.test_model_roundtrip(Creative, test_data)
 
     def test_video_creative_roundtrip(self, validator):
-        """Test roundtrip for video creative."""
+        """Test roundtrip for video creative (AdCP v1 compliant)."""
         from datetime import datetime
+
+        from src.core.schemas import FormatId
 
         test_data = {
             "creative_id": "video_creative_roundtrip",
             "name": "Video Creative Roundtrip Test",
-            "format_id": "video_640x480",
+            "format_id": FormatId(agent_url="https://creatives.adcontextprotocol.org", id="video_640x480"),
+            "assets": {
+                "video_file": {
+                    "url": "https://example.com/creative.mp4",
+                    "width": 1920,
+                    "height": 1080,
+                    "duration_ms": 30000,  # 30 seconds
+                }
+            },
             "status": "approved",
-            "content_uri": "https://example.com/creative.mp4",
             "principal_id": "test_principal",
-            "width": 1920,
-            "height": 1080,
-            "duration": 30.0,
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         }
