@@ -605,23 +605,33 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                     }
 
                     # GAM requires width, height, and url for creative upload
-                    # If still missing after format extraction, skip this creative
+                    # Validate required fields - FAIL FAST, collect errors
+                    validation_errors = []
                     if not asset["width"] or not asset["height"]:
-                        logger.warning(
-                            f"[APPROVAL] Skipping creative {creative_id}: missing dimensions "
-                            f"(width={asset['width']}, height={asset['height']}, format={creative.format}). "
-                            f"Cannot extract from format ID and not provided in creative data."
+                        validation_errors.append(
+                            f"Creative {creative_id} missing dimensions (width={asset['width']}, height={asset['height']}, format={creative.format})"
                         )
-                        continue
-
                     if not asset["url"]:
-                        logger.warning(
-                            f"[APPROVAL] Skipping creative {creative_id}: missing content URL. "
-                            f"GAM requires a creative URL for upload."
-                        )
+                        validation_errors.append(f"Creative {creative_id} missing required URL field")
+
+                    if validation_errors:
+                        # Collect all errors before failing
+                        for err in validation_errors:
+                            logger.error(f"[APPROVAL] {err}")
+                        # Skip this creative but continue checking others to collect all errors
                         continue
 
                     assets.append(asset)
+
+                # Check if we have any valid creatives to upload
+                if not assets:
+                    error_msg = (
+                        "Cannot approve media buy: all creatives are missing required fields. "
+                        "At least one creative must have valid dimensions and URL."
+                    )
+                    logger.error(f"[APPROVAL] {error_msg}")
+                    # Return failure tuple - this will be handled by the caller
+                    return False, error_msg
 
                 if assets:
                     logger.info(f"[APPROVAL] Uploading {len(assets)} creatives to adapter")
@@ -2559,15 +2569,36 @@ async def _create_media_buy_impl(
                                         "name": creative.name or f"Creative {creative.creative_id}",
                                     }
 
-                                    # Validate required fields
+                                    # Validate required fields - FAIL FAST, do not skip
+                                    validation_errors = []
                                     if not asset["width"] or not asset["height"]:
-                                        logger.warning(
-                                            f"Skipping creative {creative_id}: missing dimensions (width={asset['width']}, height={asset['height']})"
+                                        validation_errors.append(
+                                            f"Creative {creative_id} missing dimensions (width={asset['width']}, height={asset['height']})"
                                         )
-                                        continue
                                     if not asset["url"]:
-                                        logger.warning(f"Skipping creative {creative_id}: missing URL")
-                                        continue
+                                        validation_errors.append(f"Creative {creative_id} missing required URL field")
+
+                                    if validation_errors:
+                                        error_msg = (
+                                            "Cannot create media buy with invalid creatives. "
+                                            "The following creatives are missing required fields:\n"
+                                            + "\n".join(f"  • {err}" for err in validation_errors)
+                                            + "\n\nAll creatives must have dimensions (width/height) and a content URL. "
+                                            "Please ensure creatives are properly synced before creating media buys."
+                                        )
+                                        logger.error(f"[AUTO-APPROVAL] {error_msg}")
+                                        return CreateMediaBuyResponse(
+                                            buyer_ref=buyer_ref or "",
+                                            media_buy_id=None,
+                                            creative_deadline=None,
+                                            errors=[
+                                                Error(
+                                                    code="invalid_creatives",
+                                                    message=error_msg,
+                                                    details={"creative_errors": validation_errors},
+                                                )
+                                            ],
+                                        )
 
                                     # Upload to GAM using adapter's add_creative_assets method
                                     upload_result = adapter.add_creative_assets(
