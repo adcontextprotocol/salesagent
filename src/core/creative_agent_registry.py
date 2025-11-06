@@ -207,12 +207,16 @@ class CreativeAgentRegistry:
             )
 
             # Call agent using adcp library
+            logger.info(f"_fetch_formats_from_agent: Calling {agent.name} at {agent.agent_url}")
             result = await client.agent(agent.name).list_creative_formats(request)
+            logger.info(f"_fetch_formats_from_agent: Got result status={result.status}, type={type(result)}")
 
             # Handle response based on status
             if result.status == "completed":
                 formats_data = result.data
-                logger.info(f"_fetch_formats_from_agent: Got response with {len(formats_data.formats)} formats")
+                logger.info(
+                    f"_fetch_formats_from_agent: Got response with {len(formats_data.formats) if formats_data and hasattr(formats_data, 'formats') else 'N/A'} formats"
+                )
 
                 # Convert to Format objects
                 formats = []
