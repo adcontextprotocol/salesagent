@@ -18,8 +18,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from adcp import ADCPMultiAgentClient, AgentConfig, ListCreativeFormatsRequest
+from adcp.exceptions import ADCPAuthenticationError, ADCPConnectionError, ADCPError, ADCPTimeoutError
+
 from src.core.schemas import Format, FormatId
-from src.core.utils.mcp_client import MCPConnectionError, create_mcp_client
+from src.core.utils.mcp_client import create_mcp_client  # Keep for custom tools (preview, build)
 
 
 @dataclass
@@ -31,6 +34,7 @@ class CreativeAgent:
     enabled: bool = True
     priority: int = 1  # Lower = higher priority in search results
     auth: dict[str, Any] | None = None  # Optional auth config for private agents
+    auth_header: str | None = None  # Optional custom auth header name
 
 
 @dataclass
@@ -79,6 +83,37 @@ class CreativeAgentRegistry:
         """Initialize registry with empty cache."""
         self._format_cache: dict[str, CachedFormats] = {}  # Key: agent_url
 
+    def _build_adcp_client(self, agents: list[CreativeAgent]) -> ADCPMultiAgentClient:
+        """Build AdCP client from creative agent configs.
+
+        Args:
+            agents: List of CreativeAgent instances
+
+        Returns:
+            ADCPMultiAgentClient configured with all agents
+        """
+        agent_configs = []
+        for agent in agents:
+            # Extract auth configuration
+            auth_type = "token"
+            auth_token = None
+            if agent.auth:
+                auth_type = agent.auth.get("type", "token")
+                auth_token = agent.auth.get("credentials")
+
+            config = AgentConfig(
+                id=agent.name,
+                agent_uri=agent.agent_url,
+                protocol="mcp",
+                auth_token=auth_token,
+                auth_type=auth_type,
+                auth_header=agent.auth_header or "x-adcp-auth",
+                timeout=30.0,
+            )
+            agent_configs.append(config)
+
+        return ADCPMultiAgentClient(agents=agent_configs)
+
     def _get_tenant_agents(self, tenant_id: str | None) -> list[CreativeAgent]:
         """Get list of creative agents for a tenant.
 
@@ -116,6 +151,7 @@ class CreativeAgentRegistry:
                         enabled=db_agent.enabled,
                         priority=db_agent.priority,
                         auth=auth,
+                        auth_header=getattr(db_agent, "auth_header", None),  # May not exist in DB model yet
                     )
                 )
 
@@ -125,6 +161,7 @@ class CreativeAgentRegistry:
 
     async def _fetch_formats_from_agent(
         self,
+        client: ADCPMultiAgentClient,
         agent: CreativeAgent,
         max_width: int | None = None,
         max_height: int | None = None,
@@ -138,6 +175,7 @@ class CreativeAgentRegistry:
         """Fetch format list from a creative agent via MCP.
 
         Args:
+            client: ADCPMultiAgentClient to use for requests
             agent: CreativeAgent to query
             max_width: Maximum width in pixels (inclusive)
             max_height: Maximum height in pixels (inclusive)
@@ -156,77 +194,59 @@ class CreativeAgentRegistry:
         logger = logging.getLogger(__name__)
 
         try:
-            # Use unified MCP client for standardized connection handling
-            async with create_mcp_client(
-                agent_url=agent.agent_url,
-                auth=agent.auth,
-                timeout=30,
-                max_retries=3,
-            ) as client:
-                # Build parameters for list_creative_formats
-                params: dict[str, Any] = {}
-                if max_width is not None:
-                    params["max_width"] = max_width
-                if max_height is not None:
-                    params["max_height"] = max_height
-                if min_width is not None:
-                    params["min_width"] = min_width
-                if min_height is not None:
-                    params["min_height"] = min_height
-                if is_responsive is not None:
-                    params["is_responsive"] = is_responsive
-                if asset_types is not None:
-                    params["asset_types"] = asset_types
-                if name_search is not None:
-                    params["name_search"] = name_search
-                if type_filter is not None:
-                    params["type"] = type_filter
+            # Build request parameters
+            request = ListCreativeFormatsRequest(
+                max_width=max_width,
+                max_height=max_height,
+                min_width=min_width,
+                min_height=min_height,
+                is_responsive=is_responsive,
+                asset_types=asset_types,
+                name_search=name_search,
+                type=type_filter,
+            )
 
-                # Call list_creative_formats tool
-                result = await client.call_tool("list_creative_formats", params)
+            # Call agent using adcp library
+            result = await client.agent(agent.name).list_creative_formats(request)
 
-                # Use structured_content field for JSON response (MCP protocol update)
-                formats_data = None
-                if hasattr(result, "structured_content") and result.structured_content:
-                    formats_data = result.structured_content
-                    logger.info(f"_fetch_formats_from_agent: Using structured_content, type={type(formats_data)}")
-                elif isinstance(result.content, list) and result.content:
-                    # Fallback: Parse from content field (legacy)
-                    formats_data = result.content[0].text if hasattr(result.content[0], "text") else result.content[0]
-                    logger.info(
-                        f"_fetch_formats_from_agent: Using legacy content field, formats_data (first 500 chars): {str(formats_data)[:500]}"
-                    )
+            # Handle response based on status
+            if result.status == "completed":
+                formats_data = result.data
+                logger.info(f"_fetch_formats_from_agent: Got response with {len(formats_data.formats)} formats")
 
-                    # Parse JSON if needed
-                    import json
-
-                    if isinstance(formats_data, str):
-                        formats_data = json.loads(formats_data)
-
+                # Convert to Format objects
                 formats = []
-                if formats_data:
-                    logger.info(
-                        f"_fetch_formats_from_agent: After parse, type={type(formats_data)}, keys={list(formats_data.keys()) if isinstance(formats_data, dict) else 'not a dict'}"
-                    )
-
-                    # Convert to Format objects
-                    if isinstance(formats_data, dict) and "formats" in formats_data:
-                        logger.info(
-                            f"_fetch_formats_from_agent: Found 'formats' key with {len(formats_data['formats'])} items"
-                        )
-                        for fmt_data in formats_data["formats"]:
-                            # Ensure agent_url is set
-                            fmt_data["agent_url"] = agent.agent_url
-                            formats.append(Format(**fmt_data))
-                    else:
-                        logger.warning(f"_fetch_formats_from_agent: No 'formats' key in response. Data: {formats_data}")
+                for fmt_data in formats_data.formats:
+                    # Ensure agent_url is set
+                    fmt_dict = fmt_data if isinstance(fmt_data, dict) else fmt_data.model_dump()
+                    fmt_dict["agent_url"] = agent.agent_url
+                    formats.append(Format(**fmt_dict))
 
                 return formats
 
-        except MCPConnectionError as e:
-            # Connection failed after retries - log and re-raise as RuntimeError for backward compatibility
-            logger.error(f"Failed to connect to creative agent: {e}")
-            raise RuntimeError(str(e)) from e
+            elif result.status == "submitted":
+                # Webhook registered for async completion
+                logger.info(
+                    f"Async operation submitted, webhook: {result.submitted.webhook_url if result.submitted else 'none'}"
+                )
+                return []
+
+            else:
+                logger.warning(f"Unexpected result status: {result.status}")
+                return []
+
+        except ADCPAuthenticationError as e:
+            logger.error(f"Authentication failed for creative agent {agent.name}: {e.message}")
+            raise RuntimeError(f"Authentication failed: {e.message}") from e
+        except ADCPTimeoutError as e:
+            logger.error(f"Request to creative agent {agent.name} timed out: {e.message}")
+            raise RuntimeError(f"Request timed out after {e.timeout}s") from e
+        except ADCPConnectionError as e:
+            logger.error(f"Failed to connect to creative agent {agent.name}: {e.message}")
+            raise RuntimeError(f"Connection failed: {e.message}") from e
+        except ADCPError as e:
+            logger.error(f"AdCP error with creative agent {agent.name}: {e.message}")
+            raise RuntimeError(str(e.message)) from e
 
     async def get_formats_for_agent(
         self,
@@ -276,8 +296,12 @@ class CreativeAgentRegistry:
         if cached and not cached.is_expired() and not force_refresh and not has_filters:
             return cached.formats
 
+        # Build client for this agent
+        client = self._build_adcp_client([agent])
+
         # Fetch from agent
         formats = await self._fetch_formats_from_agent(
+            client,
             agent,
             max_width=max_width,
             max_height=max_height,
@@ -335,21 +359,50 @@ class CreativeAgentRegistry:
         logger = logging.getLogger(__name__)
         logger.info(f"list_all_formats: Found {len(agents)} agents for tenant {tenant_id}")
 
+        # Build client for all agents
+        client = self._build_adcp_client(agents)
+
         for agent in agents:
             logger.info(f"list_all_formats: Fetching from {agent.agent_url}")
             try:
-                formats = await self.get_formats_for_agent(
-                    agent,
-                    force_refresh=force_refresh,
-                    max_width=max_width,
-                    max_height=max_height,
-                    min_width=min_width,
-                    min_height=min_height,
-                    is_responsive=is_responsive,
-                    asset_types=asset_types,
-                    name_search=name_search,
-                    type_filter=type_filter,
+                # Check cache first if no filters and not forcing refresh
+                has_filters = any(
+                    [
+                        max_width is not None,
+                        max_height is not None,
+                        min_width is not None,
+                        min_height is not None,
+                        is_responsive is not None,
+                        asset_types is not None,
+                        name_search is not None,
+                        type_filter is not None,
+                    ]
                 )
+
+                cached = self._format_cache.get(agent.agent_url)
+                if cached and not cached.is_expired() and not force_refresh and not has_filters:
+                    formats = cached.formats
+                else:
+                    # Fetch from agent
+                    formats = await self._fetch_formats_from_agent(
+                        client,
+                        agent,
+                        max_width=max_width,
+                        max_height=max_height,
+                        min_width=min_width,
+                        min_height=min_height,
+                        is_responsive=is_responsive,
+                        asset_types=asset_types,
+                        name_search=name_search,
+                        type_filter=type_filter,
+                    )
+
+                    # Update cache only if no filtering parameters
+                    if not has_filters:
+                        self._format_cache[agent.agent_url] = CachedFormats(
+                            formats=formats, fetched_at=datetime.now(UTC), ttl_seconds=3600
+                        )
+
                 logger.info(f"list_all_formats: Got {len(formats)} formats from {agent.agent_url}")
                 all_formats.extend(formats)
             except Exception as e:
@@ -450,7 +503,7 @@ class CreativeAgentRegistry:
                 }]
             }
         """
-        # Use unified MCP client
+        # Use custom MCP client for non-standard tools (preview_creative not in AdCP spec)
         async with create_mcp_client(agent_url=agent_url, timeout=30) as client:
             result = await client.call_tool(
                 "preview_creative", {"format_id": format_id, "creative_manifest": creative_manifest}
@@ -502,7 +555,7 @@ class CreativeAgentRegistry:
             - status: "draft" or "finalized"
             - creative_output: Generated creative manifest with output_format
         """
-        # Use unified MCP client
+        # Use custom MCP client for non-standard tools (build_creative not in AdCP spec)
         async with create_mcp_client(agent_url=agent_url, timeout=30) as client:
             params = {
                 "message": message,

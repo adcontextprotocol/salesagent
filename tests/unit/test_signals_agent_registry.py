@@ -62,17 +62,17 @@ class TestSignalsAgentRegistry:
 
         # Mock successful response
         from adcp import GetSignalsResponse
-        from adcp.types import Signal
 
+        # Signals are dicts (not typed objects) in GetSignalsResponse
         mock_signals = [
-            Signal(
-                signal_agent_segment_id="seg1",
-                name="Test Signal",
-                description="Test description",
-                signal_type="marketplace",
-                data_provider="Test Provider",
-                coverage_percentage=85.0,
-            )
+            {
+                "signal_agent_segment_id": "seg1",
+                "name": "Test Signal",
+                "description": "Test description",
+                "signal_type": "marketplace",
+                "data_provider": "Test Provider",
+                "coverage_percentage": 85.0,
+            }
         ]
 
         mock_result = Mock()

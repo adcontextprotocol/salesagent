@@ -10,7 +10,21 @@ Architecture:
 - Tenant agents: Configured in signals_agents database table
 - Signals resolution: Query agents via adcp library, handle responses
 
+Schema Version: AdCP v2.2.0
+- Uses signal_spec (not brief from v1)
+- Uses deliver_to.platforms as array of strings ["all"] (not single string "all")
+- Supports custom auth headers via auth_header parameter
+
+Security:
+- Auth credentials stored in database (tenant-specific)
+- Custom auth headers supported (e.g., Authorization, x-api-key)
+- Bearer token format: "Bearer {token}"
+- Token format: "{token}"
+
 Migration Note: Now uses official `adcp` library (v1.0.1) instead of custom MCP client.
+- ~100 lines of custom code replaced with official library
+- Custom auth headers now fully supported (was critical blocker)
+- Maintains backward compatibility with existing API
 """
 
 import logging
@@ -160,18 +174,19 @@ class SignalsAgentRegistry:
             List of signal objects from the agent
         """
         try:
-            # Build request parameters
-            promoted_offering = None
-            if agent.forward_promoted_offering and context and "promoted_offering" in context:
-                promoted_offering = context["promoted_offering"]
+            # Build request parameters using new AdCP v2.2.0 schema
+            # Map our old 'brief' parameter to 'signal_spec'
+            signal_spec = brief
 
-            # Create typed request
+            # Build deliver_to (required in new schema)
+            # Default to "all" platforms if not specified
+            # NOTE: platforms must be an array of strings, not a single string
+            deliver_to = {"platforms": ["all"]}
+
+            # Create typed request (AdCP v2.2.0 format)
             request = GetSignalsRequest(
-                brief=brief,
-                tenant_id=tenant_id,
-                principal_id=principal_id,
-                principal_data=principal_data,
-                promoted_offering=promoted_offering,
+                signal_spec=signal_spec,
+                deliver_to=deliver_to,
             )
 
             # Call agent
@@ -182,7 +197,9 @@ class SignalsAgentRegistry:
                 # Synchronous completion
                 signals = result.data.signals
                 logger.info(f"_get_signals_from_agent: Got {len(signals)} signals synchronously")
-                return [signal.model_dump() for signal in signals]  # Convert to dicts
+                # Signals are already dicts (list[dict[str, Any]]) - no conversion needed
+                # This is by design in the AdCP spec - signals are untyped JSON objects
+                return signals
 
             elif result.status == "submitted":
                 # Asynchronous completion - webhook registered
