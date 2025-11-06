@@ -109,7 +109,12 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             product_id="prod_gam_cpm_guaranteed",
             name="Display Ads - CPM Guaranteed",
             description="Display inventory with guaranteed CPM pricing",
-            formats=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
+            formats=[
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x250_image",
+                }
+            ],
             delivery_type="guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
@@ -154,8 +159,14 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             name="Display Ads - CPC",
             description="Click-based pricing for performance campaigns",
             formats=[
-                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
-                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x250_image",
+                },
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_728x90_image",
+                },
             ],
             delivery_type="non_guaranteed",
             property_tags=["all_inventory"],
@@ -212,7 +223,12 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             product_id="prod_gam_vcpm",
             name="Display Ads - VCPM",
             description="Viewable CPM pricing for brand safety",
-            formats=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
+            formats=[
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x250_image",
+                }
+            ],
             delivery_type="guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
@@ -257,8 +273,14 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             name="Homepage Takeover - Flat Rate",
             description="Fixed daily rate for premium placement",
             formats=[
-                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
-                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x600"},
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_728x90_image",
+                },
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x600_image",
+                },
             ],
             delivery_type="guaranteed",
             property_tags=["all_inventory"],

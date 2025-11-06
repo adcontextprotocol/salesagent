@@ -98,7 +98,12 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_cpcv",
             name="Video Ads - CPCV",
             description="Video inventory with CPCV pricing",
-            formats=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "video_instream"}],
+            formats=[
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "video_standard_30s",
+                }
+            ],
             delivery_type="non_guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
@@ -132,7 +137,12 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_cpm",
             name="Display Ads - CPM",
             description="Display inventory with CPM pricing",
-            formats=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
+            formats=[
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x250_image",
+                }
+            ],
             delivery_type="guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
@@ -167,8 +177,14 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             name="Premium Package",
             description="Multiple pricing models (some unsupported)",
             formats=[
-                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
-                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_instream"},
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x250_image",
+                },
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "video_standard_30s",
+                },
             ],
             delivery_type="non_guaranteed",
             property_tags=["all_inventory"],
