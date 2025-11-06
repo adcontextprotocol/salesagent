@@ -136,12 +136,10 @@ def init_db(exit_on_error=False):
                     product_id="prod_display_premium",
                     name="Premium Display Package",
                     description="Premium display advertising across news and sports sections",
-                    formats=[
+                    format_ids=[
                         {
-                            "format_id": "display_300x250",
-                            "name": "Medium Rectangle",
-                            "type": "display",
-                            "specs": {"width": 300, "height": 250},
+                            "agent_url": "https://creatives.adcontextprotocol.org",
+                            "id": "display_300x250",
                         }
                     ],
                     targeting_template={"geo_country_any_of": ["US"]},
@@ -159,12 +157,10 @@ def init_db(exit_on_error=False):
                     product_id="prod_video_sports",
                     name="Sports Video Package",
                     description="Pre-roll video ads for sports content",
-                    formats=[
+                    format_ids=[
                         {
-                            "format_id": "video_preroll",
-                            "name": "Pre-roll Video",
-                            "type": "video",
-                            "specs": {"duration": 30},
+                            "agent_url": "https://creatives.adcontextprotocol.org",
+                            "id": "video_preroll",
                         }
                     ],
                     targeting_template={"content_cat_any_of": ["sports"]},
@@ -240,14 +236,10 @@ def init_db(exit_on_error=False):
                         "product_id": "prod_1",
                         "name": "Premium Display - News",
                         "description": "Premium news site display inventory",
-                        "formats": [
+                        "format_ids": [
                             {
-                                "format_id": "display_300x250",
-                                "name": "Medium Rectangle",
-                                "type": "display",
-                                "description": "Standard medium rectangle display ad",
-                                "specs": {"width": 300, "height": 250},
-                                "delivery_options": {"hosted": {}},
+                                "agent_url": "https://creatives.adcontextprotocol.org",
+                                "id": "display_300x250",
                             }
                         ],
                         "targeting_template": {
@@ -269,14 +261,10 @@ def init_db(exit_on_error=False):
                         "product_id": "prod_2",
                         "name": "Run of Site Display",
                         "description": "Run of site display inventory",
-                        "formats": [
+                        "format_ids": [
                             {
-                                "format_id": "display_728x90",
-                                "name": "Leaderboard",
-                                "type": "display",
-                                "description": "Standard leaderboard display ad",
-                                "specs": {"width": 728, "height": 90},
-                                "delivery_options": {"hosted": {}},
+                                "agent_url": "https://creatives.adcontextprotocol.org",
+                                "id": "display_728x90",
                             }
                         ],
                         "targeting_template": {"geo_country_any_of": ["US", "CA"]},
@@ -299,7 +287,7 @@ def init_db(exit_on_error=False):
                         product_id=p["product_id"],
                         name=p["name"],
                         description=p["description"],
-                        formats=p["formats"],
+                        format_ids=p["format_ids"],
                         targeting_template=p["targeting_template"],
                         delivery_type=p["delivery_type"],
                         is_fixed_price=p["is_fixed_price"],
