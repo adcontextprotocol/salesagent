@@ -162,13 +162,16 @@ class TestSignalsAgentWorkflow:
             mock_result = Mock()
             mock_result.status = "completed"
             mock_result.data = Mock()
-            mock_result.data.signals = mock_signals_response
+            # Convert Signal objects to dicts (adcp library returns dicts, not typed objects)
+            mock_result.data.signals = [signal.model_dump() for signal in mock_signals_response]
 
+            # Mock agent client that will be returned by client.agent(name)
             mock_agent_client = Mock()
             mock_agent_client.get_signals = AsyncMock(return_value=mock_result)
 
+            # Mock the client - agent() should be callable and return agent_client
             mock_client = Mock()
-            mock_client.agent = Mock(return_value=mock_agent_client)
+            mock_client.agent = Mock(return_value=mock_agent_client)  # agent() is a method
             mock_client_class.return_value = mock_client
 
             with self._mock_auth_context(tenant_data):
