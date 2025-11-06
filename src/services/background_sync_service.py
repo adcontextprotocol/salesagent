@@ -452,6 +452,19 @@ def _run_sync_thread(
         _mark_sync_complete(sync_id, result)
         logger.info(f"[{sync_id}] Sync completed successfully")
 
+        # Invalidate inventory tree cache after successful sync
+        try:
+            from flask import current_app
+
+            cache = getattr(current_app, "cache", None)
+            if cache:
+                cache_key = f"inventory_tree:v2:{tenant_id}"
+                cache.delete(cache_key)
+                logger.info(f"[{sync_id}] Invalidated inventory tree cache: {cache_key}")
+        except Exception as cache_error:
+            # Don't fail the sync if cache invalidation fails
+            logger.warning(f"[{sync_id}] Failed to invalidate cache: {cache_error}")
+
     except Exception as e:
         logger.error(f"[{sync_id}] Sync failed: {e}", exc_info=True)
         _mark_sync_failed(sync_id, str(e))

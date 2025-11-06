@@ -1011,22 +1011,30 @@ async function removeSelectedItem(containerId, idToRemove) {
     }
 }
 
-// Search handler
-let searchTimeout;
+// Search handler - trigger search on button click or Enter key
+function triggerSearch() {
+    const searchInput = document.getElementById('picker-search');
+    if (!searchInput) return;
+
+    const searchValue = searchInput.value;
+
+    if (currentPickerType === 'ad_unit') {
+        // For tree view, reload from server with search parameter
+        loadInventoryTree(searchValue);
+    } else {
+        // For flat list (placements), reload from server
+        loadInventory(currentPickerType, searchValue);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('picker-search');
     if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
-                if (currentPickerType === 'ad_unit') {
-                    // For tree view, reload from server with search parameter
-                    loadInventoryTree(this.value);
-                } else {
-                    // For flat list (placements), reload from server
-                    loadInventory(currentPickerType, this.value);
-                }
-            }, 300);
+        // Trigger search on Enter key
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                triggerSearch();
+            }
         });
     }
 
@@ -1274,8 +1282,9 @@ function filterGAMFormats() {
         </div>
 
         <!-- Search -->
-        <div style="padding: 1rem; border-bottom: 1px solid #ddd;">
-            <input type="text" id="picker-search" placeholder="Search..." style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+        <div style="padding: 1rem; border-bottom: 1px solid #ddd; display: flex; gap: 0.5rem;">
+            <input type="text" id="picker-search" placeholder="Search..." style="flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+            <button type="button" onclick="triggerSearch()" class="btn btn-primary" style="padding: 0.5rem 1rem;">Search</button>
         </div>
 
         <!-- List -->
