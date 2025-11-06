@@ -1015,6 +1015,16 @@ async def _create_media_buy_impl(
 
     # Create request object from individual parameters (MCP-compliant)
     # Validate early with helpful error messages
+
+    # DEBUG: Log what packages look like BEFORE Pydantic parsing
+    logger.info(f"🐛 RAW packages parameter type: {type(packages)}")
+    logger.info(f"🐛 RAW packages parameter value: {packages}")
+    if packages and len(packages) > 0:
+        logger.info(f"🐛 First package type: {type(packages[0])}")
+        logger.info(f"🐛 First package value: {packages[0]}")
+        if isinstance(packages[0], dict):
+            logger.info(f"🐛 First package keys: {packages[0].keys()}")
+
     try:
         req = CreateMediaBuyRequest(
             buyer_ref=buyer_ref,
