@@ -1,0 +1,228 @@
+<!-- ============================================================================
+     HIERARCHICAL TREE VIEW STYLES
+     Modern tree picker with clear visual hierarchy and consistent indentation
+     Reusable partial for inventory tree views across the application
+     ============================================================================ -->
+
+<style>
+/* Tree container - provides consistent spacing */
+.inventory-tree-container {
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* Tree node - base structure */
+.tree-node {
+    position: relative;
+}
+
+/* Tree node depth indicators - consistent indentation via CSS classes
+   NOTE: Use direct child selector to prevent padding cascade */
+.tree-node[data-depth="0"] > .tree-node-header { padding-left: 12px; }
+.tree-node[data-depth="1"] > .tree-node-header { padding-left: 36px; }
+.tree-node[data-depth="2"] > .tree-node-header { padding-left: 60px; }
+.tree-node[data-depth="3"] > .tree-node-header { padding-left: 84px; }
+.tree-node[data-depth="4"] > .tree-node-header { padding-left: 108px; }
+.tree-node[data-depth="5"] > .tree-node-header { padding-left: 132px; }
+.tree-node[data-depth="6"] > .tree-node-header { padding-left: 156px; }
+
+/* Tree node header - interactive area
+   NOTE: padding-left is set per-depth via data-depth selectors above */
+.tree-node-header {
+    display: flex;
+    align-items: center;
+    padding-top: 8px;
+    padding-right: 12px;
+    padding-bottom: 8px;
+    /* padding-left set by data-depth selector */
+    margin: 0;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+    min-height: 40px;
+}
+
+.tree-node-header:hover {
+    background-color: #f8f9fa;
+    border-bottom-color: #e0e0e0;
+}
+
+/* Expand/collapse toggle icon */
+.tree-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.tree-toggle:hover {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.tree-toggle .toggle-icon {
+    font-size: 10px;
+    color: #666;
+    transition: transform 0.2s ease;
+    display: inline-block;
+}
+
+.tree-toggle:hover .toggle-icon {
+    color: #1976d2;
+}
+
+/* Loading spinner for tree expansion */
+.tree-toggle .loading-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid #e0e0e0;
+    border-top: 2px solid #1976d2;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    display: none;
+}
+
+.tree-toggle.loading .loading-spinner {
+    display: block;
+}
+
+.tree-toggle.loading .toggle-icon {
+    display: none;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Spacer for nodes without children */
+.tree-spacer {
+    display: inline-block;
+    width: 20px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+/* Tree children container - provides visual connection */
+.tree-children {
+    position: relative;
+    display: none;
+}
+
+.tree-children::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(to bottom, #e0e0e0 0%, #e0e0e0 100%);
+}
+
+/* Label container for checkbox + text */
+.tree-node-label {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    cursor: pointer;
+    margin: 0;
+    padding: 0;
+    min-height: 24px;
+}
+
+/* Checkbox styling */
+.tree-checkbox {
+    margin: 0 8px 0 0;
+    cursor: pointer;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+}
+
+/* Text content container */
+.tree-node-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0; /* Allow text truncation */
+}
+
+.tree-node-name {
+    font-weight: 500;
+    color: #333;
+    transition: color 0.15s ease;
+}
+
+.tree-node-code {
+    color: #999;
+    margin-left: 8px;
+    font-size: 12px;
+}
+
+/* Checked state styling */
+.tree-checkbox:checked ~ .tree-node-content .tree-node-name {
+    font-weight: 600;
+    color: #1976d2;
+}
+
+.tree-node-header:has(.tree-checkbox:checked) {
+    background-color: #e3f2fd;
+}
+
+/* Search highlighting - nodes that match search */
+.tree-node.search-match > .tree-node-header {
+    background-color: #fff9e6;
+    border-left: 3px solid #ffc107;
+}
+
+.tree-node.search-match > .tree-node-header .tree-node-name {
+    font-weight: 600;
+    color: #f57c00;
+}
+
+/* Empty state styling */
+.tree-empty {
+    padding: 3rem 2rem;
+    text-align: center;
+    color: #999;
+    font-size: 14px;
+}
+
+/* Loading state */
+.tree-loading {
+    padding: 3rem 2rem;
+    text-align: center;
+    color: #666;
+}
+
+/* Accessibility improvements */
+.tree-toggle:focus,
+.tree-checkbox:focus {
+    outline: 2px solid #1976d2;
+    outline-offset: 2px;
+}
+
+/* Smooth expand/collapse animation */
+.tree-children[style*="display: block"] {
+    animation: expandTree 0.2s ease-out;
+}
+
+@keyframes expandTree {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+</style>

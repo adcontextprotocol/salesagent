@@ -18,6 +18,17 @@ done
 echo "📦 Running database migrations..."
 python migrate.py
 
+# Debug: Check Python environment
+echo "🔍 Debugging Python environment..."
+echo "Python location: $(which python)"
+echo "Python version: $(python --version)"
+python -c "import sys; print('Python executable:', sys.executable)"
+python -c "import sys; print('sys.path:', sys.path)"
+
+# Debug: Check if flask_caching is importable
+echo "🔍 Checking flask_caching availability..."
+python -c "import flask_caching; print('✅ flask_caching version:', flask_caching.__version__)" || echo "❌ flask_caching import failed"
+
 # Start the admin UI
 echo "🌐 Starting Admin UI..."
 exec python -m src.admin.server

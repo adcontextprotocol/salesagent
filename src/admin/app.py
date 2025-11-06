@@ -160,6 +160,17 @@ def create_app(config=None):
     # Initialize OAuth
     init_oauth(app)
 
+    # Initialize Flask-Caching for improved performance
+    from flask_caching import Cache
+
+    cache_config = {
+        "CACHE_TYPE": "SimpleCache",  # In-memory cache (good for single-process deployments)
+        "CACHE_DEFAULT_TIMEOUT": 300,  # 5 minutes default
+    }
+    app.config.update(cache_config)
+    cache = Cache(app)
+    app.cache = cache  # Make cache available to blueprints
+
     # Initialize SocketIO
     socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
     app.socketio = socketio
