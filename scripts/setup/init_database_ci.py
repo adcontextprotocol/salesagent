@@ -286,7 +286,7 @@ def init_db_ci():
                     "product_id": "prod_display_premium",
                     "name": "Premium Display Advertising",
                     "description": "High-impact display ads across premium content",
-                    "format_ids": [
+                    "formats": [
                         {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250"},
                         {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_728x90"},
                         {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_160x600"},
@@ -299,7 +299,7 @@ def init_db_ci():
                     "product_id": "prod_video_premium",
                     "name": "Premium Video Advertising",
                     "description": "Pre-roll video ads with guaranteed completion rates",
-                    "format_ids": [
+                    "formats": [
                         {"agent_url": "https://creatives.adcontextprotocol.org", "id": "video_15s"},
                         {"agent_url": "https://creatives.adcontextprotocol.org", "id": "video_30s"},
                     ],
@@ -320,7 +320,7 @@ def init_db_ci():
                         product_id=p["product_id"],
                         name=p["name"],
                         description=p["description"],
-                        format_ids=p["format_ids"],
+                        formats=p["formats"],
                         targeting_template=p["targeting_template"],
                         delivery_type=p["delivery_type"],
                         property_tags=["all_inventory"],  # Required per AdCP spec
