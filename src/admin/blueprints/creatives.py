@@ -8,9 +8,14 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
- 
 
-from src.core.database.models import ObjectWorkflowMapping, WorkflowStep, PushNotificationConfig as DBPushNotificationConfig
+from src.core.database.models import (
+    ObjectWorkflowMapping,
+    WorkflowStep,
+)
+from src.core.database.models import (
+    PushNotificationConfig as DBPushNotificationConfig,
+)
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 # TODO: Missing module - these functions need to be implemented
@@ -136,6 +141,7 @@ def _cleanup_completed_tasks():
         logger.error(f"Error setting up webhook delivery for creative {creative_id}: {e}", exc_info=True)
         return False
 
+
 async def _call_webhook_for_creative_status(
     db_session,
     creative_id,
@@ -144,14 +150,20 @@ async def _call_webhook_for_creative_status(
 ):
     """Send protocol-level push notification for creative status update.
 
-    Looks up the associated WorkflowStep via ObjectWorkflowMapping for this creative,
-    extracts the stored push_notification_config from the step's request_data, and sends
-    a protocol webhook using ProtocolWebhookService with an AdCP-compliant result shape
-    (SyncCreativesResponse containing SyncCreativeResult for the single creative).
+    Checks if all creatives in the sync_creatives task have been reviewed.
+    Only fires the webhook when ALL creatives have been reviewed (approved or rejected).
+
+    This implements the semantic that sync_creatives task status should be:
+    - 'submitted' when any creatives are pending review
+    - 'completed' when all creatives have been reviewed
 
     Returns:
         bool: True if webhook delivered successfully, False otherwise (or if no config found)
     """
+    from src.core.schemas_generated._schemas_v1_enums_creative_status_json import (
+        CreativeStatus as CreativeStatusEnum,
+    )
+
     try:
         stmt = (
             select(ObjectWorkflowMapping)
@@ -171,6 +183,47 @@ async def _call_webhook_for_creative_status(
             )
             return False
 
+        # Get ALL creatives associated with this workflow step
+        stmt_mappings = select(ObjectWorkflowMapping).filter_by(step_id=step.step_id, object_type="creative")
+        all_mappings = db_session.scalars(stmt_mappings).all()
+
+        if not all_mappings:
+            logger.debug(f"No creative mappings found for workflow step {step.step_id}")
+            return False
+
+        # Get creative statuses for all creatives in this task
+        from src.core.database.models import Creative
+
+        creative_ids = [m.object_id for m in all_mappings]
+        stmt_creatives = select(Creative).filter(Creative.creative_id.in_(creative_ids))
+        all_creatives = db_session.scalars(stmt_creatives).all()
+
+        # Check if ANY creative is still pending review
+        pending_count = sum(1 for c in all_creatives if c.status == CreativeStatusEnum.pending_review.value)
+
+        if pending_count > 0:
+            logger.info(
+                f"Creative {creative_id} reviewed, but {pending_count}/{len(all_creatives)} "
+                f"creatives still pending in task {step.step_id}; not firing webhook yet"
+            )
+            return False
+
+        # ALL creatives have been reviewed! Build complete result for webhook
+        logger.info(f"All {len(all_creatives)} creatives in task {step.step_id} have been reviewed; firing webhook")
+
+        # Build SyncCreativesResponse with all creative results
+        complete_result = {
+            "creatives": [
+                {
+                    "creative_id": c.creative_id,
+                    "name": c.name,
+                    "format": c.format,
+                    "status": c.status,
+                    "action": "updated",  # They were reviewed/updated
+                }
+                for c in all_creatives
+            ]
+        }
 
         # build push notification config from step request data
         # this is because we don't store push notification config in the database when creating the creative
@@ -204,24 +257,27 @@ async def _call_webhook_for_creative_status(
 
         service = get_protocol_webhook_service()
         try:
-            logger.info(f'tool name: {step.tool_name}')
-            logger.info(f'task id: {step.step_id}')
-            logger.info(f'task type: {step.tool_name}')
-            logger.info(f'status: completed')
-            logger.info(f'result: {result}')
-            logger.info(f'error: None')
-            logger.info(f'push_notification_config: {push_notification_config}')
+            logger.info(f"tool name: {step.tool_name}")
+            logger.info(f"task id: {step.step_id}")
+            logger.info(f"task type: {step.tool_name}")
+            logger.info("status: completed")
+            logger.info(f"result: {complete_result}")
+            logger.info("error: None")
+            logger.info(f"push_notification_config: {push_notification_config}")
 
             await service.send_notification(
                 push_notification_config=push_notification_config,
                 task_id=step.step_id,
                 task_type=step.tool_name,
                 status="completed",
-                result=result,
+                result=complete_result,
                 error=None,
             )
 
-            logger.info(f"Successfully sent protocol webhook for creative {creative_id}")
+            logger.info(
+                f"Successfully sent protocol webhook for sync_creatives task {step.step_id} "
+                f"with {len(all_creatives)} reviewed creatives"
+            )
 
             return True
         except Exception as send_e:
@@ -441,12 +497,14 @@ def approve_creative(tenant_id, creative_id, **kwargs):
                 ]
             }
 
-            asyncio.run(_call_webhook_for_creative_status(
-                db_session=db_session,
-                creative_id=creative_id,
-                result=result,
-                tenant_id=tenant_id,
-            ))
+            asyncio.run(
+                _call_webhook_for_creative_status(
+                    db_session=db_session,
+                    creative_id=creative_id,
+                    result=result,
+                    tenant_id=tenant_id,
+                )
+            )
 
             # Send Slack notification if configured
             stmt_tenant = select(Tenant).filter_by(tenant_id=tenant_id)
@@ -491,12 +549,12 @@ def approve_creative(tenant_id, creative_id, **kwargs):
             # check if all its creatives are now approved
             from src.core.database.models import CreativeAssignment, MediaBuy
 
-            stmt_assignments = select(CreativeAssignment).filter_by(
-                tenant_id=tenant_id, creative_id=creative_id
-            )
+            stmt_assignments = select(CreativeAssignment).filter_by(tenant_id=tenant_id, creative_id=creative_id)
             assignments = db_session.scalars(stmt_assignments).all()
 
-            logger.info(f"[CREATIVE APPROVAL] Creative {creative_id} approved, checking {len(assignments)} media buy assignments")
+            logger.info(
+                f"[CREATIVE APPROVAL] Creative {creative_id} approved, checking {len(assignments)} media buy assignments"
+            )
 
             for assignment in assignments:
                 media_buy_id = assignment.media_buy_id
@@ -518,15 +576,12 @@ def approve_creative(tenant_id, creative_id, **kwargs):
 
                     # Get all creatives for this media buy
                     creative_ids = [a.creative_id for a in all_assignments]
-                    stmt_creatives = select(Creative).filter(
-                        Creative.creative_id.in_(creative_ids)
-                    )
+                    stmt_creatives = select(Creative).filter(Creative.creative_id.in_(creative_ids))
                     all_creatives = db_session.scalars(stmt_creatives).all()
 
                     # Check if all creatives are approved
                     unapproved_creatives = [
-                        c.creative_id for c in all_creatives
-                        if c.status not in ["approved", "active"]
+                        c.creative_id for c in all_creatives if c.status not in ["approved", "active"]
                     ]
 
                     logger.info(
@@ -552,9 +607,7 @@ def approve_creative(tenant_id, creative_id, **kwargs):
 
                             logger.info(f"[CREATIVE APPROVAL] Media buy {media_buy_id} successfully created in adapter")
                         else:
-                            logger.error(
-                                f"[CREATIVE APPROVAL] Adapter creation failed for {media_buy_id}: {error_msg}"
-                            )
+                            logger.error(f"[CREATIVE APPROVAL] Adapter creation failed for {media_buy_id}: {error_msg}")
                             # Leave status as pending_creatives so admin can retry
                     else:
                         logger.info(
@@ -658,12 +711,11 @@ def reject_creative(tenant_id, creative_id, **kwargs):
                 ]
             }
 
-            asyncio.run(_call_webhook_for_creative_status(
-                db_session=db_session,
-                creative_id=creative_id,
-                result=result,
-                tenant_id=tenant_id
-            ))
+            asyncio.run(
+                _call_webhook_for_creative_status(
+                    db_session=db_session, creative_id=creative_id, result=result, tenant_id=tenant_id
+                )
+            )
 
             # Send Slack notification if configured
             stmt_tenant = select(Tenant).filter_by(tenant_id=tenant_id)
@@ -818,12 +870,11 @@ async def _ai_review_creative_async(
                         "status": creative.status,
                         "ai_review": creative.data.get("ai_review"),
                     }
-                    asyncio.run(_call_webhook_for_creative_status(
-                        db_session=session,
-                        creative_id=creative_id,
-                        result=result,
-                        tenant_id=tenant_id
-                    ))
+                    asyncio.run(
+                        _call_webhook_for_creative_status(
+                            db_session=session, creative_id=creative_id, result=result, tenant_id=tenant_id
+                        )
+                    )
                     logger.info(f"[AI Review Async] Webhook called for {creative_id}")
             else:
                 logger.error(f"[AI Review Async] Creative not found: {creative_id}")
