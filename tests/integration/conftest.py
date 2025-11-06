@@ -310,7 +310,7 @@ def sample_tenant(integration_db):
     from datetime import UTC, datetime
 
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import AuthorizedProperty, CurrencyLimit, PropertyTag, Tenant
+    from src.core.database.models import AuthorizedProperty, CurrencyLimit, GAMInventory, PropertyTag, Tenant
 
     now = datetime.now(UTC)
     with get_db_session() as session:
@@ -361,6 +361,30 @@ def sample_tenant(integration_db):
             verification_status="verified",
         )
         session.add(auth_property)
+
+        # Add GAMInventory records (required for inventory sync status in setup checklist)
+        inventory_items = [
+            GAMInventory(
+                tenant_id=tenant.tenant_id,
+                inventory_type="ad_unit",
+                inventory_id="test_ad_unit_1",
+                name="Test Ad Unit - Homepage",
+                path=["root", "website", "homepage"],
+                status="active",
+                inventory_metadata={"sizes": ["300x250", "728x90"]},
+            ),
+            GAMInventory(
+                tenant_id=tenant.tenant_id,
+                inventory_type="placement",
+                inventory_id="test_placement_1",
+                name="Test Placement - Premium",
+                path=["root"],
+                status="active",
+                inventory_metadata={"description": "Premium placement"},
+            ),
+        ]
+        for item in inventory_items:
+            session.add(item)
 
         session.commit()
 
