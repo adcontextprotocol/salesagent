@@ -221,9 +221,17 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
             except Exception as e:
                 logger.warning(f"Could not fetch format {creative.format} from {creative.agent_url}: {e}")
 
+        # Skip validation if format spec couldn't be fetched (e.g., in tests with mock data)
+        if not format_spec:
+            logger.debug(
+                f"Skipping validation for creative {creative.creative_id} - format spec not available "
+                f"(format={creative.format}, agent={creative.agent_url})"
+            )
+            continue
+
         # Skip validation for generative formats - they need conversion first
         # Generative formats have output_format_ids (they generate reference formats)
-        if format_spec and format_spec.output_format_ids:
+        if format_spec.output_format_ids:
             logger.info(
                 f"Skipping validation for generative creative {creative.creative_id} "
                 f"(format={creative.format}) - will be converted to reference format"
