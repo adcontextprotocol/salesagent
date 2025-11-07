@@ -12,7 +12,10 @@ from typing import Any
 from src.admin.services.business_activity_service import get_business_activities
 from src.admin.services.media_buy_readiness_service import MediaBuyReadinessService
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Principal, Product, Tenant
+from src.core.database.models import Creative, MediaBuy, Principal, Product, Tenant
+from src.core.schemas_generated._schemas_v1_enums_creative_status_json import (
+    CreativeStatus as CreativeStatusEnum,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,11 +87,20 @@ class DashboardService:
                 # Get recent BUSINESS activities (not raw audit logs)
                 recent_activity = get_business_activities(self.tenant_id, limit=10)
 
-                # Calculate needs attention count
+                # Count creatives pending review
+                pending_creatives_count = db_session.scalar(
+                    select(func.count())
+                    .select_from(Creative)
+                    .where(Creative.tenant_id == self.tenant_id)
+                    .where(Creative.status == CreativeStatusEnum.pending_review.value)
+                )
+
+                # Calculate needs attention count (includes pending creatives)
                 needs_attention = (
                     readiness_summary.get("needs_creatives", 0)
                     + readiness_summary.get("needs_approval", 0)
                     + readiness_summary.get("failed", 0)
+                    + (pending_creatives_count or 0)
                 )
 
                 return {
@@ -99,6 +111,7 @@ class DashboardService:
                     "needs_attention": needs_attention,
                     "needs_creatives": readiness_summary.get("needs_creatives", 0),
                     "needs_approval": readiness_summary.get("needs_approval", 0),
+                    "pending_creatives": pending_creatives_count or 0,
                     "paused_buys": readiness_summary.get("paused", 0),
                     "completed_buys": readiness_summary.get("completed", 0),
                     "failed_buys": readiness_summary.get("failed", 0),

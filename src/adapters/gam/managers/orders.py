@@ -494,8 +494,12 @@ class GAMOrdersManager:
                     format_display = f"{agent_url}/{format_id_str}" if agent_url else format_id_str
 
                     try:
+                        # Pass product_id (not package_id) to enable format_overrides lookup
+                        product_id_for_format = (
+                            package.product_id if hasattr(package, "product_id") else package.package_id
+                        )
                         format_obj = get_format(
-                            format_id_str, agent_url=agent_url, tenant_id=tenant_id, product_id=package.package_id
+                            format_id_str, agent_url=agent_url, tenant_id=tenant_id, product_id=product_id_for_format
                         )
                     except ValueError as e:
                         error_msg = f"Format lookup failed for '{format_display}': {e}"
@@ -658,9 +662,31 @@ class GAMOrdersManager:
                 from src.adapters.gam.pricing_compatibility import PricingCompatibility
 
                 pricing_model = pricing_info["pricing_model"]
-                rate = pricing_info["rate"] if pricing_info["is_fixed"] else pricing_info.get("bid_price", package.cpm)
-                currency = pricing_info["currency"]
                 is_guaranteed = pricing_info["is_fixed"]
+                currency = pricing_info["currency"]
+
+                # Determine rate based on pricing type
+                if is_guaranteed:
+                    # Fixed pricing: use rate directly
+                    rate = pricing_info["rate"]
+                else:
+                    # Auction pricing: bid_price is REQUIRED
+                    rate = pricing_info.get("bid_price")
+                    if rate is None:
+                        # No fallback - this is a client error
+                        error_msg = (
+                            f"Package '{package.package_id}' has auction pricing but no bid_price provided. "
+                            f"Auction pricing (is_fixed=False) requires explicit bid_price in the request. "
+                            f"Either provide bid_price or use fixed pricing."
+                        )
+                        log(f"[red]Error: {error_msg}[/red]")
+                        raise ValueError(error_msg)
+
+                # Validate rate is not None
+                if rate is None:
+                    error_msg = f"Package '{package.package_id}' has no valid rate. " f"Pricing info: {pricing_info}"
+                    log(f"[red]Error: {error_msg}[/red]")
+                    raise ValueError(error_msg)
 
                 # Map AdCP pricing model to GAM cost type
                 gam_cost_type = PricingCompatibility.get_gam_cost_type(pricing_model)
@@ -732,17 +758,25 @@ class GAMOrdersManager:
                     f"→ GAM {cost_type} @ ${rate:,.2f}, line_item_type={line_item_type}, priority={priority}"
                 )
             else:
-                # Fallback to product config (legacy behavior)
-                line_item_type = impl_config.get("line_item_type", "STANDARD")
-                priority = impl_config.get("priority", 8)
-                cost_type = impl_config.get("cost_type", "CPM")
-                currency = "USD"
-                cost_per_unit_micro = int(package.cpm * 1_000_000)
+                # No pricing info provided - this is an error
+                # We require explicit pricing info (either from request or product pricing options)
+                error_msg = (
+                    f"Package '{package.package_id}' has no pricing information. "
+                    f"Pricing info must be provided either:\n"
+                    f"  1. In the request (bid_price for auction pricing)\n"
+                    f"  2. Via product pricing_options in database\n"
+                    f"This package has no valid pricing configuration."
+                )
+                log(f"[red]Error: {error_msg}[/red]")
+                raise ValueError(error_msg)
 
             # Build line item object
+            # In dry-run mode, order_id is a string like 'dry_run_order_123'; use a dummy numeric ID
+            # In real mode, order_id is numeric string that can be converted
+            order_id_int = 999999999 if (self.dry_run and not order_id.isdigit()) else int(order_id)
             line_item = {
                 "name": line_item_name,
-                "orderId": int(order_id),
+                "orderId": order_id_int,
                 "targeting": line_item_targeting,
                 "creativePlaceholders": creative_placeholders,
                 "lineItemType": line_item_type,

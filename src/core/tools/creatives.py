@@ -36,6 +36,9 @@ from src.core.helpers import (
 )
 from src.core.schema_adapters import ListCreativesResponse, SyncCreativesResponse
 from src.core.schemas import Creative, SyncCreativeResult
+from src.core.schemas_generated._schemas_v1_enums_creative_status_json import (
+    CreativeStatus as CreativeStatusEnum,
+)
 from src.core.validation_helpers import format_validation_error, run_async_in_sync_context
 
 
@@ -152,7 +155,7 @@ def _sync_creatives_impl(
                         "principal_id": principal_id,
                         "created_at": datetime.now(UTC),
                         "updated_at": datetime.now(UTC),
-                        "status": "pending",
+                        "status": CreativeStatusEnum.pending_review.value,
                     }
 
                     # Add optional AdCP v1 fields if provided
@@ -263,7 +266,7 @@ def _sync_creatives_impl(
                         creative_format = creative.get("format_id") or creative.get("format")
                         if creative_format:  # Only update approval status if format is provided
                             if approval_mode == "auto-approve":
-                                existing_creative.status = "approved"
+                                existing_creative.status = CreativeStatusEnum.approved.value
                                 needs_approval = False
                             elif approval_mode == "ai-powered":
                                 # Submit to background AI review (async)
@@ -274,8 +277,8 @@ def _sync_creatives_impl(
                                     _ai_review_tasks,
                                 )
 
-                                # Set status to pending immediately
-                                existing_creative.status = "pending"
+                                # Set status to pending_review for AI review
+                                existing_creative.status = CreativeStatusEnum.pending_review.value
                                 needs_approval = True
 
                                 # Submit background task
@@ -308,7 +311,7 @@ def _sync_creatives_impl(
                                     f"[sync_creatives] Submitted AI review for {existing_creative.creative_id} (task: {task_id})"
                                 )
                             else:  # require-human
-                                existing_creative.status = "pending"
+                                existing_creative.status = CreativeStatusEnum.pending_review.value
                                 needs_approval = True
                         else:
                             needs_approval = False
@@ -488,24 +491,41 @@ def _sync_creatives_impl(
                                                     if build_result.get("creative_output"):
                                                         creative_output = build_result["creative_output"]
 
-                                                        if creative_output.get("assets"):
+                                                        # Only use generative assets if user didn't provide their own
+                                                        user_provided_assets = creative.get("assets")
+                                                        if creative_output.get("assets") and not user_provided_assets:
                                                             data["assets"] = creative_output["assets"]
                                                             changes.append("assets")
+                                                            logger.info(
+                                                                "[sync_creatives] Using assets from generative output (update)"
+                                                            )
+                                                        elif user_provided_assets:
+                                                            logger.info(
+                                                                "[sync_creatives] Preserving user-provided assets in update, "
+                                                                "not overwriting with generative output"
+                                                            )
 
                                                         if creative_output.get("output_format"):
                                                             output_format = creative_output["output_format"]
                                                             data["output_format"] = output_format
                                                             changes.append("output_format")
 
+                                                            # Only use generative URL if user didn't provide one
                                                             if isinstance(output_format, dict) and output_format.get(
                                                                 "url"
                                                             ):
-                                                                data["url"] = output_format["url"]
-                                                                changes.append("url")
-                                                                logger.info(
-                                                                    f"[sync_creatives] Got URL from generative output (update): "
-                                                                    f"{data['url']}"
-                                                                )
+                                                                if not data.get("url"):
+                                                                    data["url"] = output_format["url"]
+                                                                    changes.append("url")
+                                                                    logger.info(
+                                                                        f"[sync_creatives] Got URL from generative output (update): "
+                                                                        f"{data['url']}"
+                                                                    )
+                                                                else:
+                                                                    logger.info(
+                                                                        "[sync_creatives] Preserving user-provided URL in update, "
+                                                                        "not overwriting with generative output"
+                                                                    )
 
                                                     logger.info(
                                                         f"[sync_creatives] Generative creative updated: "
@@ -579,23 +599,30 @@ def _sync_creatives_impl(
                                             if renders:
                                                 first_render = renders[0]
 
-                                                # Store preview URL from render
-                                                if first_render.get("preview_url"):
+                                                # Store preview URL from render ONLY if we don't already have a URL from assets
+                                                # This preserves user-provided URLs in assets instead of overwriting with preview URLs
+                                                if first_render.get("preview_url") and not data.get("url"):
                                                     data["url"] = first_render["preview_url"]
                                                     changes.append("url")
                                                     logger.info(
                                                         f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
                                                     )
+                                                elif data.get("url"):
+                                                    logger.info(
+                                                        "[sync_creatives] Preserving user-provided URL from assets, "
+                                                        "not overwriting with preview URL"
+                                                    )
 
                                                 # Extract dimensions from dimensions object
+                                                # Only use preview dimensions if not already provided by user
                                                 dimensions = first_render.get("dimensions", {})
-                                                if dimensions.get("width"):
+                                                if dimensions.get("width") and not data.get("width"):
                                                     data["width"] = dimensions["width"]
                                                     changes.append("width")
-                                                if dimensions.get("height"):
+                                                if dimensions.get("height") and not data.get("height"):
                                                     data["height"] = dimensions["height"]
                                                     changes.append("height")
-                                                if dimensions.get("duration"):
+                                                if dimensions.get("duration") and not data.get("duration"):
                                                     data["duration"] = dimensions["duration"]
                                                     changes.append("duration")
 
@@ -732,13 +759,43 @@ def _sync_creatives_impl(
                         creative_id = creative.get("creative_id", "unknown")
 
                         # Prepare data field with all creative properties
+                        # Extract URL from assets if not provided at top level
+                        url = creative.get("url")
+                        if not url and creative.get("assets"):
+                            assets = creative["assets"]
+
+                            # Priority 1: Try common asset_ids
+                            for priority_key in ["main", "image", "video", "creative", "content"]:
+                                if priority_key in assets and isinstance(assets[priority_key], dict):
+                                    url = assets[priority_key].get("url")
+                                    if url:
+                                        logger.debug(
+                                            f"[sync_creatives] Extracted URL from assets.{priority_key}.url for create"
+                                        )
+                                        break
+
+                            # Priority 2: First available asset URL
+                            if not url:
+                                for asset_id, asset_data in assets.items():
+                                    if isinstance(asset_data, dict) and asset_data.get("url"):
+                                        url = asset_data["url"]
+                                        logger.debug(
+                                            f"[sync_creatives] Extracted URL from assets.{asset_id}.url for create (fallback)"
+                                        )
+                                        break
+
                         data = {
-                            "url": creative.get("url"),
+                            "url": url,
                             "click_url": creative.get("click_url"),
                             "width": creative.get("width"),
                             "height": creative.get("height"),
                             "duration": creative.get("duration"),
                         }
+
+                        # Store user-provided assets for preservation check
+                        user_provided_assets = creative.get("assets")
+                        if user_provided_assets:
+                            data["assets"] = user_provided_assets
 
                         # Add AdCP v1.3+ fields to data
                         if creative.get("snippet"):
@@ -852,19 +909,33 @@ def _sync_creatives_impl(
                                             if build_result.get("creative_output"):
                                                 creative_output = build_result["creative_output"]
 
-                                                if creative_output.get("assets"):
+                                                # Only use generative assets if user didn't provide their own
+                                                if creative_output.get("assets") and not user_provided_assets:
                                                     data["assets"] = creative_output["assets"]
+                                                    logger.info("[sync_creatives] Using assets from generative output")
+                                                elif user_provided_assets:
+                                                    logger.info(
+                                                        "[sync_creatives] Preserving user-provided assets, "
+                                                        "not overwriting with generative output"
+                                                    )
 
                                                 if creative_output.get("output_format"):
                                                     output_format = creative_output["output_format"]
                                                     data["output_format"] = output_format
 
+                                                    # Only use generative URL if user didn't provide one
                                                     if isinstance(output_format, dict) and output_format.get("url"):
-                                                        data["url"] = output_format["url"]
-                                                        logger.info(
-                                                            f"[sync_creatives] Got URL from generative output: "
-                                                            f"{data['url']}"
-                                                        )
+                                                        if not data.get("url"):
+                                                            data["url"] = output_format["url"]
+                                                            logger.info(
+                                                                f"[sync_creatives] Got URL from generative output: "
+                                                                f"{data['url']}"
+                                                            )
+                                                        else:
+                                                            logger.info(
+                                                                "[sync_creatives] Preserving user-provided URL, "
+                                                                "not overwriting with generative output"
+                                                            )
 
                                             logger.info(
                                                 f"[sync_creatives] Generative creative built: "
@@ -931,20 +1002,25 @@ def _sync_creatives_impl(
                                         if renders:
                                             first_render = renders[0]
 
-                                            # Store preview URL from render
-                                            if first_render.get("preview_url"):
+                                            # Only use preview URL if user didn't provide one
+                                            if first_render.get("preview_url") and not data.get("url"):
                                                 data["url"] = first_render["preview_url"]
                                                 logger.info(
                                                     f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
                                                 )
+                                            elif data.get("url"):
+                                                logger.info(
+                                                    "[sync_creatives] Preserving user-provided URL from assets, "
+                                                    "not overwriting with preview URL"
+                                                )
 
-                                            # Extract dimensions from dimensions object
+                                            # Only use preview dimensions if user didn't provide them
                                             dimensions = first_render.get("dimensions", {})
-                                            if dimensions.get("width"):
+                                            if dimensions.get("width") and not data.get("width"):
                                                 data["width"] = dimensions["width"]
-                                            if dimensions.get("height"):
+                                            if dimensions.get("height") and not data.get("height"):
                                                 data["height"] = dimensions["height"]
-                                            if dimensions.get("duration"):
+                                            if dimensions.get("duration") and not data.get("duration"):
                                                 data["duration"] = dimensions["duration"]
 
                                         logger.info(
@@ -1025,8 +1101,8 @@ def _sync_creatives_impl(
 
                         # Determine creative status based on approval mode
 
-                        # Create initial creative with pending status for AI review
-                        creative_status = "pending"
+                        # Create initial creative with pending_review status (will be updated based on approval mode)
+                        creative_status = CreativeStatusEnum.pending_review.value
                         needs_approval = False
 
                         # Extract agent_url and format ID from format_id field
@@ -1054,7 +1130,7 @@ def _sync_creatives_impl(
 
                         # Now apply approval mode logic
                         if approval_mode == "auto-approve":
-                            db_creative.status = "approved"
+                            db_creative.status = CreativeStatusEnum.approved.value
                             needs_approval = False
                         elif approval_mode == "ai-powered":
                             # Submit to background AI review (async)
@@ -1065,8 +1141,8 @@ def _sync_creatives_impl(
                                 _ai_review_tasks,
                             )
 
-                            # Set status to pending immediately
-                            db_creative.status = "pending"
+                            # Set status to pending_review for AI review
+                            db_creative.status = CreativeStatusEnum.pending_review.value
                             needs_approval = True
 
                             # Submit background task
@@ -1096,7 +1172,7 @@ def _sync_creatives_impl(
                                 f"[sync_creatives] Submitted AI review for new creative {db_creative.creative_id} (task: {task_id})"
                             )
                         else:  # require-human
-                            db_creative.status = "pending"
+                            db_creative.status = CreativeStatusEnum.pending_review.value
                             needs_approval = True
 
                         # Track creatives needing approval for workflow creation
@@ -1288,10 +1364,10 @@ def _sync_creatives_impl(
         with get_db_session() as session:
             for creative_info in creatives_needing_approval:
                 # Build appropriate comment based on status
-                status = creative_info.get("status", "pending")
-                if status == "rejected":
+                status = creative_info.get("status", CreativeStatusEnum.pending_review.value)
+                if status == CreativeStatusEnum.rejected.value:
                     comment = f"Creative '{creative_info['name']}' (format: {creative_info['format']}) was rejected by AI review"
-                elif status == "pending":
+                elif status == CreativeStatusEnum.pending_review.value:
                     if approval_mode == "ai-powered":
                         comment = f"Creative '{creative_info['name']}' (format: {creative_info['format']}) requires human review per AI recommendation"
                     else:
@@ -1350,7 +1426,7 @@ def _sync_creatives_impl(
             notifier = get_slack_notifier(tenant_config)
 
             for creative_info in creatives_needing_approval:
-                status = creative_info.get("status", "pending")
+                status = creative_info.get("status", CreativeStatusEnum.pending_review.value)
                 ai_review_reason = creative_info.get("ai_review_reason")
 
                 # Ensure required fields are strings
@@ -1358,7 +1434,7 @@ def _sync_creatives_impl(
                 format_str = str(creative_info.get("format", "unknown"))
                 principal_name_str = str(principal_id) if principal_id else "unknown"
 
-                if status == "rejected":
+                if status == CreativeStatusEnum.rejected.value:
                     # For rejected creatives, send a different notification
                     # TODO: Add notify_creative_rejected method to SlackNotifier
                     notifier.notify_creative_pending(
@@ -1479,7 +1555,7 @@ def _sync_creatives_impl(
     )
 
 
-def sync_creatives(
+async def sync_creatives(
     creatives: list[dict],
     patch: bool = False,
     assignments: dict | None = None,
@@ -1855,7 +1931,7 @@ def _list_creatives_impl(
     )
 
 
-def list_creatives(
+async def list_creatives(
     media_buy_id: str = None,
     buyer_ref: str = None,
     status: str = None,

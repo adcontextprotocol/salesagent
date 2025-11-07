@@ -71,7 +71,9 @@ class GAMCreativesManager:
         logger.info(f"[DEBUG] creative_placeholders keys: {list(creative_placeholders.keys())}")
 
         for asset in assets:
-            logger.info(f"[DEBUG] Processing asset {asset.get('creative_id')} with package_assignments: {asset.get('package_assignments', [])}")
+            logger.info(
+                f"[DEBUG] Processing asset {asset.get('creative_id')} with package_assignments: {asset.get('package_assignments', [])}"
+            )
             # Validate creative asset against GAM requirements
             # Use adapter's method if available for test compatibility, otherwise use our own
             if self.adapter and hasattr(self.adapter, "_validate_creative_for_gam"):
@@ -200,10 +202,10 @@ class GAMCreativesManager:
                     # Log the mapped sizes (Zeep objects - use getattr not .get())
                     sizes = []
                     for p in placeholders:
-                        size_obj = getattr(p, 'size', None)
+                        size_obj = getattr(p, "size", None)
                         if size_obj:
-                            width = getattr(size_obj, 'width', 0)
-                            height = getattr(size_obj, 'height', 0)
+                            width = getattr(size_obj, "width", 0)
+                            height = getattr(size_obj, "height", 0)
                             sizes.append(f"{width}x{height}")
                     logger.info(f"[DEBUG] Mapped product ID 'prod_{product_id}' to placeholders: {sizes}")
         else:
@@ -694,13 +696,22 @@ class GAMCreativesManager:
         """Add tracking URLs to the creative if available."""
         tracking_events = asset.get("tracking_events", {})
 
-        # Add impression tracking
+        # Add impression tracking - append to existing trackingUrls, don't replace
         if tracking_events.get("impression"):
-            creative["trackingUrls"] = [{"url": url} for url in tracking_events["impression"]]
+            existing_tracking = creative.get("trackingUrls", [])
+            new_tracking = [{"url": url} for url in tracking_events["impression"]]
+            # Merge tracking URLs, avoiding duplicates
+            creative["trackingUrls"] = existing_tracking + [t for t in new_tracking if t not in existing_tracking]
 
-        # Add click tracking (for supported creative types)
+        # Add click tracking (for supported creative types) - only if not already set
         if tracking_events.get("click") and creative.get("xsi_type") in ["ImageCreative", "ThirdPartyCreative"]:
-            creative["destinationUrl"] = tracking_events["click"][0]  # Use first click URL
+            if not creative.get("destinationUrl"):
+                creative["destinationUrl"] = tracking_events["click"][0]  # Use first click URL
+            else:
+                logger.info(
+                    f"Preserving existing destinationUrl={creative.get('destinationUrl')}, "
+                    f"not overwriting with tracking event click URL"
+                )
 
     def _configure_vast_for_line_items(
         self, media_buy_id: str, asset: dict[str, Any], line_item_map: dict[str, str]
@@ -734,14 +745,20 @@ class GAMCreativesManager:
                     # Find line item that ends with this product ID
                     for line_item_name, item_id in line_item_map.items():
                         logger.info(f"[DEBUG] Checking line item: {line_item_name}")
-                        logger.info(f"[DEBUG] Does it end with ' - {product_id}'? {line_item_name.endswith(f' - {product_id}')}")
+                        logger.info(
+                            f"[DEBUG] Does it end with ' - {product_id}'? {line_item_name.endswith(f' - {product_id}')}"
+                        )
                         if line_item_name.endswith(f" - {product_id}"):
                             line_item_id = item_id
-                            logger.info(f"[DEBUG] MATCH! Package {package_id} -> line item {line_item_name} (ID: {item_id})")
+                            logger.info(
+                                f"[DEBUG] MATCH! Package {package_id} -> line item {line_item_name} (ID: {item_id})"
+                            )
                             break
 
             if not line_item_id:
-                logger.warning(f"Line item not found for package {package_id}. line_item_map has {len(line_item_map)} entries")
+                logger.warning(
+                    f"Line item not found for package {package_id}. line_item_map has {len(line_item_map)} entries"
+                )
                 continue
 
             if self.dry_run:

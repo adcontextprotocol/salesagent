@@ -13,6 +13,7 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import (
     AdapterConfig,
     CurrencyLimit,
+    GAMInventory,
     MediaBuy,
     MediaPackage,
     PricingOption,
@@ -79,21 +80,60 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
         )
         session.add(principal)
 
+        # Add GAM inventory (required for product validation)
+        gam_inventory_1 = GAMInventory(
+            tenant_id="test_gam_pricing_tenant",
+            inventory_type="ad_unit",
+            inventory_id="23312403856",
+            name="Test Ad Unit 123",
+            path=["test", "path"],
+            status="active",
+            inventory_metadata={},
+        )
+        session.add(gam_inventory_1)
+
+        gam_inventory_2 = GAMInventory(
+            tenant_id="test_gam_pricing_tenant",
+            inventory_type="ad_unit",
+            inventory_id="45623890123",
+            name="Homepage Ad Unit",
+            path=["homepage"],
+            status="active",
+            inventory_metadata={},
+        )
+        session.add(gam_inventory_2)
+
         # Product 1: CPM pricing (guaranteed)
         product_cpm = Product(
             tenant_id="test_gam_pricing_tenant",
             product_id="prod_gam_cpm_guaranteed",
             name="Display Ads - CPM Guaranteed",
             description="Display inventory with guaranteed CPM pricing",
-            formats=["display_300x250"],
+            formats=[
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x250_image",
+                }
+            ],
             delivery_type="guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={
-                "targeted_ad_unit_ids": ["ad_unit_123"],
+                "targeted_ad_unit_ids": ["23312403856"],
                 "line_item_type": "STANDARD",
                 "priority": 8,
                 "creative_placeholders": [{"width": 300, "height": 250}],
+                "format_overrides": {
+                    "display_300x250": {
+                        "format_id": "display_300x250",
+                        "name": "Display 300x250",
+                        "type": "display",
+                        "width": 300,
+                        "height": 250,
+                        "standard": True,
+                        "platform_config": {"gam": {"creative_placeholder": {"width": 300, "height": 250}}},
+                    }
+                },
             },
         )
         session.add(product_cpm)
@@ -118,18 +158,47 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             product_id="prod_gam_cpc",
             name="Display Ads - CPC",
             description="Click-based pricing for performance campaigns",
-            formats=["display_300x250", "display_728x90"],
+            formats=[
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x250_image",
+                },
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_728x90_image",
+                },
+            ],
             delivery_type="non_guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={
-                "targeted_ad_unit_ids": ["ad_unit_123"],
+                "targeted_ad_unit_ids": ["23312403856"],
                 "line_item_type": "PRICE_PRIORITY",
                 "priority": 12,
                 "creative_placeholders": [
                     {"width": 300, "height": 250},
                     {"width": 728, "height": 90},
                 ],
+                "format_overrides": {
+                    "display_300x250": {
+                        "format_id": "display_300x250",
+                        "name": "Display 300x250",
+                        "type": "display",
+                        "width": 300,
+                        "height": 250,
+                        "standard": True,
+                        "platform_config": {"gam": {"creative_placeholder": {"width": 300, "height": 250}}},
+                    },
+                    "display_728x90": {
+                        "format_id": "display_728x90",
+                        "name": "Display 728x90",
+                        "type": "display",
+                        "width": 728,
+                        "height": 90,
+                        "standard": True,
+                        "platform_config": {"gam": {"creative_placeholder": {"width": 728, "height": 90}}},
+                    },
+                },
             },
         )
         session.add(product_cpc)
@@ -154,15 +223,31 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             product_id="prod_gam_vcpm",
             name="Display Ads - VCPM",
             description="Viewable CPM pricing for brand safety",
-            formats=["display_300x250"],
+            formats=[
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x250_image",
+                }
+            ],
             delivery_type="guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={
-                "targeted_ad_unit_ids": ["ad_unit_123"],
+                "targeted_ad_unit_ids": ["23312403856"],
                 "line_item_type": "STANDARD",
                 "priority": 8,
                 "creative_placeholders": [{"width": 300, "height": 250}],
+                "format_overrides": {
+                    "display_300x250": {
+                        "format_id": "display_300x250",
+                        "name": "Display 300x250",
+                        "type": "display",
+                        "width": 300,
+                        "height": 250,
+                        "standard": True,
+                        "platform_config": {"gam": {"creative_placeholder": {"width": 300, "height": 250}}},
+                    }
+                },
             },
         )
         session.add(product_vcpm)
@@ -187,18 +272,47 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
             product_id="prod_gam_flatrate",
             name="Homepage Takeover - Flat Rate",
             description="Fixed daily rate for premium placement",
-            formats=["display_728x90", "display_300x600"],
+            formats=[
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_728x90_image",
+                },
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x600_image",
+                },
+            ],
             delivery_type="guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
             implementation_config={
-                "targeted_ad_unit_ids": ["ad_unit_homepage"],
+                "targeted_ad_unit_ids": ["45623890123"],
                 "line_item_type": "SPONSORSHIP",
                 "priority": 4,
                 "creative_placeholders": [
                     {"width": 728, "height": 90},
                     {"width": 300, "height": 600},
                 ],
+                "format_overrides": {
+                    "display_728x90": {
+                        "format_id": "display_728x90",
+                        "name": "Display 728x90",
+                        "type": "display",
+                        "width": 728,
+                        "height": 90,
+                        "standard": True,
+                        "platform_config": {"gam": {"creative_placeholder": {"width": 728, "height": 90}}},
+                    },
+                    "display_300x600": {
+                        "format_id": "display_300x600",
+                        "name": "Display 300x600",
+                        "type": "display",
+                        "width": 300,
+                        "height": 600,
+                        "standard": True,
+                        "platform_config": {"gam": {"creative_placeholder": {"width": 300, "height": 600}}},
+                    },
+                },
             },
         )
         session.add(product_flat)

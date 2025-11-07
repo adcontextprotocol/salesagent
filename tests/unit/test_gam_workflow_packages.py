@@ -222,10 +222,20 @@ class TestGAMActivationWorkflowPath:
                 mock_check_guaranteed.return_value = (True, ["STANDARD"])  # Guaranteed line items
                 mock_activation_workflow.return_value = "activation_workflow_123"
 
-                # Mock database session
+                # Mock database session - need to return products with inventory config
                 mock_session = MagicMock()
                 mock_db_session.return_value.__enter__.return_value = mock_session
-                mock_session.scalars.return_value.first.return_value = None  # No adapter config
+
+                # Create mock products with inventory targeting (required by validation)
+                mock_product = Mock()
+                mock_product.product_id = "prod_test"
+                mock_product.implementation_config = {"targeted_ad_unit_ids": ["123456"]}
+
+                # Simpler approach: Always return mock_product for .first(), empty for .all()
+                mock_result = Mock()
+                mock_result.first.return_value = mock_product
+                mock_result.all.return_value = []
+                mock_session.scalars.return_value = mock_result
 
                 # Act
                 start_time = datetime.now()
@@ -307,10 +317,20 @@ class TestGAMSuccessPath:
                 mock_create_line_items.return_value = mock_line_item_ids
                 mock_check_guaranteed.return_value = (False, ["PRICE_PRIORITY"])  # Non-guaranteed
 
-                # Mock database session
+                # Mock database session - need to return products with inventory config
                 mock_session = MagicMock()
                 mock_db_session.return_value.__enter__.return_value = mock_session
-                mock_session.scalars.return_value.first.return_value = None  # No adapter config
+
+                # Create mock products with inventory targeting (required by validation)
+                mock_product = Mock()
+                mock_product.product_id = "prod_test"
+                mock_product.implementation_config = {"targeted_ad_unit_ids": ["123456"]}
+
+                # Simpler approach: Always return mock_product for .first(), empty for .all()
+                mock_result = Mock()
+                mock_result.first.return_value = mock_product
+                mock_result.all.return_value = []
+                mock_session.scalars.return_value = mock_result
 
                 # Act
                 start_time = datetime.now()

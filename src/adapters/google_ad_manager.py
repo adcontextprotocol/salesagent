@@ -15,7 +15,7 @@ __all__ = [
 import logging
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from flask import Flask
 
@@ -447,6 +447,49 @@ class GoogleAdManager(AdServerAdapter):
                 else:
                     logger.error(f"Product NOT FOUND for package_id: {package.package_id}")
 
+        # Validate products have required inventory targeting BEFORE creating order
+        # This prevents the "hidden failure" where order is created but line items fail
+        for package in packages:
+            product_config = products_map.get(package.package_id)
+            if not product_config:
+                error_msg = (
+                    f"Product configuration missing for package '{package.package_id}'. "
+                    f"Product must exist in database with valid configuration before media buy creation."
+                )
+                self.log(f"[red]Error: {error_msg}[/red]")
+                return CreateMediaBuyResponse(
+                    buyer_ref=request.buyer_ref or "",
+                    media_buy_id=None,
+                    creative_deadline=None,
+                    errors=[Error(code="product_not_configured", message=error_msg, details=None)],
+                )
+
+            # Cast to dict to satisfy mypy (products_map values are dict[str, Any])
+            product_impl_config = cast(dict[str, Any], product_config.get("implementation_config", {}))
+            has_ad_units = product_impl_config.get("targeted_ad_unit_ids")
+            has_placements = product_impl_config.get("targeted_placement_ids")
+
+            if not has_ad_units and not has_placements:
+                pkg_product_id = product_config.get("product_id", package.package_id)
+                error_msg = (
+                    f"Product '{pkg_product_id}' (package '{package.package_id}') is not configured with inventory targeting. "
+                    f"GAM requires all products to have either ad units or placements configured. "
+                    f"\n\n⚠️  SETUP REQUIRED: Please configure this product's inventory before accepting media buy requests."
+                    f"\n\nTo fix:"
+                    f"\n  1. Go to Admin UI → Products → '{pkg_product_id}'"
+                    f"\n  2. Click 'Sync Inventory' to load ad units from GAM"
+                    f"\n  3. Assign ad units or placements to this product"
+                    f"\n  4. Save changes"
+                    f"\n\nAlternatively, for testing you can use Mock adapter instead of GAM (set ad_server='mock' on tenant)."
+                )
+                self.log(f"[red]Error: {error_msg}[/red]")
+                return CreateMediaBuyResponse(
+                    buyer_ref=request.buyer_ref or "",
+                    media_buy_id=None,
+                    creative_deadline=None,
+                    errors=[Error(code="product_not_configured", message=error_msg, details=None)],
+                )
+
         # Validate targeting
         unsupported_features = self._validate_targeting(request.targeting_overlay)
         if unsupported_features:
@@ -636,7 +679,7 @@ class GoogleAdManager(AdServerAdapter):
                     try:
                         approval_id = start_order_approval_background(
                             order_id=order_id,
-                            media_buy_id=media_buy_id,
+                            media_buy_id=order_id,  # In automatic mode, media_buy_id = order_id
                             tenant_id=self.tenant_id or "",
                             principal_id=principal_id,
                             webhook_url=webhook_url,
@@ -654,34 +697,15 @@ class GoogleAdManager(AdServerAdapter):
             error_msg = f"Order created but failed to create line items: {str(e)}"
             self.log(f"[red]Error: {error_msg}[/red]")
 
-            # Build package responses even on error so downstream code can access package data
-            package_responses = []
-            for idx, package in enumerate(packages):
-                matching_req_package = None
-                if request.packages and idx < len(request.packages):
-                    matching_req_package = request.packages[idx]
-
-                error_package_dict: dict[str, Any] = {
-                    "package_id": package.package_id,
-                    "product_id": package.product_id,
-                    "name": package.name,
-                }
-
-                if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
-                    error_package_dict["buyer_ref"] = matching_req_package.buyer_ref
-
-                # Add creative_ids from package if available (from uploaded inline creatives)
-                if package.creative_ids:
-                    error_package_dict["creative_ids"] = list(package.creative_ids)
-
-                package_responses.append(error_package_dict)
-
+            # CRITICAL: Return media_buy_id=None to indicate failure
+            # Even though order was created, line items failed, so media buy is not functional
+            # Per AdCP spec: errors present → media_buy_id must be None
             return CreateMediaBuyResponse(
                 buyer_ref=request.buyer_ref or "",
-                media_buy_id=order_id,
+                media_buy_id=None,  # NULL because creation failed
                 creative_deadline=None,
                 errors=[Error(code="line_item_creation_failed", message=error_msg, details=None)],
-                packages=package_responses,
+                packages=[],  # No packages since line items weren't created
             )
 
         # Check if activation approval is needed (guaranteed line items require human approval)

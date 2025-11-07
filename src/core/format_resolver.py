@@ -34,7 +34,7 @@ def get_format(
     """
     # Check product override first
     if product_id and tenant_id:
-        override = _get_product_format_override(tenant_id, product_id, format_id)
+        override = _get_product_format_override(tenant_id, product_id, format_id, agent_url=agent_url)
         if override:
             return override
 
@@ -74,7 +74,9 @@ def get_format(
     raise ValueError(error_msg)
 
 
-def _get_product_format_override(tenant_id: str, product_id: str, format_id: str) -> Format | None:
+def _get_product_format_override(
+    tenant_id: str, product_id: str, format_id: str, agent_url: str | None = None
+) -> Format | None:
     """Get product-level format override from product.implementation_config.
 
     Product can override any format's platform_config. Example:
@@ -98,6 +100,7 @@ def _get_product_format_override(tenant_id: str, product_id: str, format_id: str
         tenant_id: Tenant identifier
         product_id: Product identifier
         format_id: Format to look up
+        agent_url: Optional creative agent URL (needed to fetch base format)
 
     Returns:
         Format with overridden config, or None if no override exists
@@ -122,10 +125,17 @@ def _get_product_format_override(tenant_id: str, product_id: str, format_id: str
         if format_id not in format_overrides:
             return None
 
-        # Get base format from creative agent registry
+        # Get base format from creative agent registry (WITHOUT product_id to avoid recursion)
+        from src.core.creative_agent_registry import get_creative_agent_registry
+
+        registry = get_creative_agent_registry()
+
         try:
-            base_format = get_format(format_id, tenant_id=tenant_id)
-        except ValueError:
+            # format_id is a string key in format_overrides dict
+            # Pass agent_url to find the base format from the correct creative agent
+            base_format = get_format(format_id, agent_url=agent_url, tenant_id=tenant_id, product_id=None)
+        except (ValueError, Exception):
+            # Base format not found - cannot apply override
             return None
 
         # Apply override to base format

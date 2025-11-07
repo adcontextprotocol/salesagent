@@ -313,7 +313,9 @@ def _update_media_buy_impl(
                         implementation_date=None,
                         errors=[{"code": "currency_not_supported", "message": error_msg}],
                     )
-                    ctx_manager.update_workflow_step(step.step_id, status="failed", response_data=response_data.model_dump(), error_message=error_msg)
+                    ctx_manager.update_workflow_step(
+                        step.step_id, status="failed", response_data=response_data.model_dump(), error_message=error_msg
+                    )
                     return response_data
 
                 # Calculate new flight duration
@@ -551,6 +553,27 @@ def _update_media_buy_impl(
                         )
                         return response_data
 
+                    # Validate creatives are in usable state before updating
+                    # Note: We validate existence (already done above) and status, not structure
+                    # Structure validation happens during sync_creatives - here we just assign
+                    validation_errors = []
+                    for creative in creatives_list:
+                        # Check if creative is in a valid state for assignment
+                        # Creatives in "error" or "rejected" state should not be assignable
+                        if creative.status in ["error", "rejected"]:
+                            validation_errors.append(
+                                f"Creative {creative.creative_id} cannot be assigned (status={creative.status})"
+                            )
+
+                    if validation_errors:
+                        error_msg = (
+                            "Cannot update media buy with invalid creatives. "
+                            "The following creatives cannot be assigned:\n"
+                            + "\n".join(f"  • {err}" for err in validation_errors)
+                        )
+                        logger.error(f"[UPDATE] {error_msg}")
+                        raise ToolError("INVALID_CREATIVES", error_msg, {"creative_errors": validation_errors})
+
                     # Get existing assignments for this package
                     assignment_stmt = select(DBAssignment).where(
                         DBAssignment.tenant_id == tenant["tenant_id"],
@@ -696,7 +719,6 @@ def _update_media_buy_impl(
         buyer_ref=req.buyer_ref or "",
         implementation_date=None,
         affected_packages=affected_packages_list if affected_packages_list else None,
-        
     )
 
     # Persist success with response data, then return

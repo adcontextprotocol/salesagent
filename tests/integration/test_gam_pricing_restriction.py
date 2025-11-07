@@ -12,6 +12,7 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import (
     AdapterConfig,
     CurrencyLimit,
+    GAMInventory,
     MediaBuy,
     MediaPackage,
     PricingOption,
@@ -78,17 +79,40 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
         )
         session.add(principal)
 
+        # Add GAM inventory (required for product validation)
+        # Note: Using numeric ID as GAM requires numeric ad unit IDs
+        gam_inventory = GAMInventory(
+            tenant_id="test_gam_tenant",
+            inventory_type="ad_unit",
+            inventory_id="23312403856",
+            name="Test Ad Unit for Pricing Tests",
+            path=["test"],
+            status="active",
+            inventory_metadata={},
+        )
+        session.add(gam_inventory)
+
         # Create product with CPCV pricing (not supported by GAM)
         product = Product(
             tenant_id="test_gam_tenant",
             product_id="prod_gam_cpcv",
             name="Video Ads - CPCV",
             description="Video inventory with CPCV pricing",
-            formats=["video_instream"],
+            formats=[
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "video_standard_30s",
+                }
+            ],
             delivery_type="non_guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
-            implementation_config={},
+            implementation_config={
+                "targeted_ad_unit_ids": ["23312403856"],
+                "line_item_type": "STANDARD",
+                "priority": 8,
+                "creative_placeholders": [{"width": 300, "height": 250}],
+            },
         )
         session.add(product)
         session.flush()
@@ -113,11 +137,21 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_cpm",
             name="Display Ads - CPM",
             description="Display inventory with CPM pricing",
-            formats=["display_300x250"],
+            formats=[
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x250_image",
+                }
+            ],
             delivery_type="guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
-            implementation_config={},
+            implementation_config={
+                "targeted_ad_unit_ids": ["23312403856"],
+                "line_item_type": "STANDARD",
+                "priority": 8,
+                "creative_placeholders": [{"width": 300, "height": 250}],
+            },
         )
         session.add(product_cpm)
         session.flush()
@@ -142,11 +176,30 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_multi",
             name="Premium Package",
             description="Multiple pricing models (some unsupported)",
-            formats=["display_300x250", "video_instream"],
+            formats=[
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "display_300x250_image",
+                },
+                {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "video_standard_30s",
+                },
+            ],
             delivery_type="non_guaranteed",
             property_tags=["all_inventory"],
             targeting_template={},
-            implementation_config={},
+            implementation_config={
+                "targeted_ad_unit_ids": ["23312403856"],
+                "line_item_type": "PRICE_PRIORITY",
+                "priority": 12,
+                "creative_placeholders": [{"width": 300, "height": 250}],
+                "format_overrides": {
+                    "video_standard_30s": {
+                        "platform_config": {"gam": {"creative_placeholder": {"width": 640, "height": 480}}},
+                    }
+                },
+            },
         )
         session.add(product_multi)
         session.flush()
