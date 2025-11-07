@@ -22,6 +22,7 @@ const config = (function() {
     return {
         scriptName: configEl.dataset.scriptName || '',
         tenantId: configEl.dataset.tenantId || '',
+        tenantName: configEl.dataset.tenantName || '',
         activeAdapter: configEl.dataset.activeAdapter || '',
         a2aPort: configEl.dataset.a2aPort || '8091',
         mcpPort: configEl.dataset.mcpPort || '8080',
@@ -1170,24 +1171,25 @@ function copyA2AConfig(principalId, principalName, accessToken) {
         return;
     }
 
-    // Determine the A2A server URL
+    // Determine the A2A server URL (without /a2a suffix)
     let a2aUrl;
     if (config.isProduction) {
         // Production: Use subdomain or virtual host
         if (config.subdomain) {
-            a2aUrl = `https://${config.subdomain}.${config.salesAgentDomain}/a2a`;
+            a2aUrl = `https://${config.subdomain}.${config.salesAgentDomain}`;
         } else if (config.virtualHost) {
-            a2aUrl = `https://${config.virtualHost}/a2a`;
+            a2aUrl = `https://${config.virtualHost}`;
         } else {
-            a2aUrl = `https://${config.salesAgentDomain}/a2a`;
+            a2aUrl = `https://${config.salesAgentDomain}`;
         }
     } else {
         // Development: Use localhost with configured port
-        a2aUrl = `http://localhost:${config.a2aPort}/a2a`;
+        a2aUrl = `http://localhost:${config.a2aPort}`;
     }
 
-    // Create the A2A configuration JSON
+    // Create the A2A configuration JSON with name field
     const a2aConfig = {
+        name: `${config.tenantName} - ${principalName}`,
         agent_uri: a2aUrl,
         protocol: "a2a",
         version: "1.0",
@@ -1242,8 +1244,9 @@ function copyMCPConfig(principalId, principalName, accessToken) {
         mcpUrl = `http://localhost:${config.mcpPort}/mcp`;
     }
 
-    // Create the MCP configuration JSON
+    // Create the MCP configuration JSON with name field
     const mcpConfig = {
+        name: `${config.tenantName} - ${principalName}`,
         agent_uri: mcpUrl,
         protocol: "mcp",
         version: "1.0",
