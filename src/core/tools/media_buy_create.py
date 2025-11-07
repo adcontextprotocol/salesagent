@@ -221,6 +221,16 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
             except Exception as e:
                 logger.warning(f"Could not fetch format {creative.format} from {creative.agent_url}: {e}")
 
+        # Skip validation for generative formats - they need conversion first
+        # Generative formats have output_format_ids (they generate reference formats)
+        if format_spec and format_spec.output_format_ids:
+            logger.info(
+                f"Skipping validation for generative creative {creative.creative_id} "
+                f"(format={creative.format}) - will be converted to reference format"
+            )
+            continue
+
+        # Only validate reference creatives (formats we can directly use)
         # Extract URL from assets using format specification
         url = None
         if creative_data.get("assets") and format_spec and format_spec.assets_required:
@@ -241,21 +251,23 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
 
         if not url:
             validation_errors.append(
-                f"Creative {creative.creative_id} (format={creative.format}) missing required URL field in assets"
+                f"Reference creative {creative.creative_id} (format={creative.format}) "
+                f"missing required URL field in assets"
             )
         if not width or not height:
             validation_errors.append(
-                f"Creative {creative.creative_id} missing dimensions (width={width}, height={height})"
+                f"Reference creative {creative.creative_id} missing dimensions (width={width}, height={height})"
             )
 
     if validation_errors:
         error_msg = (
-            "Cannot create media buy with invalid creatives. "
-            "The following creatives are missing required fields:\n"
+            "Cannot create media buy with invalid reference creatives. "
+            "The following reference creatives are missing required fields:\n"
             + "\n".join(f"  • {err}" for err in validation_errors)
-            + "\n\nAll creatives must have dimensions (width/height) and a content URL "
+            + "\n\nReference creatives must have dimensions (width/height) and a content URL "
             "matching their format specification. "
-            "Please ensure creatives are properly synced before creating media buys."
+            + "Generative creatives will be converted to reference formats during campaign creation. "
+            + "Please ensure reference creatives are properly synced before creating media buys."
         )
         logger.error(f"[PRE-VALIDATION] {error_msg}")
         raise ToolError("INVALID_CREATIVES", error_msg, {"creative_errors": validation_errors})
