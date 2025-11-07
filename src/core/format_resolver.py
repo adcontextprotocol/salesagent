@@ -128,20 +128,10 @@ def _get_product_format_override(tenant_id: str, product_id: str, format_id: str
         registry = get_creative_agent_registry()
 
         try:
-            # Search all agents for this format
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                all_formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant_id))
-                base_format = None
-                for fmt in all_formats:
-                    if fmt.format_id == format_id or (hasattr(fmt.format_id, "id") and fmt.format_id.id == format_id):
-                        base_format = fmt
-                        break
-                if not base_format:
-                    raise ValueError(f"Format {format_id} not found in any agent")
-            finally:
-                loop.close()
+            # format_id is a string key in format_overrides dict
+            # We need to parse it to get agent_url + id if it's a FormatId-like string
+            # For now, use the existing get_format() function which handles this
+            base_format = get_format(format_id, agent_url=None, tenant_id=tenant_id, product_id=None)
         except (ValueError, Exception) as e:
             return None
 
