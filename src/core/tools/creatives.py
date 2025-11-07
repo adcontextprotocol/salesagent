@@ -1278,6 +1278,85 @@ def _sync_creatives_impl(
                             logger.warning(f"Package not found during assignment: {package_id}, skipping")
                             continue
 
+                    # Validate creative format against package product formats
+                    # Get creative format
+                    from src.core.database.models import Creative as DBCreative
+                    from src.core.database.models import Product
+
+                    creative_stmt = select(DBCreative).where(
+                        DBCreative.tenant_id == tenant["tenant_id"], DBCreative.creative_id == creative_id
+                    )
+                    db_creative_result = session.scalars(creative_stmt).first()
+
+                    # Get product_id from package_config
+                    product_id = db_package.package_config.get("product_id") if db_package.package_config else None
+
+                    if db_creative_result and product_id:
+                        # Get product formats
+                        product_stmt = select(Product).where(
+                            Product.tenant_id == tenant["tenant_id"], Product.product_id == product_id
+                        )
+                        product = session.scalars(product_stmt).first()
+
+                        if product and product.formats:
+                            # Build set of supported formats (agent_url, format_id) tuples
+                            supported_formats: set[tuple[str, str]] = set()
+                            for fmt in product.formats:
+                                if isinstance(fmt, dict):
+                                    agent_url_val = fmt.get("agent_url")
+                                    format_id_val = fmt.get("id") or fmt.get("format_id")
+                                    if agent_url_val and format_id_val:
+                                        supported_formats.add((str(agent_url_val), str(format_id_val)))
+
+                            # Check creative format against supported formats
+                            creative_agent_url = db_creative_result.agent_url
+                            creative_format_id = db_creative_result.format
+
+                            # Allow /mcp URL variant (creative agent may return format with /mcp suffix)
+                            def normalize_url(url: str | None) -> str | None:
+                                if not url:
+                                    return None
+                                return url.rstrip("/").removesuffix("/mcp")
+
+                            normalized_creative_url = normalize_url(creative_agent_url)
+                            is_supported = False
+
+                            for supported_url, supported_format_id in supported_formats:
+                                normalized_supported_url = normalize_url(supported_url)
+                                if (
+                                    normalized_creative_url == normalized_supported_url
+                                    and creative_format_id == supported_format_id
+                                ):
+                                    is_supported = True
+                                    break
+
+                            if not supported_formats:
+                                # Product has no format restrictions - allow all
+                                is_supported = True
+
+                            if not is_supported:
+                                # Creative format not supported by product
+                                creative_format_display = (
+                                    f"{creative_agent_url}/{creative_format_id}"
+                                    if creative_agent_url
+                                    else creative_format_id
+                                )
+                                supported_formats_display = ", ".join(
+                                    [f"{url}/{fmt_id}" if url else fmt_id for url, fmt_id in supported_formats]
+                                )
+                                error_msg = (
+                                    f"Creative {creative_id} format '{creative_format_display}' "
+                                    f"is not supported by product '{product.name}' (package {package_id}). "
+                                    f"Supported formats: {supported_formats_display}"
+                                )
+                                assignment_errors_by_creative[creative_id][package_id] = error_msg
+
+                                if validation_mode == "strict":
+                                    raise ToolError(error_msg)
+                                else:
+                                    logger.warning(f"Creative format mismatch during assignment, skipping: {error_msg}")
+                                    continue
+
                     # Check if assignment already exists (idempotent operation)
                     stmt_existing = select(DBAssignment).filter_by(
                         tenant_id=tenant["tenant_id"],
