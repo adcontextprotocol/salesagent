@@ -496,6 +496,27 @@ class CreativePolicy(BaseModel):
     templates_available: Annotated[bool, Field(description="Whether creative templates are provided")]
 
 
+class ProductCard(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    format_id: Annotated[Any, Field(description="Circular reference to /schemas/v1/core/format-id.json")]
+    manifest: Annotated[
+        dict[str, Any], Field(description="Asset manifest for rendering the card, structure defined by the format")
+    ]
+
+
+class ProductCardDetailed(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    format_id: Annotated[Any, Field(description="Circular reference to /schemas/v1/core/format-id.json")]
+    manifest: Annotated[
+        dict[str, Any],
+        Field(description="Asset manifest for rendering the detailed card, structure defined by the format"),
+    ]
+
+
 class Product(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -564,6 +585,18 @@ class Product(BaseModel):
         Field(description="Explanation of why this product matches the brief (only included when brief is provided)"),
     ] = None
     expires_at: Annotated[AwareDatetime | None, Field(description="Expiration timestamp for custom products")] = None
+    product_card: Annotated[
+        ProductCard | None,
+        Field(
+            description="Optional standard visual card (300x400px) for displaying this product in user interfaces. Can be rendered via preview_creative or pre-generated."
+        ),
+    ] = None
+    product_card_detailed: Annotated[
+        ProductCardDetailed | None,
+        Field(
+            description="Optional detailed card with carousel and full specifications. Provides rich product presentation similar to media kit pages."
+        ),
+    ] = None
 
 
 class Error(BaseModel):
