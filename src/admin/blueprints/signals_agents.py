@@ -263,33 +263,27 @@ def test_signals_agent(tenant_id, agent_id):
                 }
 
             # Test connection
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                result = loop.run_until_complete(
-                    registry.test_connection(agent.agent_url, auth=auth, auth_header=agent.auth_header)
-                )
+            # Use asyncio.run() instead of new_event_loop() for better compatibility with adcp library
+            result = asyncio.run(registry.test_connection(agent.agent_url, auth=auth, auth_header=agent.auth_header))
 
-                if result.get("success"):
-                    return jsonify(
+            if result.get("success"):
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": result.get("message", "Successfully connected"),
+                        "signal_count": result.get("signal_count", 0),
+                    }
+                )
+            else:
+                return (
+                    jsonify(
                         {
-                            "success": True,
-                            "message": result.get("message", "Successfully connected"),
-                            "signal_count": result.get("signal_count", 0),
+                            "success": False,
+                            "error": result.get("error", "Connection failed"),
                         }
-                    )
-                else:
-                    return (
-                        jsonify(
-                            {
-                                "success": False,
-                                "error": result.get("error", "Connection failed"),
-                            }
-                        ),
-                        400,
-                    )
-            finally:
-                loop.close()
+                    ),
+                    400,
+                )
 
     except Exception as e:
         logger.error(f"Error testing signals agent: {e}", exc_info=True)
