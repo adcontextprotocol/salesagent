@@ -179,9 +179,10 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
     Raises:
         ToolError: If any creative is missing required fields (URL, dimensions)
     """
+    import asyncio
+
     from sqlalchemy import select
 
-    from src.core.async_utils import run_async_in_sync_context
     from src.core.creative_agent_registry import get_creative_agent_registry
     from src.core.database.database_session import get_db_session
     from src.core.database.models import Creative as DBCreative
@@ -217,7 +218,13 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
             # creative.format is a string (format ID)
             # Parse agent_url from creative.agent_url
             try:
-                format_spec = run_async_in_sync_context(registry.get_format(creative.agent_url, str(creative.format)))
+                # Use asyncio event loop to run async registry.get_format() synchronously
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    format_spec = loop.run_until_complete(registry.get_format(creative.agent_url, str(creative.format)))
+                finally:
+                    loop.close()
             except Exception as e:
                 logger.warning(f"Could not fetch format {creative.format} from {creative.agent_url}: {e}")
 
