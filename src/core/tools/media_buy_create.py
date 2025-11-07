@@ -575,6 +575,18 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                     # The Creative model stores all content in the 'data' JSON field
                     creative_data = creative.data or {}
 
+                    # Extract URL from AdCP-compliant nested assets structure
+                    # Per AdCP spec, creatives have: {"assets": {"main": {"url": "..."}}}
+                    url = None
+                    if creative_data.get("assets"):
+                        # Try common asset roles first
+                        for asset_role in ["main", "image", "banner_image", "creative"]:
+                            if asset_role in creative_data["assets"]:
+                                asset_obj = creative_data["assets"][asset_role]
+                                if isinstance(asset_obj, dict) and asset_obj.get("url"):
+                                    url = asset_obj["url"]
+                                    break
+
                     # Extract width/height from format if not in data
                     # Format IDs like "display_970x250_image" contain dimensions
                     width = creative_data.get("width")
@@ -600,7 +612,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                         "package_assignments": package_ids,  # Array of ALL package IDs this creative is assigned to
                         "width": width,
                         "height": height,
-                        "url": creative_data.get("url") or creative_data.get("content_uri"),
+                        "url": url,
                         "asset_type": creative_data.get("asset_type", "image"),
                         "name": creative.name or f"Creative {creative.creative_id}",
                     }
@@ -2518,6 +2530,18 @@ async def _create_media_buy_impl(
                                 try:
                                     creative_data = creative.data or {}
 
+                                    # Extract URL from AdCP-compliant nested assets structure
+                                    # Per AdCP spec, creatives have: {"assets": {"main": {"url": "..."}}}
+                                    url = None
+                                    if creative_data.get("assets"):
+                                        # Try common asset roles first
+                                        for asset_role in ["main", "image", "banner_image", "creative"]:
+                                            if asset_role in creative_data["assets"]:
+                                                asset_obj = creative_data["assets"][asset_role]
+                                                if isinstance(asset_obj, dict) and asset_obj.get("url"):
+                                                    url = asset_obj["url"]
+                                                    break
+
                                     # Extract width/height from format if not in data
                                     width = creative_data.get("width")
                                     height = creative_data.get("height")
@@ -2536,7 +2560,7 @@ async def _create_media_buy_impl(
                                         "package_assignments": [package_id],  # This specific package
                                         "width": width,
                                         "height": height,
-                                        "url": creative_data.get("url") or creative_data.get("content_uri"),
+                                        "url": url,
                                         "asset_type": creative_data.get("asset_type", "image"),
                                         "name": creative.name or f"Creative {creative.creative_id}",
                                     }
