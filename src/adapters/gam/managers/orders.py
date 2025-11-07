@@ -610,7 +610,7 @@ class GAMOrdersManager:
 
             # If package has creatives, filter placeholders to match actual creative sizes
             # This prevents "X out of Y expected" issues and ensures one placeholder per unique size
-            if package.creative_ids or (package.creatives and len(package.creatives) > 0):
+            if package.creative_ids:
                 from sqlalchemy import select
 
                 from src.core.database.database_session import get_db_session
@@ -642,30 +642,6 @@ class GAMOrdersManager:
 
                             if width and height:
                                 creative_sizes.add((int(width), int(height)))
-
-                # Get creative sizes from inline creatives
-                if package.creatives:
-                    for creative in package.creatives:
-                        # Creative is a Pydantic object or dict
-                        if hasattr(creative, "model_dump"):
-                            creative_dict = creative.model_dump()
-                        else:
-                            creative_dict = dict(creative) if isinstance(creative, dict) else {}
-
-                        width = creative_dict.get("width")
-                        height = creative_dict.get("height")
-
-                        # Also check in assets
-                        if not (width and height) and creative_dict.get("assets"):
-                            for _asset_id, asset in creative_dict["assets"].items():
-                                if isinstance(asset, dict):
-                                    width = asset.get("width")
-                                    height = asset.get("height")
-                                    if width and height:
-                                        break
-
-                        if width and height:
-                            creative_sizes.add((int(width), int(height)))
 
                 # Build or filter placeholders based on actual creative sizes
                 if creative_sizes:
