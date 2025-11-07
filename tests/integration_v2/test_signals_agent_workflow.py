@@ -156,17 +156,23 @@ class TestSignalsAgentWorkflow:
 
         context = test_context_factory()
 
-        # Mock only external signals API call (registry will call this)
-        with patch("src.core.signals_agent_registry.create_mcp_client") as mock_create_client:
-            # Create mock result object with structured_content (matches MCP protocol)
+        # Mock ADCPMultiAgentClient (new adcp library pattern)
+        with patch("src.core.signals_agent_registry.ADCPMultiAgentClient") as mock_client_class:
+            # Create mock result object (adcp library response format)
             mock_result = Mock()
-            mock_result.structured_content = {"signals": [signal.model_dump() for signal in mock_signals_response]}
-            mock_result.content = []  # Fallback field (not used when structured_content exists)
+            mock_result.status = "completed"
+            mock_result.data = Mock()
+            # Convert Signal objects to dicts (adcp library returns dicts, not typed objects)
+            mock_result.data.signals = [signal.model_dump() for signal in mock_signals_response]
 
-            mock_client = AsyncMock()
-            mock_create_client.return_value.__aenter__.return_value = mock_client
-            mock_create_client.return_value.__aexit__.return_value = None
-            mock_client.call_tool = AsyncMock(return_value=mock_result)
+            # Mock agent client that will be returned by client.agent(name)
+            mock_agent_client = Mock()
+            mock_agent_client.get_signals = AsyncMock(return_value=mock_result)
+
+            # Mock the client - agent() should be callable and return agent_client
+            mock_client = Mock()
+            mock_client.agent = Mock(return_value=mock_agent_client)  # agent() is a method
+            mock_client_class.return_value = mock_client
 
             with self._mock_auth_context(tenant_data):
                 # Call get_products with correct parameters
@@ -184,8 +190,8 @@ class TestSignalsAgentWorkflow:
                 signals_products = [p for p in response.products if p.is_custom]
                 assert len(signals_products) > 0, "Expected at least one custom signals product"
 
-                # Verify signals call was made
-                mock_client.call_tool.assert_called_once()
+                # Verify signals call was made (adcp library pattern)
+                mock_agent_client.get_signals.assert_called_once()
 
     async def test_get_products_signals_upstream_failure_fallback(
         self, tenant_with_signals_config, test_context_factory
@@ -198,12 +204,14 @@ class TestSignalsAgentWorkflow:
 
         context = test_context_factory()
 
-        # Mock upstream failure
-        with patch("src.core.signals_agent_registry.create_mcp_client") as mock_create_client:
-            mock_client = AsyncMock()
-            mock_create_client.return_value.__aenter__.return_value = mock_client
-            mock_create_client.return_value.__aexit__.return_value = None
-            mock_client.call_tool = AsyncMock(side_effect=Exception("Connection timeout"))
+        # Mock upstream failure (adcp library pattern)
+        with patch("src.core.signals_agent_registry.ADCPMultiAgentClient") as mock_client_class:
+            mock_agent_client = Mock()
+            mock_agent_client.get_signals = AsyncMock(side_effect=Exception("Connection timeout"))
+
+            mock_client = Mock()
+            mock_client.agent = Mock(return_value=mock_agent_client)
+            mock_client_class.return_value = mock_client
 
             with self._mock_auth_context(tenant_data):
                 # Call get_products with correct parameters
@@ -230,12 +238,14 @@ class TestSignalsAgentWorkflow:
 
         context = test_context_factory()
 
-        # Mock signals client to verify it's not called
-        with patch("src.core.signals_agent_registry.create_mcp_client") as mock_create_client:
-            mock_client = AsyncMock()
-            mock_create_client.return_value.__aenter__.return_value = mock_client
-            mock_create_client.return_value.__aexit__.return_value = None
-            mock_client.call_tool = AsyncMock()
+        # Mock signals client to verify it's not called (adcp library pattern)
+        with patch("src.core.signals_agent_registry.ADCPMultiAgentClient") as mock_client_class:
+            mock_agent_client = Mock()
+            mock_agent_client.get_signals = AsyncMock()
+
+            mock_client = Mock()
+            mock_client.agent = Mock(return_value=mock_agent_client)
+            mock_client_class.return_value = mock_client
 
             with self._mock_auth_context(tenant_data):
                 # Call get_products with correct parameters (empty brief)
@@ -249,8 +259,8 @@ class TestSignalsAgentWorkflow:
                 # Should return products but no signals call
                 assert len(response.products) > 0
 
-                # Verify upstream was NOT called (optimization)
-                mock_client.call_tool.assert_not_called()
+                # Verify upstream was NOT called (optimization, adcp library pattern)
+                mock_agent_client.get_signals.assert_not_called()
 
     def _mock_auth_context(self, tenant_data):
         """Helper to create authentication context patches.
