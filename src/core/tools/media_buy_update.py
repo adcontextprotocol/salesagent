@@ -313,7 +313,9 @@ def _update_media_buy_impl(
                         implementation_date=None,
                         errors=[{"code": "currency_not_supported", "message": error_msg}],
                     )
-                    ctx_manager.update_workflow_step(step.step_id, status="failed", response_data=response_data.model_dump(), error_message=error_msg)
+                    ctx_manager.update_workflow_step(
+                        step.step_id, status="failed", response_data=response_data.model_dump(), error_message=error_msg
+                    )
                     return response_data
 
                 # Calculate new flight duration
@@ -551,6 +553,42 @@ def _update_media_buy_impl(
                         )
                         return response_data
 
+                    # Validate creatives have required fields (URL, dimensions) before updating
+                    validation_errors = []
+                    for creative in creatives_list:
+                        creative_data = creative.data or {}
+
+                        # Extract URL from AdCP-compliant nested assets structure
+                        url = None
+                        if creative_data.get("assets"):
+                            for asset_role in ["main", "image", "banner_image", "creative"]:
+                                if asset_role in creative_data["assets"]:
+                                    asset_obj = creative_data["assets"][asset_role]
+                                    if isinstance(asset_obj, dict) and asset_obj.get("url"):
+                                        url = asset_obj["url"]
+                                        break
+
+                        # Check dimensions
+                        width = creative_data.get("width")
+                        height = creative_data.get("height")
+
+                        if not url:
+                            validation_errors.append(f"Creative {creative.creative_id} missing required URL field")
+                        if not width or not height:
+                            validation_errors.append(
+                                f"Creative {creative.creative_id} missing dimensions (width={width}, height={height})"
+                            )
+
+                    if validation_errors:
+                        error_msg = (
+                            "Cannot update media buy with invalid creatives. "
+                            "The following creatives are missing required fields:\n"
+                            + "\n".join(f"  • {err}" for err in validation_errors)
+                            + "\n\nAll creatives must have dimensions (width/height) and a content URL."
+                        )
+                        logger.error(f"[UPDATE] {error_msg}")
+                        raise ToolError("INVALID_CREATIVES", error_msg, {"creative_errors": validation_errors})
+
                     # Get existing assignments for this package
                     assignment_stmt = select(DBAssignment).where(
                         DBAssignment.tenant_id == tenant["tenant_id"],
@@ -696,7 +734,6 @@ def _update_media_buy_impl(
         buyer_ref=req.buyer_ref or "",
         implementation_date=None,
         affected_packages=affected_packages_list if affected_packages_list else None,
-        
     )
 
     # Persist success with response data, then return
