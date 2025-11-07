@@ -228,3 +228,54 @@ This is an issue with the creative agent's MCP tool implementation - it should r
 ### Fallback Status
 
 Fallback formats remain necessary because the creative agent doesn't return structured data. This is now a **creative agent issue**, not an adcp library or connectivity issue.
+
+## Update: 2025-11-06 Late Evening - adcp v1.0.4
+
+### Upgrade to v1.0.4 ✅
+
+Upgraded to `adcp>=1.0.4` which fixes the response parsing bug from v1.0.3.
+
+**v1.0.3 Issue (FIXED)**:
+```python
+# v1.0.3 had: if item.get("type") == "text":
+# But item was a Pydantic object, not a dict
+AttributeError: 'TextContent' object has no attribute 'get'
+```
+
+**v1.0.4 Fix**:
+Properly handles Pydantic `TextContent` objects and looks for JSON data.
+
+### Creative Agent Issue Confirmed 🔴
+
+adcp v1.0.4 correctly identifies the problem - the creative agent returns:
+
+**Current Response**:
+```json
+{
+  "type": "text",
+  "text": "Found 42 creative formats"
+}
+```
+
+**Expected Response**:
+```json
+{
+  "type": "text",
+  "text": "{\"formats\": [{\"format_id\": {...}, \"name\": \"...\", ...}, ...]}"
+}
+```
+
+**v1.0.4 Error** (correct behavior):
+```
+Failed to parse response: No valid ListCreativeFormatsResponse data found in MCP content.
+Content types: ['text']. Content preview: [{"type": "text", "text": "Found 42 creative formats"}]
+```
+
+### Conclusion
+
+- ✅ **adcp library**: All issues resolved in v1.0.4
+- ❌ **Creative agent**: Must return JSON with actual format objects
+- ✅ **Fallback formats**: Still necessary and appropriate
+- ✅ **This PR**: Ready to merge - signals agent migration complete
+
+The creative agent at `https://creative.adcontextprotocol.org` needs to be updated to return the actual format data as JSON, not just a text summary.
