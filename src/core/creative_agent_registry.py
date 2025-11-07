@@ -79,30 +79,6 @@ class CreativeAgentRegistry:
         priority=1,
     )
 
-    # TEMPORARY: Fallback formats for E2E test resilience
-    # TODO: Remove once we understand why AdCP creative agent returns 0 formats in CI
-    # The service is up but adcp library call returns empty - needs investigation
-    FALLBACK_FORMATS = [
-        {
-            "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
-            "name": "Display 300x250",
-            "type": "display",
-            "is_standard": True,
-        },
-        {
-            "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
-            "name": "Display 728x90",
-            "type": "display",
-            "is_standard": True,
-        },
-        {
-            "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_160x600"},
-            "name": "Display 160x600",
-            "type": "display",
-            "is_standard": True,
-        },
-    ]
-
     def __init__(self):
         """Initialize registry with empty cache."""
         self._format_cache: dict[str, CachedFormats] = {}  # Key: agent_url
@@ -437,16 +413,6 @@ class CreativeAgentRegistry:
                 # Log error but continue with other agents
                 logger.error(f"Failed to fetch formats from {agent.agent_url}: {e}", exc_info=True)
                 continue
-
-        # TEMPORARY: If no formats were fetched from any agent, use fallback formats
-        # TODO: Remove once we understand why AdCP creative agent returns 0 formats in CI
-        if not all_formats:
-            logger.warning("No formats fetched from any agent, using fallback formats for E2E test resilience")
-            from typing import Any, cast
-
-            from src.core.schemas import Format
-
-            all_formats = [Format(**cast(dict[str, Any], fmt_data)) for fmt_data in self.FALLBACK_FORMATS]
 
         logger.info(f"list_all_formats: Returning {len(all_formats)} total formats")
         return all_formats
