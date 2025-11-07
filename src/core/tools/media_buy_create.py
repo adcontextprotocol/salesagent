@@ -280,36 +280,24 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
         width = None
         height = None
         if creative_data.get("assets") and format_spec and format_spec.assets_required:
-            logger.info(
-                f"[DIMENSION_DEBUG] Creative {creative.creative_id}: "
-                f"format_spec.assets_required={[req.asset_id for req in format_spec.assets_required]}, "
-                f"creative assets keys={list(creative_data['assets'].keys())}"
-            )
             # Use format spec to find the correct asset_id for image/video assets
             for asset_req in format_spec.assets_required:
                 asset_type = asset_req.asset_type.lower()
                 if asset_type in ["image", "video"]:
                     asset_id = asset_req.asset_id
-                    logger.info(f"[DIMENSION_DEBUG] Checking asset_id='{asset_id}' (type={asset_type})")
                     if asset_id in creative_data["assets"]:
                         asset_obj = creative_data["assets"][asset_id]
-                        logger.info(f"[DIMENSION_DEBUG] Found asset: {asset_obj}")
                         if isinstance(asset_obj, dict):
                             width = asset_obj.get("width")
                             height = asset_obj.get("height")
-                            logger.info(f"[DIMENSION_DEBUG] Extracted width={width}, height={height}")
                             if width and height:
                                 break
-                    else:
-                        logger.info(f"[DIMENSION_DEBUG] Asset '{asset_id}' NOT in creative assets")
 
         # Fallback: Check for dimensions at top level (backwards compatibility)
         if not width:
             width = creative_data.get("width")
         if not height:
             height = creative_data.get("height")
-
-        logger.info(f"[DIMENSION_DEBUG] Final result for {creative.creative_id}: width={width}, height={height}")
 
         if not url:
             validation_errors.append(
