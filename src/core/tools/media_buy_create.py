@@ -212,27 +212,39 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
     for creative in creatives_list:
         creative_data = creative.data or {}
 
-        # Get format specification from creative agent
+        # Get format specification from cache first, then creative agent
         format_spec = None
         if creative.format:
-            # creative.format is a string (format ID)
-            # Parse agent_url from creative.agent_url
-            try:
-                # Use asyncio event loop to run async registry.get_format() synchronously
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    format_spec = loop.run_until_complete(registry.get_format(creative.agent_url, str(creative.format)))
-                finally:
-                    loop.close()
-            except Exception as e:
-                logger.warning(f"Could not fetch format {creative.format} from {creative.agent_url}: {e}")
+            from src.core.format_spec_cache import get_cached_format
 
-        # Skip validation if format spec couldn't be fetched (e.g., in tests with mock data)
+            # Try cache first (fast, works offline)
+            format_spec = get_cached_format(str(creative.format))
+
+            # If not in cache, try fetching from creative agent
+            if not format_spec:
+                try:
+                    # Use asyncio event loop to run async registry.get_format() synchronously
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        format_spec = loop.run_until_complete(
+                            registry.get_format(creative.agent_url, str(creative.format))
+                        )
+                        # Cache the fetched format for future use
+                        if format_spec:
+                            from src.core.format_spec_cache import save_format_specs_to_cache
+
+                            save_format_specs_to_cache([format_spec])
+                    finally:
+                        loop.close()
+                except Exception as e:
+                    logger.warning(f"Could not fetch format {creative.format} from {creative.agent_url}: {e}")
+
+        # Fail validation if format spec not found (no skipping!)
         if not format_spec:
-            logger.debug(
-                f"Skipping validation for creative {creative.creative_id} - format spec not available "
-                f"(format={creative.format}, agent={creative.agent_url})"
+            validation_errors.append(
+                f"Creative {creative.creative_id} has unknown format '{creative.format}' "
+                f"(not in cache and could not fetch from agent {creative.agent_url})"
             )
             continue
 
