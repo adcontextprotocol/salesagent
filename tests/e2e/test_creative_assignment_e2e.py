@@ -86,17 +86,11 @@ class TestCreativeAssignment:
             format_id = None
             for fmt in formats_data["formats"]:
                 fmt_id = fmt.get("format_id")
-                # format_id can be a string or dict with 'id' field
-                # Extract the string ID for comparison and usage
-                if isinstance(fmt_id, str):
-                    fmt_id_str = fmt_id
-                elif isinstance(fmt_id, dict):
-                    fmt_id_str = fmt_id.get("id", "")
-                else:
-                    fmt_id_str = ""
+                # format_id is always a FormatId dict per AdCP spec
+                fmt_id_str = fmt_id.get("id", "") if isinstance(fmt_id, dict) else ""
 
                 if "display" in fmt_id_str.lower():
-                    format_id = fmt_id_str  # Store the STRING id, not the dict
+                    format_id = fmt_id_str  # Store the STRING id
                     break
 
             assert format_id, "Must find at least one display format"
@@ -294,17 +288,11 @@ class TestCreativeAssignment:
             format_id = None
             for fmt in formats_data["formats"]:
                 fmt_id = fmt.get("format_id")
-                # format_id can be a string or dict with 'id' field
-                # Extract the string ID for comparison and usage
-                if isinstance(fmt_id, str):
-                    fmt_id_str = fmt_id
-                elif isinstance(fmt_id, dict):
-                    fmt_id_str = fmt_id.get("id", "")
-                else:
-                    fmt_id_str = ""
+                # format_id is always a FormatId dict per AdCP spec
+                fmt_id_str = fmt_id.get("id", "") if isinstance(fmt_id, dict) else ""
 
                 if "display" in fmt_id_str.lower():
-                    format_id = fmt_id_str  # Store the STRING id, not the dict
+                    format_id = fmt_id_str  # Store the STRING id
                     break
 
             assert format_id, "Must find display format"
