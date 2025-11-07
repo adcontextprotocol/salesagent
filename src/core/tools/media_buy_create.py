@@ -164,6 +164,79 @@ def _determine_media_buy_status(
         return "active"
 
 
+def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: str) -> None:
+    """Validate all creatives have required fields BEFORE calling adapter.
+
+    This prevents GAM order creation when creatives are invalid, enabling
+    true all-or-nothing behavior without rollback complexity.
+
+    Args:
+        packages: List of Package objects with creative_ids
+        tenant_id: Tenant ID for database lookup
+
+    Raises:
+        ToolError: If any creative is missing required fields (URL, dimensions)
+    """
+    from sqlalchemy import select
+
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Creative as DBCreative
+
+    # Collect all creative IDs from all packages
+    all_creative_ids = set()
+    for package in packages:
+        if hasattr(package, "creative_ids") and package.creative_ids:
+            all_creative_ids.update(package.creative_ids)
+
+    if not all_creative_ids:
+        # No creatives to validate
+        return
+
+    # Fetch all creatives in one query
+    with get_db_session() as session:
+        stmt = select(DBCreative).where(
+            DBCreative.tenant_id == tenant_id, DBCreative.creative_id.in_(list(all_creative_ids))
+        )
+        creatives_list = list(session.scalars(stmt).all())
+
+    # Validate each creative has required fields
+    validation_errors = []
+    for creative in creatives_list:
+        creative_data = creative.data or {}
+
+        # Extract URL from AdCP-compliant nested assets structure
+        url = None
+        if creative_data.get("assets"):
+            for asset_role in ["main", "image", "banner_image", "creative"]:
+                if asset_role in creative_data["assets"]:
+                    asset_obj = creative_data["assets"][asset_role]
+                    if isinstance(asset_obj, dict) and asset_obj.get("url"):
+                        url = asset_obj["url"]
+                        break
+
+        # Check dimensions
+        width = creative_data.get("width")
+        height = creative_data.get("height")
+
+        if not url:
+            validation_errors.append(f"Creative {creative.creative_id} missing required URL field")
+        if not width or not height:
+            validation_errors.append(
+                f"Creative {creative.creative_id} missing dimensions (width={width}, height={height})"
+            )
+
+    if validation_errors:
+        error_msg = (
+            "Cannot create media buy with invalid creatives. "
+            "The following creatives are missing required fields:\n"
+            + "\n".join(f"  • {err}" for err in validation_errors)
+            + "\n\nAll creatives must have dimensions (width/height) and a content URL. "
+            "Please ensure creatives are properly synced before creating media buys."
+        )
+        logger.error(f"[PRE-VALIDATION] {error_msg}")
+        raise ToolError("INVALID_CREATIVES", error_msg, {"creative_errors": validation_errors})
+
+
 def _execute_adapter_media_buy_creation(
     request: CreateMediaBuyRequest,
     packages: list[Package],
@@ -521,6 +594,10 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                 f"[APPROVAL] Calling adapter for {media_buy_id}: "
                 f"{len(packages)} packages, start={start_time}, end={end_time}"
             )
+
+        # PRE-VALIDATE: Check all creatives have required fields BEFORE calling adapter
+        # This prevents GAM order creation when creatives are invalid (all-or-nothing approach)
+        _validate_creatives_before_adapter_call(packages, tenant_id)  # type: ignore[arg-type]
 
         # Execute adapter creation (outside session to avoid conflicts)
         # Type ignore needed because we're passing MediaPackage list as Package list (adapter compatibility)
@@ -2281,6 +2358,16 @@ async def _create_media_buy_impl(
                 buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
                 errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
             )
+
+        # PRE-VALIDATE: Check all creatives have required fields BEFORE calling adapter
+        # This prevents GAM order creation when creatives are invalid (all-or-nothing approach)
+        try:
+            _validate_creatives_before_adapter_call(packages, tenant["tenant_id"])
+        except ToolError:
+            # Validation failed - creative validation errors already logged
+            # Update workflow step as failed and re-raise
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message="Creative validation failed")
+            raise
 
         # Call adapter using shared creation logic
         # Note: start_time variable already resolved from 'asap' to actual datetime if needed
