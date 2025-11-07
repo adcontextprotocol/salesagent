@@ -553,38 +553,23 @@ def _update_media_buy_impl(
                         )
                         return response_data
 
-                    # Validate creatives have required fields (URL, dimensions) before updating
+                    # Validate creatives are in usable state before updating
+                    # Note: We validate existence (already done above) and status, not structure
+                    # Structure validation happens during sync_creatives - here we just assign
                     validation_errors = []
                     for creative in creatives_list:
-                        creative_data = creative.data or {}
-
-                        # Extract URL from AdCP-compliant nested assets structure
-                        url = None
-                        if creative_data.get("assets"):
-                            for asset_role in ["main", "image", "banner_image", "creative"]:
-                                if asset_role in creative_data["assets"]:
-                                    asset_obj = creative_data["assets"][asset_role]
-                                    if isinstance(asset_obj, dict) and asset_obj.get("url"):
-                                        url = asset_obj["url"]
-                                        break
-
-                        # Check dimensions
-                        width = creative_data.get("width")
-                        height = creative_data.get("height")
-
-                        if not url:
-                            validation_errors.append(f"Creative {creative.creative_id} missing required URL field")
-                        if not width or not height:
+                        # Check if creative is in a valid state for assignment
+                        # Creatives in "error" or "rejected" state should not be assignable
+                        if creative.status in ["error", "rejected"]:
                             validation_errors.append(
-                                f"Creative {creative.creative_id} missing dimensions (width={width}, height={height})"
+                                f"Creative {creative.creative_id} cannot be assigned (status={creative.status})"
                             )
 
                     if validation_errors:
                         error_msg = (
                             "Cannot update media buy with invalid creatives. "
-                            "The following creatives are missing required fields:\n"
+                            "The following creatives cannot be assigned:\n"
                             + "\n".join(f"  • {err}" for err in validation_errors)
-                            + "\n\nAll creatives must have dimensions (width/height) and a content URL."
                         )
                         logger.error(f"[UPDATE] {error_msg}")
                         raise ToolError("INVALID_CREATIVES", error_msg, {"creative_errors": validation_errors})

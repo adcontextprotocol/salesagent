@@ -679,7 +679,7 @@ class GoogleAdManager(AdServerAdapter):
                     try:
                         approval_id = start_order_approval_background(
                             order_id=order_id,
-                            media_buy_id=media_buy_id,
+                            media_buy_id=order_id,  # In automatic mode, media_buy_id = order_id
                             tenant_id=self.tenant_id or "",
                             principal_id=principal_id,
                             webhook_url=webhook_url,
