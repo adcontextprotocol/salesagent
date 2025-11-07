@@ -491,24 +491,41 @@ def _sync_creatives_impl(
                                                     if build_result.get("creative_output"):
                                                         creative_output = build_result["creative_output"]
 
-                                                        if creative_output.get("assets"):
+                                                        # Only use generative assets if user didn't provide their own
+                                                        user_provided_assets = creative.get("assets")
+                                                        if creative_output.get("assets") and not user_provided_assets:
                                                             data["assets"] = creative_output["assets"]
                                                             changes.append("assets")
+                                                            logger.info(
+                                                                "[sync_creatives] Using assets from generative output (update)"
+                                                            )
+                                                        elif user_provided_assets:
+                                                            logger.info(
+                                                                "[sync_creatives] Preserving user-provided assets in update, "
+                                                                "not overwriting with generative output"
+                                                            )
 
                                                         if creative_output.get("output_format"):
                                                             output_format = creative_output["output_format"]
                                                             data["output_format"] = output_format
                                                             changes.append("output_format")
 
+                                                            # Only use generative URL if user didn't provide one
                                                             if isinstance(output_format, dict) and output_format.get(
                                                                 "url"
                                                             ):
-                                                                data["url"] = output_format["url"]
-                                                                changes.append("url")
-                                                                logger.info(
-                                                                    f"[sync_creatives] Got URL from generative output (update): "
-                                                                    f"{data['url']}"
-                                                                )
+                                                                if not data.get("url"):
+                                                                    data["url"] = output_format["url"]
+                                                                    changes.append("url")
+                                                                    logger.info(
+                                                                        f"[sync_creatives] Got URL from generative output (update): "
+                                                                        f"{data['url']}"
+                                                                    )
+                                                                else:
+                                                                    logger.info(
+                                                                        "[sync_creatives] Preserving user-provided URL in update, "
+                                                                        "not overwriting with generative output"
+                                                                    )
 
                                                     logger.info(
                                                         f"[sync_creatives] Generative creative updated: "
@@ -742,13 +759,43 @@ def _sync_creatives_impl(
                         creative_id = creative.get("creative_id", "unknown")
 
                         # Prepare data field with all creative properties
+                        # Extract URL from assets if not provided at top level
+                        url = creative.get("url")
+                        if not url and creative.get("assets"):
+                            assets = creative["assets"]
+
+                            # Priority 1: Try common asset_ids
+                            for priority_key in ["main", "image", "video", "creative", "content"]:
+                                if priority_key in assets and isinstance(assets[priority_key], dict):
+                                    url = assets[priority_key].get("url")
+                                    if url:
+                                        logger.debug(
+                                            f"[sync_creatives] Extracted URL from assets.{priority_key}.url for create"
+                                        )
+                                        break
+
+                            # Priority 2: First available asset URL
+                            if not url:
+                                for asset_id, asset_data in assets.items():
+                                    if isinstance(asset_data, dict) and asset_data.get("url"):
+                                        url = asset_data["url"]
+                                        logger.debug(
+                                            f"[sync_creatives] Extracted URL from assets.{asset_id}.url for create (fallback)"
+                                        )
+                                        break
+
                         data = {
-                            "url": creative.get("url"),
+                            "url": url,
                             "click_url": creative.get("click_url"),
                             "width": creative.get("width"),
                             "height": creative.get("height"),
                             "duration": creative.get("duration"),
                         }
+
+                        # Store user-provided assets for preservation check
+                        user_provided_assets = creative.get("assets")
+                        if user_provided_assets:
+                            data["assets"] = user_provided_assets
 
                         # Add AdCP v1.3+ fields to data
                         if creative.get("snippet"):
@@ -862,19 +909,33 @@ def _sync_creatives_impl(
                                             if build_result.get("creative_output"):
                                                 creative_output = build_result["creative_output"]
 
-                                                if creative_output.get("assets"):
+                                                # Only use generative assets if user didn't provide their own
+                                                if creative_output.get("assets") and not user_provided_assets:
                                                     data["assets"] = creative_output["assets"]
+                                                    logger.info("[sync_creatives] Using assets from generative output")
+                                                elif user_provided_assets:
+                                                    logger.info(
+                                                        "[sync_creatives] Preserving user-provided assets, "
+                                                        "not overwriting with generative output"
+                                                    )
 
                                                 if creative_output.get("output_format"):
                                                     output_format = creative_output["output_format"]
                                                     data["output_format"] = output_format
 
+                                                    # Only use generative URL if user didn't provide one
                                                     if isinstance(output_format, dict) and output_format.get("url"):
-                                                        data["url"] = output_format["url"]
-                                                        logger.info(
-                                                            f"[sync_creatives] Got URL from generative output: "
-                                                            f"{data['url']}"
-                                                        )
+                                                        if not data.get("url"):
+                                                            data["url"] = output_format["url"]
+                                                            logger.info(
+                                                                f"[sync_creatives] Got URL from generative output: "
+                                                                f"{data['url']}"
+                                                            )
+                                                        else:
+                                                            logger.info(
+                                                                "[sync_creatives] Preserving user-provided URL, "
+                                                                "not overwriting with generative output"
+                                                            )
 
                                             logger.info(
                                                 f"[sync_creatives] Generative creative built: "
@@ -941,20 +1002,25 @@ def _sync_creatives_impl(
                                         if renders:
                                             first_render = renders[0]
 
-                                            # Store preview URL from render
-                                            if first_render.get("preview_url"):
+                                            # Only use preview URL if user didn't provide one
+                                            if first_render.get("preview_url") and not data.get("url"):
                                                 data["url"] = first_render["preview_url"]
                                                 logger.info(
                                                     f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
                                                 )
+                                            elif data.get("url"):
+                                                logger.info(
+                                                    "[sync_creatives] Preserving user-provided URL from assets, "
+                                                    "not overwriting with preview URL"
+                                                )
 
-                                            # Extract dimensions from dimensions object
+                                            # Only use preview dimensions if user didn't provide them
                                             dimensions = first_render.get("dimensions", {})
-                                            if dimensions.get("width"):
+                                            if dimensions.get("width") and not data.get("width"):
                                                 data["width"] = dimensions["width"]
-                                            if dimensions.get("height"):
+                                            if dimensions.get("height") and not data.get("height"):
                                                 data["height"] = dimensions["height"]
-                                            if dimensions.get("duration"):
+                                            if dimensions.get("duration") and not data.get("duration"):
                                                 data["duration"] = dimensions["duration"]
 
                                         logger.info(

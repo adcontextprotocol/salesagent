@@ -2753,13 +2753,22 @@ async def _create_media_buy_impl(
                                     # Update creative in database with platform_creative_id
                                     if upload_result and len(upload_result) > 0:
                                         uploaded_status = upload_result[0]
-                                        if uploaded_status.creative_id:
+                                        # Only set platform_creative_id if not already set
+                                        if uploaded_status.creative_id and not creative.data.get(
+                                            "platform_creative_id"
+                                        ):
                                             creative.data["platform_creative_id"] = uploaded_status.creative_id
                                             session.add(creative)
                                             platform_creative_ids.append(uploaded_status.creative_id)
                                             logger.info(
                                                 f"Updated creative {creative_id} with platform_creative_id={uploaded_status.creative_id}"
                                             )
+                                        elif creative.data.get("platform_creative_id"):
+                                            logger.info(
+                                                f"Preserving existing platform_creative_id={creative.data.get('platform_creative_id')} "
+                                                f"for creative {creative_id}, not overwriting with upload result"
+                                            )
+                                            platform_creative_ids.append(creative.data["platform_creative_id"])
                                 except ToolError:
                                     # Re-raise ToolError - validation failures should fail the entire operation
                                     raise
