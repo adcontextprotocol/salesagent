@@ -37,7 +37,6 @@ dependencies = [
     "jinja2>=3.1.0",
     "prometheus-client>=0.23.1",
     "types-pytz>=2025.2.0.20250809",
-    "commitizen>=3.29.0", # Version management and changelog generation
 ]
 
 
@@ -66,7 +65,6 @@ ui-tests = [
 
 [dependency-groups]
 dev = [
-    "commitizen>=3.29.0",
     "mocker>=1.1.1",
     "mypy>=1.18.2",
     "pytest>=8.4.1",
@@ -145,12 +143,3 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E722", "F821"]
 "admin_ui.py" = ["E402", "E722"]
-
-[tool.commitizen]
-name = "cz_conventional_commits"
-version = "0.1.0"
-tag_format = "v$version"
-update_changelog_on_bump = true
-version_files = [
-    "pyproject.toml:version"
-]
