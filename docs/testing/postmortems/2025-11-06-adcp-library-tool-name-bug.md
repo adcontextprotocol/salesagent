@@ -1,12 +1,16 @@
-# Postmortem: adcp v1.0.1 list_creative_formats Bug
+# Postmortem: Creative Agent Format Discovery Issues
 
 **Date**: 2025-11-06
-**Status**: 🔴 CRITICAL - Blocks format discovery
-**Impact**: E2E tests failing, creative format discovery broken
+**Status**: 🟡 RESOLVED (adcp library) + 🔴 OPEN (creative agent response format)
+**Impact**: E2E tests failing, creative format discovery returns text instead of structured data
 
 ## Summary
 
-The `adcp` Python library v1.0.1 has a critical bug where `list_creative_formats()` calls the wrong tool name (`update_media_buy` instead of `list_creative_formats`), causing all format discovery to fail.
+**Issue 1 (RESOLVED)**: The `adcp` Python library v1.0.1 had a critical bug where `list_creative_formats()` called the wrong tool name (`update_media_buy` instead of `list_creative_formats`).
+
+**Resolution**: Upgraded to `adcp==1.0.2` which fixes the tool name bug.
+
+**Issue 2 (OPEN)**: The AdCP creative agent at `https://creative.adcontextprotocol.org` returns text content ("Found 42 creative formats") instead of structured `ListCreativeFormatsResponse` data.
 
 ## Root Cause
 
@@ -172,3 +176,55 @@ The alternative would be to:
 - Block PR indefinitely (delays signals agent migration)
 
 None of these are better than a well-documented, temporary fallback.
+
+## Update: 2025-11-06 Evening
+
+### Issue 1 Resolution ✅
+
+Upgraded to `adcp==1.0.2` which fixes the tool name bug. The tool is now being called correctly:
+
+**Before (v1.0.1)**:
+```
+DEBUG: JSONRPCRequest(params={'name': 'update_media_buy'})  # ❌ Wrong!
+Response: 'Unknown tool: update_media_buy'
+```
+
+**After (v1.0.2)**:
+```
+DEBUG: JSONRPCRequest(params={'name': 'list_creative_formats'})  # ✅ Correct!
+Response: TextContent(text='Found 42 creative formats')
+```
+
+### Issue 2: Creative Agent Response Format 🔴
+
+The creative agent is now responding, but returns **text content** instead of **structured data**:
+
+**Current Response**:
+```python
+result.data = [TextContent(type='text', text='Found 42 creative formats')]
+```
+
+**Expected Response**:
+```python
+result.data = ListCreativeFormatsResponse(
+    formats=[
+        Format(format_id=..., name=..., type=..., ...),
+        Format(format_id=..., name=..., type=..., ...),
+        # ... 42 formats
+    ]
+)
+```
+
+This is an issue with the creative agent's MCP tool implementation - it should return `structured_content` with the actual format objects, not just a text summary.
+
+### Action Items Update
+
+- [x] Issue 1: Upgrade to adcp v1.0.2 (COMPLETE)
+- [x] Update pyproject.toml: adcp==1.0.2 (COMPLETE)
+- [ ] Issue 2: Report to creative agent maintainers (structured response needed)
+- [ ] Keep fallback formats until creative agent is fixed
+- [ ] Update postmortem once creative agent returns structured data
+
+### Fallback Status
+
+Fallback formats remain necessary because the creative agent doesn't return structured data. This is now a **creative agent issue**, not an adcp library or connectivity issue.
