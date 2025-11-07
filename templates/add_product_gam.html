@@ -210,6 +210,64 @@
         {% include 'components/targeting_selector_simple.html' %}
         <input type="hidden" id="targeting-data" name="targeting_template" value='{{ product.targeting_template | tojson if product and product.targeting_template else "{}" }}'>
 
+        <!-- Product Details (AdCP Compliance) -->
+        <h3 style="margin-top: 2rem;">
+            <i class="fas fa-info-circle"></i> Product Details
+        </h3>
+        <div class="alert" style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 1rem; margin-bottom: 1rem;">
+            <strong>Required:</strong> Delivery measurement is required per AdCP spec. Other details enhance product visibility for buyers.
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="delivery_measurement_provider">Delivery Measurement Provider *</label>
+                {% set measurement_config = tenant.measurement_providers if tenant else {} %}
+                {% set providers = measurement_config.providers if measurement_config else [] %}
+                {% set default_provider = measurement_config.default if measurement_config else '' %}
+                {% set current_value = product.delivery_measurement.provider if product and product.delivery_measurement else default_provider %}
+
+                <input type="text" id="delivery_measurement_provider" name="delivery_measurement_provider"
+                       list="measurement_providers_list"
+                       placeholder="e.g., Google Ad Manager with IAS viewability"
+                       value="{{ current_value }}" required>
+                <datalist id="measurement_providers_list">
+                    {% if providers %}
+                        {% for provider in providers %}
+                        <option value="{{ provider }}">
+                        {% endfor %}
+                    {% else %}
+                        <option value="Google Ad Manager">
+                        <option value="Google Ad Manager with IAS">
+                        <option value="Google Ad Manager with MOAT">
+                    {% endif %}
+                </datalist>
+                <small style="color: #666;">Select from configured providers or enter custom (autocomplete enabled)</small>
+            </div>
+
+            <div class="form-group">
+                <label for="delivery_measurement_notes">Measurement Notes</label>
+                <input type="text" id="delivery_measurement_notes" name="delivery_measurement_notes"
+                       placeholder="e.g., MRC-accredited viewability. 50% in-view for 1s"
+                       value="{{ product.delivery_measurement.notes if product and product.delivery_measurement and product.delivery_measurement.notes else '' }}">
+                <small style="color: #666;">Additional methodology details (optional)</small>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="product_image_url">Product Image URL (Optional)</label>
+            <input type="url" id="product_image_url" name="product_image_url"
+                   placeholder="https://example.com/product-image.jpg"
+                   value="{{ product.product_card.manifest.product_image if product and product.product_card and product.product_card.manifest else '' }}">
+            <small style="color: #666;">
+                Product image for visual cards (300x400px recommended). Leave blank to auto-generate from product data.
+            </small>
+            {% if product and product.product_card and product.product_card.manifest and product.product_card.manifest.product_image %}
+            <div style="margin-top: 0.5rem;">
+                <img src="{{ product.product_card.manifest.product_image }}" alt="Current product image" style="max-width: 200px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            {% endif %}
+        </div>
+
         <!-- Submit Buttons -->
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
             <button type="submit" class="btn btn-primary">{{ 'Update Product' if product else 'Create Product' }}</button>

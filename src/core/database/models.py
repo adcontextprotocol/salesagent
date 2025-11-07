@@ -84,6 +84,10 @@ class Tenant(Base, JSONValidatorMixin):
         String(500), nullable=True, server_default="{order_name} - {product_name}"
     )
 
+    # Measurement providers configuration
+    # Structure: {"providers": ["Provider 1", "Provider 2"], "default": "Provider 1"}
+    measurement_providers: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
     principals = relationship("Principal", back_populates="tenant", cascade="all, delete-orphan")
@@ -185,6 +189,18 @@ class Product(Base, JSONValidatorMixin):
     property_tags: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
     # Note: PR #79 fields (estimated_exposures, floor_cpm, recommended_cpm) are NOT stored in database
     # They are calculated dynamically from product_performance_metrics table
+
+    # Product detail fields (AdCP v1 spec compliance)
+    # Type hint: delivery measurement dict with provider (required) and notes (optional)
+    delivery_measurement: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    # Type hint: product card dict with format_id and manifest
+    product_card: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    # Type hint: detailed product card dict with format_id and manifest
+    product_card_detailed: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    # Type hint: list of placement dicts (each with placement_id, name, description, format_ids)
+    placements: Mapped[list[dict] | None] = mapped_column(JSONType, nullable=True)
+    # Type hint: reporting capabilities dict
+    reporting_capabilities: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="products")

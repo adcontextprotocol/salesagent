@@ -776,6 +776,47 @@ def add_product(tenant_id):
                 if countries is not None:
                     product_kwargs["countries"] = countries
 
+                # Handle product detail fields (AdCP compliance)
+                # Delivery measurement (REQUIRED per AdCP spec)
+                delivery_measurement_provider = form_data.get("delivery_measurement_provider", "").strip()
+                delivery_measurement_notes = form_data.get("delivery_measurement_notes", "").strip()
+                if delivery_measurement_provider:
+                    product_kwargs["delivery_measurement"] = {
+                        "provider": delivery_measurement_provider,
+                    }
+                    if delivery_measurement_notes:
+                        product_kwargs["delivery_measurement"]["notes"] = delivery_measurement_notes
+
+                # Product image for card generation (optional)
+                product_image_url = form_data.get("product_image_url", "").strip()
+                if product_image_url:
+                    # Auto-generate product card from image and product data
+                    product_kwargs["product_card"] = {
+                        "format_id": {
+                            "agent_url": "https://creative.adcontextprotocol.org/",
+                            "id": "product_card_standard",
+                        },
+                        "manifest": {
+                            "product_image": product_image_url,
+                            "product_name": form_data["name"],
+                            "product_description": form_data.get("description", ""),
+                            "delivery_type": delivery_type,
+                        },
+                    }
+                    # Add pricing info to manifest if available
+                    if pricing_options_data and len(pricing_options_data) > 0:
+                        first_option = pricing_options_data[0]
+                        product_kwargs["product_card"]["manifest"]["pricing_model"] = first_option.get(
+                            "pricing_model", "CPM"
+                        )
+                        if first_option.get("is_fixed") and first_option.get("fixed_price"):
+                            product_kwargs["product_card"]["manifest"]["pricing_amount"] = str(
+                                first_option["fixed_price"]
+                            )
+                            product_kwargs["product_card"]["manifest"]["pricing_currency"] = first_option.get(
+                                "currency_code", "USD"
+                            )
+
                 # Handle property authorization (AdCP requirement)
                 # Default to empty property_tags if not specified (satisfies DB constraint)
                 property_mode = form_data.get("property_mode", "tags")
@@ -1026,7 +1067,7 @@ def add_product(tenant_id):
         # For Mock and other adapters: simple form
         formats = get_creative_formats(tenant_id=tenant_id)
         return render_template(
-            "add_product.html",
+            "add_product_mock.html",
             tenant_id=tenant_id,
             formats=formats,
             authorized_properties=properties_list,
@@ -1375,6 +1416,63 @@ def edit_product(tenant_id, product_id):
                     for po in existing_options[len(pricing_options_data) :]:
                         db_session.delete(po)
 
+                # Handle product detail fields (AdCP compliance)
+                # Delivery measurement (REQUIRED per AdCP spec)
+                delivery_measurement_provider = form_data.get("delivery_measurement_provider", "").strip()
+                delivery_measurement_notes = form_data.get("delivery_measurement_notes", "").strip()
+                if delivery_measurement_provider:
+                    product.delivery_measurement = {
+                        "provider": delivery_measurement_provider,
+                    }
+                    if delivery_measurement_notes:
+                        product.delivery_measurement["notes"] = delivery_measurement_notes
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "delivery_measurement")
+                elif product.delivery_measurement:
+                    # Clear if provider was removed
+                    product.delivery_measurement = None
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "delivery_measurement")
+
+                # Product image for card generation (optional)
+                product_image_url = form_data.get("product_image_url", "").strip()
+                if product_image_url:
+                    # Update or create product card
+                    if not product.product_card:
+                        product.product_card = {
+                            "format_id": {
+                                "agent_url": "https://creative.adcontextprotocol.org/",
+                                "id": "product_card_standard",
+                            },
+                            "manifest": {},
+                        }
+
+                    # Update manifest
+                    product.product_card["manifest"]["product_image"] = product_image_url
+                    product.product_card["manifest"]["product_name"] = product.name
+                    product.product_card["manifest"]["product_description"] = product.description or ""
+                    product.product_card["manifest"]["delivery_type"] = product.delivery_type
+
+                    # Add pricing info to manifest if available
+                    if pricing_options_data and len(pricing_options_data) > 0:
+                        first_option = pricing_options_data[0]
+                        product.product_card["manifest"]["pricing_model"] = first_option.get("pricing_model", "CPM")
+                        if first_option.get("is_fixed") and first_option.get("rate"):
+                            product.product_card["manifest"]["pricing_amount"] = str(first_option["rate"])
+                            product.product_card["manifest"]["pricing_currency"] = first_option.get("currency", "USD")
+
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "product_card")
+                elif product.product_card and product.product_card.get("manifest", {}).get("product_image"):
+                    # If image URL was removed, clear the card
+                    product.product_card = None
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "product_card")
+
                 # Debug: Log final state before commit
                 from sqlalchemy import inspect as sa_inspect
 
@@ -1472,6 +1570,12 @@ def edit_product(tenant_id, product_id):
                 ),
                 "implementation_config": implementation_config,
                 "targeting_template": targeting_template,
+                # Product detail fields (AdCP compliance)
+                "delivery_measurement": product.delivery_measurement,
+                "product_card": product.product_card,
+                "product_card_detailed": product.product_card_detailed,
+                "placements": product.placements,
+                "reporting_capabilities": product.reporting_capabilities,
             }
 
             product_dict["pricing_options"] = pricing_options_list
@@ -1556,7 +1660,7 @@ def edit_product(tenant_id, product_id):
                 )
             else:
                 return render_template(
-                    "edit_product.html",
+                    "edit_product_mock.html",
                     tenant_id=tenant_id,
                     product=product_dict,
                     tenant_adapter=adapter_type,
