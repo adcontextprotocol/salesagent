@@ -18,7 +18,7 @@ def test_inventory_sync_checks_gam_inventory_not_products():
         # Mock tenant
         mock_tenant = MagicMock()
         mock_tenant.tenant_id = tenant_id
-        mock_tenant.ad_server = "gam"
+        mock_tenant.ad_server = "google_ad_manager"  # Use correct adapter type string
         mock_tenant.authorized_domains = []
         mock_tenant.authorized_emails = ["test@example.com"]
         mock_tenant.policy_settings = {}
@@ -78,7 +78,7 @@ def test_inventory_sync_incomplete_when_no_gam_inventory():
         # Mock tenant
         mock_tenant = MagicMock()
         mock_tenant.tenant_id = tenant_id
-        mock_tenant.ad_server = "gam"
+        mock_tenant.ad_server = "google_ad_manager"  # Use correct adapter type string
         mock_tenant.authorized_domains = []
         mock_tenant.authorized_emails = ["test@example.com"]
         mock_tenant.policy_settings = {}

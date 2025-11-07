@@ -100,7 +100,7 @@ def generate_tenant_landing_page(tenant: dict, virtual_host: str | None = None) 
 
     # Generate endpoint URLs
     mcp_url = f"{base_url}/mcp"
-    a2a_url = f"{base_url}/a2a"
+    a2a_url = base_url  # A2A endpoint is at the root, not /a2a
     agent_card_url = f"{base_url}/.well-known/agent.json"
 
     # Admin URL: For external domains, use subdomain; otherwise use current domain

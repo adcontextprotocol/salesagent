@@ -80,7 +80,8 @@ class TestVirtualHostLandingPage:
         assert "HTML Test Publisher" in html_content  # Check for core name without special chars
         assert "Advertising Context Protocol" in html_content
         assert "/mcp" in html_content
-        assert "/a2a" in html_content
+        # A2A endpoint is at the root, not /a2a
+        assert "https://htmltest.sales-agent.scope3.com" in html_content
         assert "/.well-known/agent.json" in html_content
         assert "<!DOCTYPE html>" in html_content
 
@@ -116,9 +117,9 @@ class TestVirtualHostLandingPage:
         with patch.dict("os.environ", {"PRODUCTION": "true"}):
             html_content = generate_tenant_landing_page(tenant, virtual_host)
 
-        # Should use production URLs
+        # Should use production URLs (A2A at root, not /a2a)
         assert "https://prod.sales-agent.scope3.com/mcp" in html_content
-        assert "https://prod.sales-agent.scope3.com/a2a" in html_content
+        assert "https://prod.sales-agent.scope3.com" in html_content  # A2A endpoint is at root
         assert "https://prod.sales-agent.scope3.com/.well-known/agent.json" in html_content
 
     def test_landing_page_url_generation_development(self):
@@ -128,9 +129,9 @@ class TestVirtualHostLandingPage:
         with patch.dict("os.environ", {"PRODUCTION": "false", "ADCP_SALES_PORT": "8080"}):
             html_content = generate_tenant_landing_page(tenant)
 
-        # Should use localhost URLs
+        # Should use localhost URLs (A2A at root, not /a2a)
         assert "http://localhost:8080/mcp" in html_content
-        assert "http://localhost:8080/a2a" in html_content
+        assert "http://localhost:8080" in html_content  # A2A endpoint is at root
         assert "http://localhost:8080/.well-known/agent.json" in html_content
 
     def test_landing_page_basic_content(self):

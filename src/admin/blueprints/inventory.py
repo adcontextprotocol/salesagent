@@ -243,6 +243,18 @@ def inventory_browser(tenant_id):
         if not row:
             return "Tenant not found", 404
 
+        # Check adapter type - inventory browser is only for GAM
+        adapter_type = tenant.ad_server or "mock"
+        if adapter_type != "google_ad_manager":
+            from flask import flash, redirect, url_for
+
+            flash(
+                f"Inventory browser is only available for Google Ad Manager. "
+                f"Your tenant is using the '{adapter_type}' adapter which does not require inventory sync.",
+                "info",
+            )
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
+
     tenant = {"tenant_id": row[0], "name": row[1]}
 
     # Get inventory type from query param
@@ -610,6 +622,18 @@ def sync_inventory(tenant_id):
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
+
+            # Check adapter type - inventory sync is only for GAM
+            adapter_type = tenant.ad_server or "mock"
+            if adapter_type != "google_ad_manager":
+                return (
+                    jsonify(
+                        {
+                            "error": f"Inventory sync is only available for Google Ad Manager. Your tenant is using the '{adapter_type}' adapter which does not require inventory sync."
+                        }
+                    ),
+                    400,
+                )
 
             # Check if GAM is configured
             from src.core.database.models import AdapterConfig
