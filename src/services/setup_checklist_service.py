@@ -190,10 +190,23 @@ class SetupChecklistService:
 
         # 5. Inventory Synced (adapter-specific behavior)
         # Check if tenant has synced inventory from ad server
+        # - None: No adapter selected, must configure ad server first (incomplete)
         # - GAM: Requires sync from Google Ad Manager (checks GAMInventory table)
         # - Mock: Has built-in inventory (no sync required)
         # - Kevel/Triton: Check adapter documentation for inventory requirements
-        if tenant.ad_server == "google_ad_manager":
+        if tenant.ad_server is None or tenant.ad_server == "":
+            # No ad server configured - cannot proceed with inventory setup
+            tasks.append(
+                SetupTask(
+                    key="inventory_synced",
+                    name="Inventory Sync",
+                    description="Configure ad server before syncing inventory",
+                    is_complete=False,
+                    action_url=f"/tenant/{self.tenant_id}/settings#adserver",
+                    details="Ad server must be configured before inventory can be synced",
+                )
+            )
+        elif tenant.ad_server == "google_ad_manager":
             # GAM requires syncing inventory from Google Ad Manager
             stmt = select(func.count()).select_from(GAMInventory).where(GAMInventory.tenant_id == self.tenant_id)
             inventory_count = session.scalar(stmt) or 0

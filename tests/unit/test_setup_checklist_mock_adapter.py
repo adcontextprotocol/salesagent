@@ -143,6 +143,50 @@ class TestSetupChecklistMockAdapter:
             assert inventory_task is not None, "Inventory sync task should exist"
             assert inventory_task["is_complete"] is True, "GAM adapter with synced inventory should be complete"
 
+    def test_no_adapter_selected_inventory_incomplete(self):
+        """When no adapter is selected (None), inventory sync should be incomplete."""
+        from src.services.setup_checklist_service import SetupChecklistService
+
+        tenant_id = "test_tenant"
+
+        with patch("src.services.setup_checklist_service.get_db_session") as mock_db:
+            mock_session = MagicMock()
+            mock_db.return_value.__enter__.return_value = mock_session
+
+            # Create mock tenant with no adapter selected
+            mock_tenant = MagicMock()
+            mock_tenant.tenant_id = tenant_id
+            mock_tenant.name = "Test Tenant"
+            mock_tenant.ad_server = None  # No adapter selected
+            mock_tenant.authorized_domains = []
+            mock_tenant.authorized_emails = []
+            mock_tenant.human_review_required = None
+            mock_tenant.auto_approve_formats = None
+            mock_tenant.order_name_template = None
+            mock_tenant.line_item_name_template = None
+            mock_tenant.slack_webhook_url = None
+            mock_tenant.virtual_host = None
+            mock_tenant.enable_axe_signals = False
+            mock_tenant.policy_settings = {}
+
+            # Mock database queries
+            mock_session.scalars.return_value.first.return_value = mock_tenant
+            mock_session.scalar.return_value = 0
+
+            # Get setup status
+            service = SetupChecklistService(tenant_id)
+            status = service.get_setup_status()
+
+            # Find inventory sync task
+            inventory_task = next((task for task in status["critical"] if task["key"] == "inventory_synced"), None)
+
+            # Verify inventory sync is incomplete when no adapter selected
+            assert inventory_task is not None, "Inventory sync task should exist"
+            assert (
+                inventory_task["is_complete"] is False
+            ), "Inventory sync should be incomplete when no adapter selected"
+            assert "Configure ad server" in inventory_task["description"], "Should indicate need to configure ad server"
+
     def test_validate_setup_complete_allows_mock_adapter_without_inventory(self):
         """validate_setup_complete() should not raise error for mock adapter without GAMInventory."""
         from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
