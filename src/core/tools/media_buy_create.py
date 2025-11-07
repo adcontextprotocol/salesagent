@@ -2696,6 +2696,10 @@ async def _create_media_buy_impl(
                                                     url = asset_obj["url"]
                                                     break
 
+                                    # Fallback: Check for URL at top level (backwards compatibility / direct storage)
+                                    if not url and creative_data.get("url"):
+                                        url = creative_data["url"]
+
                                     # Extract width/height from format if not in data
                                     width = creative_data.get("width")
                                     height = creative_data.get("height")
