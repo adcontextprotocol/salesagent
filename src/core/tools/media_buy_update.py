@@ -565,6 +565,83 @@ def _update_media_buy_impl(
                                 f"Creative {creative.creative_id} cannot be assigned (status={creative.status})"
                             )
 
+                    # Validate creative formats against package product formats
+                    # Get package and product to check supported formats
+                    from src.core.database.models import MediaPackage as MediaPackageModel
+                    from src.core.database.models import Product
+
+                    package_stmt = select(MediaPackageModel).where(
+                        MediaPackageModel.package_id == pkg_update.package_id,
+                        MediaPackageModel.media_buy_id == actual_media_buy_id,
+                    )
+                    db_package = session.scalars(package_stmt).first()
+
+                    # Get product_id from package_config
+                    product_id = (
+                        db_package.package_config.get("product_id")
+                        if db_package and db_package.package_config
+                        else None
+                    )
+
+                    if product_id:
+                        # Get product to check supported formats
+                        product_stmt = select(Product).where(
+                            Product.tenant_id == tenant["tenant_id"], Product.product_id == product_id
+                        )
+                        product = session.scalars(product_stmt).first()
+
+                        if product and product.formats:
+                            # Build set of supported formats (agent_url, format_id) tuples
+                            supported_formats = set()
+                            for fmt in product.formats:
+                                if isinstance(fmt, dict):
+                                    agent_url = fmt.get("agent_url")
+                                    format_id = fmt.get("id") or fmt.get("format_id")
+                                    if agent_url and format_id:
+                                        supported_formats.add((agent_url, format_id))
+
+                            # Check each creative's format
+                            for creative in creatives_list:
+                                creative_agent_url = creative.agent_url
+                                creative_format_id = creative.format
+
+                                # Allow /mcp URL variant
+                                def normalize_url(url: str | None) -> str | None:
+                                    if not url:
+                                        return None
+                                    return url.rstrip("/").removesuffix("/mcp")
+
+                                normalized_creative_url = normalize_url(creative_agent_url)
+                                is_supported = False
+
+                                for supported_url, supported_format_id in supported_formats:
+                                    normalized_supported_url = normalize_url(supported_url)
+                                    if (
+                                        normalized_creative_url == normalized_supported_url
+                                        and creative_format_id == supported_format_id
+                                    ):
+                                        is_supported = True
+                                        break
+
+                                if not supported_formats:
+                                    # Product has no format restrictions - allow all
+                                    is_supported = True
+
+                                if not is_supported:
+                                    creative_format_display = (
+                                        f"{creative_agent_url}/{creative_format_id}"
+                                        if creative_agent_url
+                                        else creative_format_id
+                                    )
+                                    supported_formats_display = ", ".join(
+                                        [f"{url}/{fmt_id}" if url else fmt_id for url, fmt_id in supported_formats]
+                                    )
+                                    validation_errors.append(
+                                        f"Creative {creative.creative_id} format '{creative_format_display}' "
+                                        f"is not supported by product '{product.name}'. "
+                                        f"Supported formats: {supported_formats_display}"
+                                    )
+
                     if validation_errors:
                         error_msg = (
                             "Cannot update media buy with invalid creatives. "

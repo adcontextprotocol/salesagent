@@ -2737,16 +2737,13 @@ async def _create_media_buy_impl(
                                     creative_data = creative.data or {}
 
                                     # Get format spec for proper extraction
-                                    from src.core.format_resolver import get_format
+                                    # Use cache-based approach (same as validation section) to avoid asyncio event loop conflicts
+                                    from src.core.format_spec_cache import get_cached_format
 
                                     format_spec = None
                                     try:
-                                        format_spec = get_format(
-                                            str(creative.format),
-                                            agent_url=creative.agent_url,
-                                            tenant_id=tenant["tenant_id"],
-                                            product_id=None,
-                                        )
+                                        # Try cache first (works in any context, no asyncio conflicts)
+                                        format_spec = get_cached_format(str(creative.format))
                                     except (ValueError, Exception) as e:
                                         logger.warning(
                                             f"[AUTO-APPROVAL] Could not load format spec for creative {creative_id} "
