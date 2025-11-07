@@ -608,14 +608,111 @@ class GAMOrdersManager:
                         }
                     )
 
-            # Require creative placeholders - no defaults
-            if not creative_placeholders:
-                error_msg = (
-                    f"No creative placeholders for package {package.package_id}. "
-                    f"Package must have format_ids or product must have creative_placeholders configured."
-                )
-                log(f"[red]Error: {error_msg}[/red]")
-                raise ValueError(error_msg)
+            # If package has creatives, filter placeholders to match actual creative sizes
+            # This prevents "X out of Y expected" issues and ensures one placeholder per unique size
+            if package.creative_ids or (package.creatives and len(package.creatives) > 0):
+                from sqlalchemy import select
+
+                from src.core.database.database_session import get_db_session
+                from src.core.database.models import Creative as DBCreative
+
+                # Collect unique creative sizes from uploaded creatives
+                creative_sizes = set()
+
+                # Get creative sizes from database if using creative_ids
+                if package.creative_ids:
+                    with get_db_session() as session:
+                        creative_stmt = select(DBCreative).where(DBCreative.creative_id.in_(package.creative_ids))
+                        db_creatives = session.scalars(creative_stmt).all()
+
+                        for db_creative in db_creatives:
+                            creative_data = db_creative.data or {}
+                            # Try to get dimensions from creative data
+                            width = creative_data.get("width")
+                            height = creative_data.get("height")
+
+                            # Also check in assets (AdCP v2.4 structure)
+                            if not (width and height) and creative_data.get("assets"):
+                                for _asset_id, asset in creative_data["assets"].items():
+                                    if isinstance(asset, dict):
+                                        width = asset.get("width")
+                                        height = asset.get("height")
+                                        if width and height:
+                                            break
+
+                            if width and height:
+                                creative_sizes.add((int(width), int(height)))
+
+                # Get creative sizes from inline creatives
+                if package.creatives:
+                    for creative in package.creatives:
+                        # Creative is a Pydantic object or dict
+                        if hasattr(creative, "model_dump"):
+                            creative_dict = creative.model_dump()
+                        else:
+                            creative_dict = dict(creative) if isinstance(creative, dict) else {}
+
+                        width = creative_dict.get("width")
+                        height = creative_dict.get("height")
+
+                        # Also check in assets
+                        if not (width and height) and creative_dict.get("assets"):
+                            for _asset_id, asset in creative_dict["assets"].items():
+                                if isinstance(asset, dict):
+                                    width = asset.get("width")
+                                    height = asset.get("height")
+                                    if width and height:
+                                        break
+
+                        if width and height:
+                            creative_sizes.add((int(width), int(height)))
+
+                # Build or filter placeholders based on actual creative sizes
+                if creative_sizes:
+                    if not creative_placeholders:
+                        # No format_ids specified - create placeholders directly from creative sizes
+                        # One placeholder per unique size
+                        for width, height in sorted(creative_sizes):
+                            creative_placeholders.append(
+                                {
+                                    "size": {"width": width, "height": height},
+                                    "expectedCreativeCount": 1,
+                                    "creativeSizeType": "PIXEL",
+                                }
+                            )
+                        log(
+                            f"  [blue]Created {len(creative_placeholders)} placeholders from actual creative sizes (no format_ids)[/blue]"
+                        )
+                    else:
+                        # Filter existing placeholders to only include sizes that have creatives
+                        filtered_placeholders = []
+                        for placeholder in creative_placeholders:
+                            placeholder_width = placeholder.get("size", {}).get("width")
+                            placeholder_height = placeholder.get("size", {}).get("height")
+
+                            # 1x1 placeholders are special (templates, native) - always include
+                            if placeholder_width == 1 and placeholder_height == 1:
+                                filtered_placeholders.append(placeholder)
+                            # Include if we have creatives of this size
+                            elif (placeholder_width, placeholder_height) in creative_sizes:
+                                filtered_placeholders.append(placeholder)
+
+                        if filtered_placeholders:
+                            original_count = len(creative_placeholders)
+                            creative_placeholders = filtered_placeholders
+                            if len(creative_placeholders) < original_count:
+                                log(
+                                    f"  [blue]Filtered placeholders from {original_count} to {len(creative_placeholders)} based on actual creative sizes[/blue]"
+                                )
+                        # If filtering removed all placeholders, keep originals (fail-safe)
+                        # This shouldn't happen if creatives have valid dimensions
+            else:
+                # No creatives in package - placeholders are optional
+                # Allow empty array if no format_ids and no creatives
+                if not creative_placeholders:
+                    log(
+                        "  [yellow]No creatives and no format_ids - line item will have no creative placeholders[/yellow]"
+                    )
 
             # Determine goal type and units
             goal_type = impl_config.get("primary_goal_type", "LIFETIME")
