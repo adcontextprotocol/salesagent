@@ -31,6 +31,7 @@ class CreativeAgent:
     enabled: bool = True
     priority: int = 1  # Lower = higher priority in search results
     auth: dict[str, Any] | None = None  # Optional auth config for private agents
+    timeout: int = 30  # Request timeout in seconds
 
 
 @dataclass
@@ -108,6 +109,9 @@ class CreativeAgentRegistry:
                         "type": db_agent.auth_type,
                         "credentials": db_agent.auth_credentials,
                     }
+                    # Add auth_header if present (e.g., "Authorization", "x-api-key")
+                    if db_agent.auth_header:
+                        auth["header"] = db_agent.auth_header
 
                 agents.append(
                     CreativeAgent(
@@ -116,6 +120,7 @@ class CreativeAgentRegistry:
                         enabled=db_agent.enabled,
                         priority=db_agent.priority,
                         auth=auth,
+                        timeout=db_agent.timeout,
                     )
                 )
 
@@ -160,7 +165,7 @@ class CreativeAgentRegistry:
             async with create_mcp_client(
                 agent_url=agent.agent_url,
                 auth=agent.auth,
-                timeout=30,
+                timeout=agent.timeout,
                 max_retries=3,
             ) as client:
                 # Build parameters for list_creative_formats
