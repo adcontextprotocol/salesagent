@@ -293,20 +293,7 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
                             if width and height:
                                 break
 
-        # Fallback: Try common asset roles if format spec didn't match
-        if (not width or not height) and creative_data.get("assets"):
-            for asset_role in ["main", "image", "banner_image", "creative"]:
-                if asset_role in creative_data["assets"]:
-                    asset_obj = creative_data["assets"][asset_role]
-                    if isinstance(asset_obj, dict):
-                        if not width and asset_obj.get("width"):
-                            width = asset_obj.get("width")
-                        if not height and asset_obj.get("height"):
-                            height = asset_obj.get("height")
-                        if width and height:
-                            break
-
-        # Final fallback: Check for dimensions at top level (backwards compatibility)
+        # Fallback: Check for dimensions at top level (backwards compatibility)
         if not width:
             width = creative_data.get("width")
         if not height:
