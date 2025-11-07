@@ -35,6 +35,7 @@ class CreativeAgent:
     priority: int = 1  # Lower = higher priority in search results
     auth: dict[str, Any] | None = None  # Optional auth config for private agents
     auth_header: str | None = None  # Optional custom auth header name
+    timeout: int = 30  # Request timeout in seconds
 
 
 @dataclass
@@ -143,6 +144,9 @@ class CreativeAgentRegistry:
                         "type": db_agent.auth_type,
                         "credentials": db_agent.auth_credentials,
                     }
+                    # Add auth_header if present (e.g., "Authorization", "x-api-key")
+                    if db_agent.auth_header:
+                        auth["header"] = db_agent.auth_header
 
                 agents.append(
                     CreativeAgent(
@@ -151,7 +155,8 @@ class CreativeAgentRegistry:
                         enabled=db_agent.enabled,
                         priority=db_agent.priority,
                         auth=auth,
-                        auth_header=getattr(db_agent, "auth_header", None),  # May not exist in DB model yet
+                        auth_header=db_agent.auth_header,
+                        timeout=db_agent.timeout,
                     )
                 )
 
