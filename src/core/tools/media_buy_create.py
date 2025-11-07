@@ -272,6 +272,10 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
                             url = asset_obj["url"]
                             break
 
+        # Fallback: Check for URL at top level (backwards compatibility with older creative structure)
+        if not url and creative_data.get("url"):
+            url = creative_data["url"]
+
         # Check dimensions
         width = creative_data.get("width")
         height = creative_data.get("height")
