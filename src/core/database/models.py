@@ -717,7 +717,9 @@ class CreativeAgent(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     auth_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    auth_header: Mapped[str | None] = mapped_column(String(100), nullable=True)
     auth_credentials: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timeout: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
