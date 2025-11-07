@@ -184,26 +184,42 @@ class SetupChecklistService:
             )
         )
 
-        # 5. Inventory Synced
+        # 5. Inventory Synced (only required for GAM adapter)
         # Check if tenant has synced inventory from ad server
         # This checks GAMInventory table which stores actual synced ad units, placements, and targeting options
-        stmt = select(func.count()).select_from(GAMInventory).where(GAMInventory.tenant_id == self.tenant_id)
-        inventory_count = session.scalar(stmt) or 0
+        # Note: Mock adapter has built-in inventory and doesn't require sync
+        if tenant.ad_server == "google_ad_manager":
+            stmt = select(func.count()).select_from(GAMInventory).where(GAMInventory.tenant_id == self.tenant_id)
+            inventory_count = session.scalar(stmt) or 0
 
-        inventory_synced = inventory_count > 0
-        inventory_details = (
-            f"{inventory_count:,} inventory items synced" if inventory_synced else "No inventory synced from ad server"
-        )
-        tasks.append(
-            SetupTask(
-                key="inventory_synced",
-                name="Inventory Sync",
-                description="Sync ad units and placements from ad server",
-                is_complete=inventory_synced,
-                action_url=f"/tenant/{self.tenant_id}/settings#inventory",
-                details=inventory_details,
+            inventory_synced = inventory_count > 0
+            inventory_details = (
+                f"{inventory_count:,} inventory items synced"
+                if inventory_synced
+                else "No inventory synced from ad server"
             )
-        )
+            tasks.append(
+                SetupTask(
+                    key="inventory_synced",
+                    name="Inventory Sync",
+                    description="Sync ad units and placements from ad server",
+                    is_complete=inventory_synced,
+                    action_url=f"/tenant/{self.tenant_id}/settings#inventory",
+                    details=inventory_details,
+                )
+            )
+        elif tenant.ad_server == "mock":
+            # Mock adapter has built-in inventory, always complete
+            tasks.append(
+                SetupTask(
+                    key="inventory_synced",
+                    name="Inventory Sync",
+                    description="Mock adapter has built-in inventory (no sync required)",
+                    is_complete=True,
+                    action_url=None,
+                    details="Mock adapter provides built-in mock inventory automatically",
+                )
+            )
 
         # 6. Products Created
         stmt = select(func.count()).select_from(Product).where(Product.tenant_id == self.tenant_id)
