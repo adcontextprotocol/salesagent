@@ -170,6 +170,8 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
     This prevents GAM order creation when creatives are invalid, enabling
     true all-or-nothing behavior without rollback complexity.
 
+    Fetches format specifications to determine correct asset structure per format.
+
     Args:
         packages: List of Package objects with creative_ids
         tenant_id: Tenant ID for database lookup
@@ -179,6 +181,8 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
     """
     from sqlalchemy import select
 
+    from src.core.async_utils import run_async_in_sync_context
+    from src.core.creative_agent_registry import get_creative_agent_registry
     from src.core.database.database_session import get_db_session
     from src.core.database.models import Creative as DBCreative
 
@@ -199,27 +203,46 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
         )
         creatives_list = list(session.scalars(stmt).all())
 
+    # Get creative registry for format lookup
+    registry = get_creative_agent_registry()
+
     # Validate each creative has required fields
     validation_errors = []
     for creative in creatives_list:
         creative_data = creative.data or {}
 
-        # Extract URL from AdCP-compliant nested assets structure
+        # Get format specification from creative agent
+        format_spec = None
+        if creative.format:
+            # creative.format is a string (format ID)
+            # Parse agent_url from creative.agent_url
+            try:
+                format_spec = run_async_in_sync_context(registry.get_format(creative.agent_url, str(creative.format)))
+            except Exception as e:
+                logger.warning(f"Could not fetch format {creative.format} from {creative.agent_url}: {e}")
+
+        # Extract URL from assets using format specification
         url = None
-        if creative_data.get("assets"):
-            for asset_role in ["main", "image", "banner_image", "creative"]:
-                if asset_role in creative_data["assets"]:
-                    asset_obj = creative_data["assets"][asset_role]
-                    if isinstance(asset_obj, dict) and asset_obj.get("url"):
-                        url = asset_obj["url"]
-                        break
+        if creative_data.get("assets") and format_spec and format_spec.assets_required:
+            # Use format spec to find the correct asset_id for image/video assets
+            for asset_req in format_spec.assets_required:
+                asset_type = asset_req.asset_type.lower()
+                if asset_type in ["image", "video", "url"]:
+                    asset_id = asset_req.asset_id
+                    if asset_id in creative_data["assets"]:
+                        asset_obj = creative_data["assets"][asset_id]
+                        if isinstance(asset_obj, dict) and asset_obj.get("url"):
+                            url = asset_obj["url"]
+                            break
 
         # Check dimensions
         width = creative_data.get("width")
         height = creative_data.get("height")
 
         if not url:
-            validation_errors.append(f"Creative {creative.creative_id} missing required URL field")
+            validation_errors.append(
+                f"Creative {creative.creative_id} (format={creative.format}) missing required URL field in assets"
+            )
         if not width or not height:
             validation_errors.append(
                 f"Creative {creative.creative_id} missing dimensions (width={width}, height={height})"
@@ -230,7 +253,8 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
             "Cannot create media buy with invalid creatives. "
             "The following creatives are missing required fields:\n"
             + "\n".join(f"  • {err}" for err in validation_errors)
-            + "\n\nAll creatives must have dimensions (width/height) and a content URL. "
+            + "\n\nAll creatives must have dimensions (width/height) and a content URL "
+            "matching their format specification. "
             "Please ensure creatives are properly synced before creating media buys."
         )
         logger.error(f"[PRE-VALIDATION] {error_msg}")
