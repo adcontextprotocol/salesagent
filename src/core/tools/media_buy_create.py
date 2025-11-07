@@ -276,9 +276,28 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
         if not url and creative_data.get("url"):
             url = creative_data["url"]
 
-        # Check dimensions
-        width = creative_data.get("width")
-        height = creative_data.get("height")
+        # Extract dimensions from assets using format specification
+        width = None
+        height = None
+        if creative_data.get("assets") and format_spec and format_spec.assets_required:
+            # Use format spec to find the correct asset_id for image/video assets
+            for asset_req in format_spec.assets_required:
+                asset_type = asset_req.asset_type.lower()
+                if asset_type in ["image", "video"]:
+                    asset_id = asset_req.asset_id
+                    if asset_id in creative_data["assets"]:
+                        asset_obj = creative_data["assets"][asset_id]
+                        if isinstance(asset_obj, dict):
+                            width = asset_obj.get("width")
+                            height = asset_obj.get("height")
+                            if width and height:
+                                break
+
+        # Fallback: Check for dimensions at top level (backwards compatibility)
+        if not width:
+            width = creative_data.get("width")
+        if not height:
+            height = creative_data.get("height")
 
         if not url:
             validation_errors.append(
@@ -719,22 +738,32 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                     # The Creative model stores all content in the 'data' JSON field
                     creative_data = creative.data or {}
 
-                    # Extract URL from AdCP-compliant nested assets structure
-                    # Per AdCP spec, creatives have: {"assets": {"main": {"url": "..."}}}
+                    # Extract URL and dimensions from AdCP-compliant nested assets structure
+                    # Per AdCP spec, creatives have: {"assets": {"main": {"url": "...", "width": 300, "height": 250}}}
                     url = None
+                    width = None
+                    height = None
                     if creative_data.get("assets"):
                         # Try common asset roles first
                         for asset_role in ["main", "image", "banner_image", "creative"]:
                             if asset_role in creative_data["assets"]:
                                 asset_obj = creative_data["assets"][asset_role]
-                                if isinstance(asset_obj, dict) and asset_obj.get("url"):
-                                    url = asset_obj["url"]
-                                    break
+                                if isinstance(asset_obj, dict):
+                                    if not url and asset_obj.get("url"):
+                                        url = asset_obj["url"]
+                                    if not width and asset_obj.get("width"):
+                                        width = asset_obj.get("width")
+                                    if not height and asset_obj.get("height"):
+                                        height = asset_obj.get("height")
+                                    # Found all needed data
+                                    if url and width and height:
+                                        break
 
-                    # Extract width/height from format if not in data
-                    # Format IDs like "display_970x250_image" contain dimensions
-                    width = creative_data.get("width")
-                    height = creative_data.get("height")
+                    # Fallback: Check top level (backwards compatibility)
+                    if not width:
+                        width = creative_data.get("width")
+                    if not height:
+                        height = creative_data.get("height")
 
                     if (not width or not height) and creative.format:
                         # Try to extract dimensions from format ID
@@ -2684,25 +2713,34 @@ async def _create_media_buy_impl(
                                 try:
                                     creative_data = creative.data or {}
 
-                                    # Extract URL from AdCP-compliant nested assets structure
-                                    # Per AdCP spec, creatives have: {"assets": {"main": {"url": "..."}}}
+                                    # Extract URL and dimensions from AdCP-compliant nested assets structure
+                                    # Per AdCP spec, creatives have: {"assets": {"main": {"url": "...", "width": 300, "height": 250}}}
                                     url = None
+                                    width = None
+                                    height = None
                                     if creative_data.get("assets"):
                                         # Try common asset roles first
                                         for asset_role in ["main", "image", "banner_image", "creative"]:
                                             if asset_role in creative_data["assets"]:
                                                 asset_obj = creative_data["assets"][asset_role]
-                                                if isinstance(asset_obj, dict) and asset_obj.get("url"):
-                                                    url = asset_obj["url"]
-                                                    break
+                                                if isinstance(asset_obj, dict):
+                                                    if not url and asset_obj.get("url"):
+                                                        url = asset_obj["url"]
+                                                    if not width and asset_obj.get("width"):
+                                                        width = asset_obj.get("width")
+                                                    if not height and asset_obj.get("height"):
+                                                        height = asset_obj.get("height")
+                                                    # Found all needed data
+                                                    if url and width and height:
+                                                        break
 
-                                    # Fallback: Check for URL at top level (backwards compatibility / direct storage)
+                                    # Fallback: Check top level (backwards compatibility / direct storage)
                                     if not url and creative_data.get("url"):
                                         url = creative_data["url"]
-
-                                    # Extract width/height from format if not in data
-                                    width = creative_data.get("width")
-                                    height = creative_data.get("height")
+                                    if not width:
+                                        width = creative_data.get("width")
+                                    if not height:
+                                        height = creative_data.get("height")
                                     if (not width or not height) and creative.format:
                                         import re
 
