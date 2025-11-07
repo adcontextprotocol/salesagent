@@ -90,11 +90,12 @@ class TestCreativeAssignment:
                 fmt_id_str = fmt_id.get("id", "") if isinstance(fmt_id, dict) else ""
 
                 if "display" in fmt_id_str.lower():
-                    format_id = fmt_id_str  # Store the STRING id
+                    format_id = fmt_id  # Store the FULL FormatId dict (with agent_url)
                     break
 
             assert format_id, "Must find at least one display format"
-            print(f"   ✓ Using format: {format_id}")
+            format_id_str = format_id.get("id") if isinstance(format_id, dict) else format_id
+            print(f"   ✓ Using format: {format_id_str}")
 
             # ================================================================
             # PHASE 2: Create Media Buy with Packages
