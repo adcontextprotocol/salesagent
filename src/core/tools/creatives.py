@@ -582,23 +582,30 @@ def _sync_creatives_impl(
                                             if renders:
                                                 first_render = renders[0]
 
-                                                # Store preview URL from render
-                                                if first_render.get("preview_url"):
+                                                # Store preview URL from render ONLY if we don't already have a URL from assets
+                                                # This preserves user-provided URLs in assets instead of overwriting with preview URLs
+                                                if first_render.get("preview_url") and not data.get("url"):
                                                     data["url"] = first_render["preview_url"]
                                                     changes.append("url")
                                                     logger.info(
                                                         f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
                                                     )
+                                                elif data.get("url"):
+                                                    logger.info(
+                                                        "[sync_creatives] Preserving user-provided URL from assets, "
+                                                        "not overwriting with preview URL"
+                                                    )
 
                                                 # Extract dimensions from dimensions object
+                                                # Only use preview dimensions if not already provided by user
                                                 dimensions = first_render.get("dimensions", {})
-                                                if dimensions.get("width"):
+                                                if dimensions.get("width") and not data.get("width"):
                                                     data["width"] = dimensions["width"]
                                                     changes.append("width")
-                                                if dimensions.get("height"):
+                                                if dimensions.get("height") and not data.get("height"):
                                                     data["height"] = dimensions["height"]
                                                     changes.append("height")
-                                                if dimensions.get("duration"):
+                                                if dimensions.get("duration") and not data.get("duration"):
                                                     data["duration"] = dimensions["duration"]
                                                     changes.append("duration")
 
