@@ -1073,20 +1073,42 @@ function createTreeNode(unit) {
     const hasChildren = unit.children && unit.children.length > 0;
     const isChecked = selectedAdUnitsMap.has(unit.id);
 
-    div.innerHTML = `
-        <input type="checkbox" onchange="toggleAdUnitSelection('${unit.id}', '${unit.name.replace(/'/g, "\\'")}', '${(unit.path || []).join(' > ').replace(/'/g, "\\'")}', this.checked)">
-        <span class="tree-toggle" onclick="toggleNode(this, event)">
-            ${hasChildren ? '▼' : '&nbsp;'}
-        </span>
-        <span class="node-icon">📁</span>
-        <span class="node-name" onclick="selectNode('${unit.id}', event)">
-            ${unit.name}
-        </span>
-        <span class="node-status ${unit.status.toLowerCase()}">[${unit.status}]</span>
-    `;
+    // Create checkbox programmatically (prevents XSS)
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = isChecked;
+    checkbox.onchange = function() {
+        toggleAdUnitSelection(unit.id, unit.name, (unit.path || []).join(' > '), this.checked);
+    };
 
-    // Set checkbox state
-    div.querySelector('input[type="checkbox"]').checked = isChecked;
+    // Create toggle span
+    const toggle = document.createElement('span');
+    toggle.className = 'tree-toggle';
+    toggle.textContent = hasChildren ? '▼' : '\u00A0';
+    toggle.onclick = function(e) { toggleNode(this, e); };
+
+    // Create icon span
+    const icon = document.createElement('span');
+    icon.className = 'node-icon';
+    icon.textContent = '📁';
+
+    // Create name span (textContent auto-escapes)
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'node-name';
+    nameSpan.textContent = unit.name;
+    nameSpan.onclick = function(e) { selectNode(unit.id, e); };
+
+    // Create status span (textContent auto-escapes)
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'node-status ' + unit.status.toLowerCase();
+    statusSpan.textContent = '[' + unit.status + ']';
+
+    // Append all elements in order
+    div.appendChild(checkbox);
+    div.appendChild(toggle);
+    div.appendChild(icon);
+    div.appendChild(nameSpan);
+    div.appendChild(statusSpan);
 
     if (hasChildren) {
         const childContainer = document.createElement('div');

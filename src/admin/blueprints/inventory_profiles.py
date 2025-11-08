@@ -131,18 +131,20 @@ def _get_property_summary(publisher_properties: list[dict]) -> str:
 def list_inventory_profiles(tenant_id: str):
     """List all inventory profiles for this tenant."""
     with get_db_session() as session:
-        # Get all profiles for tenant
-        stmt = select(InventoryProfile).where(InventoryProfile.tenant_id == tenant_id).order_by(InventoryProfile.name)
-        profiles = session.scalars(stmt).all()
+        # Get all profiles with product counts in a single query (prevents N+1)
+        stmt = (
+            select(InventoryProfile, func.count(Product.id).label("product_count"))
+            .outerjoin(Product, InventoryProfile.id == Product.inventory_profile_id)
+            .where(InventoryProfile.tenant_id == tenant_id)
+            .group_by(InventoryProfile.id)
+            .order_by(InventoryProfile.name)
+        )
+
+        results = session.execute(stmt).all()
 
         # Build profile data with summaries
         profiles_data = []
-        for profile in profiles:
-            # Count products using this profile
-            product_count = session.scalar(
-                select(func.count()).select_from(Product).where(Product.inventory_profile_id == profile.id)
-            )
-
+        for profile, product_count in results:
             profiles_data.append(
                 {
                     "id": profile.id,
@@ -448,18 +450,20 @@ def preview_inventory_profile(tenant_id: str, profile_id: int):
 def list_inventory_profiles_api(tenant_id: str):
     """Get all inventory profiles for this tenant as JSON (API endpoint for unified page)."""
     with get_db_session() as session:
-        # Get all profiles for tenant
-        stmt = select(InventoryProfile).where(InventoryProfile.tenant_id == tenant_id).order_by(InventoryProfile.name)
-        profiles = session.scalars(stmt).all()
+        # Get all profiles with product counts in a single query (prevents N+1)
+        stmt = (
+            select(InventoryProfile, func.count(Product.id).label("product_count"))
+            .outerjoin(Product, InventoryProfile.id == Product.inventory_profile_id)
+            .where(InventoryProfile.tenant_id == tenant_id)
+            .group_by(InventoryProfile.id)
+            .order_by(InventoryProfile.name)
+        )
+
+        results = session.execute(stmt).all()
 
         # Build profile data with summaries
         profiles_data = []
-        for profile in profiles:
-            # Count products using this profile
-            product_count = session.scalar(
-                select(func.count()).select_from(Product).where(Product.inventory_profile_id == profile.id)
-            )
-
+        for profile, product_count in results:
             profiles_data.append(
                 {
                     "id": profile.id,

@@ -11,6 +11,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
+from src.core.database.json_type import JSONType
 
 # revision identifiers, used by Alembic.
 revision: str = "4efe7b2471a9"
@@ -29,10 +30,10 @@ def upgrade() -> None:
         sa.Column("profile_id", sa.String(length=100), nullable=False),
         sa.Column("name", sa.String(length=200), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("inventory_config", sa.JSON(), nullable=False),
-        sa.Column("formats", sa.JSON(), nullable=False),
-        sa.Column("publisher_properties", sa.JSON(), nullable=False),
-        sa.Column("targeting_template", sa.JSON(), nullable=True),
+        sa.Column("inventory_config", JSONType, nullable=False),
+        sa.Column("formats", JSONType, nullable=False),
+        sa.Column("publisher_properties", JSONType, nullable=False),
+        sa.Column("targeting_template", JSONType, nullable=True),
         sa.Column("gam_preset_id", sa.String(length=100), nullable=True),
         sa.Column("gam_preset_sync_enabled", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
