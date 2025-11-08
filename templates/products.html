@@ -145,9 +145,31 @@
         </thead>
         <tbody>
             {% for product in products %}
-            <tr>
+            <tr {% if product.is_dynamic %}class="dynamic-template"{% elif product.is_dynamic_variant %}class="dynamic-variant"{% endif %}>
                 <td><code>{{ product.product_id }}</code></td>
-                <td>{{ product.name }}</td>
+                <td>
+                    {% if product.is_dynamic %}
+                        <span class="badge" style="background: #9c27b0; color: white;" title="Dynamic product template">
+                            <i class="fas fa-bolt"></i> Template
+                        </span>
+                    {% elif product.is_dynamic_variant %}
+                        <span class="badge" style="background: #4caf50; color: white;" title="Dynamic product variant">
+                            <i class="fas fa-lightning-bolt"></i> Variant
+                        </span>
+                    {% endif %}
+                    {{ product.name }}
+                    {% if product.is_dynamic_variant and product.activation_key %}
+                        <br>
+                        <small style="color: #666;">
+                            <strong>Signal:</strong>
+                            {% if product.activation_key.type == 'key_value' %}
+                                {{ product.activation_key.key }}={{ product.activation_key.value }}
+                            {% elif product.activation_key.type == 'segment_id' %}
+                                Segment {{ product.activation_key.segment_id }}
+                            {% endif %}
+                        </small>
+                    {% endif %}
+                </td>
                 <td>
                     {% for format in product.formats %}
                         {# Format is now resolved with name field from creative agent #}

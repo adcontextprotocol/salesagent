@@ -925,6 +925,31 @@ def add_product(tenant_id):
                     # Default to empty property_tags list if neither was set
                     product_kwargs["property_tags"] = []
 
+                # Handle dynamic product fields
+                is_dynamic = form_data.get("is_dynamic") in [True, "true", "on", 1, "1"]
+                if is_dynamic:
+                    product_kwargs["is_dynamic"] = True
+
+                    # Get signals agent IDs (multi-select)
+                    signals_agent_ids = form_data.getlist("signals_agent_ids")
+                    if signals_agent_ids:
+                        product_kwargs["signals_agent_ids"] = signals_agent_ids
+
+                    # Get max signals
+                    max_signals = form_data.get("max_signals", "5")
+                    try:
+                        product_kwargs["max_signals"] = int(max_signals)
+                    except ValueError:
+                        product_kwargs["max_signals"] = 5
+
+                    # Get variant TTL days (optional)
+                    variant_ttl_days = form_data.get("variant_ttl_days", "").strip()
+                    if variant_ttl_days:
+                        try:
+                            product_kwargs["variant_ttl_days"] = int(variant_ttl_days)
+                        except ValueError:
+                            pass  # Leave as None if invalid
+
                 # Create product with correct fields matching the Product model
                 product = Product(**product_kwargs)
                 db_session.add(product)
@@ -1053,15 +1078,23 @@ def add_product(tenant_id):
             )
             inventory_synced = inventory_count > 0
 
+            # Get signals agents for dynamic products
+            from src.core.database.models import SignalsAgent
+
+            stmt = select(SignalsAgent).filter_by(tenant_id=tenant_id, enabled=True)
+            signals_agents = db_session.scalars(stmt).all()
+
         return render_template(
             "add_product_gam.html",
             tenant_id=tenant_id,
             tenant_name=tenant.name,
+            tenant=tenant,
             inventory_synced=inventory_synced,
             formats=get_creative_formats(tenant_id=tenant_id),
             authorized_properties=properties_list,
             property_tags=property_tags,
             currencies=currencies,
+            signals_agents=signals_agents,
         )
     else:
         # For Mock and other adapters: simple form

@@ -268,6 +268,82 @@
             {% endif %}
         </div>
 
+        <!-- Dynamic Products Configuration -->
+        <h3 style="margin-top: 2rem;">
+            <i class="fas fa-lightning-bolt"></i> Dynamic Products (Signals-Based)
+        </h3>
+        <div class="alert" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 1rem; margin-bottom: 1rem;">
+            <strong>Optional:</strong> Make this product dynamic to automatically generate variants from signals agents based on buyer briefs.
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="is_dynamic" name="is_dynamic" {% if product and product.is_dynamic %}checked{% endif %}>
+                <strong>This is a dynamic product template</strong>
+            </label>
+            <small style="color: #666; display: block; margin-top: 0.5rem;">
+                When enabled, this product acts as a template. The system will query signals agents and create product variants with targeting based on active signals.
+            </small>
+        </div>
+
+        <div id="dynamic-product-config" style="display: {% if product and product.is_dynamic %}block{% else %}none{% endif %}; margin-left: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px; margin-top: 1rem;">
+            <h4 style="margin-top: 0;">Dynamic Product Settings</h4>
+
+            <!-- Signals Agent Selection -->
+            <div class="form-group">
+                <label for="signals_agent_ids">Signals Agents *</label>
+                {% set selected_agents = product.signals_agent_ids if product and product.signals_agent_ids else [] %}
+                <select name="signals_agent_ids" id="signals_agent_ids" multiple size="5" style="width: 100%;">
+                    {% if signals_agents %}
+                        {% for agent in signals_agents %}
+                        <option value="{{ agent.agent_id }}"
+                                {% if agent.agent_id in selected_agents %}selected{% endif %}>
+                            {{ agent.name }} - {{ agent.agent_url }}
+                        </option>
+                        {% endfor %}
+                    {% else %}
+                        <option disabled>No signals agents configured</option>
+                    {% endif %}
+                </select>
+                <small style="color: #666;">
+                    Select one or more signals agents to query. System will create product variants based on signals returned for buyer's brief.
+                    {% if not signals_agents %}
+                    <br><a href="{{ url_for('signals_agents.list_signals_agents', tenant_id=tenant_id) }}">Configure signals agents first</a>
+                    {% endif %}
+                </small>
+            </div>
+
+            <!-- Max Signals -->
+            <div class="form-group">
+                <label for="max_signals">Maximum Variants</label>
+                <input type="number" id="max_signals" name="max_signals"
+                       value="{{ product.max_signals if product and product.max_signals else 5 }}"
+                       min="1" max="20" style="width: 150px;">
+                <small style="color: #666;">Maximum number of product variants to create from signals (default: 5)</small>
+            </div>
+
+            <!-- Variant TTL -->
+            <div class="form-group">
+                <label for="variant_ttl_days">Variant Expiration (Days)</label>
+                <input type="number" id="variant_ttl_days" name="variant_ttl_days"
+                       value="{{ product.variant_ttl_days if product and product.variant_ttl_days else '' }}"
+                       min="1" max="365" placeholder="30" style="width: 150px;">
+                <small style="color: #666;">How many days until unused variants expire (leave blank for tenant default of 30 days)</small>
+            </div>
+
+            <div class="alert" style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 1rem; margin-top: 1rem;">
+                <strong>How Dynamic Products Work:</strong>
+                <ul style="margin: 0.5rem 0 0 0; padding-left: 1.5rem;">
+                    <li>This product serves as a template with all settings (formats, pricing, targeting)</li>
+                    <li>When buyers call get_products with a brief, we query your selected signals agents</li>
+                    <li>For each matching signal (up to max variants), we create a product variant</li>
+                    <li>Variants inherit all template settings and include signal-based targeting</li>
+                    <li>Variants are single-use and expire after the configured TTL</li>
+                    <li>Buyers see variants as normal products - the implementation is transparent</li>
+                </ul>
+            </div>
+        </div>
+
         <!-- Submit Buttons -->
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
             <button type="submit" class="btn btn-primary">{{ 'Update Product' if product else 'Create Product' }}</button>
@@ -275,6 +351,13 @@
         </div>
     </form>
 </div>
+
+<script>
+// Show/hide dynamic product configuration
+document.getElementById('is_dynamic').addEventListener('change', function(e) {
+    document.getElementById('dynamic-product-config').style.display = e.target.checked ? 'block' : 'none';
+});
+</script>
 
 <!-- Include shared hierarchical tree view styles -->
 {% include 'partials/hierarchical_tree_styles.html' %}
