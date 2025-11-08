@@ -69,7 +69,6 @@ def generate_variants_for_brief(tenant_id: str, brief: str, our_agent_url: str |
             if our_agent_url:
                 context["deliver_to"] = {
                     "destinations": [{"agent_url": our_agent_url}],
-                    "countries": ["US"],  # TODO: Make configurable per tenant
                 }
 
             # Create event loop for async registry call
