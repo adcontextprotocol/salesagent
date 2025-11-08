@@ -110,7 +110,7 @@ class SetupChecklistService:
         config_details = "No ad server configured"
 
         if ad_server_selected:
-            if tenant.ad_server == "gam":
+            if tenant.ad_server == "google_ad_manager":
                 # Check if GAM has OAuth tokens (indicates successful authentication)
                 # GAM config is stored in the adapter_config table, not directly on tenant
                 # For now, just check if adapter is selected
@@ -125,10 +125,14 @@ class SetupChecklistService:
                 # Mock adapter is always ready once selected
                 ad_server_fully_configured = True
                 config_details = "Mock adapter configured - Ready for testing"
-            else:
-                # Other adapters (Kevel, etc.)
+            elif tenant.ad_server in ["kevel", "triton"]:
+                # Other adapters (Kevel, Triton) - assume configured once selected
                 ad_server_fully_configured = True
                 config_details = f"{tenant.ad_server} adapter configured"
+            else:
+                # Unknown adapter type - show warning but don't block
+                ad_server_fully_configured = True
+                config_details = f"{tenant.ad_server} adapter - verify configuration"
 
         tasks.append(
             SetupTask(
@@ -184,26 +188,82 @@ class SetupChecklistService:
             )
         )
 
-        # 5. Inventory Synced
+        # 5. Inventory Synced (adapter-specific behavior)
         # Check if tenant has synced inventory from ad server
-        # This checks GAMInventory table which stores actual synced ad units, placements, and targeting options
-        stmt = select(func.count()).select_from(GAMInventory).where(GAMInventory.tenant_id == self.tenant_id)
-        inventory_count = session.scalar(stmt) or 0
-
-        inventory_synced = inventory_count > 0
-        inventory_details = (
-            f"{inventory_count:,} inventory items synced" if inventory_synced else "No inventory synced from ad server"
-        )
-        tasks.append(
-            SetupTask(
-                key="inventory_synced",
-                name="Inventory Sync",
-                description="Sync ad units and placements from ad server",
-                is_complete=inventory_synced,
-                action_url=f"/tenant/{self.tenant_id}/settings#inventory",
-                details=inventory_details,
+        # - None: No adapter selected, must configure ad server first (incomplete)
+        # - GAM: Requires sync from Google Ad Manager (checks GAMInventory table)
+        # - Mock: Has built-in inventory (no sync required)
+        # - Kevel/Triton: Check adapter documentation for inventory requirements
+        if tenant.ad_server is None or tenant.ad_server == "":
+            # No ad server configured - cannot proceed with inventory setup
+            tasks.append(
+                SetupTask(
+                    key="inventory_synced",
+                    name="Inventory Sync",
+                    description="Configure ad server before syncing inventory",
+                    is_complete=False,
+                    action_url=f"/tenant/{self.tenant_id}/settings#adserver",
+                    details="Ad server must be configured before inventory can be synced",
+                )
             )
-        )
+        elif tenant.ad_server == "google_ad_manager":
+            # GAM requires syncing inventory from Google Ad Manager
+            stmt = select(func.count()).select_from(GAMInventory).where(GAMInventory.tenant_id == self.tenant_id)
+            inventory_count = session.scalar(stmt) or 0
+
+            inventory_synced = inventory_count > 0
+            inventory_details = (
+                f"{inventory_count:,} inventory items synced"
+                if inventory_synced
+                else "No inventory synced from ad server"
+            )
+            tasks.append(
+                SetupTask(
+                    key="inventory_synced",
+                    name="Inventory Sync",
+                    description="Sync ad units and placements from ad server",
+                    is_complete=inventory_synced,
+                    action_url=f"/tenant/{self.tenant_id}/settings#inventory",
+                    details=inventory_details,
+                )
+            )
+        elif tenant.ad_server == "mock":
+            # Mock adapter has built-in inventory, always complete
+            tasks.append(
+                SetupTask(
+                    key="inventory_synced",
+                    name="Inventory Sync",
+                    description="Mock adapter has built-in inventory (no sync required)",
+                    is_complete=True,
+                    action_url=None,
+                    details="Mock adapter provides built-in mock inventory automatically",
+                )
+            )
+        elif tenant.ad_server in ["kevel", "triton"]:
+            # Kevel and Triton adapters - mark as complete (inventory configured per product)
+            # These adapters configure inventory targeting at the product level, not via global sync
+            tasks.append(
+                SetupTask(
+                    key="inventory_synced",
+                    name="Inventory Configuration",
+                    description=f"{tenant.ad_server.title()} adapter - inventory configured per product",
+                    is_complete=True,
+                    action_url=None,
+                    details=f"{tenant.ad_server.title()} adapter configures inventory targeting at product level",
+                )
+            )
+        else:
+            # Unknown adapter - show as complete but with note to verify
+            tasks.append(
+                SetupTask(
+                    key="inventory_synced",
+                    name="Inventory Configuration",
+                    description="Inventory configuration - check adapter documentation",
+                    is_complete=True,
+                    action_url=None,
+                    details=f"{tenant.ad_server} adapter - verify inventory configuration requirements",
+                )
+            )
 
         # 6. Products Created
         stmt = select(func.count()).select_from(Product).where(Product.tenant_id == self.tenant_id)

@@ -444,18 +444,30 @@ class TestEnvironmentFirstAuthentication:
 
         # Clear environment variables to force database check
         with patch.dict("os.environ", {"SUPER_ADMIN_EMAILS": "", "SUPER_ADMIN_DOMAINS": ""}, clear=False):
-            with client.session_transaction() as sess:
-                sess["authenticated"] = True
-                sess["user"] = "test@example.com"
-                sess["email"] = "test@example.com"
-                # Don't set is_super_admin initially to test caching
+            # Mock get_format to avoid async HTTP calls to creative agents during this session caching test
+            with patch("src.core.format_resolver.get_format") as mock_get_format:
+                # Return a minimal Format object that won't cause issues in the template
+                from src.core.schemas import Format, FormatId
 
-            tenant_id = "test_delete"
+                mock_get_format.return_value = Format(
+                    format_id=FormatId(agent_url="https://test.example.com", id="test_format"),
+                    name="Test Format",
+                    type="display",
+                    is_standard=True,
+                )
 
-            # First request should check database and cache super admin status
-            response = client.get(f"/tenant/{tenant_id}/products/")  # Note trailing slash
-            assert response.status_code == 200  # Should succeed
+                with client.session_transaction() as sess:
+                    sess["authenticated"] = True
+                    sess["user"] = "test@example.com"
+                    sess["email"] = "test@example.com"
+                    # Don't set is_super_admin initially to test caching
 
-            # Verify session now has is_super_admin cached
-            with client.session_transaction() as sess:
-                assert sess.get("is_super_admin") is True
+                tenant_id = "test_delete"
+
+                # First request should check database and cache super admin status
+                response = client.get(f"/tenant/{tenant_id}/products/")  # Note trailing slash
+                assert response.status_code == 200  # Should succeed
+
+                # Verify session now has is_super_admin cached
+                with client.session_transaction() as sess:
+                    assert sess.get("is_super_admin") is True

@@ -174,7 +174,7 @@ def build_sync_creatives_request(
 
 def build_creative(
     creative_id: str,
-    format_id: str,
+    format_id: str | dict[str, Any],
     name: str,
     asset_url: str,
     click_through_url: str | None = None,
@@ -185,7 +185,7 @@ def build_creative(
 
     Args:
         creative_id: Unique creative identifier
-        format_id: Format ID (e.g., "display_300x250")
+        format_id: Format ID - either string (legacy) or FormatId dict with agent_url and id
         name: Human-readable creative name
         asset_url: URL to the creative asset (converted to assets structure)
         click_through_url: Optional click-through destination
