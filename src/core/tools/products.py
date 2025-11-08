@@ -369,7 +369,10 @@ async def _get_products_impl(
     try:
         from src.services.dynamic_products import generate_variants_for_brief
 
-        dynamic_variants = generate_variants_for_brief(tenant["tenant_id"], brief_text)
+        # Get our agent URL for deployment specification
+        our_agent_url = tenant.get("virtual_host")  # Our sales agent URL (e.g., https://sales.example.com)
+
+        dynamic_variants = generate_variants_for_brief(tenant["tenant_id"], brief_text, our_agent_url)
         if dynamic_variants:
             # Convert Product models to Product schemas for response
 

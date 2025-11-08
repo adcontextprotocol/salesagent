@@ -4,8 +4,14 @@ This service handles:
 1. Querying signals agents with buyer briefs
 2. Generating product variants from signals
 3. Managing variant lifecycle (creation, expiration, archival)
+
+Architecture:
+- Uses singleton SignalsAgentRegistry for all signal queries
+- Registry handles multi-agent calls, auth, and MCP client management
+- Deployment specified per AdCP spec (our agent_url as destination)
 """
 
+import asyncio
 import hashlib
 import logging
 from datetime import datetime, timedelta
@@ -14,17 +20,24 @@ from sqlalchemy import select
 from sqlalchemy.orm import attributes
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Product, SignalsAgent
+from src.core.database.models import Product
+from src.core.signals_agent_registry import get_signals_agent_registry
 
 logger = logging.getLogger(__name__)
 
 
-def generate_variants_for_brief(tenant_id: str, brief: str) -> list[Product]:
+def generate_variants_for_brief(tenant_id: str, brief: str, our_agent_url: str | None = None) -> list[Product]:
     """Generate product variants from signals agents based on buyer's brief.
+
+    Uses the singleton SignalsAgentRegistry which handles:
+    - Multi-agent queries (all configured agents for tenant)
+    - MCP client management and connection pooling
+    - Auth handling per agent
 
     Args:
         tenant_id: Tenant ID
         brief: Buyer's brief text
+        our_agent_url: Our sales agent URL for deployment specification (optional)
 
     Returns:
         List of Product variants (newly created or existing)
@@ -40,108 +53,72 @@ def generate_variants_for_brief(tenant_id: str, brief: str) -> list[Product]:
             logger.debug(f"No dynamic product templates found for tenant {tenant_id}")
             return []
 
+        # Check if any templates have signals agents configured
+        has_signals_agents = any(template.signals_agent_ids for template in templates)
+        if not has_signals_agents:
+            logger.debug(f"No dynamic product templates with signals agents for tenant {tenant_id}")
+            return []
+
+        # Query ALL signals agents for this tenant in one call (registry handles multi-agent)
+        # This is more efficient than per-agent queries
+        try:
+            registry = get_signals_agent_registry()
+
+            # Build context with deployment specification per AdCP spec
+            context = {}
+            if our_agent_url:
+                context["deliver_to"] = {
+                    "destinations": [{"agent_url": our_agent_url}],
+                    "countries": ["US"],  # TODO: Make configurable per tenant
+                }
+
+            # Create event loop for async registry call
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                all_signals = loop.run_until_complete(
+                    registry.get_signals(
+                        brief=brief,  # Note: Registry uses 'brief', not 'signal_spec' (TODO: update to match AdCP spec)
+                        tenant_id=tenant_id,
+                        context=context,
+                    )
+                )
+                logger.info(f"Received {len(all_signals)} total signals from all agents")
+            finally:
+                loop.close()
+
+        except Exception as e:
+            logger.error(f"Error querying signals agents for tenant {tenant_id}: {e}", exc_info=True)
+            return []
+
+        # Generate variants for each template using the signals
         for template in templates:
             if not template.signals_agent_ids:
-                logger.warning(f"Dynamic product {template.product_id} has no signals agents configured")
                 continue
 
-            # Query each configured signals agent
-            for agent_id in template.signals_agent_ids:
-                try:
-                    signals = query_signals_agent(session, tenant_id, agent_id, brief)
+            try:
+                # Filter signals to only those we want for this template
+                # (up to max_signals limit)
+                template_signals = all_signals[: template.max_signals]
 
-                    # Generate variants (up to max_signals)
-                    template_variants = generate_variants_from_signals(
-                        session, template, signals[: template.max_signals], brief
-                    )
+                # Generate variants from signals
+                template_variants = generate_variants_from_signals(
+                    session, template, template_signals, brief, our_agent_url
+                )
+                variants.extend(template_variants)
 
-                    variants.extend(template_variants)
-
-                except Exception as e:
-                    logger.error(f"Error querying signals agent {agent_id}: {e}", exc_info=True)
-                    continue
+            except Exception as e:
+                logger.error(f"Error generating variants for template {template.product_id}: {e}", exc_info=True)
+                continue
 
         session.commit()
 
     return variants
 
 
-def query_signals_agent(session, tenant_id: str, agent_id: str, brief: str) -> list[dict]:
-    """Query a signals agent for matching signals using the signals registry.
-
-    Args:
-        session: Database session
-        tenant_id: Tenant ID
-        agent_id: Signals agent ID
-        brief: Buyer's brief
-
-    Returns:
-        List of signal dicts from signals agent response
-    """
-    # Get signals agent from database
-    stmt = select(SignalsAgent).filter_by(tenant_id=tenant_id, agent_id=agent_id, enabled=True)
-    agent = session.scalars(stmt).first()
-
-    if not agent:
-        logger.warning(f"Signals agent {agent_id} not found or disabled")
-        return []
-
-    logger.info(f"Querying signals agent {agent.name} ({agent.agent_url}) with brief: {brief}")
-
-    # Use signals registry to query the agent via MCP
-    try:
-        import asyncio
-
-        from src.core.signals_agent_registry import (
-            SignalsAgent as SignalsAgentDataclass,
-        )
-        from src.core.signals_agent_registry import SignalsAgentRegistry
-
-        registry = SignalsAgentRegistry()
-
-        # Parse auth credentials if present (same as registry does)
-        auth = None
-        if agent.auth_type and agent.auth_credentials:
-            auth = {
-                "type": agent.auth_type,
-                "credentials": agent.auth_credentials,
-            }
-
-        # Convert database model to dataclass for registry
-        agent_dataclass = SignalsAgentDataclass(
-            agent_url=agent.agent_url,
-            name=agent.name,
-            enabled=agent.enabled,
-            auth=auth,
-            auth_header=agent.auth_header,
-            timeout=agent.timeout or 30,
-        )
-
-        # Create async context and query specific agent
-        # Note: This runs in a sync context, so we need to create an event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            signals = loop.run_until_complete(
-                registry._get_signals_from_agent(
-                    agent=agent_dataclass,
-                    brief=brief,
-                    tenant_id=tenant_id,
-                    principal_id=None,  # Optional - not needed for product discovery
-                    context=None,  # Optional context
-                )
-            )
-            logger.info(f"Received {len(signals)} signals from agent {agent.name}")
-            return signals
-        finally:
-            loop.close()
-
-    except Exception as e:
-        logger.error(f"Error querying signals agent {agent.name}: {e}", exc_info=True)
-        return []
-
-
-def generate_variants_from_signals(session, template: Product, signals: list[dict], brief: str) -> list[Product]:
+def generate_variants_from_signals(
+    session, template: Product, signals: list[dict], brief: str, our_agent_url: str | None = None
+) -> list[Product]:
     """Generate product variants from template and signals.
 
     Args:
@@ -149,6 +126,7 @@ def generate_variants_from_signals(session, template: Product, signals: list[dic
         template: Dynamic product template
         signals: List of signal dicts from signals agent
         brief: Buyer's brief (for variant customization)
+        our_agent_url: Our sales agent URL to match deployment (optional)
 
     Returns:
         List of generated/updated Product variants
@@ -157,10 +135,13 @@ def generate_variants_from_signals(session, template: Product, signals: list[dic
 
     for signal in signals:
         try:
-            # Extract activation key from signal
-            activation_key = extract_activation_key(signal)
+            # Extract activation key from signal for our deployment
+            activation_key = extract_activation_key(signal, our_agent_url)
             if not activation_key:
-                logger.warning(f"No activation key found for signal {signal.get('signal_agent_segment_id')}")
+                logger.warning(
+                    f"No activation key found for signal {signal.get('signal_agent_segment_id')} "
+                    f"matching our deployment {our_agent_url or 'any'}"
+                )
                 continue
 
             # Generate variant ID (deterministic)
@@ -200,11 +181,15 @@ def generate_variants_from_signals(session, template: Product, signals: list[dic
     return variants
 
 
-def extract_activation_key(signal: dict) -> dict | None:
-    """Extract activation key from signal response.
+def extract_activation_key(signal: dict, our_agent_url: str | None = None) -> dict | None:
+    """Extract activation key from signal response for our deployment.
+
+    Per AdCP spec, there should only be one deployment which matches our agent_url.
+    We look for the deployment that matches our URL (or any live deployment if URL not provided).
 
     Args:
         signal: Signal dict from signals agent response
+        our_agent_url: Our sales agent URL to match deployment (optional)
 
     Returns:
         Activation key dict or None if not found
@@ -212,8 +197,26 @@ def extract_activation_key(signal: dict) -> dict | None:
     # Look for activation key in deployments
     deployments = signal.get("deployments", [])
 
+    # If we have our agent URL, find the deployment that matches it
+    if our_agent_url:
+        for deployment in deployments:
+            destination = deployment.get("destination", {})
+            if destination.get("agent_url") == our_agent_url:
+                # Found our deployment
+                if deployment.get("is_live") and deployment.get("activation_key"):
+                    activation_key = deployment["activation_key"]
+
+                    # Validate activation key has required fields
+                    key_type = activation_key.get("type")
+                    if key_type == "key_value":
+                        if "key" in activation_key and "value" in activation_key:
+                            return activation_key
+                    elif key_type == "segment_id":
+                        if "segment_id" in activation_key:
+                            return activation_key
+
+    # Fallback: If no URL provided or no matching deployment, use first live deployment
     for deployment in deployments:
-        # Check if this deployment has an activation key and is live
         if deployment.get("is_live") and deployment.get("activation_key"):
             activation_key = deployment["activation_key"]
 
