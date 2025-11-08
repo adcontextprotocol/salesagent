@@ -1,0 +1,1307 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory & Profiles - {{ tenant.name }} Sales Agent{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Breadcrumb Navigation -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('core.index') }}">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant.tenant_id) }}">{{ tenant.name }}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Inventory & Profiles</li>
+        </ol>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2>Inventory & Profiles</h2>
+                    <p class="text-muted">Browse GAM inventory and manage reusable inventory profiles</p>
+                </div>
+                <div>
+                    <button class="btn btn-primary" onclick="showCreateProfileModal()">
+                        <i class="fas fa-plus"></i> Create Profile
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <ul class="nav nav-tabs mb-4" id="inventoryTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="profiles-tab" data-bs-toggle="tab" data-bs-target="#profiles-pane" type="button" role="tab">
+                <i class="fas fa-layer-group"></i> Inventory Profiles
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="browser-tab" data-bs-toggle="tab" data-bs-target="#browser-pane" type="button" role="tab">
+                <i class="fas fa-th"></i> Browse Inventory
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content" id="inventoryTabContent">
+        <!-- Inventory Profiles Tab -->
+        <div class="tab-pane fade show active" id="profiles-pane" role="tabpanel">
+            <!-- Profile Statistics -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h3 class="text-primary" id="totalProfiles">0</h3>
+                            <p class="card-text">Total Profiles</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h3 class="text-success" id="inUseProfiles">0</h3>
+                            <p class="card-text">In Use</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h3 class="text-muted" id="unusedProfiles">0</h3>
+                            <p class="card-text">Unused</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profiles List -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Inventory Profiles</h5>
+                </div>
+                <div class="card-body">
+                    <div id="profilesList">
+                        <div class="text-center text-muted py-4">
+                            <p>Loading profiles...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Browse Inventory Tab -->
+        <div class="tab-pane fade" id="browser-pane" role="tabpanel">
+            <!-- Sync Status -->
+            <div class="row mb-4">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h5 class="card-title mb-1">Inventory Status</h5>
+                                    <p class="mb-0" id="syncStatus">Loading...</p>
+                                </div>
+                                <div class="btn-group">
+                                    <button class="btn btn-primary" onclick="syncInventory()" id="syncBtn">
+                                        <i class="bi bi-arrow-clockwise"></i> Sync All
+                                    </button>
+                                    <button class="btn btn-outline-primary" onclick="showSelectiveSync()">
+                                        <i class="bi bi-sliders"></i> Selective
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Quick Stats</h5>
+                            <div id="inventoryStats">
+                                <div class="text-muted">Loading...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search and Filters -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Search Inventory</h5>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <input type="text" class="form-control" id="searchQuery"
+                                           placeholder="Search by name or path...">
+                                </div>
+                                <div class="col-md-2">
+                                    <select class="form-select" id="inventoryType">
+                                        <option value="">All Types</option>
+                                        <option value="ad_unit">Ad Units</option>
+                                        <option value="placement">Placements</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <select class="form-select" id="inventoryStatus">
+                                        <option value="">All Status</option>
+                                        <option value="ACTIVE">Active</option>
+                                        <option value="INACTIVE">Inactive</option>
+                                        <option value="ARCHIVED">Archived</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <button class="btn btn-primary w-100" onclick="searchInventory()">
+                                        Search
+                                    </button>
+                                </div>
+                                <div class="col-md-2">
+                                    <button class="btn btn-success w-100" onclick="createProfileFromSelection()" id="createFromSelectionBtn" disabled>
+                                        Create Profile
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="row">
+                <!-- Tree View -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Ad Unit Hierarchy</h5>
+                            <button class="btn btn-sm btn-outline-primary" onclick="toggleSelectAll()">
+                                Select/Deselect All
+                            </button>
+                        </div>
+                        <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                            <div id="adUnitTree" class="tree-view">
+                                <div class="text-muted">Loading ad unit tree...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detail View -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Inventory Details & Selection</h5>
+                        </div>
+                        <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                            <!-- Selection Summary -->
+                            <div id="selectionSummary" class="alert alert-info" style="display: none;">
+                                <h6><i class="fas fa-check-square"></i> Selected Items</h6>
+                                <div id="selectedAdUnits" style="margin-bottom: 0.5rem;"></div>
+                                <div id="selectedPlacements"></div>
+                            </div>
+
+                            <!-- Inventory Detail -->
+                            <div id="inventoryDetail">
+                                <p class="text-muted">Select an inventory item to view details, or use checkboxes to build a selection for creating profiles</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Profile Modal -->
+<div class="modal fade" id="profileModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="profileModalTitle">Create Inventory Profile</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="profileForm">
+                    <input type="hidden" id="profileId" name="profile_id">
+
+                    <!-- Section 1: Basic Information -->
+                    <h5 class="mb-3">Profile Information</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="profileName" class="form-label">Profile Name *</label>
+                            <input type="text" class="form-control" id="profileName" name="name" required>
+                            <small class="text-muted">A descriptive name for this inventory configuration</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="profileIdInput" class="form-label">Profile ID</label>
+                            <input type="text" class="form-control" id="profileIdInput" name="profile_id_input" placeholder="Auto-generated from name">
+                            <small class="text-muted">Leave blank to auto-generate. Used in URLs and APIs.</small>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="profileDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="profileDescription" name="description" rows="2"></textarea>
+                    </div>
+
+                    <!-- Section 2: Inventory Selection -->
+                    <h5 class="mb-3 mt-4">Inventory (Ad Units & Placements)</h5>
+                    <div class="mb-3">
+                        <label class="form-label">Ad Units</label>
+                        <div id="selectedAdUnitsDisplay" class="border rounded p-2 mb-2" style="min-height: 60px; background: #f9f9f9;">
+                            <span class="text-muted">No ad units selected</span>
+                        </div>
+                        <textarea id="targeted_ad_unit_ids" name="targeted_ad_unit_ids" style="display: none;"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Placements</label>
+                        <div id="selectedPlacementsDisplay" class="border rounded p-2 mb-2" style="min-height: 60px; background: #f9f9f9;">
+                            <span class="text-muted">No placements selected</span>
+                        </div>
+                        <textarea id="targeted_placement_ids" name="targeted_placement_ids" style="display: none;"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="includeDescendants" name="include_descendants" checked>
+                            <label class="form-check-label" for="includeDescendants">
+                                Include child ad units in targeting
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Section 3: Creative Formats -->
+                    <h5 class="mb-3 mt-4">Creative Formats *</h5>
+                    <div id="format-search-box" class="mb-3">
+                        <input type="text" id="format-search-input" class="form-control" placeholder="Search formats by name, type, or size...">
+                    </div>
+
+                    <div id="selected-formats" style="margin-bottom: 1rem; padding: 1rem; background: #f0f7ff; border: 1px solid #d0e7ff; border-radius: 4px; min-height: 50px; display: none;">
+                        <div style="font-weight: 600; margin-bottom: 0.5rem; color: #0066cc;">Selected Formats:</div>
+                        <div id="selected-formats-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
+                    </div>
+
+                    <div id="format-list">
+                        <div id="format-loading" class="text-center text-muted py-3">
+                            Loading formats from creative agents...
+                        </div>
+                        <div id="format-results" style="display: none;"></div>
+                    </div>
+
+                    <input type="hidden" id="formats-data" name="formats">
+
+                    <!-- Section 4: Publisher Properties -->
+                    <h5 class="mb-3 mt-4">Publisher Properties *</h5>
+                    <div class="alert alert-info">
+                        <strong>Required:</strong> Inventory profiles must specify which properties they cover for AdCP compliance.
+                    </div>
+                    <div class="mb-3">
+                        <label for="publisher_properties" class="form-label">Publisher Properties (JSON) *</label>
+                        <textarea class="form-control font-monospace" id="publisher_properties" name="publisher_properties" rows="6"
+                                  placeholder='[{"publisher_domain": "example.com", "property_tags": ["all_inventory"]}]'></textarea>
+                        <small class="text-muted d-block mt-2">
+                            AdCP-compliant publisher properties structure. Each entry must include:
+                            <ul class="mb-0 mt-1">
+                                <li><code>publisher_domain</code> (required): Domain where adagents.json is hosted</li>
+                                <li><code>property_ids</code> (array) OR <code>property_tags</code> (array): Specific properties or tags</li>
+                            </ul>
+                        </small>
+                        {% if tenant and tenant.primary_domain %}
+                        <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="setDefaultProperties()">
+                            Use Default ({{ tenant.primary_domain }})
+                        </button>
+                        {% endif %}
+                    </div>
+
+                    <!-- Section 5: Optional Targeting Template -->
+                    <h5 class="mb-3 mt-4">Default Targeting (Optional)</h5>
+                    <div class="mb-3">
+                        <label for="targeting_template" class="form-label">Targeting Template (JSON)</label>
+                        <textarea class="form-control font-monospace" id="targeting_template" name="targeting_template" rows="4"
+                                  placeholder='{"geo_country_any_of": ["US"], "device_type_any_of": ["desktop", "mobile"]}'></textarea>
+                        <small class="text-muted">Optional. Products using this profile can inherit or override these targeting rules.</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveProfile()">Save Profile</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Selective Sync Modal (reused from inventory_browser.html) -->
+<div class="modal fade" id="selectiveSyncModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Selective Inventory Sync</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Select which inventory types to sync. Use limits for large datasets to reduce sync time.</p>
+
+                <div class="mb-3">
+                    <h6>Inventory Types</h6>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sync_ad_units" checked>
+                        <label class="form-check-label" for="sync_ad_units">
+                            <strong>Ad Units</strong> - Ad slots where ads are displayed
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sync_placements" checked>
+                        <label class="form-check-label" for="sync_placements">
+                            <strong>Placements</strong> - Groups of ad units
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sync_labels" checked>
+                        <label class="form-check-label" for="sync_labels">
+                            <strong>Labels</strong> - Organization tags
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sync_custom_targeting" checked>
+                        <label class="form-check-label" for="sync_custom_targeting">
+                            <strong>Custom Targeting</strong> - Key-value pairs for targeting
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sync_audience_segments" checked>
+                        <label class="form-check-label" for="sync_audience_segments">
+                            <strong>Audience Segments</strong> - First/third-party audiences
+                        </label>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <h6>Limits (Optional)</h6>
+                    <small class="text-muted d-block mb-2">For publishers with 10K+ targeting values/segments, use limits to speed up sync</small>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="custom_targeting_limit" class="form-label">Custom Targeting Values (per key)</label>
+                            <input type="number" class="form-control" id="custom_targeting_limit" placeholder="e.g., 1000">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="audience_segment_limit" class="form-label">Audience Segments</label>
+                            <input type="number" class="form-control" id="audience_segment_limit" placeholder="e.g., 500">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="selectiveSyncBtn" onclick="performSelectiveSync()">
+                    Sync Selected
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Tree view styles */
+.tree-view {
+    font-family: monospace;
+}
+
+.tree-node {
+    margin-left: 20px;
+    cursor: pointer;
+    user-select: none;
+    padding: 4px;
+}
+
+.tree-node:hover {
+    background-color: #f0f0f0;
+}
+
+.tree-node.selected {
+    background-color: #e3f2fd;
+}
+
+.tree-toggle {
+    display: inline-block;
+    width: 20px;
+    text-align: center;
+}
+
+.node-icon {
+    margin-right: 5px;
+}
+
+.node-status {
+    font-size: 0.8em;
+    margin-left: 10px;
+}
+
+.node-status.active { color: #28a745; }
+.node-status.inactive { color: #6c757d; }
+.node-status.archived { color: #dc3545; }
+
+/* Format selection styles */
+.format-card {
+    border: 2px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 0.75rem;
+    background: #f9f9f9;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.format-card:hover {
+    border-color: #0066cc;
+    background: #f0f7ff;
+}
+
+.format-card.selected {
+    border-color: #0066cc;
+    background: #f0f7ff;
+}
+
+.format-tag {
+    background: #0066cc;
+    color: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.format-tag .remove {
+    cursor: pointer;
+    font-weight: bold;
+}
+
+/* Selection checkbox */
+.tree-node input[type="checkbox"] {
+    margin-right: 8px;
+}
+</style>
+
+<script>
+const tenantId = '{{ tenant_id }}';
+let selectedInventory = null;
+let inventoryTree = null;
+let allFormats = [];
+let selectedFormats = new Set();
+let selectedAdUnitsMap = new Map();  // id -> {id, name, path}
+let selectedPlacementsMap = new Map();  // id -> {id, name}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadProfiles();
+    loadInventoryStatus();
+    loadFormats();
+    setupFormatSearch();
+
+    // Add enter key support for search
+    document.getElementById('searchQuery').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            searchInventory();
+        }
+    });
+});
+
+// ==================== PROFILES TAB ====================
+
+function loadProfiles() {
+    fetch(`/admin/tenant/${tenantId}/inventory-profiles/api/list`, {
+        credentials: 'same-origin'
+    })
+        .then(response => response.json())
+        .then(data => {
+            renderProfiles(data.profiles || []);
+        })
+        .catch(error => {
+            console.error('Error loading profiles:', error);
+            document.getElementById('profilesList').innerHTML = '<div class="alert alert-danger">Error loading profiles</div>';
+        });
+}
+
+function renderProfiles(profiles) {
+    const container = document.getElementById('profilesList');
+
+    // Update statistics
+    document.getElementById('totalProfiles').textContent = profiles.length;
+    const inUse = profiles.filter(p => p.product_count > 0).length;
+    document.getElementById('inUseProfiles').textContent = inUse;
+    document.getElementById('unusedProfiles').textContent = profiles.length - inUse;
+
+    if (profiles.length === 0) {
+        container.innerHTML = `
+            <div class="alert alert-info">
+                <h5><i class="fas fa-info-circle"></i> No Inventory Profiles Yet</h5>
+                <p class="mb-0">
+                    Create an inventory profile to group ad units, creative formats, and properties together.
+                    This makes it easy to reuse the same configuration across multiple products.
+                </p>
+                <button class="btn btn-primary mt-3" onclick="showCreateProfileModal()">
+                    <i class="fas fa-plus"></i> Create Your First Profile
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '<div class="row">';
+    profiles.forEach(profile => {
+        html += `
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-light">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="fas fa-layer-group text-primary"></i>
+                                ${profile.name}
+                            </h5>
+                            <span class="badge badge-info">
+                                ${profile.product_count} product${profile.product_count != 1 ? 's' : ''}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        ${profile.description ? `<p class="text-muted mb-3">${profile.description}</p>` : ''}
+
+                        <div class="mb-2">
+                            <strong><i class="fas fa-server"></i> Inventory:</strong>
+                            <span class="text-muted">${profile.inventory_summary}</span>
+                        </div>
+
+                        <div class="mb-2">
+                            <strong><i class="fas fa-palette"></i> Formats:</strong>
+                            <span class="text-muted">${profile.format_summary}</span>
+                        </div>
+
+                        <div class="mb-2">
+                            <strong><i class="fas fa-globe"></i> Properties:</strong>
+                            <span class="text-muted">${profile.property_summary}</span>
+                        </div>
+
+                        <div class="text-muted small mt-3">
+                            <i class="fas fa-clock"></i>
+                            Created: ${new Date(profile.created_at).toLocaleString()}
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <button class="btn btn-sm btn-primary" onclick="editProfile(${profile.id})">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
+                            </div>
+                            <div>
+                                ${profile.product_count == 0 ? `
+                                    <button class="btn btn-sm btn-danger" onclick="deleteProfile(${profile.id}, '${profile.name}')">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </button>
+                                ` : `
+                                    <button class="btn btn-sm btn-secondary" disabled
+                                            title="Cannot delete - used by ${profile.product_count} product(s)">
+                                        <i class="fas fa-lock"></i> In Use
+                                    </button>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+
+    container.innerHTML = html;
+}
+
+function showCreateProfileModal() {
+    // Reset form
+    document.getElementById('profileForm').reset();
+    document.getElementById('profileId').value = '';
+    document.getElementById('profileModalTitle').textContent = 'Create Inventory Profile';
+
+    // Pre-fill selection from browse inventory if any
+    if (selectedAdUnitsMap.size > 0 || selectedPlacementsMap.size > 0) {
+        updateProfileFormSelection();
+    }
+
+    // Show modal
+    new bootstrap.Modal(document.getElementById('profileModal')).show();
+}
+
+function editProfile(profileId) {
+    // Fetch profile data and populate form
+    fetch(`/admin/tenant/${tenantId}/inventory-profiles/${profileId}/preview`, {
+        credentials: 'same-origin'
+    })
+        .then(response => response.json())
+        .then(profile => {
+            // TODO: Populate form fields
+            // This would require fetching the full profile data from edit endpoint
+            alert('Edit functionality coming soon - will populate form with profile data');
+        });
+}
+
+function deleteProfile(profileId, profileName) {
+    if (!confirm(`Are you sure you want to delete inventory profile "${profileName}"?\n\nThis action cannot be undone.`)) {
+        return;
+    }
+
+    fetch(`/admin/tenant/${tenantId}/inventory-profiles/${profileId}/delete`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadProfiles();  // Reload list
+            } else {
+                alert('Error: ' + (data.error || 'Failed to delete profile'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting profile: ' + error.message);
+        });
+}
+
+function saveProfile() {
+    // Validate form
+    const form = document.getElementById('profileForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    // Validate formats
+    if (selectedFormats.size === 0) {
+        alert('Please select at least one creative format');
+        return;
+    }
+
+    // Validate publisher properties
+    const propsJson = document.getElementById('publisher_properties').value.trim();
+    if (!propsJson) {
+        alert('Please specify publisher properties');
+        return;
+    }
+
+    try {
+        const props = JSON.parse(propsJson);
+        if (!Array.isArray(props) || props.length === 0) {
+            alert('Publisher properties must be a non-empty array');
+            return;
+        }
+    } catch (error) {
+        alert('Invalid JSON in publisher properties: ' + error.message);
+        return;
+    }
+
+    // Build form data
+    const formData = new FormData(form);
+
+    // Submit
+    const profileId = document.getElementById('profileId').value;
+    const url = profileId
+        ? `/admin/tenant/${tenantId}/inventory-profiles/${profileId}/edit`
+        : `/admin/tenant/${tenantId}/inventory-profiles/add`;
+
+    fetch(url, {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+    })
+        .then(response => {
+            if (response.redirected) {
+                // Success - reload profiles
+                bootstrap.Modal.getInstance(document.getElementById('profileModal')).hide();
+                loadProfiles();
+                return;
+            }
+            return response.text();
+        })
+        .then(text => {
+            if (text && text.includes('error')) {
+                alert('Error saving profile');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error saving profile: ' + error.message);
+        });
+}
+
+function setDefaultProperties() {
+    const defaultProps = [
+        {
+            "publisher_domain": "{{ tenant.primary_domain if tenant and tenant.primary_domain else 'example.com' }}",
+            "property_tags": ["all_inventory"]
+        }
+    ];
+    document.getElementById('publisher_properties').value = JSON.stringify(defaultProps, null, 2);
+}
+
+// ==================== BROWSE INVENTORY TAB ====================
+
+function loadInventoryStatus() {
+    fetch(`/api/tenant/${tenantId}/inventory/tree`, {
+        credentials: 'same-origin'
+    })
+        .then(response => response.json())
+        .then(data => {
+            const syncStatus = document.getElementById('syncStatus');
+            const stats = document.getElementById('inventoryStats');
+
+            if (data.last_sync) {
+                const lastSync = new Date(data.last_sync);
+                const timeAgo = getTimeAgo(lastSync);
+                syncStatus.innerHTML = `
+                    Last synced: ${lastSync.toLocaleString()}
+                    <span class="text-muted">(${timeAgo})</span>
+                `;
+            } else {
+                syncStatus.innerHTML = '<span class="text-warning">Never synced</span>';
+            }
+
+            stats.innerHTML = `
+                <div><strong>Ad Units:</strong> ${data.total_units || 0}</div>
+                <div><strong>Placements:</strong> ${data.placements || 0}</div>
+                <div><strong>Labels:</strong> ${data.labels || 0}</div>
+                <div><strong>Targeting Keys:</strong> ${data.custom_targeting_keys || 0}</div>
+                <div><strong>Audience Segments:</strong> ${data.audience_segments || 0}</div>
+            `;
+
+            inventoryTree = data;
+            renderAdUnitTree(data.root_units || []);
+        })
+        .catch(error => {
+            console.error('Error loading inventory status:', error);
+            document.getElementById('syncStatus').innerHTML =
+                '<span class="text-danger">Error loading status</span>';
+        });
+}
+
+function getTimeAgo(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) {
+        return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    } else if (diffHours > 0) {
+        return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    } else if (diffMins > 0) {
+        return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+    } else {
+        return 'just now';
+    }
+}
+
+function syncInventory() {
+    const btn = document.getElementById('syncBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
+
+    fetch(`/api/tenant/${tenantId}/inventory/sync`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ mode: 'full' })
+    })
+        .then(response => {
+            if (response.status === 202 || response.ok) {
+                return response.json();
+            }
+            throw new Error(`Server error: ${response.status}`);
+        })
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            if (data.sync_id && data.status === 'running') {
+                alert(`✅ Inventory sync started in background!\n\nSync ID: ${data.sync_id}\n\nThe page will reload automatically when sync completes.`);
+                pollInventorySyncStatus(data.sync_id, btn);
+            } else {
+                throw new Error('Unexpected response format');
+            }
+        })
+        .catch(error => {
+            alert('Sync failed: ' + error.message);
+            console.error('Sync error:', error);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync All';
+        });
+}
+
+function pollInventorySyncStatus(syncId, btn) {
+    const checkStatus = () => {
+        fetch(`/tenant/${tenantId}/gam/sync-status/${syncId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'completed') {
+                    alert(`✅ Sync completed!`);
+                    window.location.reload();
+                } else if (data.status === 'failed' || data.error) {
+                    throw new Error(data.error || 'Sync failed');
+                } else {
+                    setTimeout(checkStatus, 2000);
+                }
+            })
+            .catch(error => {
+                alert('Sync failed: ' + error.message);
+                console.error('Sync error:', error);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync All';
+            });
+    };
+
+    checkStatus();
+}
+
+function showSelectiveSync() {
+    new bootstrap.Modal(document.getElementById('selectiveSyncModal')).show();
+}
+
+function performSelectiveSync() {
+    const types = [];
+    if (document.getElementById('sync_ad_units').checked) types.push('ad_units');
+    if (document.getElementById('sync_placements').checked) types.push('placements');
+    if (document.getElementById('sync_labels').checked) types.push('labels');
+    if (document.getElementById('sync_custom_targeting').checked) types.push('custom_targeting');
+    if (document.getElementById('sync_audience_segments').checked) types.push('audience_segments');
+
+    if (types.length === 0) {
+        alert('Please select at least one inventory type to sync');
+        return;
+    }
+
+    const customTargetingLimit = document.getElementById('custom_targeting_limit').value;
+    const audienceSegmentLimit = document.getElementById('audience_segment_limit').value;
+
+    const requestBody = { types };
+    if (customTargetingLimit) requestBody.custom_targeting_limit = parseInt(customTargetingLimit);
+    if (audienceSegmentLimit) requestBody.audience_segment_limit = parseInt(audienceSegmentLimit);
+
+    const btn = document.getElementById('selectiveSyncBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
+
+    fetch(`/api/tenant/${tenantId}/inventory/sync`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            alert('Selective sync completed!');
+            bootstrap.Modal.getInstance(document.getElementById('selectiveSyncModal')).hide();
+            window.location.reload();
+        })
+        .catch(error => {
+            alert('Selective sync failed: ' + error.message);
+            console.error('Selective sync error:', error);
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = 'Sync Selected';
+        });
+}
+
+function renderAdUnitTree(units, container = null) {
+    if (!container) {
+        container = document.getElementById('adUnitTree');
+        container.innerHTML = '';
+    }
+
+    if (units.length === 0) {
+        container.innerHTML = '<p class="text-muted">No ad units found</p>';
+        return;
+    }
+
+    units.forEach(unit => {
+        const node = createTreeNode(unit);
+        container.appendChild(node);
+    });
+}
+
+function createTreeNode(unit) {
+    const div = document.createElement('div');
+    div.className = 'tree-node';
+    div.dataset.unitId = unit.id;
+
+    const hasChildren = unit.children && unit.children.length > 0;
+    const isChecked = selectedAdUnitsMap.has(unit.id);
+
+    div.innerHTML = `
+        <input type="checkbox" onchange="toggleAdUnitSelection('${unit.id}', '${unit.name.replace(/'/g, "\\'")}', '${(unit.path || []).join(' > ').replace(/'/g, "\\'")}', this.checked)">
+        <span class="tree-toggle" onclick="toggleNode(this, event)">
+            ${hasChildren ? '▼' : '&nbsp;'}
+        </span>
+        <span class="node-icon">📁</span>
+        <span class="node-name" onclick="selectNode('${unit.id}', event)">
+            ${unit.name}
+        </span>
+        <span class="node-status ${unit.status.toLowerCase()}">[${unit.status}]</span>
+    `;
+
+    // Set checkbox state
+    div.querySelector('input[type="checkbox"]').checked = isChecked;
+
+    if (hasChildren) {
+        const childContainer = document.createElement('div');
+        childContainer.className = 'tree-children';
+        childContainer.style.display = 'block';
+        renderAdUnitTree(unit.children, childContainer);
+        div.appendChild(childContainer);
+    }
+
+    return div;
+}
+
+function toggleNode(toggle, event) {
+    event.stopPropagation();
+    const node = toggle.parentElement;
+    const children = node.querySelector('.tree-children');
+
+    if (children) {
+        if (children.style.display === 'none') {
+            children.style.display = 'block';
+            toggle.textContent = '▼';
+        } else {
+            children.style.display = 'none';
+            toggle.textContent = '▶';
+        }
+    }
+}
+
+function selectNode(unitId, event) {
+    event.stopPropagation();
+
+    document.querySelectorAll('.tree-node').forEach(n => n.classList.remove('selected'));
+    event.target.closest('.tree-node').classList.add('selected');
+
+    const unit = findUnitById(inventoryTree.root_units, unitId);
+    if (unit) {
+        showInventoryDetail(unit, 'ad_unit');
+    }
+}
+
+function findUnitById(units, unitId) {
+    for (const unit of units) {
+        if (unit.id === unitId) return unit;
+        if (unit.children) {
+            const found = findUnitById(unit.children, unitId);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+function showInventoryDetail(item, type) {
+    selectedInventory = { item, type };
+
+    const detail = document.getElementById('inventoryDetail');
+
+    let html = `
+        <h6>${item.name}</h6>
+        <table class="table table-sm">
+            <tr><th>ID:</th><td>${item.id}</td></tr>
+            <tr><th>Type:</th><td>${type}</td></tr>
+            <tr><th>Status:</th><td><span class="badge bg-${getStatusColor(item.status)}">${item.status}</span></td></tr>
+    `;
+
+    if (item.path && item.path.length > 0) {
+        html += `<tr><th>Path:</th><td>${item.path.join(' > ')}</td></tr>`;
+    }
+
+    const sizes = item.sizes || [];
+    if (sizes.length > 0) {
+        html += '<tr><th>Sizes:</th><td>';
+        sizes.forEach(size => {
+            html += `<span class="badge bg-secondary me-1">${size.width}x${size.height}</span>`;
+        });
+        html += '</td></tr>';
+    }
+
+    html += '</table>';
+
+    detail.innerHTML = html;
+}
+
+function getStatusColor(status) {
+    switch (status) {
+        case 'ACTIVE': return 'success';
+        case 'INACTIVE': return 'secondary';
+        case 'ARCHIVED': return 'danger';
+        default: return 'info';
+    }
+}
+
+function searchInventory() {
+    // Implement search functionality
+    alert('Search functionality coming soon');
+}
+
+function toggleAdUnitSelection(id, name, path, checked) {
+    if (checked) {
+        selectedAdUnitsMap.set(id, { id, name, path });
+    } else {
+        selectedAdUnitsMap.delete(id);
+    }
+    updateSelectionDisplay();
+}
+
+function toggleSelectAll() {
+    const anyChecked = document.querySelectorAll('.tree-node input[type="checkbox"]:checked').length > 0;
+    const checkboxes = document.querySelectorAll('.tree-node input[type="checkbox"]');
+
+    checkboxes.forEach(cb => {
+        cb.checked = !anyChecked;
+        // Trigger change event to update selection
+        cb.dispatchEvent(new Event('change'));
+    });
+}
+
+function updateSelectionDisplay() {
+    const summary = document.getElementById('selectionSummary');
+    const adUnitsDiv = document.getElementById('selectedAdUnits');
+    const placementsDiv = document.getElementById('selectedPlacements');
+    const createBtn = document.getElementById('createFromSelectionBtn');
+
+    const hasSelection = selectedAdUnitsMap.size > 0 || selectedPlacementsMap.size > 0;
+
+    if (hasSelection) {
+        summary.style.display = 'block';
+        createBtn.disabled = false;
+
+        adUnitsDiv.innerHTML = `<strong>Ad Units (${selectedAdUnitsMap.size}):</strong> ${
+            Array.from(selectedAdUnitsMap.values()).map(u => u.name).join(', ') || 'None'
+        }`;
+
+        placementsDiv.innerHTML = `<strong>Placements (${selectedPlacementsMap.size}):</strong> ${
+            Array.from(selectedPlacementsMap.values()).map(p => p.name).join(', ') || 'None'
+        }`;
+    } else {
+        summary.style.display = 'none';
+        createBtn.disabled = true;
+    }
+}
+
+function createProfileFromSelection() {
+    // Pre-fill the modal with selected inventory
+    updateProfileFormSelection();
+    showCreateProfileModal();
+}
+
+function updateProfileFormSelection() {
+    // Update ad units display
+    const adUnitsDisplay = document.getElementById('selectedAdUnitsDisplay');
+    const adUnitsField = document.getElementById('targeted_ad_unit_ids');
+
+    if (selectedAdUnitsMap.size > 0) {
+        const adUnitIds = Array.from(selectedAdUnitsMap.keys());
+        adUnitsField.value = JSON.stringify(adUnitIds);
+        adUnitsDisplay.innerHTML = Array.from(selectedAdUnitsMap.values())
+            .map(u => `<span class="badge bg-primary me-1">${u.name}</span>`)
+            .join('');
+    } else {
+        adUnitsField.value = '[]';
+        adUnitsDisplay.innerHTML = '<span class="text-muted">No ad units selected</span>';
+    }
+
+    // Update placements display
+    const placementsDisplay = document.getElementById('selectedPlacementsDisplay');
+    const placementsField = document.getElementById('targeted_placement_ids');
+
+    if (selectedPlacementsMap.size > 0) {
+        const placementIds = Array.from(selectedPlacementsMap.keys());
+        placementsField.value = JSON.stringify(placementIds);
+        placementsDisplay.innerHTML = Array.from(selectedPlacementsMap.values())
+            .map(p => `<span class="badge bg-info me-1">${p.name}</span>`)
+            .join('');
+    } else {
+        placementsField.value = '[]';
+        placementsDisplay.innerHTML = '<span class="text-muted">No placements selected</span>';
+    }
+}
+
+// ==================== FORMAT SELECTION ====================
+
+async function loadFormats() {
+    try {
+        const response = await fetch('/api/formats/list?tenant_id={{ tenant_id }}');
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('API returned error:', data);
+            document.getElementById('format-loading').innerHTML = `
+                <div style="color: #e74c3c; padding: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px;">
+                    <strong>⚠️ Error loading formats:</strong> ${data.message || data.error}
+                </div>
+            `;
+            return;
+        }
+
+        allFormats = [];
+        for (const [agentUrl, formats] of Object.entries(data.agents || {})) {
+            formats.forEach(fmt => {
+                allFormats.push({...fmt, agent_url: agentUrl});
+            });
+        }
+
+        console.log(`✅ Loaded ${allFormats.length} formats from ${Object.keys(data.agents || {}).length} agent(s)`);
+
+        document.getElementById('format-loading').style.display = 'none';
+        displayFormats(allFormats);
+    } catch (error) {
+        console.error('Error loading formats:', error);
+        document.getElementById('format-loading').innerHTML = `
+            <div style="color: #e74c3c; padding: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px;">
+                <strong>⚠️ Network error loading formats:</strong> ${error.message}
+            </div>
+        `;
+    }
+}
+
+function setupFormatSearch() {
+    const searchBox = document.getElementById('format-search-input');
+    let searchTimeout;
+
+    searchBox.addEventListener('input', function(e) {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            const query = e.target.value.toLowerCase().trim();
+            if (query.length === 0) {
+                displayFormats(allFormats);
+            } else {
+                const filtered = allFormats.filter(fmt =>
+                    fmt.format_id.toLowerCase().includes(query) ||
+                    fmt.name.toLowerCase().includes(query) ||
+                    (fmt.description && fmt.description.toLowerCase().includes(query)) ||
+                    fmt.type.toLowerCase().includes(query)
+                );
+                displayFormats(filtered);
+            }
+        }, 300);
+    });
+}
+
+function displayFormats(formats) {
+    const container = document.getElementById('format-results');
+
+    if (formats.length === 0) {
+        container.innerHTML = '<div style="text-align: center; padding: 2rem; color: #666;">No formats found</div>';
+        container.style.display = 'block';
+        return;
+    }
+
+    // Group by type
+    const grouped = {};
+    formats.forEach(fmt => {
+        if (!grouped[fmt.type]) {
+            grouped[fmt.type] = [];
+        }
+        grouped[fmt.type].push(fmt);
+    });
+
+    let html = '';
+    for (const [type, typeFormats] of Object.entries(grouped)) {
+        html += `
+            <div style="margin-bottom: 2rem;">
+                <h6 style="margin-bottom: 1rem; text-transform: capitalize; color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">${type}</h6>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+        `;
+
+        typeFormats.forEach(format => {
+            const isSelected = selectedFormats.has(format.format_id);
+            const checkIcon = isSelected ? '✓ ' : '';
+
+            html += `
+                <div class="format-card ${isSelected ? 'selected' : ''}"
+                     onclick="toggleFormat('${format.format_id}', '${format.name}', '${format.agent_url || ''}')">
+                    <div style="font-weight: 600; color: #333;">${checkIcon}${format.name}</div>
+                    ${format.description ? `<div style="color: #777; font-size: 0.85rem; margin-top: 0.25rem;">${format.description}</div>` : ''}
+                </div>
+            `;
+        });
+
+        html += '</div></div>';
+    }
+
+    container.innerHTML = html;
+    container.style.display = 'block';
+}
+
+function toggleFormat(formatId, formatName, agentUrl) {
+    if (selectedFormats.has(formatId)) {
+        selectedFormats.delete(formatId);
+    } else {
+        selectedFormats.add(formatId);
+    }
+
+    updateSelectedFormatsDisplay();
+    updateHiddenInput();
+    displayFormats(allFormats);
+}
+
+function updateSelectedFormatsDisplay() {
+    const container = document.getElementById('selected-formats');
+    const list = document.getElementById('selected-formats-list');
+
+    if (selectedFormats.size === 0) {
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'block';
+
+    let html = '';
+    selectedFormats.forEach(formatId => {
+        const format = allFormats.find(f => f.format_id === formatId);
+        if (format) {
+            html += `
+                <span class="format-tag">
+                    ${format.name}
+                    <span class="remove" onclick="event.stopPropagation(); toggleFormat('${formatId}', '${format.name}', '${format.agent_url || ''}')">×</span>
+                </span>
+            `;
+        }
+    });
+
+    list.innerHTML = html;
+}
+
+function updateHiddenInput() {
+    const formatRefs = [];
+    selectedFormats.forEach(formatId => {
+        const format = allFormats.find(f => f.format_id === formatId);
+        if (format) {
+            formatRefs.push({
+                agent_url: format.agent_url || 'https://creative.adcontextprotocol.org',
+                id: formatId
+            });
+        }
+    });
+
+    document.getElementById('formats-data').value = JSON.stringify(formatRefs);
+}
+</script>
+
+{% endblock %}

@@ -443,6 +443,41 @@ def preview_inventory_profile(tenant_id: str, profile_id: int):
         )
 
 
+@inventory_profiles_bp.route("/api/list")
+@require_tenant_access(api_mode=True)
+def list_inventory_profiles_api(tenant_id: str):
+    """Get all inventory profiles for this tenant as JSON (API endpoint for unified page)."""
+    with get_db_session() as session:
+        # Get all profiles for tenant
+        stmt = select(InventoryProfile).where(InventoryProfile.tenant_id == tenant_id).order_by(InventoryProfile.name)
+        profiles = session.scalars(stmt).all()
+
+        # Build profile data with summaries
+        profiles_data = []
+        for profile in profiles:
+            # Count products using this profile
+            product_count = session.scalar(
+                select(func.count()).select_from(Product).where(Product.inventory_profile_id == profile.id)
+            )
+
+            profiles_data.append(
+                {
+                    "id": profile.id,
+                    "profile_id": profile.profile_id,
+                    "name": profile.name,
+                    "description": profile.description,
+                    "inventory_summary": _get_inventory_summary(profile.inventory_config),
+                    "format_summary": _get_format_summary(profile.formats, tenant_id),
+                    "property_summary": _get_property_summary(profile.publisher_properties),
+                    "product_count": product_count,
+                    "created_at": profile.created_at.isoformat() if profile.created_at else None,  # type: ignore[attr-defined]
+                    "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,  # type: ignore[attr-defined]
+                }
+            )
+
+        return jsonify({"profiles": profiles_data, "total": len(profiles_data)})
+
+
 def register_blueprint(app: Flask):
     """Register inventory profiles blueprint."""
     app.register_blueprint(inventory_profiles_bp, url_prefix="/admin/tenant/<tenant_id>/inventory-profiles")
