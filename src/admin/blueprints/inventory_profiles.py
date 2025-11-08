@@ -133,7 +133,7 @@ def list_inventory_profiles(tenant_id: str):
     with get_db_session() as session:
         # Get all profiles with product counts in a single query (prevents N+1)
         stmt = (
-            select(InventoryProfile, func.count(Product.id).label("product_count"))
+            select(InventoryProfile, func.count(Product.product_id).label("product_count"))
             .outerjoin(Product, InventoryProfile.id == Product.inventory_profile_id)
             .where(InventoryProfile.tenant_id == tenant_id)
             .group_by(InventoryProfile.id)
@@ -452,7 +452,7 @@ def list_inventory_profiles_api(tenant_id: str):
     with get_db_session() as session:
         # Get all profiles with product counts in a single query (prevents N+1)
         stmt = (
-            select(InventoryProfile, func.count(Product.id).label("product_count"))
+            select(InventoryProfile, func.count(Product.product_id).label("product_count"))
             .outerjoin(Product, InventoryProfile.id == Product.inventory_profile_id)
             .where(InventoryProfile.tenant_id == tenant_id)
             .group_by(InventoryProfile.id)
