@@ -67,7 +67,7 @@ def generate_variants_for_brief(tenant_id: str, brief: str) -> list[Product]:
 
 
 def query_signals_agent(session, tenant_id: str, agent_id: str, brief: str) -> list[dict]:
-    """Query a signals agent for matching signals.
+    """Query a signals agent for matching signals using the signals registry.
 
     Args:
         session: Database session
@@ -78,7 +78,7 @@ def query_signals_agent(session, tenant_id: str, agent_id: str, brief: str) -> l
     Returns:
         List of signal dicts from signals agent response
     """
-    # Get signals agent
+    # Get signals agent from database
     stmt = select(SignalsAgent).filter_by(tenant_id=tenant_id, agent_id=agent_id, enabled=True)
     agent = session.scalars(stmt).first()
 
@@ -86,17 +86,59 @@ def query_signals_agent(session, tenant_id: str, agent_id: str, brief: str) -> l
         logger.warning(f"Signals agent {agent_id} not found or disabled")
         return []
 
-    # TODO: Implement actual signals agent query
-    # For now, return empty list - this will be implemented when we integrate with signals protocol
     logger.info(f"Querying signals agent {agent.name} ({agent.agent_url}) with brief: {brief}")
 
-    # Placeholder: In real implementation, this would:
-    # 1. Call agent.agent_url with get_signals task
-    # 2. Pass brief and our destination (agent_url)
-    # 3. Parse response for active signals with activation keys
-    # 4. Return list of signals
+    # Use signals registry to query the agent via MCP
+    try:
+        import asyncio
 
-    return []
+        from src.core.signals_agent_registry import (
+            SignalsAgent as SignalsAgentDataclass,
+        )
+        from src.core.signals_agent_registry import SignalsAgentRegistry
+
+        registry = SignalsAgentRegistry()
+
+        # Parse auth credentials if present (same as registry does)
+        auth = None
+        if agent.auth_type and agent.auth_credentials:
+            auth = {
+                "type": agent.auth_type,
+                "credentials": agent.auth_credentials,
+            }
+
+        # Convert database model to dataclass for registry
+        agent_dataclass = SignalsAgentDataclass(
+            agent_url=agent.agent_url,
+            name=agent.name,
+            enabled=agent.enabled,
+            auth=auth,
+            auth_header=agent.auth_header,
+            timeout=agent.timeout or 30,
+        )
+
+        # Create async context and query specific agent
+        # Note: This runs in a sync context, so we need to create an event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            signals = loop.run_until_complete(
+                registry._get_signals_from_agent(
+                    agent=agent_dataclass,
+                    brief=brief,
+                    tenant_id=tenant_id,
+                    principal_id=None,  # Optional - not needed for product discovery
+                    context=None,  # Optional context
+                )
+            )
+            logger.info(f"Received {len(signals)} signals from agent {agent.name}")
+            return signals
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Error querying signals agent {agent.name}: {e}", exc_info=True)
+        return []
 
 
 def generate_variants_from_signals(session, template: Product, signals: list[dict], brief: str) -> list[Product]:
