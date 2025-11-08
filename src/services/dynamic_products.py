@@ -11,7 +11,6 @@ Architecture:
 - Deployment specified per AdCP spec (our agent_url as destination)
 """
 
-import asyncio
 import hashlib
 import logging
 from datetime import datetime, timedelta
@@ -26,7 +25,7 @@ from src.core.signals_agent_registry import get_signals_agent_registry
 logger = logging.getLogger(__name__)
 
 
-def generate_variants_for_brief(tenant_id: str, brief: str, our_agent_url: str | None = None) -> list[Product]:
+async def generate_variants_for_brief(tenant_id: str, brief: str, our_agent_url: str | None = None) -> list[Product]:
     """Generate product variants from signals agents based on buyer's brief.
 
     Uses the singleton SignalsAgentRegistry which handles:
@@ -54,7 +53,10 @@ def generate_variants_for_brief(tenant_id: str, brief: str, our_agent_url: str |
             return []
 
         # Check if any templates have signals agents configured
-        has_signals_agents = any(template.signals_agent_ids for template in templates)
+        # Note: signals_agent_ids=None means "use all agents", which counts as configured
+        has_signals_agents = any(
+            template.signals_agent_ids is None or template.signals_agent_ids for template in templates
+        )
         if not has_signals_agents:
             logger.debug(f"No dynamic product templates with signals agents for tenant {tenant_id}")
             return []
@@ -64,27 +66,40 @@ def generate_variants_for_brief(tenant_id: str, brief: str, our_agent_url: str |
         try:
             registry = get_signals_agent_registry()
 
+            # Collect unique countries from all dynamic templates
+            # Note: signals_agent_ids=None means "use all agents"
+            all_countries = set()
+            for template in templates:
+                if (template.signals_agent_ids is None or template.signals_agent_ids) and template.countries:
+                    all_countries.update(template.countries)
+
             # Build context with deployment specification per AdCP spec
             context = {}
             if our_agent_url:
-                context["deliver_to"] = {
+                deliver_to: dict[str, list] = {
                     "destinations": [{"agent_url": our_agent_url}],
                 }
+                # Add countries if we have any from products
+                if all_countries:
+                    deliver_to["countries"] = sorted(all_countries)  # Sort for consistency
+                context["deliver_to"] = deliver_to
 
-            # Create event loop for async registry call
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                all_signals = loop.run_until_complete(
-                    registry.get_signals(
-                        brief=brief,  # Note: Registry uses 'brief', not 'signal_spec' (TODO: update to match AdCP spec)
-                        tenant_id=tenant_id,
-                        context=context,
-                    )
-                )
-                logger.info(f"Received {len(all_signals)} total signals from all agents")
-            finally:
-                loop.close()
+            # Call async registry function
+            import time
+
+            query_start = time.time()
+
+            countries_info = f" for countries {sorted(all_countries)}" if all_countries else ""
+            logger.info(f"[TIMING] Querying signals agents with brief: {brief[:100]}...{countries_info}")
+
+            all_signals = await registry.get_signals(
+                brief=brief,  # Note: Registry uses 'brief', not 'signal_spec' (TODO: update to match AdCP spec)
+                tenant_id=tenant_id,
+                context=context,
+            )
+
+            query_duration = time.time() - query_start
+            logger.info(f"[TIMING] Received {len(all_signals)} total signals in {query_duration:.2f}s")
 
         except Exception as e:
             logger.error(f"Error querying signals agents for tenant {tenant_id}: {e}", exc_info=True)
@@ -273,8 +288,10 @@ def create_variant_from_template(
     variant_data = {
         "tenant_id": template.tenant_id,
         "product_id": variant_id,
-        "name": customize_name(template.name, signal, activation_key),
-        "description": customize_description(template.description, signal, activation_key, brief),
+        "name": customize_name(template.name, signal, activation_key, template.variant_name_template),
+        "description": customize_description(
+            template.description, signal, activation_key, brief, template.variant_description_template
+        ),
         "formats": template.formats,
         "targeting_template": template.targeting_template,
         "delivery_type": template.delivery_type,
@@ -311,18 +328,60 @@ def create_variant_from_template(
     return Product(**variant_data)
 
 
-def customize_name(template_name: str, signal: dict, activation_key: dict) -> str:
-    """Customize product name for variant.
+def customize_name(
+    template_name: str, signal: dict, activation_key: dict, variant_name_template: str | None = None
+) -> str:
+    """Customize product name for variant using template string or default pattern.
 
     Args:
-        template_name: Original template name
+        template_name: Base product name
         signal: Signal dict
         activation_key: Activation key
+        variant_name_template: Optional template string with macros (e.g., "{{name}} - {{signal.name}}")
 
     Returns:
         Customized name
+
+    Available macros:
+        {{name}} - Product name
+        {{signal.name}} - Signal name
+        {{signal.description}} - Signal description
+        {{activation_key.key}} - Activation key name (for key_value type)
+        {{activation_key.value}} - Activation key value (for key_value type)
+        {{activation_key.segment_id}} - Segment ID (for segment_id type)
     """
-    # Simple approach: append signal name
+    # If custom template provided, use it
+    if variant_name_template:
+        # Build macro context
+        context = {
+            "name": template_name,
+            "signal": {
+                "name": signal.get("name", ""),
+                "description": signal.get("description", ""),
+                "data_provider": signal.get("data_provider", ""),
+                "coverage_percentage": signal.get("coverage_percentage", ""),
+            },
+            "activation_key": {
+                "key": activation_key.get("key", ""),
+                "value": activation_key.get("value", ""),
+                "segment_id": activation_key.get("segment_id", ""),
+            },
+        }
+
+        # Simple macro substitution (supports {{field}} and {{object.field}})
+        result = variant_name_template
+        for key, value in context.items():
+            if isinstance(value, dict):
+                # Handle nested access like {{signal.name}}
+                for subkey, subvalue in value.items():
+                    result = result.replace(f"{{{{{key}.{subkey}}}}}", str(subvalue))
+            else:
+                # Handle simple access like {{name}}
+                result = result.replace(f"{{{{{key}}}}}", str(value))
+
+        return result
+
+    # Default pattern: append signal name
     signal_name = signal.get("name", "")
 
     if signal_name:
@@ -338,39 +397,77 @@ def customize_name(template_name: str, signal: dict, activation_key: dict) -> st
 
 
 def customize_description(
-    template_description: str | None, signal: dict, activation_key: dict, brief: str
+    template_description: str | None,
+    signal: dict,
+    activation_key: dict,
+    brief: str,
+    variant_description_template: str | None = None,
 ) -> str | None:
-    """Customize product description for variant.
+    """Customize product description for variant using template string or default pattern.
 
     Args:
-        template_description: Original template description
+        template_description: Base product description
         signal: Signal dict
         activation_key: Activation key
         brief: Buyer's brief
+        variant_description_template: Optional template string with macros
 
     Returns:
         Customized description
+
+    Available macros:
+        {{description}} - Product description
+        {{signal.name}} - Signal name
+        {{signal.description}} - Signal description
+        {{signal.data_provider}} - Signal data provider
+        {{signal.coverage_percentage}} - Signal coverage percentage
+        {{activation_key.key}} - Activation key name (for key_value type)
+        {{activation_key.value}} - Activation key value (for key_value type)
     """
+    # If custom template provided, use it
+    if variant_description_template:
+        # Build macro context
+        context = {
+            "description": template_description or "",
+            "signal": {
+                "name": signal.get("name", ""),
+                "description": signal.get("description", ""),
+                "data_provider": signal.get("data_provider", ""),
+                "coverage_percentage": signal.get("coverage_percentage", ""),
+            },
+            "activation_key": {
+                "key": activation_key.get("key", ""),
+                "value": activation_key.get("value", ""),
+                "segment_id": activation_key.get("segment_id", ""),
+            },
+        }
+
+        # Simple macro substitution (supports {{field}} and {{object.field}})
+        result = variant_description_template
+        for key, value in context.items():
+            if isinstance(value, dict):
+                # Handle nested access like {{signal.name}}
+                for subkey, subvalue in value.items():
+                    result = result.replace(f"{{{{{key}.{subkey}}}}}", str(subvalue))
+            else:
+                # Handle simple access like {{description}}
+                result = result.replace(f"{{{{{key}}}}}", str(value))
+
+        return result if result else None
+
+    # Default pattern: append signal description to product description
     if not template_description:
         # Generate description from signal if template has none
         signal_desc = signal.get("description", "")
         if signal_desc:
-            return f"Targeting based on {signal.get('name', 'signal')}: {signal_desc}"
+            return signal_desc
         return None
 
-    # TODO: Use AI to customize description based on brief and signal
-    # For now, just append signal info
-
-    signal_info = []
-    if signal.get("name"):
-        signal_info.append(f"Signal: {signal['name']}")
-    if signal.get("data_provider"):
-        signal_info.append(f"Provider: {signal['data_provider']}")
-    if signal.get("coverage_percentage"):
-        signal_info.append(f"Coverage: {signal['coverage_percentage']}%")
-
-    if signal_info:
-        return f"{template_description}\n\n{' | '.join(signal_info)}"
+    # Append signal description to product description
+    # Buyers see this as integrated targeting, not a separate "signal"
+    signal_desc = signal.get("description", "")
+    if signal_desc:
+        return f"{template_description}\n\n{signal_desc}"
 
     return template_description
 

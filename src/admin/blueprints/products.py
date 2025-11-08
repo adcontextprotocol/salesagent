@@ -11,7 +11,7 @@ from sqlalchemy.orm import joinedload
 from src.admin.utils import require_tenant_access  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
-from src.core.database.models import PricingOption, Product, Tenant
+from src.core.database.models import PricingOption, Product, ProductInventoryMapping, Tenant
 from src.core.database.product_pricing import get_product_pricing_options
 from src.core.validation import sanitize_form_data
 from src.services.gam_product_config_service import GAMProductConfigService
@@ -309,8 +309,6 @@ def list_products(tenant_id):
             )
 
             # Get inventory details for all products (breakdown by type)
-            from src.core.database.models import ProductInventoryMapping
-
             inventory_details = {}
             for product in products:
                 # Get all mappings for this product
@@ -480,9 +478,13 @@ def list_products(tenant_id):
                             "custom_keys": 0,
                         },
                     ),
+                    # Dynamic product fields
+                    "is_dynamic": getattr(product, "is_dynamic", False),
+                    "is_dynamic_variant": getattr(product, "is_dynamic_variant", False),
+                    "activation_key": getattr(product, "activation_key", None),
+                    "product_card": getattr(product, "product_card", None),
                 }
                 products_list.append(product_dict)
-
             return render_template(
                 "products.html",
                 tenant=tenant,
@@ -638,7 +640,7 @@ def add_product(tenant_id):
                 # CRITICAL: Products MUST have at least one pricing option
                 if not pricing_options_data or len(pricing_options_data) == 0:
                     flash("Product must have at least one pricing option", "error")
-                    return redirect(url_for("products.create_product", tenant_id=tenant_id))
+                    return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
                 # Derive delivery_type from first pricing option for implementation_config
                 delivery_type = "guaranteed"  # Default
@@ -930,10 +932,37 @@ def add_product(tenant_id):
                 if is_dynamic:
                     product_kwargs["is_dynamic"] = True
 
-                    # Get signals agent IDs (multi-select)
-                    signals_agent_ids = form_data.getlist("signals_agent_ids")
-                    if signals_agent_ids:
-                        product_kwargs["signals_agent_ids"] = signals_agent_ids
+                    # Handle signals agent selection (radio buttons: "all" vs "specific")
+                    signals_agent_selection = form_data.get("signals_agent_selection", "all")
+                    if signals_agent_selection == "specific":
+                        # Get specific signals agent IDs (multi-select)
+                        signals_agent_ids = request.form.getlist("signals_agent_ids")
+                        if signals_agent_ids:
+                            product_kwargs["signals_agent_ids"] = signals_agent_ids
+                        else:
+                            # User selected "specific" but didn't choose any agents - error
+                            flash("Please select at least one signals agent", "error")
+                            return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                    else:
+                        # "all" selected - set signals_agent_ids to None or empty list to indicate "use all"
+                        product_kwargs["signals_agent_ids"] = None
+
+                    # Handle variant naming pattern (radio buttons)
+                    variant_name_pattern = form_data.get("variant_name_pattern", "default")
+                    if variant_name_pattern == "signal_only":
+                        product_kwargs["variant_name_template"] = "{{signal.name}}"
+                    elif variant_name_pattern == "custom":
+                        variant_name_template = form_data.get("variant_name_template", "").strip()
+                        if variant_name_template:
+                            product_kwargs["variant_name_template"] = variant_name_template
+                    # else: default pattern (None) - uses "Product Name - Signal Name"
+
+                    # Handle append signal description checkbox
+                    append_signal_description = form_data.get("append_signal_description") == "on"
+                    if not append_signal_description:
+                        # User unchecked - don't append signal description (empty template means no auto-append)
+                        product_kwargs["variant_description_template"] = ""
+                    # else: None (default behavior - auto-append signal description)
 
                     # Get max signals
                     max_signals = form_data.get("max_signals", "5")

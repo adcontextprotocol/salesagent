@@ -211,6 +211,10 @@ class Product(Base, JSONValidatorMixin):
     parent_product_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Type hint: array of signals agent IDs to query for this dynamic product
     signals_agent_ids: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
+    # Type hint: template string for variant name generation (macros: {{name}}, {{signal.name}}, etc.)
+    variant_name_template: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Type hint: template string for variant description generation (macros: {{description}}, {{signal.name}}, etc.)
+    variant_description_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Type hint: maximum number of signal variants to create from this template
     max_signals: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     # Type hint: activation key from signal (key/value pair for targeting)

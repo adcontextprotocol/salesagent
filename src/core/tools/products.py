@@ -172,10 +172,13 @@ async def _get_products_impl(
         else:
             # brand_manifest is a BrandManifest object or dict
             # Try to access as object first, then as dict
-            if hasattr(req.brand_manifest, "name"):
+            # Per AdCP spec: either name OR url is required
+            if hasattr(req.brand_manifest, "name") and req.brand_manifest.name:
                 offering = req.brand_manifest.name
+            elif hasattr(req.brand_manifest, "url") and req.brand_manifest.url:
+                offering = f"Brand at {req.brand_manifest.url}"
             elif isinstance(req.brand_manifest, dict):
-                offering = req.brand_manifest.get("name", "")
+                offering = req.brand_manifest.get("name") or req.brand_manifest.get("url", "")
 
     if not offering:
         raise ToolError("brand_manifest must provide brand information")
@@ -372,7 +375,7 @@ async def _get_products_impl(
         # Get our agent URL for deployment specification
         our_agent_url = tenant.get("virtual_host")  # Our sales agent URL (e.g., https://sales.example.com)
 
-        dynamic_variants = generate_variants_for_brief(tenant["tenant_id"], brief_text, our_agent_url)
+        dynamic_variants = await generate_variants_for_brief(tenant["tenant_id"], brief_text, our_agent_url)
         if dynamic_variants:
             # Convert Product models to Product schemas for response
 
