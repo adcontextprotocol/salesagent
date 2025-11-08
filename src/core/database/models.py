@@ -186,8 +186,17 @@ class Product(Base, JSONValidatorMixin):
     # Note: PR #79 fields (estimated_exposures, floor_cpm, recommended_cpm) are NOT stored in database
     # They are calculated dynamically from product_performance_metrics table
 
+    # Inventory profile reference (optional)
+    # If set, product uses inventory profile configuration instead of custom config
+    inventory_profile_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("inventory_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Relationships
     tenant = relationship("Tenant", back_populates="products")
+    inventory_profile = relationship("InventoryProfile", back_populates="products")
     # No SQLAlchemy cascade - let database CASCADE handle pricing_options deletion
     # This avoids triggering the prevent_empty_pricing_options constraint
     # Use passive_deletes=True to tell SQLAlchemy to rely on database CASCADE
@@ -792,6 +801,77 @@ class GAMInventory(Base):
         Index("idx_gam_inventory_tenant", "tenant_id"),
         Index("idx_gam_inventory_type", "inventory_type"),
         Index("idx_gam_inventory_status", "status"),
+    )
+
+
+class InventoryProfile(Base, JSONValidatorMixin):
+    """Reusable inventory configuration template.
+
+    An inventory profile is a named collection of:
+    - Inventory (ad units, placements)
+    - Creative formats (which formats work with this inventory)
+    - Publisher properties (which sites/apps/properties this represents)
+    - Optional default targeting rules
+
+    Multiple products can reference the same profile. When the profile is updated,
+    all products using it automatically reflect the changes.
+    """
+
+    __tablename__ = "inventory_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50),
+        ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Profile identification
+    profile_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Inventory configuration
+    # Structure: {
+    #   "ad_units": ["23312403859", "23312403860"],
+    #   "placements": ["45678901"],
+    #   "include_descendants": true
+    # }
+    inventory_config: Mapped[dict] = mapped_column(JSONType, nullable=False)
+
+    # Creative formats (FormatId objects)
+    # Structure: [{"agent_url": "...", "id": "display_300x250_image"}]
+    formats: Mapped[list] = mapped_column(JSONType, nullable=False)
+
+    # Publisher properties (AdCP spec-compliant)
+    # Structure: [
+    #   {
+    #     "publisher_domain": "cnn.com",
+    #     "property_ids": ["cnn_homepage"],  # OR
+    #     "property_tags": ["premium_news"]
+    #   }
+    # ]
+    publisher_properties: Mapped[list] = mapped_column(JSONType, nullable=False)
+
+    # Optional default targeting template
+    # Structure: AdCP targeting object
+    targeting_template: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+
+    # Optional GAM integration
+    gam_preset_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    gam_preset_sync_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
+    # Timestamps
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    tenant = relationship("Tenant")
+    products = relationship("Product", back_populates="inventory_profile")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "profile_id", name="uq_inventory_profile"),
+        Index("idx_inventory_profiles_tenant", "tenant_id"),
     )
 
 
