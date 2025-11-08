@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import select
 from werkzeug.wrappers import Response
 
@@ -779,3 +779,39 @@ def edit_property(tenant_id: str, property_id: str) -> str | Response:
         logger.error(f"Error updating property: {e}")
         flash(f"Error updating property: {str(e)}", "error")
         return redirect(url_for("authorized_properties.list_authorized_properties", tenant_id=tenant_id))
+
+
+@authorized_properties_bp.route("/<tenant_id>/authorized-properties/api/list")
+@require_tenant_access(api_mode=True)
+def list_authorized_properties_api(tenant_id: str):
+    """Get all authorized properties as JSON (API endpoint for unified inventory page)."""
+    try:
+        with get_db_session() as db_session:
+            # Get all properties for this tenant
+            stmt = (
+                select(AuthorizedProperty)
+                .where(AuthorizedProperty.tenant_id == tenant_id)
+                .order_by(AuthorizedProperty.publisher_domain, AuthorizedProperty.name)
+            )
+            properties = db_session.scalars(stmt).all()
+
+            # Convert to JSON-serializable format
+            properties_data = []
+            for prop in properties:
+                properties_data.append(
+                    {
+                        "property_id": prop.property_id,
+                        "property_type": prop.property_type,
+                        "name": prop.name,
+                        "publisher_domain": prop.publisher_domain,
+                        "identifiers": prop.identifiers,
+                        "tags": prop.tags,
+                        "verification_status": prop.verification_status,
+                    }
+                )
+
+            return jsonify({"properties": properties_data, "total": len(properties_data)})
+
+    except Exception as e:
+        logger.error(f"Error fetching authorized properties API: {e}")
+        return jsonify({"error": str(e)}), 500

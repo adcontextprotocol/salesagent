@@ -290,7 +290,7 @@
                         <div id="format-results" style="display: none;"></div>
                     </div>
 
-                    <input type="hidden" id="formats-data" name="formats">
+                    <input type="hidden" id="formats" name="formats">
 
                     <!-- Section 4: Publisher Properties -->
                     <h5 class="mb-3 mt-4">Publisher Properties *</h5>
@@ -500,6 +500,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadInventoryStatus();
     loadFormats();
     setupFormatSearch();
+    loadPublisherDomains();
 
     // Add enter key support for search
     document.getElementById('searchQuery').addEventListener('keypress', function(e) {
@@ -635,15 +636,66 @@ function showCreateProfileModal() {
 }
 
 function editProfile(profileId) {
-    // Fetch profile data and populate form
-    fetch(`/admin/tenant/${tenantId}/inventory-profiles/${profileId}/preview`, {
+    // Fetch full profile data from edit endpoint
+    fetch(`/admin/tenant/${tenantId}/inventory-profiles/${profileId}/edit`, {
         credentials: 'same-origin'
     })
         .then(response => response.json())
         .then(profile => {
-            // TODO: Populate form fields
-            // This would require fetching the full profile data from edit endpoint
-            alert('Edit functionality coming soon - will populate form with profile data');
+            // Populate form fields
+            document.getElementById('profileId').value = profileId;
+            document.getElementById('profileName').value = profile.name || '';
+            document.getElementById('profileIdInput').value = profile.profile_id || '';
+            document.getElementById('profileDescription').value = profile.description || '';
+
+            // Populate inventory fields
+            const adUnitIds = profile.targeted_ad_unit_ids || [];
+            const placementIds = profile.targeted_placement_ids || [];
+            document.getElementById('targeted_ad_unit_ids').value = JSON.stringify(adUnitIds);
+            document.getElementById('targeted_placement_ids').value = JSON.stringify(placementIds);
+            document.getElementById('includeDescendants').checked = profile.include_descendants !== false;
+
+            // Update displays
+            if (adUnitIds.length > 0) {
+                document.getElementById('selectedAdUnitsDisplay').innerHTML =
+                    adUnitIds.map(id => `<span class="badge bg-primary me-1">${id}</span>`).join('');
+            }
+            if (placementIds.length > 0) {
+                document.getElementById('selectedPlacementsDisplay').innerHTML =
+                    placementIds.map(id => `<span class="badge bg-info me-1">${id}</span>`).join('');
+            }
+
+            // Populate formats
+            selectedFormats.clear();
+            const formats = profile.formats || [];
+            formats.forEach(formatRef => {
+                if (formatRef.id) {
+                    selectedFormats.add(formatRef.id);
+                }
+            });
+            updateSelectedFormatsDisplay();
+            updateHiddenInput();
+            displayFormats(allFormats);
+
+            // Populate publisher properties
+            if (profile.publisher_properties) {
+                document.getElementById('publisher_properties').value =
+                    JSON.stringify(profile.publisher_properties, null, 2);
+            }
+
+            // Populate targeting template
+            if (profile.targeting_template) {
+                document.getElementById('targeting_template').value =
+                    JSON.stringify(profile.targeting_template, null, 2);
+            }
+
+            // Change modal title and show
+            document.getElementById('profileModalTitle').textContent = 'Edit Inventory Profile';
+            new bootstrap.Modal(document.getElementById('profileModal')).show();
+        })
+        .catch(error => {
+            console.error('Error loading profile:', error);
+            alert('Error loading profile: ' + error.message);
         });
 }
 
@@ -746,6 +798,78 @@ function setDefaultProperties() {
         }
     ];
     document.getElementById('publisher_properties').value = JSON.stringify(defaultProps, null, 2);
+}
+
+function loadPublisherDomains() {
+    fetch(`/admin/${tenantId}/authorized-properties/api/list`, {
+        credentials: 'same-origin'
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Error loading authorized properties:', data.error);
+                return;
+            }
+
+            // Extract unique publisher domains
+            const domains = new Set();
+            (data.properties || []).forEach(prop => {
+                if (prop.publisher_domain) {
+                    domains.add(prop.publisher_domain);
+                }
+            });
+
+            // Create dropdown if we have domains
+            if (domains.size > 0) {
+                const publisherPropsField = document.getElementById('publisher_properties');
+                const parentDiv = publisherPropsField.parentElement;
+
+                // Check if dropdown already exists
+                if (!document.getElementById('publisher-domain-selector')) {
+                    const selectorDiv = document.createElement('div');
+                    selectorDiv.className = 'mb-2';
+                    selectorDiv.id = 'publisher-domain-selector';
+                    selectorDiv.innerHTML = `
+                        <label class="form-label">Quick Select Publisher Domain</label>
+                        <div class="input-group">
+                            <select class="form-select" id="domain-dropdown">
+                                <option value="">-- Select a domain --</option>
+                                ${Array.from(domains).sort().map(domain => `<option value="${domain}">${domain}</option>`).join('')}
+                            </select>
+                            <button class="btn btn-outline-primary" type="button" onclick="applySelectedDomain()">
+                                Apply
+                            </button>
+                        </div>
+                        <small class="text-muted">Select a domain to pre-fill the publisher properties JSON</small>
+                    `;
+
+                    // Insert before the publisher_properties textarea
+                    parentDiv.insertBefore(selectorDiv, publisherPropsField.parentElement.querySelector('label'));
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error loading publisher domains:', error);
+        });
+}
+
+function applySelectedDomain() {
+    const dropdown = document.getElementById('domain-dropdown');
+    const selectedDomain = dropdown.value;
+
+    if (!selectedDomain) {
+        alert('Please select a domain');
+        return;
+    }
+
+    const props = [
+        {
+            "publisher_domain": selectedDomain,
+            "property_tags": ["all_inventory"]
+        }
+    ];
+
+    document.getElementById('publisher_properties').value = JSON.stringify(props, null, 2);
 }
 
 // ==================== BROWSE INVENTORY TAB ====================
@@ -1055,8 +1179,58 @@ function getStatusColor(status) {
 }
 
 function searchInventory() {
-    // Implement search functionality
-    alert('Search functionality coming soon');
+    const query = document.getElementById('searchQuery').value.trim();
+    const inventoryType = document.getElementById('inventoryType').value;
+    const status = document.getElementById('inventoryStatus').value;
+
+    const params = new URLSearchParams();
+    if (query) params.append('query', query);
+    if (inventoryType) params.append('type', inventoryType);
+    if (status) params.append('status', status);
+
+    fetch(`/api/tenant/${tenantId}/inventory/search?${params.toString()}`, {
+        credentials: 'same-origin'
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Search failed: ' + data.error);
+                return;
+            }
+
+            // Display search results
+            displaySearchResults(data.results || []);
+        })
+        .catch(error => {
+            console.error('Search error:', error);
+            alert('Search failed: ' + error.message);
+        });
+}
+
+function displaySearchResults(results) {
+    const detailDiv = document.getElementById('inventoryDetail');
+
+    if (results.length === 0) {
+        detailDiv.innerHTML = '<p class="text-muted">No results found</p>';
+        return;
+    }
+
+    let html = '<h6>Search Results</h6><div class="list-group">';
+    results.forEach(item => {
+        html += `
+            <div class="list-group-item">
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">${item.name}</h6>
+                    <small><span class="badge bg-${getStatusColor(item.status)}">${item.status}</span></small>
+                </div>
+                <p class="mb-1"><small class="text-muted">${item.type} - ID: ${item.id}</small></p>
+                ${item.path ? `<small class="text-muted">${item.path.join(' > ')}</small>` : ''}
+            </div>
+        `;
+    });
+    html += '</div>';
+
+    detailDiv.innerHTML = html;
 }
 
 function toggleAdUnitSelection(id, name, path, checked) {
@@ -1300,7 +1474,7 @@ function updateHiddenInput() {
         }
     });
 
-    document.getElementById('formats-data').value = JSON.stringify(formatRefs);
+    document.getElementById('formats').value = JSON.stringify(formatRefs);
 }
 </script>
 
