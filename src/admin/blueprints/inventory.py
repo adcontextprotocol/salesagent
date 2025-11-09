@@ -182,8 +182,15 @@ def get_targeting_values(tenant_id, key_id):
 
             # Query GAM in real-time for values
             adapter_config = tenant.adapter_config
-            if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
-                return jsonify({"error": "GAM not configured for this tenant"}), 400
+            if not adapter_config:
+                return jsonify({"error": "No adapter configured for this tenant"}), 400
+            if not adapter_config.gam_network_code:
+                return jsonify({"error": "GAM network code not configured"}), 400
+            if not adapter_config.gam_refresh_token:
+                return (
+                    jsonify({"error": "GAM authentication not configured. Please connect to GAM in tenant settings."}),
+                    400,
+                )
 
             # Initialize GAM adapter to query values
             import os
