@@ -128,7 +128,7 @@ class MediaBuyReadinessService:
                 creatives = list(session.scalars(creatives_stmt).all())
 
             creatives_approved = sum(1 for c in creatives if c.status == "approved")
-            creatives_pending = sum(1 for c in creatives if c.status == "pending")
+            creatives_pending = sum(1 for c in creatives if c.status == "pending_review")
             creatives_rejected = sum(1 for c in creatives if c.status == "rejected")
 
             # Build blocking issues and warnings

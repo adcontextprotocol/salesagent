@@ -111,7 +111,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["confidence"] == "medium"
         assert result["confidence_score"] == 0.6
         assert result["policy_triggered"] == "low_confidence_approval"
@@ -135,7 +135,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["policy_triggered"] == "sensitive_category"
         assert "political" in result["reason"].lower()
         assert "requires human review" in result["reason"]
@@ -156,7 +156,7 @@ class TestAIReviewCreative:
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
         # Note: With confidence=low (0.3), it's < 0.9 threshold, so it goes to pending for human review
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["policy_triggered"] == "uncertain_rejection"
         assert result["ai_recommendation"] == "reject"
 
@@ -175,7 +175,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["confidence"] == "medium"
         assert result["policy_triggered"] == "uncertain_rejection"
         assert result["ai_recommendation"] == "reject"
@@ -201,7 +201,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["policy_triggered"] == "uncertain"
         assert "could not make confident decision" in result["reason"].lower()
 
@@ -214,7 +214,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["error"] == "Gemini API key not configured"
         assert "AI review unavailable" in result["reason"]
 
@@ -227,7 +227,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["error"] == "Creative review criteria not configured"
         assert "AI review unavailable" in result["reason"]
 
@@ -244,7 +244,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert "error" in result
         assert "AI review failed" in result["reason"]
 
@@ -259,7 +259,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert "error" in result
         assert "API rate limit exceeded" in str(result["error"])
 
@@ -299,7 +299,7 @@ class TestAIReviewCreative:
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
         # Below 0.90, should require human review
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["policy_triggered"] == "low_confidence_approval"
 
     # Edge Case: Confidence threshold at reject boundary (0.10)
@@ -341,7 +341,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["policy_triggered"] == "sensitive_category"
         assert "healthcare" in result["reason"].lower()
 
@@ -360,7 +360,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("test_tenant", "test_creative_123", db_session=mock_db_session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["policy_triggered"] == "sensitive_category"
         assert "financial" in result["reason"].lower()
 
@@ -417,7 +417,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("nonexistent_tenant", "test_creative_123", db_session=session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["error"] == "Tenant not found"
         assert result["reason"] == "Configuration error"
 
@@ -449,7 +449,7 @@ class TestAIReviewCreative:
 
         result = _ai_review_creative_impl("test_tenant", "nonexistent_creative", db_session=session)
 
-        assert result["status"] == "pending"
+        assert result["status"] == "pending_review"
         assert result["error"] == "Creative not found"
         assert result["reason"] == "Configuration error"
 
