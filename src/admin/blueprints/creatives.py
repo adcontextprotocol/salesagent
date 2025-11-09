@@ -891,7 +891,7 @@ async def _ai_review_creative_async(
                 creative = session.scalars(stmt).first()
 
                 if creative:
-                    creative.status = "pending"
+                    creative.status = "pending_review"
                     if not isinstance(creative.data, dict):
                         creative.data = {}
                     creative.data["ai_review_error"] = {
@@ -902,7 +902,7 @@ async def _ai_review_creative_async(
 
                     attributes.flag_modified(creative, "data")
                     session.commit()
-                    logger.info(f"[AI Review Async] Creative {creative_id} marked as pending due to error")
+                    logger.info(f"[AI Review Async] Creative {creative_id} marked as pending_review due to error")
         except Exception as inner_e:
             logger.error(f"[AI Review Async] Failed to mark creative as pending: {inner_e}")
 
@@ -1019,18 +1019,18 @@ def _ai_review_creative_impl(tenant_id, creative_id, db_session=None, promoted_o
             stmt = select(Tenant).filter_by(tenant_id=tenant_id)
             tenant = db_session.scalars(stmt).first()
             if not tenant:
-                return {"status": "pending", "error": "Tenant not found", "reason": "Configuration error"}
+                return {"status": "pending_review", "error": "Tenant not found", "reason": "Configuration error"}
 
             if not tenant.gemini_api_key:
                 return {
-                    "status": "pending",
+                    "status": "pending_review",
                     "error": "Gemini API key not configured",
                     "reason": "AI review unavailable - requires manual approval",
                 }
 
             if not tenant.creative_review_criteria:
                 return {
-                    "status": "pending",
+                    "status": "pending_review",
                     "error": "Creative review criteria not configured",
                     "reason": "AI review unavailable - requires manual approval",
                 }
@@ -1039,7 +1039,7 @@ def _ai_review_creative_impl(tenant_id, creative_id, db_session=None, promoted_o
             creative = db_session.scalars(stmt).first()
 
             if not creative:
-                return {"status": "pending", "error": "Creative not found", "reason": "Configuration error"}
+                return {"status": "pending_review", "error": "Creative not found", "reason": "Configuration error"}
 
             # Get media buy and promoted offering if not provided
             if promoted_offering is None:
@@ -1131,7 +1131,7 @@ Respond with a JSON object containing:
             # Check if this creative requires human review by category
             if creative_category and creative_category.lower() in [cat.lower() for cat in sensitive_categories]:
                 result_dict = {
-                    "status": "pending",
+                    "status": "pending_review",
                     "reason": f"Category '{creative_category}' requires human review per policy",
                     "confidence": confidence_str,
                     "confidence_score": confidence_score,
@@ -1145,9 +1145,9 @@ Respond with a JSON object containing:
                 )
                 # Record metrics
                 ai_review_total.labels(
-                    tenant_id=tenant_id, decision="pending", policy_triggered="sensitive_category"
+                    tenant_id=tenant_id, decision="pending_review", policy_triggered="sensitive_category"
                 ).inc()
-                ai_review_confidence.labels(tenant_id=tenant_id, decision="pending").observe(confidence_score)
+                ai_review_confidence.labels(tenant_id=tenant_id, decision="pending_review").observe(confidence_score)
                 return result_dict
 
             # Apply confidence-based thresholds
@@ -1177,7 +1177,7 @@ Respond with a JSON object containing:
                     return result_dict
                 else:
                     result_dict = {
-                        "status": "pending",
+                        "status": "pending_review",
                         "reason": f"AI recommended approval with {confidence_score:.0%} confidence (below {auto_approve_threshold:.0%} threshold). Human review recommended.",
                         "confidence": confidence_str,
                         "confidence_score": confidence_score,
@@ -1193,9 +1193,11 @@ Respond with a JSON object containing:
                     )
                     # Record metrics
                     ai_review_total.labels(
-                        tenant_id=tenant_id, decision="pending", policy_triggered="low_confidence_approval"
+                        tenant_id=tenant_id, decision="pending_review", policy_triggered="low_confidence_approval"
                     ).inc()
-                    ai_review_confidence.labels(tenant_id=tenant_id, decision="pending").observe(confidence_score)
+                    ai_review_confidence.labels(tenant_id=tenant_id, decision="pending_review").observe(
+                        confidence_score
+                    )
                     return result_dict
 
             elif "REJECT" in decision:
@@ -1222,7 +1224,7 @@ Respond with a JSON object containing:
                     return result_dict
                 else:
                     result_dict = {
-                        "status": "pending",
+                        "status": "pending_review",
                         "reason": f"AI recommended rejection with {confidence_score:.0%} confidence (below {auto_reject_threshold:.0%} threshold). Human review recommended.",
                         "confidence": confidence_str,
                         "confidence_score": confidence_score,
@@ -1238,14 +1240,16 @@ Respond with a JSON object containing:
                     )
                     # Record metrics
                     ai_review_total.labels(
-                        tenant_id=tenant_id, decision="pending", policy_triggered="uncertain_rejection"
+                        tenant_id=tenant_id, decision="pending_review", policy_triggered="uncertain_rejection"
                     ).inc()
-                    ai_review_confidence.labels(tenant_id=tenant_id, decision="pending").observe(confidence_score)
+                    ai_review_confidence.labels(tenant_id=tenant_id, decision="pending_review").observe(
+                        confidence_score
+                    )
                     return result_dict
 
             # Default: uncertain or "REQUIRE HUMAN APPROVAL"
             result_dict = {
-                "status": "pending",
+                "status": "pending_review",
                 "reason": "AI could not make confident decision. Human review required.",
                 "confidence": confidence_str,
                 "confidence_score": confidence_score,
@@ -1259,8 +1263,8 @@ Respond with a JSON object containing:
                 result_dict,
             )
             # Record metrics
-            ai_review_total.labels(tenant_id=tenant_id, decision="pending", policy_triggered="uncertain").inc()
-            ai_review_confidence.labels(tenant_id=tenant_id, decision="pending").observe(confidence_score)
+            ai_review_total.labels(tenant_id=tenant_id, decision="pending_review", policy_triggered="uncertain").inc()
+            ai_review_confidence.labels(tenant_id=tenant_id, decision="pending_review").observe(confidence_score)
             return result_dict
 
         finally:
@@ -1271,7 +1275,7 @@ Respond with a JSON object containing:
         logger.error(f"Error running AI review: {e}", exc_info=True)
         # Record error metrics
         ai_review_errors.labels(tenant_id=tenant_id, error_type=type(e).__name__).inc()
-        return {"status": "pending", "error": str(e), "reason": "AI review failed - requires manual approval"}
+        return {"status": "pending_review", "error": str(e), "reason": "AI review failed - requires manual approval"}
     finally:
         # Record duration and decrement active reviews
         duration = time.time() - start_time

@@ -198,7 +198,7 @@ def get_creatives_needing_human_review(
         .join(CreativeReview, Creative.creative_id == CreativeReview.creative_id)
         .filter(
             Creative.tenant_id == tenant_id,
-            Creative.status == "pending",
+            Creative.status == "pending_review",
             CreativeReview.review_type == "ai",
         )
         .order_by(CreativeReview.reviewed_at.desc())

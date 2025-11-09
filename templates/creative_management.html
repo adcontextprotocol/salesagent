@@ -86,7 +86,7 @@
                     </div>
                 </div>
                 <span class="status-badge status-{{ creative.status }}">
-                    {% if creative.status == 'pending' %}⏳ Pending
+                    {% if creative.status == 'pending_review' %}⏳ Pending Review
                     {% elif creative.status == 'approved' %}✅ Approved
                     {% elif creative.status == 'rejected' %}❌ Rejected
                     {% else %}{{ creative.status|title }}
@@ -160,7 +160,7 @@
 
             <!-- Action Buttons -->
             <div style="display: flex; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
-                {% if creative.status == 'pending' %}
+                {% if creative.status == 'pending_review' %}
                 <button onclick="approveCreative('{{ creative.creative_id }}')" class="btn btn-sm btn-primary">
                     ✅ Approve
                 </button>
