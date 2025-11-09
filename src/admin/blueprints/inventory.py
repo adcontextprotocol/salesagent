@@ -182,11 +182,21 @@ def get_targeting_values(tenant_id, key_id):
 
             # Query GAM in real-time for values
             adapter_config = tenant.adapter_config
+            logger.info(f"Fetching targeting values for tenant={tenant_id}, key_id={key_id}")
+            logger.debug(f"Adapter config exists: {adapter_config is not None}")
+            if adapter_config:
+                logger.debug(
+                    f"Network code: {adapter_config.gam_network_code}, has refresh token: {bool(adapter_config.gam_refresh_token)}"
+                )
+
             if not adapter_config:
+                logger.error(f"No adapter configured for tenant {tenant_id}")
                 return jsonify({"error": "No adapter configured for this tenant"}), 400
             if not adapter_config.gam_network_code:
+                logger.error(f"GAM network code not configured for tenant {tenant_id}")
                 return jsonify({"error": "GAM network code not configured"}), 400
             if not adapter_config.gam_refresh_token:
+                logger.error(f"GAM refresh token not configured for tenant {tenant_id}")
                 return (
                     jsonify({"error": "GAM authentication not configured. Please connect to GAM in tenant settings."}),
                     400,
