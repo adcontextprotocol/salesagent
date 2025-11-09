@@ -216,7 +216,8 @@ def test_get_targeting_values_tenant_isolation(authenticated_admin_session, inte
     assert response.status_code == 400
     data = response.json
     assert "error" in data
-    assert "GAM not configured" in data["error"]
+    # Updated to match new, more specific error message
+    assert "No adapter configured" in data["error"]
 
 
 def test_get_targeting_values_requires_auth(admin_client, integration_db):
