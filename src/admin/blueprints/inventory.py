@@ -186,7 +186,10 @@ def get_targeting_values(tenant_id, key_id):
             logger.debug(f"Adapter config exists: {adapter_config is not None}")
             if adapter_config:
                 logger.debug(
-                    f"Network code: {adapter_config.gam_network_code}, has refresh token: {bool(adapter_config.gam_refresh_token)}"
+                    f"Network code: {adapter_config.gam_network_code}, "
+                    f"auth_method: {adapter_config.gam_auth_method}, "
+                    f"has refresh token: {bool(adapter_config.gam_refresh_token)}, "
+                    f"has service account: {bool(adapter_config.gam_service_account_json)}"
                 )
 
             if not adapter_config:
@@ -195,8 +198,13 @@ def get_targeting_values(tenant_id, key_id):
             if not adapter_config.gam_network_code:
                 logger.error(f"GAM network code not configured for tenant {tenant_id}")
                 return jsonify({"error": "GAM network code not configured"}), 400
-            if not adapter_config.gam_refresh_token:
-                logger.error(f"GAM refresh token not configured for tenant {tenant_id}")
+
+            # Check for EITHER OAuth or Service Account authentication
+            has_oauth = bool(adapter_config.gam_refresh_token)
+            has_service_account = bool(adapter_config.gam_service_account_json)
+
+            if not has_oauth and not has_service_account:
+                logger.error(f"No GAM authentication configured for tenant {tenant_id}")
                 return (
                     jsonify({"error": "GAM authentication not configured. Please connect to GAM in tenant settings."}),
                     400,
@@ -204,22 +212,51 @@ def get_targeting_values(tenant_id, key_id):
 
             # Initialize GAM adapter to query values
             import os
+            import tempfile
 
+            from google.oauth2 import service_account as google_service_account
             from googleads import ad_manager, oauth2
 
             from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
 
-            # Create OAuth client
-            oauth2_client = oauth2.GoogleRefreshTokenClient(
-                client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
-                client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
-                refresh_token=adapter_config.gam_refresh_token,
-            )
+            # Create authentication client based on configured method
+            if has_service_account:
+                logger.debug(f"Using service account authentication for tenant {tenant_id}")
+                # Write service account JSON to temp file
+                service_account_json = adapter_config.gam_service_account_json
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+                    f.write(service_account_json)
+                    temp_key_path = f.name
 
-            # Create Ad Manager client
-            gam_ad_manager_client = ad_manager.AdManagerClient(
-                oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
-            )
+                try:
+                    # Create service account credentials
+                    credentials = google_service_account.Credentials.from_service_account_file(
+                        temp_key_path, scopes=["https://www.googleapis.com/auth/dfp"]
+                    )
+                    # Create Ad Manager client with service account
+                    gam_ad_manager_client = ad_manager.AdManagerClient(
+                        credentials, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
+                    )
+                finally:
+                    # Clean up temp file
+                    import os as os_module
+
+                    try:
+                        os_module.unlink(temp_key_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to delete temp service account file: {e}")
+            else:
+                logger.debug(f"Using OAuth authentication for tenant {tenant_id}")
+                # Create OAuth client
+                oauth2_client = oauth2.GoogleRefreshTokenClient(
+                    client_id=os.environ.get("GAM_OAUTH_CLIENT_ID"),
+                    client_secret=os.environ.get("GAM_OAUTH_CLIENT_SECRET"),
+                    refresh_token=adapter_config.gam_refresh_token,
+                )
+                # Create Ad Manager client
+                gam_ad_manager_client = ad_manager.AdManagerClient(
+                    oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
+                )
 
             # Create inventory discovery instance
             gam_client = GAMInventoryDiscovery(client=gam_ad_manager_client, tenant_id=tenant_id)
