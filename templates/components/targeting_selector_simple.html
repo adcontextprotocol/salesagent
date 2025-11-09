@@ -232,12 +232,24 @@ async function loadKeyValues(keyId) {
         const response = await fetch(`{{ script_name }}/api/tenant/${tenantId}/targeting/values/${keyId}`, {
             credentials: 'same-origin'
         });
+
+        if (!response.ok) {
+            throw new Error(`Failed to load values: ${response.status} ${response.statusText}`);
+        }
+
         const data = await response.json();
 
-        availableValues[keyId] = data.values || [];
+        // Check if data.values exists and is an array
+        if (!data.values || !Array.isArray(data.values)) {
+            console.warn('No values returned from API or invalid format:', data);
+            valuesSelect.innerHTML = '<option disabled>No values available</option>';
+            return;
+        }
+
+        availableValues[keyId] = data.values;
 
         // Debug: Log the first few values to see what data we're getting
-        if (data.values && data.values.length > 0) {
+        if (data.values.length > 0) {
             console.log('[DEBUG] Sample targeting values received:', data.values.slice(0, 3));
             console.log('[DEBUG] First value structure:', {
                 id: data.values[0].id,
@@ -308,7 +320,17 @@ async function loadKeyValues(keyId) {
         });
     } catch (error) {
         console.error('Error loading values:', error);
-        valuesSelect.innerHTML = '<option disabled>Error loading values</option>';
+        valuesSelect.innerHTML = `<option disabled>Error loading values: ${error.message}</option>`;
+
+        // Show error notification to user
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error';
+        errorDiv.textContent = `Failed to load targeting values: ${error.message}`;
+        errorDiv.style.marginTop = '0.5rem';
+        container.appendChild(errorDiv);
+
+        // Remove error after 5 seconds
+        setTimeout(() => errorDiv.remove(), 5000);
     }
 }
 
