@@ -770,6 +770,20 @@ def update_business_rules(tenant_id):
                 flash("At least one measurement provider is required.", "error")
                 return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
 
+            # Update brand manifest policy
+            if "brand_manifest_policy" in data:
+                policy_value = data.get("brand_manifest_policy", "").strip()
+                if policy_value in ["public", "require_auth", "require_brand"]:
+                    tenant.brand_manifest_policy = policy_value
+                else:
+                    if request.is_json:
+                        return (
+                            jsonify({"success": False, "error": f"Invalid brand_manifest_policy: {policy_value}"}),
+                            400,
+                        )
+                    flash(f"Invalid brand manifest policy: {policy_value}", "error")
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
+
             # Update approval workflow
             if "human_review_required" in data:
                 manual_approval_value = data.get("human_review_required") in [True, "true", "on", 1, "1"]

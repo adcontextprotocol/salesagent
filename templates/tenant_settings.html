@@ -975,6 +975,56 @@
                     </div>
                 </div>
 
+                <!-- Brand Manifest Policy -->
+                <div class="form-section">
+                    <h3>Brand Manifest Policy</h3>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                        Control when advertisers must provide brand information (<code>brand_manifest</code>) when discovering products or creating campaigns.
+                    </p>
+                    <div class="form-group">
+                        <label for="brand_manifest_policy">Brand Context Requirement</label>
+                        <select id="brand_manifest_policy" name="brand_manifest_policy" class="form-control">
+                            <option value="require_auth" {% if tenant.brand_manifest_policy == 'require_auth' or not tenant.brand_manifest_policy %}selected{% endif %}>
+                                🔐 Require Authentication (brand_manifest optional)
+                            </option>
+                            <option value="require_brand" {% if tenant.brand_manifest_policy == 'require_brand' %}selected{% endif %}>
+                                🔒 Require Authentication + Brand Manifest (strictest)
+                            </option>
+                            <option value="public" {% if tenant.brand_manifest_policy == 'public' %}selected{% endif %}>
+                                🌐 Public (no authentication, no pricing shown)
+                            </option>
+                        </select>
+                        <details style="margin-top: 0.5rem;">
+                            <summary style="cursor: pointer; color: #666; font-size: 0.875rem;">About these options</summary>
+                            <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.875rem;">
+                                <p style="margin: 0 0 0.75rem;"><strong>🔐 Require Authentication</strong> (Recommended for most publishers)</p>
+                                <ul style="margin: 0 0 1rem 1.5rem;">
+                                    <li>Advertisers must authenticate to see products</li>
+                                    <li><code>brand_manifest</code> is <strong>optional</strong></li>
+                                    <li>Pricing shown to authenticated users</li>
+                                    <li>Best for: Standard B2B sales, testing environments</li>
+                                </ul>
+
+                                <p style="margin: 0 0 0.75rem;"><strong>🔒 Require Authentication + Brand Manifest</strong> (Strictest)</p>
+                                <ul style="margin: 0 0 1rem 1.5rem;">
+                                    <li>Advertisers must authenticate AND provide brand context</li>
+                                    <li><code>brand_manifest</code> is <strong>required</strong></li>
+                                    <li>Pricing shown only with brand context</li>
+                                    <li>Best for: Bespoke products requiring brand-specific customization</li>
+                                </ul>
+
+                                <p style="margin: 0 0 0.75rem;"><strong>🌐 Public</strong> (Most open)</p>
+                                <ul style="margin: 0 0 0; 1.5rem;">
+                                    <li>No authentication required</li>
+                                    <li><code>brand_manifest</code> optional</li>
+                                    <li>Pricing <strong>hidden</strong> (generic catalog only)</li>
+                                    <li>Best for: Public product browsing, lead generation</li>
+                                </ul>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+
                 <!-- Naming Conventions -->
                 <div class="form-section">
                     <h3>Naming Conventions</h3>
