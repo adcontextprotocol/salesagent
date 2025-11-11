@@ -90,6 +90,26 @@ Move from `.env` files to proper secrets management:
 - Kubernetes secrets for k8s deployments
 - AWS Secrets Manager or similar for AWS
 
+## Tenant Registration Security
+
+### Subdomain Assignment
+To prevent subdomain squatting and brand impersonation, tenant subdomains are **automatically generated** using random UUIDs.
+
+**Implementation**:
+- Subdomains are 8-character hexadecimal strings (e.g., `a7f3d92b`)
+- Generated from UUID4 (first 8 characters)
+- Users cannot choose custom subdomains during signup
+- Eliminates risk of claiming subdomains like "nytimes" or "cnn"
+
+**Branding Solution**:
+Publishers who want branded URLs should use **virtual hosts** (custom domains):
+- Configure custom domain (e.g., `sales.publisher.com`) in tenant settings
+- Domain ownership verified by Approximated proxy service
+- Proper branding without security risks
+
+**Ad Server Configuration Check**:
+Tenants without configured ad servers show a "Pending Configuration" page instead of active agent endpoints. This prevents incomplete registrations from appearing operational.
+
 ## Access Control Patterns
 
 ### Super Admins

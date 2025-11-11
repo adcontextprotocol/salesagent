@@ -19,21 +19,6 @@ logger = logging.getLogger(__name__)
 # Create blueprint (no authentication required)
 public_bp = Blueprint("public", __name__)
 
-# Reserved subdomains that cannot be used for tenant signup
-RESERVED_SUBDOMAINS = {
-    "admin",
-    "www",
-    "api",
-    "mcp",
-    "a2a",
-    "app",
-    "staging",
-    "dev",
-    "test",
-    "prod",
-    "production",
-}
-
 
 @public_bp.route("/signup")
 def landing():
@@ -104,18 +89,10 @@ def signup_onboarding():
     user_email = session.get("user")
     user_name = session.get("user_name", "")
 
-    # Extract domain from email for subdomain suggestion
-    email_domain = user_email.split("@")[1] if "@" in user_email else ""
-    suggested_subdomain = email_domain.split(".")[0].lower() if email_domain else ""
-
-    # Clean subdomain suggestion (remove invalid characters)
-    suggested_subdomain = "".join(c for c in suggested_subdomain if c.isalnum() or c == "-")
-
     return render_template(
         "signup_onboarding.html",
         user_email=user_email,
         user_name=user_name,
-        suggested_subdomain=suggested_subdomain,
     )
 
 
@@ -135,7 +112,6 @@ def provision_tenant():
     try:
         # Get form data
         publisher_name = request.form.get("publisher_name", "").strip()
-        subdomain = request.form.get("subdomain", "").strip().lower()
         adapter_type = request.form.get("adapter", "mock").strip()
 
         # Validation
@@ -143,31 +119,24 @@ def provision_tenant():
             flash("Publisher name is required", "error")
             return redirect(url_for("public.signup_onboarding"))
 
-        if not subdomain:
-            flash("Subdomain is required", "error")
-            return redirect(url_for("public.signup_onboarding"))
+        # Generate random subdomain and tenant ID (prevents subdomain squatting)
+        # Format: 8 character hex (e.g., "a7f3d92b")
+        import uuid
 
-        # Validate subdomain format (alphanumeric + hyphens only)
-        if not all(c.isalnum() or c == "-" for c in subdomain):
-            flash("Subdomain can only contain letters, numbers, and hyphens", "error")
-            return redirect(url_for("public.signup_onboarding"))
+        tenant_id = str(uuid.uuid4())
+        subdomain = tenant_id[:8]  # Use first 8 chars of UUID as subdomain
 
-        # Check if subdomain is reserved
-        if subdomain in RESERVED_SUBDOMAINS:
-            flash(f"Subdomain '{subdomain}' is reserved and cannot be used", "error")
-            return redirect(url_for("public.signup_onboarding"))
-
-        # Check if subdomain already exists
+        # Ensure uniqueness (extremely rare collision, but check anyway)
         with get_db_session() as db_session:
-            stmt = select(Tenant).filter(or_(Tenant.subdomain == subdomain, Tenant.tenant_id == subdomain))
+            stmt = select(Tenant).filter(or_(Tenant.subdomain == subdomain, Tenant.tenant_id == tenant_id))
             existing_tenant = db_session.scalars(stmt).first()
 
             if existing_tenant:
-                flash(f"Subdomain '{subdomain}' is already taken. Please choose another.", "error")
-                return redirect(url_for("public.signup_onboarding"))
+                # Collision detected (astronomically rare), retry with new UUID
+                tenant_id = str(uuid.uuid4())
+                subdomain = tenant_id[:8]
 
-        # Generate tenant ID and admin token
-        tenant_id = f"{subdomain}"
+        # Generate admin token
         admin_token = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(32))
 
         # Get user info from session

@@ -40,22 +40,11 @@
                     <small>Your company or publication name</small>
                 </div>
 
-                <div class="form-group">
-                    <label for="subdomain">Subdomain <span style="color: red;">*</span></label>
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <input
-                            type="text"
-                            id="subdomain"
-                            name="subdomain"
-                            required
-                            pattern="[a-z0-9-]+"
-                            placeholder="e.g., {{ suggested_subdomain or 'publisher' }}"
-                            value="{{ suggested_subdomain }}"
-                            style="flex: 1;"
-                        >
-                        <span style="color: #666; white-space: nowrap;">.sales-agent.scope3.com</span>
-                    </div>
-                    <small>Lowercase letters, numbers, and hyphens only. This will be your unique URL.</small>
+                <div style="padding: 1rem; background: #f8f9fa; border-radius: 4px; margin-top: 1rem;">
+                    <p style="margin: 0; color: #666; font-size: 0.9rem;">
+                        <strong>Note:</strong> A unique subdomain will be automatically generated for your account.
+                        You can later configure a custom domain (e.g., <code>sales.yourpublisher.com</code>) in settings.
+                    </p>
                 </div>
             </div>
 
@@ -91,59 +80,13 @@
 </div>
 
 <script>
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-
-    // Auto-generate subdomain from publisher name
-    const publisherNameInput = document.getElementById('publisher_name');
-    const subdomainInput = document.getElementById('subdomain');
-
-    publisherNameInput.addEventListener('input', function() {
-        // Only auto-fill if subdomain is empty or matches previous suggestion
-        if (!subdomainInput.value || subdomainInput.dataset.autoFilled === 'true') {
-            const suggested = this.value
-                .toLowerCase()
-                .replace(/[^a-z0-9\s-]/g, '') // Remove invalid chars
-                .replace(/\s+/g, '-')          // Replace spaces with hyphens
-                .replace(/-+/g, '-')           // Collapse multiple hyphens
-                .replace(/^-|-$/g, '');        // Remove leading/trailing hyphens
-
-            if (suggested) {
-                subdomainInput.value = suggested;
-                subdomainInput.dataset.autoFilled = 'true';
-            }
-        }
-    });
-
-    // Mark subdomain as manually edited if user changes it
-    subdomainInput.addEventListener('input', function() {
-        subdomainInput.dataset.autoFilled = 'false';
-    });
-});
-
 // Form validation
 document.getElementById('onboarding-form').addEventListener('submit', function(e) {
-    const subdomain = document.getElementById('subdomain').value;
     const publisherName = document.getElementById('publisher_name').value;
 
-    if (!subdomain || !publisherName) {
+    if (!publisherName) {
         e.preventDefault();
-        alert('Please fill in all required fields');
-        return false;
-    }
-
-    // Validate subdomain format
-    if (!/^[a-z0-9-]+$/.test(subdomain)) {
-        e.preventDefault();
-        alert('Subdomain can only contain lowercase letters, numbers, and hyphens');
-        return false;
-    }
-
-    // Check for reserved subdomains
-    const reserved = ['admin', 'www', 'api', 'mcp', 'a2a', 'app', 'staging', 'dev', 'test', 'prod', 'production'];
-    if (reserved.includes(subdomain)) {
-        e.preventDefault();
-        alert('This subdomain is reserved. Please choose another.');
+        alert('Please enter your publisher name');
         return false;
     }
 });

@@ -74,7 +74,8 @@ class TestVirtualHostLandingPage:
         virtual_host = "htmltest.sales-agent.scope3.com"
 
         # Act - use the new landing page module
-        html_content = generate_tenant_landing_page(tenant, virtual_host)
+        with patch("src.core.tenant_status.is_tenant_ad_server_configured", return_value=True):
+            html_content = generate_tenant_landing_page(tenant, virtual_host)
 
         # Assert - check for enhanced content (note: & will be escaped as &amp;)
         assert "HTML Test Publisher" in html_content  # Check for core name without special chars
@@ -101,7 +102,8 @@ class TestVirtualHostLandingPage:
         }
 
         # Act - use the new landing page module (should auto-escape)
-        html_content = generate_tenant_landing_page(tenant)
+        with patch("src.core.tenant_status.is_tenant_ad_server_configured", return_value=True):
+            html_content = generate_tenant_landing_page(tenant)
 
         # Assert - Jinja2 should have escaped the malicious content
         assert "&lt;script&gt;" in html_content  # Escaped version
@@ -111,11 +113,12 @@ class TestVirtualHostLandingPage:
 
     def test_landing_page_url_generation_production(self):
         """Test URL generation in production environment."""
-        tenant = {"name": "Production Publisher", "subdomain": "prod"}
+        tenant = {"name": "Production Publisher", "subdomain": "prod", "tenant_id": "prod-1"}
         virtual_host = "prod.sales-agent.scope3.com"
 
         with patch.dict("os.environ", {"PRODUCTION": "true"}):
-            html_content = generate_tenant_landing_page(tenant, virtual_host)
+            with patch("src.core.tenant_status.is_tenant_ad_server_configured", return_value=True):
+                html_content = generate_tenant_landing_page(tenant, virtual_host)
 
         # Should use production URLs (A2A at root, not /a2a)
         assert "https://prod.sales-agent.scope3.com/mcp" in html_content
@@ -124,10 +127,11 @@ class TestVirtualHostLandingPage:
 
     def test_landing_page_url_generation_development(self):
         """Test URL generation in development environment."""
-        tenant = {"name": "Dev Publisher", "subdomain": "dev"}
+        tenant = {"name": "Dev Publisher", "subdomain": "dev", "tenant_id": "dev-1"}
 
         with patch.dict("os.environ", {"PRODUCTION": "false", "ADCP_SALES_PORT": "8080"}):
-            html_content = generate_tenant_landing_page(tenant)
+            with patch("src.core.tenant_status.is_tenant_ad_server_configured", return_value=True):
+                html_content = generate_tenant_landing_page(tenant)
 
         # Should use localhost URLs (A2A at root, not /a2a)
         assert "http://localhost:8080/mcp" in html_content
@@ -136,9 +140,10 @@ class TestVirtualHostLandingPage:
 
     def test_landing_page_basic_content(self):
         """Test that landing page includes basic content elements."""
-        tenant = {"name": "Test Publisher", "subdomain": "testpub"}
+        tenant = {"name": "Test Publisher", "subdomain": "testpub", "tenant_id": "testpub-1"}
 
-        html_content = generate_tenant_landing_page(tenant)
+        with patch("src.core.tenant_status.is_tenant_ad_server_configured", return_value=True):
+            html_content = generate_tenant_landing_page(tenant)
 
         # Check for basic landing page content
         assert "Test Publisher" in html_content
@@ -147,9 +152,10 @@ class TestVirtualHostLandingPage:
 
     def test_landing_page_admin_dashboard_link(self):
         """Test that landing page includes admin dashboard link."""
-        tenant = {"name": "Admin Test Publisher", "subdomain": "admintest"}
+        tenant = {"name": "Admin Test Publisher", "subdomain": "admintest", "tenant_id": "admintest-1"}
 
-        html_content = generate_tenant_landing_page(tenant)
+        with patch("src.core.tenant_status.is_tenant_ad_server_configured", return_value=True):
+            html_content = generate_tenant_landing_page(tenant)
 
         # Check for admin dashboard
         assert "Internal Admin" in html_content
@@ -157,9 +163,10 @@ class TestVirtualHostLandingPage:
 
     def test_landing_page_adcp_documentation_links(self):
         """Test that landing page includes proper AdCP documentation links."""
-        tenant = {"name": "Docs Test Publisher", "subdomain": "docstest"}
+        tenant = {"name": "Docs Test Publisher", "subdomain": "docstest", "tenant_id": "docstest-1"}
 
-        html_content = generate_tenant_landing_page(tenant)
+        with patch("src.core.tenant_status.is_tenant_ad_server_configured", return_value=True):
+            html_content = generate_tenant_landing_page(tenant)
 
         # Check for documentation links
         assert "adcontextprotocol.org" in html_content
@@ -204,9 +211,10 @@ class TestVirtualHostLandingPage:
 
     def test_landing_page_responsive_design(self):
         """Test that landing page includes responsive design elements."""
-        tenant = {"name": "Responsive Publisher", "subdomain": "responsive"}
+        tenant = {"name": "Responsive Publisher", "subdomain": "responsive", "tenant_id": "responsive-1"}
 
-        html_content = generate_tenant_landing_page(tenant)
+        with patch("src.core.tenant_status.is_tenant_ad_server_configured", return_value=True):
+            html_content = generate_tenant_landing_page(tenant)
 
         # Check for responsive CSS features
         assert "@media (max-width: 768px)" in html_content
@@ -216,9 +224,10 @@ class TestVirtualHostLandingPage:
 
     def test_landing_page_accessibility_features(self):
         """Test that landing page includes accessibility features."""
-        tenant = {"name": "Accessible Publisher", "subdomain": "accessible"}
+        tenant = {"name": "Accessible Publisher", "subdomain": "accessible", "tenant_id": "accessible-1"}
 
-        html_content = generate_tenant_landing_page(tenant)
+        with patch("src.core.tenant_status.is_tenant_ad_server_configured", return_value=True):
+            html_content = generate_tenant_landing_page(tenant)
 
         # Check for accessibility features
         assert 'lang="en"' in html_content

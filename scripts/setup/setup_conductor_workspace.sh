@@ -233,6 +233,9 @@ echo "CONDUCTOR_MCP_PORT=$ADCP_PORT" >> .env
 echo "CONDUCTOR_A2A_PORT=$((ADCP_PORT + 11))" >> .env
 echo "CONDUCTOR_ADMIN_PORT=$((ADCP_PORT + 21))" >> .env
 echo "" >> .env
+echo "# Google OAuth redirect URI (based on Admin UI port)" >> .env
+echo "GOOGLE_OAUTH_REDIRECT_URI=http://localhost:$ADMIN_PORT/auth/google/callback" >> .env
+echo "" >> .env
 echo "DATABASE_URL=postgresql://adcp_user:secure_password_change_me@localhost:$POSTGRES_PORT/adcp" >> .env
 
 echo "✓ Updated .env with unique ports"

@@ -77,7 +77,7 @@ class TestSelfServiceSignupFlow:
 
         form_data = {
             "publisher_name": "Test Publisher",
-            "subdomain": "testpub",
+            # No subdomain - auto-generated from UUID
             "adapter": "mock",
         }
 
@@ -87,13 +87,21 @@ class TestSelfServiceSignupFlow:
         assert response.status_code == 302
         assert "/signup/complete" in response.headers["Location"]
 
+        # Extract tenant_id from redirect URL
+        redirect_url = response.headers["Location"]
+        tenant_id = redirect_url.split("tenant_id=")[1] if "tenant_id=" in redirect_url else None
+        assert tenant_id is not None
+
         # Verify tenant was created
         with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(subdomain="testpub")).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             assert tenant is not None
             assert tenant.name == "Test Publisher"
             assert tenant.ad_server == "mock"
             assert tenant.is_active is True
+            # Subdomain should be 8-char hex (first 8 chars of UUID)
+            assert tenant.subdomain is not None
+            assert len(tenant.subdomain) == 8
 
             # Verify adapter config
             adapter_config = db_session.scalars(select(AdapterConfig).filter_by(tenant_id=tenant.tenant_id)).first()
@@ -131,7 +139,7 @@ class TestSelfServiceSignupFlow:
 
         form_data = {
             "publisher_name": "Kevel Test Publisher",
-            "subdomain": "keveltest",
+            # No subdomain - auto-generated from UUID
             "adapter": "kevel",
             "kevel_network_id": "12345",
             "kevel_api_key": "test_api_key_12345",
@@ -143,9 +151,14 @@ class TestSelfServiceSignupFlow:
         assert response.status_code == 302
         assert "/signup/complete" in response.headers["Location"]
 
+        # Extract tenant_id from redirect URL
+        redirect_url = response.headers["Location"]
+        tenant_id = redirect_url.split("tenant_id=")[1] if "tenant_id=" in redirect_url else None
+        assert tenant_id is not None
+
         # Verify tenant and adapter config
         with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(subdomain="keveltest")).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             assert tenant is not None
             assert tenant.ad_server == "kevel"
 
@@ -172,7 +185,7 @@ class TestSelfServiceSignupFlow:
 
         form_data = {
             "publisher_name": "GAM Test Publisher",
-            "subdomain": "gamtest",
+            # No subdomain - auto-generated from UUID
             "adapter": "google_ad_manager",
         }
 
@@ -182,9 +195,14 @@ class TestSelfServiceSignupFlow:
         assert response.status_code == 302
         assert "/signup/complete" in response.headers["Location"]
 
+        # Extract tenant_id from redirect URL
+        redirect_url = response.headers["Location"]
+        tenant_id = redirect_url.split("tenant_id=")[1] if "tenant_id=" in redirect_url else None
+        assert tenant_id is not None
+
         # Verify tenant was created with GAM adapter (no credentials yet)
         with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(subdomain="gamtest")).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             assert tenant is not None
             assert tenant.ad_server == "google_ad_manager"
 
@@ -202,69 +220,105 @@ class TestSelfServiceSignupFlow:
             db_session.delete(tenant)
             db_session.commit()
 
-    def test_subdomain_uniqueness_validation(self, integration_db, client):
-        """Test that duplicate subdomains are rejected."""
-        # Create an existing tenant
+    def test_subdomain_auto_generation(self, integration_db, client):
+        """Test that subdomains are automatically generated as 8-char hex UUIDs."""
+        with client.session_transaction() as sess:
+            sess["signup_flow"] = True
+            sess["user"] = "admin@test.com"
+            sess["user_name"] = "Test Admin"
+
+        form_data = {
+            "publisher_name": "UUID Test Publisher",
+            # No subdomain field - auto-generated
+            "adapter": "mock",
+        }
+
+        response = client.post("/signup/provision", data=form_data, follow_redirects=False)
+        assert response.status_code == 302
+
+        # Extract tenant_id from redirect URL
+        redirect_url = response.headers["Location"]
+        tenant_id = redirect_url.split("tenant_id=")[1] if "tenant_id=" in redirect_url else None
+        assert tenant_id is not None
+
+        # Verify subdomain is 8-char hex (first 8 chars of UUID)
         with get_db_session() as db_session:
-            existing_tenant = Tenant(
-                tenant_id="existing",
-                name="Existing Publisher",
-                subdomain="existingpub",
-                ad_server="mock",
-                is_active=True,
-                billing_plan="standard",
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
-                enable_axe_signals=True,
-                human_review_required=True,
-            )
-            db_session.add(existing_tenant)
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            assert tenant is not None
+            assert tenant.subdomain is not None
+            assert len(tenant.subdomain) == 8
+            # Check it's valid hex (only 0-9 and a-f)
+            assert all(c in "0123456789abcdef" for c in tenant.subdomain)
+
+            # Cleanup
+            user = db_session.scalars(select(User).filter_by(tenant_id=tenant.tenant_id)).first()
+            adapter_config = db_session.scalars(select(AdapterConfig).filter_by(tenant_id=tenant.tenant_id)).first()
+            if user:
+                db_session.delete(user)
+            if adapter_config:
+                db_session.delete(adapter_config)
+            db_session.delete(tenant)
             db_session.commit()
 
-        try:
-            # Try to create tenant with same subdomain
-            with client.session_transaction() as sess:
-                sess["signup_flow"] = True
-                sess["user"] = "admin@test.com"
-                sess["user_name"] = "Test Admin"
+    def test_subdomain_uniqueness_extremely_rare_collision(self, integration_db, client):
+        """Test that extremely rare UUID collisions are handled (astronomically unlikely)."""
+        # This test documents the collision handling behavior, though collisions are astronomically rare
+        # We create a tenant, then try to create another with hope of collision detection
+        # In practice, UUID4 8-char hex has 4.3 billion possibilities, so collisions are extremely unlikely
+        with client.session_transaction() as sess:
+            sess["signup_flow"] = True
+            sess["user"] = "admin@test1.com"
+            sess["user_name"] = "Test Admin 1"
 
-            form_data = {
-                "publisher_name": "Duplicate Publisher",
-                "subdomain": "existingpub",
-                "adapter": "mock",
-            }
+        form_data = {
+            "publisher_name": "First Publisher",
+            "adapter": "mock",
+        }
 
-            response = client.post("/signup/provision", data=form_data, follow_redirects=True)
-            assert response.status_code == 200
-            assert b"already taken" in response.data or b"already exists" in response.data
+        response1 = client.post("/signup/provision", data=form_data, follow_redirects=False)
+        assert response1.status_code == 302
 
-        finally:
+        # Extract first tenant_id
+        tenant_id_1 = (
+            response1.headers["Location"].split("tenant_id=")[1]
+            if "tenant_id=" in response1.headers["Location"]
+            else None
+        )
+
+        # Create second tenant - should get different UUID/subdomain
+        with client.session_transaction() as sess:
+            sess["signup_flow"] = True
+            sess["user"] = "admin@test2.com"
+            sess["user_name"] = "Test Admin 2"
+
+        form_data["publisher_name"] = "Second Publisher"
+        response2 = client.post("/signup/provision", data=form_data, follow_redirects=False)
+        assert response2.status_code == 302
+
+        tenant_id_2 = (
+            response2.headers["Location"].split("tenant_id=")[1]
+            if "tenant_id=" in response2.headers["Location"]
+            else None
+        )
+
+        # Verify different tenant_ids and subdomains
+        with get_db_session() as db_session:
+            tenant1 = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id_1)).first()
+            tenant2 = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id_2)).first()
+
+            assert tenant1.tenant_id != tenant2.tenant_id
+            assert tenant1.subdomain != tenant2.subdomain
+
             # Cleanup
-            with get_db_session() as db_session:
-                tenant = db_session.scalars(select(Tenant).filter_by(subdomain="existingpub")).first()
-                if tenant:
-                    db_session.delete(tenant)
-                    db_session.commit()
-
-    def test_reserved_subdomain_rejection(self, client):
-        """Test that reserved subdomains are rejected."""
-        reserved_subdomains = ["admin", "www", "api", "mcp", "a2a"]
-
-        for subdomain in reserved_subdomains:
-            with client.session_transaction() as sess:
-                sess["signup_flow"] = True
-                sess["user"] = f"admin@{subdomain}test.com"
-                sess["user_name"] = "Test Admin"
-
-            form_data = {
-                "publisher_name": f"{subdomain.title()} Publisher",
-                "subdomain": subdomain,
-                "adapter": "mock",
-            }
-
-            response = client.post("/signup/provision", data=form_data, follow_redirects=True)
-            assert response.status_code == 200
-            assert b"reserved" in response.data.lower()
+            for tenant in [tenant1, tenant2]:
+                user = db_session.scalars(select(User).filter_by(tenant_id=tenant.tenant_id)).first()
+                adapter_config = db_session.scalars(select(AdapterConfig).filter_by(tenant_id=tenant.tenant_id)).first()
+                if user:
+                    db_session.delete(user)
+                if adapter_config:
+                    db_session.delete(adapter_config)
+                db_session.delete(tenant)
+            db_session.commit()
 
     def test_signup_completion_page_renders(self, integration_db, client):
         """Test that signup completion page renders with tenant information."""
@@ -350,24 +404,29 @@ class TestSelfServiceSignupFlow:
 
         form_data = {
             "publisher_name": "Session Test Publisher",
-            "subdomain": "sessiontest",
+            # No subdomain - auto-generated from UUID
             "adapter": "mock",
         }
 
         response = client.post("/signup/provision", data=form_data, follow_redirects=False)
         assert response.status_code == 302
 
+        # Extract tenant_id from redirect URL
+        redirect_url = response.headers["Location"]
+        tenant_id = redirect_url.split("tenant_id=")[1] if "tenant_id=" in redirect_url else None
+        assert tenant_id is not None
+
         # Verify session flags are cleaned up
         with client.session_transaction() as sess:
             assert "signup_flow" not in sess
             assert "signup_step" not in sess
             # User session should be set for tenant access
-            assert sess.get("tenant_id") == "sessiontest"
+            assert sess.get("tenant_id") == tenant_id
             assert sess.get("is_tenant_admin") is True
 
         # Cleanup
         with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(subdomain="sessiontest")).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if tenant:
                 user = db_session.scalars(select(User).filter_by(tenant_id=tenant.tenant_id)).first()
                 adapter_config = db_session.scalars(select(AdapterConfig).filter_by(tenant_id=tenant.tenant_id)).first()

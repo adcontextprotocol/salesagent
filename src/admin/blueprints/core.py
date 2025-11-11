@@ -102,12 +102,41 @@ def index():
 
     # Check if user is super admin
     if session.get("role") == "super_admin":
-        # Super admin - show all active tenants
+        # Super admin - show all active tenants with configuration and activity status
+        from sqlalchemy.orm import joinedload
+
+        from src.core.database.models import MediaBuy
+        from src.core.tenant_status import is_tenant_ad_server_configured
+
         with get_db_session() as db_session:
-            stmt = select(Tenant).filter_by(is_active=True).order_by(Tenant.name)
+            # Eager load adapter_config to avoid N+1 queries
+            stmt = (
+                select(Tenant)
+                .options(joinedload(Tenant.adapter_config))
+                .filter_by(is_active=True)
+                .order_by(Tenant.name)
+            )
             tenants = db_session.scalars(stmt).all()
             tenant_list = []
             for tenant in tenants:
+                # Check if configured
+                is_configured = is_tenant_ad_server_configured(tenant.tenant_id)
+
+                # Check for recent activity (media buys in last 30 days)
+                from datetime import UTC, datetime, timedelta
+
+                thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
+                recent_buys_stmt = (
+                    select(MediaBuy)
+                    .filter_by(tenant_id=tenant.tenant_id)
+                    .filter(MediaBuy.created_at >= thirty_days_ago)
+                )
+                recent_buys_count = len(list(db_session.scalars(recent_buys_stmt).all()))
+
+                # Get total media buys for all-time activity
+                total_buys_stmt = select(MediaBuy).filter_by(tenant_id=tenant.tenant_id)
+                total_buys_count = len(list(db_session.scalars(total_buys_stmt).all()))
+
                 tenant_list.append(
                     {
                         "tenant_id": tenant.tenant_id,
@@ -116,6 +145,11 @@ def index():
                         "virtual_host": tenant.virtual_host,
                         "is_active": tenant.is_active,
                         "created_at": tenant.created_at,
+                        "ad_server": tenant.ad_server,
+                        "is_configured": is_configured,
+                        "recent_buys_count": recent_buys_count,
+                        "total_buys_count": total_buys_count,
+                        "has_activity": total_buys_count > 0,
                     }
                 )
         # Get environment info for URL generation
