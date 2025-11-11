@@ -401,8 +401,8 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
-    # Success = no errors (or empty errors list)
-    assert response.errors == [] or response.errors is None
+    # Success = no errors (oneOf pattern - Success doesn't have errors field)
+    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # In dry-run mode, the response should succeed
     # In real mode, we'd verify GAM line item properties:
@@ -456,8 +456,8 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
-    # Success = no errors (or empty errors list)
-    assert response.errors == [] or response.errors is None
+    # Success = no errors (oneOf pattern - Success doesn't have errors field)
+    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # In real GAM mode, line item would have:
     # - lineItemType = "PRICE_PRIORITY"
@@ -512,8 +512,8 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
-    # Success = no errors (or empty errors list)
-    assert response.errors == [] or response.errors is None
+    # Success = no errors (oneOf pattern - Success doesn't have errors field)
+    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # In real GAM mode, line item would have:
     # - lineItemType = "STANDARD" (VCPM only works with STANDARD)
@@ -569,8 +569,8 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
-    # Success = no errors (or empty errors list)
-    assert response.errors == [] or response.errors is None
+    # Success = no errors (oneOf pattern - Success doesn't have errors field)
+    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # In real GAM mode, line item would have:
     # - lineItemType = "SPONSORSHIP" (FLAT_RATE → CPD uses SPONSORSHIP)
@@ -639,8 +639,8 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
-    # Success = no errors (or empty errors list)
-    assert response.errors == [] or response.errors is None
+    # Success = no errors (oneOf pattern - Success doesn't have errors field)
+    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # Each package should create a line item with correct pricing:
     # - pkg_1: CPM, STANDARD, priority 8
@@ -709,8 +709,8 @@ async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_
 
     # Verify response (AdCP 2.4 compliant)
     assert response.media_buy_id is not None
-    # Success = no errors (or empty errors list)
-    assert response.errors == [] or response.errors is None
+    # Success = no errors (oneOf pattern - Success doesn't have errors field)
+    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # Line item should use bid_price ($2.25) for costPerUnit
     # - lineItemType = "PRICE_PRIORITY" (auction = non-guaranteed)

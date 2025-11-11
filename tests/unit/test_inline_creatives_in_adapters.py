@@ -105,6 +105,10 @@ class TestInlineCreativesInAdapters:
         assert "creative_ids" in package_dict
         assert package_dict["creative_ids"] == ["creative_1", "creative_2"]
 
+        # Also verify Package attribute access works correctly
+        assert hasattr(package, "creative_ids") and package.creative_ids is not None
+        assert package.creative_ids == ["creative_1", "creative_2"]
+
     # TODO: Re-add adapter-specific tests after adapter initialization patterns are updated
     # The following tests were removed because adapter initialization changed:
     # - test_gam_adapter_includes_creative_ids_manual_approval
@@ -139,5 +143,6 @@ class TestInlineCreativesInAdapters:
         # Mock adapter uses model_dump() which automatically includes all fields
         assert response.packages is not None
         assert len(response.packages) == 1
-        assert "creative_ids" in response.packages[0]
-        assert response.packages[0]["creative_ids"] == ["creative_1", "creative_2"]
+        pkg = response.packages[0]
+        assert hasattr(pkg, "creative_ids") and pkg.creative_ids is not None
+        assert pkg.creative_ids == ["creative_1", "creative_2"]

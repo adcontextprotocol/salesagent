@@ -118,11 +118,10 @@ class TestGAMManualApprovalPath:
 
                 # Assert - Each package must have package_id
                 for i, pkg in enumerate(response.packages):
-                    assert "package_id" in pkg, f"Package {i} missing package_id"
-                    assert pkg["package_id"] is not None, f"Package {i} has None package_id"
+                    assert hasattr(pkg, "package_id") and pkg.package_id is not None, f"Package {i} missing package_id"
 
                 # Assert - Package IDs must match input packages
-                returned_ids = {pkg["package_id"] for pkg in response.packages}
+                returned_ids = {pkg.package_id for pkg in response.packages}
                 expected_ids = {pkg.package_id for pkg in sample_packages}
                 assert (
                     returned_ids == expected_ids
@@ -249,18 +248,18 @@ class TestGAMActivationWorkflowPath:
 
             # Assert - Each package must have package_id AND platform_line_item_id
             for i, pkg in enumerate(response.packages):
-                assert "package_id" in pkg, f"Package {i} missing package_id"
-                assert pkg["package_id"] is not None, f"Package {i} has None package_id"
-                assert "platform_line_item_id" in pkg, f"Package {i} missing platform_line_item_id"
-                assert pkg["platform_line_item_id"] is not None, f"Package {i} has None platform_line_item_id"
+                assert hasattr(pkg, "package_id") and pkg.package_id is not None, f"Package {i} missing package_id"
+                assert (
+                    hasattr(pkg, "platform_line_item_id") and pkg.platform_line_item_id is not None
+                ), f"Package {i} missing platform_line_item_id"
 
             # Assert - Package IDs must match input packages
-            returned_ids = {pkg["package_id"] for pkg in response.packages}
+            returned_ids = {pkg.package_id for pkg in response.packages}
             expected_ids = {pkg.package_id for pkg in sample_packages}
             assert returned_ids == expected_ids, f"Package IDs don't match. Got {returned_ids}, expected {expected_ids}"
 
             # Assert - Line item IDs must match mocked IDs
-            returned_line_item_ids = [pkg["platform_line_item_id"] for pkg in response.packages]
+            returned_line_item_ids = [pkg.platform_line_item_id for pkg in response.packages]
             expected_line_item_ids = [str(lid) for lid in mock_line_item_ids]
             assert (
                 returned_line_item_ids == expected_line_item_ids
@@ -341,8 +340,10 @@ class TestGAMSuccessPath:
 
             # Assert - Each package must have package_id AND platform_line_item_id
             for i, pkg in enumerate(response.packages):
-                assert "package_id" in pkg, f"Package {i} missing package_id"
-                assert "platform_line_item_id" in pkg, f"Package {i} missing platform_line_item_id"
+                assert hasattr(pkg, "package_id") and pkg.package_id is not None, f"Package {i} missing package_id"
+                assert (
+                    hasattr(pkg, "platform_line_item_id") and pkg.platform_line_item_id is not None
+                ), f"Package {i} missing platform_line_item_id"
 
             # Assert - No workflow_step_id on success path
             assert response.workflow_step_id is None, "Success path should not have workflow_step_id"
