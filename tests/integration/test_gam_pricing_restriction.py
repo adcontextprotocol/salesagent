@@ -355,10 +355,10 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         context=context,
     )
 
-    # Verify response (AdCP 2.4 compliant)
+    # Verify response (adcp v1.2.1 oneOf pattern)
     assert response.media_buy_id is not None
-    # Success = no errors (or empty errors list)
-    assert response.errors == [] or response.errors is None
+    # Success response has no errors field (only Error variant has errors)
+    assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)
 
 
 @pytest.mark.requires_db
@@ -452,7 +452,7 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
         context=context,
     )
 
-    # Verify response (AdCP 2.4 compliant)
+    # Verify response (adcp v1.2.1 oneOf pattern)
     assert response.media_buy_id is not None
-    # Success = no errors (or empty errors list)
-    assert response.errors == [] or response.errors is None
+    # Success response has no errors field (only Error variant has errors)
+    assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)

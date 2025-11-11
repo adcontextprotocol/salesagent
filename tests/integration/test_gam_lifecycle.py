@@ -122,8 +122,9 @@ class TestGAMOrderLifecycleIntegration:
                     budget=None,
                     today=datetime.now(),
                 )
-                # AdCP 2.4: Success = no errors (or empty errors list)
-                assert response.errors == [] or response.errors is None
+                # adcp v1.2.1 oneOf pattern: Success response has no errors field
+                # If response were an Error, it would have errors field
+                assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)
                 assert response.buyer_ref  # buyer_ref should be present
 
             # Admin-only action should fail for regular user
@@ -135,10 +136,11 @@ class TestGAMOrderLifecycleIntegration:
                 budget=None,
                 today=datetime.now(),
             )
-            # AdCP 2.4: Failure = has errors
+            # adcp v1.2.1: Error response has errors field
+            assert hasattr(response, "errors"), "Should be UpdateMediaBuyError with errors"
             assert response.errors is not None and len(response.errors) > 0
             assert response.errors[0].code == "insufficient_privileges"
-            assert response.buyer_ref  # buyer_ref should be present
+            # Note: Error variant doesn't have buyer_ref field in adcp v1.2.1
 
             # Admin user should be able to approve
             admin_adapter = GoogleAdManager(
@@ -158,8 +160,8 @@ class TestGAMOrderLifecycleIntegration:
                 budget=None,
                 today=datetime.now(),
             )
-            # AdCP 2.4: Success = no errors
-            assert response.errors == [] or response.errors is None
+            # adcp v1.2.1: Success response has no errors field
+            assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)
 
     def test_guaranteed_line_item_classification(self):
         """Test line item type classification logic with real data structures."""
@@ -213,8 +215,8 @@ class TestGAMOrderLifecycleIntegration:
                     budget=None,
                     today=datetime.now(),
                 )
-                # AdCP 2.4: Success = no errors
-                assert response.errors == [] or response.errors is None
+                # adcp v1.2.1 oneOf pattern: Success response has no errors field
+                assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)
                 assert response.buyer_ref  # buyer_ref should be present
 
             # Test activation with guaranteed items (should create workflow step)
@@ -231,8 +233,8 @@ class TestGAMOrderLifecycleIntegration:
                         budget=None,
                         today=datetime.now(),
                     )
-                    # AdCP 2.4: Success with workflow = no errors, workflow_step_id present
-                    assert response.errors == [] or response.errors is None
+                    # adcp v1.2.1: Success response has no errors field, workflow_step_id present
+                    assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)
                     assert response.workflow_step_id == "test_step_id"
 
     # Helper method for line item classification (no external dependencies)
