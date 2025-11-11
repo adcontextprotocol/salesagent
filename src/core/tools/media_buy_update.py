@@ -435,7 +435,7 @@ def _update_media_buy_impl(
                 )
                 # adcp v1.2.1 oneOf pattern: Check if result is Error variant
                 if hasattr(result, "errors") and result.errors:
-                    error_message = result.errors[0].message if result.errors else "Update failed"
+                    error_message = result.errors[0].message if (result.errors and len(result.errors) > 0) else "Update failed"
                     response_data = UpdateMediaBuyError(errors=result.errors)
                     ctx_manager.update_workflow_step(
                         step.step_id,
@@ -468,7 +468,7 @@ def _update_media_buy_impl(
                 )
                 # adcp v1.2.1 oneOf pattern: Check if result is Error variant
                 if hasattr(result, "errors") and result.errors:
-                    error_message = result.errors[0].message if result.errors else "Update failed"
+                    error_message = result.errors[0].message if (result.errors and len(result.errors) > 0) else "Update failed"
                     response_data = UpdateMediaBuyError(errors=result.errors)
                     ctx_manager.update_workflow_step(
                         step.step_id,
