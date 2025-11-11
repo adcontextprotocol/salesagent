@@ -42,10 +42,12 @@ class TestGeneratedSchemaCompatibility:
         adcp_dict = custom_response.model_dump(exclude={"adcp_version"})
 
         # Validate it loads into generated schema
+        # Note: Generated schema is now a RootModel with union type (success | error)
         try:
             generated = GeneratedCreateMediaBuyResponse(**adcp_dict)
-            assert generated.buyer_ref == "test_ref_123"
-            assert generated.media_buy_id == "mb_test_456"
+            # Access fields via .root since it's a RootModel
+            assert generated.root.buyer_ref == "test_ref_123"
+            assert generated.root.media_buy_id == "mb_test_456"
         except Exception as e:
             pytest.fail(
                 f"CreateMediaBuyResponse not compatible with generated schema: {e}\n"
@@ -174,9 +176,11 @@ class TestGeneratedSchemaCompatibility:
 
         adcp_dict = custom_response.model_dump(exclude={"adcp_version"})
 
+        # Note: Generated schema is now a RootModel with union type (success | error)
         try:
             generated = GeneratedUpdateMediaBuyResponse(**adcp_dict)
-            assert generated.media_buy_id == "mb_123"
-            assert generated.buyer_ref == "test_buyer_ref"
+            # Access fields via .root since it's a RootModel
+            assert generated.root.media_buy_id == "mb_123"
+            assert generated.root.buyer_ref == "test_buyer_ref"
         except Exception as e:
             pytest.fail(f"UpdateMediaBuyResponse not compatible: {e}\nAdCP dict keys: {list(adcp_dict.keys())}")
