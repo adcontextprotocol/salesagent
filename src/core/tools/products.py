@@ -169,8 +169,11 @@ async def _get_products_impl(
     offering = None
     if req.brand_manifest:
         if isinstance(req.brand_manifest, str):
-            # brand_manifest is a URL - use it as-is for now
+            # brand_manifest is a URL string - use it as-is for now
             # TODO: In future, fetch and parse the URL
+            offering = f"Brand at {req.brand_manifest}"
+        elif hasattr(req.brand_manifest, "__str__") and str(req.brand_manifest).startswith("http"):
+            # brand_manifest is AnyUrl object from Pydantic (schema_helpers converts str → AnyUrl)
             offering = f"Brand at {req.brand_manifest}"
         else:
             # brand_manifest is a BrandManifest object or dict

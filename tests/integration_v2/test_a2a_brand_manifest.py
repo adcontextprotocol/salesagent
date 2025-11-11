@@ -22,7 +22,12 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.asyncio
 async def test_get_products_with_brand_manifest_dict(sample_tenant, sample_principal, sample_products):
-    """Test get_products skill invocation with brand_manifest as dict."""
+    """Test get_products skill invocation with brand_manifest as dict.
+
+    KNOWN ISSUE: A2A server loses brand_manifest dict data during parameter extraction.
+    The A2A handler receives the parameter but it becomes empty by the time it reaches
+    get_products_impl. Needs investigation of A2A parameter marshalling.
+    """
     handler = AdCPRequestHandler()
 
     # Mock auth token
@@ -61,7 +66,13 @@ async def test_get_products_with_brand_manifest_dict(sample_tenant, sample_princ
 
         result_data = None
         for part in artifact.parts:
-            if hasattr(part, "data") and isinstance(part.data, dict):
+            # A2A SDK returns parts with .root attribute (RootModel pattern)
+            if hasattr(part, "root"):
+                part_content = part.root
+                if hasattr(part_content, "data") and isinstance(part_content.data, dict):
+                    result_data = part_content.data
+                    break
+            elif hasattr(part, "data") and isinstance(part.data, dict):
                 result_data = part.data
                 break
 
@@ -73,7 +84,12 @@ async def test_get_products_with_brand_manifest_dict(sample_tenant, sample_princ
 
 @pytest.mark.asyncio
 async def test_get_products_with_brand_manifest_url_only(sample_tenant, sample_principal, sample_products):
-    """Test get_products skill invocation with brand_manifest as URL string."""
+    """Test get_products skill invocation with brand_manifest as URL string.
+
+    KNOWN ISSUE: A2A server rejects brand_manifest as plain string (URL-only format).
+    Per AdCP spec, brand_manifest can be a string URL, but A2A parameter validation
+    may be too strict. Needs investigation of GetProductsRequest schema handling.
+    """
     handler = AdCPRequestHandler()
     handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
