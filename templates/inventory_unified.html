@@ -396,7 +396,8 @@ const API_URLS = {
     profileDelete: '{{ url_for("inventory_profiles.delete_inventory_profile", tenant_id=tenant_id, profile_id=0) }}'.replace('/0/', '/{id}/'),
     inventoryTree: '{{ url_for("inventory.get_inventory_tree", tenant_id=tenant_id) }}',
     inventorySync: '{{ url_for("inventory.sync_inventory", tenant_id=tenant_id) }}',
-    gamSyncStatus: '{{ url_for("gam.get_sync_status", tenant_id=tenant_id, sync_id="SYNC_ID") }}'.replace('/SYNC_ID/', '/{id}/')
+    // GAM sync status uses manual URL construction (dynamic sync_id parameter)
+    gamSyncStatus: '/tenant/{{ tenant_id }}/gam/sync-status/{id}'
 };
 
 let selectedInventory = null;
