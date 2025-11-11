@@ -268,11 +268,12 @@ def _update_media_buy_impl(
 
     if manual_approval_required and "update_media_buy" in manual_approval_operations:
         # Build response first, then persist on workflow step, then return
-        # UpdateMediaBuySuccess only has media_buy_id, buyer_ref, packages per AdCP spec
+        # UpdateMediaBuySuccess extends adcp v1.2.1 with internal fields (workflow_step_id, affected_packages)
         response_data = UpdateMediaBuySuccess(
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
             packages=[],  # Required by AdCP spec
+            affected_packages=[],  # Internal field for tracking changes
         )
         ctx_manager.update_workflow_step(
             step.step_id,
@@ -410,11 +411,12 @@ def _update_media_buy_impl(
         if hasattr(result, "errors") and result.errors:
             return UpdateMediaBuyError(errors=result.errors)
         else:
-            # UpdateMediaBuySuccess only has media_buy_id, buyer_ref, packages per AdCP spec
+            # UpdateMediaBuySuccess extends adcp v1.2.1 with internal fields
             return UpdateMediaBuySuccess(
                 media_buy_id=result.media_buy_id,
                 buyer_ref=result.buyer_ref,
                 packages=[],  # Required by AdCP spec
+                affected_packages=result.affected_packages if hasattr(result, "affected_packages") else [],
             )
 
     # Handle package-level updates
@@ -794,11 +796,12 @@ def _update_media_buy_impl(
     # Build final response first
     logger.info(f"[update_media_buy] Final affected_packages before return: {affected_packages_list}")
 
-    # UpdateMediaBuySuccess only has media_buy_id, buyer_ref, packages per AdCP spec
+    # UpdateMediaBuySuccess extends adcp v1.2.1 with internal fields (workflow_step_id, affected_packages)
     response_data = UpdateMediaBuySuccess(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
         packages=[],  # Required by AdCP spec
+        affected_packages=affected_packages_list if affected_packages_list else [],  # Internal field for tracking changes
     )
 
     # Persist success with response data, then return
