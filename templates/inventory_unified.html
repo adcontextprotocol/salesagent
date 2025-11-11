@@ -388,6 +388,17 @@
 
 <script>
 const tenantId = '{{ tenant_id }}';
+
+// API URL endpoints - use url_for() to generate proper URLs for dev/prod
+const API_URLS = {
+    profilesList: '{{ url_for("inventory_profiles.list_inventory_profiles_api", tenant_id=tenant_id) }}',
+    profileGet: '{{ url_for("inventory_profiles.get_inventory_profile_api", tenant_id=tenant_id, profile_id=0) }}'.replace('/0/', '/{id}/'),
+    profileDelete: '{{ url_for("inventory_profiles.delete_inventory_profile", tenant_id=tenant_id, profile_id=0) }}'.replace('/0/', '/{id}/'),
+    inventoryTree: '{{ url_for("inventory.get_inventory_tree", tenant_id=tenant_id) }}',
+    inventorySync: '{{ url_for("inventory.sync_inventory", tenant_id=tenant_id) }}',
+    gamSyncStatus: '{{ url_for("gam.get_sync_status", tenant_id=tenant_id, sync_id="SYNC_ID") }}'.replace('/SYNC_ID/', '/{id}/')
+};
+
 let selectedInventory = null;
 let inventoryTree = null;
 let selectedAdUnitsMap = new Map();  // id -> {id, name, path}
@@ -409,7 +420,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ==================== PROFILES TAB ====================
 
 function loadProfiles() {
-    fetch(`/admin/tenant/${tenantId}/inventory-profiles/api/list`, {
+    fetch(API_URLS.profilesList, {
         credentials: 'same-origin'
     })
         .then(response => {
@@ -527,7 +538,7 @@ function renderProfiles(profiles) {
 
 function editProfile(profileId) {
     // Fetch full profile data and pass to editor component
-    fetch(`/admin/tenant/${tenantId}/inventory-profiles/${profileId}/api`, {
+    fetch(API_URLS.profileGet.replace('/{id}/', `/${profileId}/`), {
         credentials: 'same-origin'
     })
         .then(response => {
@@ -555,7 +566,7 @@ function deleteProfile(profileId, profileName) {
         return;
     }
 
-    fetch(`/admin/tenant/${tenantId}/inventory-profiles/${profileId}/delete`, {
+    fetch(API_URLS.profileDelete.replace('/{id}/', `/${profileId}/`), {
         method: 'DELETE',
         headers: {
             'Content-Type': 'application/json',
@@ -590,7 +601,7 @@ function deleteProfile(profileId, profileName) {
 // ==================== BROWSE INVENTORY TAB ====================
 
 function loadInventoryStatus() {
-    fetch(`/api/tenant/${tenantId}/inventory/tree`, {
+    fetch(API_URLS.inventoryTree, {
         credentials: 'same-origin'
     })
         .then(response => {
@@ -659,7 +670,7 @@ function syncInventory() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
 
-    fetch(`/api/tenant/${tenantId}/inventory/sync`, {
+    fetch(API_URLS.inventorySync, {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
@@ -702,7 +713,7 @@ function syncInventory() {
 
 function pollInventorySyncStatus(syncId, btn) {
     const checkStatus = () => {
-        fetch(`/tenant/${tenantId}/gam/sync-status/${syncId}`, {
+        fetch(API_URLS.gamSyncStatus.replace('/{id}/', `/${syncId}/`), {
             credentials: 'same-origin'
         })
             .then(response => {
@@ -764,7 +775,7 @@ function performSelectiveSync() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
 
-    fetch(`/api/tenant/${tenantId}/inventory/sync`, {
+    fetch(API_URLS.inventorySync, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -959,6 +970,7 @@ function searchInventory() {
     if (inventoryType) params.append('type', inventoryType);
     if (status) params.append('status', status);
 
+    // Note: inventory search endpoint may not exist yet - keeping as manual URL
     fetch(`/api/tenant/${tenantId}/inventory/search?${params.toString()}`, {
         credentials: 'same-origin'
     })
