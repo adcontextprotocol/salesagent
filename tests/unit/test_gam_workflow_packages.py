@@ -246,24 +246,15 @@ class TestGAMActivationWorkflowPath:
             # Assert - Must have same number of packages as input
             assert len(response.packages) == len(sample_packages), f"Expected {len(sample_packages)} packages"
 
-            # Assert - Each package must have package_id AND platform_line_item_id
+            # Assert - Each package must have package_id (AdCP spec requirement)
+            # Note: platform_line_item_id is internal tracking data, not part of AdCP Package spec
             for i, pkg in enumerate(response.packages):
                 assert hasattr(pkg, "package_id") and pkg.package_id is not None, f"Package {i} missing package_id"
-                assert (
-                    hasattr(pkg, "platform_line_item_id") and pkg.platform_line_item_id is not None
-                ), f"Package {i} missing platform_line_item_id"
 
             # Assert - Package IDs must match input packages
             returned_ids = {pkg.package_id for pkg in response.packages}
             expected_ids = {pkg.package_id for pkg in sample_packages}
             assert returned_ids == expected_ids, f"Package IDs don't match. Got {returned_ids}, expected {expected_ids}"
-
-            # Assert - Line item IDs must match mocked IDs
-            returned_line_item_ids = [pkg.platform_line_item_id for pkg in response.packages]
-            expected_line_item_ids = [str(lid) for lid in mock_line_item_ids]
-            assert (
-                returned_line_item_ids == expected_line_item_ids
-            ), f"Line item IDs don't match. Got {returned_line_item_ids}, expected {expected_line_item_ids}"
 
             # Assert - Other required fields
             assert response.buyer_ref == sample_request.buyer_ref, "buyer_ref must be preserved"
@@ -338,12 +329,10 @@ class TestGAMSuccessPath:
             assert response.packages is not None, "Response must have packages field"
             assert len(response.packages) == len(sample_packages), f"Expected {len(sample_packages)} packages"
 
-            # Assert - Each package must have package_id AND platform_line_item_id
+            # Assert - Each package must have package_id (AdCP spec requirement)
+            # Note: platform_line_item_id is internal tracking data, not part of AdCP Package spec
             for i, pkg in enumerate(response.packages):
                 assert hasattr(pkg, "package_id") and pkg.package_id is not None, f"Package {i} missing package_id"
-                assert (
-                    hasattr(pkg, "platform_line_item_id") and pkg.platform_line_item_id is not None
-                ), f"Package {i} missing platform_line_item_id"
 
             # Assert - No workflow_step_id on success path
             assert response.workflow_step_id is None, "Success path should not have workflow_step_id"

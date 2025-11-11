@@ -156,16 +156,13 @@ class TestKevelAdapterPackages:
                 request=sample_request, packages=sample_packages, start_time=start_time, end_time=end_time
             )
 
-        # Assert - Each package must have package_id AND platform_line_item_id
+        # Assert - Each package must have package_id (AdCP spec requirement)
+        # Note: platform_line_item_id is internal tracking data, not part of AdCP Package spec
         for i, pkg in enumerate(response.packages):
             assert hasattr(pkg, "package_id") and pkg.package_id is not None, f"Package {i} missing package_id"
-            assert (
-                hasattr(pkg, "platform_line_item_id") and pkg.platform_line_item_id is not None
-            ), f"Package {i} missing platform_line_item_id"
 
-        # Assert - Flight IDs should match mocked values
-        flight_ids = [pkg.platform_line_item_id for pkg in response.packages]
-        assert flight_ids == ["111", "222"], f"Expected flight IDs ['111', '222'], got {flight_ids}"
+        # Assert - Should have expected number of packages
+        assert len(response.packages) == 2, f"Expected 2 packages, got {len(response.packages)}"
 
 
 class TestTritonAdapterPackages:
@@ -260,16 +257,13 @@ class TestTritonAdapterPackages:
                 request=sample_request, packages=sample_packages, start_time=start_time, end_time=end_time
             )
 
-        # Assert - Each package must have package_id AND platform_line_item_id
+        # Assert - Each package must have package_id (AdCP spec requirement)
+        # Note: platform_line_item_id is internal tracking data, not part of AdCP Package spec
         for i, pkg in enumerate(response.packages):
             assert hasattr(pkg, "package_id") and pkg.package_id is not None, f"Package {i} missing package_id"
-            assert (
-                hasattr(pkg, "platform_line_item_id") and pkg.platform_line_item_id is not None
-            ), f"Package {i} missing platform_line_item_id"
 
-        # Assert - Flight IDs should match mocked values
-        flight_ids = [pkg.platform_line_item_id for pkg in response.packages]
-        assert flight_ids == ["333", "444"], f"Expected flight IDs ['333', '444'], got {flight_ids}"
+        # Assert - Should have expected number of packages (matches number of flights created)
+        assert len(response.packages) == 2, f"Expected 2 packages, got {len(response.packages)}"
 
 
 class TestXandrAdapterPackages:
@@ -340,23 +334,17 @@ class TestXandrAdapterPackages:
             # Assert - Must have same number of packages as input
             assert len(response.packages) == len(sample_packages), f"Expected {len(sample_packages)} packages"
 
-            # Assert - Each package must have package_id AND platform_line_item_id
+            # Assert - Each package must have package_id (AdCP spec requirement)
+            # Note: platform_line_item_id is internal tracking data, not part of AdCP Package spec
             for i, pkg in enumerate(response.packages):
                 assert (
                     hasattr(pkg, "package_id") and pkg.package_id is not None
                 ), f"Xandr package {i} missing package_id"
-                assert (
-                    hasattr(pkg, "platform_line_item_id") and pkg.platform_line_item_id is not None
-                ), f"Xandr package {i} missing platform_line_item_id"
 
             # Assert - Package IDs must match input packages
             returned_ids = {pkg.package_id for pkg in response.packages}
             expected_ids = {pkg.package_id for pkg in sample_packages}
             assert returned_ids == expected_ids, f"Package IDs don't match. Got {returned_ids}, expected {expected_ids}"
-
-            # Assert - Line item IDs should match mocked values
-            line_item_ids = [pkg.platform_line_item_id for pkg in response.packages]
-            assert line_item_ids == ["666", "777"], f"Expected line item IDs ['666', '777'], got {line_item_ids}"
 
             # Assert - buyer_ref must be present
             assert response.buyer_ref == sample_request.buyer_ref, "Xandr must return buyer_ref"
