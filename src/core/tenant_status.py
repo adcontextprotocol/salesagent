@@ -6,6 +6,7 @@ Used to determine if a tenant is ready to accept agent requests.
 import logging
 
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
@@ -32,7 +33,10 @@ def is_tenant_ad_server_configured(tenant_id: str) -> bool:
     """
     try:
         with get_db_session() as session:
-            stmt = select(Tenant).filter_by(tenant_id=tenant_id, is_active=True)
+            # Eager load adapter_config to avoid N+1 query
+            stmt = (
+                select(Tenant).options(joinedload(Tenant.adapter_config)).filter_by(tenant_id=tenant_id, is_active=True)
+            )
             tenant = session.scalars(stmt).first()
 
             if not tenant:
@@ -51,6 +55,7 @@ def is_tenant_ad_server_configured(tenant_id: str) -> bool:
             if adapter_type == "google_ad_manager":
                 # GAM requires either OAuth refresh token OR service account credentials
                 has_oauth = bool(adapter_config.gam_refresh_token)
+                # Check encrypted field directly (more efficient than decrypting just to check existence)
                 has_service_account = bool(
                     adapter_config._gam_service_account_json and adapter_config.gam_service_account_email
                 )
@@ -115,7 +120,8 @@ def get_tenant_status(tenant_id: str) -> dict:
 
     try:
         with get_db_session() as session:
-            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+            # Eager load adapter_config to avoid N+1 query
+            stmt = select(Tenant).options(joinedload(Tenant.adapter_config)).filter_by(tenant_id=tenant_id)
             tenant = session.scalars(stmt).first()
 
             if not tenant:
