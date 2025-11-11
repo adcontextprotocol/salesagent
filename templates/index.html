@@ -15,12 +15,38 @@
     </div>
 
     {% if tenants %}
+    <!-- Filter Controls -->
+    <div style="margin-bottom: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+        <div style="display: flex; gap: 2rem; align-items: center; flex-wrap: wrap;">
+            <div>
+                <label style="font-weight: bold; margin-right: 0.5rem;">Configuration:</label>
+                <select id="configFilter" style="padding: 0.25rem 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="all">All</option>
+                    <option value="configured">Configured</option>
+                    <option value="not-configured">Not Configured</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-weight: bold; margin-right: 0.5rem;">Activity:</label>
+                <select id="activityFilter" style="padding: 0.25rem 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="all">All</option>
+                    <option value="has-activity">Has Activity</option>
+                    <option value="no-activity">No Activity</option>
+                </select>
+            </div>
+            <div style="margin-left: auto; color: #666;">
+                Showing: <strong id="visibleCount">{{ tenants|length }}</strong> of {{ tenants|length }} accounts
+            </div>
+        </div>
+    </div>
+
     <table>
         <thead>
             <tr>
                 <th>Name</th>
                 <th>Tenant Access</th>
-                <th>Status</th>
+                <th>Configuration</th>
+                <th>Activity</th>
                 <th>Ad Server</th>
                 <th>Last Sync</th>
                 <th>Created</th>
@@ -29,7 +55,7 @@
         </thead>
         <tbody>
             {% for tenant in tenants %}
-            <tr>
+            <tr data-configured="{{ 'true' if tenant.is_configured else 'false' }}" data-has-activity="{{ 'true' if tenant.has_activity else 'false' }}">
                 <td><strong>{{ tenant.name }}</strong></td>
                 <td>
                     {% if tenant.virtual_host %}
@@ -48,10 +74,22 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if tenant.is_active %}
-                    <span class="status status-active">Active</span>
+                    {% if tenant.is_configured %}
+                    <span class="status status-active">✓ Configured</span>
                     {% else %}
-                    <span class="status status-inactive">Inactive</span>
+                    <span class="status status-inactive">⚠ Pending</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if tenant.has_activity %}
+                    <div style="color: #28a745;">
+                        <strong>{{ tenant.total_buys_count }}</strong> total buys
+                        {% if tenant.recent_buys_count > 0 %}
+                        <br><small style="color: #666;">{{ tenant.recent_buys_count }} in last 30 days</small>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <span style="color: #999;">No activity</span>
                     {% endif %}
                 </td>
                 <td>
@@ -162,4 +200,54 @@
     <pre>curl -H "x-adcp-auth: YOUR_ADMIN_TOKEN" \
      {% if is_production %}https://default.sales-agent.scope3.com{% else %}http://localhost:{{ mcp_port }}{% endif %}/principals/summary</pre>
 </div>
+
+<script>
+// Client-side filtering for tenant list
+document.addEventListener('DOMContentLoaded', function() {
+    const configFilter = document.getElementById('configFilter');
+    const activityFilter = document.getElementById('activityFilter');
+    const visibleCount = document.getElementById('visibleCount');
+    const tableRows = document.querySelectorAll('tbody tr');
+    const totalCount = tableRows.length;
+
+    function applyFilters() {
+        const configValue = configFilter.value;
+        const activityValue = activityFilter.value;
+        let visibleRows = 0;
+
+        tableRows.forEach(row => {
+            let showRow = true;
+
+            // Apply configuration filter
+            if (configValue === 'configured' && row.dataset.configured !== 'true') {
+                showRow = false;
+            } else if (configValue === 'not-configured' && row.dataset.configured !== 'false') {
+                showRow = false;
+            }
+
+            // Apply activity filter
+            if (activityValue === 'has-activity' && row.dataset.hasActivity !== 'true') {
+                showRow = false;
+            } else if (activityValue === 'no-activity' && row.dataset.hasActivity !== 'false') {
+                showRow = false;
+            }
+
+            // Show/hide row
+            if (showRow) {
+                row.style.display = '';
+                visibleRows++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        // Update count
+        visibleCount.textContent = visibleRows;
+    }
+
+    // Attach event listeners
+    configFilter.addEventListener('change', applyFilters);
+    activityFilter.addEventListener('change', applyFilters);
+});
+</script>
 {% endblock %}
