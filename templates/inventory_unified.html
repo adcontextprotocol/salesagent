@@ -409,16 +409,25 @@ document.addEventListener('DOMContentLoaded', function() {
 // ==================== PROFILES TAB ====================
 
 function loadProfiles() {
-    fetch(`/tenant/${tenantId}/inventory-profiles/api/list`, {
+    fetch(`/admin/tenant/${tenantId}/inventory-profiles/api/list`, {
         credentials: 'same-origin'
     })
-        .then(response => response.json())
+        .then(response => {
+            // Handle authentication errors (401) by redirecting to login
+            if (response.status === 401) {
+                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                return Promise.reject(new Error('Session expired'));
+            }
+            return response.json();
+        })
         .then(data => {
             renderProfiles(data.profiles || []);
         })
         .catch(error => {
-            console.error('Error loading profiles:', error);
-            document.getElementById('profilesList').innerHTML = '<div class="alert alert-danger">Error loading profiles</div>';
+            if (error.message !== 'Session expired') {
+                console.error('Error loading profiles:', error);
+                document.getElementById('profilesList').innerHTML = '<div class="alert alert-danger">Error loading profiles</div>';
+            }
         });
 }
 
@@ -518,17 +527,26 @@ function renderProfiles(profiles) {
 
 function editProfile(profileId) {
     // Fetch full profile data and pass to editor component
-    fetch(`/tenant/${tenantId}/inventory-profiles/${profileId}/api`, {
+    fetch(`/admin/tenant/${tenantId}/inventory-profiles/${profileId}/api`, {
         credentials: 'same-origin'
     })
-        .then(response => response.json())
+        .then(response => {
+            // Handle authentication errors (401) by redirecting to login
+            if (response.status === 401) {
+                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                return Promise.reject(new Error('Session expired'));
+            }
+            return response.json();
+        })
         .then(profile => {
             // Pass profile data to inventory profile editor component
             window.inventoryProfileEditor.open(profile);
         })
         .catch(error => {
-            console.error('Error loading profile:', error);
-            alert('Error loading profile: ' + error.message);
+            if (error.message !== 'Session expired') {
+                console.error('Error loading profile:', error);
+                alert('Error loading profile: ' + error.message);
+            }
         });
 }
 
@@ -543,7 +561,14 @@ function deleteProfile(profileId, profileName) {
             'Content-Type': 'application/json',
         }
     })
-        .then(response => response.json())
+        .then(response => {
+            // Handle authentication errors (401) by redirecting to login
+            if (response.status === 401) {
+                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                return Promise.reject(new Error('Session expired'));
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
                 loadProfiles();  // Reload list
@@ -552,8 +577,10 @@ function deleteProfile(profileId, profileName) {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
-            alert('Error deleting profile: ' + error.message);
+            if (error.message !== 'Session expired') {
+                console.error('Error:', error);
+                alert('Error deleting profile: ' + error.message);
+            }
         });
 }
 
@@ -566,7 +593,14 @@ function loadInventoryStatus() {
     fetch(`/api/tenant/${tenantId}/inventory/tree`, {
         credentials: 'same-origin'
     })
-        .then(response => response.json())
+        .then(response => {
+            // Handle authentication errors (401) by redirecting to login
+            if (response.status === 401) {
+                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                return Promise.reject(new Error('Session expired'));
+            }
+            return response.json();
+        })
         .then(data => {
             const syncStatus = document.getElementById('syncStatus');
             const stats = document.getElementById('inventoryStats');
@@ -594,9 +628,11 @@ function loadInventoryStatus() {
             renderAdUnitTree(data.root_units || []);
         })
         .catch(error => {
-            console.error('Error loading inventory status:', error);
-            document.getElementById('syncStatus').innerHTML =
-                '<span class="text-danger">Error loading status</span>';
+            if (error.message !== 'Session expired') {
+                console.error('Error loading inventory status:', error);
+                document.getElementById('syncStatus').innerHTML =
+                    '<span class="text-danger">Error loading status</span>';
+            }
         });
 }
 
@@ -632,6 +668,11 @@ function syncInventory() {
         body: JSON.stringify({ mode: 'full' })
     })
         .then(response => {
+            // Handle authentication errors (401) by redirecting to login
+            if (response.status === 401) {
+                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                return Promise.reject(new Error('Session expired'));
+            }
             if (response.status === 202 || response.ok) {
                 return response.json();
             }
@@ -650,17 +691,28 @@ function syncInventory() {
             }
         })
         .catch(error => {
-            alert('Sync failed: ' + error.message);
-            console.error('Sync error:', error);
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync All';
+            if (error.message !== 'Session expired') {
+                alert('Sync failed: ' + error.message);
+                console.error('Sync error:', error);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync All';
+            }
         });
 }
 
 function pollInventorySyncStatus(syncId, btn) {
     const checkStatus = () => {
-        fetch(`/tenant/${tenantId}/gam/sync-status/${syncId}`)
-            .then(response => response.json())
+        fetch(`/tenant/${tenantId}/gam/sync-status/${syncId}`, {
+            credentials: 'same-origin'
+        })
+            .then(response => {
+                // Handle authentication errors (401) by redirecting to login
+                if (response.status === 401) {
+                    window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                    return Promise.reject(new Error('Session expired'));
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.status === 'completed') {
                     alert(`✅ Sync completed!`);
@@ -672,10 +724,12 @@ function pollInventorySyncStatus(syncId, btn) {
                 }
             })
             .catch(error => {
-                alert('Sync failed: ' + error.message);
-                console.error('Sync error:', error);
-                btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync All';
+                if (error.message !== 'Session expired') {
+                    alert('Sync failed: ' + error.message);
+                    console.error('Sync error:', error);
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync All';
+                }
             });
     };
 
@@ -716,7 +770,14 @@ function performSelectiveSync() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
     })
-        .then(response => response.json())
+        .then(response => {
+            // Handle authentication errors (401) by redirecting to login
+            if (response.status === 401) {
+                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                return Promise.reject(new Error('Session expired'));
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.error) {
                 throw new Error(data.error);
@@ -727,12 +788,12 @@ function performSelectiveSync() {
             window.location.reload();
         })
         .catch(error => {
-            alert('Selective sync failed: ' + error.message);
-            console.error('Selective sync error:', error);
-        })
-        .finally(() => {
-            btn.disabled = false;
-            btn.innerHTML = 'Sync Selected';
+            if (error.message !== 'Session expired') {
+                alert('Selective sync failed: ' + error.message);
+                console.error('Selective sync error:', error);
+                btn.disabled = false;
+                btn.innerHTML = 'Sync Selected';
+            }
         });
 }
 
@@ -901,7 +962,14 @@ function searchInventory() {
     fetch(`/api/tenant/${tenantId}/inventory/search?${params.toString()}`, {
         credentials: 'same-origin'
     })
-        .then(response => response.json())
+        .then(response => {
+            // Handle authentication errors (401) by redirecting to login
+            if (response.status === 401) {
+                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                return Promise.reject(new Error('Session expired'));
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.error) {
                 alert('Search failed: ' + data.error);
@@ -912,8 +980,10 @@ function searchInventory() {
             displaySearchResults(data.results || []);
         })
         .catch(error => {
-            console.error('Search error:', error);
-            alert('Search failed: ' + error.message);
+            if (error.message !== 'Session expired') {
+                console.error('Search error:', error);
+                alert('Search failed: ' + error.message);
+            }
         });
 }
 
