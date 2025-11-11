@@ -1323,20 +1323,33 @@ class AdCPRequestHandler(RequestHandler):
             # Map A2A parameters to GetProductsRequest
             brief = parameters.get("brief", "")
             promoted_offering = parameters.get("promoted_offering", "")
+            brand_manifest = parameters.get("brand_manifest", None)
+            filters = parameters.get("filters", None)
+            min_exposures = parameters.get("min_exposures", None)
+            adcp_version = parameters.get("adcp_version", "1.0.0")
+            strategy_id = parameters.get("strategy_id", None)
 
-            if not brief and not promoted_offering:
+            # Require either brand_manifest OR promoted_offering (backward compat)
+            if not brief and not promoted_offering and not brand_manifest:
                 raise ServerError(
-                    InvalidParamsError(message="Either 'brief' or 'promoted_offering' parameter is required")
+                    InvalidParamsError(
+                        message="Either 'brand_manifest', 'promoted_offering', or 'brief' parameter is required"
+                    )
                 )
 
-            # Use brief as promoted_offering if not provided
-            if not promoted_offering and brief:
+            # Use brief as promoted_offering if not provided (backward compat)
+            if not promoted_offering and not brand_manifest and brief:
                 promoted_offering = f"Business seeking to advertise: {brief}"
 
             # Call core function directly with individual parameters, not request object
             response = await core_get_products_tool(
                 brief=brief,
                 promoted_offering=promoted_offering,
+                brand_manifest=brand_manifest,
+                filters=filters,
+                min_exposures=min_exposures,
+                adcp_version=adcp_version,
+                strategy_id=strategy_id,
                 context=self._tool_context_to_mcp_context(tool_context),
             )
 
