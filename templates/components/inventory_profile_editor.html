@@ -419,7 +419,8 @@ Then call: window.inventoryProfileEditor.open(profileData)
         resultsDiv.style.display = 'none';
 
         try {
-            const url = `/api/formats/list?tenant_id=${config.tenantId}`;
+            const scriptRoot = '{{ request.script_root }}' || '';
+            const url = `${scriptRoot}/api/formats/list?tenant_id=${config.tenantId}`;
             console.log('Loading formats from:', url, 'config:', config);
 
             const response = await fetch(url, {

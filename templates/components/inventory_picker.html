@@ -66,7 +66,8 @@ Then in your template, add browse buttons:
         adUnitFieldId: '{{ picker_config.ad_unit_field_id if picker_config else "targeted_ad_unit_ids" }}',
         placementFieldId: '{{ picker_config.placement_field_id if picker_config else "targeted_placement_ids" }}',
         adUnitDisplayId: '{{ picker_config.ad_unit_display_id if picker_config else "selected-ad-units" }}',
-        placementDisplayId: '{{ picker_config.placement_display_id if picker_config else "selected-placements" }}'
+        placementDisplayId: '{{ picker_config.placement_display_id if picker_config else "selected-placements" }}',
+        scriptRoot: '{{ request.script_root }}'  // Base path for URLs (e.g., '/admin' or '')
     };
 
     // State
@@ -154,7 +155,8 @@ Then in your template, add browse buttons:
             .then(response => {
                 // Handle authentication errors (401) by redirecting to login
                 if (response.status === 401) {
-                    window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                    const loginUrl = config.scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                    window.location.href = loginUrl;
                     return Promise.reject(new Error('Session expired'));
                 }
                 return response.json();
@@ -214,7 +216,8 @@ Then in your template, add browse buttons:
             .then(response => {
                 // Handle authentication errors (401) by redirecting to login
                 if (response.status === 401) {
-                    window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                    const loginUrl = config.scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                    window.location.href = loginUrl;
                     return Promise.reject(new Error('Session expired'));
                 }
                 return response.json();

@@ -388,6 +388,7 @@
 
 <script>
 const tenantId = '{{ tenant_id }}';
+const scriptRoot = '{{ request.script_root }}';  // Base path for URLs (e.g., '/admin' or '')
 
 // API URL endpoints - use url_for() to generate proper URLs for dev/prod
 const API_URLS = {
@@ -427,7 +428,8 @@ function loadProfiles() {
         .then(response => {
             // Handle authentication errors (401) by redirecting to login
             if (response.status === 401) {
-                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                const loginUrl = scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                window.location.href = loginUrl;
                 return Promise.reject(new Error('Session expired'));
             }
             return response.json();
@@ -545,7 +547,8 @@ function editProfile(profileId) {
         .then(response => {
             // Handle authentication errors (401) by redirecting to login
             if (response.status === 401) {
-                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                const loginUrl = scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                window.location.href = loginUrl;
                 return Promise.reject(new Error('Session expired'));
             }
             return response.json();
@@ -576,7 +579,8 @@ function deleteProfile(profileId, profileName) {
         .then(response => {
             // Handle authentication errors (401) by redirecting to login
             if (response.status === 401) {
-                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                const loginUrl = scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                window.location.href = loginUrl;
                 return Promise.reject(new Error('Session expired'));
             }
             return response.json();
@@ -608,7 +612,8 @@ function loadInventoryStatus() {
         .then(response => {
             // Handle authentication errors (401) by redirecting to login
             if (response.status === 401) {
-                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                const loginUrl = scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                window.location.href = loginUrl;
                 return Promise.reject(new Error('Session expired'));
             }
             return response.json();
@@ -682,7 +687,8 @@ function syncInventory() {
         .then(response => {
             // Handle authentication errors (401) by redirecting to login
             if (response.status === 401) {
-                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                const loginUrl = scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                window.location.href = loginUrl;
                 return Promise.reject(new Error('Session expired'));
             }
             if (response.status === 202 || response.ok) {
@@ -720,7 +726,8 @@ function pollInventorySyncStatus(syncId, btn) {
             .then(response => {
                 // Handle authentication errors (401) by redirecting to login
                 if (response.status === 401) {
-                    window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                    const loginUrl = scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                    window.location.href = loginUrl;
                     return Promise.reject(new Error('Session expired'));
                 }
                 return response.json();
@@ -785,7 +792,8 @@ function performSelectiveSync() {
         .then(response => {
             // Handle authentication errors (401) by redirecting to login
             if (response.status === 401) {
-                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                const loginUrl = scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                window.location.href = loginUrl;
                 return Promise.reject(new Error('Session expired'));
             }
             return response.json();
@@ -978,7 +986,8 @@ function searchInventory() {
         .then(response => {
             // Handle authentication errors (401) by redirecting to login
             if (response.status === 401) {
-                window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                const loginUrl = scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+                window.location.href = loginUrl;
                 return Promise.reject(new Error('Session expired'));
             }
             return response.json();

@@ -87,7 +87,8 @@
 
         async function loadFormats() {
             try {
-                const response = await fetch('/api/formats/list?tenant_id={{ tenant_id }}');
+                const scriptRoot = '{{ request.script_root }}' || '';
+                const response = await fetch(`${scriptRoot}/api/formats/list?tenant_id={{ tenant_id }}`);
                 const data = await response.json();
 
                 // Check for errors from API
