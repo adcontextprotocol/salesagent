@@ -7,38 +7,52 @@ from datetime import UTC, date, datetime, time
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from adcp import (
-    CreateMediaBuyError as AdCPCreateMediaBuyError,
-)
-
-# AdCP v1.2.1 oneOf Success/Error types
-from adcp import (
-    CreateMediaBuySuccess as AdCPCreateMediaBuySuccess,
-)
-from adcp import (
-    Error,  # Import Error from adcp library
-)
-from adcp import (
-    UpdateMediaBuyError as AdCPUpdateMediaBuyError,
-)
-from adcp import (
-    UpdateMediaBuySuccess as AdCPUpdateMediaBuySuccess,
-)
-from adcp.types.generated import PushNotificationConfig
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
+from src.core.schemas_generated._schemas_v1_core_push_notification_config_json import (
+    PushNotificationConfig,
+)
 
-class CreativeStatusEnum(Enum):
-    """Creative status enum (not in adcp library, local definition).
 
-    NOTE: Named CreativeStatusEnum to avoid conflict with CreativeStatus BaseModel
-    defined later in this file (line ~1519).
+class NestedModelSerializerMixin:
+    """Mixin that ensures nested Pydantic models use their custom model_dump().
+
+    Pydantic's default serialization doesn't automatically call custom model_dump() methods
+    on nested models. This mixin introspects all fields and explicitly calls model_dump()
+    on any nested BaseModel instances, ensuring internal fields are properly excluded.
+
+    This approach is resilient to schema changes - no hardcoded field names.
+
+    Usage:
+        class MyResponse(NestedModelSerializerMixin, AdCPBaseModel):
+            nested_field: NestedModel
+            # Automatically serializes nested_field correctly
     """
 
-    processing = "processing"
-    approved = "approved"
-    rejected = "rejected"
-    pending_review = "pending_review"
+    @model_serializer(mode="wrap")
+    def _serialize_nested_models(self, serializer, info):
+        """Automatically serialize nested Pydantic models using their custom model_dump()."""
+        # Get default serialization
+        data = serializer(self)
+
+        # Introspect all fields and re-serialize nested Pydantic models
+        for field_name, _ in self.__class__.model_fields.items():
+            if field_name not in data:
+                continue
+
+            field_value = getattr(self, field_name, None)
+            if field_value is None:
+                continue
+
+            # Handle list of Pydantic models
+            if isinstance(field_value, list) and field_value:
+                if isinstance(field_value[0], BaseModel):
+                    data[field_name] = [item.model_dump() for item in field_value]
+            # Handle single Pydantic model
+            elif isinstance(field_value, BaseModel):
+                data[field_name] = field_value.model_dump()
+
+        return data
 
 
 class AdCPBaseModel(BaseModel):
@@ -1223,7 +1237,14 @@ class GetProductsRequest(AdCPBaseModel):
         None,
         description="Structured filters for product discovery",
     )
-    context: dict[str, Any] | None = None
+
+
+class Error(BaseModel):
+    """Standard error structure per AdCP spec."""
+
+    code: str = Field(..., description="Error code")
+    message: str = Field(..., description="Human-readable error message")
+    details: dict[str, Any] | None = Field(None, description="Additional error details")
 
 
 class GetProductsResponse(AdCPBaseModel):
@@ -1628,7 +1649,6 @@ class SyncCreativesRequest(AdCPBaseModel):
         None,
         description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
     )
-    context: dict[str, Any] | None = None
 
 
 class SyncSummary(BaseModel):
@@ -1748,21 +1768,38 @@ class SyncCreativesResponse(AdCPBaseModel):
     # Optional fields (per official spec)
     dry_run: bool | None = Field(None, description="Whether this was a dry run (no actual changes made)")
 
-    def model_dump(self, **kwargs):
-        """Override to ensure nested SyncCreativeResult objects use their custom model_dump().
+    @model_serializer(mode="wrap")
+    def _serialize_nested_models(self, serializer, info):
+        """Ensure nested Pydantic models use their custom model_dump().
 
         Pydantic's default serialization doesn't automatically call custom model_dump() methods
-        on nested models. We explicitly serialize the creatives list to ensure internal fields
-        (status, review_feedback) are excluded per AdCP spec compliance.
+        on nested models. This serializer introspects all fields and explicitly calls model_dump()
+        on any nested BaseModel instances, ensuring internal fields are properly excluded.
+
+        This approach is resilient to schema changes - no hardcoded field names.
         """
-        # Get base dump (this will use Pydantic's default nested serialization)
-        result = super().model_dump(**kwargs)
+        # Get default serialization
+        data = serializer(self)
 
-        # Explicitly re-serialize creatives using their custom model_dump()
-        if "creatives" in result and self.creatives:
-            result["creatives"] = [creative.model_dump(**kwargs) for creative in self.creatives]
+        # Introspect all fields and re-serialize nested Pydantic models
+        for field_name, _ in self.__class__.model_fields.items():
+            if field_name not in data:
+                continue
 
-        return result
+            field_value = getattr(self, field_name, None)
+            if field_value is None:
+                continue
+
+            # Handle list of Pydantic models
+            if isinstance(field_value, list) and field_value:
+                if isinstance(field_value[0], BaseModel):
+                    data[field_name] = [item.model_dump() for item in field_value]
+
+            # Handle single Pydantic model
+            elif isinstance(field_value, BaseModel):
+                data[field_name] = field_value.model_dump()
+
+        return data
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
@@ -1830,8 +1867,6 @@ class ListCreativesRequest(AdCPBaseModel):
             raise ValueError("created_before must be timezone-aware (ISO 8601 with timezone)")
         return self
 
-    context: dict[str, Any] | None = None
-
 
 class QuerySummary(BaseModel):
     """Summary of the query that was executed."""
@@ -1869,24 +1904,38 @@ class ListCreativesResponse(AdCPBaseModel):
     format_summary: dict[str, int] | None = Field(None, description="Breakdown by format type")
     status_summary: dict[str, int] | None = Field(None, description="Breakdown by creative status")
 
-    def model_dump(self, **kwargs):
-        """Override to ensure nested Creative objects use their custom model_dump().
+    @model_serializer(mode="wrap")
+    def _serialize_nested_models(self, serializer, info):
+        """Ensure nested Pydantic models use their custom model_dump().
 
         Pydantic's default serialization doesn't automatically call custom model_dump()
-        on nested models. We explicitly serialize creatives to ensure Creative's
-        custom model_dump() is called, which excludes internal fields:
-        - principal_id (internal advertiser association)
-        - created_at (internal audit timestamp)
-        - updated_at (internal audit timestamp)
-        - status (internal workflow state)
+        on nested models. This serializer introspects all fields and explicitly calls
+        model_dump() on any nested BaseModel instances (like Creative), ensuring internal
+        fields are properly excluded.
+
+        This approach is resilient to schema changes - no hardcoded field names.
         """
-        result = super().model_dump(**kwargs)
+        data = serializer(self)
 
-        # Explicitly serialize creatives using their custom model_dump()
-        if "creatives" in result and self.creatives:
-            result["creatives"] = [creative.model_dump(**kwargs) for creative in self.creatives]
+        # Introspect and re-serialize nested Pydantic models
+        for field_name, _ in self.__class__.model_fields.items():
+            if field_name not in data:
+                continue
 
-        return result
+            field_value = getattr(self, field_name, None)
+            if field_value is None:
+                continue
+
+            # Handle list of Pydantic models
+            if isinstance(field_value, list) and field_value:
+                if isinstance(field_value[0], BaseModel):
+                    data[field_name] = [item.model_dump() for item in field_value]
+
+            # Handle single Pydantic model
+            elif isinstance(field_value, BaseModel):
+                data[field_name] = field_value.model_dump()
+
+        return data
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
@@ -1933,20 +1982,30 @@ class CreateCreativeResponse(AdCPBaseModel):
     status: CreativeStatus
     suggested_adaptations: list[CreativeAdaptation] = Field(default_factory=list)
 
-    def model_dump(self, **kwargs):
-        """Override to ensure nested Creative object uses its custom model_dump().
+    @model_serializer(mode="wrap")
+    def _serialize_nested_models(self, serializer, info):
+        """Ensure nested Pydantic models use their custom model_dump().
 
-        Creative has internal fields (principal_id, created_at, updated_at, status)
-        that should not be exposed to clients. We explicitly serialize the creative
-        to ensure its custom model_dump() is called.
+        This approach is resilient to schema changes - introspects all fields
+        instead of hardcoding specific field names.
         """
-        result = super().model_dump(**kwargs)
+        data = serializer(self)
 
-        # Explicitly serialize creative using its custom model_dump()
-        if "creative" in result and self.creative:
-            result["creative"] = self.creative.model_dump(**kwargs)
+        for field_name, _ in self.__class__.model_fields.items():
+            if field_name not in data:
+                continue
 
-        return result
+            field_value = getattr(self, field_name, None)
+            if field_value is None:
+                continue
+
+            if isinstance(field_value, list) and field_value:
+                if isinstance(field_value[0], BaseModel):
+                    data[field_name] = [item.model_dump() for item in field_value]
+            elif isinstance(field_value, BaseModel):
+                data[field_name] = field_value.model_dump()
+
+        return data
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
@@ -1998,20 +2057,30 @@ class GetCreativesResponse(AdCPBaseModel):
     creatives: list[Creative]
     assignments: list[CreativeAssignment] | None = None
 
-    def model_dump(self, **kwargs):
-        """Override to ensure nested Creative objects use their custom model_dump().
+    @model_serializer(mode="wrap")
+    def _serialize_nested_models(self, serializer, info):
+        """Ensure nested Pydantic models use their custom model_dump().
 
-        Creative has internal fields (principal_id, created_at, updated_at, status)
-        that should not be exposed to clients. We explicitly serialize creatives
-        to ensure their custom model_dump() is called.
+        This approach is resilient to schema changes - introspects all fields
+        instead of hardcoding specific field names.
         """
-        result = super().model_dump(**kwargs)
+        data = serializer(self)
 
-        # Explicitly serialize creatives using their custom model_dump()
-        if "creatives" in result and self.creatives:
-            result["creatives"] = [creative.model_dump(**kwargs) for creative in self.creatives]
+        for field_name, _ in self.__class__.model_fields.items():
+            if field_name not in data:
+                continue
 
-        return result
+            field_value = getattr(self, field_name, None)
+            if field_value is None:
+                continue
+
+            if isinstance(field_value, list) and field_value:
+                if isinstance(field_value[0], BaseModel):
+                    data[field_name] = [item.model_dump() for item in field_value]
+            elif isinstance(field_value, BaseModel):
+                data[field_name] = field_value.model_dump()
+
+        return data
 
 
 # Admin tools
@@ -2100,7 +2169,7 @@ class BrandManifest(BaseModel):
     """Standardized brand information manifest for creative generation and media buying.
 
     Per AdCP spec, either url OR name is required (at least one must be present).
-    This is a legacy model - prefer using types from the adcp library.
+    This is a legacy model - prefer using generated schemas from schemas_generated/.
     """
 
     # At least one required (enforced by anyOf in AdCP spec)
@@ -2507,72 +2576,50 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         return self.product_ids or []
 
 
-class CreateMediaBuySuccess(AdCPCreateMediaBuySuccess):
-    """Successful create_media_buy response extending adcp v1.2.1 type.
+class CreateMediaBuyResponse(AdCPBaseModel):
+    """Response from create_media_buy operation (AdCP v2.4 spec compliant).
 
-    Extends the official adcp CreateMediaBuySuccess type with internal workflow tracking.
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
+    # Required AdCP domain fields
+    buyer_ref: str = Field(..., description="Buyer's reference identifier for this media buy")
+
+    # Optional AdCP domain fields
+    media_buy_id: str | None = Field(None, description="Publisher's unique identifier for the created media buy")
+    creative_deadline: datetime | None = Field(None, description="ISO 8601 timestamp for creative upload deadline")
+    packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
+    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
+
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
 
-    @model_serializer(mode="wrap")
-    def _serialize_model(self, serializer, info):
-        """Serialize model, excluding internal fields by default."""
-        # Get base serialization
-        data = serializer(self)
-
-        # Exclude internal fields from protocol responses
-        # (unless explicitly requested via model_dump_internal)
-        if not info.context or not info.context.get("include_internal"):
-            data.pop("workflow_step_id", None)
-
-        # Auto-handle nested Pydantic models
-        for field_name in self.__class__.model_fields:
-            field_value = getattr(self, field_name, None)
-            if field_value is None:
-                continue
-
-            if isinstance(field_value, list) and field_value:
-                if isinstance(field_value[0], BaseModel):
-                    data[field_name] = [item.model_dump() for item in field_value]
-            elif isinstance(field_value, BaseModel):
-                data[field_name] = field_value.model_dump()
-
-        return data
+    def model_dump(self, **kwargs):
+        """Override to provide AdCP-compliant responses while preserving internal fields."""
+        # Default to excluding internal fields for AdCP compliance
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            # Add internal fields to exclude by default
+            exclude.add("workflow_step_id")
+            kwargs["exclude"] = exclude
+        return super().model_dump(**kwargs)
 
     def model_dump_internal(self, **kwargs):
         """Dump including internal fields for database storage and internal processing."""
-        return self.model_dump(context={"include_internal": True}, **kwargs)
+        # Don't exclude internal fields
+        kwargs.pop("exclude", None)  # Remove any exclude parameter
+        return super().model_dump(**kwargs)
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
         if self.media_buy_id:
             return f"Media buy {self.media_buy_id} created successfully."
+        elif self.errors:
+            return f"Media buy creation for {self.buyer_ref} encountered {len(self.errors)} error(s)."
         else:
             return f"Media buy {self.buyer_ref} created."
-
-
-class CreateMediaBuyError(AdCPCreateMediaBuyError):
-    """Failed create_media_buy response extending adcp v1.2.1 type.
-
-    Extends the official adcp CreateMediaBuyError type.
-    Per AdCP PR #113, this response contains ONLY domain data.
-    """
-
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        if self.errors:
-            return f"Media buy creation encountered {len(self.errors)} error(s)."
-        else:
-            return "Media buy creation failed."
-
-
-# Union type for create_media_buy operation
-CreateMediaBuyResponse = CreateMediaBuySuccess | CreateMediaBuyError
 
 
 class CheckMediaBuyStatusRequest(AdCPBaseModel):
@@ -2639,7 +2686,6 @@ class GetMediaBuyDeliveryRequest(AdCPBaseModel):
     push_notification_config: PushNotificationConfig | None = Field(
         None, description="Push notification configuration for async task updates."
     )
-    context: dict[str, Any] | None = None
 
 
 # AdCP-compliant delivery models
@@ -2654,7 +2700,6 @@ class DeliveryTotals(BaseModel):
     completion_rate: float | None = Field(
         None, ge=0, le=1, description="Video completion rate (completions/impressions)"
     )
-    context: dict[str, Any] | None = None
 
 
 class PackageDelivery(BaseModel):
@@ -2783,75 +2828,50 @@ class AssetStatus(BaseModel):
     workflow_step_id: str | None = None  # HITL workflow step ID for manual approval
 
 
-class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
-    """Successful update_media_buy response extending adcp v1.2.1 type.
+class UpdateMediaBuyResponse(AdCPBaseModel):
+    """Response from update_media_buy operation (AdCP v2.4 spec compliant).
 
-    Extends the official adcp UpdateMediaBuySuccess type with internal workflow tracking
-    and affected_packages field.
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
+    # Required AdCP domain fields
+    media_buy_id: str = Field(..., description="Publisher's unique identifier for the media buy")
+    buyer_ref: str = Field(..., description="Buyer's reference identifier for this media buy")
+
+    # Optional AdCP domain fields
+    implementation_date: datetime | None = Field(None, description="When the update will take effect")
+    affected_packages: list[dict[str, Any]] = Field(default_factory=list, description="Packages affected by update")
+    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
+
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
-    affected_packages: list[dict[str, Any]] = Field(default_factory=list, description="Packages affected by update")
 
-    @model_serializer(mode="wrap")
-    def _serialize_model(self, serializer, info):
-        """Serialize model, excluding internal fields by default."""
-        # Get base serialization
-        data = serializer(self)
-
-        # Exclude internal fields from protocol responses
-        # (unless explicitly requested via model_dump_internal)
-        if not info.context or not info.context.get("include_internal"):
-            data.pop("workflow_step_id", None)
-            data.pop("affected_packages", None)
-
-        # Auto-handle nested Pydantic models
-        for field_name in self.__class__.model_fields:
-            field_value = getattr(self, field_name, None)
-            if field_value is None:
-                continue
-
-            if isinstance(field_value, list) and field_value:
-                if isinstance(field_value[0], BaseModel):
-                    data[field_name] = [item.model_dump() for item in field_value]
-            elif isinstance(field_value, BaseModel):
-                data[field_name] = field_value.model_dump()
-
-        return data
+    def model_dump(self, **kwargs):
+        """Override to provide AdCP-compliant responses while preserving internal fields."""
+        # Default to excluding internal fields for AdCP compliance
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            # Add internal fields to exclude by default
+            exclude.add("workflow_step_id")
+            kwargs["exclude"] = exclude
+        return super().model_dump(**kwargs)
 
     def model_dump_internal(self, **kwargs):
         """Dump including internal fields for database storage and internal processing."""
-        return self.model_dump(context={"include_internal": True}, **kwargs)
-
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        if self.affected_packages:
-            return f"Media buy {self.media_buy_id} updated: {len(self.affected_packages)} package(s) affected."
-        else:
-            return f"Media buy {self.media_buy_id} updated successfully."
-
-
-class UpdateMediaBuyError(AdCPUpdateMediaBuyError):
-    """Failed update_media_buy response extending adcp v1.2.1 type.
-
-    Extends the official adcp UpdateMediaBuyError type.
-    Per AdCP PR #113, this response contains ONLY domain data.
-    """
+        # Don't exclude internal fields
+        kwargs.pop("exclude", None)  # Remove any exclude parameter
+        return super().model_dump(**kwargs)
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
         if self.errors:
-            return f"Media buy update encountered {len(self.errors)} error(s)."
+            return f"Media buy {self.media_buy_id} update encountered {len(self.errors)} error(s)."
+        elif self.affected_packages:
+            return f"Media buy {self.media_buy_id} updated: {len(self.affected_packages)} package(s) affected."
         else:
-            return "Media buy update failed."
-
-
-# Union type for update_media_buy operation
-UpdateMediaBuyResponse = UpdateMediaBuySuccess | UpdateMediaBuyError
+            return f"Media buy {self.media_buy_id} updated successfully."
 
 
 # Unified update models
@@ -2924,7 +2944,6 @@ class UpdateMediaBuyRequest(AdCPBaseModel):
         None,
         description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
     )
-    context: dict[str, Any] | None = None
     today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
     # NOTE: No Python validator needed for oneOf constraint - AdCP schema enforces media_buy_id/buyer_ref oneOf
@@ -2990,7 +3009,6 @@ class AdapterPackageDelivery(BaseModel):
     package_id: str
     impressions: int
     spend: float
-    context: dict[str, Any] | None = None
 
 
 class AdapterGetMediaBuyDeliveryResponse(AdCPBaseModel):
@@ -3327,8 +3345,6 @@ class GetSignalsRequest(AdCPBaseModel):
             warnings.warn("limit is deprecated. Use max_results instead.", DeprecationWarning, stacklevel=2)
         return self.max_results
 
-    context: dict[str, Any] | None = None
-
 
 class GetSignalsResponse(AdCPBaseModel):
     """Response containing available signals (AdCP v2.4 spec compliant).
@@ -3340,20 +3356,30 @@ class GetSignalsResponse(AdCPBaseModel):
 
     signals: list[Signal] = Field(..., description="Array of available signals")
 
-    def model_dump(self, **kwargs):
-        """Override to ensure nested Signal objects use their custom model_dump().
+    @model_serializer(mode="wrap")
+    def _serialize_nested_models(self, serializer, info):
+        """Ensure nested Pydantic models use their custom model_dump().
 
-        Signal has internal fields (tenant_id, created_at, updated_at, metadata)
-        that should not be exposed to clients. We explicitly serialize signals
-        to ensure their custom model_dump() is called.
+        This approach is resilient to schema changes - introspects all fields
+        instead of hardcoding specific field names.
         """
-        result = super().model_dump(**kwargs)
+        data = serializer(self)
 
-        # Explicitly serialize signals using their custom model_dump()
-        if "signals" in result and self.signals:
-            result["signals"] = [signal.model_dump(**kwargs) for signal in self.signals]
+        for field_name, _ in self.__class__.model_fields.items():
+            if field_name not in data:
+                continue
 
-        return result
+            field_value = getattr(self, field_name, None)
+            if field_value is None:
+                continue
+
+            if isinstance(field_value, list) and field_value:
+                if isinstance(field_value[0], BaseModel):
+                    data[field_name] = [item.model_dump() for item in field_value]
+            elif isinstance(field_value, BaseModel):
+                data[field_name] = field_value.model_dump()
+
+        return data
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
@@ -3536,8 +3562,6 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
         if isinstance(data, dict) and "tags" in data and data["tags"]:
             data["tags"] = [tag.lower().replace("-", "_") for tag in data["tags"]]
         return data
-
-    context: dict[str, Any] | None = None
 
 
 class ListAuthorizedPropertiesResponse(AdCPBaseModel):
