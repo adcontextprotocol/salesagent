@@ -18,9 +18,10 @@ def is_tenant_ad_server_configured(tenant_id: str) -> bool:
     Check if tenant has a properly configured ad server.
 
     A tenant is considered configured if:
-    - For GAM: OAuth token exists
+    - For GAM: OAuth token OR service account credentials exist
     - For Kevel: API key exists
     - For Mock: Always configured
+    - For Triton: API key exists
     - For others: Adapter config exists
 
     Args:
@@ -48,11 +49,18 @@ def is_tenant_ad_server_configured(tenant_id: str) -> bool:
             adapter_type = adapter_config.adapter_type
 
             if adapter_type == "google_ad_manager":
-                # GAM requires OAuth refresh token
-                has_token = bool(adapter_config.gam_refresh_token)
-                if not has_token:
-                    logger.info(f"Tenant {tenant_id} GAM adapter missing OAuth token")
-                return has_token
+                # GAM requires either OAuth refresh token OR service account credentials
+                has_oauth = bool(adapter_config.gam_refresh_token)
+                has_service_account = bool(
+                    adapter_config._gam_service_account_json and adapter_config.gam_service_account_email
+                )
+                has_auth = has_oauth or has_service_account
+                if not has_auth:
+                    logger.info(
+                        f"Tenant {tenant_id} GAM adapter missing authentication "
+                        "(needs OAuth token or service account credentials)"
+                    )
+                return has_auth
 
             elif adapter_type == "kevel":
                 # Kevel requires API key and network ID
@@ -133,8 +141,13 @@ def get_tenant_status(tenant_id: str) -> dict:
             adapter_type = adapter_config.adapter_type
 
             if adapter_type == "google_ad_manager":
-                if not adapter_config.gam_refresh_token:
-                    missing_config.append("GAM OAuth not completed")
+                # Check for either OAuth or service account authentication
+                has_oauth = bool(adapter_config.gam_refresh_token)
+                has_service_account = bool(
+                    adapter_config._gam_service_account_json and adapter_config.gam_service_account_email
+                )
+                if not has_oauth and not has_service_account:
+                    missing_config.append("GAM authentication not configured (OAuth or service account required)")
                 if not adapter_config.gam_network_code:
                     missing_config.append("GAM network code not set")
 
