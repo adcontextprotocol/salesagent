@@ -22,6 +22,8 @@ from src.core.tool_context import ToolContext
 logger = logging.getLogger(__name__)
 console = Console()
 
+from adcp.types.generated import PushNotificationConfig
+
 from src.core.auth import get_principal_object
 from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
@@ -35,9 +37,6 @@ from src.core.schemas import (
 )
 from src.core.testing_hooks import DeliverySimulator, TimeSimulator, apply_testing_hooks, get_testing_context
 from src.core.validation_helpers import format_validation_error
-from src.core.schemas_generated._schemas_v1_core_push_notification_config_json import (
-    PushNotificationConfig,
-)
 
 
 def _get_media_buy_delivery_impl(

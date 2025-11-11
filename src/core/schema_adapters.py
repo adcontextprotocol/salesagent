@@ -1,17 +1,17 @@
-"""Schema adapters: Simple API on top of auto-generated schemas.
+"""Schema adapters: Simple API on top of adcp library types.
 
-This module provides thin wrappers around auto-generated schemas that:
-1. Import from schemas_generated/ (always in sync with AdCP spec)
+This module provides thin wrappers around adcp library types that:
+1. Import from adcp library (always in sync with AdCP spec)
 2. Provide simple, ergonomic API (like manual schemas)
 3. Add custom validators/methods where needed
 4. Serve as single import point for all code
 
 Pattern:
-- Generated schemas: RootModel[Union[...]] (complex but spec-perfect)
-- Adapter schemas: BaseModel (simple API, delegates to generated)
+- adcp library types: RootModel[Union[...]] (complex but spec-perfect)
+- Adapter schemas: BaseModel (simple API, delegates to adcp types)
 
 Benefits:
-- Always in sync with AdCP spec (auto-regenerate)
+- Always in sync with AdCP spec (via library versioning)
 - Simple API for application code
 - Custom validators/logic added here
 - No schema drift bugs
@@ -19,14 +19,10 @@ Benefits:
 
 from typing import Any
 
+from adcp.types.generated import GetProductsRequest as _GeneratedGetProductsRequest
 from pydantic import BaseModel, Field, model_validator
 
 from src.core.schemas import AdCPBaseModel, FormatId
-
-# Import generated schema (now a single class after schema regeneration on Oct 17, 2025)
-from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
-    GetProductsRequest as _GeneratedGetProductsRequest,
-)
 
 
 class GetProductsRequest(BaseModel):
@@ -209,7 +205,7 @@ class GetProductsRequestAdapter:
     To add an adapter for a new schema:
 
     1. Import the generated schema(s):
-       from src.core.schemas_generated._schemas_v1_... import GeneratedModel
+       from adcp.types.generated import GeneratedModel
 
     2. Create adapter class:
        class MyModel(BaseModel):
@@ -350,9 +346,7 @@ class Product(BaseModel):
 # ListCreativeFormatsResponse Adapter
 # ============================================================================
 
-from src.core.schemas_generated._schemas_v1_media_buy_list_creative_formats_response_json import (
-    ListCreativeFormatsResponse as _GeneratedListCreativeFormatsResponse,
-)
+from adcp.types.generated import ListCreativeFormatsResponse as _GeneratedListCreativeFormatsResponse
 
 
 class ListCreativeFormatsResponse(AdCPBaseModel):
@@ -405,9 +399,7 @@ class ListCreativeFormatsResponse(AdCPBaseModel):
 # ListAuthorizedPropertiesResponse Adapter
 # ============================================================================
 
-from src.core.schemas_generated._schemas_v1_media_buy_list_authorized_properties_response_json import (
-    ListAuthorizedPropertiesResponse as _GeneratedListAuthorizedPropertiesResponse,
-)
+from adcp.types.generated import ListAuthorizedPropertiesResponse as _GeneratedListAuthorizedPropertiesResponse
 
 
 class ListAuthorizedPropertiesResponse(AdCPBaseModel):
@@ -494,10 +486,10 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
 # Request Adapters (simple pass-through for now)
 # ============================================================================
 
-from src.core.schemas_generated._schemas_v1_media_buy_list_authorized_properties_request_json import (
+from adcp.types.generated import (
     ListAuthorizedPropertiesRequest as _GeneratedListAuthorizedPropertiesRequest,
 )
-from src.core.schemas_generated._schemas_v1_media_buy_list_creative_formats_request_json import (
+from adcp.types.generated import (
     ListCreativeFormatsRequest as _GeneratedListCreativeFormatsRequest,
 )
 

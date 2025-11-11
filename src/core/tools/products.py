@@ -10,6 +10,8 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
+from adcp.types.generated import GetProductsRequest as GetProductsRequestGenerated
+from adcp.types.generated import PushNotificationConfig
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -25,12 +27,6 @@ from src.core.database.database_session import get_db_session
 from src.core.schema_adapters import GetProductsResponse
 from src.core.schema_helpers import create_get_products_request
 from src.core.schemas import Product
-from src.core.schemas_generated._schemas_v1_core_push_notification_config_json import (
-    PushNotificationConfig,
-)
-from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
-    GetProductsRequest as GetProductsRequestGenerated,
-)
 from src.core.testing_hooks import apply_testing_hooks, get_testing_context
 from src.core.tool_context import ToolContext
 from src.core.validation_helpers import format_validation_error, safe_parse_json_field

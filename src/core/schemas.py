@@ -24,11 +24,21 @@ from adcp import (
 from adcp import (
     UpdateMediaBuySuccess as AdCPUpdateMediaBuySuccess,
 )
+from adcp.types.generated import PushNotificationConfig
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
-from src.core.schemas_generated._schemas_v1_core_push_notification_config_json import (
-    PushNotificationConfig,
-)
+
+class CreativeStatusEnum(Enum):
+    """Creative status enum (not in adcp library, local definition).
+
+    NOTE: Named CreativeStatusEnum to avoid conflict with CreativeStatus BaseModel
+    defined later in this file (line ~1519).
+    """
+
+    processing = "processing"
+    approved = "approved"
+    rejected = "rejected"
+    pending_review = "pending_review"
 
 
 class AdCPBaseModel(BaseModel):
@@ -1985,7 +1995,7 @@ class BrandManifest(BaseModel):
     """Standardized brand information manifest for creative generation and media buying.
 
     Per AdCP spec, either url OR name is required (at least one must be present).
-    This is a legacy model - prefer using generated schemas from schemas_generated/.
+    This is a legacy model - prefer using types from the adcp library.
     """
 
     # At least one required (enforced by anyOf in AdCP spec)

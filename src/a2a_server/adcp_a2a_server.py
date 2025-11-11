@@ -63,12 +63,7 @@ from src.core.auth_utils import get_principal_from_token
 from src.core.config_loader import get_current_tenant
 from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
 from src.core.domain_config import get_a2a_server_url, get_sales_agent_domain
-from src.core.schemas import (
-    GetSignalsRequest,
-)
-from src.core.schemas_generated._schemas_v1_enums_creative_status_json import (
-    CreativeStatus as CreativeStatusEnum,
-)
+from src.core.schemas import CreativeStatusEnum, GetSignalsRequest
 from src.core.testing_hooks import AdCPTestContext
 from src.core.tool_context import ToolContext
 from src.core.tools import (
