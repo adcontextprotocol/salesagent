@@ -1,7 +1,7 @@
 {
-  "etag": "W/\"6901f913-6c6\"",
-  "last-modified": "Wed, 29 Oct 2025 11:22:59 GMT",
-  "downloaded_at": "2025-10-30T10:35:43.172316",
+  "etag": "W/\"691380b6-d67\"",
+  "last-modified": "Tue, 11 Nov 2025 18:30:14 GMT",
+  "downloaded_at": "2025-11-11T16:15:28.264371",
   "schema_ref": "/schemas/v1/core/assets/vast-asset.json",
-  "content_hash": "4418ddf43f620f738fc95ec89b95dd5065f54e2cb2db97f9dc42020369a5347c"
+  "content_hash": "fd9fcbaaca0a0b09079c2b8f8c155b2cd96c195a6bba8f9b263a59b82928b378"
 }

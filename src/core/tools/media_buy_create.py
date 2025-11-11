@@ -2627,6 +2627,20 @@ async def _create_media_buy_impl(
                         else:
                             return getattr(pkg, field, default)
 
+                    def serialize_for_json(value):
+                        """Serialize Pydantic models to dicts for JSON storage."""
+                        from pydantic import BaseModel
+
+                        if value is None:
+                            return None
+                        if isinstance(value, BaseModel):
+                            return value.model_dump(exclude_none=True)
+                        if isinstance(value, list):
+                            return [serialize_for_json(item) for item in value]
+                        if isinstance(value, dict):
+                            return {k: serialize_for_json(v) for k, v in value.items()}
+                        return value
+
                     # Extract package_id from response - MUST be present, no fallback allowed
                     resp_package_id: str | None = get_package_field(resp_package, "package_id")
                     logger.info(f"[DEBUG] Package {i}: package_id = {resp_package_id}")
@@ -2656,10 +2670,12 @@ async def _create_media_buy_impl(
                         "package_id": resp_package_id,
                         "name": get_package_field(resp_package, "name"),  # Include package name from adapter response
                         "product_id": get_package_field(resp_package, "product_id"),
-                        "budget": get_package_field(resp_package, "budget"),
-                        "targeting_overlay": get_package_field(resp_package, "targeting_overlay"),
+                        "budget": serialize_for_json(get_package_field(resp_package, "budget")),
+                        "targeting_overlay": serialize_for_json(get_package_field(resp_package, "targeting_overlay")),
                         "creative_ids": get_package_field(resp_package, "creative_ids"),
-                        "creative_assignments": get_package_field(resp_package, "creative_assignments"),
+                        "creative_assignments": serialize_for_json(
+                            get_package_field(resp_package, "creative_assignments")
+                        ),
                         "format_ids_to_provide": get_package_field(resp_package, "format_ids_to_provide"),
                         "status": sanitized_status,  # Only store AdCP-compliant status values
                         "pricing_info": pricing_info_for_package,  # Store pricing info for UI display
@@ -3030,6 +3046,9 @@ async def _create_media_buy_impl(
             buyer_ref_value = f"missing-{response.media_buy_id}"
 
         # Create AdCP response (protocol fields like status are added by ProtocolEnvelope wrapper)
+        # NOTE: response_packages is a list of dicts, not Pydantic objects
+        # The AdCP library will validate and convert these dicts to Package objects internally
+        # When the response is serialized (via .model_dump()), they'll be converted back to dicts
         adcp_response = CreateMediaBuySuccess(
             buyer_ref=buyer_ref_value,
             media_buy_id=response.media_buy_id,

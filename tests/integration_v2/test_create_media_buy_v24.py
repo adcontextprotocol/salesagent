@@ -240,8 +240,11 @@ class TestCreateMediaBuyV24Format:
         assert response.media_buy_id
         assert len(response.packages) == 1
 
-        # CRITICAL: Verify package was serialized correctly (no model_dump errors)
-        package = response.packages[0]
+        # CRITICAL: Verify package can be serialized correctly (no model_dump errors)
+        # The response.packages field contains Pydantic Package objects internally,
+        # but they should serialize correctly to dicts when .model_dump() is called
+        response_dict = response.model_dump()
+        package = response_dict["packages"][0]
         assert isinstance(package, dict), "Package must be serialized to dict"
         assert package["buyer_ref"] == "pkg_budget_test"
         assert package["package_id"]  # Should have generated ID
@@ -290,8 +293,11 @@ class TestCreateMediaBuyV24Format:
         assert response.media_buy_id
         assert len(response.packages) == 1
 
-        # Verify package was serialized correctly
-        package = response.packages[0]
+        # Verify package can be serialized correctly (no model_dump errors)
+        # The response.packages field contains Pydantic Package objects internally,
+        # but they should serialize correctly to dicts when .model_dump() is called
+        response_dict = response.model_dump()
+        package = response_dict["packages"][0]
         assert isinstance(package, dict), "Package must be serialized to dict"
         assert package["buyer_ref"] == "pkg_targeting_test"
 
@@ -347,7 +353,9 @@ class TestCreateMediaBuyV24Format:
         assert response.media_buy_id
         assert len(response.packages) == 3
 
-        buyer_refs = [pkg["buyer_ref"] for pkg in response.packages]
+        # Serialize response to check packages are dicts
+        response_dict = response.model_dump()
+        buyer_refs = [pkg["buyer_ref"] for pkg in response_dict["packages"]]
         assert "pkg_usd" in buyer_refs
         assert "pkg_eur" in buyer_refs
         assert "pkg_gbp" in buyer_refs
@@ -389,8 +397,9 @@ class TestCreateMediaBuyV24Format:
         assert response.media_buy_id
         assert len(response.packages) == 1
 
-        # CRITICAL: Verify package was serialized correctly
-        package = response.packages[0]
+        # CRITICAL: Verify package can be serialized correctly
+        response_dict = response.model_dump()
+        package = response_dict["packages"][0]
         assert isinstance(package, dict), "Package must be serialized to dict"
         assert package["buyer_ref"] == "pkg_a2a_test"
 
@@ -429,6 +438,7 @@ class TestCreateMediaBuyV24Format:
         assert response.media_buy_id
         assert len(response.packages) > 0  # Should auto-create packages from product_ids
 
-        # Packages should still be dicts
-        for package in response.packages:
+        # Packages should still serialize to dicts
+        response_dict = response.model_dump()
+        for package in response_dict["packages"]:
             assert isinstance(package, dict)
