@@ -268,11 +268,11 @@ def _update_media_buy_impl(
 
     if manual_approval_required and "update_media_buy" in manual_approval_operations:
         # Build response first, then persist on workflow step, then return
+        # UpdateMediaBuySuccess only has media_buy_id, buyer_ref, packages per AdCP spec
         response_data = UpdateMediaBuySuccess(
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
             packages=[],  # Required by AdCP spec
-            implementation_date=None,
         )
         ctx_manager.update_workflow_step(
             step.step_id,
@@ -406,15 +406,15 @@ def _update_media_buy_impl(
             today=datetime.combine(today, datetime.min.time()),
         )
         # Manual approval case - convert adapter result to appropriate Success/Error
-        if result.errors:
+        # adcp v1.2.1 oneOf pattern: Check if result is Error variant (has errors field)
+        if hasattr(result, "errors") and result.errors:
             return UpdateMediaBuyError(errors=result.errors)
         else:
+            # UpdateMediaBuySuccess only has media_buy_id, buyer_ref, packages per AdCP spec
             return UpdateMediaBuySuccess(
                 media_buy_id=result.media_buy_id,
                 buyer_ref=result.buyer_ref,
                 packages=[],  # Required by AdCP spec
-                implementation_date=result.implementation_date,
-                affected_packages=result.affected_packages if hasattr(result, "affected_packages") else [],
             )
 
     # Handle package-level updates
@@ -431,7 +431,8 @@ def _update_media_buy_impl(
                     budget=None,
                     today=datetime.combine(today, datetime.min.time()),
                 )
-                if result.errors:
+                # adcp v1.2.1 oneOf pattern: Check if result is Error variant
+                if hasattr(result, "errors") and result.errors:
                     error_message = result.errors[0].message if result.errors else "Update failed"
                     response_data = UpdateMediaBuyError(errors=result.errors)
                     ctx_manager.update_workflow_step(
@@ -463,7 +464,8 @@ def _update_media_buy_impl(
                     budget=int(budget_amount),
                     today=datetime.combine(today, datetime.min.time()),
                 )
-                if result.errors:
+                # adcp v1.2.1 oneOf pattern: Check if result is Error variant
+                if hasattr(result, "errors") and result.errors:
                     error_message = result.errors[0].message if result.errors else "Update failed"
                     response_data = UpdateMediaBuyError(errors=result.errors)
                     ctx_manager.update_workflow_step(
@@ -792,12 +794,11 @@ def _update_media_buy_impl(
     # Build final response first
     logger.info(f"[update_media_buy] Final affected_packages before return: {affected_packages_list}")
 
+    # UpdateMediaBuySuccess only has media_buy_id, buyer_ref, packages per AdCP spec
     response_data = UpdateMediaBuySuccess(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
         packages=[],  # Required by AdCP spec
-        implementation_date=None,
-        affected_packages=affected_packages_list if affected_packages_list else [],
     )
 
     # Persist success with response data, then return
