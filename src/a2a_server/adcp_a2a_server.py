@@ -1850,12 +1850,11 @@ class AdCPRequestHandler(RequestHandler):
 
             # Validate required parameters (per AdCP v2.0+ spec: media_buy_id + optional packages)
             if "media_buy_id" not in parameters and "buyer_ref" not in parameters:
-                return {
-                    "success": False,
-                    "message": "Missing required parameter: one of 'media_buy_id' or 'buyer_ref' is required",
-                    "required_parameters": ["media_buy_id (or buyer_ref)"],
-                    "received_parameters": list(parameters.keys()),
-                }
+                raise ServerError(
+                    InvalidParamsError(
+                        message="Missing required parameter: one of 'media_buy_id' or 'buyer_ref' is required"
+                    )
+                )
 
             # Extract update parameters (AdCP v2.0+ uses individual fields, not 'updates' wrapper)
             # Support both 'packages' (AdCP v2.0+) and legacy 'updates' field for backward compatibility
