@@ -17,6 +17,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Ensure GAM clients support both OAuth and service account auth
+      - id: check-gam-auth-support
+        name: Check GAM client supports both auth methods
+        entry: uv run python .pre-commit-hooks/check-gam-auth-support.py
+        language: system
+        files: '^src/.*\.py$'
+        pass_filenames: false
+
       # Enforce SQLAlchemy 2.0 patterns (no legacy session.query)
       - id: enforce-sqlalchemy-2-0
         name: Enforce SQLAlchemy 2.0 patterns (no session.query)

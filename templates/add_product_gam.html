@@ -1055,7 +1055,7 @@ function searchTreeNodes(searchTerm) {
     });
 }
 
-function applyInventorySelection() {
+async function applyInventorySelection() {
     const checkboxes = document.querySelectorAll('#inventory-list input[type="checkbox"]:checked');
     const selectedIds = Array.from(checkboxes).map(cb => cb.value);
     const selectedNames = Array.from(checkboxes).map(cb => {
@@ -1080,7 +1080,7 @@ function applyInventorySelection() {
 
     // Extract sizes from selected inventory and update UI (if function exists)
     if (typeof extractSizesFromInventory === 'function') {
-        extractSizesFromInventory();
+        await extractSizesFromInventory();
     }
 
     closeInventoryPicker();

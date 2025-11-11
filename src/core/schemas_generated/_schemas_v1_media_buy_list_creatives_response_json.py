@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import AnyUrl, AwareDatetime, BaseModel, ConfigDict, EmailStr, Field
 
@@ -681,32 +681,30 @@ class SubAssets(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    asset_kind: Annotated[
+        Literal["media"], Field(description="Discriminator indicating this is a media asset with content_uri")
+    ]
     asset_type: Annotated[
-        str,
-        Field(
-            description="Type of asset. Common types: headline, body_text, thumbnail_image, product_image, featured_image, logo, cta_text, price_text, sponsor_name, author_name, click_url"
-        ),
+        str, Field(description="Type of asset. Common types: thumbnail_image, product_image, featured_image, logo")
     ]
     asset_id: Annotated[str, Field(description="Unique identifier for the asset within the creative")]
     content_uri: Annotated[AnyUrl, Field(description="URL for media assets (images, videos, etc.)")]
-    content: Annotated[
-        str | list[str] | None,
-        Field(description="Text content for text-based assets like headlines, body text, CTA text, etc."),
-    ] = None
 
 
 class SubAssets1(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    asset_kind: Annotated[
+        Literal["text"], Field(description="Discriminator indicating this is a text asset with content")
+    ]
     asset_type: Annotated[
         str,
         Field(
-            description="Type of asset. Common types: headline, body_text, thumbnail_image, product_image, featured_image, logo, cta_text, price_text, sponsor_name, author_name, click_url"
+            description="Type of asset. Common types: headline, body_text, cta_text, price_text, sponsor_name, author_name, click_url"
         ),
     ]
     asset_id: Annotated[str, Field(description="Unique identifier for the asset within the creative")]
-    content_uri: Annotated[AnyUrl | None, Field(description="URL for media assets (images, videos, etc.)")] = None
     content: Annotated[
         str | list[str],
         Field(description="Text content for text-based assets like headlines, body text, CTA text, etc."),
