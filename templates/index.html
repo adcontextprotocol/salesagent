@@ -48,7 +48,6 @@
                 <th>Configuration</th>
                 <th>Activity</th>
                 <th>Ad Server</th>
-                <th>Last Sync</th>
                 <th>Created</th>
                 <th>Actions</th>
             </tr>
@@ -101,32 +100,6 @@
                     <span style="color: #999;">Not configured</span>
                     {% endif %}
                 </td>
-                <td>
-                    {% if tenant.ad_server == 'google_ad_manager' %}
-                        {% if tenant.last_sync %}
-                            <div style="font-size: 0.875rem;">
-                                {{ tenant.last_sync.strftime('%m/%d %I:%M %p') }}
-                                {% if tenant.sync_status == 'completed' %}
-                                    <span style="color: #28a745;">✓</span>
-                                {% elif tenant.sync_status == 'failed' %}
-                                    <span style="color: #dc3545;">✗</span>
-                                {% elif tenant.sync_status == 'running' %}
-                                    <span style="color: #ffc107;">⟳</span>
-                                {% endif %}
-                                {% if tenant.sync_summary and tenant.sync_summary.ad_units %}
-                                <br><small style="color: #666;">
-                                    {{ tenant.sync_summary.ad_units.total }} ad units,
-                                    {{ tenant.sync_summary.custom_targeting.total_keys }} targeting keys
-                                </small>
-                                {% endif %}
-                            </div>
-                        {% else %}
-                            <span style="color: #999; font-size: 0.875rem;">Never synced</span>
-                        {% endif %}
-                    {% else %}
-                        <span style="color: #999; font-size: 0.875rem;">N/A</span>
-                    {% endif %}
-                </td>
                 <td>{{ tenant.created_at.strftime('%Y-%m-%d') if tenant.created_at else 'N/A' }}</td>
                 <td>
                     <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}" class="btn btn-small">Manage</a>
@@ -138,67 +111,6 @@
     {% else %}
     <p>No tenants found. <a href="{{ script_name }}/create_tenant">Create your first tenant</a>.</p>
     {% endif %}
-</div>
-
-{% if session.role == 'super_admin' %}
-<div class="card">
-    <h2>Sync Status Overview</h2>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-        {% set gam_tenants = tenants|selectattr('ad_server', 'equalto', 'google_ad_manager')|list %}
-        {% set synced_tenants = gam_tenants|selectattr('last_sync', 'ne', None)|list %}
-        {% set stale_tenants = [] %}
-        {% for tenant in synced_tenants %}
-            {% if tenant.last_sync %}
-                {% set hours_ago = ((now - tenant.last_sync).total_seconds() / 3600)|int %}
-                {% if hours_ago > 24 %}
-                    {% set _ = stale_tenants.append(tenant) %}
-                {% endif %}
-            {% endif %}
-        {% endfor %}
-
-        <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
-            <div style="font-size: 2rem; font-weight: bold; color: #1a73e8;">{{ gam_tenants|length }}</div>
-            <div style="color: #666;">GAM Accounts</div>
-        </div>
-
-        <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
-            <div style="font-size: 2rem; font-weight: bold; color: #28a745;">{{ synced_tenants|length }}</div>
-            <div style="color: #666;">Synced</div>
-        </div>
-
-        <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
-            <div style="font-size: 2rem; font-weight: bold; color: #ffc107;">{{ stale_tenants|length }}</div>
-            <div style="color: #666;">Need Sync (>24h)</div>
-        </div>
-
-        <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
-            <div style="font-size: 2rem; font-weight: bold; color: #dc3545;">{{ gam_tenants|length - synced_tenants|length }}</div>
-            <div style="color: #666;">Never Synced</div>
-        </div>
-    </div>
-
-    {% if tenant_management_api_key %}
-    <div style="background: #e8f4fd; padding: 0.75rem; border-radius: 4px; margin-top: 1rem;">
-        <strong>Sync API Endpoint:</strong> <code>POST /api/v1/sync/trigger/{tenant_id}</code><br>
-        <strong>API Key:</strong> <code style="font-size: 0.875rem;">{{ tenant_management_api_key[:20] }}...</code>
-        <a href="/settings" style="margin-left: 1rem;">View full key</a>
-    </div>
-    {% endif %}
-</div>
-{% endif %}
-
-<div class="card">
-    <h2>Quick Start</h2>
-    <ol>
-        <li>Create or select a tenant above</li>
-        <li>Copy the admin token from the tenant details</li>
-        <li>Use the token in the <code>x-adcp-auth</code> header for API requests</li>
-        <li>Access the MCP server at the tenant's subdomain URL</li>
-    </ol>
-
-    <h3 style="margin-top: 1.5rem;">Example API Request</h3>
-    <pre>curl -H "x-adcp-auth: YOUR_ADMIN_TOKEN" \
-     {% if is_production %}https://default.sales-agent.scope3.com{% else %}http://localhost:{{ mcp_port }}{% endif %}/principals/summary</pre>
 </div>
 
 <script>
