@@ -24,7 +24,7 @@ from src.core.tools import create_media_buy_raw
 
 @pytest.mark.e2e
 @pytest.mark.requires_db
-def test_create_media_buy_with_profile_based_product_uses_profile_inventory(integration_db, sample_tenant):
+def test_create_media_buy_with_profile_based_product_uses_profile_inventory(db_session, sample_tenant):
     """Test that media buy creation uses inventory from profile."""
     with get_db_session() as session:
         # Setup: Create inventory profile with specific ad units
@@ -161,7 +161,7 @@ def test_create_media_buy_with_profile_based_product_uses_profile_inventory(inte
 
 @pytest.mark.e2e
 @pytest.mark.requires_db
-def test_create_media_buy_with_profile_based_product_validates_formats(integration_db, sample_tenant):
+def test_create_media_buy_with_profile_based_product_validates_formats(db_session, sample_tenant):
     """Test that media buy creation validates creative formats against profile."""
     with get_db_session() as session:
         # Setup: Create inventory profile with specific formats
@@ -279,7 +279,7 @@ def test_create_media_buy_with_profile_based_product_validates_formats(integrati
 
 @pytest.mark.e2e
 @pytest.mark.requires_db
-def test_multiple_products_same_profile_in_media_buy(integration_db, sample_tenant):
+def test_multiple_products_same_profile_in_media_buy(db_session, sample_tenant):
     """Test media buy with multiple products referencing same profile."""
     with get_db_session() as session:
         # Setup: Create inventory profile
@@ -404,7 +404,7 @@ def test_multiple_products_same_profile_in_media_buy(integration_db, sample_tena
 
 @pytest.mark.e2e
 @pytest.mark.requires_db
-def test_media_buy_reflects_profile_updates_made_after_product_creation(integration_db, sample_tenant):
+def test_media_buy_reflects_profile_updates_made_after_product_creation(db_session, sample_tenant):
     """Test that media buy uses UPDATED profile config, not stale config."""
     with get_db_session() as session:
         # Setup: Create inventory profile with initial config
