@@ -179,13 +179,13 @@ repos:
         pass_filenames: false
         verbose: true
 
-      # Check AdCP schema sync (critical for buyer compatibility)
-      - id: adcp-schema-sync
-        name: Verify AdCP schema sync
-        entry: uv run python scripts/check_schema_sync.py --ci
-        language: system
-        pass_filenames: false
-        always_run: true
+      # Check AdCP schema sync - DISABLED: Sales agent now follows adcp library version
+      # - id: adcp-schema-sync
+      #   name: Verify AdCP schema sync
+      #   entry: uv run python scripts/check_schema_sync.py --ci
+      #   language: system
+      #   pass_filenames: false
+      #   always_run: true
 
       # Validate adapter usage (prevents field name mismatches like deliveries → media_buy_deliveries)
       - id: validate-adapter-usage
