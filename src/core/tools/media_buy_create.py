@@ -1894,6 +1894,42 @@ async def _create_media_buy_impl(
                 session.commit()
                 logger.info(f"✅ Created media buy {media_buy_id} with status=pending_approval")
 
+            # Log to activity feed for manual approval case
+            try:
+                principal_name = principal.name if principal else principal_id
+                duration_days = (end_time - start_time).days + 1
+                activity_feed.log_media_buy(
+                    tenant_id=tenant["tenant_id"],
+                    principal_name=principal_name,
+                    media_buy_id=media_buy_id,
+                    budget=total_budget,
+                    duration_days=duration_days,
+                    action="pending_approval",  # Different action to indicate awaiting approval
+                )
+            except Exception as e:
+                logger.warning(f"Failed to log media buy pending approval to activity feed: {e}")
+
+            # Log to audit log for manual approval case
+            try:
+                audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+                audit_logger.log_operation(
+                    operation="create_media_buy_pending_approval",
+                    principal_name=principal_name,
+                    principal_id=principal_id or "anonymous",
+                    adapter_id="mcp_server",
+                    success=True,
+                    details={
+                        "media_buy_id": media_buy_id,
+                        "buyer_ref": req.buyer_ref,
+                        "budget": total_budget,
+                        "currency": request_currency or "USD",
+                        "workflow_step_id": step.step_id,
+                        "context_id": persistent_ctx.context_id,
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Failed to log media buy pending approval to audit log: {e}")
+
             # Create MediaPackage records for structured querying
             # This enables the UI to display packages and creative assignments to work properly
             with get_db_session() as session:
