@@ -10,7 +10,7 @@ import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import TaskStatus
+from a2a.types import MessageSendParams, TaskStatus
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from tests.utils.a2a_helpers import create_a2a_message_with_skill
@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 @pytest.fixture
 def mock_tenant_context():
     """Mock tenant context for A2A tests."""
+    from src.a2a_server import adcp_a2a_server
+
     with patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal:
         # Mock principal and tenant data
         mock_principal = MagicMock()
@@ -32,12 +34,20 @@ def mock_tenant_context():
         mock_tenant = {
             "tenant_id": "test_tenant_123",
             "name": "Test Tenant",
+            "subdomain": "test-tenant",
             "virtual_host": "https://test.example.com",
             "advertising_policy": {"enabled": False},  # Disable policy checks for simpler test
         }
 
-        mock_get_principal.return_value = (mock_principal, mock_tenant)
-        yield mock_get_principal
+        # Set up request headers so tenant can be detected
+        adcp_a2a_server._request_headers.set({"host": "test-tenant.example.com"})
+
+        # Mock tenant lookup functions (from config_loader module)
+        with patch("src.core.config_loader.get_tenant_by_subdomain") as mock_get_tenant_subdomain:
+            mock_get_tenant_subdomain.return_value = mock_tenant
+            mock_get_principal.return_value = "test_principal_123"
+
+            yield mock_get_principal
 
 
 @pytest.fixture
@@ -57,7 +67,7 @@ def mock_product_catalog():
                     description="Test display advertising product",
                     formats=["display_banner_300x250"],
                     delivery_type="guaranteed",
-                    properties=["https://test.example.com"],
+                    property_tags=["all_inventory"],  # Simpler than full Property objects
                     pricing_options=[
                         PricingOption(
                             pricing_option_id="cpm_usd_fixed",
@@ -80,6 +90,9 @@ async def test_get_products_with_brand_manifest_dict(mock_tenant_context, mock_p
     """Test get_products skill invocation with brand_manifest as dict."""
     handler = AdCPRequestHandler()
 
+    # Mock auth token
+    handler._get_auth_token = MagicMock(return_value="Bearer test_token_123")
+
     # Create A2A message with brand_manifest
     message = create_a2a_message_with_skill(
         skill_name="get_products",
@@ -88,12 +101,10 @@ async def test_get_products_with_brand_manifest_dict(mock_tenant_context, mock_p
             "brief": "Athletic footwear advertising",
         },
     )
+    params = MessageSendParams(message=message)
 
-    # Mock auth token
-    auth_token = "Bearer test_token_123"
-
-    # Call handler
-    task = await handler.execute_task(message, auth_token=auth_token)
+    # Call handler using correct A2A SDK API
+    task = await handler.on_message_send(params)
 
     # Verify task completed successfully
     assert task.status == TaskStatus.COMPLETED, f"Task failed: {task}"
@@ -123,6 +134,9 @@ async def test_get_products_with_brand_manifest_url_only(mock_tenant_context, mo
     """Test get_products skill invocation with brand_manifest as URL string."""
     handler = AdCPRequestHandler()
 
+    # Mock auth token
+    handler._get_auth_token = MagicMock(return_value="Bearer test_token_123")
+
     # Create A2A message with brand_manifest as URL
     message = create_a2a_message_with_skill(
         skill_name="get_products",
@@ -131,12 +145,10 @@ async def test_get_products_with_brand_manifest_url_only(mock_tenant_context, mo
             "brief": "Athletic footwear advertising",
         },
     )
+    params = MessageSendParams(message=message)
 
-    # Mock auth token
-    auth_token = "Bearer test_token_123"
-
-    # Call handler
-    task = await handler.execute_task(message, auth_token=auth_token)
+    # Call handler using correct A2A SDK API
+    task = await handler.on_message_send(params)
 
     # Verify task completed successfully
     assert task.status == TaskStatus.COMPLETED, f"Task failed: {task}"
@@ -150,6 +162,9 @@ async def test_get_products_with_brand_manifest_name_only(mock_tenant_context, m
     """Test get_products skill invocation with brand_manifest containing only name."""
     handler = AdCPRequestHandler()
 
+    # Mock auth token
+    handler._get_auth_token = MagicMock(return_value="Bearer test_token_123")
+
     # Create A2A message with brand_manifest (name only)
     message = create_a2a_message_with_skill(
         skill_name="get_products",
@@ -158,12 +173,10 @@ async def test_get_products_with_brand_manifest_name_only(mock_tenant_context, m
             "brief": "Athletic footwear advertising",
         },
     )
+    params = MessageSendParams(message=message)
 
-    # Mock auth token
-    auth_token = "Bearer test_token_123"
-
-    # Call handler
-    task = await handler.execute_task(message, auth_token=auth_token)
+    # Call handler using correct A2A SDK API
+    task = await handler.on_message_send(params)
 
     # Verify task completed successfully
     assert task.status == TaskStatus.COMPLETED, f"Task failed: {task}"
@@ -176,6 +189,9 @@ async def test_get_products_backward_compat_promoted_offering(
     """Test get_products still works with deprecated promoted_offering parameter."""
     handler = AdCPRequestHandler()
 
+    # Mock auth token
+    handler._get_auth_token = MagicMock(return_value="Bearer test_token_123")
+
     # Create A2A message with promoted_offering (deprecated)
     message = create_a2a_message_with_skill(
         skill_name="get_products",
@@ -184,12 +200,10 @@ async def test_get_products_backward_compat_promoted_offering(
             "brief": "Display advertising",
         },
     )
+    params = MessageSendParams(message=message)
 
-    # Mock auth token
-    auth_token = "Bearer test_token_123"
-
-    # Call handler
-    task = await handler.execute_task(message, auth_token=auth_token)
+    # Call handler using correct A2A SDK API
+    task = await handler.on_message_send(params)
 
     # Verify task completed successfully (backward compatibility)
     assert task.status == TaskStatus.COMPLETED, f"Task failed: {task}"
@@ -200,6 +214,9 @@ async def test_get_products_missing_brand_info_fails(mock_tenant_context, mock_p
     """Test get_products fails gracefully when brand information is missing."""
     handler = AdCPRequestHandler()
 
+    # Mock auth token
+    handler._get_auth_token = MagicMock(return_value="Bearer test_token_123")
+
     # Create A2A message with only brief (no brand_manifest or promoted_offering)
     message = create_a2a_message_with_skill(
         skill_name="get_products",
@@ -207,12 +224,10 @@ async def test_get_products_missing_brand_info_fails(mock_tenant_context, mock_p
             "brief": "Display advertising",
         },
     )
+    params = MessageSendParams(message=message)
 
-    # Mock auth token
-    auth_token = "Bearer test_token_123"
-
-    # Call handler - should use brief as fallback for promoted_offering
-    task = await handler.execute_task(message, auth_token=auth_token)
+    # Call handler using correct A2A SDK API - should use brief as fallback for promoted_offering
+    task = await handler.on_message_send(params)
 
     # Should complete (uses brief as fallback)
     assert task.status == TaskStatus.COMPLETED, "Task should complete with brief fallback"
