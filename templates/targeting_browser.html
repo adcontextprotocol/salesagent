@@ -198,6 +198,7 @@
 <!-- Sync Progress Modal -->
 <script>
 const tenantId = '{{ tenant.tenant_id }}';
+const scriptRoot = '{{ request.script_root }}';  // Base path for URLs (e.g., '/admin' or '')
 let currentKeyId = null;
 let targetingData = {
     customKeys: [],
@@ -266,7 +267,8 @@ async function loadTargetingData() {
 
         // Check if we got redirected to login
         if (response.redirected || response.status === 302) {
-            window.location.href = response.url || `/tenant/${tenantId}/login`;
+            const loginUrl = scriptRoot + `/tenant/${tenantId}/login`;
+            window.location.href = response.url || loginUrl;
             return;
         }
 
@@ -458,7 +460,8 @@ async function loadCustomValues(keyId) {
 
         // Check if we got redirected to login
         if (response.redirected || response.status === 302) {
-            window.location.href = response.url || `/tenant/${tenantId}/login`;
+            const loginUrl = scriptRoot + `/tenant/${tenantId}/login`;
+            window.location.href = response.url || loginUrl;
             return;
         }
 

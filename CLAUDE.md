@@ -283,6 +283,74 @@ def create_media_buy_raw(promoted_offering: str, ...) -> CreateMediaBuyResponse:
 
 **All 8 AdCP tools now use shared implementations - NO code duplication!**
 
+---
+
+### JavaScript URL Handling - MANDATORY
+**🚨 CRITICAL**: All JavaScript code MUST use `request.script_root` for URL construction to support reverse proxy deployments.
+
+**The Problem:**
+The admin UI can be deployed behind a reverse proxy with a URL prefix (e.g., `/admin`) configured via nginx's `SCRIPT_NAME`. When JavaScript uses hardcoded absolute paths like `/auth/login` or `/api/formats/list`, they fail in production:
+- Hardcoded `/auth/login` → Browser tries `/admin/auth/login` → 404 (wrong path)
+- Hardcoded `/api/formats/list` → Browser tries `/admin/api/formats/list` → 404 (wrong path)
+
+**The Solution: Always Use scriptRoot**
+
+**✅ CORRECT Pattern:**
+```javascript
+// In <script> tag or JavaScript block
+const scriptRoot = '{{ request.script_root }}' || '';  // e.g., '/admin' or ''
+const tenantId = '{{ tenant_id }}';
+
+// For login redirects
+const loginUrl = scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
+window.location.href = loginUrl;
+
+// For API calls
+const apiUrl = scriptRoot + '/api/formats/list?tenant_id=' + tenantId;
+fetch(apiUrl, { credentials: 'same-origin' });
+
+// For tenant-specific routes
+const tenantLoginUrl = scriptRoot + `/tenant/${tenantId}/login`;
+window.location.href = tenantLoginUrl;
+```
+
+**❌ WRONG - Hardcoded Absolute Paths:**
+```javascript
+// DO NOT DO THIS - Will break in production with /admin prefix
+window.location.href = '/auth/login';  // ❌ Fails with proxy prefix
+fetch('/api/formats/list');  // ❌ Fails with proxy prefix
+```
+
+**When to Apply This Pattern:**
+1. **ALL authentication redirects** - Any redirect to login/logout URLs
+2. **ALL API fetch calls** - Any calls to `/api/*` endpoints
+3. **ALL internal navigation** - Any `window.location.href` assignments to internal routes
+4. **Template includes** - Components like `inventory_picker.html` should include `scriptRoot` in their config
+
+**Python Code (Server-Side):**
+Python code should ALWAYS use `url_for()` which automatically handles the prefix:
+```python
+# ✅ CORRECT - Python redirects
+return redirect(url_for('auth.login'))
+
+# ❌ WRONG - Don't hardcode URLs in Python either
+return redirect('/auth/login')
+```
+
+**Testing:**
+- **Local dev** (no prefix): `scriptRoot = ''` → URLs like `/auth/login`, `/api/formats/list`
+- **Production** (with `/admin`): `scriptRoot = '/admin'` → URLs like `/admin/auth/login`, `/admin/api/formats/list`
+
+**Reference Implementation:**
+- See `templates/components/inventory_picker.html` for component pattern
+- See `templates/inventory_unified.html` for page-level pattern
+- See `templates/targeting_browser.html` for tenant-specific route pattern
+
+**Why This Matters:**
+The reference implementation deploys to production with an nginx reverse proxy that adds `/admin` prefix to all admin UI routes. Without `scriptRoot`, JavaScript redirects and API calls fail with 404 errors, breaking core functionality like inventory browsing and authentication.
+
+---
+
 ## 🚨 CRITICAL REMINDERS
 
 ### Deployment Architecture (Reference Implementation)
