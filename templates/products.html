@@ -135,11 +135,10 @@
             <tr>
                 <th>Product ID</th>
                 <th>Name</th>
-                <th>Formats</th>
                 <th>Countries</th>
                 <th>Type</th>
                 <th>Pricing</th>
-                <th>Inventory</th>
+                <th>Inventory Profile</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -169,14 +168,6 @@
                             {% endif %}
                         </small>
                     {% endif %}
-                </td>
-                <td>
-                    {% for format in product.formats %}
-                        {# Format is now resolved with name field from creative agent #}
-                        <span class="badge" title="{{ format.format_id }} ({{ format.agent_url }})">
-                            {{ format.name }}
-                        </span>
-                    {% endfor %}
                 </td>
                 <td>
                     {% if product.countries %}
@@ -264,28 +255,14 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if product.inventory_details.total > 0 %}
-                        <a href="{{ url_for('products.edit_product', tenant_id=tenant_id, product_id=product.product_id) }}#inventory"
-                           style="text-decoration: none; display: block;"
-                           title="Click to view assigned inventory">
-                            {% if product.inventory_details.ad_units > 0 %}
-                                <span class="badge" style="background: #28a745; margin-right: 0.25rem;">
-                                    {{ product.inventory_details.ad_units }} ad unit{{ 's' if product.inventory_details.ad_units != 1 else '' }}
-                                </span>
-                            {% endif %}
-                            {% if product.inventory_details.placements > 0 %}
-                                <span class="badge" style="background: #17a2b8; margin-right: 0.25rem;">
-                                    {{ product.inventory_details.placements }} placement{{ 's' if product.inventory_details.placements != 1 else '' }}
-                                </span>
-                            {% endif %}
-                            {% if product.inventory_details.custom_keys > 0 %}
-                                <span class="badge" style="background: #6f42c1; color: white; margin-right: 0.25rem;">
-                                    {{ product.inventory_details.custom_keys }} custom key{{ 's' if product.inventory_details.custom_keys != 1 else '' }}
-                                </span>
-                            {% endif %}
-                        </a>
+                    {% if product.inventory_profile %}
+                        {# Using inventory profile #}
+                        <span class="badge" style="background: #9c27b0; color: white;" title="{{ product.inventory_profile.inventory_summary }}">
+                            <i class="fas fa-layer-group"></i> {{ product.inventory_profile.name }}
+                        </span>
                     {% else %}
-                        <span style="color: #999;">None</span>
+                        {# Custom inventory configuration #}
+                        <span style="color: #666;">Custom</span>
                     {% endif %}
                 </td>
                 <td>

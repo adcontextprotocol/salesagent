@@ -56,7 +56,7 @@ def convert_product_model_to_schema(product_model) -> Product:
     product_data["product_id"] = product_model.product_id
     product_data["name"] = product_model.name
     product_data["description"] = product_model.description
-    product_data["formats"] = product_model.formats
+    product_data["formats"] = product_model.effective_formats  # Auto-resolves from profile if set
     product_data["targeting_template"] = product_model.targeting_template
     product_data["delivery_type"] = product_model.delivery_type
 
@@ -71,10 +71,13 @@ def convert_product_model_to_schema(product_model) -> Product:
         product_data["countries"] = product_model.countries
 
     # Property authorization (one is required)
-    if product_model.properties:
-        product_data["properties"] = product_model.properties
-    elif product_model.property_tags:
-        product_data["property_tags"] = product_model.property_tags
+    # Use effective_properties to auto-resolve from profile
+    effective_props = product_model.effective_properties
+    effective_tags = product_model.effective_property_tags
+    if effective_props:
+        product_data["properties"] = effective_props
+    elif effective_tags:
+        product_data["property_tags"] = effective_tags
 
     # Product detail fields
     if product_model.delivery_measurement:
@@ -166,8 +169,11 @@ async def _get_products_impl(
     offering = None
     if req.brand_manifest:
         if isinstance(req.brand_manifest, str):
-            # brand_manifest is a URL - use it as-is for now
+            # brand_manifest is a URL string - use it as-is for now
             # TODO: In future, fetch and parse the URL
+            offering = f"Brand at {req.brand_manifest}"
+        elif hasattr(req.brand_manifest, "__str__") and str(req.brand_manifest).startswith("http"):
+            # brand_manifest is AnyUrl object from Pydantic (schema_helpers converts str → AnyUrl)
             offering = f"Brand at {req.brand_manifest}"
         else:
             # brand_manifest is a BrandManifest object or dict
@@ -700,7 +706,10 @@ def get_product_catalog() -> list[Product]:
         stmt = (
             select(ModelProduct)
             .filter_by(tenant_id=tenant["tenant_id"])
-            .options(selectinload(ModelProduct.pricing_options))
+            .options(
+                selectinload(ModelProduct.pricing_options),
+                selectinload(ModelProduct.inventory_profile),  # Avoid N+1 query
+            )
         )
         products = session.scalars(stmt).all()
 

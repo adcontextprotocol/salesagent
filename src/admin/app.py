@@ -22,6 +22,7 @@ from src.admin.blueprints.creatives import creatives_bp
 from src.admin.blueprints.format_search import bp as format_search_bp
 from src.admin.blueprints.gam import gam_bp
 from src.admin.blueprints.inventory import inventory_bp
+from src.admin.blueprints.inventory_profiles import inventory_profiles_bp
 from src.admin.blueprints.operations import operations_bp
 from src.admin.blueprints.policy import policy_bp
 from src.admin.blueprints.principals import principals_bp
@@ -323,6 +324,7 @@ def create_app(config=None):
     app.register_blueprint(creative_agents_bp, url_prefix="/tenant/<tenant_id>/creative-agents")
     app.register_blueprint(signals_agents_bp, url_prefix="/tenant/<tenant_id>/signals-agents")
     app.register_blueprint(inventory_bp)  # Has its own internal routing
+    app.register_blueprint(inventory_profiles_bp, url_prefix="/tenant/<tenant_id>/inventory-profiles")
     app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(format_search_bp)  # Format search API (/api/formats)
     app.register_blueprint(activity_stream_bp)  # SSE endpoints - Flask handles /admin via script_name from nginx proxy

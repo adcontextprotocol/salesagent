@@ -78,6 +78,8 @@ class TestTemplateUrlValidation:
                             test_params["config_id"] = "test_config"
                         if "agent_id" in params:
                             test_params["agent_id"] = 1  # agent_id is an integer
+                        if "profile_id" in params:
+                            test_params["profile_id"] = 1  # profile_id is an integer
                         if "filename" in params:
                             test_params["filename"] = "test.js"
 

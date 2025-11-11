@@ -1,0 +1,438 @@
+{% extends "base.html" %}
+
+{% block title %}Create Inventory Profile - Sales Agent Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Create Inventory Profile</h2>
+    <p class="text-muted">Create a reusable inventory configuration that can be used across multiple products</p>
+
+    <form id="profile-form" method="POST">
+        <!-- Section 1: Basic Information -->
+        <h3 style="margin-top: 0; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Profile Information</h3>
+        <p style="color: #666; margin-bottom: 1.5rem;">Basic details about this inventory profile</p>
+
+        <div class="form-group">
+            <label for="name">Profile Name *</label>
+            <input type="text" id="name" name="name" required placeholder="e.g., Homepage Premium Display">
+            <small style="color: #666;">A descriptive name for this inventory configuration</small>
+        </div>
+
+        <div class="form-group">
+            <label for="profile_id">Profile ID</label>
+            <input type="text" id="profile_id" name="profile_id" placeholder="Auto-generated from name">
+            <small style="color: #666;">Leave blank to auto-generate. Used in URLs and APIs.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="3" placeholder="Describe what inventory this profile covers"></textarea>
+        </div>
+
+        <!-- Section 2: Inventory Selection -->
+        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Inventory (Ad Units & Placements)</h3>
+        <p style="color: #666; margin-bottom: 1.5rem;">Select ad units and placements from your ad server inventory</p>
+
+        <div class="form-group">
+            <label for="ad-unit-search">Ad Units</label>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <input type="text" id="ad-unit-search" placeholder="Search ad units..." style="flex: 1;">
+                <button type="button" onclick="openInventoryPicker('ad_unit')" class="btn btn-secondary">
+                    Browse Ad Units
+                </button>
+            </div>
+            <div id="selected-ad-units" style="min-height: 60px; border: 1px solid #ddd; border-radius: 4px; padding: 0.5rem; background: #f9f9f9;">
+                <span style="color: #999;">No ad units selected</span>
+            </div>
+            <textarea id="targeted_ad_unit_ids" name="targeted_ad_unit_ids" style="display: none;"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="placement-search">Placements</label>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <input type="text" id="placement-search" placeholder="Search placements..." style="flex: 1;">
+                <button type="button" onclick="openInventoryPicker('placement')" class="btn btn-secondary">
+                    Browse Placements
+                </button>
+            </div>
+            <div id="selected-placements" style="min-height: 60px; border: 1px solid #ddd; border-radius: 4px; padding: 0.5rem; background: #f9f9f9;">
+                <span style="color: #999;">No placements selected</span>
+            </div>
+            <textarea id="targeted_placement_ids" name="targeted_placement_ids" style="display: none;"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="include_descendants" checked>
+                Include child ad units in targeting
+            </label>
+        </div>
+
+        <!-- Section 3: Creative Formats -->
+        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Creative Formats *</h3>
+        <p style="color: #666; margin-bottom: 1rem;">Select which creative formats are supported by this inventory</p>
+
+        <!-- Search box for formats -->
+        <div id="format-search-box" style="margin-bottom: 1rem;">
+            <input type="text" id="format-search-input" placeholder="Search formats by name, type, or size..."
+                   style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+
+        <!-- Selected formats (tags) -->
+        <div id="selected-formats" style="margin-bottom: 1rem; padding: 1rem; background: #f0f7ff; border: 1px solid #d0e7ff; border-radius: 4px; min-height: 50px; display: none;">
+            <div style="font-weight: 600; margin-bottom: 0.5rem; color: #0066cc;">Selected Formats:</div>
+            <div id="selected-formats-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
+        </div>
+
+        <!-- Format list -->
+        <div id="format-list" style="margin-top: 1rem;">
+            <div id="format-loading" style="text-align: center; padding: 2rem; color: #666;">
+                Loading formats from creative agents...
+            </div>
+            <div id="format-results" style="display: none;"></div>
+        </div>
+
+        <!-- Hidden input to store selected format data -->
+        <input type="hidden" id="formats-data" name="formats" value="">
+
+        <!-- Section 4: Publisher Properties -->
+        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Publisher Properties *</h3>
+        <p style="color: #666; margin-bottom: 1rem;">Specify which publisher properties (websites, apps, etc.) this inventory represents</p>
+
+        <div class="alert" style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 1rem; margin-bottom: 1rem;">
+            <strong>Required:</strong> Inventory profiles must specify which properties they cover for AdCP compliance.
+        </div>
+
+        <div class="form-group">
+            <label for="publisher_properties">Publisher Properties (JSON) *</label>
+            <textarea id="publisher_properties" name="publisher_properties" rows="8"
+                      placeholder='[{"publisher_domain": "example.com", "property_tags": ["all_inventory"]}]'
+                      style="font-family: monospace; font-size: 0.9rem;"></textarea>
+            <small style="color: #666;">
+                AdCP-compliant publisher properties structure. Each entry must include:
+                <ul style="margin-top: 0.5rem; margin-bottom: 0;">
+                    <li><code>publisher_domain</code> (required): Domain where adagents.json is hosted</li>
+                    <li><code>property_ids</code> (array) OR <code>property_tags</code> (array): Specific properties or tags</li>
+                </ul>
+            </small>
+
+            {% if tenant and tenant.primary_domain %}
+            <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="setDefaultProperties()">
+                Use Default ({{ tenant.primary_domain }})
+            </button>
+            {% endif %}
+        </div>
+
+        <!-- Section 5: Optional Targeting Template -->
+        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Default Targeting (Optional)</h3>
+        <p style="color: #666; margin-bottom: 1rem;">Optional default targeting rules that products can inherit</p>
+
+        <div class="form-group">
+            <label for="targeting_template">Targeting Template (JSON)</label>
+            <textarea id="targeting_template" name="targeting_template" rows="6"
+                      placeholder='{"geo_country_any_of": ["US"], "device_type_any_of": ["desktop", "mobile"]}'
+                      style="font-family: monospace; font-size: 0.9rem;"></textarea>
+            <small style="color: #666;">Optional. Products using this profile can inherit or override these targeting rules.</small>
+        </div>
+
+        <!-- Submit Buttons -->
+        <div style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ddd;">
+            <button type="submit" class="btn btn-primary">Create Inventory Profile</button>
+            <a href="{{ url_for('inventory_profiles.list_inventory_profiles', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+// Format selection state
+let selectedFormats = new Set();
+let allFormats = [];
+
+// Load formats from API on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadFormats();
+    setupFormatSearch();
+});
+
+async function loadFormats() {
+    try {
+        const response = await fetch('/api/formats/list?tenant_id={{ tenant_id }}');
+        const data = await response.json();
+
+        // Check for errors
+        if (data.error) {
+            console.error('API returned error:', data);
+            document.getElementById('format-loading').innerHTML = `
+                <div style="color: #e74c3c; padding: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px;">
+                    <strong>⚠️ Error loading formats:</strong> ${data.message || data.error}
+                </div>
+            `;
+            return;
+        }
+
+        // Flatten formats from all agents
+        allFormats = [];
+        for (const [agentUrl, formats] of Object.entries(data.agents || {})) {
+            formats.forEach(fmt => {
+                allFormats.push({...fmt, agent_url: agentUrl});
+            });
+        }
+
+        console.log(`✅ Loaded ${allFormats.length} formats from ${Object.keys(data.agents || {}).length} agent(s)`);
+
+        document.getElementById('format-loading').style.display = 'none';
+        displayFormats(allFormats);
+    } catch (error) {
+        console.error('Error loading formats:', error);
+        document.getElementById('format-loading').innerHTML = `
+            <div style="color: #e74c3c; padding: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px;">
+                <strong>⚠️ Network error loading formats:</strong> ${error.message}
+            </div>
+        `;
+    }
+}
+
+function setupFormatSearch() {
+    const searchBox = document.getElementById('format-search-input');
+    let searchTimeout;
+
+    searchBox.addEventListener('input', function(e) {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            const query = e.target.value.toLowerCase().trim();
+            if (query.length === 0) {
+                displayFormats(allFormats);
+            } else {
+                const filtered = allFormats.filter(fmt =>
+                    fmt.format_id.toLowerCase().includes(query) ||
+                    fmt.name.toLowerCase().includes(query) ||
+                    (fmt.description && fmt.description.toLowerCase().includes(query)) ||
+                    fmt.type.toLowerCase().includes(query)
+                );
+                displayFormats(filtered);
+            }
+        }, 300);
+    });
+}
+
+function displayFormats(formats) {
+    const container = document.getElementById('format-results');
+
+    if (formats.length === 0) {
+        container.innerHTML = '<div style="text-align: center; padding: 2rem; color: #666;">No formats found</div>';
+        container.style.display = 'block';
+        return;
+    }
+
+    // Group by type
+    const grouped = {};
+    formats.forEach(fmt => {
+        if (!grouped[fmt.type]) {
+            grouped[fmt.type] = [];
+        }
+        grouped[fmt.type].push(fmt);
+    });
+
+    let html = '';
+    for (const [type, typeFormats] of Object.entries(grouped)) {
+        html += `
+            <div style="margin-bottom: 2rem;">
+                <h4 style="margin-bottom: 1rem; text-transform: capitalize; color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">${type}</h4>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+        `;
+
+        typeFormats.forEach(format => {
+            const isSelected = selectedFormats.has(format.format_id);
+            const borderColor = isSelected ? '#0066cc' : '#e0e0e0';
+            const bgColor = isSelected ? '#f0f7ff' : '#f9f9f9';
+            const checkIcon = isSelected ? '✓ ' : '';
+
+            html += `
+                <div style="border: 2px solid ${borderColor}; border-radius: 4px; padding: 0.75rem; background: ${bgColor}; cursor: pointer; transition: all 0.2s;"
+                     onclick="toggleFormat('${format.format_id}', '${format.name}', '${format.agent_url || ''}')">
+                    <div style="font-weight: 600; color: #333;">${checkIcon}${format.name}</div>
+                    ${format.description ? `<div style="color: #777; font-size: 0.85rem; margin-top: 0.25rem;">${format.description}</div>` : ''}
+                </div>
+            `;
+        });
+
+        html += '</div></div>';
+    }
+
+    container.innerHTML = html;
+    container.style.display = 'block';
+}
+
+function toggleFormat(formatId, formatName, agentUrl) {
+    if (selectedFormats.has(formatId)) {
+        selectedFormats.delete(formatId);
+    } else {
+        selectedFormats.add(formatId);
+    }
+
+    updateSelectedFormatsDisplay();
+    updateHiddenInput();
+    displayFormats(allFormats); // Refresh display to show selection state
+}
+
+function updateSelectedFormatsDisplay() {
+    const container = document.getElementById('selected-formats');
+    const list = document.getElementById('selected-formats-list');
+
+    if (selectedFormats.size === 0) {
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'block';
+
+    let html = '';
+    selectedFormats.forEach(formatId => {
+        const format = allFormats.find(f => f.format_id === formatId);
+        if (format) {
+            html += `
+                <span style="background: #0066cc; color: white; padding: 0.5rem 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.5rem;">
+                    ${format.name}
+                    <span style="cursor: pointer; font-weight: bold;" onclick="event.stopPropagation(); toggleFormat('${formatId}', '${format.name}', '${format.agent_url || ''}')">×</span>
+                </span>
+            `;
+        }
+    });
+
+    list.innerHTML = html;
+}
+
+function updateHiddenInput() {
+    // Store format references as JSON
+    const formatRefs = [];
+    selectedFormats.forEach(formatId => {
+        const format = allFormats.find(f => f.format_id === formatId);
+        if (format) {
+            formatRefs.push({
+                agent_url: format.agent_url || 'https://creative.adcontextprotocol.org',
+                id: formatId
+            });
+        }
+    });
+
+    document.getElementById('formats-data').value = JSON.stringify(formatRefs);
+}
+
+// Set default properties
+function setDefaultProperties() {
+    const defaultProps = [
+        {
+            "publisher_domain": "{{ tenant.primary_domain if tenant and tenant.primary_domain else 'example.com' }}",
+            "property_tags": ["all_inventory"]
+        }
+    ];
+    document.getElementById('publisher_properties').value = JSON.stringify(defaultProps, null, 2);
+}
+
+// Inventory picker functions (reuse from product form)
+function openInventoryPicker(type) {
+    // TODO: Implement inventory picker modal
+    // For now, show alert
+    alert(`Inventory picker for ${type} not yet implemented. Please enter IDs manually in the hidden field.`);
+}
+
+// Form validation
+document.getElementById('profile-form').addEventListener('submit', function(e) {
+    // Validate formats
+    if (selectedFormats.size === 0) {
+        e.preventDefault();
+        alert('Please select at least one creative format');
+        return false;
+    }
+
+    // Validate publisher properties
+    const propsJson = document.getElementById('publisher_properties').value.trim();
+    if (!propsJson) {
+        e.preventDefault();
+        alert('Please specify publisher properties');
+        return false;
+    }
+
+    try {
+        const props = JSON.parse(propsJson);
+        if (!Array.isArray(props) || props.length === 0) {
+            e.preventDefault();
+            alert('Publisher properties must be a non-empty array');
+            return false;
+        }
+    } catch (error) {
+        e.preventDefault();
+        alert('Invalid JSON in publisher properties: ' + error.message);
+        return false;
+    }
+
+    return true;
+});
+</script>
+
+<style>
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+.form-group input[type="text"],
+.form-group textarea {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.form-group small {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.btn {
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.btn-primary {
+    background: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #545b62;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+code {
+    background: #f4f4f4;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    font-family: monospace;
+}
+</style>
+{% endblock %}

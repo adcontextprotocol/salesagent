@@ -291,7 +291,7 @@ def get_targeting_values(tenant_id, key_id):
 @inventory_bp.route("/tenant/<tenant_id>/inventory")
 @require_tenant_access()
 def inventory_browser(tenant_id):
-    """Display inventory browser page."""
+    """Display unified inventory browser and profiles page."""
 
     with get_db_session() as db_session:
         tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
@@ -311,14 +311,14 @@ def inventory_browser(tenant_id):
             )
             return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
-    tenant = {"tenant_id": row[0], "name": row[1]}
+    tenant_dict = {"tenant_id": row[0], "name": row[1], "virtual_host": tenant.virtual_host if tenant else None}
 
     # Get inventory type from query param
     inventory_type = request.args.get("type", "all")
 
     return render_template(
-        "inventory_browser.html",
-        tenant=tenant,
+        "inventory_unified.html",
+        tenant=tenant_dict,
         tenant_id=tenant_id,
         tenant_name=row[1],
         inventory_type=inventory_type,
