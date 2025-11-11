@@ -65,25 +65,23 @@ def create_get_products_request(
         filters_obj = filters
 
     # Convert brand_manifest to proper type
-    brand_manifest_obj: BrandManifest | BrandManifest12 | AnyUrl | None = None
+    # NOTE: With adcp v1.2.1 library, GetProductsRequest accepts dicts directly for brand_manifest.
+    # No need to convert to BrandManifest/BrandManifest12 objects.
+    brand_manifest_obj: dict[str, Any] | str | BrandManifest | BrandManifest12 | AnyUrl | None = None
     if isinstance(brand_manifest, dict):
-        # Choose BrandManifest or BrandManifest12 based on what's provided
-        if "url" in brand_manifest and brand_manifest["url"] is not None:
-            # Has url - use BrandManifest (url-required variant)
-            brand_manifest_obj = BrandManifest(**brand_manifest)
-        elif "name" in brand_manifest:
-            # Only name - use BrandManifest12 (both optional)
-            brand_manifest_obj = BrandManifest12(**brand_manifest)
+        # Pass dict directly - adcp library handles validation
+        brand_manifest_obj = brand_manifest
     elif isinstance(brand_manifest, str):
-        # URL string
-        brand_manifest_obj = AnyUrl(brand_manifest)  # type: ignore[assignment]
+        # URL string - pass as-is
+        brand_manifest_obj = brand_manifest
     else:
+        # Already a BrandManifest object (legacy code path)
         brand_manifest_obj = brand_manifest  # type: ignore[assignment]
 
     # Handle promoted_offering → brand_manifest conversion (backward compat)
     if promoted_offering and not brand_manifest_obj:
-        # Convert promoted_offering to brand_manifest for AdCP spec compliance
-        brand_manifest_obj = BrandManifest12(name=promoted_offering)
+        # Convert promoted_offering to brand_manifest dict for AdCP spec compliance
+        brand_manifest_obj = {"name": promoted_offering}
 
     # Create single flat GetProductsRequest (AdCP spec fields only)
     return GetProductsRequest(

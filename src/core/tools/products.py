@@ -683,10 +683,16 @@ async def get_products_raw(
         GetProductsResponse containing matching products
     """
     # Create request object using helper (handles generated schema variants)
+    # NOTE: If brand_manifest is already a Pydantic object from adcp library (BrandManifestRefVariant1/2),
+    # convert it to dict so create_get_products_request can handle it
+    brand_manifest_input = brand_manifest
+    if brand_manifest and hasattr(brand_manifest, "model_dump"):
+        brand_manifest_input = brand_manifest.model_dump(exclude_none=True)
+
     req = create_get_products_request(
         brief=brief or "",
         promoted_offering=promoted_offering,
-        brand_manifest=brand_manifest,
+        brand_manifest=brand_manifest_input,
         filters=filters,
     )
 
