@@ -883,7 +883,7 @@ def add_product(tenant_id):
                         from src.core.database.models import InventoryProfile
 
                         profile_stmt = select(InventoryProfile).filter_by(id=profile_id)
-                        profile = session.scalars(profile_stmt).first()
+                        profile = db_session.scalars(profile_stmt).first()
                         if not profile or profile.tenant_id != tenant_id:
                             flash(
                                 "Invalid inventory profile - profile not found or does not belong to this tenant",
@@ -1321,7 +1321,7 @@ def edit_product(tenant_id, product_id):
                         from src.core.database.models import InventoryProfile
 
                         profile_stmt = select(InventoryProfile).filter_by(id=profile_id)
-                        profile = session.scalars(profile_stmt).first()
+                        profile = db_session.scalars(profile_stmt).first()
                         if not profile or profile.tenant_id != tenant_id:
                             flash(
                                 "Invalid inventory profile - profile not found or does not belong to this tenant",

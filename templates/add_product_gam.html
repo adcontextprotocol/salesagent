@@ -608,6 +608,25 @@ document.addEventListener('DOMContentLoaded', function() {
             extractSizesFromInventory();
         });
     }
+
+    // Handle country selection mutual exclusion
+    const countriesSelect = document.getElementById('countries');
+    if (countriesSelect) {
+        countriesSelect.addEventListener('change', function() {
+            const selectedOptions = Array.from(this.selectedOptions).map(opt => opt.value);
+
+            // If "ALL" is selected with others, deselect all others
+            if (selectedOptions.includes('ALL') && selectedOptions.length > 1) {
+                // Clear all selections and just select ALL
+                Array.from(this.options).forEach(opt => opt.selected = false);
+                this.options[0].selected = true; // Select "All Countries"
+            }
+            // If specific countries are selected, deselect ALL
+            else if (!selectedOptions.includes('ALL') && selectedOptions.length > 0) {
+                this.options[0].selected = false; // Deselect "All Countries"
+            }
+        });
+    }
 });
 
 // Inventory mode toggle functionality
