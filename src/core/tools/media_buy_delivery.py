@@ -393,6 +393,10 @@ def _get_media_buy_delivery_impl(
             errors=filtered_data.get("errors"),
         )
 
+    # Echo request context in response if provided
+    if req.context is not None:
+        response.context = req.context
+        
     return response
 
 
@@ -402,6 +406,7 @@ def get_media_buy_delivery(
     status_filter: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    request_context: dict | None = None, # Application level context per adcp spec
     webhook_url: str | None = None,
     push_notification_config: PushNotificationConfig | None = None,
     context: Context | ToolContext | None = None,
@@ -432,6 +437,7 @@ def get_media_buy_delivery(
             start_date=start_date,
             end_date=end_date,
             push_notification_config=push_notification_config,
+            context=request_context,
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="get_media_buy_delivery request")) from e
@@ -446,6 +452,7 @@ def get_media_buy_delivery_raw(
     status_filter: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    request_context: dict | None = None, # Application level context per adcp spec
     context: Context | ToolContext | None = None,
 ):
     """Get delivery metrics for media buys (raw function for A2A server use).
@@ -471,6 +478,7 @@ def get_media_buy_delivery_raw(
         start_date=start_date,
         end_date=end_date,
         push_notification_config=None,
+        context=request_context,
     )
 
     # Call the implementation

@@ -122,6 +122,9 @@ def _list_creative_formats_impl(
 
     # Create response (no message/specification_version - not in adapter schema)
     response = ListCreativeFormatsResponse(formats=formats, creative_agents=None, errors=None)
+    # Echo context from request if provided
+    if req.context is not None:
+        response.context = req.context
 
     # Always return Pydantic model - MCP wrapper will handle serialization
     # Schema enhancement (if needed) should happen in the MCP wrapper, not here
@@ -134,6 +137,7 @@ def list_creative_formats(
     category: str | None = None,
     format_ids: list[str] | None = None,
     webhook_url: str | None = None,
+    request_context: dict | None = None, # Application level context per adcp spec
     context: Context | ToolContext | None = None,
 ):
     """List all available creative formats (AdCP spec endpoint).
@@ -166,6 +170,7 @@ def list_creative_formats(
             standard_only=standard_only,
             category=category,
             format_ids=format_ids_objects,
+            context=request_context,
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creative_formats request")) from e
@@ -175,7 +180,8 @@ def list_creative_formats(
 
 
 def list_creative_formats_raw(
-    req: ListCreativeFormatsRequest | None = None, context: Context | ToolContext | None = None
+    req: ListCreativeFormatsRequest | None = None,
+    context: Context | ToolContext | None = None,
 ) -> ListCreativeFormatsResponse:
     """List all available creative formats (raw function for A2A server use).
 

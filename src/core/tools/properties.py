@@ -221,6 +221,9 @@ def _list_authorized_properties_impl(
                 response_data["advertising_policies"] = advertising_policies_text
 
             response = ListAuthorizedPropertiesResponse(**response_data)
+            # Echo application context if provided
+            if req.context is not None:
+                response.context = req.context
 
             # Log audit
             audit_logger = get_audit_logger("AdCP", tenant_id)

@@ -1210,6 +1210,7 @@ async def _create_media_buy_impl(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
+    request_context: dict[str, Any] | None = None, # Optional application level context per adcp spec
     context: Context | ToolContext | None = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
@@ -1271,6 +1272,7 @@ async def _create_media_buy_impl(
             webhook_url=None,  # Internal field, not in AdCP spec
             webhook_auth_token=None,  # Internal field, not in AdCP spec
             push_notification_config=push_notification_config,
+            context=request_context,
         )
     except ValidationError as e:
         # Format validation errors with helpful context using shared helper
@@ -1309,6 +1311,7 @@ async def _create_media_buy_impl(
         # Cannot create context or workflow step without valid principal
         return CreateMediaBuyError(
             errors=[Error(code="authentication_error", message=error_msg, details=None)],
+            context=req.context,
         )
 
     # Context management and workflow step creation - create workflow step FIRST
@@ -1722,6 +1725,7 @@ async def _create_media_buy_impl(
         # Return error response (protocol layer will add status="failed")
         return CreateMediaBuyError(
             errors=[Error(code="validation_error", message=str(e), details=None)],
+            context=req.context,
         )
 
     # Principal already validated earlier (before context creation) to avoid foreign key errors
@@ -2118,6 +2122,7 @@ async def _create_media_buy_impl(
                 creative_deadline=None,
                 packages=pending_packages,
                 workflow_step_id=step.step_id,  # Client can track approval via this ID
+                context=req.context,
             )
 
         # Get products for the media buy to check product-level auto-creation settings
@@ -2184,6 +2189,7 @@ async def _create_media_buy_impl(
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return CreateMediaBuyError(
                     errors=[Error(code="invalid_configuration", message=err, details=None) for err in config_errors],
+                    context=req.context,
                 )
 
         product_auto_create = all(
@@ -2528,6 +2534,7 @@ async def _create_media_buy_impl(
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return CreateMediaBuyError(
                 errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
+                context=req.context,
             )
 
         # PRE-VALIDATE: Check all creatives have required fields BEFORE calling adapter
@@ -3075,6 +3082,7 @@ async def _create_media_buy_impl(
             media_buy_id=response.media_buy_id,
             packages=response_packages,
             creative_deadline=response.creative_deadline,
+            context=req.context,
         )
 
         # Log activity
@@ -3143,6 +3151,9 @@ async def _create_media_buy_impl(
             media_buy_id=filtered_data["media_buy_id"],
             packages=filtered_data["packages"],
             creative_deadline=filtered_data.get("creative_deadline"),
+            packages=filtered_data.get("packages"),
+            errors=filtered_data.get("errors"),
+            context=req.context,
         )
 
         # Mark workflow step as completed on success
@@ -3310,6 +3321,7 @@ async def create_media_buy(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
+    request_context: dict[str, Any] | None = None, # Application level context per adcp spec
     webhook_url: str | None = None,
     context: Context | ToolContext | None = None,
 ):
@@ -3364,6 +3376,7 @@ async def create_media_buy(
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
         push_notification_config=push_notification_config,
+        request_context=request_context,
         context=context,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
@@ -3390,6 +3403,7 @@ async def create_media_buy_raw(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
+    request_context: dict[str, Any] | None = None, # Application level context per adcp spec
     context: Context | ToolContext | None = None,
 ):
     """Create a new media buy with specified parameters (raw function for A2A server use).
@@ -3443,6 +3457,7 @@ async def create_media_buy_raw(
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
         push_notification_config=push_notification_config,
+        request_context=request_context,
         context=context,
     )
 

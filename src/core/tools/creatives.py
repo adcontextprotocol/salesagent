@@ -47,6 +47,7 @@ def _sync_creatives_impl(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict | None = None,
+    request_context: dict | None = None, # Application level context per adcp spec
     context: Context | ToolContext | None = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
@@ -349,6 +350,9 @@ def _sync_creatives_impl(
                             if creative.get("template_variables") is not None:
                                 data["template_variables"] = creative.get("template_variables")
                                 changes.append("template_variables")
+                            # Persist application context
+                            if request_context is not None:
+                                data["context"] = request_context
                         else:
                             # Full upsert mode: replace all data
                             # Extract URL from assets if not provided at top level
@@ -388,6 +392,8 @@ def _sync_creatives_impl(
                                 data["assets"] = creative.get("assets")
                             if creative.get("template_variables"):
                                 data["template_variables"] = creative.get("template_variables")
+                            if request_context is not None:
+                                data["context"] = request_context
 
                             # ALWAYS validate updates with creative agent
                             if creative_format:
@@ -1113,6 +1119,10 @@ def _sync_creatives_impl(
                         # Use validated format_value (already auto-upgraded from string)
                         agent_url, format_id = _extract_format_namespace(format_value)
 
+                        # Persist application context alongside creative data
+                        if isinstance(data, dict) and request_context is not None:
+                            data["context"] = request_context
+
                         db_creative = DBCreative(
                             tenant_id=tenant["tenant_id"],
                             creative_id=creative.get("creative_id") or str(uuid.uuid4()),
@@ -1635,6 +1645,7 @@ def _sync_creatives_impl(
     return SyncCreativesResponse(
         creatives=results,
         dry_run=dry_run,
+        context=request_context,
     )
 
 
@@ -1646,6 +1657,7 @@ async def sync_creatives(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict | None = None,
+    request_context: dict | None = None, # Application level context per adcp spec
     context: Context | ToolContext | None = None,
 ):
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
@@ -1673,6 +1685,7 @@ async def sync_creatives(
         dry_run=dry_run,
         validation_mode=validation_mode,
         push_notification_config=push_notification_config,
+        request_context=request_context,
         context=context,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
@@ -1698,6 +1711,7 @@ def _list_creatives_impl(
     limit: int = 50,
     sort_by: str = "created_date",
     sort_order: str = "desc",
+    request_context: dict | None = None, # Application level context per adcp spec
     context: Context | ToolContext | None = None,
 ) -> ListCreativesResponse:
     """List and search creative library (AdCP spec endpoint).
@@ -1775,6 +1789,7 @@ def _list_creatives_impl(
             limit=min(limit, 1000),  # Enforce max limit
             sort_by=sort_by,
             sort_order=valid_sort_order,
+            context=request_context,
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creatives request")) from e
@@ -2011,6 +2026,7 @@ def _list_creatives_impl(
             limit=req.limit, offset=offset, has_more=has_more, total_pages=total_pages, current_page=req.page
         ),
         creatives=creatives,
+        context=req.context,
     )
 
 
@@ -2035,6 +2051,7 @@ async def list_creatives(
     sort_by: str = "created_date",
     sort_order: str = "desc",
     webhook_url: str | None = None,
+    request_context: dict | None = None, # Application level context per adcp spec
     context: Context | ToolContext | None = None,
 ):
     """List and filter creative assets from the centralized library.
@@ -2066,6 +2083,7 @@ async def list_creatives(
         limit,
         sort_by,
         sort_order,
+        request_context,
         context,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
@@ -2079,6 +2097,7 @@ def sync_creatives_raw(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict = None,
+    request_context: dict | None = None, # Application level context per adcp spec
     context: Context | ToolContext | None = None,
 ):
     """Sync creative assets to the centralized creative library (raw function for A2A server use).
@@ -2106,6 +2125,7 @@ def sync_creatives_raw(
         dry_run=dry_run,
         validation_mode=validation_mode,
         push_notification_config=push_notification_config,
+        request_context=request_context,
         context=context,
     )
 
@@ -2123,6 +2143,7 @@ def list_creatives_raw(
     limit: int = 50,
     sort_by: str = "created_date",
     sort_order: str = "desc",
+    request_context: dict | None = None, # Application level context per adcp spec
     context: Context | ToolContext | None = None,
 ):
     """List creative assets with filtering and pagination (raw function for A2A server use).
@@ -2160,5 +2181,6 @@ def list_creatives_raw(
         limit=limit,
         sort_by=sort_by,
         sort_order=sort_order,
+        request_context=request_context,
         context=context,
     )

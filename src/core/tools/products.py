@@ -601,7 +601,13 @@ async def _get_products_impl(
             product.pricing_options = []
 
     # Response __str__() will generate appropriate message based on content
-    return GetProductsResponse(products=modified_products, errors=None)
+    resp = GetProductsResponse(products=modified_products, errors=None)
+    
+    # Echo application context if present on request (after schema updates)
+    if req.context is not None:
+        resp.context = req.context
+
+    return resp
 
 
 async def get_products(
@@ -609,6 +615,7 @@ async def get_products(
     brief: str = "",
     filters: dict | None = None,
     push_notification_config: PushNotificationConfig | None = None,
+    request_context: dict | None = None,
     context: Context | ToolContext | None = None,
 ):
     """Get available products matching the brief.
@@ -633,6 +640,9 @@ async def get_products(
             brand_manifest=brand_manifest,
             filters=filters,
         )
+        # Attach request_context if supported by generated schema after updates
+        if request_context is not None:
+            req.context = request_context
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="get_products request")) from e
     except ValueError as e:
@@ -654,6 +664,7 @@ async def get_products_raw(
     min_exposures: int | None = None,
     filters: dict | None = None,
     strategy_id: str | None = None,
+    request_context: dict | None = None, # Application level context per adcp spec
     context: Context | ToolContext | None = None,
 ) -> GetProductsResponse:
     """Get available products matching the brief.
@@ -680,6 +691,8 @@ async def get_products_raw(
         brand_manifest=brand_manifest,
         filters=filters,
     )
+    if request_context is not None:
+        req.context = request_context
 
     # Call shared implementation
     return await _get_products_impl(req, context)

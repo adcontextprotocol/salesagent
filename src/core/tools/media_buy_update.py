@@ -121,6 +121,7 @@ def _update_media_buy_impl(
     packages: list | None = None,
     creatives: list | None = None,
     push_notification_config: dict | None = None,
+    request_context: dict | None = None,
     context: Context | ToolContext | None = None,
 ) -> UpdateMediaBuyResponse:
     """Shared implementation for update_media_buy (used by both MCP and A2A).
@@ -191,6 +192,8 @@ def _update_media_buy_impl(
     request_params = {k: v for k, v in request_params.items() if v is not None}
 
     try:
+        if request_context is not None:
+            request_params["context"] = request_context  # type: ignore[index]
         req = UpdateMediaBuyRequest(**request_params)  # type: ignore[arg-type]
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="update_media_buy request")) from e
@@ -243,6 +246,7 @@ def _update_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         response_data = UpdateMediaBuyError(
             errors=[{"code": "principal_not_found", "message": error_msg}],
+            context=req.context,
         )
         ctx_manager.update_workflow_step(
             step.step_id,
@@ -323,6 +327,7 @@ def _update_media_buy_impl(
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
                     response_data = UpdateMediaBuyError(
                         errors=[{"code": "currency_not_supported", "message": error_msg}],
+                        context=req.context if req.context is not None else None,
                     )
                     ctx_manager.update_workflow_step(
                         step.step_id, status="failed", response_data=response_data.model_dump(), error_message=error_msg
@@ -386,6 +391,7 @@ def _update_media_buy_impl(
                                 )
                                 response_data = UpdateMediaBuyError(
                                     errors=[{"code": "budget_limit_exceeded", "message": error_msg}],
+                                    context=req.context,
                                 )
                                 ctx_manager.update_workflow_step(
                                     step.step_id,
@@ -493,6 +499,7 @@ def _update_media_buy_impl(
                     error_msg = "package_id is required when updating creative_ids"
                     response_data = UpdateMediaBuyError(
                         errors=[{"code": "missing_package_id", "message": error_msg}],
+                        context=req.context,
                     )
                     ctx_manager.update_workflow_step(
                         step.step_id,
@@ -527,6 +534,7 @@ def _update_media_buy_impl(
                         error_msg = f"Media buy '{req.media_buy_id}' not found"
                         response_data = UpdateMediaBuyError(
                             errors=[{"code": "media_buy_not_found", "message": error_msg}],
+                            context=req.context,
                         )
                         ctx_manager.update_workflow_step(
                             step.step_id,
@@ -800,8 +808,9 @@ def _update_media_buy_impl(
     response_data = UpdateMediaBuySuccess(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
-        packages=[],  # Required by AdCP spec
-        affected_packages=affected_packages_list if affected_packages_list else [],  # Internal field for tracking changes
+        implementation_date=None,
+        affected_packages=affected_packages_list if affected_packages_list else None,
+        context=req.context,
     )
 
     # Persist success with response data, then return
@@ -830,6 +839,7 @@ def update_media_buy(
     packages: list = None,
     creatives: list = None,
     push_notification_config: dict | None = None,
+    request_context: dict | None = None,
     context: Context | ToolContext | None = None,
 ):
     """Update a media buy with campaign-level and/or package-level changes.
@@ -873,6 +883,7 @@ def update_media_buy(
         packages=packages,
         creatives=creatives,
         push_notification_config=push_notification_config,
+        request_context=request_context,
         context=context,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
@@ -894,6 +905,7 @@ def update_media_buy_raw(
     packages: list = None,
     creatives: list = None,
     push_notification_config: dict = None,
+    request_context: dict | None = None,
     context: Context | ToolContext | None = None,
 ):
     """Update an existing media buy (raw function for A2A server use).
@@ -937,5 +949,6 @@ def update_media_buy_raw(
         packages=packages,
         creatives=creatives,
         push_notification_config=push_notification_config,
+        request_context=request_context,
         context=context,
     )
