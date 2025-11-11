@@ -16,6 +16,9 @@ from adcp import (
     CreateMediaBuySuccess as AdCPCreateMediaBuySuccess,
 )
 from adcp import (
+    Error,  # Import Error from adcp library
+)
+from adcp import (
     UpdateMediaBuyError as AdCPUpdateMediaBuyError,
 )
 from adcp import (
@@ -1211,14 +1214,6 @@ class GetProductsRequest(AdCPBaseModel):
         description="Structured filters for product discovery",
     )
     context: dict[str, Any] | None = None
-
-
-class Error(BaseModel):
-    """Standard error structure per AdCP spec."""
-
-    code: str = Field(..., description="Error code")
-    message: str = Field(..., description="Human-readable error message")
-    details: dict[str, Any] | None = Field(None, description="Additional error details")
 
 
 class GetProductsResponse(AdCPBaseModel):

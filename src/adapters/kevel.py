@@ -372,19 +372,20 @@ class Kevel(AdServerAdapter):
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                     package_dict["buyer_ref"] = matching_req_package.buyer_ref
 
-                # Add budget from request package if available (serialize to dict for JSON storage)
+                # Add budget from request package if available (AdCP v1.2.1: budget is float | None)
                 if matching_req_package and hasattr(matching_req_package, "budget") and matching_req_package.budget:
-                    # Handle both ADCP 2.5.0 (float) and 2.3 (Budget object)
+                    # Handle both ADCP 2.5.0 (float) and 2.3 (Budget object) - convert to float
                     if isinstance(matching_req_package.budget, (int, float)):
-                        package_dict["budget"] = {"total": float(matching_req_package.budget), "currency": "USD"}
-                    elif hasattr(matching_req_package.budget, "model_dump"):
-                        package_dict["budget"] = matching_req_package.budget.model_dump()
+                        package_dict["budget"] = float(matching_req_package.budget)
+                    elif hasattr(matching_req_package.budget, "total"):
+                        # Budget object with .total attribute
+                        package_dict["budget"] = float(matching_req_package.budget.total)
+                    elif isinstance(matching_req_package.budget, dict) and "total" in matching_req_package.budget:
+                        # Budget dict with 'total' key
+                        package_dict["budget"] = float(matching_req_package.budget["total"])
                     else:
-                        package_dict["budget"] = (
-                            dict(matching_req_package.budget)
-                            if isinstance(matching_req_package.budget, dict)
-                            else {"total": float(matching_req_package.budget), "currency": "USD"}
-                        )
+                        # Fallback: assume it's a number
+                        package_dict["budget"] = float(matching_req_package.budget)
 
                 # Add targeting_overlay from package if available
                 if package.targeting_overlay:
@@ -425,19 +426,20 @@ class Kevel(AdServerAdapter):
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                     package_dict["buyer_ref"] = matching_req_package.buyer_ref
 
-                # Add budget from request package if available (serialize to dict for JSON storage)
+                # Add budget from request package if available (AdCP v1.2.1: budget is float | None)
                 if matching_req_package and hasattr(matching_req_package, "budget") and matching_req_package.budget:
-                    # Handle both ADCP 2.5.0 (float) and 2.3 (Budget object)
+                    # Handle both ADCP 2.5.0 (float) and 2.3 (Budget object) - convert to float
                     if isinstance(matching_req_package.budget, (int, float)):
-                        package_dict["budget"] = {"total": float(matching_req_package.budget), "currency": "USD"}
-                    elif hasattr(matching_req_package.budget, "model_dump"):
-                        package_dict["budget"] = matching_req_package.budget.model_dump()
+                        package_dict["budget"] = float(matching_req_package.budget)
+                    elif hasattr(matching_req_package.budget, "total"):
+                        # Budget object with .total attribute
+                        package_dict["budget"] = float(matching_req_package.budget.total)
+                    elif isinstance(matching_req_package.budget, dict) and "total" in matching_req_package.budget:
+                        # Budget dict with 'total' key
+                        package_dict["budget"] = float(matching_req_package.budget["total"])
                     else:
-                        package_dict["budget"] = (
-                            dict(matching_req_package.budget)
-                            if isinstance(matching_req_package.budget, dict)
-                            else {"total": float(matching_req_package.budget), "currency": "USD"}
-                        )
+                        # Fallback: assume it's a number
+                        package_dict["budget"] = float(matching_req_package.budget)
 
                 # Add targeting_overlay from package if available
                 if package.targeting_overlay:
@@ -759,6 +761,7 @@ class Kevel(AdServerAdapter):
             return UpdateMediaBuySuccess(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
+                packages=[],  # Required by AdCP spec
                 implementation_date=today,
             )
         else:
@@ -835,6 +838,7 @@ class Kevel(AdServerAdapter):
                 return UpdateMediaBuySuccess(
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
+                    packages=[],  # Required by AdCP spec
                     implementation_date=today,
                 )
 

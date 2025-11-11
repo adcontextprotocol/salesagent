@@ -1244,6 +1244,7 @@ class MockAdServer(AdServerAdapter):
         return UpdateMediaBuySuccess(
             media_buy_id=media_buy_id,
             buyer_ref=buyer_ref,
+            packages=[],  # Required by AdCP spec
             implementation_date=today,
         )
 

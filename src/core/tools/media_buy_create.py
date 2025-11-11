@@ -2539,8 +2539,9 @@ async def _create_media_buy_impl(
         except Exception as adapter_error:
             raise
 
-        # Check if adapter returned an error response (no media_buy_id)
-        if response.errors and not response.media_buy_id:
+        # Check if adapter returned an error response
+        # With oneOf pattern, response can be CreateMediaBuySuccess or CreateMediaBuyError
+        if hasattr(response, "errors") and response.errors:
             logger.error(
                 f"[ADAPTER] Adapter returned error response: {response.errors[0].code} - {response.errors[0].message}"
             )

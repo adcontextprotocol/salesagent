@@ -185,7 +185,6 @@ def create_schema_registry() -> dict[str, dict[str, Any]]:
         Dictionary mapping schema names to JSON Schema objects
     """
     from src.core.schemas import (
-        CreateMediaBuyResponse,
         GetMediaBuyDeliveryResponse,
         GetProductsResponse,
         GetSignalsResponse,
@@ -193,7 +192,6 @@ def create_schema_registry() -> dict[str, dict[str, Any]]:
         ListCreativeFormatsResponse,
         ListCreativesResponse,
         SyncCreativesResponse,
-        UpdateMediaBuyResponse,
         UpdatePerformanceIndexResponse,
     )
 

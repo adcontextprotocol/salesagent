@@ -271,6 +271,7 @@ def _update_media_buy_impl(
         response_data = UpdateMediaBuySuccess(
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
+            packages=[],  # Required by AdCP spec
             implementation_date=None,
         )
         ctx_manager.update_workflow_step(
@@ -411,6 +412,7 @@ def _update_media_buy_impl(
             return UpdateMediaBuySuccess(
                 media_buy_id=result.media_buy_id,
                 buyer_ref=result.buyer_ref,
+                packages=[],  # Required by AdCP spec
                 implementation_date=result.implementation_date,
                 affected_packages=result.affected_packages if hasattr(result, "affected_packages") else [],
             )
@@ -793,6 +795,7 @@ def _update_media_buy_impl(
     response_data = UpdateMediaBuySuccess(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
+        packages=[],  # Required by AdCP spec
         implementation_date=None,
         affected_packages=affected_packages_list if affected_packages_list else [],
     )
