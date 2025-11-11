@@ -17,6 +17,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Check for hardcoded URLs in JavaScript (must use scriptRoot)
+      - id: no-hardcoded-urls
+        name: Check for hardcoded URLs in JavaScript
+        entry: uv run python .pre-commit-hooks/check_hardcoded_urls.py
+        language: system
+        files: '^(templates/.*\.html|static/.*\.js)$'
+        pass_filenames: true
+
       # Ensure GAM clients support both OAuth and service account auth
       - id: check-gam-auth-support
         name: Check GAM client supports both auth methods
