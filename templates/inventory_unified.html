@@ -22,7 +22,7 @@
                     <p class="text-muted">Browse GAM inventory and manage reusable inventory profiles</p>
                 </div>
                 <div>
-                    <button class="btn btn-primary" onclick="showCreateProfileModal()">
+                    <button class="btn btn-primary" onclick="window.inventoryProfileEditor.open()">
                         <i class="fas fa-plus"></i> Create Profile
                     </button>
                 </div>
@@ -214,124 +214,12 @@
     </div>
 </div>
 
-<!-- Create/Edit Profile Modal -->
-<div class="modal fade" id="profileModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="profileModalTitle">Create Inventory Profile</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="profileForm">
-                    <input type="hidden" id="profileId" name="profile_id">
-
-                    <!-- Section 1: Basic Information -->
-                    <h5 class="mb-3">Profile Information</h5>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="profileName" class="form-label">Profile Name *</label>
-                            <input type="text" class="form-control" id="profileName" name="name" required>
-                            <small class="text-muted">A descriptive name for this inventory configuration</small>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="profileIdInput" class="form-label">Profile ID</label>
-                            <input type="text" class="form-control" id="profileIdInput" name="profile_id_input" placeholder="Auto-generated from name">
-                            <small class="text-muted">Leave blank to auto-generate. Used in URLs and APIs.</small>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="profileDescription" class="form-label">Description</label>
-                        <textarea class="form-control" id="profileDescription" name="description" rows="2"></textarea>
-                    </div>
-
-                    <!-- Section 2: Inventory Selection -->
-                    <h5 class="mb-3 mt-4">Inventory (Ad Units & Placements)</h5>
-                    <div class="mb-3">
-                        <label class="form-label">Ad Units</label>
-                        <div id="selectedAdUnitsDisplay" class="border rounded p-2 mb-2" style="min-height: 60px; background: #f9f9f9;">
-                            <span class="text-muted">No ad units selected</span>
-                        </div>
-                        <textarea id="targeted_ad_unit_ids" name="targeted_ad_unit_ids" style="display: none;"></textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Placements</label>
-                        <div id="selectedPlacementsDisplay" class="border rounded p-2 mb-2" style="min-height: 60px; background: #f9f9f9;">
-                            <span class="text-muted">No placements selected</span>
-                        </div>
-                        <textarea id="targeted_placement_ids" name="targeted_placement_ids" style="display: none;"></textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="includeDescendants" name="include_descendants" checked>
-                            <label class="form-check-label" for="includeDescendants">
-                                Include child ad units in targeting
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Section 3: Creative Formats -->
-                    <h5 class="mb-3 mt-4">Creative Formats *</h5>
-                    <div id="format-search-box" class="mb-3">
-                        <input type="text" id="format-search-input" class="form-control" placeholder="Search formats by name, type, or size...">
-                    </div>
-
-                    <div id="selected-formats" style="margin-bottom: 1rem; padding: 1rem; background: #f0f7ff; border: 1px solid #d0e7ff; border-radius: 4px; min-height: 50px; display: none;">
-                        <div style="font-weight: 600; margin-bottom: 0.5rem; color: #0066cc;">Selected Formats:</div>
-                        <div id="selected-formats-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
-                    </div>
-
-                    <div id="format-list">
-                        <div id="format-loading" class="text-center text-muted py-3">
-                            Loading formats from creative agents...
-                        </div>
-                        <div id="format-results" style="display: none;"></div>
-                    </div>
-
-                    <input type="hidden" id="formats" name="formats">
-
-                    <!-- Section 4: Publisher Properties -->
-                    <h5 class="mb-3 mt-4">Publisher Properties *</h5>
-                    <div class="alert alert-info">
-                        <strong>Required:</strong> Inventory profiles must specify which properties they cover for AdCP compliance.
-                    </div>
-                    <div class="mb-3">
-                        <label for="publisher_properties" class="form-label">Publisher Properties (JSON) *</label>
-                        <textarea class="form-control font-monospace" id="publisher_properties" name="publisher_properties" rows="6"
-                                  placeholder='[{"publisher_domain": "example.com", "property_tags": ["all_inventory"]}]'></textarea>
-                        <small class="text-muted d-block mt-2">
-                            AdCP-compliant publisher properties structure. Each entry must include:
-                            <ul class="mb-0 mt-1">
-                                <li><code>publisher_domain</code> (required): Domain where adagents.json is hosted</li>
-                                <li><code>property_ids</code> (array) OR <code>property_tags</code> (array): Specific properties or tags</li>
-                            </ul>
-                        </small>
-                        {% if tenant and tenant.primary_domain %}
-                        <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="setDefaultProperties()">
-                            Use Default ({{ tenant.primary_domain }})
-                        </button>
-                        {% endif %}
-                    </div>
-
-                    <!-- Section 5: Optional Targeting Template -->
-                    <h5 class="mb-3 mt-4">Default Targeting (Optional)</h5>
-                    <div class="mb-3">
-                        <label for="targeting_template" class="form-label">Targeting Template (JSON)</label>
-                        <textarea class="form-control font-monospace" id="targeting_template" name="targeting_template" rows="4"
-                                  placeholder='{"geo_country_any_of": ["US"], "device_type_any_of": ["desktop", "mobile"]}'></textarea>
-                        <small class="text-muted">Optional. Products using this profile can inherit or override these targeting rules.</small>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="saveProfile()">Save Profile</button>
-            </div>
-        </div>
-    </div>
-</div>
+{% set editor_config = {
+    'tenant_id': tenant_id,
+    'tenant_virtual_host': tenant.virtual_host if tenant else '',
+    'mode': 'create'
+} %}
+{% include 'components/inventory_profile_editor.html' %}
 
 <!-- Selective Sync Modal (reused from inventory_browser.html) -->
 <div class="modal fade" id="selectiveSyncModal" tabindex="-1">
@@ -483,14 +371,25 @@
 .tree-node input[type="checkbox"] {
     margin-right: 8px;
 }
+
+/* Bootstrap tab styles */
+.tab-content {
+    display: block !important;
+}
+
+.tab-pane {
+    display: none;
+}
+
+.tab-pane.active {
+    display: block;
+}
 </style>
 
 <script>
 const tenantId = '{{ tenant_id }}';
 let selectedInventory = null;
 let inventoryTree = null;
-let allFormats = [];
-let selectedFormats = new Set();
 let selectedAdUnitsMap = new Map();  // id -> {id, name, path}
 let selectedPlacementsMap = new Map();  // id -> {id, name}
 
@@ -498,9 +397,6 @@ let selectedPlacementsMap = new Map();  // id -> {id, name}
 document.addEventListener('DOMContentLoaded', function() {
     loadProfiles();
     loadInventoryStatus();
-    loadFormats();
-    setupFormatSearch();
-    loadPublisherDomains();
 
     // Add enter key support for search
     document.getElementById('searchQuery').addEventListener('keypress', function(e) {
@@ -513,7 +409,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ==================== PROFILES TAB ====================
 
 function loadProfiles() {
-    fetch(`/admin/tenant/${tenantId}/inventory-profiles/api/list`, {
+    fetch(`/tenant/${tenantId}/inventory-profiles/api/list`, {
         credentials: 'same-origin'
     })
         .then(response => response.json())
@@ -543,7 +439,7 @@ function renderProfiles(profiles) {
                     Create an inventory profile to group ad units, creative formats, and properties together.
                     This makes it easy to reuse the same configuration across multiple products.
                 </p>
-                <button class="btn btn-primary mt-3" onclick="showCreateProfileModal()">
+                <button class="btn btn-primary mt-3" onclick="window.inventoryProfileEditor.open()">
                     <i class="fas fa-plus"></i> Create Your First Profile
                 </button>
             </div>
@@ -620,78 +516,15 @@ function renderProfiles(profiles) {
     container.innerHTML = html;
 }
 
-function showCreateProfileModal() {
-    // Reset form
-    document.getElementById('profileForm').reset();
-    document.getElementById('profileId').value = '';
-    document.getElementById('profileModalTitle').textContent = 'Create Inventory Profile';
-
-    // Pre-fill selection from browse inventory if any
-    if (selectedAdUnitsMap.size > 0 || selectedPlacementsMap.size > 0) {
-        updateProfileFormSelection();
-    }
-
-    // Show modal
-    new bootstrap.Modal(document.getElementById('profileModal')).show();
-}
-
 function editProfile(profileId) {
-    // Fetch full profile data from edit endpoint
-    fetch(`/admin/tenant/${tenantId}/inventory-profiles/${profileId}/edit`, {
+    // Fetch full profile data and pass to editor component
+    fetch(`/tenant/${tenantId}/inventory-profiles/${profileId}/api`, {
         credentials: 'same-origin'
     })
         .then(response => response.json())
         .then(profile => {
-            // Populate form fields
-            document.getElementById('profileId').value = profileId;
-            document.getElementById('profileName').value = profile.name || '';
-            document.getElementById('profileIdInput').value = profile.profile_id || '';
-            document.getElementById('profileDescription').value = profile.description || '';
-
-            // Populate inventory fields
-            const adUnitIds = profile.targeted_ad_unit_ids || [];
-            const placementIds = profile.targeted_placement_ids || [];
-            document.getElementById('targeted_ad_unit_ids').value = JSON.stringify(adUnitIds);
-            document.getElementById('targeted_placement_ids').value = JSON.stringify(placementIds);
-            document.getElementById('includeDescendants').checked = profile.include_descendants !== false;
-
-            // Update displays
-            if (adUnitIds.length > 0) {
-                document.getElementById('selectedAdUnitsDisplay').innerHTML =
-                    adUnitIds.map(id => `<span class="badge bg-primary me-1">${id}</span>`).join('');
-            }
-            if (placementIds.length > 0) {
-                document.getElementById('selectedPlacementsDisplay').innerHTML =
-                    placementIds.map(id => `<span class="badge bg-info me-1">${id}</span>`).join('');
-            }
-
-            // Populate formats
-            selectedFormats.clear();
-            const formats = profile.formats || [];
-            formats.forEach(formatRef => {
-                if (formatRef.id) {
-                    selectedFormats.add(formatRef.id);
-                }
-            });
-            updateSelectedFormatsDisplay();
-            updateHiddenInput();
-            displayFormats(allFormats);
-
-            // Populate publisher properties
-            if (profile.publisher_properties) {
-                document.getElementById('publisher_properties').value =
-                    JSON.stringify(profile.publisher_properties, null, 2);
-            }
-
-            // Populate targeting template
-            if (profile.targeting_template) {
-                document.getElementById('targeting_template').value =
-                    JSON.stringify(profile.targeting_template, null, 2);
-            }
-
-            // Change modal title and show
-            document.getElementById('profileModalTitle').textContent = 'Edit Inventory Profile';
-            new bootstrap.Modal(document.getElementById('profileModal')).show();
+            // Pass profile data to inventory profile editor component
+            window.inventoryProfileEditor.open(profile);
         })
         .catch(error => {
             console.error('Error loading profile:', error);
@@ -724,153 +557,8 @@ function deleteProfile(profileId, profileName) {
         });
 }
 
-function saveProfile() {
-    // Validate form
-    const form = document.getElementById('profileForm');
-    if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-    }
-
-    // Validate formats
-    if (selectedFormats.size === 0) {
-        alert('Please select at least one creative format');
-        return;
-    }
-
-    // Validate publisher properties
-    const propsJson = document.getElementById('publisher_properties').value.trim();
-    if (!propsJson) {
-        alert('Please specify publisher properties');
-        return;
-    }
-
-    try {
-        const props = JSON.parse(propsJson);
-        if (!Array.isArray(props) || props.length === 0) {
-            alert('Publisher properties must be a non-empty array');
-            return;
-        }
-    } catch (error) {
-        alert('Invalid JSON in publisher properties: ' + error.message);
-        return;
-    }
-
-    // Build form data
-    const formData = new FormData(form);
-
-    // Submit
-    const profileId = document.getElementById('profileId').value;
-    const url = profileId
-        ? `/admin/tenant/${tenantId}/inventory-profiles/${profileId}/edit`
-        : `/admin/tenant/${tenantId}/inventory-profiles/add`;
-
-    fetch(url, {
-        method: 'POST',
-        body: formData,
-        credentials: 'same-origin'
-    })
-        .then(response => {
-            if (response.redirected) {
-                // Success - reload profiles
-                bootstrap.Modal.getInstance(document.getElementById('profileModal')).hide();
-                loadProfiles();
-                return;
-            }
-            return response.text();
-        })
-        .then(text => {
-            if (text && text.includes('error')) {
-                alert('Error saving profile');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error saving profile: ' + error.message);
-        });
-}
-
-function setDefaultProperties() {
-    const defaultProps = [
-        {
-            "publisher_domain": "{{ tenant.primary_domain if tenant and tenant.primary_domain else 'example.com' }}",
-            "property_tags": ["all_inventory"]
-        }
-    ];
-    document.getElementById('publisher_properties').value = JSON.stringify(defaultProps, null, 2);
-}
-
-function loadPublisherDomains() {
-    fetch(`/admin/${tenantId}/authorized-properties/api/list`, {
-        credentials: 'same-origin'
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                console.error('Error loading authorized properties:', data.error);
-                return;
-            }
-
-            // Extract unique publisher domains
-            const domains = new Set();
-            (data.properties || []).forEach(prop => {
-                if (prop.publisher_domain) {
-                    domains.add(prop.publisher_domain);
-                }
-            });
-
-            // Create dropdown if we have domains
-            if (domains.size > 0) {
-                const publisherPropsField = document.getElementById('publisher_properties');
-                const parentDiv = publisherPropsField.parentElement;
-
-                // Check if dropdown already exists
-                if (!document.getElementById('publisher-domain-selector')) {
-                    const selectorDiv = document.createElement('div');
-                    selectorDiv.className = 'mb-2';
-                    selectorDiv.id = 'publisher-domain-selector';
-                    selectorDiv.innerHTML = `
-                        <label class="form-label">Quick Select Publisher Domain</label>
-                        <div class="input-group">
-                            <select class="form-select" id="domain-dropdown">
-                                <option value="">-- Select a domain --</option>
-                                ${Array.from(domains).sort().map(domain => `<option value="${domain}">${domain}</option>`).join('')}
-                            </select>
-                            <button class="btn btn-outline-primary" type="button" onclick="applySelectedDomain()">
-                                Apply
-                            </button>
-                        </div>
-                        <small class="text-muted">Select a domain to pre-fill the publisher properties JSON</small>
-                    `;
-
-                    // Insert before the publisher_properties textarea
-                    parentDiv.insertBefore(selectorDiv, publisherPropsField.parentElement.querySelector('label'));
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Error loading publisher domains:', error);
-        });
-}
-
-function applySelectedDomain() {
-    const dropdown = document.getElementById('domain-dropdown');
-    const selectedDomain = dropdown.value;
-
-    if (!selectedDomain) {
-        alert('Please select a domain');
-        return;
-    }
-
-    const props = [
-        {
-            "publisher_domain": selectedDomain,
-            "property_tags": ["all_inventory"]
-        }
-    ];
-
-    document.getElementById('publisher_properties').value = JSON.stringify(props, null, 2);
-}
+// saveProfile, setDefaultProperties, loadPublisherDomains, and applySelectedDomain
+// are now handled by the inventory_profile_editor.html component
 
 // ==================== BROWSE INVENTORY TAB ====================
 
@@ -1301,203 +989,17 @@ function updateSelectionDisplay() {
 }
 
 function createProfileFromSelection() {
-    // Pre-fill the modal with selected inventory
-    updateProfileFormSelection();
-    showCreateProfileModal();
+    // Create profile data from selected inventory
+    const profileData = {
+        targeted_ad_unit_ids: Array.from(selectedAdUnitsMap.keys()),
+        targeted_placement_ids: Array.from(selectedPlacementsMap.keys())
+    };
+
+    // Open editor with pre-filled inventory selection
+    window.inventoryProfileEditor.open(profileData);
 }
 
-function updateProfileFormSelection() {
-    // Update ad units display
-    const adUnitsDisplay = document.getElementById('selectedAdUnitsDisplay');
-    const adUnitsField = document.getElementById('targeted_ad_unit_ids');
-
-    if (selectedAdUnitsMap.size > 0) {
-        const adUnitIds = Array.from(selectedAdUnitsMap.keys());
-        adUnitsField.value = JSON.stringify(adUnitIds);
-        adUnitsDisplay.innerHTML = Array.from(selectedAdUnitsMap.values())
-            .map(u => `<span class="badge bg-primary me-1">${u.name}</span>`)
-            .join('');
-    } else {
-        adUnitsField.value = '[]';
-        adUnitsDisplay.innerHTML = '<span class="text-muted">No ad units selected</span>';
-    }
-
-    // Update placements display
-    const placementsDisplay = document.getElementById('selectedPlacementsDisplay');
-    const placementsField = document.getElementById('targeted_placement_ids');
-
-    if (selectedPlacementsMap.size > 0) {
-        const placementIds = Array.from(selectedPlacementsMap.keys());
-        placementsField.value = JSON.stringify(placementIds);
-        placementsDisplay.innerHTML = Array.from(selectedPlacementsMap.values())
-            .map(p => `<span class="badge bg-info me-1">${p.name}</span>`)
-            .join('');
-    } else {
-        placementsField.value = '[]';
-        placementsDisplay.innerHTML = '<span class="text-muted">No placements selected</span>';
-    }
-}
-
-// ==================== FORMAT SELECTION ====================
-
-async function loadFormats() {
-    try {
-        const response = await fetch('/api/formats/list?tenant_id={{ tenant_id }}');
-        const data = await response.json();
-
-        if (data.error) {
-            console.error('API returned error:', data);
-            document.getElementById('format-loading').innerHTML = `
-                <div style="color: #e74c3c; padding: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px;">
-                    <strong>⚠️ Error loading formats:</strong> ${data.message || data.error}
-                </div>
-            `;
-            return;
-        }
-
-        allFormats = [];
-        for (const [agentUrl, formats] of Object.entries(data.agents || {})) {
-            formats.forEach(fmt => {
-                allFormats.push({...fmt, agent_url: agentUrl});
-            });
-        }
-
-        console.log(`✅ Loaded ${allFormats.length} formats from ${Object.keys(data.agents || {}).length} agent(s)`);
-
-        document.getElementById('format-loading').style.display = 'none';
-        displayFormats(allFormats);
-    } catch (error) {
-        console.error('Error loading formats:', error);
-        document.getElementById('format-loading').innerHTML = `
-            <div style="color: #e74c3c; padding: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px;">
-                <strong>⚠️ Network error loading formats:</strong> ${error.message}
-            </div>
-        `;
-    }
-}
-
-function setupFormatSearch() {
-    const searchBox = document.getElementById('format-search-input');
-    let searchTimeout;
-
-    searchBox.addEventListener('input', function(e) {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
-            const query = e.target.value.toLowerCase().trim();
-            if (query.length === 0) {
-                displayFormats(allFormats);
-            } else {
-                const filtered = allFormats.filter(fmt =>
-                    fmt.format_id.toLowerCase().includes(query) ||
-                    fmt.name.toLowerCase().includes(query) ||
-                    (fmt.description && fmt.description.toLowerCase().includes(query)) ||
-                    fmt.type.toLowerCase().includes(query)
-                );
-                displayFormats(filtered);
-            }
-        }, 300);
-    });
-}
-
-function displayFormats(formats) {
-    const container = document.getElementById('format-results');
-
-    if (formats.length === 0) {
-        container.innerHTML = '<div style="text-align: center; padding: 2rem; color: #666;">No formats found</div>';
-        container.style.display = 'block';
-        return;
-    }
-
-    // Group by type
-    const grouped = {};
-    formats.forEach(fmt => {
-        if (!grouped[fmt.type]) {
-            grouped[fmt.type] = [];
-        }
-        grouped[fmt.type].push(fmt);
-    });
-
-    let html = '';
-    for (const [type, typeFormats] of Object.entries(grouped)) {
-        html += `
-            <div style="margin-bottom: 2rem;">
-                <h6 style="margin-bottom: 1rem; text-transform: capitalize; color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">${type}</h6>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
-        `;
-
-        typeFormats.forEach(format => {
-            const isSelected = selectedFormats.has(format.format_id);
-            const checkIcon = isSelected ? '✓ ' : '';
-
-            html += `
-                <div class="format-card ${isSelected ? 'selected' : ''}"
-                     onclick="toggleFormat('${format.format_id}', '${format.name}', '${format.agent_url || ''}')">
-                    <div style="font-weight: 600; color: #333;">${checkIcon}${format.name}</div>
-                    ${format.description ? `<div style="color: #777; font-size: 0.85rem; margin-top: 0.25rem;">${format.description}</div>` : ''}
-                </div>
-            `;
-        });
-
-        html += '</div></div>';
-    }
-
-    container.innerHTML = html;
-    container.style.display = 'block';
-}
-
-function toggleFormat(formatId, formatName, agentUrl) {
-    if (selectedFormats.has(formatId)) {
-        selectedFormats.delete(formatId);
-    } else {
-        selectedFormats.add(formatId);
-    }
-
-    updateSelectedFormatsDisplay();
-    updateHiddenInput();
-    displayFormats(allFormats);
-}
-
-function updateSelectedFormatsDisplay() {
-    const container = document.getElementById('selected-formats');
-    const list = document.getElementById('selected-formats-list');
-
-    if (selectedFormats.size === 0) {
-        container.style.display = 'none';
-        return;
-    }
-
-    container.style.display = 'block';
-
-    let html = '';
-    selectedFormats.forEach(formatId => {
-        const format = allFormats.find(f => f.format_id === formatId);
-        if (format) {
-            html += `
-                <span class="format-tag">
-                    ${format.name}
-                    <span class="remove" onclick="event.stopPropagation(); toggleFormat('${formatId}', '${format.name}', '${format.agent_url || ''}')">×</span>
-                </span>
-            `;
-        }
-    });
-
-    list.innerHTML = html;
-}
-
-function updateHiddenInput() {
-    const formatRefs = [];
-    selectedFormats.forEach(formatId => {
-        const format = allFormats.find(f => f.format_id === formatId);
-        if (format) {
-            formatRefs.push({
-                agent_url: format.agent_url || 'https://creative.adcontextprotocol.org',
-                id: formatId
-            });
-        }
-    });
-
-    document.getElementById('formats').value = JSON.stringify(formatRefs);
-}
+// Format selection functions are now handled by the inventory_profile_editor.html component
 </script>
 
 {% endblock %}

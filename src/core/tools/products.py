@@ -56,7 +56,7 @@ def convert_product_model_to_schema(product_model) -> Product:
     product_data["product_id"] = product_model.product_id
     product_data["name"] = product_model.name
     product_data["description"] = product_model.description
-    product_data["formats"] = product_model.formats
+    product_data["formats"] = product_model.effective_formats  # Auto-resolves from profile if set
     product_data["targeting_template"] = product_model.targeting_template
     product_data["delivery_type"] = product_model.delivery_type
 
@@ -71,10 +71,13 @@ def convert_product_model_to_schema(product_model) -> Product:
         product_data["countries"] = product_model.countries
 
     # Property authorization (one is required)
-    if product_model.properties:
-        product_data["properties"] = product_model.properties
-    elif product_model.property_tags:
-        product_data["property_tags"] = product_model.property_tags
+    # Use effective_properties to auto-resolve from profile
+    effective_props = product_model.effective_properties
+    effective_tags = product_model.effective_property_tags
+    if effective_props:
+        product_data["properties"] = effective_props
+    elif effective_tags:
+        product_data["property_tags"] = effective_tags
 
     # Product detail fields
     if product_model.delivery_measurement:
@@ -700,7 +703,10 @@ def get_product_catalog() -> list[Product]:
         stmt = (
             select(ModelProduct)
             .filter_by(tenant_id=tenant["tenant_id"])
-            .options(selectinload(ModelProduct.pricing_options))
+            .options(
+                selectinload(ModelProduct.pricing_options),
+                selectinload(ModelProduct.inventory_profile),  # Avoid N+1 query
+            )
         )
         products = session.scalars(stmt).all()
 

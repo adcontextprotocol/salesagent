@@ -244,6 +244,68 @@ class Product(Base, JSONValidatorMixin):
     # Use passive_deletes=True to tell SQLAlchemy to rely on database CASCADE
     pricing_options = relationship("PricingOption", back_populates="product", passive_deletes=True)
 
+    # Effective properties - auto-resolve from inventory profile if set
+    @property
+    def effective_formats(self) -> list[dict[str, str]]:
+        """Get formats from inventory profile (if set) or product itself.
+
+        Returns formats as list of FormatId dicts: [{"agent_url": str, "id": str}, ...]
+        When inventory_profile_id is set, returns current profile's formats (auto-updates).
+        When inventory_profile_id is null, returns product's own formats (legacy).
+        """
+        if self.inventory_profile_id and self.inventory_profile:
+            return self.inventory_profile.formats
+        return self.formats
+
+    @property
+    def effective_properties(self) -> list[dict] | None:
+        """Get publisher properties from inventory profile (if set) or product itself.
+
+        Returns properties array (AdCP Property objects).
+        When inventory_profile_id is set, returns current profile's properties (auto-updates).
+        When inventory_profile_id is null, returns product's own properties (legacy).
+        """
+        if self.inventory_profile_id and self.inventory_profile:
+            return self.inventory_profile.publisher_properties
+        return self.properties
+
+    @property
+    def effective_property_tags(self) -> list[str] | None:
+        """Get property tags from inventory profile (if set) or product itself.
+
+        Returns property_tags array (list of tag strings).
+        When inventory_profile_id is set, derives tags from profile's properties (auto-updates).
+        When inventory_profile_id is null, returns product's own property_tags (legacy).
+        """
+        if self.inventory_profile_id and self.inventory_profile:
+            # For profile-based products, we use properties not tags
+            # Return None to indicate properties should be used instead
+            return None
+        return self.property_tags
+
+    @property
+    def effective_implementation_config(self) -> dict:
+        """Get GAM implementation config from inventory profile (if set) or product itself.
+
+        Returns implementation_config dict with GAM-specific settings.
+        When inventory_profile_id is set, builds config from profile's inventory (auto-updates).
+        When inventory_profile_id is null, returns product's own config (legacy).
+
+        Key fields for GAM adapter:
+        - targeted_ad_unit_ids: List of GAM ad unit IDs
+        - targeted_placement_ids: List of GAM placement IDs
+        - include_descendants: Whether to include child ad units
+        """
+        if self.inventory_profile_id and self.inventory_profile:
+            profile = self.inventory_profile
+            # Build config from profile's inventory configuration
+            return {
+                "targeted_ad_unit_ids": profile.inventory_config.get("ad_units", []),
+                "targeted_placement_ids": profile.inventory_config.get("placements", []),
+                "include_descendants": profile.inventory_config.get("include_descendants", True),
+            }
+        return self.implementation_config or {}
+
     __table_args__ = (
         Index("idx_products_tenant", "tenant_id"),
         # Enforce AdCP spec: products must have EITHER properties OR property_tags (not both, not neither)

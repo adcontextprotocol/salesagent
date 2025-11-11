@@ -301,6 +301,7 @@ def list_products(tenant_id):
                 db_session.scalars(
                     select(Product)
                     .options(joinedload(Product.pricing_options))
+                    .options(joinedload(Product.inventory_profile))
                     .filter_by(tenant_id=tenant_id)
                     .order_by(Product.name)
                 )
@@ -452,6 +453,30 @@ def list_products(tenant_id):
                         f"This means format resolution failed."
                     )
 
+                # Get inventory profile info if product uses one
+                inventory_profile_dict = None
+                if product.inventory_profile:
+                    # Generate inventory summary from profile
+                    inventory_config = product.inventory_profile.inventory_config or {}
+                    ad_units = inventory_config.get("ad_units", [])
+                    placements = inventory_config.get("placements", [])
+
+                    summary_parts = []
+                    if ad_units:
+                        summary_parts.append(f"{len(ad_units)} ad unit{'s' if len(ad_units) != 1 else ''}")
+                    if placements:
+                        summary_parts.append(f"{len(placements)} placement{'s' if len(placements) != 1 else ''}")
+
+                    inventory_summary = ", ".join(summary_parts) if summary_parts else "No inventory"
+
+                    inventory_profile_dict = {
+                        "id": product.inventory_profile.id,
+                        "profile_id": product.inventory_profile.profile_id,
+                        "name": product.inventory_profile.name,
+                        "description": product.inventory_profile.description,
+                        "inventory_summary": inventory_summary,
+                    }
+
                 product_dict = {
                     "product_id": product.product_id,
                     "name": product.name,
@@ -478,6 +503,7 @@ def list_products(tenant_id):
                             "custom_keys": 0,
                         },
                     ),
+                    "inventory_profile": inventory_profile_dict,
                     # Dynamic product fields
                     "is_dynamic": getattr(product, "is_dynamic", False),
                     "is_dynamic_variant": getattr(product, "is_dynamic_variant", False),
@@ -496,6 +522,79 @@ def list_products(tenant_id):
         logger.error(f"Error loading products: {e}", exc_info=True)
         flash("Error loading products", "error")
         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+
+
+def _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data=None):
+    """Helper to render add product form with optional preserved form data.
+
+    Args:
+        tenant_id: Tenant ID
+        tenant: Tenant object
+        adapter_type: Adapter type (e.g., "google_ad_manager")
+        currencies: List of currency codes
+        form_data: Optional dict of form data to preserve on validation errors
+
+    Returns:
+        Rendered template response
+    """
+    from src.core.database.models import AuthorizedProperty, GAMInventory, InventoryProfile, PropertyTag, SignalsAgent
+
+    with get_db_session() as db_session:
+        # Load authorized properties
+        authorized_properties_query = db_session.scalars(
+            select(AuthorizedProperty).filter_by(tenant_id=tenant_id, verification_status="verified")
+        ).all()
+        properties_list = [
+            {"id": p.property_id, "name": p.name, "property_type": p.property_type, "tags": p.tags or []}
+            for p in authorized_properties_query
+        ]
+
+        # Load property tags
+        property_tags = db_session.scalars(
+            select(PropertyTag).filter_by(tenant_id=tenant_id).order_by(PropertyTag.name)
+        ).all()
+
+        if adapter_type == "google_ad_manager":
+            # Check if inventory has been synced
+            inventory_count = db_session.scalar(
+                select(func.count()).select_from(GAMInventory).filter_by(tenant_id=tenant_id)
+            )
+            inventory_synced = inventory_count > 0
+
+            # Get signals agents
+            signals_agents = db_session.scalars(select(SignalsAgent).filter_by(tenant_id=tenant_id, enabled=True)).all()
+
+            # Get inventory profiles
+            inventory_profiles = db_session.scalars(
+                select(InventoryProfile).filter_by(tenant_id=tenant_id).order_by(InventoryProfile.name)
+            ).all()
+
+            return render_template(
+                "add_product_gam.html",
+                tenant_id=tenant_id,
+                tenant_name=tenant.name,
+                tenant=tenant,
+                inventory_synced=inventory_synced,
+                formats=get_creative_formats(tenant_id=tenant_id),
+                authorized_properties=properties_list,
+                property_tags=property_tags,
+                currencies=currencies,
+                signals_agents=signals_agents,
+                inventory_profiles=inventory_profiles,
+                form_data=form_data,  # Preserve form data on error
+            )
+        else:
+            # For Mock and other adapters
+            formats = get_creative_formats(tenant_id=tenant_id)
+            return render_template(
+                "add_product_mock.html",
+                tenant_id=tenant_id,
+                formats=formats,
+                authorized_properties=properties_list,
+                property_tags=property_tags,
+                currencies=currencies,
+                form_data=form_data,  # Preserve form data on error
+            )
 
 
 @products_bp.route("/add", methods=["GET", "POST"])
@@ -529,7 +628,7 @@ def add_product(tenant_id):
             # Validate required fields
             if not form_data.get("name"):
                 flash("Product name is required", "error")
-                return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
             with get_db_session() as db_session:
                 # Parse formats - expecting JSON string with FormatReference objects or checkbox values
@@ -587,7 +686,7 @@ def add_product(tenant_id):
                     except Exception as e:
                         logger.error(f"Failed to fetch available formats: {e}")
                         flash("Unable to validate formats. Please try again.", "error")
-                        return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                        return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
                     formats = []
                     invalid_formats = []
@@ -627,7 +726,7 @@ def add_product(tenant_id):
                             f"These formats are not available for this tenant. Please select valid formats.",
                             "error",
                         )
-                        return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                        return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
                 # Parse countries - from multi-select
                 countries_list = request.form.getlist("countries")
@@ -640,7 +739,7 @@ def add_product(tenant_id):
                 # CRITICAL: Products MUST have at least one pricing option
                 if not pricing_options_data or len(pricing_options_data) == 0:
                     flash("Product must have at least one pricing option", "error")
-                    return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                    return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
                 # Derive delivery_type from first pricing option for implementation_config
                 delivery_type = "guaranteed"  # Default
@@ -677,7 +776,7 @@ def add_product(tenant_id):
                                 "error",
                             )
                             # Redirect to form instead of re-rendering to avoid missing context
-                            return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                            return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
                         # Validate ad unit IDs exist in inventory
                         from src.core.database.models import GAMInventory
@@ -774,6 +873,28 @@ def add_product(tenant_id):
                     "implementation_config": implementation_config,
                 }
 
+                # Handle inventory profile association (optional)
+                # Check for inventory_profile_id directly (no need for inventory_mode radio button)
+                inventory_profile_id = form_data.get("inventory_profile_id", "").strip()
+                if inventory_profile_id:
+                    try:
+                        profile_id = int(inventory_profile_id)
+                        # SECURITY: Verify profile belongs to this tenant
+                        from src.core.database.models import InventoryProfile
+
+                        profile_stmt = select(InventoryProfile).filter_by(id=profile_id)
+                        profile = session.scalars(profile_stmt).first()
+                        if not profile or profile.tenant_id != tenant_id:
+                            flash(
+                                "Invalid inventory profile - profile not found or does not belong to this tenant",
+                                "error",
+                            )
+                            return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
+                        product_kwargs["inventory_profile_id"] = profile_id
+                    except (ValueError, TypeError):
+                        flash("Invalid inventory profile ID", "error")
+                        return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
+
                 # Only add countries if explicitly set
                 if countries is not None:
                     product_kwargs["countries"] = countries
@@ -837,7 +958,7 @@ def add_product(tenant_id):
                             # Length validation
                             if len(tag) < 2 or len(tag) > 50:
                                 flash("Property tags must be 2-50 characters", "error")
-                                return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                                return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
                             # Character whitelist validation (AdCP spec: ^[a-z0-9_]+$)
                             if not re.match(r"^[a-z0-9_]+$", tag):
@@ -845,12 +966,12 @@ def add_product(tenant_id):
                                     f"Invalid tag '{tag}': use only lowercase letters, numbers, and underscores",
                                     "error",
                                 )
-                                return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                                return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
                         # Check for duplicates
                         if len(property_tags) != len(set(property_tags)):
                             flash("Duplicate property tags detected", "error")
-                            return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                            return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
                         # Validate that all property tags exist in the database
                         if property_tags:
@@ -871,7 +992,7 @@ def add_product(tenant_id):
                                     f"Please create them in Settings → Authorized Properties first.",
                                     "error",
                                 )
-                                return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                                return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
                             product_kwargs["property_tags"] = property_tags
                     else:
@@ -886,7 +1007,7 @@ def add_product(tenant_id):
                         property_ids = [int(pid) for pid in property_ids_str]
                     except (ValueError, TypeError):
                         flash("Invalid property IDs provided", "error")
-                        return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                        return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
                     if property_ids:
                         from src.core.database.models import AuthorizedProperty
@@ -900,7 +1021,7 @@ def add_product(tenant_id):
                         # Verify all requested IDs were found (prevent TOCTOU)
                         if len(properties) != len(property_ids):
                             flash("One or more selected properties not found or not authorized", "error")
-                            return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                            return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
                         if properties:
                             # Convert to dict format for JSONB storage
@@ -942,7 +1063,7 @@ def add_product(tenant_id):
                         else:
                             # User selected "specific" but didn't choose any agents - error
                             flash("Please select at least one signals agent", "error")
-                            return redirect(url_for("products.add_product", tenant_id=tenant_id))
+                            return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
                     else:
                         # "all" selected - set signals_agent_ids to None or empty list to indicate "use all"
                         product_kwargs["signals_agent_ids"] = None
@@ -1068,74 +1189,10 @@ def add_product(tenant_id):
         except Exception as e:
             logger.error(f"Error creating product: {e}", exc_info=True)
             flash(f"Error creating product: {str(e)}", "error")
-            return redirect(url_for("products.add_product", tenant_id=tenant_id))
+            return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
-    # GET request - show adapter-specific form
-    # Load authorized properties and property tags for property selection
-    with get_db_session() as db_session:
-        from src.core.database.models import AuthorizedProperty, PropertyTag
-
-        authorized_properties = db_session.scalars(
-            select(AuthorizedProperty).filter_by(tenant_id=tenant_id, verification_status="verified")
-        ).all()
-
-        # Convert to dict for template
-        properties_list = []
-        for prop in authorized_properties:
-            properties_list.append(
-                {
-                    "id": prop.property_id,
-                    "name": prop.name,
-                    "property_type": prop.property_type,
-                    "tags": prop.tags or [],
-                }
-            )
-
-        # Load all property tags for dropdown
-        property_tags = db_session.scalars(
-            select(PropertyTag).filter_by(tenant_id=tenant_id).order_by(PropertyTag.name)
-        ).all()
-
-    if adapter_type == "google_ad_manager":
-        # For GAM: unified form with inventory selection
-        # Check if inventory has been synced
-        from src.core.database.models import GAMInventory
-
-        with get_db_session() as db_session:
-            inventory_count = db_session.scalar(
-                select(func.count()).select_from(GAMInventory).filter_by(tenant_id=tenant_id)
-            )
-            inventory_synced = inventory_count > 0
-
-            # Get signals agents for dynamic products
-            from src.core.database.models import SignalsAgent
-
-            stmt = select(SignalsAgent).filter_by(tenant_id=tenant_id, enabled=True)
-            signals_agents = db_session.scalars(stmt).all()
-
-        return render_template(
-            "add_product_gam.html",
-            tenant_id=tenant_id,
-            tenant_name=tenant.name,
-            tenant=tenant,
-            inventory_synced=inventory_synced,
-            formats=get_creative_formats(tenant_id=tenant_id),
-            authorized_properties=properties_list,
-            property_tags=property_tags,
-            currencies=currencies,
-            signals_agents=signals_agents,
-        )
-    else:
-        # For Mock and other adapters: simple form
-        formats = get_creative_formats(tenant_id=tenant_id)
-        return render_template(
-            "add_product_mock.html",
-            tenant_id=tenant_id,
-            formats=formats,
-            authorized_properties=properties_list,
-            property_tags=property_tags,
-            currencies=currencies,
-        )
+    # GET request - show adapter-specific form (use helper with no form_data)
+    return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data=None)
 
 
 @products_bp.route("/<product_id>/edit", methods=["GET", "POST"])
@@ -1253,6 +1310,33 @@ def edit_product(tenant_id, product_id):
                 # Update basic fields
                 product.name = form_data.get("name", product.name)
                 product.description = form_data.get("description", product.description)
+
+                # Handle inventory profile association (optional)
+                # Check for inventory_profile_id directly (no need for inventory_mode radio button)
+                inventory_profile_id = form_data.get("inventory_profile_id", "").strip()
+                if inventory_profile_id:
+                    try:
+                        profile_id = int(inventory_profile_id)
+                        # SECURITY: Verify profile belongs to this tenant
+                        from src.core.database.models import InventoryProfile
+
+                        profile_stmt = select(InventoryProfile).filter_by(id=profile_id)
+                        profile = session.scalars(profile_stmt).first()
+                        if not profile or profile.tenant_id != tenant_id:
+                            flash(
+                                "Invalid inventory profile - profile not found or does not belong to this tenant",
+                                "error",
+                            )
+                            return redirect(
+                                url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id)
+                            )
+                        product.inventory_profile_id = profile_id
+                    except (ValueError, TypeError):
+                        flash("Invalid inventory profile ID", "error")
+                        return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
+                else:
+                    # No profile selected - clear inventory profile association
+                    product.inventory_profile_id = None
 
                 # Apply validated formats (already validated above, outside session)
                 if validated_formats is not None:
@@ -1616,6 +1700,7 @@ def edit_product(tenant_id, product_id):
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
+                "inventory_profile_id": product.inventory_profile_id,
                 "delivery_type": delivery_type,
                 "is_fixed_price": is_fixed_price,
                 "cpm": cpm,
@@ -1710,6 +1795,12 @@ def edit_product(tenant_id, product_id):
                     for mapping, inventory in assigned_inventory_results
                 ]
 
+                # Get inventory profiles for this tenant
+                from src.core.database.models import InventoryProfile
+
+                stmt_profiles = select(InventoryProfile).filter_by(tenant_id=tenant_id).order_by(InventoryProfile.name)
+                inventory_profiles = db_session.scalars(stmt_profiles).all()
+
                 return render_template(
                     "add_product_gam.html",
                     tenant_id=tenant_id,
@@ -1719,6 +1810,7 @@ def edit_product(tenant_id, product_id):
                     formats=get_creative_formats(tenant_id=tenant_id),
                     currencies=currencies,
                     assigned_inventory=assigned_inventory,
+                    inventory_profiles=inventory_profiles,
                 )
             else:
                 return render_template(

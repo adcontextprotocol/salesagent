@@ -240,7 +240,8 @@ def get_product_catalog() -> list[Product]:
                 return value
 
             # Parse formats - now stored as strings by the validator
-            format_ids = safe_json_parse(product.formats) or []
+            # Use effective_formats to auto-resolve from inventory profile if set
+            format_ids = safe_json_parse(product.effective_formats) or []
             # Ensure it's a list of strings (validator guarantees this)
             if not isinstance(format_ids, list):
                 format_ids = []
@@ -283,16 +284,18 @@ def get_product_catalog() -> list[Product]:
                 "is_custom": product.is_custom,
                 "expires_at": product.expires_at,
                 # Note: brief_relevance is populated dynamically when brief is provided
-                "implementation_config": safe_json_parse(product.implementation_config),
+                # Use effective_implementation_config to auto-resolve from inventory profile if set
+                "implementation_config": safe_json_parse(product.effective_implementation_config),
                 # Required per AdCP spec: either properties OR property_tags
+                # Use effective_properties/effective_property_tags to auto-resolve from inventory profile if set
                 "properties": (
-                    safe_json_parse(product.properties)
-                    if hasattr(product, "properties") and product.properties
+                    safe_json_parse(product.effective_properties)
+                    if hasattr(product, "effective_properties") and product.effective_properties
                     else None
                 ),
                 "property_tags": (
-                    safe_json_parse(product.property_tags)
-                    if hasattr(product, "property_tags") and product.property_tags
+                    safe_json_parse(product.effective_property_tags)
+                    if hasattr(product, "effective_property_tags") and product.effective_property_tags
                     else ["all_inventory"]  # Default required per AdCP spec
                 ),
             }

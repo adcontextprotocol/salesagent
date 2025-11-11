@@ -23,7 +23,7 @@
 
         <div class="form-group">
             <label for="name">Product Name *</label>
-            <input type="text" id="name" name="name" required placeholder="e.g., Premium Homepage Package" value="{{ product.name if product else '' }}">
+            <input type="text" id="name" name="name" required placeholder="e.g., Premium Homepage Package" value="{{ form_data.name if form_data else (product.name if product else '') }}">
             <small style="color: #666;" id="name-product-note" style="display: none;">
                 For dynamic products, this is the base product name. Variants will use your name template pattern.
             </small>
@@ -31,7 +31,7 @@
 
         <div class="form-group">
             <label for="description">Description</label>
-            <textarea id="description" name="description" rows="3" placeholder="Describe this product for potential buyers">{{ product.description if product else '' }}</textarea>
+            <textarea id="description" name="description" rows="3" placeholder="Describe this product for potential buyers">{{ form_data.description if form_data else (product.description if product else '') }}</textarea>
             <small style="color: #666;" id="description-product-note" style="display: none;">
                 For dynamic products, this is the base product description. Variants will use your description template pattern.
             </small>
@@ -46,10 +46,18 @@
         </div>
 
         <div class="form-group">
-            <label style="display: flex; align-items: center;">
-                <input type="checkbox" id="is_dynamic" name="is_dynamic" {% if product and product.is_dynamic %}checked{% endif %} style="margin-right: 0.5rem;">
-                <strong>This is a dynamic product</strong>
+            <label style="display: inline-block; cursor: pointer;">
+                <input type="checkbox" id="is_dynamic" name="is_dynamic"
+                       {% if form_data and form_data.is_dynamic %}checked{% elif product and product.is_dynamic %}checked{% endif %}
+                       {% if not signals_agents or signals_agents|length == 0 %}disabled{% endif %}
+                       style="margin-right: 0.5rem; vertical-align: middle;">
+                <span style="vertical-align: middle;">This is a dynamic product</span>
             </label>
+            {% if not signals_agents or signals_agents|length == 0 %}
+            <div style="color: #dc3545; font-size: 0.9rem; margin-left: 1.75rem; margin-top: 0.25rem;">
+                (Disabled - <a href="{{ url_for('signals_agents.list_signals_agents', tenant_id=tenant_id) }}">Add a signals agent first</a>)
+            </div>
+            {% endif %}
             <small style="color: #666; display: block; margin-top: 0.5rem;">
                 When enabled, this product acts as a base. The system will query signals agents and create product variants with targeting based on active signals.
             </small>
@@ -140,7 +148,7 @@
 
                     <div id="custom-name-pattern" style="display: {% if product and product.variant_name_template and product.variant_name_template != '{{signal.name}}' %}block{% else %}none{% endif %}; margin-left: 1.75rem; margin-top: 0.5rem; margin-bottom: 0.5rem;">
                         <input type="text" id="variant_name_template" name="variant_name_template"
-                               value="{{ product.variant_name_template if product and product.variant_name_template else '' }}"
+                               value="{{ form_data.variant_name_template if form_data else (product.variant_name_template if product and product.variant_name_template else '') }}"
                                placeholder="{{ '{{name}}' }} - {{ '{{signal.name}}' }}" style="width: 100%;">
                         <small style="color: #666; display: block; margin-top: 0.25rem;">
                             Available: <code>{{ '{{name}}' }}</code>, <code>{{ '{{signal.name}}' }}</code>,
@@ -174,7 +182,7 @@ Target users based on local weather conditions for maximum relevance.</div>
             <div class="form-group">
                 <label for="max_signals">Maximum Variants</label>
                 <input type="number" id="max_signals" name="max_signals"
-                       value="{{ product.max_signals if product and product.max_signals else 5 }}"
+                       value="{{ form_data.max_signals if form_data else (product.max_signals if product and product.max_signals else 5) }}"
                        min="1" max="20" style="width: 150px;">
                 <small style="color: #666;">Maximum number of product variants to create from signals (default: 5)</small>
             </div>
@@ -183,7 +191,7 @@ Target users based on local weather conditions for maximum relevance.</div>
             <div class="form-group">
                 <label for="variant_ttl_days">Variant Expiration (Days)</label>
                 <input type="number" id="variant_ttl_days" name="variant_ttl_days"
-                       value="{{ product.variant_ttl_days if product and product.variant_ttl_days else '' }}"
+                       value="{{ form_data.variant_ttl_days if form_data else (product.variant_ttl_days if product and product.variant_ttl_days else '') }}"
                        min="1" max="365" placeholder="30" style="width: 150px;">
                 <small style="color: #666;">How many days until unused variants expire (leave blank for tenant default of 30 days)</small>
             </div>
@@ -214,15 +222,58 @@ Target users based on local weather conditions for maximum relevance.</div>
             <small style="color: #666;">Hold Ctrl/Cmd to select multiple, or select "All Countries". For dynamic products, these countries are passed to signals agents.</small>
         </div>
 
-        <!-- Section 2: GAM Inventory Selection -->
-        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">GAM Inventory</h3>
-        <p style="color: #666; margin-bottom: 1.5rem;">Select ad units and placements from your GAM inventory</p>
+        <!-- Section 2: Inventory Configuration -->
+        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Inventory Configuration *</h3>
+        <p style="color: #666; margin-bottom: 1rem;">
+            <strong>Choose one:</strong> Use an inventory profile (recommended) or configure inventory manually below
+        </p>
 
-        <div class="form-group">
-            <label for="ad-unit-search">Ad Units</label>
+        <div class="form-group" style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+            <select name="inventory_profile_id" id="inventory_profile_id" onchange="handleProfileChange(this.value)" style="flex: 1; padding: 0.75rem; border: 2px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                <option value="">-- Or Configure Manually Below --</option>
+                {% if inventory_profiles %}
+                    {% for profile in inventory_profiles %}
+                    <option value="{{ profile.id }}"
+                            data-description="{{ profile.description or '' }}"
+                            data-format-count="{{ profile.format_count or 0 }}"
+                            {% if (form_data and form_data.inventory_profile_id|string == profile.id|string) or (product and product.inventory_profile_id == profile.id) %}selected{% endif %}>
+                        {{ profile.name }}
+                    </option>
+                    {% endfor %}
+                {% endif %}
+            </select>
+            <button type="button" class="btn btn-primary" onclick="openInventoryProfileCreator()" style="white-space: nowrap;">
+                <i class="fas fa-plus"></i> Create New
+            </button>
+        </div>
+
+        <!-- Profile preview (shown when profile selected) -->
+        <div id="inventory-profile-preview" style="display: {% if (form_data and form_data.inventory_profile_id) or (product and product.inventory_profile_id) %}block{% else %}none{% endif %}; padding: 1rem; background: #f0f7ff; border: 2px solid #d0e7ff; border-radius: 6px; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div style="flex: 1;">
+                    <strong style="color: #1976d2; display: block; margin-bottom: 0.5rem;">Selected Profile:</strong>
+                    <div id="profile-preview-name" style="font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem;"></div>
+                    <div id="profile-preview-description" style="color: #666; font-size: 0.9rem; margin-bottom: 0.75rem;"></div>
+                    <div id="profile-preview-details" style="display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem; color: #555;">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+                <a href="#" id="profile-preview-edit-link" target="_blank" style="white-space: nowrap; font-size: 0.9rem;">
+                    Edit Profile →
+                </a>
+            </div>
+        </div>
+
+        <div id="manual-inventory-section" style="display: {% if (form_data and form_data.inventory_profile_id) or (product and product.inventory_profile_id) %}none{% else %}block{% endif %};">
+            <!-- Manual Inventory Selection -->
+            <h4 style="margin-top: 1.5rem; color: #666;">GAM Inventory</h4>
+            <p style="color: #666; margin-bottom: 1rem;">Select ad units and placements from your GAM inventory</p>
+
+            <div class="form-group">
+                <label for="ad-unit-search">Ad Units</label>
             <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
                 <input type="text" id="ad-unit-search" placeholder="Search ad units..." style="flex: 1;">
-                <button type="button" onclick="openInventoryPicker('ad_unit')" class="btn btn-secondary" {% if not inventory_synced %}disabled{% endif %}>
+                <button type="button" onclick="window.inventoryPicker.open('ad_unit')" class="btn btn-secondary" {% if not inventory_synced %}disabled{% endif %}>
                     Browse Ad Units
                 </button>
             </div>
@@ -236,7 +287,7 @@ Target users based on local weather conditions for maximum relevance.</div>
             <label for="placement-search">Placements</label>
             <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
                 <input type="text" id="placement-search" placeholder="Search placements..." style="flex: 1;">
-                <button type="button" onclick="openInventoryPicker('placement')" class="btn btn-secondary" {% if not inventory_synced %}disabled{% endif %}>
+                <button type="button" onclick="window.inventoryPicker.open('placement')" class="btn btn-secondary" {% if not inventory_synced %}disabled{% endif %}>
                     Browse Placements
                 </button>
             </div>
@@ -246,15 +297,17 @@ Target users based on local weather conditions for maximum relevance.</div>
             <textarea id="targeted_placement_ids" name="targeted_placement_ids" style="display: none;"></textarea>
         </div>
 
-        <div class="form-group">
-            <label>
-                <input type="checkbox" name="include_descendants" checked>
-                Include child ad units in targeting
-            </label>
-        </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="include_descendants" checked>
+                    Include child ad units in targeting
+                </label>
+            </div>
+        </div><!-- end manual-inventory-section -->
 
-        <!-- Section 3: Creative Formats -->
-        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Creative Formats</h3>
+        <!-- Section 3: Creative Formats (only shown in custom mode) -->
+        <div id="creative-formats-section" style="display: {% if (form_data and form_data.inventory_profile_id) or (product and product.inventory_profile_id) %}none{% else %}block{% endif %};">
+            <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Creative Formats</h3>
         <p style="color: #666; margin-bottom: 1rem;">Choose creative formats for this product. Click the ⓘ icon on each format to learn more.</p>
 
         <!-- Search box for formats -->
@@ -329,6 +382,7 @@ Target users based on local weather conditions for maximum relevance.</div>
             <strong style="color: #155724;">✓ Selected:</strong>
             <span id="format-count" style="font-weight: 600;">{% if product and product.formats %}{{ product.formats|length }}{% else %}0{% endif %}</span> format(s)
         </div>
+        </div><!-- end creative-formats-section -->
 
         <!-- Section 4: Pricing Options (AdCP PR #88) -->
         <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Pricing Options</h3>
@@ -400,7 +454,7 @@ Target users based on local weather conditions for maximum relevance.</div>
                 <input type="text" id="delivery_measurement_provider" name="delivery_measurement_provider"
                        list="measurement_providers_list"
                        placeholder="e.g., Google Ad Manager with IAS viewability"
-                       value="{{ current_value }}" required>
+                       value="{{ form_data.delivery_measurement_provider if form_data else current_value }}" required>
                 <datalist id="measurement_providers_list">
                     {% if providers %}
                         {% for provider in providers %}
@@ -418,8 +472,8 @@ Target users based on local weather conditions for maximum relevance.</div>
             <div class="form-group">
                 <label for="delivery_measurement_notes">Measurement Notes</label>
                 <input type="text" id="delivery_measurement_notes" name="delivery_measurement_notes"
-                       placeholder="e.g., MRC-accredited viewability. 50% in-view for 1s"
-                       value="{{ product.delivery_measurement.notes if product and product.delivery_measurement and product.delivery_measurement.notes else '' }}">
+                       value="{{ form_data.delivery_measurement_notes if form_data else (product.delivery_measurement.notes if product and product.delivery_measurement else '') }}"
+                       placeholder="e.g., MRC-accredited viewability. 50% in-view for 1s">
                 <small style="color: #666;">Additional methodology details (optional)</small>
             </div>
         </div>
@@ -539,13 +593,54 @@ if (appendCheckbox) {
 </style>
 
 <script>
-// Global inventory cache - stores full metadata for selected items
-const inventoryCache = {
-    adUnits: new Map(), // id -> {id, name, metadata: {sizes: [{width, height}]}}
-    placements: new Map(), // id -> {id, name, metadata: {ad_unit_ids: []}}
-    extractedSizes: new Set(), // All unique sizes from selected inventory
-    sizeUnitCounts: new Map() // size -> count of units with that size
-};
+// Wait for inventory picker to be initialized before accessing it
+let inventoryCache = null;
+
+// Initialize inventory cache when inventory picker is ready
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.inventoryPicker && window.inventoryPicker.cache) {
+        inventoryCache = window.inventoryPicker.cache;
+        inventoryCache.extractedSizes = new Set(); // All unique sizes from selected inventory
+        inventoryCache.sizeUnitCounts = new Map(); // size -> count of units with that size
+
+        // Set up callback for size extraction after inventory selection
+        window.inventoryPicker.setOnApplyCallback(function(selectedIds, type) {
+            extractSizesFromInventory();
+        });
+    }
+});
+
+// Inventory mode toggle functionality
+function toggleInventoryMode() {
+    const mode = document.querySelector('input[name="inventory_mode"]:checked').value;
+    const profileSelection = document.getElementById('inventory-profile-selection');
+    const manualSection = document.getElementById('manual-inventory-section');
+    const formatsSection = document.getElementById('creative-formats-section');
+
+    // Hide all sections first
+    profileSelection.style.display = 'none';
+    manualSection.style.display = 'none';
+    formatsSection.style.display = 'none';
+
+    if (mode === 'profile') {
+        // Use existing profile - show dropdown only
+        profileSelection.style.display = 'block';
+    } else if (mode === 'create_profile') {
+        // Create new profile - open inventory profile editor
+        profileSelection.style.display = 'none';
+        manualSection.style.display = 'none';
+        formatsSection.style.display = 'none';
+        // TODO: Open inventory profile editor modal
+        alert('Opening inventory profile creator...\n\nThis will open the inventory profile editor where you can configure inventory, formats, and properties. Once saved, the new profile will be automatically selected for this product.');
+        // For now, fallback to profile mode after alert
+        document.querySelector('input[name="inventory_mode"][value="profile"]').checked = true;
+        profileSelection.style.display = 'block';
+    } else {
+        // Custom mode - show manual inventory + formats
+        manualSection.style.display = 'block';
+        formatsSection.style.display = 'block';
+    }
+}
 
 // Inventory picker functionality
 let currentPickerType = null;
@@ -1336,7 +1431,138 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Handle inventory profile selection - toggle manual sections
+    const profileSelect = document.getElementById('inventory_profile_id');
+    if (profileSelect) {
+        profileSelect.addEventListener('change', function() {
+            handleProfileChange(this.value);
+        });
+
+        // Trigger on load if profile is already selected
+        if (profileSelect.value) {
+            handleProfileChange(profileSelect.value);
+        }
+    }
+
+    // Restore form data from validation errors
+    {% if form_data %}
+    (function() {
+        const formData = {{ form_data | tojson }};
+
+        // Restore pricing options if present
+        if (formData) {
+            // Find all pricing option fields (pricing_model_0, pricing_model_1, etc.)
+            let pricingIndex = 0;
+            while (formData['pricing_model_' + pricingIndex] !== undefined) {
+                // Add pricing option UI
+                addPricingOption({
+                    pricing_model: formData['pricing_model_' + pricingIndex],
+                    currency: formData['currency_' + pricingIndex],
+                    rate: formData['rate_' + pricingIndex],
+                    is_fixed: formData['pricing_model_' + pricingIndex] && !formData['pricing_model_' + pricingIndex].includes('auction')
+                });
+                pricingIndex++;
+            }
+
+            // Restore countries selection
+            if (formData.countries) {
+                const countriesSelect = document.getElementById('countries');
+                if (countriesSelect) {
+                    const countries = typeof formData.countries === 'string' ?
+                        formData.countries.split(',') : formData.countries;
+                    Array.from(countriesSelect.options).forEach(option => {
+                        if (countries.includes(option.value)) {
+                            option.selected = true;
+                        }
+                    });
+                }
+            }
+
+            // Restore dynamic product checkbox
+            if (formData.is_dynamic) {
+                const dynamicCheckbox = document.getElementById('is_dynamic');
+                if (dynamicCheckbox) {
+                    dynamicCheckbox.checked = formData.is_dynamic === 'on' || formData.is_dynamic === true;
+                    dynamicCheckbox.dispatchEvent(new Event('change'));
+                }
+            }
+        }
+    })();
+    {% endif %}
 });
+
+// Handle inventory profile selection change (toggle manual sections)
+function handleProfileChange(profileId) {
+    console.log('handleProfileChange called with profileId:', profileId);
+    const hasProfile = profileId !== '';
+    const manualSection = document.getElementById('manual-inventory-section');
+    const formatsSection = document.getElementById('creative-formats-section');
+    const profilePreview = document.getElementById('inventory-profile-preview');
+
+    console.log('Found elements:', {
+        manualSection: !!manualSection,
+        formatsSection: !!formatsSection,
+        profilePreview: !!profilePreview,
+        hasProfile: hasProfile
+    });
+
+    // Toggle sections based on profile selection
+    if (hasProfile) {
+        // Profile selected - hide manual sections
+        console.log('Hiding manual sections, showing profile preview');
+        if (manualSection) manualSection.style.display = 'none';
+        if (formatsSection) formatsSection.style.display = 'none';
+        if (profilePreview) {
+            profilePreview.style.display = 'block';
+            loadProfilePreview(profileId);
+        }
+    } else {
+        // No profile - show manual sections
+        console.log('Showing manual sections, hiding profile preview');
+        if (manualSection) manualSection.style.display = 'block';
+        if (formatsSection) formatsSection.style.display = 'block';
+        if (profilePreview) profilePreview.style.display = 'none';
+    }
+}
+
+// Load and display inventory profile preview
+async function loadProfilePreview(profileId) {
+    try {
+        const url = `{{ url_for('inventory_profiles.preview_inventory_profile', tenant_id=tenant_id, profile_id=0) }}`.replace('/0/', `/${profileId}/`);
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('Failed to load profile preview:', data.error);
+            return;
+        }
+
+        // Update preview display
+        document.getElementById('profile-preview-name').textContent = data.name;
+        document.getElementById('profile-preview-description').textContent = data.description || 'No description';
+
+        // Build details HTML
+        const details = [];
+        if (data.ad_unit_count > 0) {
+            details.push(`<span><strong>${data.ad_unit_count}</strong> ad unit${data.ad_unit_count !== 1 ? 's' : ''}</span>`);
+        }
+        if (data.placement_count > 0) {
+            details.push(`<span><strong>${data.placement_count}</strong> placement${data.placement_count !== 1 ? 's' : ''}</span>`);
+        }
+        if (data.format_count > 0) {
+            details.push(`<span><strong>${data.format_count}</strong> format${data.format_count !== 1 ? 's' : ''}</span>`);
+        }
+        document.getElementById('profile-preview-details').innerHTML = details.join('<span style="color: #ccc;">|</span>');
+
+        // Update edit link
+        const editLink = document.getElementById('profile-preview-edit-link');
+        editLink.href = `{{ url_for('inventory_profiles.edit_inventory_profile', tenant_id=tenant_id, profile_id=0) }}`.replace('/0/', `/${profileId}/`);
+
+    } catch (e) {
+        console.error('Failed to load profile preview:', e);
+    }
+}
 
 // Pricing Options Management (AdCP PR #88)
 // Moved here so it's available for both create and edit modes
@@ -1548,43 +1774,14 @@ function filterGAMFormats() {
 }
 </script>
 
-<!-- Inventory Picker Modal -->
-<div id="inventory-picker-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: white; border-radius: 8px; width: 90%; max-width: 700px; max-height: 80vh; display: flex; flex-direction: column;">
-        <!-- Header -->
-        <div style="padding: 1.5rem; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
-            <h3 id="picker-modal-title" style="margin: 0;">Select Items</h3>
-            <div id="tree-controls" style="display: none; gap: 0.5rem;">
-                <button type="button" onclick="expandToSelected()" class="btn btn-sm btn-primary" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">
-                    Expand to Selected
-                </button>
-                <button type="button" onclick="expandAllTreeNodes()" class="btn btn-sm btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">
-                    Expand All
-                </button>
-                <button type="button" onclick="collapseAllTreeNodes()" class="btn btn-sm btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">
-                    Collapse All
-                </button>
-            </div>
-        </div>
-
-        <!-- Search -->
-        <div style="padding: 1rem; border-bottom: 1px solid #ddd; display: flex; gap: 0.5rem;">
-            <input type="text" id="picker-search" placeholder="Search..." style="flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
-            <button type="button" onclick="triggerSearch()" class="btn btn-primary" style="padding: 0.5rem 1rem;">Search</button>
-        </div>
-
-        <!-- List -->
-        <div id="inventory-list" style="flex: 1; overflow-y: auto; min-height: 200px;">
-            <!-- Items loaded dynamically -->
-        </div>
-
-        <!-- Footer -->
-        <div style="padding: 1rem; border-top: 1px solid #ddd; display: flex; gap: 0.5rem; justify-content: flex-end;">
-            <button type="button" onclick="closeInventoryPicker()" class="btn btn-secondary">Cancel</button>
-            <button type="button" onclick="applyInventorySelection()" class="btn btn-primary">Apply Selection</button>
-        </div>
-    </div>
-</div>
+{% set picker_config = {
+    'tenant_id': tenant_id,
+    'ad_unit_field_id': 'targeted_ad_unit_ids',
+    'placement_field_id': 'targeted_placement_ids',
+    'ad_unit_display_id': 'selected-ad-units',
+    'placement_display_id': 'selected-placements'
+} %}
+{% include 'components/inventory_picker.html' %}
 
 {% if product %}
 <script>
@@ -1847,6 +2044,12 @@ window.onclick = function(event) {
  * Extract all sizes from selected ad units and placements
  */
 async function extractSizesFromInventory() {
+    // Safety check - inventory picker must be initialized
+    if (!inventoryCache) {
+        console.warn('Inventory picker not initialized yet');
+        return;
+    }
+
     // Clear previous sizes
     inventoryCache.extractedSizes.clear();
     inventoryCache.sizeUnitCounts.clear();

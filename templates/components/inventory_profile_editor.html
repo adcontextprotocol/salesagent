@@ -1,0 +1,776 @@
+{#
+Inventory Profile Editor Component - Complete interconnected inventory configuration
+
+This component handles:
+- Ad Units & Placements selection (with hierarchy and caching)
+- Creative Formats loading and filtering
+- Publisher Properties (authorized properties) loading
+- Size extraction from selected inventory
+- All interconnected logic between these systems
+
+Usage:
+{% set editor_config = {
+    'tenant_id': tenant_id,
+    'tenant_virtual_host': tenant.virtual_host,
+    'mode': 'create'  # or 'edit'
+} %}
+{% include 'components/inventory_profile_editor.html' %}
+
+Then call: window.inventoryProfileEditor.open(profileData)
+#}
+
+<!-- Inventory Profile Editor Modal -->
+<div class="modal fade" id="inventoryProfileModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="inventoryProfileModalLabel">Create Inventory Profile</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="profileForm">
+                    <input type="hidden" id="profileId" name="profile_id">
+
+                    <!-- Section 1: Basic Information -->
+                    <h5 class="mb-3">Profile Information</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="profileName" class="form-label">Profile Name *</label>
+                            <input type="text" class="form-control" id="profileName" name="name" required>
+                            <small class="text-muted">A descriptive name for this inventory configuration</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="profileIdInput" class="form-label">Profile ID</label>
+                            <input type="text" class="form-control" id="profileIdInput" name="profile_id_input" placeholder="Auto-generated from name">
+                            <small class="text-muted">Leave blank to auto-generate. Used in URLs and APIs.</small>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="profileDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="profileDescription" name="description" rows="2"></textarea>
+                    </div>
+
+                    <!-- Section 2: Inventory Selection -->
+                    <h5 class="mb-3 mt-4">Inventory (Ad Units & Placements)</h5>
+                    <div class="mb-3">
+                        <label class="form-label">Ad Units</label>
+                        <div class="d-flex gap-2 mb-2">
+                            <input type="text" id="profileAdUnitSearch" class="form-control" placeholder="Search ad units...">
+                            <button type="button" class="btn btn-secondary" onclick="window.inventoryProfileEditor.openInventoryPicker('ad_unit')">
+                                <i class="fas fa-folder-open"></i> Browse Ad Units
+                            </button>
+                        </div>
+                        <div id="profileSelectedAdUnits" class="border rounded p-2 mb-2" style="min-height: 60px; background: #f9f9f9;">
+                            <span class="text-muted">No ad units selected</span>
+                        </div>
+                        <textarea id="profileAdUnitIds" name="targeted_ad_unit_ids" style="display: none;"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Placements</label>
+                        <div class="d-flex gap-2 mb-2">
+                            <input type="text" id="profilePlacementSearch" class="form-control" placeholder="Search placements...">
+                            <button type="button" class="btn btn-secondary" onclick="window.inventoryProfileEditor.openInventoryPicker('placement')">
+                                <i class="fas fa-folder-open"></i> Browse Placements
+                            </button>
+                        </div>
+                        <div id="profileSelectedPlacements" class="border rounded p-2 mb-2" style="min-height: 60px; background: #f9f9f9;">
+                            <span class="text-muted">No placements selected</span>
+                        </div>
+                        <textarea id="profilePlacementIds" name="targeted_placement_ids" style="display: none;"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="profileIncludeDescendants" name="include_descendants" checked onchange="window.inventoryProfileEditor.extractSizesFromInventory()">
+                            <label class="form-check-label" for="profileIncludeDescendants">
+                                Include child ad units in targeting
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Section 3: Creative Formats -->
+                    <h5 class="mb-3 mt-4">Creative Formats *</h5>
+
+                    <!-- Size extraction and filtering -->
+                    <div id="profileExtractedSizesBox" class="alert alert-info" style="display: none;">
+                        <strong>Detected Sizes from Ad Units:</strong>
+                        <div id="profileExtractedSizesList" style="margin-top: 0.5rem;"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="window.inventoryProfileEditor.selectAllFormats()">
+                                Select All
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.inventoryProfileEditor.deselectAllFormats()">
+                                Deselect All
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-success" id="profileSelectMatchingSizesBtn" onclick="window.inventoryProfileEditor.selectMatchingSizes()" disabled>
+                                Select Matching Sizes
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="profileFormatSearchBox" class="mb-3">
+                        <input type="text" id="profileFormatSearchInput" class="form-control" placeholder="Search formats by name, type, or size...">
+                    </div>
+
+                    <div id="profileSelectedFormats" style="margin-bottom: 1rem; padding: 1rem; background: #f0f7ff; border: 1px solid #d0e7ff; border-radius: 4px; min-height: 50px; display: none;">
+                        <div style="font-weight: 600; margin-bottom: 0.5rem; color: #0066cc;">Selected Formats:</div>
+                        <div id="profileSelectedFormatsList" style="display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
+                    </div>
+
+                    <div id="profileFormatList">
+                        <div id="profileFormatLoading" class="text-center text-muted py-3">
+                            Loading formats from creative agents...
+                        </div>
+                        <div id="profileFormatResults" style="display: none;"></div>
+                    </div>
+
+                    <input type="hidden" id="profileFormats" name="formats">
+
+                    <!-- Section 4: Publisher Properties -->
+                    <h5 class="mb-3 mt-4">Authorized Properties *</h5>
+                    <div class="mb-3">
+                        <label class="form-label">Property Selection Mode</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="propertyMode" id="profilePropertyModeAll" value="all" checked>
+                            <label class="btn btn-outline-primary" for="profilePropertyModeAll">All Authorized Properties</label>
+
+                            <input type="radio" class="btn-check" name="propertyMode" id="profilePropertyModeSpecific" value="specific">
+                            <label class="btn btn-outline-primary" for="profilePropertyModeSpecific">Select Specific Properties</label>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            <strong>All Authorized Properties:</strong> Automatically includes all properties configured in your tenant's authorized properties settings.
+                            This list updates dynamically as you add or remove authorized properties.
+                        </small>
+                    </div>
+
+                    <!-- Specific properties selector (hidden by default) -->
+                    <div id="profileSpecificPropertiesSection" style="display: none;">
+                        <div class="mb-3">
+                            <label class="form-label">Select Properties</label>
+                            <div id="profilePropertiesList" class="border rounded p-3" style="max-height: 300px; overflow-y: auto; background: #f9f9f9;">
+                                <div class="text-muted text-center py-3">Loading properties...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hidden fields for form submission -->
+                    <input type="hidden" id="profilePropertyMode" name="property_mode" value="all">
+                    <input type="hidden" id="profileSelectedProperties" name="selected_properties">
+
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="window.inventoryProfileEditor.save()">Save Profile</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% set picker_config = {
+    'tenant_id': editor_config.tenant_id if editor_config else tenant_id,
+    'ad_unit_field_id': 'profileAdUnitIds',
+    'placement_field_id': 'profilePlacementIds',
+    'ad_unit_display_id': 'profileSelectedAdUnits',
+    'placement_display_id': 'profileSelectedPlacements'
+} %}
+{% include 'components/inventory_picker.html' %}
+
+<script>
+// Inventory Profile Editor - Complete Component
+(function() {
+    'use strict';
+
+    const config = {
+        tenantId: '{{ editor_config.tenant_id if editor_config else tenant_id }}',
+        virtualHost: '{{ editor_config.tenant_virtual_host if editor_config else tenant.virtual_host if tenant else "" }}',
+        mode: '{{ editor_config.mode if editor_config else "create" }}'
+    };
+
+    // State
+    let allFormats = [];
+    let selectedFormats = new Set();
+    let currentProfile = null;
+    let extractedSizes = new Set();
+    let sizeUnitCounts = new Map();
+    let authorizedProperties = [];
+    let selectedProperties = new Set();
+
+    // Public API
+    window.inventoryProfileEditor = {
+        open: openEditor,
+        close: closeEditor,
+        save: saveProfile,
+        openInventoryPicker: (type) => window.inventoryPicker.open(type),
+        setDefaultProperties: setDefaultProperties,
+        selectAllFormats: selectAllFormats,
+        deselectAllFormats: deselectAllFormats,
+        selectMatchingSizes: selectMatchingSizes,
+        extractSizesFromInventory: extractSizesFromInventory,
+        config: config
+    };
+
+    // ==================== MAIN FUNCTIONS ====================
+
+    function openEditor(profileData = null) {
+        currentProfile = profileData;
+        const modal = new bootstrap.Modal(document.getElementById('inventoryProfileModal'));
+
+        // Reset form
+        document.getElementById('profileForm').reset();
+        selectedFormats.clear();
+
+        // Configure Profile ID field based on mode
+        const profileIdInput = document.getElementById('profileIdInput');
+        if (profileData) {
+            // Editing - disable Profile ID (immutable)
+            document.getElementById('inventoryProfileModalLabel').textContent = 'Edit Inventory Profile';
+            profileIdInput.disabled = true;
+            profileIdInput.classList.add('bg-light');
+            populateForm(profileData);
+        } else {
+            // Creating - enable Profile ID
+            document.getElementById('inventoryProfileModalLabel').textContent = 'Create Inventory Profile';
+            profileIdInput.disabled = false;
+            profileIdInput.classList.remove('bg-light');
+        }
+
+        // Load formats and properties
+        loadFormats();
+        loadAuthorizedProperties();
+
+        // Set up property mode toggle
+        document.getElementById('profilePropertyModeAll').addEventListener('change', handlePropertyModeChange);
+        document.getElementById('profilePropertyModeSpecific').addEventListener('change', handlePropertyModeChange);
+
+        // Set up callback for inventory picker to extract sizes
+        window.inventoryPicker.setOnApplyCallback((selectedIds, type) => {
+            if (type === 'ad_unit') {
+                extractSizesFromInventory();
+            }
+        });
+
+        modal.show();
+    }
+
+    function closeEditor() {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('inventoryProfileModal'));
+        if (modal) modal.hide();
+    }
+
+    function populateForm(data) {
+        document.getElementById('profileId').value = data.id || '';
+        document.getElementById('profileName').value = data.name || '';
+        document.getElementById('profileIdInput').value = data.profile_id || '';
+        document.getElementById('profileDescription').value = data.description || '';
+
+        // Populate inventory
+        const inventoryConfig = data.inventory_config || {};
+        if (inventoryConfig.ad_units && inventoryConfig.ad_units.length > 0) {
+            document.getElementById('profileAdUnitIds').value = inventoryConfig.ad_units.join(',');
+
+            // Update display
+            const adUnitDisplay = document.getElementById('profileSelectedAdUnits');
+            if (adUnitDisplay) {
+                adUnitDisplay.innerHTML = inventoryConfig.ad_units.map(id =>
+                    `<span class="badge bg-primary me-1 mb-1">${id}</span>`
+                ).join('');
+            }
+        }
+        if (inventoryConfig.placements && inventoryConfig.placements.length > 0) {
+            document.getElementById('profilePlacementIds').value = inventoryConfig.placements.join(',');
+
+            // Update display
+            const placementDisplay = document.getElementById('profileSelectedPlacements');
+            if (placementDisplay) {
+                placementDisplay.innerHTML = inventoryConfig.placements.map(id =>
+                    `<span class="badge bg-success me-1 mb-1">${id}</span>`
+                ).join('');
+            }
+        }
+
+        // Populate formats
+        if (data.formats) {
+            data.formats.forEach(format => {
+                selectedFormats.add(format.id);
+            });
+        }
+
+        // Populate properties mode
+        if (data.property_mode === 'specific' && data.publisher_properties) {
+            // Specific mode - select the specific properties
+            document.getElementById('profilePropertyModeSpecific').checked = true;
+            document.getElementById('profilePropertyMode').value = 'specific';
+            document.getElementById('profileSpecificPropertiesSection').style.display = 'block';
+
+            // Mark selected properties
+            selectedProperties.clear();
+            data.publisher_properties.forEach(prop => {
+                const propKey = `${prop.publisher_domain}:${prop.property_ids?.join(',') || prop.property_tags?.join(',')}`;
+                selectedProperties.add(propKey);
+            });
+            renderPropertiesList();
+            updateSelectedPropertiesField();
+        } else {
+            // Default to "all" mode
+            document.getElementById('profilePropertyModeAll').checked = true;
+            document.getElementById('profilePropertyMode').value = 'all';
+            document.getElementById('profileSpecificPropertiesSection').style.display = 'none';
+        }
+    }
+
+    async function saveProfile() {
+        const form = document.getElementById('profileForm');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        // Validate formats
+        if (selectedFormats.size === 0) {
+            alert('Please select at least one creative format');
+            return;
+        }
+
+        // Validate properties
+        const propertyMode = document.getElementById('profilePropertyMode').value;
+        let publisherProperties;
+
+        if (propertyMode === 'all') {
+            // Use all authorized properties
+            publisherProperties = authorizedProperties;
+        } else {
+            // Use specific selected properties
+            if (selectedProperties.size === 0) {
+                alert('Please select at least one property or switch to "All Authorized Properties" mode');
+                return;
+            }
+            const selectedPropsJson = document.getElementById('profileSelectedProperties').value;
+            publisherProperties = JSON.parse(selectedPropsJson);
+        }
+
+        if (publisherProperties.length === 0) {
+            alert('No authorized properties available. Please configure authorized properties in tenant settings first.');
+            return;
+        }
+
+        // Build form data (backend expects form data, not JSON)
+        const adUnitIds = (document.getElementById('profileAdUnitIds').value || '').split(',').filter(Boolean);
+        const placementIds = (document.getElementById('profilePlacementIds').value || '').split(',').filter(Boolean);
+        const includeDescendants = document.getElementById('profileIncludeDescendants').checked;
+
+        const formPayload = new FormData();
+        formPayload.append('name', document.getElementById('profileName').value);
+        formPayload.append('profile_id', document.getElementById('profileIdInput').value);
+        formPayload.append('description', document.getElementById('profileDescription').value);
+        formPayload.append('targeted_ad_unit_ids', JSON.stringify(adUnitIds));
+        formPayload.append('targeted_placement_ids', JSON.stringify(placementIds));
+        if (includeDescendants) {
+            formPayload.append('include_descendants', 'on');
+        }
+
+        const formatRefs = Array.from(selectedFormats).map(formatId => {
+            const format = allFormats.find(f => f.format_id === formatId);
+            return {
+                agent_url: format?.agent_url || 'https://creative.adcontextprotocol.org',
+                id: formatId
+            };
+        });
+        formPayload.append('formats', JSON.stringify(formatRefs));
+        formPayload.append('publisher_properties', JSON.stringify(publisherProperties));
+        formPayload.append('property_mode', propertyMode);
+
+        const url = currentProfile
+            ? `/tenant/${config.tenantId}/inventory-profiles/${currentProfile.id}/edit`
+            : `/tenant/${config.tenantId}/inventory-profiles/add`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: formPayload
+            });
+
+            if (response.ok) {
+                closeEditor();
+                // Trigger refresh of parent page
+                if (window.loadProfiles) window.loadProfiles();
+                if (window.location.reload) window.location.reload();
+            } else {
+                const error = await response.json();
+                alert('Error saving profile: ' + (error.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error saving profile: ' + error.message);
+        }
+    }
+
+    // ==================== FORMATS ====================
+
+    async function loadFormats() {
+        const loadingDiv = document.getElementById('profileFormatLoading');
+        const resultsDiv = document.getElementById('profileFormatResults');
+
+        loadingDiv.style.display = 'block';
+        resultsDiv.style.display = 'none';
+
+        try {
+            const url = `/api/formats/list?tenant_id=${config.tenantId}`;
+            console.log('Loading formats from:', url, 'config:', config);
+
+            const response = await fetch(url, {
+                credentials: 'same-origin'
+            });
+
+            console.log('Format response status:', response.status);
+            const data = await response.json();
+            console.log('Format data:', data);
+
+            if (data.error) {
+                throw new Error(data.message || data.error);
+            }
+
+            // Flatten agents object into formats array
+            allFormats = [];
+            for (const [agentUrl, formats] of Object.entries(data.agents || {})) {
+                formats.forEach(fmt => {
+                    allFormats.push({...fmt, agent_url: agentUrl});
+                });
+            }
+            renderFormats(allFormats);
+            setupFormatSearch();
+        } catch (error) {
+            loadingDiv.innerHTML = '<div class="alert alert-danger">Error loading formats: ' + error.message + '</div>';
+        }
+    }
+
+    function renderFormats(formats) {
+        const loadingDiv = document.getElementById('profileFormatLoading');
+        const resultsDiv = document.getElementById('profileFormatResults');
+
+        loadingDiv.style.display = 'none';
+        resultsDiv.style.display = 'block';
+
+        if (formats.length === 0) {
+            resultsDiv.innerHTML = '<div style="text-align: center; padding: 2rem; color: #666;">No formats found</div>';
+            return;
+        }
+
+        // Group by type
+        const grouped = {};
+        formats.forEach(fmt => {
+            const type = fmt.type || 'other';
+            if (!grouped[type]) {
+                grouped[type] = [];
+            }
+            grouped[type].push(fmt);
+        });
+
+        let html = '';
+        for (const [type, typeFormats] of Object.entries(grouped)) {
+            html += `
+                <div style="margin-bottom: 2rem;">
+                    <h6 style="margin-bottom: 1rem; text-transform: capitalize; color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">${type}</h6>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem;">
+            `;
+
+            typeFormats.forEach(format => {
+                const isSelected = selectedFormats.has(format.format_id);
+                const checkIcon = isSelected ? '✓ ' : '';
+
+                // Get dimensions display (check both width/height and dimensions field)
+                let dimensionsDisplay = '';
+                if (format.width && format.height) {
+                    dimensionsDisplay = `${format.width}×${format.height}`;
+                } else if (format.dimensions) {
+                    dimensionsDisplay = format.dimensions.replace('x', '×');
+                }
+
+                html += `
+                    <div class="format-card ${isSelected ? 'selected' : ''} format-item"
+                         onclick="window.inventoryProfileEditor.toggleFormat('${format.format_id}', '${format.name}', '${format.agent_url || ''}')"
+                         style="border: 2px solid ${isSelected ? '#0066cc' : '#e0e0e0'}; border-radius: 4px; padding: 0.75rem; background: ${isSelected ? '#f0f7ff' : '#f9f9f9'}; cursor: pointer; transition: all 0.2s;">
+                        <div style="font-weight: 600; color: #333;">${checkIcon}${format.name}</div>
+                        ${format.description ? `<div style="color: #777; font-size: 0.85rem; margin-top: 0.25rem;">${format.description}</div>` : ''}
+                        ${dimensionsDisplay ? `<div style="color: #666; font-size: 0.85rem; margin-top: 0.25rem;">${dimensionsDisplay}</div>` : ''}
+                    </div>
+                `;
+            });
+
+            html += '</div></div>';
+        }
+
+        resultsDiv.innerHTML = html;
+        updateSelectedFormatsDisplay();
+    }
+
+    function setupFormatSearch() {
+        const searchInput = document.getElementById('profileFormatSearchInput');
+        if (!searchInput) return;
+
+        searchInput.addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase();
+            const items = document.querySelectorAll('.format-item');
+
+            items.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(query) ? 'block' : 'none';
+            });
+        });
+    }
+
+    window.inventoryProfileEditor.toggleFormat = function(formatId, formatName, agentUrl) {
+        if (selectedFormats.has(formatId)) {
+            selectedFormats.delete(formatId);
+        } else {
+            selectedFormats.add(formatId);
+        }
+        renderFormats(allFormats); // Re-render to update visual state
+        updateSelectedFormatsDisplay();
+    };
+
+    function updateSelectedFormatsDisplay() {
+        const container = document.getElementById('profileSelectedFormats');
+        const list = document.getElementById('profileSelectedFormatsList');
+
+        if (selectedFormats.size === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+        list.innerHTML = Array.from(selectedFormats).map(formatId => {
+            const format = allFormats.find(f => f.format_id === formatId);
+            if (!format) return '';
+
+            return `
+                <span class="badge bg-primary" style="padding: 0.5rem; font-size: 0.9rem;">
+                    ${format.name}
+                    <span onclick="window.inventoryProfileEditor.toggleFormat('${formatId}', '${format.name}', '${format.agent_url || ''}')"
+                          style="cursor: pointer; margin-left: 0.5rem;">×</span>
+                </span>
+            `;
+        }).join('');
+
+        // Update hidden field
+        const formatRefs = [];
+        selectedFormats.forEach(formatId => {
+            const format = allFormats.find(f => f.format_id === formatId);
+            if (format) {
+                formatRefs.push({
+                    agent_url: format.agent_url || 'https://creative.adcontextprotocol.org',
+                    id: formatId
+                });
+            }
+        });
+        document.getElementById('profileFormats').value = JSON.stringify(formatRefs);
+    }
+
+    // ==================== AUTHORIZED PROPERTIES ====================
+
+    async function loadAuthorizedProperties() {
+        const listDiv = document.getElementById('profilePropertiesList');
+
+        try {
+            const response = await fetch(`/tenant/${config.tenantId}/authorized-properties/api/list`, {
+                credentials: 'same-origin'
+            });
+            const data = await response.json();
+            authorizedProperties = data.properties || [];
+
+            renderPropertiesList();
+        } catch (error) {
+            console.error('Error loading authorized properties:', error);
+            listDiv.innerHTML = '<div class="alert alert-danger">Error loading properties</div>';
+        }
+    }
+
+    function renderPropertiesList() {
+        const listDiv = document.getElementById('profilePropertiesList');
+
+        if (authorizedProperties.length === 0) {
+            listDiv.innerHTML = '<div class="text-muted text-center py-3">No authorized properties configured</div>';
+            return;
+        }
+
+        listDiv.innerHTML = authorizedProperties.map(prop => {
+            const propKey = `${prop.publisher_domain}:${prop.property_ids?.join(',') || prop.property_tags?.join(',')}`;
+            const isChecked = selectedProperties.has(propKey);
+
+            return `
+                <label class="d-flex align-items-start p-2 mb-2 border rounded" style="cursor: pointer; background: ${isChecked ? '#f0f7ff' : 'white'};">
+                    <input type="checkbox"
+                           class="form-check-input me-2 mt-1"
+                           value="${propKey}"
+                           ${isChecked ? 'checked' : ''}
+                           onchange="window.inventoryProfileEditor.toggleProperty('${propKey}')">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600;">${prop.publisher_domain}</div>
+                        ${prop.property_ids ? `<div class="text-muted small">Property IDs: ${prop.property_ids.join(', ')}</div>` : ''}
+                        ${prop.property_tags ? `<div class="text-muted small">Property Tags: ${prop.property_tags.join(', ')}</div>` : ''}
+                    </div>
+                </label>
+            `;
+        }).join('');
+    }
+
+    function handlePropertyModeChange(event) {
+        const mode = event.target.value;
+        const specificSection = document.getElementById('profileSpecificPropertiesSection');
+
+        document.getElementById('profilePropertyMode').value = mode;
+
+        if (mode === 'specific') {
+            specificSection.style.display = 'block';
+        } else {
+            specificSection.style.display = 'none';
+            selectedProperties.clear();
+        }
+    }
+
+    window.inventoryProfileEditor.toggleProperty = function(propKey) {
+        if (selectedProperties.has(propKey)) {
+            selectedProperties.delete(propKey);
+        } else {
+            selectedProperties.add(propKey);
+        }
+        renderPropertiesList();
+        updateSelectedPropertiesField();
+    };
+
+    function updateSelectedPropertiesField() {
+        const selected = Array.from(selectedProperties).map(key => {
+            const [domain, ids] = key.split(':');
+            const prop = authorizedProperties.find(p =>
+                p.publisher_domain === domain &&
+                (p.property_ids?.join(',') === ids || p.property_tags?.join(',') === ids)
+            );
+            return prop;
+        }).filter(Boolean);
+
+        document.getElementById('profileSelectedProperties').value = JSON.stringify(selected);
+    }
+
+    // Legacy function for compatibility - now deprecated
+    function setDefaultProperties() {
+        // This function is deprecated - properties now default to "all" mode
+        console.warn('setDefaultProperties is deprecated');
+    }
+
+    // ==================== SIZE EXTRACTION & FORMAT SELECTION ====================
+
+    function extractSizesFromInventory() {
+        extractedSizes.clear();
+        sizeUnitCounts.clear();
+
+        // Get selected ad unit IDs from the form
+        const adUnitIdsStr = document.getElementById('profileAdUnitIds').value;
+        const adUnitIds = adUnitIdsStr ? adUnitIdsStr.split(',').filter(Boolean) : [];
+
+        if (adUnitIds.length === 0) {
+            document.getElementById('profileExtractedSizesBox').style.display = 'none';
+            document.getElementById('profileSelectMatchingSizesBtn').disabled = true;
+            return;
+        }
+
+        // Check if we should include child units
+        const includeDescendants = document.getElementById('profileIncludeDescendants')?.checked || false;
+
+        // Extract sizes from cached ad units (and children if enabled)
+        const cache = window.inventoryPicker.cache;
+
+        function extractSizesFromUnit(unitId) {
+            const unit = cache.adUnits.get(unitId);
+            if (!unit) return;
+
+            // Extract sizes from this unit
+            if (unit.sizes) {
+                unit.sizes.forEach(size => {
+                    const sizeKey = `${size.width}x${size.height}`;
+                    extractedSizes.add(sizeKey);
+                    sizeUnitCounts.set(sizeKey, (sizeUnitCounts.get(sizeKey) || 0) + 1);
+                });
+            }
+
+            // Recursively extract from children if enabled
+            if (includeDescendants && unit.children && unit.children.length > 0) {
+                unit.children.forEach(child => {
+                    extractSizesFromUnit(child.id);
+                });
+            }
+        }
+
+        adUnitIds.forEach(unitId => extractSizesFromUnit(unitId));
+
+        // Display extracted sizes
+        if (extractedSizes.size > 0) {
+            const sizesBox = document.getElementById('profileExtractedSizesBox');
+            const sizesList = document.getElementById('profileExtractedSizesList');
+
+            const sortedSizes = Array.from(extractedSizes).sort((a, b) => {
+                const countA = sizeUnitCounts.get(a) || 0;
+                const countB = sizeUnitCounts.get(b) || 0;
+                return countB - countA; // Sort by count descending
+            });
+
+            sizesList.innerHTML = sortedSizes.map(sizeKey => {
+                const count = sizeUnitCounts.get(sizeKey) || 0;
+                return `<span class="badge bg-info me-1 mb-1">${sizeKey} (${count} unit${count > 1 ? 's' : ''})</span>`;
+            }).join('');
+
+            sizesBox.style.display = 'block';
+            document.getElementById('profileSelectMatchingSizesBtn').disabled = false;
+        } else {
+            document.getElementById('profileExtractedSizesBox').style.display = 'none';
+            document.getElementById('profileSelectMatchingSizesBtn').disabled = true;
+        }
+    }
+
+    function selectMatchingSizes() {
+        if (extractedSizes.size === 0) {
+            return;
+        }
+
+        // Find formats that match the extracted sizes exactly
+        selectedFormats.clear();
+
+        allFormats.forEach(format => {
+            // Check both width/height fields AND dimensions field
+            let formatSize = null;
+
+            if (format.width && format.height) {
+                formatSize = `${format.width}x${format.height}`;
+            } else if (format.dimensions) {
+                // dimensions is a string like "970x250"
+                formatSize = format.dimensions;
+            }
+
+            if (formatSize && extractedSizes.has(formatSize)) {
+                selectedFormats.add(format.format_id);
+            }
+        });
+
+        renderFormats(allFormats);
+        updateSelectedFormatsDisplay();
+    }
+
+    function selectAllFormats() {
+        allFormats.forEach(format => {
+            selectedFormats.add(format.format_id);
+        });
+        renderFormats(allFormats);
+        updateSelectedFormatsDisplay();
+    }
+
+    function deselectAllFormats() {
+        selectedFormats.clear();
+        renderFormats(allFormats);
+        updateSelectedFormatsDisplay();
+    }
+
+})();
+</script>

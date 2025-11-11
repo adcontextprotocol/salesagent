@@ -131,6 +131,9 @@ def _get_property_summary(publisher_properties: list[dict]) -> str:
 def list_inventory_profiles(tenant_id: str):
     """List all inventory profiles for this tenant."""
     with get_db_session() as session:
+        # Get tenant
+        tenant = session.get(Tenant, tenant_id)
+
         # Get all profiles with product counts in a single query (prevents N+1)
         stmt = (
             select(InventoryProfile, func.count(Product.product_id).label("product_count"))
@@ -161,7 +164,11 @@ def list_inventory_profiles(tenant_id: str):
             )
 
     return render_template(
-        "inventory_profiles_list.html", tenant_id=tenant_id, profiles=profiles_data, active_tab="inventory_profiles"
+        "inventory_unified.html",
+        tenant_id=tenant_id,
+        tenant=tenant,
+        profiles=profiles_data,
+        active_tab="inventory_profiles",
     )
 
 
@@ -350,9 +357,25 @@ def edit_inventory_profile(tenant_id: str, profile_id: int):
                 else:
                     profile.targeting_template = None
 
+                # Count products using this profile before commit
+                product_count = (
+                    session.scalar(
+                        select(func.count()).select_from(Product).where(Product.inventory_profile_id == profile_id)
+                    )
+                    or 0
+                )
+
                 session.commit()
 
+                # Success message with warning about future updates
                 flash(f"Inventory profile '{profile.name}' updated successfully!", "success")
+                if product_count > 0:
+                    flash(
+                        f"Note: This profile is used by {product_count} product(s). "
+                        "Changes will affect future media buys using these products. "
+                        "Existing campaigns in GAM will not be modified.",
+                        "info",
+                    )
                 return redirect(url_for("inventory_profiles.list_inventory_profiles", tenant_id=tenant_id))
 
             except Exception as e:
@@ -418,6 +441,34 @@ def delete_inventory_profile(tenant_id: str, profile_id: int):
 
         flash(f"Inventory profile '{profile_name}' deleted successfully", "success")
         return redirect(url_for("inventory_profiles.list_inventory_profiles", tenant_id=tenant_id))
+
+
+@inventory_profiles_bp.route("/<int:profile_id>/api")
+@require_tenant_access(api_mode=True)
+def get_inventory_profile_api(tenant_id: str, profile_id: int):
+    """Get full inventory profile data for editing (API endpoint)."""
+    with get_db_session() as session:
+        profile = session.get(InventoryProfile, profile_id)
+
+        if not profile or profile.tenant_id != tenant_id:
+            return jsonify({"error": "Inventory profile not found"}), 404
+
+        return jsonify(
+            {
+                "id": profile.id,
+                "profile_id": profile.profile_id,
+                "name": profile.name,
+                "description": profile.description,
+                "inventory_config": profile.inventory_config,
+                "targeted_ad_unit_ids": ",".join(profile.inventory_config.get("ad_units", [])),
+                "targeted_placement_ids": ",".join(profile.inventory_config.get("placements", [])),
+                "include_descendants": profile.inventory_config.get("include_descendants", True),
+                "formats": profile.formats,
+                "publisher_properties": profile.publisher_properties,
+                "property_mode": "all",  # Default to "all" mode for now (no DB column yet)
+                "targeting_template": profile.targeting_template,
+            }
+        )
 
 
 @inventory_profiles_bp.route("/<int:profile_id>/preview")

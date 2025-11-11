@@ -255,14 +255,14 @@ def inventory_browser(tenant_id):
             )
             return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
-    tenant = {"tenant_id": row[0], "name": row[1], "primary_domain": tenant.primary_domain if tenant else None}
+    tenant_dict = {"tenant_id": row[0], "name": row[1], "virtual_host": tenant.virtual_host if tenant else None}
 
     # Get inventory type from query param
     inventory_type = request.args.get("type", "all")
 
     return render_template(
         "inventory_unified.html",
-        tenant=tenant,
+        tenant=tenant_dict,
         tenant_id=tenant_id,
         tenant_name=row[1],
         inventory_type=inventory_type,
