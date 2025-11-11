@@ -78,8 +78,8 @@ def create_get_products_request(
         # Pass dict directly - adcp library handles validation
         brand_manifest_obj = brand_manifest
     elif isinstance(brand_manifest, str):
-        # URL string - pass as-is
-        brand_manifest_obj = brand_manifest
+        # URL string - wrap in dict with 'url' key for adcp library
+        brand_manifest_obj = {"url": brand_manifest}
     else:
         # Already a BrandManifest object (legacy code path)
         brand_manifest_obj = brand_manifest  # type: ignore[assignment]
