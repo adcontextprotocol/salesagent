@@ -1869,6 +1869,25 @@ class ListCreativesResponse(AdCPBaseModel):
     format_summary: dict[str, int] | None = Field(None, description="Breakdown by format type")
     status_summary: dict[str, int] | None = Field(None, description="Breakdown by creative status")
 
+    def model_dump(self, **kwargs):
+        """Override to ensure nested Creative objects use their custom model_dump().
+
+        Pydantic's default serialization doesn't automatically call custom model_dump()
+        on nested models. We explicitly serialize creatives to ensure Creative's
+        custom model_dump() is called, which excludes internal fields:
+        - principal_id (internal advertiser association)
+        - created_at (internal audit timestamp)
+        - updated_at (internal audit timestamp)
+        - status (internal workflow state)
+        """
+        result = super().model_dump(**kwargs)
+
+        # Explicitly serialize creatives using their custom model_dump()
+        if "creatives" in result and self.creatives:
+            result["creatives"] = [creative.model_dump(**kwargs) for creative in self.creatives]
+
+        return result
+
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
         count = self.query_summary.returned
@@ -1913,6 +1932,21 @@ class CreateCreativeResponse(AdCPBaseModel):
     creative: Creative
     status: CreativeStatus
     suggested_adaptations: list[CreativeAdaptation] = Field(default_factory=list)
+
+    def model_dump(self, **kwargs):
+        """Override to ensure nested Creative object uses its custom model_dump().
+
+        Creative has internal fields (principal_id, created_at, updated_at, status)
+        that should not be exposed to clients. We explicitly serialize the creative
+        to ensure its custom model_dump() is called.
+        """
+        result = super().model_dump(**kwargs)
+
+        # Explicitly serialize creative using its custom model_dump()
+        if "creative" in result and self.creative:
+            result["creative"] = self.creative.model_dump(**kwargs)
+
+        return result
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
@@ -1963,6 +1997,21 @@ class GetCreativesRequest(AdCPBaseModel):
 class GetCreativesResponse(AdCPBaseModel):
     creatives: list[Creative]
     assignments: list[CreativeAssignment] | None = None
+
+    def model_dump(self, **kwargs):
+        """Override to ensure nested Creative objects use their custom model_dump().
+
+        Creative has internal fields (principal_id, created_at, updated_at, status)
+        that should not be exposed to clients. We explicitly serialize creatives
+        to ensure their custom model_dump() is called.
+        """
+        result = super().model_dump(**kwargs)
+
+        # Explicitly serialize creatives using their custom model_dump()
+        if "creatives" in result and self.creatives:
+            result["creatives"] = [creative.model_dump(**kwargs) for creative in self.creatives]
+
+        return result
 
 
 # Admin tools
@@ -3290,6 +3339,21 @@ class GetSignalsResponse(AdCPBaseModel):
     """
 
     signals: list[Signal] = Field(..., description="Array of available signals")
+
+    def model_dump(self, **kwargs):
+        """Override to ensure nested Signal objects use their custom model_dump().
+
+        Signal has internal fields (tenant_id, created_at, updated_at, metadata)
+        that should not be exposed to clients. We explicitly serialize signals
+        to ensure their custom model_dump() is called.
+        """
+        result = super().model_dump(**kwargs)
+
+        # Explicitly serialize signals using their custom model_dump()
+        if "signals" in result and self.signals:
+            result["signals"] = [signal.model_dump(**kwargs) for signal in self.signals]
+
+        return result
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
