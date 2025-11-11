@@ -143,10 +143,7 @@ class TritonDigital(AdServerAdapter):
 
             error_msg = f"Unsupported targeting features for Triton Digital: {'; '.join(unsupported_features)}"
             self.log(f"[red]Error: {error_msg}[/red]")
-            return CreateMediaBuyResponse(
-                buyer_ref=request.buyer_ref or "unknown",
-                media_buy_id=None,
-                creative_deadline=None,
+            return CreateMediaBuyError(
                 errors=[Error(code="unsupported_targeting", message=error_msg, details=None)],
             )
 
@@ -278,6 +275,7 @@ class TritonDigital(AdServerAdapter):
                     "cpm": package.cpm,
                     "impressions": package.impressions,
                     "platform_line_item_id": str(flight_id) if flight_id else None,
+                    "status": "active",  # Required by AdCP spec
                 }
 
                 # Add buyer_ref from request package if available
@@ -329,6 +327,7 @@ class TritonDigital(AdServerAdapter):
                         "delivery_type": package.delivery_type,
                         "cpm": package.cpm,
                         "impressions": package.impressions,
+                        "status": "active",  # Required by AdCP spec
                     },
                 )
 
@@ -360,12 +359,11 @@ class TritonDigital(AdServerAdapter):
 
                 package_responses.append(package_dict)
 
-        return CreateMediaBuyResponse(
+        return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "unknown",
             media_buy_id=media_buy_id,
-            creative_deadline=datetime.now() + timedelta(days=2),
+            creative_deadline=(datetime.now() + timedelta(days=2)).isoformat(),
             packages=package_responses,
-            errors=[],
         )
 
     def add_creative_assets(
@@ -647,10 +645,7 @@ class TritonDigital(AdServerAdapter):
         self.log(f"TritonDigital.update_media_buy for {media_buy_id} with action {action}", dry_run_prefix=False)
 
         if action not in REQUIRED_UPDATE_ACTIONS:
-            return UpdateMediaBuyResponse(
-                media_buy_id=media_buy_id,
-                buyer_ref=buyer_ref,
-                implementation_date=None,
+            return UpdateMediaBuyError(
                 errors=[
                     Error(
                         code="unsupported_action",
@@ -691,11 +686,10 @@ class TritonDigital(AdServerAdapter):
                 self.log(f"Would call: PUT {self.base_url}/flights/{package_id}")
                 self.log(f"  Payload: {{'goal': {{'type': 'IMPRESSIONS', 'value': {new_impressions}}}}}")
 
-            return UpdateMediaBuyResponse(
+            return UpdateMediaBuySuccess(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
                 implementation_date=today,
-                errors=None,
             )
         else:
             try:
@@ -719,10 +713,7 @@ class TritonDigital(AdServerAdapter):
 
                     flight = next((f for f in flights if f["name"] == package_id), None)
                     if not flight:
-                        return UpdateMediaBuyResponse(
-                            media_buy_id=media_buy_id,
-                            buyer_ref=buyer_ref,
-                            implementation_date=None,
+                        return UpdateMediaBuyError(
                             errors=[
                                 Error(code="flight_not_found", message=f"Flight '{package_id}' not found", details=None)
                             ],
@@ -749,10 +740,7 @@ class TritonDigital(AdServerAdapter):
 
                     flight = next((f for f in flights if f["name"] == package_id), None)
                     if not flight:
-                        return UpdateMediaBuyResponse(
-                            media_buy_id=media_buy_id,
-                            buyer_ref=buyer_ref,
-                            implementation_date=None,
+                        return UpdateMediaBuyError(
                             errors=[
                                 Error(code="flight_not_found", message=f"Flight '{package_id}' not found", details=None)
                             ],
@@ -772,18 +760,14 @@ class TritonDigital(AdServerAdapter):
                     )
                     response.raise_for_status()
 
-                return UpdateMediaBuyResponse(
+                return UpdateMediaBuySuccess(
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
                     implementation_date=today,
-                    errors=None,
                 )
 
             except requests.exceptions.RequestException as e:
                 self.log(f"Error updating Triton campaign/flight: {e}")
-                return UpdateMediaBuyResponse(
-                    media_buy_id=media_buy_id,
-                    buyer_ref=buyer_ref,
-                    implementation_date=None,
+                return UpdateMediaBuyError(
                     errors=[Error(code="api_error", message=str(e), details=None)],
                 )

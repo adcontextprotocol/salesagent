@@ -59,7 +59,9 @@ from src.core.helpers.adapter_helpers import get_adapter
 from src.core.helpers.creative_helpers import _convert_creative_to_adapter_asset, process_and_upload_package_creatives
 from src.core.schema_adapters import CreateMediaBuyResponse
 from src.core.schemas import (
+    CreateMediaBuyError,
     CreateMediaBuyRequest,
+    CreateMediaBuySuccess,
     CreativeStatus,
     Error,
     FormatId,
@@ -1287,8 +1289,7 @@ async def _create_media_buy_impl(
     if not principal:
         error_msg = f"Principal {principal_id} not found"
         # Cannot create context or workflow step without valid principal
-        return CreateMediaBuyResponse(
-            buyer_ref=buyer_ref or "unknown",
+        return CreateMediaBuyError(
             errors=[Error(code="authentication_error", message=error_msg, details=None)],
         )
 
@@ -1701,8 +1702,7 @@ async def _create_media_buy_impl(
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
 
         # Return error response (protocol layer will add status="failed")
-        return CreateMediaBuyResponse(
-            buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
+        return CreateMediaBuyError(
             errors=[Error(code="validation_error", message=str(e), details=None)],
         )
 
@@ -2098,7 +2098,7 @@ async def _create_media_buy_impl(
             # The workflow_step_id in packages indicates approval is required
             # buyer_ref is required by schema, but mypy needs explicit check
             response_buyer_ref = req.buyer_ref if req.buyer_ref else "unknown"
-            return CreateMediaBuyResponse(
+            return CreateMediaBuySuccess(
                 buyer_ref=response_buyer_ref,
                 media_buy_id=media_buy_id,
                 creative_deadline=None,
@@ -2168,8 +2168,7 @@ async def _create_media_buy_impl(
                     f"  • {err}" for err in config_errors
                 )
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
-                return CreateMediaBuyResponse(
-                    buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
+                return CreateMediaBuyError(
                     errors=[Error(code="invalid_configuration", message=err, details=None) for err in config_errors],
                 )
 
@@ -2261,7 +2260,7 @@ async def _create_media_buy_impl(
             except Exception as e:
                 logger.warning(f"⚠️ Failed to send configuration approval Slack notification: {e}")
 
-            return CreateMediaBuyResponse(
+            return CreateMediaBuySuccess(
                 buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
                 media_buy_id=media_buy_id,
                 packages=response_packages,  # Include packages with buyer_ref
@@ -2509,8 +2508,7 @@ async def _create_media_buy_impl(
         if not req.start_time or not req.end_time:
             error_msg = "start_time and end_time are required but were not properly set"
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return CreateMediaBuyResponse(
-                buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
+            return CreateMediaBuyError(
                 errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
             )
 
@@ -3016,7 +3014,7 @@ async def _create_media_buy_impl(
             buyer_ref_value = f"missing-{response.media_buy_id}"
 
         # Create AdCP response (protocol fields like status are added by ProtocolEnvelope wrapper)
-        adcp_response = CreateMediaBuyResponse(
+        adcp_response = CreateMediaBuySuccess(
             buyer_ref=buyer_ref_value,
             media_buy_id=response.media_buy_id,
             packages=response_packages,
@@ -3068,29 +3066,27 @@ async def _create_media_buy_impl(
         # Reconstruct response from modified data
         # Filter out testing hook fields that aren't part of CreateMediaBuyResponse schema
         # Domain fields only (status/adcp_version are protocol fields, added by ProtocolEnvelope)
+        # Success branch fields only (no errors field in success path)
         valid_fields = {
             "buyer_ref",
             "media_buy_id",
             "creative_deadline",
             "packages",
-            "errors",
             "workflow_step_id",
         }
         filtered_data = {k: v for k, v in response_data.items() if k in valid_fields}
 
         # Ensure required fields are present (validator compliance)
-        if "status" not in filtered_data:
-            filtered_data["status"] = "completed"
         if "buyer_ref" not in filtered_data:
             filtered_data["buyer_ref"] = buyer_ref_value
 
         # Use explicit fields for validator (instead of **kwargs)
-        modified_response = CreateMediaBuyResponse(
+        # This is the success path - use Success model
+        modified_response = CreateMediaBuySuccess(
             buyer_ref=filtered_data["buyer_ref"],
-            media_buy_id=filtered_data.get("media_buy_id"),
+            media_buy_id=filtered_data["media_buy_id"],
+            packages=filtered_data["packages"],
             creative_deadline=filtered_data.get("creative_deadline"),
-            packages=filtered_data.get("packages"),
-            errors=filtered_data.get("errors"),
         )
 
         # Mark workflow step as completed on success

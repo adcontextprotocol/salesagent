@@ -7,7 +7,21 @@ from datetime import UTC, date, datetime, time
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from adcp import (
+    CreateMediaBuyError as AdCPCreateMediaBuyError,
+)
+
+# AdCP v1.2.1 oneOf Success/Error types
+from adcp import (
+    CreateMediaBuySuccess as AdCPCreateMediaBuySuccess,
+)
+from adcp import (
+    UpdateMediaBuyError as AdCPUpdateMediaBuyError,
+)
+from adcp import (
+    UpdateMediaBuySuccess as AdCPUpdateMediaBuySuccess,
+)
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
 from src.core.schemas_generated._schemas_v1_core_push_notification_config_json import (
     PushNotificationConfig,
@@ -2383,50 +2397,72 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         return self.product_ids or []
 
 
-class CreateMediaBuyResponse(AdCPBaseModel):
-    """Response from create_media_buy operation (AdCP v2.4 spec compliant).
+class CreateMediaBuySuccess(AdCPCreateMediaBuySuccess):
+    """Successful create_media_buy response extending adcp v1.2.1 type.
 
+    Extends the official adcp CreateMediaBuySuccess type with internal workflow tracking.
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    # Required AdCP domain fields
-    buyer_ref: str = Field(..., description="Buyer's reference identifier for this media buy")
-
-    # Optional AdCP domain fields
-    media_buy_id: str | None = Field(None, description="Publisher's unique identifier for the created media buy")
-    creative_deadline: datetime | None = Field(None, description="ISO 8601 timestamp for creative upload deadline")
-    packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
-    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
-
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
 
-    def model_dump(self, **kwargs):
-        """Override to provide AdCP-compliant responses while preserving internal fields."""
-        # Default to excluding internal fields for AdCP compliance
-        exclude = kwargs.get("exclude", set())
-        if isinstance(exclude, set):
-            # Add internal fields to exclude by default
-            exclude.add("workflow_step_id")
-            kwargs["exclude"] = exclude
-        return super().model_dump(**kwargs)
+    @model_serializer(mode="wrap")
+    def _serialize_model(self, serializer, info):
+        """Serialize model, excluding internal fields by default."""
+        # Get base serialization
+        data = serializer(self)
+
+        # Exclude internal fields from protocol responses
+        # (unless explicitly requested via model_dump_internal)
+        if not info.context or not info.context.get("include_internal"):
+            data.pop("workflow_step_id", None)
+
+        # Auto-handle nested Pydantic models
+        for field_name in self.__class__.model_fields:
+            field_value = getattr(self, field_name, None)
+            if field_value is None:
+                continue
+
+            if isinstance(field_value, list) and field_value:
+                if isinstance(field_value[0], BaseModel):
+                    data[field_name] = [item.model_dump() for item in field_value]
+            elif isinstance(field_value, BaseModel):
+                data[field_name] = field_value.model_dump()
+
+        return data
 
     def model_dump_internal(self, **kwargs):
         """Dump including internal fields for database storage and internal processing."""
-        # Don't exclude internal fields
-        kwargs.pop("exclude", None)  # Remove any exclude parameter
-        return super().model_dump(**kwargs)
+        return self.model_dump(context={"include_internal": True}, **kwargs)
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
         if self.media_buy_id:
             return f"Media buy {self.media_buy_id} created successfully."
-        elif self.errors:
-            return f"Media buy creation for {self.buyer_ref} encountered {len(self.errors)} error(s)."
         else:
             return f"Media buy {self.buyer_ref} created."
+
+
+class CreateMediaBuyError(AdCPCreateMediaBuyError):
+    """Failed create_media_buy response extending adcp v1.2.1 type.
+
+    Extends the official adcp CreateMediaBuyError type.
+    Per AdCP PR #113, this response contains ONLY domain data.
+    """
+
+    def __str__(self) -> str:
+        """Return human-readable summary message for protocol envelope."""
+        if self.errors:
+            return f"Media buy creation encountered {len(self.errors)} error(s)."
+        else:
+            return "Media buy creation failed."
+
+
+# Union type for create_media_buy operation
+CreateMediaBuyResponse = CreateMediaBuySuccess | CreateMediaBuyError
 
 
 class CheckMediaBuyStatusRequest(AdCPBaseModel):
@@ -2637,50 +2673,75 @@ class AssetStatus(BaseModel):
     workflow_step_id: str | None = None  # HITL workflow step ID for manual approval
 
 
-class UpdateMediaBuyResponse(AdCPBaseModel):
-    """Response from update_media_buy operation (AdCP v2.4 spec compliant).
+class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
+    """Successful update_media_buy response extending adcp v1.2.1 type.
 
+    Extends the official adcp UpdateMediaBuySuccess type with internal workflow tracking
+    and affected_packages field.
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    # Required AdCP domain fields
-    media_buy_id: str = Field(..., description="Publisher's unique identifier for the media buy")
-    buyer_ref: str = Field(..., description="Buyer's reference identifier for this media buy")
-
-    # Optional AdCP domain fields
-    implementation_date: datetime | None = Field(None, description="When the update will take effect")
-    affected_packages: list[dict[str, Any]] = Field(default_factory=list, description="Packages affected by update")
-    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
-
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
+    affected_packages: list[dict[str, Any]] = Field(default_factory=list, description="Packages affected by update")
 
-    def model_dump(self, **kwargs):
-        """Override to provide AdCP-compliant responses while preserving internal fields."""
-        # Default to excluding internal fields for AdCP compliance
-        exclude = kwargs.get("exclude", set())
-        if isinstance(exclude, set):
-            # Add internal fields to exclude by default
-            exclude.add("workflow_step_id")
-            kwargs["exclude"] = exclude
-        return super().model_dump(**kwargs)
+    @model_serializer(mode="wrap")
+    def _serialize_model(self, serializer, info):
+        """Serialize model, excluding internal fields by default."""
+        # Get base serialization
+        data = serializer(self)
+
+        # Exclude internal fields from protocol responses
+        # (unless explicitly requested via model_dump_internal)
+        if not info.context or not info.context.get("include_internal"):
+            data.pop("workflow_step_id", None)
+            data.pop("affected_packages", None)
+
+        # Auto-handle nested Pydantic models
+        for field_name in self.__class__.model_fields:
+            field_value = getattr(self, field_name, None)
+            if field_value is None:
+                continue
+
+            if isinstance(field_value, list) and field_value:
+                if isinstance(field_value[0], BaseModel):
+                    data[field_name] = [item.model_dump() for item in field_value]
+            elif isinstance(field_value, BaseModel):
+                data[field_name] = field_value.model_dump()
+
+        return data
 
     def model_dump_internal(self, **kwargs):
         """Dump including internal fields for database storage and internal processing."""
-        # Don't exclude internal fields
-        kwargs.pop("exclude", None)  # Remove any exclude parameter
-        return super().model_dump(**kwargs)
+        return self.model_dump(context={"include_internal": True}, **kwargs)
+
+    def __str__(self) -> str:
+        """Return human-readable summary message for protocol envelope."""
+        if self.affected_packages:
+            return f"Media buy {self.media_buy_id} updated: {len(self.affected_packages)} package(s) affected."
+        else:
+            return f"Media buy {self.media_buy_id} updated successfully."
+
+
+class UpdateMediaBuyError(AdCPUpdateMediaBuyError):
+    """Failed update_media_buy response extending adcp v1.2.1 type.
+
+    Extends the official adcp UpdateMediaBuyError type.
+    Per AdCP PR #113, this response contains ONLY domain data.
+    """
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
         if self.errors:
-            return f"Media buy {self.media_buy_id} update encountered {len(self.errors)} error(s)."
-        elif self.affected_packages:
-            return f"Media buy {self.media_buy_id} updated: {len(self.affected_packages)} package(s) affected."
+            return f"Media buy update encountered {len(self.errors)} error(s)."
         else:
-            return f"Media buy {self.media_buy_id} updated successfully."
+            return "Media buy update failed."
+
+
+# Union type for update_media_buy operation
+UpdateMediaBuyResponse = UpdateMediaBuySuccess | UpdateMediaBuyError
 
 
 # Unified update models

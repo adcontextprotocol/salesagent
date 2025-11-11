@@ -21,11 +21,7 @@ class TestPricingValidation:
         product.pricing_options = []  # No pricing options = data integrity error
 
         # Package doesn't specify pricing_model
-        package = Package(
-            package_id="pkg_1",
-            products=["legacy_product"],
-            budget=5000.0,
-        )
+        package = Package(package_id="pkg_1", products=["legacy_product"], budget=5000.0, status="active")
 
         # Should raise data integrity error
         with pytest.raises(ToolError) as exc_info:
@@ -46,6 +42,7 @@ class TestPricingValidation:
             products=["legacy_product"],
             pricing_model=PricingModel.CPCV,
             budget=5000.0,
+            status="active",
         )
 
         with pytest.raises(ToolError) as exc_info:
@@ -74,6 +71,7 @@ class TestPricingValidation:
             products=["video_product"],
             pricing_model=PricingModel.CPCV,
             budget=10000.0,
+            status="active",
         )
 
         result = _validate_pricing_model_selection(package, product, "USD")
@@ -98,6 +96,7 @@ class TestPricingValidation:
             products=["display_product"],
             pricing_model=PricingModel.CPP,  # Not offered
             budget=5000.0,
+            status="active",
         )
 
         with pytest.raises(ToolError) as exc_info:
@@ -117,10 +116,7 @@ class TestPricingValidation:
         product.pricing_options = [pricing_option]
 
         package = Package(
-            package_id="pkg_1",
-            products=["product_1"],
-            pricing_model=PricingModel.CPM,
-            budget=5000.0,
+            package_id="pkg_1", products=["product_1"], pricing_model=PricingModel.CPM, budget=5000.0, status="active"
         )
 
         with pytest.raises(ToolError) as exc_info:
@@ -147,6 +143,7 @@ class TestPricingValidation:
             pricing_model=PricingModel.CPM,
             budget=5000.0,
             # Missing bid_price
+            status="active",
         )
 
         with pytest.raises(ToolError) as exc_info:
@@ -174,6 +171,7 @@ class TestPricingValidation:
             pricing_model=PricingModel.CPM,
             bid_price=10.0,  # Below floor of 15.0
             budget=5000.0,
+            status="active",
         )
 
         with pytest.raises(ToolError) as exc_info:
@@ -194,10 +192,7 @@ class TestPricingValidation:
         product.pricing_options = [pricing_option]
 
         package = Package(
-            package_id="pkg_1",
-            products=["product_1"],
-            pricing_model=PricingModel.CPM,
-            budget=5000.0,
+            package_id="pkg_1", products=["product_1"], pricing_model=PricingModel.CPM, budget=5000.0, status="active"
         )
 
         with pytest.raises(ToolError) as exc_info:
@@ -223,6 +218,7 @@ class TestPricingValidation:
             products=["product_1"],
             pricing_model=PricingModel.CPCV,
             budget=5000.0,  # Below minimum of 10000
+            status="active",
         )
 
         with pytest.raises(ToolError) as exc_info:
@@ -250,6 +246,7 @@ class TestPricingValidation:
             pricing_model=PricingModel.CPM,
             bid_price=18.0,  # Above floor
             budget=5000.0,
+            status="active",
         )
 
         result = _validate_pricing_model_selection(package, product, "USD")
@@ -265,11 +262,7 @@ class TestPricingValidation:
         product.product_id = "broken_product"
         product.pricing_options = []  # No pricing options = data integrity error
 
-        package = Package(
-            package_id="pkg_1",
-            products=["broken_product"],
-            budget=5000.0,
-        )
+        package = Package(package_id="pkg_1", products=["broken_product"], budget=5000.0, status="active")
 
         with pytest.raises(ToolError) as exc_info:
             _validate_pricing_model_selection(package, product, "USD")

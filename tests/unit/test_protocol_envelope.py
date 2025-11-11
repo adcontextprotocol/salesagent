@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 import pytest
 
 from src.core.protocol_envelope import ProtocolEnvelope
-from src.core.schemas import CreateMediaBuyResponse, GetProductsResponse
+from src.core.schemas import CreateMediaBuySuccess, GetProductsResponse
 
 
 class TestProtocolEnvelope:
@@ -36,7 +36,9 @@ class TestProtocolEnvelope:
     def test_wrap_pydantic_model_with_all_fields(self):
         """Test wrapping with all optional envelope fields."""
         # Create domain response (no protocol fields - those go in envelope)
-        response = CreateMediaBuyResponse(buyer_ref="ref123", media_buy_id="mb_456", packages=[], errors=None)
+        response = CreateMediaBuySuccess(
+            buyer_ref="ref123", media_buy_id="mb_456", packages=[{"package_id": "pkg_1", "status": "active"}]
+        )
 
         # Create push notification config
         push_config = {
@@ -123,12 +125,11 @@ class TestProtocolEnvelope:
 
     def test_payload_excludes_internal_fields(self):
         """Test that payload excludes internal fields via model_dump."""
-        response = CreateMediaBuyResponse(
+        response = CreateMediaBuySuccess(
             buyer_ref="ref123",
             media_buy_id="mb_456",
             workflow_step_id="ws_789",  # Internal field
             packages=[],
-            errors=None,
         )
 
         envelope = ProtocolEnvelope.wrap(payload=response, status="completed", add_timestamp=False)
@@ -139,7 +140,9 @@ class TestProtocolEnvelope:
 
     def test_message_generation_from_payload_str(self):
         """Test that message is auto-generated from payload.__str__ if not provided."""
-        response = CreateMediaBuyResponse(buyer_ref="ref123", media_buy_id="mb_456", packages=[], errors=None)
+        response = CreateMediaBuySuccess(
+            buyer_ref="ref123", media_buy_id="mb_456", packages=[{"package_id": "pkg_1", "status": "active"}]
+        )
 
         envelope = ProtocolEnvelope.wrap(payload=response, status="completed", add_timestamp=False)
 
@@ -166,7 +169,9 @@ class TestProtocolEnvelope:
 
     def test_async_operation_with_task_id(self):
         """Test envelope for async operation (submitted status with task_id)."""
-        response = CreateMediaBuyResponse(buyer_ref="ref123", packages=[], errors=None)
+        response = CreateMediaBuySuccess(
+            buyer_ref="ref123", media_buy_id="mb_456", packages=[{"package_id": "pkg_1", "status": "active"}]
+        )
 
         envelope = ProtocolEnvelope.wrap(
             payload=response, status="submitted", task_id="task_async_123", message="Processing media buy creation"
@@ -178,12 +183,10 @@ class TestProtocolEnvelope:
 
     def test_error_response_with_failures(self):
         """Test envelope for failed operation."""
-        from src.core.schemas import Error
+        from src.core.schemas import CreateMediaBuyError
 
-        response = CreateMediaBuyResponse(
-            buyer_ref="ref123",
-            errors=[Error(code="INVALID_BUDGET", message="Budget too low", severity="error")],
-            packages=[],
+        response = CreateMediaBuyError(
+            errors=[{"code": "INVALID_BUDGET", "message": "Budget too low"}],
         )
 
         envelope = ProtocolEnvelope.wrap(payload=response, status="failed", message="Media buy creation failed")
@@ -206,11 +209,10 @@ class TestProtocolEnvelopeStatusLogic:
 
     def test_validation_error_uses_failed_status(self):
         """Test that validation errors use status='failed'."""
-        from src.core.schemas import Error
+        from src.core.schemas import CreateMediaBuyError
 
-        response = CreateMediaBuyResponse(
-            buyer_ref="test_buyer",
-            errors=[Error(code="validation_error", message="Currency EUR is not supported")],
+        response = CreateMediaBuyError(
+            errors=[{"code": "validation_error", "message": "Currency EUR is not supported"}],
         )
 
         envelope = ProtocolEnvelope.wrap(payload=response, status="failed")
@@ -222,11 +224,10 @@ class TestProtocolEnvelopeStatusLogic:
 
     def test_validation_error_can_use_input_required_status(self):
         """Test that validation errors can also use status='input-required' for fixable issues."""
-        from src.core.schemas import Error
+        from src.core.schemas import CreateMediaBuyError
 
-        response = CreateMediaBuyResponse(
-            buyer_ref="test_buyer",
-            errors=[Error(code="missing_required_field", message="Missing required field: budget")],
+        response = CreateMediaBuyError(
+            errors=[{"code": "missing_required_field", "message": "Missing required field: budget"}],
         )
 
         envelope = ProtocolEnvelope.wrap(payload=response, status="input-required")
@@ -237,11 +238,10 @@ class TestProtocolEnvelopeStatusLogic:
 
     def test_auth_error_uses_rejected_status(self):
         """Test that authentication errors use status='rejected'."""
-        from src.core.schemas import Error
+        from src.core.schemas import CreateMediaBuyError
 
-        response = CreateMediaBuyResponse(
-            buyer_ref="test_buyer",
-            errors=[Error(code="authentication_error", message="Principal not found")],
+        response = CreateMediaBuyError(
+            errors=[{"code": "authentication_error", "message": "Principal not found"}],
         )
 
         envelope = ProtocolEnvelope.wrap(payload=response, status="rejected")
@@ -252,11 +252,10 @@ class TestProtocolEnvelopeStatusLogic:
 
     def test_auth_error_can_use_auth_required_status(self):
         """Test that auth errors can also use status='auth-required' per AdCP spec."""
-        from src.core.schemas import Error
+        from src.core.schemas import CreateMediaBuyError
 
-        response = CreateMediaBuyResponse(
-            buyer_ref="test_buyer",
-            errors=[Error(code="invalid_token", message="Token expired")],
+        response = CreateMediaBuyError(
+            errors=[{"code": "invalid_token", "message": "Token expired"}],
         )
 
         envelope = ProtocolEnvelope.wrap(payload=response, status="auth-required")
@@ -266,7 +265,7 @@ class TestProtocolEnvelopeStatusLogic:
 
     def test_successful_sync_operation_uses_completed_status(self):
         """Test that successful synchronous operations use status='completed'."""
-        response = CreateMediaBuyResponse(
+        response = CreateMediaBuySuccess(
             buyer_ref="test_buyer",
             media_buy_id="buy_123",
             packages=[],
@@ -280,9 +279,10 @@ class TestProtocolEnvelopeStatusLogic:
 
     def test_successful_async_operation_uses_submitted_status(self):
         """Test that successful async operations use status='submitted' with task_id."""
-        response = CreateMediaBuyResponse(
+        response = CreateMediaBuySuccess(
             buyer_ref="test_buyer",
-            packages=[],  # No media_buy_id yet - will be assigned later
+            media_buy_id="pending",  # Placeholder for async operations
+            packages=[],
         )
 
         envelope = ProtocolEnvelope.wrap(
@@ -291,11 +291,11 @@ class TestProtocolEnvelopeStatusLogic:
 
         assert envelope.status == "submitted"
         assert envelope.task_id == "task_async_456"
-        assert envelope.payload.get("media_buy_id") is None  # Not assigned yet
+        assert envelope.payload.get("media_buy_id") == "pending"  # Placeholder for async operations
 
     def test_in_progress_async_operation_uses_working_status(self):
         """Test that in-progress async operations use status='working'."""
-        response = CreateMediaBuyResponse(
+        response = CreateMediaBuySuccess(
             buyer_ref="test_buyer",
             media_buy_id="buy_partial_789",  # May have ID but not complete
             packages=[],
@@ -310,8 +310,10 @@ class TestProtocolEnvelopeStatusLogic:
 
     def test_canceled_operation_uses_canceled_status(self):
         """Test that canceled operations use status='canceled'."""
-        response = CreateMediaBuyResponse(
+        response = CreateMediaBuySuccess(
             buyer_ref="test_buyer",
+            media_buy_id="canceled_123",
+            packages=[],
         )
 
         envelope = ProtocolEnvelope.wrap(payload=response, status="canceled", message="Operation canceled by user")
@@ -322,7 +324,7 @@ class TestProtocolEnvelopeStatusLogic:
         """Test that invalid status values are rejected."""
         import pytest
 
-        response = CreateMediaBuyResponse(buyer_ref="test_buyer")
+        response = CreateMediaBuySuccess(buyer_ref="test_buyer", media_buy_id="mb_123", packages=[])
 
         # Invalid status should raise ValidationError
         with pytest.raises(ValueError):

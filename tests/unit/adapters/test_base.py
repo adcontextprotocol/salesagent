@@ -60,6 +60,7 @@ def test_mock_ad_server_create_media_buy(sample_packages, mocker):
             buyer_ref="pkg_ref_1",
             products=["pkg_1"],
             budget=5000.0,
+            status="active",
             format_ids=[
                 make_format_id("display_300x250"),
                 make_format_id("display_728x90"),

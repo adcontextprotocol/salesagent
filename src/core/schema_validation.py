@@ -198,15 +198,15 @@ def create_schema_registry() -> dict[str, dict[str, Any]]:
     )
 
     # Core response models to include in schema registry
+    # Note: Union types (CreateMediaBuyResponse, UpdateMediaBuyResponse) are excluded
+    # because they are type aliases, not concrete classes
     response_models: list[type[BaseModel]] = [
         GetProductsResponse,
         ListCreativeFormatsResponse,
         ListAuthorizedPropertiesResponse,
-        CreateMediaBuyResponse,
         GetSignalsResponse,
         SyncCreativesResponse,
         ListCreativesResponse,
-        UpdateMediaBuyResponse,
         GetMediaBuyDeliveryResponse,
         UpdatePerformanceIndexResponse,
     ]

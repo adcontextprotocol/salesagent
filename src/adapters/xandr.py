@@ -15,6 +15,7 @@ from src.core.retry_utils import api_retry
 from src.core.schemas import (
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
+    CreateMediaBuySuccess,
     MediaPackage,
     Principal,
     Product,
@@ -442,15 +443,15 @@ class XandrAdapter(AdServerAdapter):
                 package_responses.append(
                     {
                         "package_id": package.package_id,
+                        "status": "active",  # Required by AdCP spec
                     }
                 )
 
-            return CreateMediaBuyResponse(
+            return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
                 media_buy_id=f"xandr_pending_{task_id}",
                 packages=package_responses,
                 creative_deadline=None,
-                errors=None,
             )
 
         try:
@@ -536,15 +537,15 @@ class XandrAdapter(AdServerAdapter):
                     {
                         "package_id": package.package_id,
                         "platform_line_item_id": str(li_id),
+                        "status": "active",  # Required by AdCP spec
                     }
                 )
 
-            return CreateMediaBuyResponse(
+            return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
                 media_buy_id=f"xandr_io_{io_id}",
-                creative_deadline=datetime.now(UTC) + timedelta(days=2),
+                creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),
                 packages=package_responses,
-                errors=None,
             )
 
         except Exception as e:

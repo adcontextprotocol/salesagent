@@ -42,8 +42,8 @@ def sample_request():
         buyer_ref="test_buyer_ref_123",
         brand_manifest={"name": "Test Brand"},
         packages=[
-            Package(package_id="pkg_001", products=["prod_123"]),
-            Package(package_id="pkg_002", products=["prod_456"]),
+            Package(package_id="pkg_001", products=["prod_123"], status="active"),
+            Package(package_id="pkg_002", products=["prod_456"], status="active"),
         ],
         start_date=date.today(),
         end_date=date.today() + timedelta(days=30),
@@ -164,16 +164,12 @@ class TestGAMManualApprovalPath:
                     request=sample_request, packages=sample_packages, start_time=start_time, end_time=end_time
                 )
 
-            # Assert - Response must have packages even on failure
-            assert response.packages is not None, "Response must have packages field even on error"
-            assert len(response.packages) == len(sample_packages), "Must return all packages even on error"
+            # Assert - With oneOf pattern, workflow failure returns error response without packages
+            from src.core.schemas import CreateMediaBuyError
 
-            # Assert - Each package must have package_id
-            for i, pkg in enumerate(response.packages):
-                assert "package_id" in pkg, f"Package {i} missing package_id even on error"
-
-            # Assert - Error response should be present (if applicable)
-            # Note: This depends on implementation - workflow failure might not always set errors
+            assert isinstance(response, CreateMediaBuyError), "Workflow failure should return error response"
+            assert len(response.errors) > 0, "Error response must have errors"
+            assert response.errors[0].code == "workflow_creation_failed", "Error code should indicate workflow failure"
 
 
 class TestGAMActivationWorkflowPath:

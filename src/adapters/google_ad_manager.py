@@ -43,12 +43,16 @@ from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
     AssetStatus,
     CheckMediaBuyStatusResponse,
+    CreateMediaBuyError,
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
+    CreateMediaBuySuccess,
     Error,
     MediaPackage,
     ReportingPeriod,
+    UpdateMediaBuyError,
     UpdateMediaBuyResponse,
+    UpdateMediaBuySuccess,
 )
 
 # Set up logger
@@ -332,10 +336,7 @@ class GoogleAdManager(AdServerAdapter):
                         f"Please choose a product with compatible pricing."
                     )
                     self.log(f"[red]Error: {error_msg}[/red]")
-                    return CreateMediaBuyResponse(
-                        buyer_ref=request.buyer_ref or "",
-                        media_buy_id=None,
-                        creative_deadline=None,
+                    return CreateMediaBuyError(
                         errors=[Error(code="unsupported_pricing_model", message=error_msg, details=None)],
                     )
 
@@ -355,10 +356,7 @@ class GoogleAdManager(AdServerAdapter):
             error_msg += ", ".join(missing)
 
             self.log(f"[red]Error: {error_msg}[/red]")
-            return CreateMediaBuyResponse(
-                buyer_ref=request.buyer_ref or "",
-                media_buy_id=None,
-                creative_deadline=None,
+            return CreateMediaBuyError(
                 errors=[Error(code="configuration_error", message=error_msg, details=None)],
             )
 
@@ -457,10 +455,7 @@ class GoogleAdManager(AdServerAdapter):
                     f"Product must exist in database with valid configuration before media buy creation."
                 )
                 self.log(f"[red]Error: {error_msg}[/red]")
-                return CreateMediaBuyResponse(
-                    buyer_ref=request.buyer_ref or "",
-                    media_buy_id=None,
-                    creative_deadline=None,
+                return CreateMediaBuyError(
                     errors=[Error(code="product_not_configured", message=error_msg, details=None)],
                 )
 
@@ -483,10 +478,7 @@ class GoogleAdManager(AdServerAdapter):
                     f"\n\nAlternatively, for testing you can use Mock adapter instead of GAM (set ad_server='mock' on tenant)."
                 )
                 self.log(f"[red]Error: {error_msg}[/red]")
-                return CreateMediaBuyResponse(
-                    buyer_ref=request.buyer_ref or "",
-                    media_buy_id=None,
-                    creative_deadline=None,
+                return CreateMediaBuyError(
                     errors=[Error(code="product_not_configured", message=error_msg, details=None)],
                 )
 
@@ -495,10 +487,7 @@ class GoogleAdManager(AdServerAdapter):
         if unsupported_features:
             error_msg = f"Unsupported targeting features: {', '.join(unsupported_features)}"
             self.log(f"[red]Error: {error_msg}[/red]")
-            return CreateMediaBuyResponse(
-                buyer_ref=request.buyer_ref or "",
-                media_buy_id=None,
-                creative_deadline=None,
+            return CreateMediaBuyError(
                 errors=[Error(code="unsupported_targeting", message=error_msg, details=None)],
             )
 
@@ -536,6 +525,7 @@ class GoogleAdManager(AdServerAdapter):
                     "delivery_type": package.delivery_type,
                     "cpm": package.cpm,
                     "impressions": package.impressions,
+                    "status": "active",  # Required by AdCP spec
                 }
 
                 # Add buyer_ref from request package if available
@@ -567,22 +557,17 @@ class GoogleAdManager(AdServerAdapter):
                 package_responses.append(package_dict)
 
             if step_id:
-                return CreateMediaBuyResponse(
+                return CreateMediaBuySuccess(
                     buyer_ref=request.buyer_ref or "",
                     media_buy_id=media_buy_id,
                     creative_deadline=None,
                     workflow_step_id=step_id,
                     packages=package_responses,
-                    errors=[],
                 )
             else:
                 error_msg = "Failed to create manual order workflow step"
-                return CreateMediaBuyResponse(
-                    buyer_ref=request.buyer_ref or "",
-                    media_buy_id=media_buy_id,
-                    creative_deadline=None,
+                return CreateMediaBuyError(
                     errors=[Error(code="workflow_creation_failed", message=error_msg, details=None)],
-                    packages=package_responses,
                 )
 
         # Automatic mode - create order directly
@@ -700,12 +685,8 @@ class GoogleAdManager(AdServerAdapter):
             # CRITICAL: Return media_buy_id=None to indicate failure
             # Even though order was created, line items failed, so media buy is not functional
             # Per AdCP spec: errors present → media_buy_id must be None
-            return CreateMediaBuyResponse(
-                buyer_ref=request.buyer_ref or "",
-                media_buy_id=None,  # NULL because creation failed
-                creative_deadline=None,
+            return CreateMediaBuyError(
                 errors=[Error(code="line_item_creation_failed", message=error_msg, details=None)],
-                packages=[],  # No packages since line items weren't created
             )
 
         # Check if activation approval is needed (guaranteed line items require human approval)
@@ -731,6 +712,7 @@ class GoogleAdManager(AdServerAdapter):
                     "cpm": package.cpm,
                     "impressions": package.impressions,
                     "platform_line_item_id": str(line_item_id),  # GAM line item ID for creative association
+                    "status": "active",  # Required by AdCP spec
                 }
 
                 # Add buyer_ref from request package if available
@@ -764,13 +746,12 @@ class GoogleAdManager(AdServerAdapter):
 
                 package_responses.append(guaranteed_package_dict)
 
-            return CreateMediaBuyResponse(
+            return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
                 media_buy_id=order_id,
                 creative_deadline=None,
                 workflow_step_id=step_id,
                 packages=package_responses,
-                errors=[],
             )
 
         # Build package responses with ALL package data + line_item_ids for creative association
@@ -788,6 +769,7 @@ class GoogleAdManager(AdServerAdapter):
                 "delivery_type": package.delivery_type,
                 "cpm": package.cpm,
                 "impressions": package.impressions,
+                "status": "active",  # Required by AdCP spec
                 "platform_line_item_id": str(line_item_id),  # GAM line item ID for creative association
             }
 
@@ -819,12 +801,8 @@ class GoogleAdManager(AdServerAdapter):
 
             package_responses.append(final_package_dict)
 
-        return CreateMediaBuyResponse(
-            buyer_ref=request.buyer_ref or "",
-            media_buy_id=order_id,
-            creative_deadline=None,
-            packages=package_responses,
-            errors=[],
+        return CreateMediaBuySuccess(
+            buyer_ref=request.buyer_ref or "", media_buy_id=order_id, creative_deadline=None, packages=package_responses
         )
 
     def archive_order(self, order_id: str) -> bool:
@@ -1029,10 +1007,7 @@ class GoogleAdManager(AdServerAdapter):
 
         # Check if action requires admin privileges
         if action in admin_only_actions and not self._is_admin_principal():
-            return UpdateMediaBuyResponse(
-                media_buy_id=media_buy_id,
-                buyer_ref=buyer_ref,
-                implementation_date=today,
+            return UpdateMediaBuyError(
                 errors=[
                     Error(code="insufficient_privileges", message="Only admin users can approve orders", details=None)
                 ],
@@ -1047,17 +1022,13 @@ class GoogleAdManager(AdServerAdapter):
 
             if step_id:
                 # Manual approval success - no errors
-                return UpdateMediaBuyResponse(
+                return UpdateMediaBuySuccess(
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
                     implementation_date=today,
-                    errors=[],
                 )
             else:
-                return UpdateMediaBuyResponse(
-                    media_buy_id=media_buy_id,
-                    buyer_ref=buyer_ref,
-                    implementation_date=today,
+                return UpdateMediaBuyError(
                     errors=[
                         Error(
                             code="workflow_creation_failed",
@@ -1079,18 +1050,14 @@ class GoogleAdManager(AdServerAdapter):
 
                 if step_id:
                     # Activation workflow created - success (no errors)
-                    return UpdateMediaBuyResponse(
+                    return UpdateMediaBuySuccess(
                         media_buy_id=media_buy_id,
                         buyer_ref=buyer_ref,
                         implementation_date=today,
                         workflow_step_id=step_id,
-                        errors=[],
                     )
                 else:
-                    return UpdateMediaBuyResponse(
-                        media_buy_id=media_buy_id,
-                        buyer_ref=buyer_ref,
-                        implementation_date=today,
+                    return UpdateMediaBuyError(
                         errors=[
                             Error(
                                 code="activation_workflow_failed",
@@ -1101,12 +1068,7 @@ class GoogleAdManager(AdServerAdapter):
                     )
 
         # For allowed actions in automatic mode, return success (no errors)
-        return UpdateMediaBuyResponse(
-            media_buy_id=media_buy_id,
-            buyer_ref=buyer_ref,
-            implementation_date=today,
-            errors=[],
-        )
+        return UpdateMediaBuySuccess(media_buy_id=media_buy_id, buyer_ref=buyer_ref, implementation_date=today)
 
     def update_media_buy_performance_index(self, media_buy_id: str, package_performance: list) -> bool:
         """Update the performance index for packages in a media buy."""

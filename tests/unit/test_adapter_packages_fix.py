@@ -32,8 +32,8 @@ def sample_request():
         buyer_ref="test_buyer_ref_123",
         brand_manifest={"name": "Test Brand"},
         packages=[
-            Package(package_id="pkg_001", products=["prod_123"]),
-            Package(package_id="pkg_002", products=["prod_456"]),
+            Package(package_id="pkg_001", products=["prod_123"], status="active"),
+            Package(package_id="pkg_002", products=["prod_456"], status="active"),
         ],
         start_date=date.today(),
         end_date=date.today() + timedelta(days=30),

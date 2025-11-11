@@ -45,7 +45,7 @@ class TestA2AParameterMapping:
             parameters = {
                 "media_buy_id": "mb_123",
                 "active": True,
-                "packages": [{"package_id": "pkg_1", "active": True}],  # AdCP v2.0+ field name
+                "packages": [{"package_id": "pkg_1", "active": True, "status": "active"}],  # AdCP v2.0+ field name
             }
 
             # Call the skill handler (synchronous wrapper for async method)
@@ -92,7 +92,9 @@ class TestA2AParameterMapping:
             # Legacy request format with 'updates' wrapper
             parameters = {
                 "media_buy_id": "mb_123",
-                "updates": {"packages": [{"package_id": "pkg_1", "budget": 5000.0}]},  # Legacy wrapper
+                "updates": {
+                    "packages": [{"package_id": "pkg_1", "budget": 5000.0, "status": "active"}]
+                },  # Legacy wrapper
             }
 
             import asyncio

@@ -54,6 +54,7 @@ class TestInlineCreativesInAdapters:
                     product_id="prod_test_123",
                     buyer_ref="pkg_buyer_ref",
                     budget=10000,
+                    status="active",
                     format_ids=[FormatId(agent_url="https://creative.test", id="display_300x250")],
                     creatives=[
                         Creative(

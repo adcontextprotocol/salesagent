@@ -1,6 +1,6 @@
 """Unit tests for update_media_buy affected_packages response."""
 
-from src.core.schemas import UpdateMediaBuyResponse
+from src.core.schemas import UpdateMediaBuySuccess
 
 
 def test_affected_packages_includes_creative_assignment_details():
@@ -19,7 +19,7 @@ def test_affected_packages_includes_creative_assignment_details():
         }
     ]
 
-    response = UpdateMediaBuyResponse(
+    response = UpdateMediaBuySuccess(
         media_buy_id="test_buy_123",
         buyer_ref="buyer_ref_123",
         affected_packages=affected_packages,
@@ -49,7 +49,7 @@ def test_affected_packages_includes_creative_assignment_details():
 
 def test_affected_packages_can_be_empty():
     """Test that affected_packages can be empty for non-creative updates."""
-    response = UpdateMediaBuyResponse(
+    response = UpdateMediaBuySuccess(
         media_buy_id="test_buy_456",
         buyer_ref="buyer_ref_456",
         affected_packages=[],
@@ -74,7 +74,7 @@ def test_affected_packages_shows_replaced_creatives():
         }
     ]
 
-    response = UpdateMediaBuyResponse(
+    response = UpdateMediaBuySuccess(
         media_buy_id="test_buy_789",
         buyer_ref="buyer_ref_789",
         affected_packages=affected_packages,
@@ -87,8 +87,8 @@ def test_affected_packages_shows_replaced_creatives():
 
 
 def test_response_serialization_includes_affected_packages():
-    """Test that UpdateMediaBuyResponse serializes affected_packages correctly."""
-    response = UpdateMediaBuyResponse(
+    """Test that UpdateMediaBuySuccess serializes affected_packages correctly."""
+    response = UpdateMediaBuySuccess(
         media_buy_id="test_buy_serialization",
         buyer_ref="buyer_ref_serialization",
         affected_packages=[
