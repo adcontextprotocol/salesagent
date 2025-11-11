@@ -1665,6 +1665,46 @@ class SyncCreativeResult(BaseModel):
         None, description="Assignment errors by package ID (only present when assignment failures occurred)"
     )
 
+    def model_dump(self, **kwargs):
+        """Override to exclude non-AdCP fields for spec compliance.
+
+        The AdCP spec (sync-creatives-response.json) only allows specific fields
+        with "additionalProperties": false. We exclude internal fields:
+        - status: Internal approval status tracking
+        - review_feedback: Internal review process feedback
+
+        Also excludes None values and empty lists to match AdCP spec where optional
+        fields should be omitted rather than set to null/empty.
+        """
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            # Exclude internal fields that aren't in AdCP spec
+            exclude.update({"status", "review_feedback"})
+            kwargs["exclude"] = exclude
+
+        # Exclude None values by default for AdCP compliance
+        if "exclude_none" not in kwargs:
+            kwargs["exclude_none"] = True
+
+        # Call parent model_dump
+        result = super().model_dump(**kwargs)
+
+        # Also exclude empty lists for cleaner responses (only include fields with data)
+        # Per AdCP spec: changes, errors, warnings are optional, so omit if empty
+        if "changes" in result and not result["changes"]:
+            result.pop("changes", None)
+        if "errors" in result and not result["errors"]:
+            result.pop("errors", None)
+        if "warnings" in result and not result["warnings"]:
+            result.pop("warnings", None)
+
+        return result
+
+    def model_dump_internal(self, **kwargs):
+        """Dump including all fields for database storage and internal processing."""
+        kwargs.pop("exclude", None)  # Remove any exclude parameter
+        return super().model_dump(**kwargs)
+
 
 class AssignmentsSummary(BaseModel):
     """Summary of assignment operations."""
@@ -1707,6 +1747,22 @@ class SyncCreativesResponse(AdCPBaseModel):
 
     # Optional fields (per official spec)
     dry_run: bool | None = Field(None, description="Whether this was a dry run (no actual changes made)")
+
+    def model_dump(self, **kwargs):
+        """Override to ensure nested SyncCreativeResult objects use their custom model_dump().
+
+        Pydantic's default serialization doesn't automatically call custom model_dump() methods
+        on nested models. We explicitly serialize the creatives list to ensure internal fields
+        (status, review_feedback) are excluded per AdCP spec compliance.
+        """
+        # Get base dump (this will use Pydantic's default nested serialization)
+        result = super().model_dump(**kwargs)
+
+        # Explicitly re-serialize creatives using their custom model_dump()
+        if "creatives" in result and self.creatives:
+            result["creatives"] = [creative.model_dump(**kwargs) for creative in self.creatives]
+
+        return result
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
