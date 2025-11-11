@@ -79,6 +79,121 @@ def _extract_tenant_subdomain(tenant: dict, virtual_host: str | None = None) -> 
     return tenant.get("tenant_id")
 
 
+def _generate_pending_configuration_page(tenant: dict, virtual_host: str | None = None) -> str:
+    """Generate pending configuration page for unconfigured tenants.
+
+    Args:
+        tenant: Tenant data from database
+        virtual_host: Virtual host domain if applicable
+
+    Returns:
+        Simple HTML page indicating pending configuration
+    """
+    tenant_name = html.escape(tenant.get("name", "Unknown Publisher"))
+    base_url = _determine_base_url(virtual_host)
+    admin_url = f"{base_url}/admin/"
+
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <title>{tenant_name} - Pending Configuration</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0;
+                padding: 2rem;
+            }}
+            .container {{
+                background: white;
+                border-radius: 8px;
+                padding: 3rem 2rem;
+                max-width: 600px;
+                text-align: center;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }}
+            .icon {{
+                font-size: 4rem;
+                margin-bottom: 1rem;
+            }}
+            h1 {{
+                color: #2c3e50;
+                margin-bottom: 0.5rem;
+                font-size: 2rem;
+            }}
+            .subtitle {{
+                color: #7f8c8d;
+                font-size: 1.1rem;
+                margin-bottom: 2rem;
+            }}
+            .message {{
+                background: #f8f9fa;
+                border-radius: 6px;
+                padding: 1.5rem;
+                margin-bottom: 2rem;
+                text-align: left;
+            }}
+            .message p {{
+                margin: 0.5rem 0;
+                line-height: 1.6;
+            }}
+            .admin-link {{
+                display: inline-block;
+                background: #4285F4;
+                color: white;
+                padding: 1rem 2rem;
+                border-radius: 6px;
+                text-decoration: none;
+                font-weight: 600;
+                transition: transform 0.2s, box-shadow 0.2s;
+            }}
+            .admin-link:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 6px 12px rgba(66, 133, 244, 0.3);
+            }}
+            .footer {{
+                margin-top: 2rem;
+                color: #95a5a6;
+                font-size: 0.9rem;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="icon">⚙️</div>
+            <h1>Pending Configuration</h1>
+            <p class="subtitle">{tenant_name}</p>
+
+            <div class="message">
+                <p><strong>This sales agent is not yet configured.</strong></p>
+                <p>To activate this agent, the owner needs to:</p>
+                <ul style="text-align: left; margin: 1rem 0;">
+                    <li>Connect an ad server (Google Ad Manager, Kevel, etc.)</li>
+                    <li>Configure inventory and products</li>
+                    <li>Complete initial setup</li>
+                </ul>
+            </div>
+
+            <a href="{html.escape(admin_url)}" class="admin-link">
+                Sign In to Configure →
+            </a>
+
+            <div class="footer">
+                <p>Powered by <a href="https://adcontextprotocol.org" style="color: #3498db; text-decoration: none;">Ad Context Protocol</a></p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
 def generate_tenant_landing_page(tenant: dict, virtual_host: str | None = None) -> str:
     """Generate HTML content for tenant landing page.
 
@@ -92,6 +207,16 @@ def generate_tenant_landing_page(tenant: dict, virtual_host: str | None = None) 
     Raises:
         Exception: If template rendering fails
     """
+    # Check if tenant is configured (has ad server connection)
+    from src.core.tenant_status import is_tenant_ad_server_configured
+
+    tenant_id = tenant.get("tenant_id")
+    is_configured = is_tenant_ad_server_configured(tenant_id) if tenant_id else False
+
+    # If not configured, show pending configuration page
+    if not is_configured:
+        return _generate_pending_configuration_page(tenant, virtual_host)
+
     # Get base URL for this environment
     base_url = _determine_base_url(virtual_host)
 
