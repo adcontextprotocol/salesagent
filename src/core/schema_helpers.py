@@ -13,15 +13,10 @@ Philosophy:
 from typing import Any
 
 from adcp.types.generated import (
-    BrandManifest,
     GetProductsRequest,
     GetProductsResponse,
     Product,
 )
-from adcp.types.generated import (
-    BrandManifestRefVariant1 as BrandManifest12,
-)
-from pydantic import AnyUrl
 
 # Filters type - check if it exists in adcp.types.generated
 # If not, we'll need to define it locally or use dict[str, Any]
@@ -34,66 +29,32 @@ except ImportError:
 
 def create_get_products_request(
     brief: str = "",
-    promoted_offering: str | None = None,
-    brand_manifest: BrandManifest | BrandManifest12 | str | dict[str, Any] | None = None,
-    filters: Filters | dict[str, Any] | None = None,
+    brand_manifest: dict[str, Any] | None = None,
+    filters: dict[str, Any] | None = None,
 ) -> GetProductsRequest:
-    """Create GetProductsRequest.
-
-    The new schema (post-regeneration) is a single flat class with all optional fields.
+    """Create GetProductsRequest aligned with adcp v1.2.1 spec.
 
     Args:
         brief: Natural language description of campaign requirements
-        promoted_offering: Advertiser's promoted offering URL or name
-        brand_manifest: Brand information (object, URL string, or dict)
+        brand_manifest: Brand information as dict. Must follow AdCP BrandManifest schema.
+                       Example: {"name": "Acme", "url": "https://acme.com"}
+                       Or: {"url": "https://acme.com"}
         filters: Structured filters for product discovery
 
     Returns:
         GetProductsRequest
 
     Examples:
-        >>> # With brand_manifest
         >>> req = create_get_products_request(
         ...     brand_manifest={"name": "Acme", "url": "https://acme.com"},
         ...     brief="Display ads"
         ... )
-
-        >>> # With promoted_offering (backward compat)
-        >>> req = create_get_products_request(
-        ...     promoted_offering="https://acme.com",
-        ...     brief="Video ads"
-        ... )
     """
-    # Convert filters dict to proper type if needed
-    if isinstance(filters, dict):
-        filters_obj: Filters | None = Filters(**filters)
-    else:
-        filters_obj = filters
-
-    # Convert brand_manifest to proper type
-    # NOTE: With adcp v1.2.1 library, GetProductsRequest accepts dicts directly for brand_manifest.
-    # No need to convert to BrandManifest/BrandManifest12 objects.
-    brand_manifest_obj: dict[str, Any] | str | BrandManifest | BrandManifest12 | AnyUrl | None = None
-    if isinstance(brand_manifest, dict):
-        # Pass dict directly - adcp library handles validation
-        brand_manifest_obj = brand_manifest
-    elif isinstance(brand_manifest, str):
-        # URL string - wrap in dict with 'url' key for adcp library
-        brand_manifest_obj = {"url": brand_manifest}
-    else:
-        # Already a BrandManifest object (legacy code path)
-        brand_manifest_obj = brand_manifest  # type: ignore[assignment]
-
-    # Handle promoted_offering → brand_manifest conversion (backward compat)
-    if promoted_offering and not brand_manifest_obj:
-        # Convert promoted_offering to brand_manifest dict for AdCP spec compliance
-        brand_manifest_obj = {"name": promoted_offering}
-
-    # Create single flat GetProductsRequest (AdCP spec fields only)
+    # Create GetProductsRequest directly - adcp library handles validation
     return GetProductsRequest(
-        brand_manifest=brand_manifest_obj,  # type: ignore[arg-type]
+        brand_manifest=brand_manifest,
         brief=brief or None,
-        filters=filters_obj,
+        filters=filters,
     )
 
 
@@ -126,8 +87,5 @@ __all__ = [
     # Re-export types for type hints
     "GetProductsRequest",
     "GetProductsResponse",
-    "BrandManifest",
-    "BrandManifest12",
-    "Filters",
     "Product",
 ]

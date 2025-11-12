@@ -605,7 +605,7 @@ async def _get_products_impl(
 
 
 async def get_products(
-    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
+    brand_manifest: dict[str, Any] | None = None,
     brief: str = "",
     filters: dict | None = None,
     push_notification_config: PushNotificationConfig | None = None,
@@ -613,10 +613,11 @@ async def get_products(
 ):
     """Get available products matching the brief.
 
-    MCP tool wrapper that delegates to the shared implementation.
+    MCP tool wrapper aligned with adcp v1.2.1 spec.
 
     Args:
-        brand_manifest: Brand information manifest (inline object or URL string)
+        brand_manifest: Brand information as dict following AdCP BrandManifest schema.
+                       Example: {"name": "Acme", "url": "https://acme.com"}
         brief: Brief description of the advertising campaign or requirements (optional)
         filters: Structured filters for product discovery (optional)
         context: FastMCP context (automatically provided)
@@ -624,15 +625,10 @@ async def get_products(
 
     Returns:
         ToolResult with human-readable text and structured data
-
-    Note:
-        promoted_offering is deprecated - use brand_manifest instead.
-        If you need backward compatibility, use the A2A interface which still supports it.
     """
-    # Build request object for shared implementation using helper
+    # Build request object for shared implementation
     try:
         req = create_get_products_request(
-            promoted_offering=None,  # Not exposed in MCP tool (use brand_manifest)
             brief=brief,
             brand_manifest=brand_manifest,
             filters=filters,
@@ -653,8 +649,7 @@ async def get_products(
 
 async def get_products_raw(
     brief: str,
-    promoted_offering: str | None = None,
-    brand_manifest: Any | None = None,  # BrandManifest | str | None - validated by Pydantic
+    brand_manifest: dict[str, Any] | None = None,
     adcp_version: str = "1.0.0",
     min_exposures: int | None = None,
     filters: dict | None = None,
@@ -664,11 +659,12 @@ async def get_products_raw(
     """Get available products matching the brief.
 
     Raw function without @mcp.tool decorator for A2A server use.
+    Aligned with adcp v1.2.1 spec.
 
     Args:
         brief: Brief description of the advertising campaign or requirements
-        promoted_offering: DEPRECATED: Use brand_manifest instead (still supported for backward compatibility)
-        brand_manifest: Brand information manifest (inline object or URL string)
+        brand_manifest: Brand information as dict following AdCP BrandManifest schema.
+                       Example: {"name": "Acme", "url": "https://acme.com"}
         adcp_version: AdCP schema version for this request (default: 1.0.0)
         min_exposures: Minimum impressions needed for measurement validity (optional)
         filters: Structured filters for product discovery (optional)
@@ -678,17 +674,10 @@ async def get_products_raw(
     Returns:
         GetProductsResponse containing matching products
     """
-    # Create request object using helper (handles generated schema variants)
-    # NOTE: If brand_manifest is already a Pydantic object from adcp library (BrandManifestRefVariant1/2),
-    # convert it to dict so create_get_products_request can handle it
-    brand_manifest_input = brand_manifest
-    if brand_manifest and hasattr(brand_manifest, "model_dump"):
-        brand_manifest_input = brand_manifest.model_dump(exclude_none=True)
-
+    # Create request object - adcp library validates schema
     req = create_get_products_request(
         brief=brief or "",
-        promoted_offering=promoted_offering,
-        brand_manifest=brand_manifest_input,
+        brand_manifest=brand_manifest,
         filters=filters,
     )
 

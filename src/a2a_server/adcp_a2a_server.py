@@ -1307,7 +1307,10 @@ class AdCPRequestHandler(RequestHandler):
             raise ServerError(InternalError(message=f"Skill {skill_name} failed: {str(e)}"))
 
     async def _handle_get_products_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit get_products skill invocation."""
+        """Handle explicit get_products skill invocation.
+
+        Aligned with adcp v1.2.1 spec - brand_manifest must be a dict.
+        """
         try:
             # Create ToolContext from A2A auth info
             tool_context = self._create_tool_context_from_a2a(
@@ -1315,31 +1318,38 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="get_products",
             )
 
-            # Map A2A parameters to GetProductsRequest
+            # Map A2A parameters to GetProductsRequest (adcp v1.2.1)
             brief = parameters.get("brief", "")
-            promoted_offering = parameters.get("promoted_offering", "")
-            brand_manifest = parameters.get("brand_manifest", None)
+            brand_manifest_raw = parameters.get("brand_manifest", None)
             filters = parameters.get("filters", None)
             min_exposures = parameters.get("min_exposures", None)
             adcp_version = parameters.get("adcp_version", "1.0.0")
             strategy_id = parameters.get("strategy_id", None)
 
-            # Require either brand_manifest OR promoted_offering (backward compat)
-            if not brief and not promoted_offering and not brand_manifest:
-                raise ServerError(
-                    InvalidParamsError(
-                        message="Either 'brand_manifest', 'promoted_offering', or 'brief' parameter is required"
+            # Normalize brand_manifest to dict format (adcp v1.2.1 requirement)
+            brand_manifest: dict | None = None
+            if brand_manifest_raw:
+                if isinstance(brand_manifest_raw, str):
+                    # URL string → wrap in dict
+                    brand_manifest = {"url": brand_manifest_raw}
+                elif isinstance(brand_manifest_raw, dict):
+                    brand_manifest = brand_manifest_raw
+                else:
+                    raise ServerError(
+                        InvalidParamsError(
+                            message=f"brand_manifest must be a dict or URL string, got {type(brand_manifest_raw)}"
+                        )
                     )
+
+            # Require either brand_manifest OR brief
+            if not brief and not brand_manifest:
+                raise ServerError(
+                    InvalidParamsError(message="Either 'brand_manifest' or 'brief' parameter is required")
                 )
 
-            # Use brief as promoted_offering if not provided (backward compat)
-            if not promoted_offering and not brand_manifest and brief:
-                promoted_offering = f"Business seeking to advertise: {brief}"
-
-            # Call core function directly with individual parameters, not request object
+            # Call core function directly with individual parameters
             response = await core_get_products_tool(
                 brief=brief,
-                promoted_offering=promoted_offering,
                 brand_manifest=brand_manifest,
                 filters=filters,
                 min_exposures=min_exposures,
@@ -1993,13 +2003,15 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="get_products",
             )
 
-            # Extract promoted offering from the query or use a reasonable default
-            promoted_offering = self._extract_promoted_offering_from_query(query)
+            # Extract brand name from query and create brand_manifest
+            # This provides backward compatibility for natural language queries
+            brand_name = self._extract_brand_name_from_query(query)
+            brand_manifest = {"name": brand_name} if brand_name else None
 
             # Call core function directly using the underlying function
             response = await core_get_products_tool(
                 brief=query,
-                promoted_offering=promoted_offering,
+                brand_manifest=brand_manifest,
                 context=self._tool_context_to_mcp_context(tool_context),
             )
 
@@ -2014,13 +2026,13 @@ class AdCPRequestHandler(RequestHandler):
             # Return empty products list instead of fallback data
             return {"products": [], "message": f"Unable to retrieve products: {str(e)}"}
 
-    def _extract_promoted_offering_from_query(self, query: str) -> str:
-        """Extract or infer promoted_offering from the user query.
+    def _extract_brand_name_from_query(self, query: str) -> str:
+        """Extract or infer brand name from the user query.
 
-        AdCP requires promoted_offering to be provided. We'll try to extract
-        it from the query or provide a reasonable default.
+        Used for backward compatibility with natural language queries.
+        Extracts a brand name to populate brand_manifest for adcp v1.2.1.
         """
-        # Look for common patterns that might indicate the promoted offering
+        # Look for common patterns that might indicate the brand/offering
         query_lower = query.lower()
 
         # If the query mentions specific brands or products, use those
@@ -2030,13 +2042,13 @@ class AdCPRequestHandler(RequestHandler):
             for i, word in enumerate(parts):
                 if word.lower() in ["advertise", "promote", "advertising", "promoting"]:
                     if i + 1 < len(parts):
-                        # Take the next few words as the offering
-                        offering_parts = parts[i + 1 : i + 4]  # Take up to 3 words
-                        offering = " ".join(offering_parts).strip(".,!?")
-                        if len(offering) > 5:  # Make sure it's substantial
-                            return f"Business promoting {offering}"
+                        # Take the next few words as the brand name
+                        brand_parts = parts[i + 1 : i + 4]  # Take up to 3 words
+                        brand_name = " ".join(brand_parts).strip(".,!?")
+                        if len(brand_name) > 5:  # Make sure it's substantial
+                            return f"Business promoting {brand_name}"
 
-        # Default offering based on query type
+        # Default brand name based on query type
         if any(word in query_lower for word in ["video", "display", "banner", "ad"]):
             return "Brand advertising products and services"
         elif any(word in query_lower for word in ["coffee", "beverage", "food"]):
