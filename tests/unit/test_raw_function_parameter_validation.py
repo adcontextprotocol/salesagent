@@ -130,7 +130,7 @@ class TestRawFunctionParameterValidation:
         # This test documents what we expect the signature to be
         # If this fails, it means the helper changed and we need to update callers
         # Note: promoted_offering removed per adcp v1.2.1 migration
-        expected_params = ["brief", "brand_manifest", "filters"]
+        expected_params = ["brief", "brand_manifest", "context", "filters"]
 
         assert params == expected_params, (
             f"create_get_products_request signature changed!\n"
@@ -199,7 +199,7 @@ class TestHelperFunctionDocumentation:
         # Verify create_get_products_request (the one that caused the bug)
         assert "create_get_products_request" in signatures
         # Note: promoted_offering removed per adcp v1.2.1 migration
-        expected = ["brief", "brand_manifest", "filters"]
+        expected = ["brief", "brand_manifest", "context", "filters"]
         actual = signatures["create_get_products_request"]
         assert actual == expected, (
             f"create_get_products_request signature changed!\n"

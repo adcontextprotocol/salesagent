@@ -3422,6 +3422,7 @@ class GetSignalsRequest(AdCPBaseModel):
     deliver_to: SignalDeliverTo | None = Field(None, description="Where the signals need to be delivered")
     filters: SignalFilters | None = Field(None, description="Filters to refine results")
     max_results: int | None = Field(None, ge=1, description="Maximum number of results to return")
+    context: dict[str, Any] | None = Field(None, description="Application-level context provided by the client")
 
     # Backward compatibility properties (deprecated)
     @property
@@ -3447,6 +3448,7 @@ class GetSignalsResponse(AdCPBaseModel):
     """
 
     signals: list[Signal] = Field(..., description="Array of available signals")
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     @model_serializer(mode="wrap")
     def _serialize_nested_models(self, serializer, info):
@@ -3490,7 +3492,7 @@ class ActivateSignalRequest(AdCPBaseModel):
     signal_id: str = Field(..., description="Signal ID to activate")
     campaign_id: str | None = Field(None, description="Optional campaign ID to activate signal for")
     media_buy_id: str | None = Field(None, description="Optional media buy ID to activate signal for")
-
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
 class ActivateSignalResponse(AdCPBaseModel):
     """Response from signal activation (AdCP v2.4 spec compliant).
@@ -3503,6 +3505,7 @@ class ActivateSignalResponse(AdCPBaseModel):
     signal_id: str = Field(..., description="Activated signal ID")
     activation_details: dict[str, Any] | None = Field(None, description="Platform-specific activation details")
     errors: list[Error] | None = Field(None, description="Optional error reporting")
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
@@ -3518,6 +3521,7 @@ class SimulationControlRequest(AdCPBaseModel):
     strategy_id: str = Field(..., description="Strategy ID to control (must be simulation strategy with 'sim_' prefix)")
     action: Literal["jump_to", "reset", "set_scenario"] = Field(..., description="Action to perform on the simulation")
     parameters: dict[str, Any] = Field(default_factory=dict, description="Action-specific parameters")
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
 
 class SimulationControlResponse(AdCPBaseModel):
@@ -3527,6 +3531,7 @@ class SimulationControlResponse(AdCPBaseModel):
     message: str | None = None
     current_state: dict[str, Any] | None = None
     simulation_time: datetime | None = None
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
