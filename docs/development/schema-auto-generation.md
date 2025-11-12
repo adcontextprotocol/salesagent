@@ -69,14 +69,23 @@ Helpers provide:
 - Validation error handling
 - Type hints for IDE support
 
-## Cached Schema Files
+## Schema Caching for E2E Tests
 
-The `schemas/v1/` directory contains cached JSON schemas used **only for E2E testing**:
-- `tests/e2e/adcp_schema_validator.py` validates responses against official spec
-- Schemas are auto-downloaded and cached
-- NOT used for runtime validation (Pydantic models handle that)
+E2E tests use `tests/e2e/adcp_schema_validator.py` to validate responses against the official AdCP JSON schemas.
 
-**Purpose**: Verify our responses match the JSON Schema spec exactly (additional validation layer beyond Pydantic).
+**How it works:**
+- Schemas are downloaded on-demand from https://adcontextprotocol.org/schemas/v1/
+- Cached locally in `schemas/v1/` directory (gitignored)
+- Always uses latest schemas from official source
+- NO manual schema maintenance required
+
+**Why not commit schemas?**
+- Reduces repository clutter (removed 150+ JSON files)
+- Always tests against latest official schemas
+- No schema drift between repo and spec
+- Validator handles downloads automatically
+
+**Purpose**: Additional validation layer that verifies our responses match the JSON Schema spec exactly (beyond Pydantic validation).
 
 ## When AdCP Spec Updates
 
@@ -184,8 +193,11 @@ products: List[Product] = [...]  # Use list[], not List[]
 
 The following files/directories were removed in the adcp v1.2.1 migration:
 
-- ❌ `src/core/schemas_generated/` (entire directory)
-- ❌ `scripts/generate_schemas.py` (no longer needed)
+- ❌ `src/core/schemas_generated/` (entire directory - 14k+ lines)
+- ❌ `schemas/v1/` (150+ cached JSON files - now downloaded on-demand)
+- ❌ `scripts/generate_schemas.py` (deprecated - no longer needed)
+- ❌ `scripts/compare_schemas.py` (deprecated - no longer needed)
+- ❌ `scripts/refresh_adcp_schemas.py` (removed - validator downloads automatically)
 - ❌ `.github/workflows/schema-sync.yml` (no longer needed)
 - ❌ Pre-commit hook: `verify-schema-sync` (no longer needed)
 
