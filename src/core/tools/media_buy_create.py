@@ -1945,7 +1945,7 @@ async def _create_media_buy_impl(
                     for idx, req_pkg in enumerate(req.packages):
                         if idx == pending_packages.index(pkg_obj):
                             # Get pricing info for this package if available
-                            pricing_info_for_package = package_pricing_info.get(pkg_obj.package_id)  # type: ignore[index]
+                            pricing_info_for_package = package_pricing_info.get(pkg_obj.package_id) if pkg_obj.package_id else None  # type: ignore[index]
 
                             # Serialize budget: normalize to object format for database storage
                             # ADCP 2.5.0 sends flat numbers, but we normalize to object with currency for DB
@@ -2490,16 +2490,18 @@ async def _create_media_buy_impl(
 
         # Remap package_pricing_info from index-based keys to actual package IDs
         # Note: packages loop used enumerate(products_in_buy, 1) but pricing used enumerate(req.packages) starting at 0
-        package_pricing_info: dict[str, dict[str, Any]] = {}
+        remapped_package_pricing_info: dict[str, dict[str, Any]] = {}
         # Map pricing info from index to package_id
         for pkg_idx, pkg in enumerate(packages):
             if pkg_idx in package_pricing_info_by_index:
                 # Only add to dict if package_id is not None
                 if pkg.package_id is not None:
-                    package_pricing_info[pkg.package_id] = package_pricing_info_by_index[pkg_idx]
+                    remapped_package_pricing_info[pkg.package_id] = package_pricing_info_by_index[pkg_idx]
             else:
                 logger.warning(f"No pricing info found for package index {pkg_idx}")
-        logger.debug(f"[PRICING] Mapped {len(package_pricing_info)} package pricing info")
+        logger.debug(f"[PRICING] Mapped {len(remapped_package_pricing_info)} package pricing info")
+        # Reassign to package_pricing_info for use later
+        package_pricing_info = remapped_package_pricing_info
 
         # Create the media buy using the adapter (SYNCHRONOUS operation)
         # Defensive null check: ensure start_time and end_time are set
