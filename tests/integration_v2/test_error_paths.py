@@ -32,8 +32,7 @@ from src.core.database.models import CurrencyLimit
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 from src.core.database.models import Tenant as ModelTenant
-from src.core.schema_adapters import CreateMediaBuyResponse
-from src.core.schemas import Error
+from src.core.schemas import CreateMediaBuyError, CreateMediaBuyResponse, Error
 from src.core.tool_context import ToolContext
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
@@ -177,8 +176,10 @@ class TestCreateMediaBuyErrorPaths:
             context=context,
         )
 
-        # Verify response structure
-        assert isinstance(response, CreateMediaBuyResponse)
+        # Verify response structure - error cases return CreateMediaBuyError
+        assert isinstance(response, (CreateMediaBuyResponse, CreateMediaBuyError))
+        # CreateMediaBuyError is a discriminated union member of CreateMediaBuyResponse
+        assert isinstance(response, CreateMediaBuyError)
         assert response.errors is not None
         assert len(response.errors) > 0
 
@@ -223,8 +224,9 @@ class TestCreateMediaBuyErrorPaths:
             context=context,
         )
 
-        # Verify response structure
-        assert isinstance(response, CreateMediaBuyResponse)
+        # Verify response structure - error cases return CreateMediaBuyError
+        assert isinstance(response, (CreateMediaBuyResponse, CreateMediaBuyError))
+        assert isinstance(response, CreateMediaBuyError)
         assert response.errors is not None
         assert len(response.errors) > 0
 
@@ -264,7 +266,9 @@ class TestCreateMediaBuyErrorPaths:
             context=context,
         )
 
-        assert isinstance(response, CreateMediaBuyResponse)
+        # Verify response structure - error cases return CreateMediaBuyError
+        assert isinstance(response, (CreateMediaBuyResponse, CreateMediaBuyError))
+        assert isinstance(response, CreateMediaBuyError)
         assert response.errors is not None
         assert len(response.errors) > 0
 
@@ -337,7 +341,9 @@ class TestCreateMediaBuyErrorPaths:
             context=context,
         )
 
-        assert isinstance(response, CreateMediaBuyResponse)
+        # Verify response structure - error cases return CreateMediaBuyError
+        assert isinstance(response, (CreateMediaBuyResponse, CreateMediaBuyError))
+        assert isinstance(response, CreateMediaBuyError)
         assert response.errors is not None
         assert len(response.errors) > 0
 

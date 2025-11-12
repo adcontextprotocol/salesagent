@@ -664,11 +664,11 @@ class TestA2ASkillInvocation:
 
             adcp_a2a_server._request_headers.set({"host": f"{sample_tenant['subdomain']}.example.com"})
 
-            # Mock adapter - must return UpdateMediaBuyResponse, not dict
-            from src.core.schemas import UpdateMediaBuyResponse
+            # Mock adapter - must return UpdateMediaBuySuccess, not dict
+            from src.core.schemas import UpdateMediaBuySuccess
 
             mock_adapter = MagicMock()
-            mock_adapter.update_media_buy.return_value = UpdateMediaBuyResponse(
+            mock_adapter.update_media_buy.return_value = UpdateMediaBuySuccess(
                 media_buy_id="mb_test_123",
                 buyer_ref="test_buyer_ref",
                 affected_packages=[],
