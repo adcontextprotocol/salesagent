@@ -32,6 +32,10 @@ operations_bp = Blueprint("operations", __name__)
 #     return jsonify({"error": "Not yet implemented"}), 501
 
 
+# @operations_bp.route("/orders", methods=["GET"]) - DISABLED: Conflicts with inventory.orders_browser
+# @operations_bp.route("/workflows", methods=["GET"]) - DISABLED: Conflicts with workflows.list_workflows
+
+
 @operations_bp.route("/reporting", methods=["GET"])
 @require_auth()
 def reporting(tenant_id):
