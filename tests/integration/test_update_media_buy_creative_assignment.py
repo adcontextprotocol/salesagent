@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from src.core.database.models import Creative as DBCreative
 from src.core.database.models import CreativeAssignment as DBAssignment
-from src.core.schema_adapters import UpdateMediaBuyResponse
+from src.core.schemas import UpdateMediaBuyResponse
 from src.core.tools.media_buy_update import _update_media_buy_impl
 
 
@@ -444,5 +444,5 @@ def test_update_media_buy_rejects_missing_creatives(integration_db):
     assert isinstance(response, UpdateMediaBuyResponse)
     assert response.errors is not None
     assert len(response.errors) > 0
-    assert response.errors[0]["code"] == "creatives_not_found"
-    assert "nonexistent_creative" in response.errors[0]["message"]
+    assert response.errors[0].code == "creatives_not_found"
+    assert "nonexistent_creative" in response.errors[0].message

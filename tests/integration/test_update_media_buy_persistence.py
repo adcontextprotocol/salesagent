@@ -21,7 +21,7 @@ from src.core.database.models import (
 from src.core.database.models import (
     Principal as ModelPrincipal,
 )
-from src.core.schema_adapters import UpdateMediaBuyResponse
+from src.core.schemas import UpdateMediaBuyResponse
 from src.core.tools.media_buy_update import _update_media_buy_impl
 
 # Note: _verify_principal is now internal to _update_media_buy_impl

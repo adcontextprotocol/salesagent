@@ -12,84 +12,49 @@ Philosophy:
 
 from typing import Any
 
-from pydantic import AnyUrl
-
-from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
-    BrandManifest,
-    BrandManifest12,
-    Filters,
+from adcp.types.generated import (
     GetProductsRequest,
-)
-from src.core.schemas_generated._schemas_v1_media_buy_get_products_response_json import (
     GetProductsResponse,
     Product,
 )
 
+# Filters type - check if it exists in adcp.types.generated
+# If not, we'll need to define it locally or use dict[str, Any]
+try:
+    from adcp.types.generated import Filters
+except ImportError:
+    # Fallback: Filters might be a nested type or not exported
+    Filters = dict[str, Any]  # type: ignore
+
 
 def create_get_products_request(
     brief: str = "",
-    promoted_offering: str | None = None,
-    brand_manifest: BrandManifest | BrandManifest12 | str | dict[str, Any] | None = None,
-    filters: Filters | dict[str, Any] | None = None,
+    brand_manifest: dict[str, Any] | None = None,
+    filters: dict[str, Any] | None = None,
 ) -> GetProductsRequest:
-    """Create GetProductsRequest.
-
-    The new schema (post-regeneration) is a single flat class with all optional fields.
+    """Create GetProductsRequest aligned with adcp v1.2.1 spec.
 
     Args:
         brief: Natural language description of campaign requirements
-        promoted_offering: Advertiser's promoted offering URL or name
-        brand_manifest: Brand information (object, URL string, or dict)
+        brand_manifest: Brand information as dict. Must follow AdCP BrandManifest schema.
+                       Example: {"name": "Acme", "url": "https://acme.com"}
+                       Or: {"url": "https://acme.com"}
         filters: Structured filters for product discovery
 
     Returns:
         GetProductsRequest
 
     Examples:
-        >>> # With brand_manifest
         >>> req = create_get_products_request(
         ...     brand_manifest={"name": "Acme", "url": "https://acme.com"},
         ...     brief="Display ads"
         ... )
-
-        >>> # With promoted_offering (backward compat)
-        >>> req = create_get_products_request(
-        ...     promoted_offering="https://acme.com",
-        ...     brief="Video ads"
-        ... )
     """
-    # Convert filters dict to proper type if needed
-    if isinstance(filters, dict):
-        filters_obj: Filters | None = Filters(**filters)
-    else:
-        filters_obj = filters
-
-    # Convert brand_manifest to proper type
-    brand_manifest_obj: BrandManifest | BrandManifest12 | AnyUrl | None = None
-    if isinstance(brand_manifest, dict):
-        # Choose BrandManifest or BrandManifest12 based on what's provided
-        if "url" in brand_manifest and brand_manifest["url"] is not None:
-            # Has url - use BrandManifest (url-required variant)
-            brand_manifest_obj = BrandManifest(**brand_manifest)
-        elif "name" in brand_manifest:
-            # Only name - use BrandManifest12 (both optional)
-            brand_manifest_obj = BrandManifest12(**brand_manifest)
-    elif isinstance(brand_manifest, str):
-        # URL string
-        brand_manifest_obj = AnyUrl(brand_manifest)  # type: ignore[assignment]
-    else:
-        brand_manifest_obj = brand_manifest  # type: ignore[assignment]
-
-    # Handle promoted_offering → brand_manifest conversion (backward compat)
-    if promoted_offering and not brand_manifest_obj:
-        # Convert promoted_offering to brand_manifest for AdCP spec compliance
-        brand_manifest_obj = BrandManifest12(name=promoted_offering)
-
-    # Create single flat GetProductsRequest (AdCP spec fields only)
+    # Create GetProductsRequest directly - adcp library handles validation
     return GetProductsRequest(
-        brand_manifest=brand_manifest_obj,  # type: ignore[arg-type]
+        brand_manifest=brand_manifest,
         brief=brief or None,
-        filters=filters_obj,
+        filters=filters,
     )
 
 
@@ -122,8 +87,5 @@ __all__ = [
     # Re-export types for type hints
     "GetProductsRequest",
     "GetProductsResponse",
-    "BrandManifest",
-    "BrandManifest12",
-    "Filters",
     "Product",
 ]

@@ -160,9 +160,7 @@ async def _call_webhook_for_creative_status(
     Returns:
         bool: True if webhook delivered successfully, False otherwise (or if no config found)
     """
-    from src.core.schemas_generated._schemas_v1_enums_creative_status_json import (
-        CreativeStatus as CreativeStatusEnum,
-    )
+    from src.core.schemas import CreativeStatusEnum
 
     try:
         stmt = (

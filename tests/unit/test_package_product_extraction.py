@@ -19,7 +19,7 @@ class TestPackageProductExtraction:
             po_number="PO-001",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            packages=[Package(buyer_ref="pkg1", product_id="prod1")],
+            packages=[Package(buyer_ref="pkg1", product_id="prod1", status="active")],
         )
 
         product_ids = req.get_product_ids()
@@ -35,9 +35,9 @@ class TestPackageProductExtraction:
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
             packages=[
-                Package(buyer_ref="pkg1", product_id="prod1"),
-                Package(buyer_ref="pkg2", product_id="prod2"),
-                Package(buyer_ref="pkg3", product_id="prod3"),
+                Package(buyer_ref="pkg1", product_id="prod1", status="active"),
+                Package(buyer_ref="pkg2", product_id="prod2", status="active"),
+                Package(buyer_ref="pkg3", product_id="prod3", status="active"),
             ],
         )
 
@@ -53,7 +53,7 @@ class TestPackageProductExtraction:
             po_number="PO-003",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            packages=[Package(buyer_ref="pkg1")],
+            packages=[Package(buyer_ref="pkg1", status="active")],
         )
 
         product_ids = req.get_product_ids()
@@ -81,7 +81,7 @@ class TestPackageProductExtraction:
             po_number="PO-005",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            packages=[Package(buyer_ref="pkg1", product_id="prod1")],
+            packages=[Package(buyer_ref="pkg1", product_id="prod1", status="active")],
             product_ids=["legacy1", "legacy2"],  # Should be ignored
         )
 
@@ -100,9 +100,9 @@ class TestPackageProductExtraction:
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
             packages=[
-                Package(buyer_ref="pkg1", product_id="prod1"),
-                Package(buyer_ref="pkg2"),  # No product_id
-                Package(buyer_ref="pkg3", product_id="prod3"),
+                Package(buyer_ref="pkg1", product_id="prod1", status="active"),
+                Package(buyer_ref="pkg2", status="active"),  # No product_id
+                Package(buyer_ref="pkg3", product_id="prod3", status="active"),
             ],
         )
 

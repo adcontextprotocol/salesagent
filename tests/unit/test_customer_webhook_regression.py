@@ -11,7 +11,7 @@ Error: AttributeError when accessing response.message on CreateMediaBuyResponse
 import pytest
 
 from src.core.schemas import (
-    CreateMediaBuyResponse,
+    CreateMediaBuySuccess,
     GetProductsResponse,
     SyncCreativeResult,
     SyncCreativesResponse,
@@ -19,18 +19,19 @@ from src.core.schemas import (
 
 
 def test_create_media_buy_response_message_access():
-    """Test that we can safely extract messages from CreateMediaBuyResponse.
+    """Test that we can safely extract messages from CreateMediaBuySuccess.
 
     This reproduces the exact error the customer (Damascus-v1) was seeing:
     AttributeError: 'CreateMediaBuyResponse' object has no attribute 'message'
 
     The bug was on line 1382 in _handle_get_creatives_skill where we tried
-    to access response.message, but CreateMediaBuyResponse doesn't have that field.
+    to access response.message, but CreateMediaBuySuccess doesn't have that field.
     """
     # Create a response like the one from create_media_buy
-    response = CreateMediaBuyResponse(
+    response = CreateMediaBuySuccess(
         buyer_ref="test-webhook-mb-001",
         media_buy_id="mb-12345",
+        packages=[],
     )
 
     # TEST 1: The OLD BROKEN pattern (what was causing the error)

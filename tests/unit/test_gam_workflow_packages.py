@@ -42,8 +42,8 @@ def sample_request():
         buyer_ref="test_buyer_ref_123",
         brand_manifest={"name": "Test Brand"},
         packages=[
-            Package(package_id="pkg_001", products=["prod_123"]),
-            Package(package_id="pkg_002", products=["prod_456"]),
+            Package(package_id="pkg_001", products=["prod_123"], status="active"),
+            Package(package_id="pkg_002", products=["prod_456"], status="active"),
         ],
         start_date=date.today(),
         end_date=date.today() + timedelta(days=30),
@@ -118,11 +118,10 @@ class TestGAMManualApprovalPath:
 
                 # Assert - Each package must have package_id
                 for i, pkg in enumerate(response.packages):
-                    assert "package_id" in pkg, f"Package {i} missing package_id"
-                    assert pkg["package_id"] is not None, f"Package {i} has None package_id"
+                    assert hasattr(pkg, "package_id") and pkg.package_id is not None, f"Package {i} missing package_id"
 
                 # Assert - Package IDs must match input packages
-                returned_ids = {pkg["package_id"] for pkg in response.packages}
+                returned_ids = {pkg.package_id for pkg in response.packages}
                 expected_ids = {pkg.package_id for pkg in sample_packages}
                 assert (
                     returned_ids == expected_ids
@@ -164,16 +163,12 @@ class TestGAMManualApprovalPath:
                     request=sample_request, packages=sample_packages, start_time=start_time, end_time=end_time
                 )
 
-            # Assert - Response must have packages even on failure
-            assert response.packages is not None, "Response must have packages field even on error"
-            assert len(response.packages) == len(sample_packages), "Must return all packages even on error"
+            # Assert - With oneOf pattern, workflow failure returns error response without packages
+            from src.core.schemas import CreateMediaBuyError
 
-            # Assert - Each package must have package_id
-            for i, pkg in enumerate(response.packages):
-                assert "package_id" in pkg, f"Package {i} missing package_id even on error"
-
-            # Assert - Error response should be present (if applicable)
-            # Note: This depends on implementation - workflow failure might not always set errors
+            assert isinstance(response, CreateMediaBuyError), "Workflow failure should return error response"
+            assert len(response.errors) > 0, "Error response must have errors"
+            assert response.errors[0].code == "workflow_creation_failed", "Error code should indicate workflow failure"
 
 
 class TestGAMActivationWorkflowPath:
@@ -251,24 +246,15 @@ class TestGAMActivationWorkflowPath:
             # Assert - Must have same number of packages as input
             assert len(response.packages) == len(sample_packages), f"Expected {len(sample_packages)} packages"
 
-            # Assert - Each package must have package_id AND platform_line_item_id
+            # Assert - Each package must have package_id (AdCP spec requirement)
+            # Note: platform_line_item_id is internal tracking data, not part of AdCP Package spec
             for i, pkg in enumerate(response.packages):
-                assert "package_id" in pkg, f"Package {i} missing package_id"
-                assert pkg["package_id"] is not None, f"Package {i} has None package_id"
-                assert "platform_line_item_id" in pkg, f"Package {i} missing platform_line_item_id"
-                assert pkg["platform_line_item_id"] is not None, f"Package {i} has None platform_line_item_id"
+                assert hasattr(pkg, "package_id") and pkg.package_id is not None, f"Package {i} missing package_id"
 
             # Assert - Package IDs must match input packages
-            returned_ids = {pkg["package_id"] for pkg in response.packages}
+            returned_ids = {pkg.package_id for pkg in response.packages}
             expected_ids = {pkg.package_id for pkg in sample_packages}
             assert returned_ids == expected_ids, f"Package IDs don't match. Got {returned_ids}, expected {expected_ids}"
-
-            # Assert - Line item IDs must match mocked IDs
-            returned_line_item_ids = [pkg["platform_line_item_id"] for pkg in response.packages]
-            expected_line_item_ids = [str(lid) for lid in mock_line_item_ids]
-            assert (
-                returned_line_item_ids == expected_line_item_ids
-            ), f"Line item IDs don't match. Got {returned_line_item_ids}, expected {expected_line_item_ids}"
 
             # Assert - Other required fields
             assert response.buyer_ref == sample_request.buyer_ref, "buyer_ref must be preserved"
@@ -343,10 +329,10 @@ class TestGAMSuccessPath:
             assert response.packages is not None, "Response must have packages field"
             assert len(response.packages) == len(sample_packages), f"Expected {len(sample_packages)} packages"
 
-            # Assert - Each package must have package_id AND platform_line_item_id
+            # Assert - Each package must have package_id (AdCP spec requirement)
+            # Note: platform_line_item_id is internal tracking data, not part of AdCP Package spec
             for i, pkg in enumerate(response.packages):
-                assert "package_id" in pkg, f"Package {i} missing package_id"
-                assert "platform_line_item_id" in pkg, f"Package {i} missing platform_line_item_id"
+                assert hasattr(pkg, "package_id") and pkg.package_id is not None, f"Package {i} missing package_id"
 
             # Assert - No workflow_step_id on success path
             assert response.workflow_step_id is None, "Success path should not have workflow_step_id"

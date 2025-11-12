@@ -143,7 +143,7 @@ class ProtocolEnvelope(BaseModel):
             ... )
         """
         # Convert Pydantic model to dict (using model_dump to exclude internal fields)
-        if isinstance(payload, AdCPBaseModel):
+        if hasattr(payload, "model_dump"):
             payload_dict = payload.model_dump()
             # Generate message from __str__ if not provided
             if message is None and hasattr(payload, "__str__"):

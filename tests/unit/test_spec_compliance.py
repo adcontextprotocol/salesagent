@@ -9,8 +9,7 @@ from src.core.async_patterns import (
     is_async_operation,
 )
 from src.core.schemas import (
-    CreateMediaBuyResponse,
-    Error,
+    CreateMediaBuySuccess,
     FormatId,
     GetProductsResponse,
     ListCreativeFormatsResponse,
@@ -29,7 +28,7 @@ class TestResponseSchemas:
 
     def test_create_media_buy_response_no_protocol_fields(self):
         """Verify CreateMediaBuyResponse has only domain fields (no protocol fields)."""
-        response = CreateMediaBuyResponse(media_buy_id="buy_123", buyer_ref="ref_456", packages=[])
+        response = CreateMediaBuySuccess(media_buy_id="buy_123", buyer_ref="ref_456", packages=[])
 
         # Verify protocol fields are not in the schema (moved to ProtocolEnvelope)
         assert not hasattr(response, "context_id")
@@ -79,14 +78,13 @@ class TestResponseSchemas:
 
     def test_error_reporting_in_responses(self):
         """Verify error reporting is AdCP-compliant (domain data only)."""
-        response = CreateMediaBuyResponse(
-            media_buy_id="",
-            buyer_ref="ref_123",
-            errors=[Error(code="validation_error", message="Validation error", details={"budget": -100})],
+        from src.core.schemas import CreateMediaBuyError
+
+        response = CreateMediaBuyError(
+            errors=[{"code": "validation_error", "message": "Validation error", "details": {"budget": -100}}],
         )
 
         # Verify domain fields
-        assert response.buyer_ref == "ref_123"
         assert response.errors is not None
         assert len(response.errors) == 1
         assert response.errors[0].code == "validation_error"
@@ -166,9 +164,10 @@ class TestProtocolCompliance:
     def test_create_media_buy_response_domain_fields(self):
         """Test that create_media_buy response contains only domain fields."""
         # Response with media_buy_id (success case)
-        response = CreateMediaBuyResponse(
+        response = CreateMediaBuySuccess(
             media_buy_id="pending_123",
             buyer_ref="ref_123",
+            packages=[],
         )
 
         # Domain fields present
@@ -180,20 +179,20 @@ class TestProtocolCompliance:
         assert not hasattr(response, "task_id")
 
         # Error case
-        response = CreateMediaBuyResponse(
-            buyer_ref="ref_123",
-            errors=[Error(code="invalid_budget", message="Invalid budget")],
+        from src.core.schemas import CreateMediaBuyError
+
+        error_response = CreateMediaBuyError(
+            errors=[{"code": "invalid_budget", "message": "Invalid budget"}],
         )
 
-        assert response.errors is not None
-        assert len(response.errors) == 1
-        assert response.buyer_ref == "ref_123"
+        assert error_response.errors is not None
+        assert len(error_response.errors) == 1
 
         # Success case with packages
-        response = CreateMediaBuyResponse(
+        response = CreateMediaBuySuccess(
             media_buy_id="buy_456",
             buyer_ref="ref_789",
-            packages=[{"package_id": "pkg_1"}],
+            packages=[{"package_id": "pkg_1", "status": "active"}],
         )
 
         assert response.media_buy_id == "buy_456"

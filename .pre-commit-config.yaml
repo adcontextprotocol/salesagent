@@ -188,13 +188,13 @@ repos:
         pass_filenames: false
         verbose: true
 
-      # Check AdCP schema sync (critical for buyer compatibility)
-      - id: adcp-schema-sync
-        name: Verify AdCP schema sync
-        entry: uv run python scripts/check_schema_sync.py --ci
-        language: system
-        pass_filenames: false
-        always_run: true
+      # Check AdCP schema sync - DISABLED: Sales agent now follows adcp library version
+      # - id: adcp-schema-sync
+      #   name: Verify AdCP schema sync
+      #   entry: uv run python scripts/check_schema_sync.py --ci
+      #   language: system
+      #   pass_filenames: false
+      #   always_run: true
 
       # Validate adapter usage (prevents field name mismatches like deliveries → media_buy_deliveries)
       - id: validate-adapter-usage
@@ -203,15 +203,6 @@ repos:
         language: system
         files: '^(src/core/main\.py|src/core/schema_adapters\.py)$'
         pass_filenames: false
-
-      # Validate adapter schemas match official AdCP JSON schemas
-      - id: adapter-schema-compliance
-        name: Validate adapter schemas match AdCP spec
-        entry: uv run pytest tests/unit/test_adapter_schema_compliance.py -v --tb=short
-        language: system
-        files: '^(src/core/schema_adapters\.py|schemas/v1/.*\.json)$'
-        pass_filenames: false
-        always_run: true
 
       # Check Pydantic-AdCP schema alignment (prevents client validation errors like missing promoted_offering)
       - id: pydantic-adcp-alignment

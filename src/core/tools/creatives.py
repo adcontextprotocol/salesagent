@@ -35,10 +35,7 @@ from src.core.helpers import (
     log_tool_activity,
 )
 from src.core.schema_adapters import ListCreativesResponse, SyncCreativesResponse
-from src.core.schemas import Creative, SyncCreativeResult
-from src.core.schemas_generated._schemas_v1_enums_creative_status_json import (
-    CreativeStatus as CreativeStatusEnum,
-)
+from src.core.schemas import Creative, CreativeStatusEnum, SyncCreativeResult
 from src.core.validation_helpers import format_validation_error, run_async_in_sync_context
 
 

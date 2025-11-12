@@ -26,7 +26,7 @@ from src.core.database.models import CurrencyLimit
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 from src.core.database.models import Tenant as ModelTenant
-from src.core.schemas import CreateMediaBuyResponse
+from src.core.schemas import CreateMediaBuySuccess
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
 from tests.integration_v2.conftest import create_test_product_with_pricing
 
@@ -114,29 +114,31 @@ class TestCreateMediaBuyRoundtrip:
 
     def test_create_media_buy_response_survives_testing_hooks_roundtrip(self, setup_test_tenant):
         """
-        Test that CreateMediaBuyResponse can be reconstructed after apply_testing_hooks.
+        Test that CreateMediaBuySuccess can be reconstructed after apply_testing_hooks.
 
         This test exercises the EXACT code path that was failing in production:
-        1. Create CreateMediaBuyResponse with valid data
+        1. Create CreateMediaBuySuccess with valid data
         2. Convert to dict via model_dump_internal()
         3. Pass through apply_testing_hooks (THIS ADDS EXTRA FIELDS)
-        4. Filter and reconstruct CreateMediaBuyResponse(**filtered_data)
+        4. Filter and reconstruct CreateMediaBuySuccess(**filtered_data)
 
         Without the fix at main.py:3747-3760, step 4 would fail with:
-        "1 validation error for CreateMediaBuyResponse: buyer_ref Field required"
+        "1 validation error for CreateMediaBuySuccess: buyer_ref Field required"
         """
-        # Step 1: Create a valid CreateMediaBuyResponse (simulates what adapter returns)
+        # Step 1: Create a valid CreateMediaBuySuccess (simulates what adapter returns)
         # NOTE: status and adcp_version are protocol fields (added by ProtocolEnvelope), not domain fields
         # NOTE: media_buy_id starts with "test_" to prevent testing hooks from adding another "test_" prefix
-        original_response = CreateMediaBuyResponse(
+        # NOTE: Per adcp v1.2.1, package.budget is a float, not a Budget object
+        original_response = CreateMediaBuySuccess(
             buyer_ref="test-buyer-ref-123",
             media_buy_id="test_mb_12345",
             packages=[
                 {
                     "package_id": "pkg_1",
                     "buyer_ref": "pkg_test",
-                    "products": [setup_test_tenant["product_id"]],
-                    "budget": {"total": 5000.0, "currency": "USD", "pacing": "even"},
+                    "product_id": setup_test_tenant["product_id"],
+                    "budget": 5000.0,  # Float per adcp v1.2.1
+                    "status": "active",  # Required field - must be draft/active/paused/completed
                 }
             ],
         )
@@ -191,7 +193,7 @@ class TestCreateMediaBuyRoundtrip:
         filtered_data = {k: v for k, v in modified_data.items() if k in valid_fields}
 
         # This should NOT raise validation error
-        reconstructed_response = CreateMediaBuyResponse(**filtered_data)
+        reconstructed_response = CreateMediaBuySuccess(**filtered_data)
 
         # Step 5: Verify reconstruction succeeded
         assert reconstructed_response.buyer_ref == "test-buyer-ref-123"
@@ -200,20 +202,22 @@ class TestCreateMediaBuyRoundtrip:
 
     def test_create_media_buy_response_roundtrip_without_hooks(self, setup_test_tenant):
         """
-        Test baseline: CreateMediaBuyResponse roundtrip WITHOUT testing hooks works.
+        Test baseline: CreateMediaBuySuccess roundtrip WITHOUT testing hooks works.
 
         This establishes that the schema itself is valid and the issue is specifically
         with the interaction between testing hooks and schema validation.
         """
         # Create response (domain fields only - status/adcp_version are protocol fields)
-        original_response = CreateMediaBuyResponse(
+        # NOTE: packages is required in adcp v1.2.1
+        original_response = CreateMediaBuySuccess(
             buyer_ref="baseline-test",
             media_buy_id="mb_baseline",
+            packages=[],  # Required field, can be empty
         )
 
         # Convert to dict and back (no testing hooks)
         response_data = original_response.model_dump_internal()
-        reconstructed = CreateMediaBuyResponse(**response_data)
+        reconstructed = CreateMediaBuySuccess(**response_data)
 
         # Should work perfectly without testing hooks
         assert reconstructed.buyer_ref == "baseline-test"
@@ -224,12 +228,14 @@ class TestCreateMediaBuyRoundtrip:
         Test that testing hook fields don't leak into reconstructed response.
 
         Verifies that extra fields added by testing hooks are properly filtered out
-        and don't appear in the final CreateMediaBuyResponse object.
+        and don't appear in the final CreateMediaBuySuccess object.
         """
         # NOTE: media_buy_id starts with "test_" to prevent testing hooks from adding another "test_" prefix
-        original_response = CreateMediaBuyResponse(
+        # NOTE: packages is required in adcp v1.2.1
+        original_response = CreateMediaBuySuccess(
             buyer_ref="filter-test",
             media_buy_id="test_mb_filter",
+            packages=[],  # Required field, can be empty
         )
 
         response_data = original_response.model_dump_internal()
@@ -253,7 +259,7 @@ class TestCreateMediaBuyRoundtrip:
             "workflow_step_id",
         }
         filtered_data = {k: v for k, v in modified_data.items() if k in valid_fields}
-        reconstructed = CreateMediaBuyResponse(**filtered_data)
+        reconstructed = CreateMediaBuySuccess(**filtered_data)
 
         # Verify extra fields don't exist in reconstructed response
         response_dict = reconstructed.model_dump()

@@ -31,7 +31,11 @@ from src.core.database.database_session import get_db_session
 from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.schema_adapters import UpdateMediaBuyResponse
-from src.core.schemas import UpdateMediaBuyRequest
+from src.core.schemas import (
+    UpdateMediaBuyError,
+    UpdateMediaBuyRequest,
+    UpdateMediaBuySuccess,
+)
 from src.core.testing_hooks import get_testing_context
 from src.core.validation_helpers import format_validation_error
 
@@ -237,10 +241,7 @@ def _update_media_buy_impl(
     principal = get_principal_object(principal_id)  # Now guaranteed to be str
     if not principal:
         error_msg = f"Principal {principal_id} not found"
-        response_data = UpdateMediaBuyResponse(
-            media_buy_id=req.media_buy_id or "",
-            buyer_ref=req.buyer_ref or "",
-            implementation_date=None,
+        response_data = UpdateMediaBuyError(
             errors=[{"code": "principal_not_found", "message": error_msg}],
         )
         ctx_manager.update_workflow_step(
@@ -267,10 +268,12 @@ def _update_media_buy_impl(
 
     if manual_approval_required and "update_media_buy" in manual_approval_operations:
         # Build response first, then persist on workflow step, then return
-        response_data = UpdateMediaBuyResponse(
+        # UpdateMediaBuySuccess extends adcp v1.2.1 with internal fields (workflow_step_id, affected_packages)
+        response_data = UpdateMediaBuySuccess(
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
-            implementation_date=None,
+            packages=[],  # Required by AdCP spec
+            affected_packages=[],  # Internal field for tracking changes
         )
         ctx_manager.update_workflow_step(
             step.step_id,
@@ -318,10 +321,7 @@ def _update_media_buy_impl(
 
                 if not currency_limit:
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
-                    response_data = UpdateMediaBuyResponse(
-                        media_buy_id=req.media_buy_id or "",
-                        buyer_ref=req.buyer_ref or "",
-                        implementation_date=None,
+                    response_data = UpdateMediaBuyError(
                         errors=[{"code": "currency_not_supported", "message": error_msg}],
                     )
                     ctx_manager.update_workflow_step(
@@ -384,10 +384,7 @@ def _update_media_buy_impl(
                                     f"exceeds maximum ({currency_limit.max_daily_package_spend} {request_currency}). "
                                     f"Flight date changes that reduce daily budget are not allowed to bypass limits."
                                 )
-                                response_data = UpdateMediaBuyResponse(
-                                    media_buy_id=req.media_buy_id or "",
-                                    buyer_ref=req.buyer_ref or "",
-                                    implementation_date=None,
+                                response_data = UpdateMediaBuyError(
                                     errors=[{"code": "budget_limit_exceeded", "message": error_msg}],
                                 )
                                 ctx_manager.update_workflow_step(
@@ -409,9 +406,18 @@ def _update_media_buy_impl(
             budget=None,
             today=datetime.combine(today, datetime.min.time()),
         )
-        if result.errors:
-            # Convert schemas.UpdateMediaBuyResponse to schema_adapters.UpdateMediaBuyResponse
-            return UpdateMediaBuyResponse(**result.model_dump())
+        # Manual approval case - convert adapter result to appropriate Success/Error
+        # adcp v1.2.1 oneOf pattern: Check if result is Error variant (has errors field)
+        if hasattr(result, "errors") and result.errors:
+            return UpdateMediaBuyError(errors=result.errors)
+        else:
+            # UpdateMediaBuySuccess extends adcp v1.2.1 with internal fields
+            return UpdateMediaBuySuccess(
+                media_buy_id=result.media_buy_id,
+                buyer_ref=result.buyer_ref,
+                packages=[],  # Required by AdCP spec
+                affected_packages=result.affected_packages if hasattr(result, "affected_packages") else [],
+            )
 
     # Handle package-level updates
     if req.packages:
@@ -427,16 +433,16 @@ def _update_media_buy_impl(
                     budget=None,
                     today=datetime.combine(today, datetime.min.time()),
                 )
-                if result.errors:
-                    error_message = result.errors[0].message if result.errors else "Update failed"
-                    response_data = UpdateMediaBuyResponse(**result.model_dump())
+                # adcp v1.2.1 oneOf pattern: Check if result is Error variant
+                if hasattr(result, "errors") and result.errors:
+                    error_message = result.errors[0].message if (result.errors and len(result.errors) > 0) else "Update failed"
+                    response_data = UpdateMediaBuyError(errors=result.errors)
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
                         response_data=response_data.model_dump(),
                         error_message=error_message,
                     )
-                    # Convert schemas.UpdateMediaBuyResponse to schema_adapters.UpdateMediaBuyResponse
                     return response_data
 
             # Handle budget updates
@@ -460,16 +466,16 @@ def _update_media_buy_impl(
                     budget=int(budget_amount),
                     today=datetime.combine(today, datetime.min.time()),
                 )
-                if result.errors:
-                    error_message = result.errors[0].message if result.errors else "Update failed"
-                    response_data = UpdateMediaBuyResponse(**result.model_dump())
+                # adcp v1.2.1 oneOf pattern: Check if result is Error variant
+                if hasattr(result, "errors") and result.errors:
+                    error_message = result.errors[0].message if (result.errors and len(result.errors) > 0) else "Update failed"
+                    response_data = UpdateMediaBuyError(errors=result.errors)
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
                         response_data=response_data.model_dump(),
                         error_message=error_message,
                     )
-                    # Convert schemas.UpdateMediaBuyResponse to schema_adapters.UpdateMediaBuyResponse
                     return response_data
 
                 # Track budget update in affected_packages
@@ -485,10 +491,7 @@ def _update_media_buy_impl(
                 # Validate package_id is provided
                 if not pkg_update.package_id:
                     error_msg = "package_id is required when updating creative_ids"
-                    response_data = UpdateMediaBuyResponse(
-                        media_buy_id=req.media_buy_id or "",
-                        buyer_ref=req.buyer_ref or "",
-                        implementation_date=None,
+                    response_data = UpdateMediaBuyError(
                         errors=[{"code": "missing_package_id", "message": error_msg}],
                     )
                     ctx_manager.update_workflow_step(
@@ -522,10 +525,7 @@ def _update_media_buy_impl(
 
                     if not media_buy_obj:
                         error_msg = f"Media buy '{req.media_buy_id}' not found"
-                        response_data = UpdateMediaBuyResponse(
-                            media_buy_id=req.media_buy_id or "",
-                            buyer_ref=req.buyer_ref or "",
-                            implementation_date=None,
+                        response_data = UpdateMediaBuyError(
                             errors=[{"code": "media_buy_not_found", "message": error_msg}],
                         )
                         ctx_manager.update_workflow_step(
@@ -550,10 +550,7 @@ def _update_media_buy_impl(
 
                     if missing_ids:
                         error_msg = f"Creative IDs not found: {', '.join(missing_ids)}"
-                        response_data = UpdateMediaBuyResponse(
-                            media_buy_id=req.media_buy_id or "",
-                            buyer_ref=req.buyer_ref or "",
-                            implementation_date=None,
+                        response_data = UpdateMediaBuyError(
                             errors=[{"code": "creatives_not_found", "message": error_msg}],
                         )
                         ctx_manager.update_workflow_step(
@@ -726,10 +723,7 @@ def _update_media_buy_impl(
 
         if total_budget <= 0:
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
-            response_data = UpdateMediaBuyResponse(
-                media_buy_id=req.media_buy_id or "",
-                buyer_ref=req.buyer_ref or "",
-                implementation_date=None,
+            response_data = UpdateMediaBuyError(
                 errors=[{"code": "invalid_budget", "message": error_msg}],
             )
             ctx_manager.update_workflow_step(
@@ -802,11 +796,12 @@ def _update_media_buy_impl(
     # Build final response first
     logger.info(f"[update_media_buy] Final affected_packages before return: {affected_packages_list}")
 
-    response_data = UpdateMediaBuyResponse(
+    # UpdateMediaBuySuccess extends adcp v1.2.1 with internal fields (workflow_step_id, affected_packages)
+    response_data = UpdateMediaBuySuccess(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
-        implementation_date=None,
-        affected_packages=affected_packages_list if affected_packages_list else None,
+        packages=[],  # Required by AdCP spec
+        affected_packages=affected_packages_list if affected_packages_list else [],  # Internal field for tracking changes
     )
 
     # Persist success with response data, then return

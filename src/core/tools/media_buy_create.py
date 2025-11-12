@@ -59,7 +59,9 @@ from src.core.helpers.adapter_helpers import get_adapter
 from src.core.helpers.creative_helpers import _convert_creative_to_adapter_asset, process_and_upload_package_creatives
 from src.core.schema_adapters import CreateMediaBuyResponse
 from src.core.schemas import (
+    CreateMediaBuyError,
     CreateMediaBuyRequest,
+    CreateMediaBuySuccess,
     CreativeStatus,
     Error,
     FormatId,
@@ -1287,8 +1289,7 @@ async def _create_media_buy_impl(
     if not principal:
         error_msg = f"Principal {principal_id} not found"
         # Cannot create context or workflow step without valid principal
-        return CreateMediaBuyResponse(
-            buyer_ref=buyer_ref or "unknown",
+        return CreateMediaBuyError(
             errors=[Error(code="authentication_error", message=error_msg, details=None)],
         )
 
@@ -1701,8 +1702,7 @@ async def _create_media_buy_impl(
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
 
         # Return error response (protocol layer will add status="failed")
-        return CreateMediaBuyResponse(
-            buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
+        return CreateMediaBuyError(
             errors=[Error(code="validation_error", message=str(e), details=None)],
         )
 
@@ -2098,7 +2098,7 @@ async def _create_media_buy_impl(
             # The workflow_step_id in packages indicates approval is required
             # buyer_ref is required by schema, but mypy needs explicit check
             response_buyer_ref = req.buyer_ref if req.buyer_ref else "unknown"
-            return CreateMediaBuyResponse(
+            return CreateMediaBuySuccess(
                 buyer_ref=response_buyer_ref,
                 media_buy_id=media_buy_id,
                 creative_deadline=None,
@@ -2168,8 +2168,7 @@ async def _create_media_buy_impl(
                     f"  • {err}" for err in config_errors
                 )
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
-                return CreateMediaBuyResponse(
-                    buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
+                return CreateMediaBuyError(
                     errors=[Error(code="invalid_configuration", message=err, details=None) for err in config_errors],
                 )
 
@@ -2261,7 +2260,7 @@ async def _create_media_buy_impl(
             except Exception as e:
                 logger.warning(f"⚠️ Failed to send configuration approval Slack notification: {e}")
 
-            return CreateMediaBuyResponse(
+            return CreateMediaBuySuccess(
                 buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
                 media_buy_id=media_buy_id,
                 packages=response_packages,  # Include packages with buyer_ref
@@ -2509,8 +2508,7 @@ async def _create_media_buy_impl(
         if not req.start_time or not req.end_time:
             error_msg = "start_time and end_time are required but were not properly set"
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return CreateMediaBuyResponse(
-                buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
+            return CreateMediaBuyError(
                 errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
             )
 
@@ -2541,8 +2539,9 @@ async def _create_media_buy_impl(
         except Exception as adapter_error:
             raise
 
-        # Check if adapter returned an error response (no media_buy_id)
-        if response.errors and not response.media_buy_id:
+        # Check if adapter returned an error response
+        # With oneOf pattern, response can be CreateMediaBuySuccess or CreateMediaBuyError
+        if hasattr(response, "errors") and response.errors:
             logger.error(
                 f"[ADAPTER] Adapter returned error response: {response.errors[0].code} - {response.errors[0].message}"
             )
@@ -2619,22 +2618,45 @@ async def _create_media_buy_impl(
                 logger.info(f"[DEBUG] Saving {len(packages_to_save)} packages to media_packages table")
 
                 for i, resp_package in enumerate(packages_to_save):
-                    # Extract package_id from response - MUST be present, no fallback allowed
-                    package_id: str | None = resp_package.get("package_id")  # type: ignore[assignment,no-redef]
-                    logger.info(f"[DEBUG] Package {i}: resp_package.get('package_id') = {package_id}")
+                    # Handle both dict and Pydantic Package objects
+                    # resp_package can be dict (from some adapters) or Package (from adcp v1.2.1)
+                    def get_package_field(pkg, field: str, default=None):
+                        """Get field from Package object or dict."""
+                        if isinstance(pkg, dict):
+                            return pkg.get(field, default)
+                        else:
+                            return getattr(pkg, field, default)
 
-                    if not package_id:
+                    def serialize_for_json(value):
+                        """Serialize Pydantic models to dicts for JSON storage."""
+                        from pydantic import BaseModel
+
+                        if value is None:
+                            return None
+                        if isinstance(value, BaseModel):
+                            return value.model_dump(exclude_none=True)
+                        if isinstance(value, list):
+                            return [serialize_for_json(item) for item in value]
+                        if isinstance(value, dict):
+                            return {k: serialize_for_json(v) for k, v in value.items()}
+                        return value
+
+                    # Extract package_id from response - MUST be present, no fallback allowed
+                    resp_package_id: str | None = get_package_field(resp_package, "package_id")
+                    logger.info(f"[DEBUG] Package {i}: package_id = {resp_package_id}")
+
+                    if not resp_package_id:
                         error_msg = (
                             f"Adapter did not return package_id for package {i}. This is a critical bug in the adapter."
                         )
                         logger.error(error_msg)
                         raise ValueError(error_msg)
 
-                    logger.info(f"[DEBUG] Package {i}: Using package_id = {package_id}")
+                    logger.info(f"[DEBUG] Package {i}: Using package_id = {resp_package_id}")
 
                     # Store full package config as JSON
                     # Sanitize status to ensure AdCP spec compliance
-                    raw_status = resp_package.get("status")
+                    raw_status = get_package_field(resp_package, "status")
                     sanitized_status = _sanitize_package_status(raw_status)
 
                     # Get pricing info for this package if available
@@ -2645,14 +2667,16 @@ async def _create_media_buy_impl(
                     impressions = request_pkg.impressions if request_pkg else None
 
                     package_config = {
-                        "package_id": package_id,
-                        "name": resp_package.get("name"),  # Include package name from adapter response
-                        "product_id": resp_package.get("product_id"),
-                        "budget": resp_package.get("budget"),
-                        "targeting_overlay": resp_package.get("targeting_overlay"),
-                        "creative_ids": resp_package.get("creative_ids"),
-                        "creative_assignments": resp_package.get("creative_assignments"),
-                        "format_ids_to_provide": resp_package.get("format_ids_to_provide"),
+                        "package_id": resp_package_id,
+                        "name": get_package_field(resp_package, "name"),  # Include package name from adapter response
+                        "product_id": get_package_field(resp_package, "product_id"),
+                        "budget": serialize_for_json(get_package_field(resp_package, "budget")),
+                        "targeting_overlay": serialize_for_json(get_package_field(resp_package, "targeting_overlay")),
+                        "creative_ids": get_package_field(resp_package, "creative_ids"),
+                        "creative_assignments": serialize_for_json(
+                            get_package_field(resp_package, "creative_assignments")
+                        ),
+                        "format_ids_to_provide": get_package_field(resp_package, "format_ids_to_provide"),
                         "status": sanitized_status,  # Only store AdCP-compliant status values
                         "pricing_info": pricing_info_for_package,  # Store pricing info for UI display
                         "impressions": impressions,  # Store impressions for display
@@ -2662,7 +2686,7 @@ async def _create_media_buy_impl(
                     from decimal import Decimal
 
                     budget_total = None
-                    budget_data = resp_package.get("budget")
+                    budget_data = get_package_field(resp_package, "budget")
                     if budget_data:
                         if isinstance(budget_data, dict):
                             budget_total = budget_data.get("total")
@@ -2679,7 +2703,7 @@ async def _create_media_buy_impl(
                     # Create MediaPackage with dual-write: dedicated columns + JSON
                     db_package = DBMediaPackage(
                         media_buy_id=response.media_buy_id,
-                        package_id=package_id,
+                        package_id=resp_package_id,
                         package_config=package_config,
                         # Dual-write: populate dedicated columns
                         budget=Decimal(str(budget_total)) if budget_total is not None else None,
@@ -2957,8 +2981,12 @@ async def _create_media_buy_impl(
             # Start with adapter response package (has package_id)
             if i < len(adapter_packages):
                 # Get package_id and other fields from adapter response
-                # adapter_packages is list[dict[str, Any]] so this is always a dict
-                response_package_dict = adapter_packages[i]
+                # adapter_packages may be Package Pydantic objects (adcp v1.2.1) or dicts
+                response_package = adapter_packages[i]
+                if hasattr(response_package, "model_dump"):
+                    response_package_dict = response_package.model_dump(exclude_none=True, mode="python")
+                else:
+                    response_package_dict = response_package if isinstance(response_package, dict) else {}
             else:
                 # Fallback if adapter didn't return enough packages
                 logger.warning(f"Adapter returned fewer packages than request. Using request package {i}")
@@ -2998,12 +3026,14 @@ async def _create_media_buy_impl(
                 # Remove format_ids from response
                 del package_dict["format_ids"]
 
-            # Determine package status
-            package_status = TaskStatus.WORKING
+            # Determine package status (AdCP expects: "draft", "active", "paused", "completed")
+            # Map internal TaskStatus to AdCP status strings
             if package.creative_ids and len(package.creative_ids) > 0:
-                package_status = TaskStatus.COMPLETED
+                package_status = "active"  # Has creatives, so it's active
             elif hasattr(package, "format_ids_to_provide") and package.format_ids_to_provide:
-                package_status = TaskStatus.WORKING
+                package_status = "active"  # Has format requirements, considered active
+            else:
+                package_status = "draft"  # Default to draft if no creatives or formats
 
             # Add status
             package_dict["status"] = package_status
@@ -3016,7 +3046,10 @@ async def _create_media_buy_impl(
             buyer_ref_value = f"missing-{response.media_buy_id}"
 
         # Create AdCP response (protocol fields like status are added by ProtocolEnvelope wrapper)
-        adcp_response = CreateMediaBuyResponse(
+        # NOTE: response_packages is a list of dicts, not Pydantic objects
+        # The AdCP library will validate and convert these dicts to Package objects internally
+        # When the response is serialized (via .model_dump()), they'll be converted back to dicts
+        adcp_response = CreateMediaBuySuccess(
             buyer_ref=buyer_ref_value,
             media_buy_id=response.media_buy_id,
             packages=response_packages,
@@ -3068,29 +3101,27 @@ async def _create_media_buy_impl(
         # Reconstruct response from modified data
         # Filter out testing hook fields that aren't part of CreateMediaBuyResponse schema
         # Domain fields only (status/adcp_version are protocol fields, added by ProtocolEnvelope)
+        # Success branch fields only (no errors field in success path)
         valid_fields = {
             "buyer_ref",
             "media_buy_id",
             "creative_deadline",
             "packages",
-            "errors",
             "workflow_step_id",
         }
         filtered_data = {k: v for k, v in response_data.items() if k in valid_fields}
 
         # Ensure required fields are present (validator compliance)
-        if "status" not in filtered_data:
-            filtered_data["status"] = "completed"
         if "buyer_ref" not in filtered_data:
             filtered_data["buyer_ref"] = buyer_ref_value
 
         # Use explicit fields for validator (instead of **kwargs)
-        modified_response = CreateMediaBuyResponse(
+        # This is the success path - use Success model
+        modified_response = CreateMediaBuySuccess(
             buyer_ref=filtered_data["buyer_ref"],
-            media_buy_id=filtered_data.get("media_buy_id"),
+            media_buy_id=filtered_data["media_buy_id"],
+            packages=filtered_data["packages"],
             creative_deadline=filtered_data.get("creative_deadline"),
-            packages=filtered_data.get("packages"),
-            errors=filtered_data.get("errors"),
         )
 
         # Mark workflow step as completed on success

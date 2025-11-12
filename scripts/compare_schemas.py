@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
 """
+DEPRECATED: This script is no longer needed.
+
+As of adcp v1.2.1 migration, this project uses the official `adcp` Python library
+for all schema validation. The schemas_generated/ directory has been removed.
+
+MIGRATION:
+- Old: from src.core.schemas_generated.* import ...
+- New: from adcp.types.generated import ...
+
+See docs/development/schema-auto-generation.md for migration guide.
+
+---
+
+[Original description below for historical reference]
+
 Compare manual Pydantic schemas with auto-generated schemas.
 
 This script analyzes differences between:
