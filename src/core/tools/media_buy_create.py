@@ -3153,8 +3153,6 @@ async def _create_media_buy_impl(
             media_buy_id=filtered_data["media_buy_id"],
             packages=filtered_data["packages"],
             creative_deadline=filtered_data.get("creative_deadline"),
-            packages=filtered_data.get("packages") or [],
-            errors=filtered_data.get("errors"),
             context=req.context,
         )
 
