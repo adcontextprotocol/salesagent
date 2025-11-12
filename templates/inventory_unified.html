@@ -390,15 +390,16 @@
 const tenantId = '{{ tenant_id }}';
 const scriptRoot = '{{ request.script_root }}';  // Base path for URLs (e.g., '/admin' or '')
 
-// API URL endpoints - use url_for() to generate proper URLs for dev/prod
+// API URL endpoints - use scriptRoot + hardcoded paths for production /admin prefix compatibility
+// NOTE: Cannot rely on url_for() alone because Flask's SCRIPT_NAME handling in templates
+// doesn't always include the /admin prefix when behind a reverse proxy
 const API_URLS = {
-    profilesList: '{{ url_for("inventory_profiles.list_inventory_profiles_api", tenant_id=tenant_id) }}',
-    profileGet: '{{ url_for("inventory_profiles.get_inventory_profile_api", tenant_id=tenant_id, profile_id=0) }}'.replace('/0/', '/{id}/'),
-    profileDelete: '{{ url_for("inventory_profiles.delete_inventory_profile", tenant_id=tenant_id, profile_id=0) }}'.replace('/0/', '/{id}/'),
-    inventoryTree: '{{ url_for("inventory.get_inventory_tree", tenant_id=tenant_id) }}',
-    inventorySync: '{{ url_for("inventory.sync_inventory", tenant_id=tenant_id) }}',
+    profilesList: scriptRoot + '/tenant/{{ tenant_id }}/inventory-profiles/api/list',
+    profileGet: scriptRoot + '/tenant/{{ tenant_id }}/inventory-profiles/{id}/api',
+    profileDelete: scriptRoot + '/tenant/{{ tenant_id }}/inventory-profiles/{id}/delete',
+    inventoryTree: scriptRoot + '/api/tenant/{{ tenant_id }}/inventory/tree',
+    inventorySync: scriptRoot + '/api/tenant/{{ tenant_id }}/inventory/sync',
     // GAM sync status uses manual URL construction (dynamic sync_id parameter)
-    // Must use scriptRoot to support /admin prefix in production
     gamSyncStatus: scriptRoot + '/tenant/{{ tenant_id }}/gam/sync-status/{id}'
 };
 
