@@ -23,7 +23,7 @@ from adcp import (
     UpdateMediaBuySuccess as AdCPUpdateMediaBuySuccess,
 )
 from adcp.types.generated import PushNotificationConfig
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
 
 class CreativeStatusEnum(Enum):
@@ -978,6 +978,7 @@ class Product(BaseModel):
     name: str
     description: str
     formats: list["FormatId | FormatReference"] | list[str] = Field(
+        validation_alias=AliasChoices("formats", "format_ids"),
         serialization_alias="format_ids",
         description="Array of supported creative format IDs - structured format_id objects with agent_url and id",
     )
