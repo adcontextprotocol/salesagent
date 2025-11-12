@@ -671,6 +671,7 @@ class TestA2ASkillInvocation:
             mock_adapter.update_media_buy.return_value = UpdateMediaBuySuccess(
                 media_buy_id="mb_test_123",
                 buyer_ref="test_buyer_ref",
+                packages=[],  # Required field per adcp v1.2.1
                 affected_packages=[],
                 errors=None,
             )
