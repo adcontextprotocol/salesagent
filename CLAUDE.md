@@ -45,6 +45,70 @@ pytest tests/unit/test_adcp_contract.py -v
 
 ---
 
+### Flask Route Conflict Prevention
+**🚨 MANDATORY**: Prevent duplicate route registrations to avoid authentication and routing issues.
+
+**The Problem:**
+Multiple Flask routes registered for the same path cause:
+- Unpredictable routing (last registered route wins)
+- Authentication failures (wrong decorator applied)
+- 404/401 errors (as seen in inventory profiles bug)
+
+**Example Conflict:**
+```python
+# ❌ WRONG - Two routes for same path
+@inventory_bp.route("/api/tenant/<tenant_id>/inventory/tree")
+def get_inventory_tree(tenant_id):
+    ...
+
+@app.route("/api/tenant/<tenant_id>/inventory/tree", endpoint="gam_inventory_tree")
+def get_inventory_tree(tenant_id):
+    ...
+```
+
+**Prevention:**
+
+1. **Pre-commit hook automatically detects conflicts:**
+   ```bash
+   # Run manually to check
+   uv run python .pre-commit-hooks/check_route_conflicts.py
+   ```
+
+2. **When adding new routes:**
+   - Search for existing routes with same path: `grep -r "@.*route.*your/path"`
+   - Check blueprint registrations in `src/admin/app.py`
+   - Verify no service-registered routes (e.g., `gam_inventory_service.py`)
+
+3. **When deprecating routes:**
+   - Don't just comment out - add early return to function:
+     ```python
+     def create_inventory_endpoints(app):
+         """DEPRECATED - Use inventory blueprint instead."""
+         logger.info("Skipping registration (handled by blueprint)")
+         return  # Early return prevents route registration
+     ```
+   - Add clear deprecation notice explaining replacement
+
+**Known Conflicts (Technical Debt):**
+The following conflicts are whitelisted (don't block commits) but should be resolved:
+- `/tenant/<tenant_id>/update` (tenants vs users blueprints)
+- `/tenant/<tenant_id>/products/<product_id>/inventory` (products blueprint)
+- `/tenant/<tenant_id>/principals/create` (tenants vs principals blueprints)
+- Several user management routes (tenants vs users blueprints)
+- Order and workflow routes (operations vs dedicated blueprints)
+
+**Resolution Strategy:**
+1. Identify which route is actually being used (check logs/monitoring)
+2. Remove the unused route entirely
+3. Update any hardcoded URL references
+4. Remove from whitelist in `.pre-commit-hooks/check_route_conflicts.py`
+
+**Case Study:**
+See commit e582421f for example of resolving inventory route conflicts that caused
+the inventory profiles authentication issue.
+
+---
+
 
 ### PostgreSQL-Only Architecture
 **🚨 DECISION**: This codebase uses **PostgreSQL exclusively**. We do NOT support SQLite.
