@@ -358,6 +358,8 @@ def orders_browser(tenant_id):
             total_orders=total_orders,
             active_orders=active_orders,
             total_revenue=total_revenue,
+            api_key=None,  # Not used for orders browser (session auth only)
+            script_name=request.script_root or "",
         )
 
 
