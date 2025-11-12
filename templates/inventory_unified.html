@@ -398,7 +398,8 @@ const API_URLS = {
     inventoryTree: '{{ url_for("inventory.get_inventory_tree", tenant_id=tenant_id) }}',
     inventorySync: '{{ url_for("inventory.sync_inventory", tenant_id=tenant_id) }}',
     // GAM sync status uses manual URL construction (dynamic sync_id parameter)
-    gamSyncStatus: '/tenant/{{ tenant_id }}/gam/sync-status/{id}'
+    // Must use scriptRoot to support /admin prefix in production
+    gamSyncStatus: scriptRoot + '/tenant/{{ tenant_id }}/gam/sync-status/{id}'
 };
 
 let selectedInventory = null;
@@ -615,6 +616,10 @@ function loadInventoryStatus() {
                 const loginUrl = scriptRoot + '/auth/login?redirect=' + encodeURIComponent(window.location.pathname);
                 window.location.href = loginUrl;
                 return Promise.reject(new Error('Session expired'));
+            }
+            // Handle 404 and other errors
+            if (!response.ok) {
+                return Promise.reject(new Error(`HTTP ${response.status}: ${response.statusText}`));
             }
             return response.json();
         })
