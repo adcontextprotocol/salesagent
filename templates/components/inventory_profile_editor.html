@@ -246,6 +246,9 @@ Then call: window.inventoryProfileEditor.open(profileData)
         loadFormats();
         loadAuthorizedProperties();
 
+        // Set up search functionality for inventory fields
+        setupInventorySearch();
+
         // Set up property mode toggle
         document.getElementById('profilePropertyModeAll').addEventListener('change', handlePropertyModeChange);
         document.getElementById('profilePropertyModeSpecific').addEventListener('change', handlePropertyModeChange);
@@ -524,6 +527,58 @@ Then call: window.inventoryProfileEditor.open(profileData)
                 item.style.display = text.includes(query) ? 'block' : 'none';
             });
         });
+    }
+
+    // ==================== INVENTORY SEARCH ====================
+
+    function setupInventorySearch() {
+        // Ad Units search
+        const adUnitSearch = document.getElementById('profileAdUnitSearch');
+        if (adUnitSearch) {
+            adUnitSearch.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    window.inventoryPicker.open('ad_unit');
+                    // Set search value in picker modal
+                    setTimeout(() => {
+                        const pickerSearch = document.getElementById('picker-search');
+                        if (pickerSearch) {
+                            pickerSearch.value = adUnitSearch.value;
+                            window.inventoryPicker.triggerSearch();
+                        }
+                    }, 100);
+                }
+            });
+
+            adUnitSearch.addEventListener('focus', function() {
+                // Clear "not focusable" appearance by ensuring input is enabled
+                this.disabled = false;
+            });
+        }
+
+        // Placements search
+        const placementSearch = document.getElementById('profilePlacementSearch');
+        if (placementSearch) {
+            placementSearch.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    window.inventoryPicker.open('placement');
+                    // Set search value in picker modal
+                    setTimeout(() => {
+                        const pickerSearch = document.getElementById('picker-search');
+                        if (pickerSearch) {
+                            pickerSearch.value = placementSearch.value;
+                            window.inventoryPicker.triggerSearch();
+                        }
+                    }, 100);
+                }
+            });
+
+            placementSearch.addEventListener('focus', function() {
+                // Clear "not focusable" appearance by ensuring input is enabled
+                this.disabled = false;
+            });
+        }
     }
 
     window.inventoryProfileEditor.toggleFormat = function(formatId, formatName, agentUrl) {
