@@ -191,6 +191,9 @@ Then call: window.inventoryProfileEditor.open(profileData)
         mode: '{{ editor_config.mode if editor_config else "create" }}'
     };
 
+    // Script root for URL construction (handles /admin prefix in production)
+    const scriptRoot = '{{ request.script_root }}' || '';
+
     // State
     let allFormats = [];
     let selectedFormats = new Set();
@@ -419,7 +422,6 @@ Then call: window.inventoryProfileEditor.open(profileData)
         resultsDiv.style.display = 'none';
 
         try {
-            const scriptRoot = '{{ request.script_root }}' || '';
             const url = `${scriptRoot}/api/formats/list?tenant_id=${config.tenantId}`;
             console.log('Loading formats from:', url, 'config:', config);
 
@@ -577,7 +579,7 @@ Then call: window.inventoryProfileEditor.open(profileData)
         const listDiv = document.getElementById('profilePropertiesList');
 
         try {
-            const response = await fetch(`/tenant/${config.tenantId}/authorized-properties/api/list`, {
+            const response = await fetch(`${scriptRoot}/tenant/${config.tenantId}/authorized-properties/api/list`, {
                 credentials: 'same-origin'
             });
             const data = await response.json();
