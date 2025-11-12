@@ -1196,6 +1196,7 @@ class GetProductsRequest(AdCPBaseModel):
         None,
         description="Structured filters for product discovery",
     )
+    context: dict[str, Any] | None = None
 
 
 class Error(BaseModel):
@@ -1608,6 +1609,7 @@ class SyncCreativesRequest(AdCPBaseModel):
         None,
         description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
     )
+    context: dict[str, Any] | None = None
 
 
 class SyncSummary(BaseModel):
@@ -1752,6 +1754,8 @@ class ListCreativesRequest(AdCPBaseModel):
         if self.created_before and self.created_before.tzinfo is None:
             raise ValueError("created_before must be timezone-aware (ISO 8601 with timezone)")
         return self
+
+    context: dict[str, Any] | None = None
 
 
 class QuerySummary(BaseModel):
@@ -2489,6 +2493,7 @@ class GetMediaBuyDeliveryRequest(AdCPBaseModel):
     push_notification_config: PushNotificationConfig | None = Field(
         None, description="Push notification configuration for async task updates."
     )
+    context: dict[str, Any] | None = None
 
 
 # AdCP-compliant delivery models
@@ -2503,6 +2508,7 @@ class DeliveryTotals(BaseModel):
     completion_rate: float | None = Field(
         None, ge=0, le=1, description="Video completion rate (completions/impressions)"
     )
+    context: dict[str, Any] | None = None
 
 
 class PackageDelivery(BaseModel):
@@ -2747,6 +2753,7 @@ class UpdateMediaBuyRequest(AdCPBaseModel):
         None,
         description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
     )
+    context: dict[str, Any] | None = None
     today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
     # NOTE: No Python validator needed for oneOf constraint - AdCP schema enforces media_buy_id/buyer_ref oneOf
@@ -2812,6 +2819,7 @@ class AdapterPackageDelivery(BaseModel):
     package_id: str
     impressions: int
     spend: float
+    context: dict[str, Any] | None = None
 
 
 class AdapterGetMediaBuyDeliveryResponse(AdCPBaseModel):
@@ -3148,6 +3156,8 @@ class GetSignalsRequest(AdCPBaseModel):
             warnings.warn("limit is deprecated. Use max_results instead.", DeprecationWarning, stacklevel=2)
         return self.max_results
 
+    context: dict[str, Any] | None = None
+
 
 class GetSignalsResponse(AdCPBaseModel):
     """Response containing available signals (AdCP v2.4 spec compliant).
@@ -3340,6 +3350,8 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
         if isinstance(data, dict) and "tags" in data and data["tags"]:
             data["tags"] = [tag.lower().replace("-", "_") for tag in data["tags"]]
         return data
+
+    context: dict[str, Any] | None = None
 
 
 class ListAuthorizedPropertiesResponse(AdCPBaseModel):

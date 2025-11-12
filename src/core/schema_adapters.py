@@ -162,6 +162,7 @@ class GetProductsResponse(AdCPBaseModel):
     # Fields from generated schema (flexible - accepts dicts or objects)
     products: list[Any] = Field(..., description="List of matching products")
     errors: list[Any] | None = Field(None, description="Task-specific errors")
+    context: dict[str, Any] | None = None
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer.
@@ -374,6 +375,7 @@ class ListCreativeFormatsResponse(AdCPBaseModel):
     formats: list[Any] = Field(..., description="Full format definitions per AdCP spec")
     creative_agents: list[Any] | None = Field(None, description="Creative agents providing additional formats")
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
+    context: dict[str, Any] | None = None
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer.
@@ -444,6 +446,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     )
     last_updated: str | None = Field(None, description="ISO 8601 timestamp of when authorization list was last updated")
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
+    context: dict[str, Any] | None = None
 
     def dict(self, **kwargs):
         """Override dict to use model_dump with exclude_none=True for AdCP compliance.
@@ -686,6 +689,7 @@ class GetMediaBuyDeliveryResponse(AdCPBaseModel):
     sequence_number: int | None = None
     next_expected_at: str | None = None
     errors: list[Any] | None = None
+    context: dict[str, Any] | None = None
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer."""
@@ -713,6 +717,7 @@ class GetSignalsResponse(AdCPBaseModel):
 
     signals: list[Any] = Field(..., description="Array of matching signals")
     errors: list[Any] | None = None
+    context: dict[str, Any] | None = None
 
     def __str__(self) -> str:
         """Return human-readable summary of signals."""
@@ -775,6 +780,7 @@ class ListCreativesResponse(AdCPBaseModel):
     creatives: list[Any] = Field(..., description="Array of creative assets")
     format_summary: dict[str, int] | None = None
     status_summary: dict[str, int] | None = None
+    context: dict[str, Any] | None = None
 
     def __str__(self) -> str:
         """Generate human-readable message from query_summary."""
