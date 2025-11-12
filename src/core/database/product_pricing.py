@@ -39,7 +39,9 @@ def get_product_pricing_options(product: ProductModel) -> list[dict[str, Any]]:
     pricing_options_loaded = "pricing_options" not in state.unloaded
 
     # Load from pricing_options relationship
-    logger.info(f"Product {product.name} ({product.product_id}): pricing_options_loaded={pricing_options_loaded}, has pricing_options={bool(product.pricing_options)}, count={len(product.pricing_options) if pricing_options_loaded else 'N/A'}")
+    logger.info(
+        f"Product {product.name} ({product.product_id}): pricing_options_loaded={pricing_options_loaded}, has pricing_options={bool(product.pricing_options)}, count={len(product.pricing_options) if pricing_options_loaded else 'N/A'}"
+    )
     if pricing_options_loaded and product.pricing_options:
         for po in product.pricing_options:
             # Generate pricing_option_id if not present (for backward compatibility)

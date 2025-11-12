@@ -36,7 +36,8 @@ def update_media_package_fields(
 
     Example:
         with get_db_session() as session:
-            media_package = session.query(MediaPackage).filter_by(...).first()
+            stmt = select(MediaPackage).filter_by(...)  # legacy-ok (docstring example)
+            media_package = session.scalars(stmt).first()
             update_media_package_fields(
                 media_package,
                 budget=1000.0,

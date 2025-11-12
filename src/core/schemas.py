@@ -1247,7 +1247,7 @@ class Error(BaseModel):
     details: dict[str, Any] | None = Field(None, description="Additional error details")
 
 
-class GetProductsResponse(AdCPBaseModel):
+class GetProductsResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response for get_products tool (AdCP v2.4 spec compliant).
 
     Per AdCP PR #113, this response contains ONLY domain data.
@@ -1260,44 +1260,6 @@ class GetProductsResponse(AdCPBaseModel):
 
     # Optional AdCP domain fields
     errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
-
-    def model_dump(self, **kwargs):
-        """Override to ensure products use AdCP-compliant serialization."""
-        data = {}
-
-        # Respect exclude parameter from kwargs
-        exclude = kwargs.get("exclude", set())
-        if not isinstance(exclude, set):
-            exclude = set(exclude) if exclude else set()
-
-        # Serialize products using their custom model_dump method
-        if "products" not in exclude:
-            if self.products:
-                data["products"] = [product.model_dump(**kwargs) for product in self.products]
-            else:
-                data["products"] = []
-
-        # Add other fields, excluding None values for AdCP compliance
-        if "errors" not in exclude and self.errors is not None:
-            data["errors"] = self.errors
-
-        return data
-
-    def model_dump_internal(self, **kwargs):
-        """Override to ensure products use internal field names for reconstruction."""
-        data = {}
-
-        # Serialize products using their internal model_dump method
-        if self.products:
-            data["products"] = [product.model_dump_internal(**kwargs) for product in self.products]
-        else:
-            data["products"] = []
-
-        # Add other fields
-        if self.errors is not None:
-            data["errors"] = self.errors
-
-        return data
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer.
@@ -1379,7 +1341,7 @@ class ListCreativeFormatsRequest(AdCPBaseModel):
         return values
 
 
-class ListCreativeFormatsResponse(AdCPBaseModel):
+class ListCreativeFormatsResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response for list_creative_formats tool (AdCP v2.4 spec compliant).
 
     Per AdCP PR #113, this response contains ONLY domain data.
@@ -1607,7 +1569,7 @@ class AddCreativeAssetsRequest(AdCPBaseModel):
         return self.assets
 
 
-class AddCreativeAssetsResponse(AdCPBaseModel):
+class AddCreativeAssetsResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response from adding creative assets (AdCP spec compliant)."""
 
     statuses: list[CreativeStatus]
@@ -1951,7 +1913,7 @@ class CheckCreativeStatusRequest(AdCPBaseModel):
     creative_ids: list[str]
 
 
-class CheckCreativeStatusResponse(AdCPBaseModel):
+class CheckCreativeStatusResponse(NestedModelSerializerMixin, AdCPBaseModel):
     statuses: list[CreativeStatus]
 
 
@@ -1962,7 +1924,7 @@ class CreateCreativeGroupRequest(AdCPBaseModel):
     tags: list[str] | None = []
 
 
-class CreateCreativeGroupResponse(AdCPBaseModel):
+class CreateCreativeGroupResponse(NestedModelSerializerMixin, AdCPBaseModel):
     group: CreativeGroup
 
 
@@ -2039,7 +2001,7 @@ class AssignCreativeRequest(AdCPBaseModel):
         return self
 
 
-class AssignCreativeResponse(AdCPBaseModel):
+class AssignCreativeResponse(NestedModelSerializerMixin, AdCPBaseModel):
     assignment: CreativeAssignment
 
 
@@ -2576,7 +2538,7 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         return self.product_ids or []
 
 
-class CreateMediaBuyResponse(AdCPBaseModel):
+class CreateMediaBuyResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response from create_media_buy operation (AdCP v2.4 spec compliant).
 
     Per AdCP PR #113, this response contains ONLY domain data.
@@ -2590,7 +2552,7 @@ class CreateMediaBuyResponse(AdCPBaseModel):
     # Optional AdCP domain fields
     media_buy_id: str | None = Field(None, description="Publisher's unique identifier for the created media buy")
     creative_deadline: datetime | None = Field(None, description="ISO 8601 timestamp for creative upload deadline")
-    packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
+    packages: list[Package] = Field(default_factory=list, description="Created packages with IDs")
     errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     # Internal fields (excluded from AdCP responses)
@@ -2604,6 +2566,7 @@ class CreateMediaBuyResponse(AdCPBaseModel):
             # Add internal fields to exclude by default
             exclude.add("workflow_step_id")
             kwargs["exclude"] = exclude
+        # Call parent which will trigger NestedModelSerializerMixin
         return super().model_dump(**kwargs)
 
     def model_dump_internal(self, **kwargs):
@@ -2756,7 +2719,7 @@ class AggregatedTotals(BaseModel):
     media_buy_count: int = Field(ge=0, description="Number of media buys included in the response")
 
 
-class GetMediaBuyDeliveryResponse(AdCPBaseModel):
+class GetMediaBuyDeliveryResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """AdCP v2.4-compliant response for get_media_buy_delivery task.
 
     Per AdCP PR #113, this response contains ONLY domain data.
@@ -2790,7 +2753,7 @@ class GetAllMediaBuyDeliveryRequest(AdCPBaseModel):
     media_buy_ids: list[str] | None = None
 
 
-class GetAllMediaBuyDeliveryResponse(AdCPBaseModel):
+class GetAllMediaBuyDeliveryResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """DEPRECATED: Use GetMediaBuyDeliveryResponse instead."""
 
     deliveries: list[MediaBuyDeliveryData]
@@ -2828,7 +2791,7 @@ class AssetStatus(BaseModel):
     workflow_step_id: str | None = None  # HITL workflow step ID for manual approval
 
 
-class UpdateMediaBuyResponse(AdCPBaseModel):
+class UpdateMediaBuyResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response from update_media_buy operation (AdCP v2.4 spec compliant).
 
     Per AdCP PR #113, this response contains ONLY domain data.
@@ -2842,7 +2805,7 @@ class UpdateMediaBuyResponse(AdCPBaseModel):
 
     # Optional AdCP domain fields
     implementation_date: datetime | None = Field(None, description="When the update will take effect")
-    affected_packages: list[dict[str, Any]] = Field(default_factory=list, description="Packages affected by update")
+    affected_packages: list[Package] = Field(default_factory=list, description="Packages affected by update")
     errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     # Internal fields (excluded from AdCP responses)
@@ -2856,6 +2819,7 @@ class UpdateMediaBuyResponse(AdCPBaseModel):
             # Add internal fields to exclude by default
             exclude.add("workflow_step_id")
             kwargs["exclude"] = exclude
+        # Call parent which will trigger NestedModelSerializerMixin
         return super().model_dump(**kwargs)
 
     def model_dump_internal(self, **kwargs):
@@ -3011,7 +2975,7 @@ class AdapterPackageDelivery(BaseModel):
     spend: float
 
 
-class AdapterGetMediaBuyDeliveryResponse(AdCPBaseModel):
+class AdapterGetMediaBuyDeliveryResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response from adapter's get_media_buy_delivery method"""
 
     media_buy_id: str
@@ -3099,7 +3063,7 @@ class GetPendingTasksRequest(AdCPBaseModel):
     include_overdue: bool = True
 
 
-class GetPendingTasksResponse(AdCPBaseModel):
+class GetPendingTasksResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response with pending tasks."""
 
     tasks: list[HumanTask]
@@ -3175,7 +3139,7 @@ class ChannelTargetingCapabilities(BaseModel):
     aee_dimensions: list[TargetingDimensionInfo] | None = None
 
 
-class GetTargetingCapabilitiesResponse(AdCPBaseModel):
+class GetTargetingCapabilitiesResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response with targeting capabilities."""
 
     capabilities: list[ChannelTargetingCapabilities]

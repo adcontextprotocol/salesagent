@@ -173,9 +173,7 @@ async def create_mcp_client(
                 # Use client's built-in context manager
                 async with client:
                     # Success! Yield the connected client
-                    logger.debug(
-                        f"MCP client connected to {current_url} on attempt {attempt + 1}"
-                    )
+                    logger.debug(f"MCP client connected to {current_url} on attempt {attempt + 1}")
                     yield client
                     return
 

@@ -26,7 +26,7 @@ class TestDateTimeStringParsing:
                     "buyer_ref": "pkg_1",
                     "products": ["prod_1"],
                     "status": "draft",
-                "budget": 5000.0,
+                    "budget": 5000.0,
                 }
             ],
             start_time="2025-02-15T00:00:00Z",  # String, not datetime object!
@@ -54,7 +54,7 @@ class TestDateTimeStringParsing:
                     "buyer_ref": "pkg_1",
                     "products": ["prod_1"],
                     "status": "draft",
-                "budget": 5000.0,
+                    "budget": 5000.0,
                 }
             ],
             start_time="2025-02-15T00:00:00+00:00",
@@ -77,7 +77,7 @@ class TestDateTimeStringParsing:
                     "buyer_ref": "pkg_1",
                     "products": ["prod_1"],
                     "status": "draft",
-                "budget": 5000.0,
+                    "budget": 5000.0,
                 }
             ],
             start_time="2025-02-15T00:00:00-08:00",
@@ -152,8 +152,8 @@ class TestDateTimeStringParsing:
                         "buyer_ref": "pkg_1",
                         "products": ["prod_1"],
                         "status": "draft",
-                    "budget": 5000.0,
-                }
+                        "budget": 5000.0,
+                    }
                 ],
                 start_time="2025-02-15T00:00:00",  # No timezone!
                 end_time="2025-02-28T23:59:59",
@@ -175,8 +175,8 @@ class TestDateTimeStringParsing:
                         "buyer_ref": "pkg_1",
                         "products": ["prod_1"],
                         "status": "draft",
-                    "budget": 5000.0,
-                }
+                        "budget": 5000.0,
+                    }
                 ],
                 start_time="02/15/2025",  # Wrong format!
                 end_time="02/28/2025",
@@ -195,7 +195,7 @@ class TestDateTimeStringParsing:
                     "buyer_ref": "pkg_1",
                     "products": ["prod_1"],
                     "status": "draft",
-                "budget": 5000.0,
+                    "budget": 5000.0,
                 }
             ],
             start_time="2025-02-15T00:00:00Z",
@@ -228,7 +228,7 @@ class TestDateTimeParsingEdgeCases:
                     "buyer_ref": "pkg_1",
                     "products": ["prod_1"],
                     "status": "draft",
-                "budget": 5000.0,
+                    "budget": 5000.0,
                 }
             ],
             start_time="2025-02-15T00:00:00Z",

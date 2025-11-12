@@ -1,8 +1,8 @@
 """Context persistence manager for A2A protocol support."""
 
+import asyncio
 import logging
 import uuid
-import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -10,7 +10,7 @@ from rich.console import Console
 from sqlalchemy import select
 
 from src.core.database.database_session import DatabaseManager
-from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep, PushNotificationConfig
+from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 logger = logging.getLogger(__name__)
@@ -660,7 +660,7 @@ class ContextManager(DatabaseManager):
                                 service.send_notification(
                                     push_notification_config=push_notification_config,
                                     task_id=step.step_id,
-                                    task_type=step.tool_name or mapping.action or 'unknown',
+                                    task_type=step.tool_name or mapping.action or "unknown",
                                     status=new_status,
                                     result=step.response_data,
                                     error=step.error_message,
@@ -670,9 +670,13 @@ class ContextManager(DatabaseManager):
                             def _log_task_result(t: asyncio.Task) -> None:
                                 try:
                                     t.result()
-                                    console.print(f"[green]✅ Webhook sent successfully for {push_notification_config.url}[/green]")
+                                    console.print(
+                                        f"[green]✅ Webhook sent successfully for {push_notification_config.url}[/green]"
+                                    )
                                 except Exception as e:  # noqa: BLE001
-                                    console.print(f"[red]❌ Webhook failed for {push_notification_config.url}: {str(e)}[/red]")
+                                    console.print(
+                                        f"[red]❌ Webhook failed for {push_notification_config.url}: {str(e)}[/red]"
+                                    )
 
                             task.add_done_callback(_log_task_result)
                         except RuntimeError:
@@ -681,13 +685,15 @@ class ContextManager(DatabaseManager):
                                 service.send_notification(
                                     push_notification_config=push_notification_config,
                                     task_id=step.step_id,
-                                    task_type=step.tool_name or mapping.action or 'unknown',
+                                    task_type=step.tool_name or mapping.action or "unknown",
                                     status=new_status,
                                     result=step.response_data,
                                     error=step.error_message,
                                 )
                             )
-                            console.print(f"[green]✅ Webhook sent successfully for {push_notification_config.url}[/green]")
+                            console.print(
+                                f"[green]✅ Webhook sent successfully for {push_notification_config.url}[/green]"
+                            )
 
                     except requests.exceptions.Timeout:
                         console.print(f"[red]❌ Webhook timeout for {push_notification_config.url}[/red]")

@@ -42,9 +42,11 @@ def mock_db_session():
 @pytest.fixture
 def mock_gam_client():
     """Mock GAM client and managers."""
-    with patch("src.services.order_approval_service.GAMClientManager") as mock_client_mgr, patch(
-        "src.services.order_approval_service.GAMOrdersManager"
-    ) as mock_orders_mgr, patch("src.services.order_approval_service.AdapterConfig") as mock_config:
+    with (
+        patch("src.services.order_approval_service.GAMClientManager") as mock_client_mgr,
+        patch("src.services.order_approval_service.GAMOrdersManager") as mock_orders_mgr,
+        patch("src.services.order_approval_service.AdapterConfig") as mock_config,
+    ):
         # Mock adapter config
         mock_adapter_config = MagicMock()
         mock_adapter_config.gam_network_code = "12345"
@@ -276,4 +278,6 @@ def test_webhook_retries_on_failure():
         # Verify retry logic works - should be at least 3 attempts
         # Note: Due to test pollution in full suite, may see 4 calls, but minimum is 3
         assert call_counter["count"] >= 3, f"Expected at least 3 retry attempts, got {call_counter['count']}"
-        assert call_counter["count"] <= 4, f"Expected at most 4 retry attempts (3 + 1 pollution), got {call_counter['count']}"
+        assert (
+            call_counter["count"] <= 4
+        ), f"Expected at most 4 retry attempts (3 + 1 pollution), got {call_counter['count']}"
