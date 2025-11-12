@@ -17,10 +17,10 @@ from pathlib import Path
 HARDCODED_URL_PATTERNS = [
     # Login/auth redirects without scriptRoot
     (r"window\.location\.href\s*=\s*['\"]/(auth|tenant)/", "Login redirect should use scriptRoot variable"),
-    # API fetch calls without scriptRoot
-    (r"fetch\s*\(\s*['\"]/(api)/", "API fetch should use scriptRoot variable"),
-    # Direct assignment of auth/api URLs
-    (r"(const|let|var)\s+\w+\s*=\s*['\"]/(auth|api|tenant)/", "URL variable should use scriptRoot prefix"),
+    # API fetch calls without scriptRoot (both quoted strings and template literals)
+    (r"fetch\s*\(\s*['\"`]/(api)/", "API fetch should use scriptRoot variable"),
+    # Direct assignment of auth/api URLs (both quoted strings and template literals)
+    (r"(const|let|var)\s+\w+\s*=\s*['\"`]/(auth|api|tenant)/", "URL variable should use scriptRoot prefix"),
 ]
 
 # Exceptions that are allowed (correct patterns)
