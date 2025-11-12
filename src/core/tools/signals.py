@@ -384,7 +384,7 @@ async def activate_signal(
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
-async def get_signals_raw(req: GetSignalsRequest, context: Context | ToolContext | None = None) -> GetSignalsResponse:
+async def get_signals_raw(req: GetSignalsRequest, ctx: Context | ToolContext | None = None) -> GetSignalsResponse:
     """Optional endpoint for discovering available signals (raw function for A2A server use).
 
     Delegates to the shared implementation.
@@ -396,7 +396,7 @@ async def get_signals_raw(req: GetSignalsRequest, context: Context | ToolContext
     Returns:
         GetSignalsResponse containing matching signals
     """
-    return await _get_signals_impl(req, context)
+    return await _get_signals_impl(req, ctx)
 
 
 async def activate_signal_raw(

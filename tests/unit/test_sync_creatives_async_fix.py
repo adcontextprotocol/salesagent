@@ -105,7 +105,8 @@ class TestSyncCreativesErrorHandling:
                         # Instead, it should handle the error gracefully
                         result = _sync_creatives_impl(
                             creatives=[invalid_creative],
-                            context=mock_context,
+                            context=None,
+                            ctx=mock_context,
                         )
 
                         # Verify the error was captured with the correct creative_id
@@ -178,7 +179,8 @@ class TestSyncCreativesErrorHandling:
                         # This should handle the error gracefully with creative_id available
                         result = _sync_creatives_impl(
                             creatives=[creative],
-                            context=mock_context,
+                            context=None,
+                            ctx=mock_context,
                         )
 
                         # Verify error was captured with correct creative_id
@@ -267,7 +269,8 @@ class TestSyncCreativesAsyncScenario:
                         # Before the fix, this would raise RuntimeError about asyncio.run()
                         result = _sync_creatives_impl(
                             creatives=[creative],
-                            context=mock_context,
+                            context=None,
+                            ctx=mock_context,
                         )
 
                         # Verify it succeeded

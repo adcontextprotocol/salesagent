@@ -178,7 +178,7 @@ def list_creative_formats(
 
 def list_creative_formats_raw(
     req: ListCreativeFormatsRequest | None = None,
-    context: Context | ToolContext | None = None,
+    ctx: Context | ToolContext | None = None,
 ) -> ListCreativeFormatsResponse:
     """List all available creative formats (raw function for A2A server use).
 
@@ -186,9 +186,9 @@ def list_creative_formats_raw(
 
     Args:
         req: Optional request with filter parameters
-        context: FastMCP context
+        ctx: FastMCP context
 
     Returns:
         ListCreativeFormatsResponse with all available formats
     """
-    return _list_creative_formats_impl(req, context)
+    return _list_creative_formats_impl(req, ctx)
