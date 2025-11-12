@@ -328,7 +328,7 @@ def _update_media_buy_impl(
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
                     response_data = UpdateMediaBuyError(
                         errors=[{"code": "currency_not_supported", "message": error_msg}],
-                        context=req.context if req.context is not None else None,
+                        context=req.context,
                     )
                     ctx_manager.update_workflow_step(
                         step.step_id, status="failed", response_data=response_data.model_dump(), error_message=error_msg
@@ -811,8 +811,8 @@ def _update_media_buy_impl(
     response_data = UpdateMediaBuySuccess(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
-        implementation_date=None,
-        affected_packages=affected_packages_list if affected_packages_list else None,
+        packages=[],  # Required by AdCP spec
+        affected_packages=affected_packages_list if affected_packages_list else [],  # Internal field for tracking changes
         context=req.context,
     )
 

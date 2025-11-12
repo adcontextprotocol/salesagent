@@ -1062,7 +1062,6 @@ from src.core.tools.performance import update_performance_index  # noqa: E402, F
 from src.core.tools.products import get_products  # noqa: E402, F401
 from src.core.tools.properties import list_authorized_properties  # noqa: E402, F401
 from src.core.tools.signals import activate_signal, get_signals  # noqa: E402, F401
-from src.core.mcp_context_wrapper import with_context  # noqa: E402, F401
 
 # Register tools with MCP (must be done after imports to avoid circular dependency)
 # This breaks the circular import: tool modules no longer import mcp from main.py

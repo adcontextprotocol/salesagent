@@ -221,7 +221,8 @@ def _list_authorized_properties_impl(
                 response_data["advertising_policies"] = advertising_policies_text
 
             response = ListAuthorizedPropertiesResponse(**response_data)
-            # Echo application context if provided
+
+            # Carry back application context from request if provided
             if req.context is not None:
                 response.context = req.context
 

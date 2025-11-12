@@ -601,7 +601,7 @@ async def _get_products_impl(
             product.pricing_options = []
 
     # Response __str__() will generate appropriate message based on content
-    resp = GetProductsResponse(products=modified_products, errors=None, context=req.context or None)
+    resp = GetProductsResponse(products=modified_products, errors=None, context=req.context)
     
     return resp
 

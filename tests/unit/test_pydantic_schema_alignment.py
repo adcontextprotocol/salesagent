@@ -270,8 +270,6 @@ def generate_full_valid_request(schema: dict[str, Any]) -> dict[str, Any]:
         field_type = field_spec.get("type", "string")
         request_data[field_name] = generate_example_value(field_type, field_name, field_spec)
 
-    print(request_data)
-
     return request_data
 
 

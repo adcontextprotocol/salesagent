@@ -420,6 +420,7 @@ def get_media_buy_delivery(
         end_date: End date for reporting period in YYYY-MM-DD format (optional)
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
         push_notification_config: Optional webhook configuration (accepted, ignored by this operation)
+        context: Application level context per adcp spec
         ctx: FastMCP context (automatically provided)
 
     Returns:

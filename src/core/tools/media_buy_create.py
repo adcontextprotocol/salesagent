@@ -1236,6 +1236,7 @@ async def _create_media_buy_impl(
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
         push_notification_config: Push notification config for status updates (MCP/A2A)
+        context: Application level context per adcp spec
         ctx:  FastMCP context (automatically provided) (automatically provided)
 
     Returns:
@@ -3351,6 +3352,7 @@ async def create_media_buy(
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
         push_notification_config: Push notification config dict with url, authentication (AdCP spec)
+        context: Application level context per adcp spec
         ctx:  FastMCP context (automatically provided) (automatically provided)
 
     Returns:

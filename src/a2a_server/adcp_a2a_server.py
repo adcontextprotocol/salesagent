@@ -1325,6 +1325,7 @@ class AdCPRequestHandler(RequestHandler):
             min_exposures = parameters.get("min_exposures", None)
             adcp_version = parameters.get("adcp_version", "1.0.0")
             strategy_id = parameters.get("strategy_id", None)
+            context = parameters.get("context", None)
 
             # Normalize brand_manifest to dict format (adcp v1.2.1 requirement)
             brand_manifest: dict | None = None
@@ -1355,7 +1356,8 @@ class AdCPRequestHandler(RequestHandler):
                 min_exposures=min_exposures,
                 adcp_version=adcp_version,
                 strategy_id=strategy_id,
-                context=self._tool_context_to_mcp_context(tool_context),
+                context=context,
+                ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
             # Convert response to dict
@@ -1434,7 +1436,8 @@ class AdCPRequestHandler(RequestHandler):
                 budget=parameters.get("budget"),  # Optional legacy field - ignored if provided
                 targeting_overlay=parameters.get("custom_targeting", {}),
                 push_notification_config=parameters.get("push_notification_config"),
-                context=self._tool_context_to_mcp_context(tool_context),
+                context=parameters.get("context"),
+                ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
             # Convert response to dict and add A2A success wrapper
@@ -1502,7 +1505,8 @@ class AdCPRequestHandler(RequestHandler):
                 dry_run=parameters.get("dry_run", False),
                 validation_mode=parameters.get("validation_mode", "strict"),
                 push_notification_config=parameters.get("push_notification_config"),
-                context=self._tool_context_to_mcp_context(tool_context),
+                context=parameters.get("context"),
+                ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
             # Convert response to dict
@@ -1551,7 +1555,8 @@ class AdCPRequestHandler(RequestHandler):
                 limit=parameters.get("limit", 50),
                 sort_by=parameters.get("sort_by", "created_date"),
                 sort_order=parameters.get("sort_order", "desc"),
-                context=self._tool_context_to_mcp_context(tool_context),
+                context=parameters.get("context"),
+                ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
             # Convert response to dict
@@ -1764,6 +1769,7 @@ class AdCPRequestHandler(RequestHandler):
                 standard_only=parameters.get("standard_only"),
                 category=parameters.get("category"),
                 format_ids=parameters.get("format_ids"),
+                context=parameters.get("context"),
             )
 
             # Call core function with request
@@ -1830,7 +1836,7 @@ class AdCPRequestHandler(RequestHandler):
             # Call core function directly
             # Context can be None for unauthenticated calls - tenant will be detected from headers
             # MinimalContext is not compatible with ToolContext type, but works at runtime
-            response = core_list_authorized_properties_tool(req=request, context=tool_context)  # type: ignore[arg-type]
+            response = core_list_authorized_properties_tool(req=request, ctx=tool_context)  # type: ignore[arg-type]
 
             # Return spec-compliant response (no extra fields)
             # Per AdCP v2.4 spec: only publisher_domains, primary_channels, primary_countries,
@@ -1974,7 +1980,8 @@ class AdCPRequestHandler(RequestHandler):
             response = core_update_performance_index_tool(
                 media_buy_id=parameters["media_buy_id"],
                 performance_data=parameters["performance_data"],
-                context=self._tool_context_to_mcp_context(tool_context),
+                context=parameters.get("context"),
+                ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
             # Return spec-compliant response (no extra fields)
@@ -2014,7 +2021,6 @@ class AdCPRequestHandler(RequestHandler):
             response = await core_get_products_tool(
                 brief=query,
                 brand_manifest=brand_manifest,
-                context=parameters.get("context") if isinstance(parameters, dict) else None,
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 

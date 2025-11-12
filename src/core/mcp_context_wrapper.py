@@ -78,7 +78,7 @@ class MCPContextWrapper:
 
         @functools.wraps(tool_func)
         async def wrapper(*args, **kwargs):
-            # 1) Extract FastMCP context from arguments
+            # Extract FastMCP context from arguments
             fastmcp_context = self._extract_fastmcp_context(args, kwargs)
             if not fastmcp_context:
                 # No context found, call original function
@@ -87,15 +87,8 @@ class MCPContextWrapper:
             # Create ToolContext
             tool_context = self._create_tool_context(fastmcp_context, tool_func.__name__)
 
-            # 2) Replace FastMCP context with ToolContext in arguments
+            # Replace FastMCP context with ToolContext in arguments
             args, kwargs = self._replace_context_in_args(args, kwargs, tool_context)
-
-            # 3) Debug log of current request payload (excluding framework ctx objects)
-            try:
-                safe_kwargs = {k: v for k, v in kwargs.items() if k != "ctx"}
-                console.print(f"[dim]MCP wrapper payload for {tool_func.__name__}: {safe_kwargs}[/dim]")
-            except Exception:
-                pass
 
             # Track start time
             start_time = time.time()
@@ -124,7 +117,7 @@ class MCPContextWrapper:
 
         @functools.wraps(tool_func)
         def wrapper(*args, **kwargs):
-            # 1) Extract FastMCP context from arguments
+            # Extract FastMCP context from arguments
             fastmcp_context = self._extract_fastmcp_context(args, kwargs)
             if not fastmcp_context:
                 # No context found, call original function
@@ -133,15 +126,8 @@ class MCPContextWrapper:
             # Create ToolContext
             tool_context = self._create_tool_context(fastmcp_context, tool_func.__name__)
 
-            # 2) Replace FastMCP context with ToolContext in arguments
+            # Replace FastMCP context with ToolContext in arguments
             args, kwargs = self._replace_context_in_args(args, kwargs, tool_context)
-
-            # 3) Debug log of current request payload (excluding framework ctx objects)
-            try:
-                safe_kwargs = {k: v for k, v in kwargs.items() if k != "ctx"}
-                console.print(f"[dim]MCP wrapper payload for {tool_func.__name__}: {safe_kwargs}[/dim]")
-            except Exception:
-                pass
 
             # Track start time
             start_time = time.time()

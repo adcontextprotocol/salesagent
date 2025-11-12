@@ -6,7 +6,6 @@ implementation pattern from CLAUDE.md.
 
 import logging
 import time
-from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -122,10 +121,7 @@ def _list_creative_formats_impl(
     )
 
     # Create response (no message/specification_version - not in adapter schema)
-    response = ListCreativeFormatsResponse(formats=formats, creative_agents=None, errors=None)
-    # Echo context from request if provided
-    if req.context is not None:
-        response.context = req.context
+    response = ListCreativeFormatsResponse(formats=formats, creative_agents=None, errors=None, context=req.context)
 
     # Always return Pydantic model - MCP wrapper will handle serialization
     # Schema enhancement (if needed) should happen in the MCP wrapper, not here
