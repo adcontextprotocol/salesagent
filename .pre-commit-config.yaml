@@ -41,6 +41,15 @@ repos:
         files: '^(src/|product_catalog_providers/).*\.py$'
         pass_filenames: true
 
+      # Check for Flask route conflicts
+      - id: check-route-conflicts
+        name: Detect Flask route conflicts
+        entry: uv run python .pre-commit-hooks/check_route_conflicts.py
+        language: system
+        files: '^(src/.*\.py)$'
+        pass_filenames: false
+        always_run: false
+
       # Prevent skipping tests (but allow skip_ci for CI-specific issues)
       - id: no-skip-tests
         name: No @pytest.mark.skip decorators allowed

@@ -1421,7 +1421,23 @@ class GAMInventoryService:
 
 
 def create_inventory_endpoints(app):
-    """Create Flask endpoints for inventory management."""
+    """Create Flask endpoints for inventory management.
+
+    NOTE: These endpoints are DEPRECATED and cause route conflicts.
+    The inventory blueprint (src/admin/blueprints/inventory.py) now handles
+    all inventory routes with better implementations (caching, auth decorators, etc.)
+
+    This function is kept for backward compatibility but does nothing.
+    TODO: Remove this function entirely after confirming no other code depends on it.
+    """
+    logger.info("Skipping GAM inventory endpoint registration (handled by inventory blueprint)")
+    return
+
+    # DEPRECATED CODE BELOW - DO NOT USE
+    # These routes conflict with inventory.py blueprint routes:
+    # - /api/tenant/<tenant_id>/inventory/sync → Use inventory.sync_inventory instead
+    # - /api/tenant/<tenant_id>/inventory/tree → Use inventory.get_inventory_tree instead
+    # - /api/tenant/<tenant_id>/inventory/search → Use inventory.get_inventory_list with search param
 
     # Check if endpoints already exist to avoid duplicate registration
     if "gam_inventory_tree" in app.view_functions:

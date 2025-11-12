@@ -50,7 +50,9 @@ Thumbs.db
 *.pyc
 
 # Diagnostic scripts (one-off debugging tools)
+# BUT: Allow pre-commit hooks
 check_*.py
+!.pre-commit-hooks/check_*.py
 diagnose_*.py
 fix_*.py
 test_sync.py

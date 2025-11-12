@@ -149,7 +149,7 @@ Then in your template, add browse buttons:
 
     function loadPlacementsList(search = '') {
         const list = document.getElementById('inventory-picker-list');
-        const url = `/api/tenant/${config.tenantId}/inventory-list?type=placement${search ? '&search=' + encodeURIComponent(search) : ''}`;
+        const url = `${config.scriptRoot}/api/tenant/${config.tenantId}/inventory-list?type=placement${search ? '&search=' + encodeURIComponent(search) : ''}`;
 
         fetch(url, { credentials: 'same-origin' })
             .then(response => {
@@ -204,7 +204,7 @@ Then in your template, add browse buttons:
 
     function loadInventoryTree(search = '') {
         const list = document.getElementById('inventory-picker-list');
-        const baseUrl = `/api/tenant/${config.tenantId}/inventory/tree`;
+        const baseUrl = `${config.scriptRoot}/api/tenant/${config.tenantId}/inventory/tree`;
         const url = search ? `${baseUrl}?search=${encodeURIComponent(search)}` : baseUrl;
 
         list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #666;">
