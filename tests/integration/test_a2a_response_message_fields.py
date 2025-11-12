@@ -104,7 +104,7 @@ class TestA2AMessageFieldValidation:
             params = {
                 "creatives": [
                     {
-                        "buyer_ref": "creative_test_001",
+                        "creative_id": "creative_test_001",  # Changed from buyer_ref to creative_id per adcp library
                         "format_id": "display_300x250",
                         "name": "Test Creative",
                         "assets": {"main_image": {"asset_type": "image", "url": "https://example.com/image.jpg"}},
@@ -175,15 +175,19 @@ class TestA2AResponseDictConstruction:
     """
 
     def test_create_media_buy_response_to_dict(self):
-        """Test CreateMediaBuyResponse can be converted to A2A dict.
+        """Test CreateMediaBuySuccess can be converted to A2A dict.
 
         Protocol fields (status) are added by A2A wrapper, not in domain response.
-        """
-        from src.core.schemas import CreateMediaBuyResponse
 
-        response = CreateMediaBuyResponse(
+        NOTE: CreateMediaBuyResponse is a Union type (Success | Error) in adcp v1.2.1,
+        so we test with CreateMediaBuySuccess instead.
+        """
+        from src.core.schemas import CreateMediaBuySuccess
+
+        response = CreateMediaBuySuccess(
             buyer_ref="test-123",
             media_buy_id="mb-456",
+            packages=[],  # Required field in adcp v1.2.1
         )
 
         # Simulate what _handle_create_media_buy_skill does
@@ -244,9 +248,13 @@ class TestA2AResponseDictConstruction:
 
         This is a contract test - ensures we don't add response types that
         can't be safely converted to A2A dicts.
+
+        NOTE: In adcp v1.2.1, some response types are Union types (Success | Error).
+        We test both Success and Error variants separately.
         """
         from src.core.schemas import (
-            CreateMediaBuyResponse,
+            CreateMediaBuyError,
+            CreateMediaBuySuccess,
             GetProductsResponse,
             ListCreativeFormatsResponse,
             ListCreativesResponse,
@@ -254,7 +262,8 @@ class TestA2AResponseDictConstruction:
         )
 
         response_types = [
-            CreateMediaBuyResponse,
+            CreateMediaBuySuccess,  # Test Success variant
+            CreateMediaBuyError,  # Test Error variant
             SyncCreativesResponse,
             GetProductsResponse,
             ListCreativeFormatsResponse,

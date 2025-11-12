@@ -9,11 +9,13 @@ from src.core.schemas import (
     CheckMediaBuyStatusResponse,
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
+    CreateMediaBuySuccess,
     DeliveryTotals,
     MediaPackage,
     PackagePerformance,
     ReportingPeriod,
     UpdateMediaBuyResponse,
+    UpdateMediaBuySuccess,
 )
 
 
@@ -426,15 +428,14 @@ class MockAdServer(AdServerAdapter):
 
             # Handle question asking (return pending with question)
             if scenario.should_ask_question:
-                # For question-asking scenario, return response without media_buy_id
+                # For question-asking scenario, return success with pending media_buy_id
                 # The media buy hasn't been created yet - we need input first
                 # The workflow_step_id will track this pending operation
-                return CreateMediaBuyResponse(
-                    media_buy_id=None,  # No media buy yet - pending user input
+                return CreateMediaBuySuccess(
+                    media_buy_id="pending",  # Placeholder for pending manual approval
                     creative_deadline=None,
                     buyer_ref=request.buyer_ref or "unknown",
                     packages=[],  # No packages yet - operation not complete
-                    errors=[],
                 )
 
             # Handle async mode
@@ -544,12 +545,11 @@ class MockAdServer(AdServerAdapter):
         # The media buy hasn't been created yet - it's being processed asynchronously
         # The workflow_step_id (from step['step_id']) will track this pending operation
         # Client can poll the step or wait for webhook notification when complete
-        return CreateMediaBuyResponse(
+        return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "unknown",
-            media_buy_id=None,  # No media buy yet - async processing in progress
+            media_buy_id="pending",  # Placeholder for async processing in progress
             creative_deadline=None,
             packages=[],  # No packages yet - operation not complete
-            errors=[],
         )
 
     def _create_media_buy_sync_with_delay(
@@ -790,15 +790,19 @@ class MockAdServer(AdServerAdapter):
             # Add buyer_ref from original request package if available
             if request.packages and idx < len(request.packages):
                 pkg_dict["buyer_ref"] = request.packages[idx].buyer_ref
+
+            # Add status (required by AdCP spec)
+            if "status" not in pkg_dict:
+                pkg_dict["status"] = "active"
+
             response_packages.append(pkg_dict)
 
         self.log(f"[DEBUG] MockAdapter: Returning {len(response_packages)} packages in response")
-        return CreateMediaBuyResponse(
+        return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "unknown",  # Required field per AdCP spec
             media_buy_id=media_buy_id,
-            creative_deadline=datetime.now(UTC) + timedelta(days=2),
+            creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),
             packages=response_packages,  # Include packages with buyer_ref
-            errors=[],  # No errors for successful mock response
         )
 
     def add_creative_assets(
@@ -1237,11 +1241,11 @@ class MockAdServer(AdServerAdapter):
                 else:
                     logger.warning(f"[MockAdapter] Package {package_id} not found for media buy {media_buy_id}")
 
-        return UpdateMediaBuyResponse(
+        return UpdateMediaBuySuccess(
             media_buy_id=media_buy_id,
             buyer_ref=buyer_ref,
+            packages=[],  # Required by AdCP spec
             implementation_date=today,
-            errors=[],
         )
 
     def get_config_ui_endpoint(self) -> str | None:

@@ -1,13 +1,12 @@
-"""Validation tests comparing manual schemas vs auto-generated schemas.
+"""Validation tests comparing manual schemas vs adcp library types.
 
 This test suite identifies differences between our manually-maintained schemas
-(src.core.schemas) and the auto-generated schemas from AdCP JSON Schema
-(src.core.schemas_generated).
+(src.core.schemas) and the types from the adcp Python library.
 
 Purpose:
 - Find schema drift (fields we added that aren't in AdCP spec)
 - Find missing fields (fields in spec we haven't implemented)
-- Ensure we can safely migrate from manual to generated schemas
+- Ensure we can safely migrate from manual to adcp library types
 
 Strategy:
 - Compare field names, types, and constraints
@@ -18,6 +17,14 @@ Strategy:
 from typing import Any, get_args, get_origin
 
 import pytest
+
+# Generated schemas from adcp library
+from adcp.types.generated import (
+    GetProductsRequest as GeneratedGetProductsRequest,
+)
+from adcp.types.generated import (
+    GetProductsResponse as GeneratedGetProductsResponse,
+)
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
@@ -27,14 +34,6 @@ from src.core.schemas import (
 )
 from src.core.schemas import (
     GetProductsResponse as ManualGetProductsResponse,
-)
-
-# Generated schemas
-from src.core.schemas_generated._schemas_v1_media_buy_get_products_request_json import (
-    GetProductsRequest as GeneratedGetProductsRequest,
-)
-from src.core.schemas_generated._schemas_v1_media_buy_get_products_response_json import (
-    GetProductsResponse as GeneratedGetProductsResponse,
 )
 
 

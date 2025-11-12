@@ -104,7 +104,10 @@ async def test_handle_get_products_skill_extracts_all_parameters():
 
 @pytest.mark.asyncio
 async def test_handle_get_products_skill_backward_compat_promoted_offering():
-    """Test backward compatibility with promoted_offering parameter."""
+    """Test that promoted_offering parameter is no longer supported (removed per adcp v1.2.1).
+
+    This test verifies the new behavior where callers must use brand_manifest instead.
+    """
     handler = AdCPRequestHandler()
 
     # Mock dependencies
@@ -122,26 +125,30 @@ async def test_handle_get_products_skill_backward_compat_promoted_offering():
         mock_response.model_dump.return_value = {"products": [], "message": "Test products"}
         mock_core_tool.return_value = mock_response
 
-        # Test with promoted_offering (deprecated) instead of brand_manifest
+        # Test with brand_manifest dict (promoted_offering has been removed)
         parameters = {
-            "promoted_offering": "Nike Athletic Footwear",
+            "brand_manifest": {"name": "Nike Athletic Footwear"},
             "brief": "Display ads",
         }
 
         # Call handler
         result = await handler._handle_get_products_skill(parameters, "test_token")
 
-        # Verify promoted_offering is still passed
+        # Verify brand_manifest is passed (promoted_offering no longer exists)
         mock_core_tool.assert_called_once()
         call_kwargs = mock_core_tool.call_args.kwargs
 
-        assert call_kwargs["promoted_offering"] == "Nike Athletic Footwear"
-        assert call_kwargs["brand_manifest"] is None  # Not provided
+        assert "promoted_offering" not in call_kwargs  # Removed parameter
+        assert call_kwargs["brand_manifest"] == {"name": "Nike Athletic Footwear"}
 
 
 @pytest.mark.asyncio
 async def test_handle_get_products_skill_brand_manifest_url_string():
-    """Test brand_manifest as URL string."""
+    """Test brand_manifest as URL string is normalized to dict.
+
+    Per adcp v1.2.1, brand_manifest must be a dict. The A2A server
+    normalizes URL strings to {"url": "..."} for backward compatibility.
+    """
     handler = AdCPRequestHandler()
 
     # Mock dependencies
@@ -168,8 +175,8 @@ async def test_handle_get_products_skill_brand_manifest_url_string():
         # Call handler
         result = await handler._handle_get_products_skill(parameters, "test_token")
 
-        # Verify brand_manifest URL is passed
+        # Verify brand_manifest URL string is normalized to dict
         mock_core_tool.assert_called_once()
         call_kwargs = mock_core_tool.call_args.kwargs
 
-        assert call_kwargs["brand_manifest"] == "https://nike.com"
+        assert call_kwargs["brand_manifest"] == {"url": "https://nike.com"}  # Normalized to dict

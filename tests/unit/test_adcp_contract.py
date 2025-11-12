@@ -25,7 +25,6 @@ from src.core.schemas import (
     CreativeAssignment,
     CreativePolicy,
     CreativeStatus,
-    Error,
     Format,
     FormatId,
     GetMediaBuyDeliveryRequest,
@@ -52,7 +51,6 @@ from src.core.schemas import (
     SyncCreativesResponse,
     Targeting,
     TaskStatus,
-    UpdateMediaBuyResponse,
 )
 from src.core.schemas import PricingOption as PricingOptionSchema
 from src.core.schemas import (
@@ -1370,16 +1368,22 @@ class TestAdCPContract:
         ), f"Response should have at least {len(required_fields)} required fields, got {len(adcp_response)}"
 
     def test_create_media_buy_response_adcp_compliance(self):
-        """Test that CreateMediaBuyResponse complies with AdCP create-media-buy-response schema."""
+        """Test that CreateMediaBuyResponse complies with AdCP create-media-buy-response schema.
 
-        # Create response with domain fields only (per AdCP PR #113)
+        Per AdCP PR #186, responses use oneOf discriminator for atomic semantics.
+        Success responses have media_buy_id + packages, error responses have errors array.
+        """
+        from src.core.schemas import CreateMediaBuyError, CreateMediaBuySuccess
+
+        # Create success response with domain fields only (per AdCP PR #113)
         # Protocol fields (status, task_id, message) are added by transport layer
-        successful_response = CreateMediaBuyResponse(
+        successful_response = CreateMediaBuySuccess(
             media_buy_id="mb_12345",
             buyer_ref="br_67890",
-            packages=[{"package_id": "pkg_1", "product_id": "prod_1", "budget": 5000.0, "targeting": {}}],
-            creative_deadline=datetime.now() + timedelta(days=7),
-            errors=None,
+            packages=[
+                {"package_id": "pkg_1", "product_id": "prod_1", "budget": 5000.0, "targeting": {}, "status": "active"}
+            ],
+            creative_deadline=(datetime.now() + timedelta(days=7)).isoformat(),
         )
 
         # Test successful response AdCP compliance
@@ -1402,41 +1406,41 @@ class TestAdCPContract:
 
         assert "creative_deadline" in adcp_response, "creative_deadline was set, should be present"
 
-        # errors=None was set, so it should be omitted per AdCP spec (not present with null)
-        assert "errors" not in adcp_response, "errors with None value should be omitted"
+        # Per oneOf constraint: success responses cannot have errors field
+        assert "errors" not in adcp_response, "Success response cannot have errors field"
 
-        # Test that IF errors is set to a non-None value, it's included
-        response_with_errors = CreateMediaBuyResponse(
-            buyer_ref="br_67890",
-            errors=[{"code": "test", "message": "test error"}],
+        # Test error response (oneOf error branch)
+        error_response = CreateMediaBuyError(
+            errors=[{"code": "test_error", "message": "test error"}],
         )
-        adcp_with_errors = response_with_errors.model_dump()
-        assert "errors" in adcp_with_errors, "errors with non-None value should be present"
-        assert isinstance(adcp_with_errors["errors"], list), "errors must be array"
+        adcp_error = error_response.model_dump()
+        assert "errors" in adcp_error, "Error response must have errors field"
+        assert isinstance(adcp_error["errors"], list), "errors must be array"
+        assert len(adcp_error["errors"]) > 0, "errors array must not be empty"
 
-        # Test error response case
-        error_response = CreateMediaBuyResponse(
-            media_buy_id="mb_failed",
-            buyer_ref="br_67890",
+        # Per oneOf constraint: error responses cannot have success fields
+        assert "media_buy_id" not in adcp_error, "Error response cannot have media_buy_id"
+        assert "packages" not in adcp_error, "Error response cannot have packages"
+
+        # Test that Union type works for type hints
+
+        success_via_union: CreateMediaBuyResponse = CreateMediaBuySuccess(
+            media_buy_id="mb_union",
+            buyer_ref="br_union",
             packages=[],
-            creative_deadline=None,
-            errors=[Error(code="budget_insufficient", message="Insufficient budget")],
+        )
+        error_via_union: CreateMediaBuyResponse = CreateMediaBuyError(
+            errors=[{"code": "test", "message": "test"}],
         )
 
-        error_adcp_response = error_response.model_dump()
+        # Verify Union type assignments work
+        assert isinstance(success_via_union, CreateMediaBuySuccess)
+        assert isinstance(error_via_union, CreateMediaBuyError)
 
-        # Verify error response structure
-        assert error_adcp_response["errors"] is not None
-        assert len(error_adcp_response["errors"]) > 0
-        assert isinstance(error_adcp_response["errors"][0], dict)
-        assert "code" in error_adcp_response["errors"][0]
-        assert "message" in error_adcp_response["errors"][0]
-
-        # Verify field count - only required fields + non-None optional fields are present
-        # buyer_ref is required; media_buy_id, creative_deadline, packages set; errors=None omitted
+        # Verify field count for success response
         assert (
-            len(adcp_response) >= 1
-        ), f"CreateMediaBuyResponse should have at least required fields, got {len(adcp_response)}"
+            len(adcp_response) >= 3
+        ), f"CreateMediaBuySuccess should have at least 3 required fields, got {len(adcp_response)}"
 
     def test_get_products_response_adcp_compliance(self):
         """Test that GetProductsResponse complies with AdCP get-products-response schema."""
@@ -1572,13 +1576,19 @@ class TestAdCPContract:
         ), f"ListCreativeFormatsResponse should have at least required fields, got {len(adcp_response)}"
 
     def test_update_media_buy_response_adcp_compliance(self):
-        """Test that UpdateMediaBuyResponse complies with AdCP update-media-buy-response schema."""
+        """Test that UpdateMediaBuyResponse complies with AdCP update-media-buy-response schema.
 
-        # Create successful update response
-        response = UpdateMediaBuyResponse(
+        Per AdCP PR #186, responses use oneOf discriminator for atomic semantics.
+        Success responses have media_buy_id + buyer_ref, error responses have errors array.
+        """
+        from src.core.schemas import UpdateMediaBuyError, UpdateMediaBuySuccess
+
+        # Create successful update response (oneOf success branch)
+        response = UpdateMediaBuySuccess(
             media_buy_id="buy_123",
             buyer_ref="ref_123",
-            implementation_date=datetime.now() + timedelta(hours=1),
+            packages=[{"package_id": "pkg_1", "status": "active"}],
+            implementation_date=(datetime.now() + timedelta(hours=1)).isoformat(),
             affected_packages=[],
         )
 
@@ -1586,34 +1596,34 @@ class TestAdCPContract:
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["media_buy_id", "buyer_ref"]
+        required_fields = ["media_buy_id", "buyer_ref", "packages"]
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify optional AdCP fields that were set are present
-        assert "implementation_date" in adcp_response, "implementation_date was set, should be present"
-        assert "affected_packages" in adcp_response, "affected_packages was set, should be present"
+        # Note: implementation_date and affected_packages are internal fields
+        # excluded by model_dump() per AdCP PR #113
+        # They are only included in model_dump_internal() for database storage
 
-        # errors was not set, so it should be omitted per AdCP spec
-        assert "errors" not in adcp_response, "errors with None value should be omitted"
+        # Per oneOf constraint: success responses cannot have errors field
+        assert "errors" not in adcp_response, "Success response cannot have errors field"
 
-        # Test error response case
-        error_response = UpdateMediaBuyResponse(
-            media_buy_id="buy_123",
-            buyer_ref="ref_123",
-            implementation_date=None,
-            errors=[Error(code="INVALID_BUDGET", message="Invalid budget")],
+        # Test error response (oneOf error branch)
+        error_response = UpdateMediaBuyError(
+            errors=[{"code": "update_failed", "message": "Update operation failed"}],
         )
+        adcp_error = error_response.model_dump()
+        assert "errors" in adcp_error, "Error response must have errors field"
+        assert len(adcp_error["errors"]) > 0, "errors array must not be empty"
 
-        error_adcp_response = error_response.model_dump()
-        assert len(error_adcp_response["errors"]) == 1
-        assert error_adcp_response["errors"][0]["message"] == "Invalid budget"
+        # Per oneOf constraint: error responses cannot have success fields
+        assert "media_buy_id" not in adcp_error, "Error response cannot have media_buy_id"
+        assert "buyer_ref" not in adcp_error, "Error response cannot have buyer_ref"
 
-        # Verify field count (media_buy_id, buyer_ref, implementation_date, affected_packages, errors)
+        # Verify field count for success response (media_buy_id, buyer_ref are required)
         assert (
             len(adcp_response) >= 2
-        ), f"UpdateMediaBuyResponse should have at least 2 required fields, got {len(adcp_response)}"
+        ), f"UpdateMediaBuySuccess should have at least 2 required fields, got {len(adcp_response)}"
 
     def test_get_media_buy_delivery_request_adcp_compliance(self):
         """Test that GetMediaBuyDeliveryRequest complies with AdCP get-media-buy-delivery-request schema."""

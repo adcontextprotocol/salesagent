@@ -37,8 +37,8 @@ class TestParseToolResult:
         complex_data = {
             "media_buy_id": "mb_123",
             "packages": [
-                {"package_id": "pkg1", "budget": 5000.0, "targeting": {"countries": ["US", "CA"]}},
-                {"package_id": "pkg2", "budget": 3000.0, "targeting": {"countries": ["UK"]}},
+                {"package_id": "pkg1", "budget": 5000.0, "targeting": {"countries": ["US", "CA"]}, "status": "active"},
+                {"package_id": "pkg2", "budget": 3000.0, "targeting": {"countries": ["UK"]}, "status": "active"},
             ],
             "status": "active",
             "metadata": {"created_at": "2025-10-27T12:00:00Z"},

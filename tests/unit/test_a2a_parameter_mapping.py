@@ -12,6 +12,8 @@ before they reach production.
 
 from unittest.mock import patch
 
+import pytest
+
 
 class TestA2AParameterMapping:
     """Test parameter extraction and mapping in A2A skill handlers."""
@@ -45,7 +47,7 @@ class TestA2AParameterMapping:
             parameters = {
                 "media_buy_id": "mb_123",
                 "active": True,
-                "packages": [{"package_id": "pkg_1", "active": True}],  # AdCP v2.0+ field name
+                "packages": [{"package_id": "pkg_1", "active": True, "status": "active"}],  # AdCP v2.0+ field name
             }
 
             # Call the skill handler (synchronous wrapper for async method)
@@ -59,7 +61,12 @@ class TestA2AParameterMapping:
 
             # CRITICAL: Must pass 'packages' parameter (not 'updates')
             assert "packages" in call_kwargs, "Core function should be called with 'packages' parameter (AdCP v2.0+)"
-            assert call_kwargs["packages"] == parameters["packages"], "Packages data should be passed through correctly"
+
+            # Verify packages data is passed through (may have additional fields from Pydantic serialization)
+            assert len(call_kwargs["packages"]) == len(parameters["packages"]), "Package count should match"
+            assert (
+                call_kwargs["packages"][0]["package_id"] == parameters["packages"][0]["package_id"]
+            ), "Package ID should match"
 
             # Should NOT use legacy 'updates' parameter
             assert "updates" not in call_kwargs, "Should not pass legacy 'updates' parameter to core function"
@@ -92,7 +99,9 @@ class TestA2AParameterMapping:
             # Legacy request format with 'updates' wrapper
             parameters = {
                 "media_buy_id": "mb_123",
-                "updates": {"packages": [{"package_id": "pkg_1", "budget": 5000.0}]},  # Legacy wrapper
+                "updates": {
+                    "packages": [{"package_id": "pkg_1", "budget": 5000.0, "status": "active"}]
+                },  # Legacy wrapper
             }
 
             import asyncio
@@ -103,9 +112,10 @@ class TestA2AParameterMapping:
             mock_update.assert_called_once()
             call_kwargs = mock_update.call_args.kwargs
 
-            assert (
-                call_kwargs["packages"] == parameters["updates"]["packages"]
-            ), "Should extract packages from legacy 'updates' wrapper"
+            # Verify packages were extracted from legacy 'updates' wrapper
+            assert "packages" in call_kwargs, "Should have packages parameter"
+            assert len(call_kwargs["packages"]) == 1, "Should have extracted 1 package"
+            assert call_kwargs["packages"][0]["package_id"] == "pkg_1", "Package ID should match"
 
     def test_update_media_buy_validates_required_parameters(self):
         """
@@ -129,14 +139,18 @@ class TestA2AParameterMapping:
 
             import asyncio
 
-            result = asyncio.run(
-                handler._handle_update_media_buy_skill(parameters=invalid_parameters, auth_token="test_token")
-            )
+            from a2a.utils.errors import ServerError
 
-            # Should return error for missing required parameter
-            assert result["success"] is False, "Should reject request without media_buy_id or buyer_ref"
+            # Should raise ServerError for missing required parameter
+            with pytest.raises(ServerError) as exc_info:
+                asyncio.run(
+                    handler._handle_update_media_buy_skill(parameters=invalid_parameters, auth_token="test_token")
+                )
+
+            # Error message should mention required parameter
+            error_message = str(exc_info.value).lower()
             assert (
-                "media_buy_id" in result["message"].lower() or "buyer_ref" in result["message"].lower()
+                "media_buy_id" in error_message or "buyer_ref" in error_message
             ), "Error message should mention required parameter"
 
     def test_get_media_buy_delivery_uses_plural_media_buy_ids(self):
@@ -250,7 +264,8 @@ class TestA2AParameterMapping:
 
             # Should reject and list missing required parameters
             assert result["success"] is False, "Should reject request missing required AdCP parameters"
-            assert "brand_manifest" in str(result.get("message", "")).lower() or "brand_manifest" in str(
-                result.get("required_parameters", [])
-            ), "Error should mention missing 'brand_manifest'"
-            assert "packages" in str(result.get("required_parameters", [])), "Error should mention missing 'packages'"
+
+            # ValidationError message includes missing field names
+            error_message = str(result.get("message", "")).lower()
+            assert "brand_manifest" in error_message, "Error message should mention missing 'brand_manifest'"
+            assert "packages" in error_message, "Error message should mention missing 'packages'"
