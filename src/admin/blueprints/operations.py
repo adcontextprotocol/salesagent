@@ -1,14 +1,14 @@
 """Operations management blueprint."""
 
-import logging
 import asyncio
+import logging
 
-from flask import Blueprint, jsonify
+from flask import Blueprint
 from sqlalchemy import select
 
 from src.admin.utils import require_auth, require_tenant_access  # type: ignore[attr-defined]
-from src.services.protocol_webhook_service import get_protocol_webhook_service
 from src.core.database.models import MediaBuy, MediaPackage, PushNotificationConfig
+from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +30,6 @@ operations_bp = Blueprint("operations", __name__)
 #     """TODO: Extract implementation from admin_ui.py."""
 #     # Placeholder implementation - DISABLED: Conflicts with inventory_bp.inventory_browser route
 #     return jsonify({"error": "Not yet implemented"}), 501
-
-
-@operations_bp.route("/orders", methods=["GET"])
-@require_tenant_access()
-def orders(tenant_id, **kwargs):
-    """TODO: Extract implementation from admin_ui.py."""
-    # Placeholder implementation
-    return jsonify({"error": "Not yet implemented"}), 501
 
 
 @operations_bp.route("/reporting", methods=["GET"])
@@ -82,77 +74,6 @@ def reporting(tenant_id):
             )
 
         return render_template("gam_reporting.html", tenant=tenant)
-
-
-@operations_bp.route("/workflows", methods=["GET"])
-@require_tenant_access()
-def workflows(tenant_id, **kwargs):
-    """List all workflows and pending approvals."""
-    from flask import render_template
-
-    from src.core.database.database_session import get_db_session
-    from src.core.database.models import Context, MediaBuy, Tenant, WorkflowStep
-    from src.core.database.models import Principal as ModelPrincipal
-
-    with get_db_session() as db:
-        # Get tenant
-        tenant = db.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-        if not tenant:
-            return "Tenant not found", 404
-
-        # Get all workflow steps that need attention
-        stmt = (
-            select(WorkflowStep)
-            .join(Context, WorkflowStep.context_id == Context.context_id)
-            .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "pending_approval")
-            .order_by(WorkflowStep.created_at.desc())
-        )
-        pending_steps = db.scalars(stmt).all()
-
-        # Get media buys for context
-        stmt = select(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc())
-        media_buys = db.scalars(stmt).all()
-
-        # Build summary stats
-        summary = {
-            "active_buys": len([mb for mb in media_buys if mb.status == "active"]),
-            "pending_tasks": len(pending_steps),
-            "completed_today": 0,  # TODO: Calculate from workflow history
-            "total_spend": sum(mb.budget or 0 for mb in media_buys if mb.status == "active"),
-        }
-
-        # Format workflow steps for display
-        workflows_list = []
-        for step in pending_steps:
-            context = db.scalars(select(Context).filter_by(context_id=step.context_id)).first()
-            principal = None
-            if context and context.principal_id:
-                principal = db.scalars(
-                    select(ModelPrincipal).filter_by(principal_id=context.principal_id, tenant_id=tenant_id)
-                ).first()
-
-            workflows_list.append(
-                {
-                    "step_id": step.step_id,
-                    "workflow_id": step.workflow_id,
-                    "step_name": step.step_name,
-                    "status": step.status,
-                    "created_at": step.created_at,
-                    "principal_name": principal.name if principal else "Unknown",
-                    "request_data": step.request_data,
-                }
-            )
-
-        return render_template(
-            "workflows.html",
-            tenant=tenant,
-            tenant_id=tenant_id,
-            summary=summary,
-            workflows=workflows_list,
-            media_buys=media_buys,
-            tasks=[],  # Deprecated - using workflow_steps now
-            audit_logs=[],  # Will be populated if needed
-        )
 
 
 @operations_bp.route("/media-buy/<media_buy_id>", methods=["GET"])
@@ -201,8 +122,10 @@ def media_buy_detail(tenant_id, media_buy_id):
                     from sqlalchemy.orm import selectinload
 
                     # Eagerly load pricing_options to avoid DetachedInstanceError in template
-                    stmt = select(Product).filter_by(tenant_id=tenant_id, product_id=product_id).options(
-                        selectinload(Product.pricing_options)
+                    stmt = (
+                        select(Product)
+                        .filter_by(tenant_id=tenant_id, product_id=product_id)
+                        .options(selectinload(Product.pricing_options))
                     )
                     product = db_session.scalars(stmt).first()
 
@@ -326,7 +249,6 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
             user_info = flask_session.get("user", {})
             user_email = user_info.get("email", "system") if isinstance(user_info, dict) else str(user_info)
 
-
             stmt_buy = select(MediaBuy).filter_by(media_buy_id=media_buy_id, tenant_id=tenant_id)
             media_buy = db_session.scalars(stmt_buy).first()
 
@@ -388,7 +310,7 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                                     if media_buy.end_time.tzinfo
                                     else media_buy.end_time.replace(tzinfo=UTC)
                                 )
-                            
+
                             now = datetime.now(UTC)
                             if now < start_time:
                                 media_buy.status = "scheduled"
@@ -426,44 +348,50 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                                 error_session.commit()
 
                         flash(f"Media buy approved but adapter creation failed: {error_msg}", "error")
-                        return redirect(url_for("operations.media_buy_detail", tenant_id=tenant_id, media_buy_id=media_buy_id))
+                        return redirect(
+                            url_for("operations.media_buy_detail", tenant_id=tenant_id, media_buy_id=media_buy_id)
+                        )
 
                     logger.info(f"[APPROVAL] Adapter creation succeeded for {media_buy_id}")
 
                     # Send webhook notification to buyer
                     stmt_webhook = (
                         select(PushNotificationConfig)
-                        .filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id, url=media_buy.raw_request.get("push_notification_config").get("url"), is_active=True)
+                        .filter_by(
+                            tenant_id=tenant_id,
+                            principal_id=media_buy.principal_id,
+                            url=media_buy.raw_request.get("push_notification_config").get("url"),
+                            is_active=True,
+                        )
                         .order_by(PushNotificationConfig.created_at.desc())
                     )
                     webhook_config = db_session.scalars(stmt_webhook).first()
 
                     if webhook_config:
-                        all_packages = db_session.scalars(select(MediaPackage).filter_by(media_buy_id=media_buy_id)).all()
+                        all_packages = db_session.scalars(
+                            select(MediaPackage).filter_by(media_buy_id=media_buy_id)
+                        ).all()
 
                         # Why this is not compliant with AdCP spec (particularly why status is missing in the protocol)?
                         webhook_payload = {
                             "media_buy_id": media_buy_id,
                             "buyer_ref": media_buy.buyer_ref,
                             "status": media_buy.status,
-                            "packages": list(
-                                map(
-                                    lambda x: {"package_id": x.package_id, "status": "approved"},
-                                    all_packages,
-                                )
-                            ),
+                            "packages": [{"package_id": x.package_id, "status": "approved"} for x in all_packages],
                         }
 
                         try:
                             service = get_protocol_webhook_service()
-                            asyncio.run(service.send_notification(
-                                push_notification_config=webhook_config,
-                                task_id=step.step_id,
-                                task_type=step.tool_name,
-                                status="completed",
-                                result=webhook_payload,
-                                error=None,
-                            ))
+                            asyncio.run(
+                                service.send_notification(
+                                    push_notification_config=webhook_config,
+                                    task_id=step.step_id,
+                                    task_type=step.tool_name,
+                                    status="completed",
+                                    result=webhook_payload,
+                                    error=None,
+                                )
+                            )
                             logger.info(f"Sent webhook notification for approved media buy {media_buy_id}")
                         except Exception as webhook_err:
                             logger.warning(f"Failed to send webhook notification: {webhook_err}")
@@ -488,7 +416,7 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                     }
                 )
                 attributes.flag_modified(step, "comments")
-                
+
                 if media_buy and media_buy.status == "pending_approval":
                     media_buy.status = "rejected"
                     attributes.flag_modified(media_buy, "status")
@@ -498,7 +426,12 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                 # Send webhook notification to buyer
                 stmt_webhook = (
                     select(PushNotificationConfig)
-                    .filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id, url=media_buy.raw_request.get("push_notification_config").get("url"), is_active=True)
+                    .filter_by(
+                        tenant_id=tenant_id,
+                        principal_id=media_buy.principal_id,
+                        url=media_buy.raw_request.get("push_notification_config").get("url"),
+                        is_active=True,
+                    )
                     .order_by(PushNotificationConfig.created_at.desc())
                 )
                 webhook_config = db_session.scalars(stmt_webhook).first()
@@ -511,30 +444,26 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                         "media_buy_id": media_buy_id,
                         "buyer_ref": media_buy.buyer_ref,
                         "status": media_buy.status,
-                        "packages": list(
-                            map(
-                                lambda x: {"package_id": x.package_id, "status": "rejected"},
-                                all_packages,
-                            )
-                        ),
+                        "packages": [{"package_id": x.package_id, "status": "rejected"} for x in all_packages],
                     }
 
                     try:
                         service = get_protocol_webhook_service()
-                        asyncio.run(service.send_notification(
-                            push_notification_config=webhook_config,
-                            task_id=step.step_id,
-                            task_type=step.tool_name,
-                            status="rejected",
-                            result=webhook_payload,
-                            error=None,
-                        ))
+                        asyncio.run(
+                            service.send_notification(
+                                push_notification_config=webhook_config,
+                                task_id=step.step_id,
+                                task_type=step.tool_name,
+                                status="rejected",
+                                result=webhook_payload,
+                                error=None,
+                            )
+                        )
                         logger.info(f"Sent webhook notification for rejected media buy {media_buy_id}")
 
                     except Exception as webhook_err:
                         logger.warning(f"Failed to send webhook notification: {webhook_err}")
 
-                
                 flash("Media buy rejected", "info")
 
             return redirect(url_for("operations.media_buy_detail", tenant_id=tenant_id, media_buy_id=media_buy_id))

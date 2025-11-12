@@ -36,52 +36,54 @@ def check_route_conflicts() -> int:
         app = app_tuple[0] if isinstance(app_tuple, tuple) else app_tuple
 
         # Check for route conflicts
-        routes_by_path = {}
-        conflicts = []
+        # Group routes by path to detect duplicates
+        routes_by_path = {}  # path -> list of (endpoint, methods)
 
         for rule in app.url_map.iter_rules():
             path = str(rule)
             endpoint = rule.endpoint
+            # Remove HEAD and OPTIONS from methods for comparison
+            methods = sorted(rule.methods - {"HEAD", "OPTIONS"})
 
-            if path in routes_by_path:
-                # Found a conflict!
-                conflicts.append(
-                    {
-                        "path": path,
-                        "endpoints": [routes_by_path[path], endpoint],
-                        "methods": rule.methods,
-                    }
-                )
-            else:
-                routes_by_path[path] = endpoint
+            if path not in routes_by_path:
+                routes_by_path[path] = []
+            routes_by_path[path].append({"endpoint": endpoint, "methods": methods})
 
-        # Whitelist known conflicts (technical debt to be resolved later)
-        # These are existing conflicts that we don't want to block commits for
-        KNOWN_CONFLICTS = {
-            "/tenant/<tenant_id>/update",
-            "/tenant/<tenant_id>/products/<product_id>/inventory",
-            "/tenant/<tenant_id>/principals/create",
-            "/tenant/<tenant_id>/principal/<principal_id>/update_mappings",
-            "/tenant/<tenant_id>/users",
-            "/tenant/<tenant_id>/users/add",
-            "/tenant/<tenant_id>/users/<user_id>/toggle",
-            "/tenant/<tenant_id>/users/<user_id>/update_role",
-            "/tenant/<tenant_id>/orders",
-            "/tenant/<tenant_id>/workflows",
-            "/api/v1/tenant-management/tenants",
-            "/api/v1/tenant-management/tenants/<tenant_id>",
-        }
+        # Find actual conflicts (same path, overlapping methods)
+        conflicts = []
+        for path, route_list in routes_by_path.items():
+            if len(route_list) <= 1:
+                continue
 
-        # Filter out known conflicts
-        new_conflicts = [c for c in conflicts if c["path"] not in KNOWN_CONFLICTS]
+            # Check if routes have overlapping methods
+            for i, route1 in enumerate(route_list):
+                for route2 in route_list[i + 1 :]:
+                    # Check for method overlap
+                    overlap = set(route1["methods"]) & set(route2["methods"])
+                    if overlap:
+                        # Real conflict - same path, same HTTP method
+                        conflicts.append(
+                            {
+                                "path": path,
+                                "endpoints": [route1["endpoint"], route2["endpoint"]],
+                                "methods1": route1["methods"],
+                                "methods2": route2["methods"],
+                                "overlap": sorted(overlap),
+                            }
+                        )
+
+        # No whitelist needed - all previous conflicts were resolved!
+        new_conflicts = conflicts
 
         if new_conflicts:
-            print("\n❌ NEW ROUTE CONFLICTS DETECTED:")
+            print("\n❌ ROUTE CONFLICTS DETECTED:")
             print("=" * 80)
             for conflict in new_conflicts:
                 print(f"\n🔴 Path: {conflict['path']}")
-                print(f"   Endpoints: {', '.join(conflict['endpoints'])}")
-                print(f"   Methods: {conflict['methods']}")
+                print(f"   Conflicting endpoints: {', '.join(conflict['endpoints'])}")
+                print(f"   Route 1 methods: {conflict['methods1']}")
+                print(f"   Route 2 methods: {conflict['methods2']}")
+                print(f"   Overlapping methods: {conflict['overlap']}")
 
             print("\n" + "=" * 80)
             print("\n⚠️  Route conflicts can cause:")
@@ -90,19 +92,12 @@ def check_route_conflicts() -> int:
             print("   - 404/401 errors")
             print("\n💡 Solution:")
             print("   - Remove duplicate @app.route() or @blueprint.route() decorators")
-            print("   - Remove deprecated service-registered routes (e.g., gam_inventory_service.py)")
-            print("   - Ensure each path has only ONE route registration")
-            print("\n📖 See: src/services/gam_inventory_service.py for example of deprecated routes")
+            print("   - Ensure each path + HTTP method combination is unique")
+            print("   - RESTful routes (same path, different methods) are OK")
             print()
             return 1
 
-        if conflicts:
-            # All conflicts are known/whitelisted
-            print(f"⚠️  {len(conflicts)} known route conflicts exist (technical debt)")
-            print("   These are whitelisted to not block commits.")
-            print("   TODO: Resolve these conflicts in a future cleanup.")
-        else:
-            print("✅ No route conflicts detected")
+        print("✅ No route conflicts detected")
 
         return 0
 
