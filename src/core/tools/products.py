@@ -601,12 +601,8 @@ async def _get_products_impl(
             product.pricing_options = []
 
     # Response __str__() will generate appropriate message based on content
-    resp = GetProductsResponse(products=modified_products, errors=None)
+    resp = GetProductsResponse(products=modified_products, errors=None, context=req.context or None)
     
-    # Echo application context if present on request (after schema updates)
-    if req.context is not None:
-        resp.context = req.context
-
     return resp
 
 
@@ -615,8 +611,8 @@ async def get_products(
     brief: str = "",
     filters: dict | None = None,
     push_notification_config: PushNotificationConfig | None = None,
-    request_context: dict | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # payload-level context
+    ctx: Context | ToolContext | None = None,
 ):
     """Get available products matching the brief.
 
@@ -627,7 +623,8 @@ async def get_products(
                        Example: {"name": "Acme", "url": "https://acme.com"}
         brief: Brief description of the advertising campaign or requirements (optional)
         filters: Structured filters for product discovery (optional)
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
         push_notification_config: Optional webhook configuration (accepted, ignored by this operation)
 
     Returns:
@@ -639,10 +636,9 @@ async def get_products(
             brief=brief,
             brand_manifest=brand_manifest,
             filters=filters,
+            context=context,
         )
-        # Attach request_context if supported by generated schema after updates
-        if request_context is not None:
-            req.context = request_context
+
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="get_products request")) from e
     except ValueError as e:
@@ -651,7 +647,7 @@ async def get_products(
 
     # Call shared implementation
     # Note: GetProductsRequest is now a flat class (not RootModel), so pass req directly
-    response = await _get_products_impl(req, context)
+    response = await _get_products_impl(req, ctx)
 
     # Return ToolResult with human-readable text and structured data
     return ToolResult(content=str(response), structured_content=response.model_dump())
@@ -664,8 +660,8 @@ async def get_products_raw(
     min_exposures: int | None = None,
     filters: dict | None = None,
     strategy_id: str | None = None,
-    request_context: dict | None = None, # Application level context per adcp spec
-    context: Context | ToolContext | None = None,
+    context: dict | None = None, # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ) -> GetProductsResponse:
     """Get available products matching the brief.
 
@@ -680,7 +676,8 @@ async def get_products_raw(
         min_exposures: Minimum impressions needed for measurement validity (optional)
         filters: Structured filters for product discovery (optional)
         strategy_id: Optional strategy ID for linking operations (optional)
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         GetProductsResponse containing matching products
@@ -690,12 +687,11 @@ async def get_products_raw(
         brief=brief or "",
         brand_manifest=brand_manifest,
         filters=filters,
+        context=context,
     )
-    if request_context is not None:
-        req.context = request_context
 
     # Call shared implementation
-    return await _get_products_impl(req, context)
+    return await _get_products_impl(req, ctx)
 
 
 def get_product_catalog() -> list[Product]:

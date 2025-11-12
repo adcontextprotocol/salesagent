@@ -78,7 +78,7 @@ class MCPContextWrapper:
 
         @functools.wraps(tool_func)
         async def wrapper(*args, **kwargs):
-            # Extract FastMCP context from arguments
+            # 1) Extract FastMCP context from arguments
             fastmcp_context = self._extract_fastmcp_context(args, kwargs)
             if not fastmcp_context:
                 # No context found, call original function
@@ -87,8 +87,15 @@ class MCPContextWrapper:
             # Create ToolContext
             tool_context = self._create_tool_context(fastmcp_context, tool_func.__name__)
 
-            # Replace FastMCP context with ToolContext in arguments
+            # 2) Replace FastMCP context with ToolContext in arguments
             args, kwargs = self._replace_context_in_args(args, kwargs, tool_context)
+
+            # 3) Debug log of current request payload (excluding framework ctx objects)
+            try:
+                safe_kwargs = {k: v for k, v in kwargs.items() if k != "ctx"}
+                console.print(f"[dim]MCP wrapper payload for {tool_func.__name__}: {safe_kwargs}[/dim]")
+            except Exception:
+                pass
 
             # Track start time
             start_time = time.time()
@@ -117,7 +124,7 @@ class MCPContextWrapper:
 
         @functools.wraps(tool_func)
         def wrapper(*args, **kwargs):
-            # Extract FastMCP context from arguments
+            # 1) Extract FastMCP context from arguments
             fastmcp_context = self._extract_fastmcp_context(args, kwargs)
             if not fastmcp_context:
                 # No context found, call original function
@@ -126,8 +133,15 @@ class MCPContextWrapper:
             # Create ToolContext
             tool_context = self._create_tool_context(fastmcp_context, tool_func.__name__)
 
-            # Replace FastMCP context with ToolContext in arguments
+            # 2) Replace FastMCP context with ToolContext in arguments
             args, kwargs = self._replace_context_in_args(args, kwargs, tool_context)
+
+            # 3) Debug log of current request payload (excluding framework ctx objects)
+            try:
+                safe_kwargs = {k: v for k, v in kwargs.items() if k != "ctx"}
+                console.print(f"[dim]MCP wrapper payload for {tool_func.__name__}: {safe_kwargs}[/dim]")
+            except Exception:
+                pass
 
             # Track start time
             start_time = time.time()
@@ -153,9 +167,10 @@ class MCPContextWrapper:
 
     def _extract_fastmcp_context(self, args: tuple, kwargs: dict) -> FastMCPContext | None:
         """Extract FastMCP Context from function arguments."""
-        # Check kwargs first
-        if "context" in kwargs and isinstance(kwargs["context"], FastMCPContext):
-            return kwargs["context"]
+        # Check kwargs for any value that is a FastMCPContext (supports 'ctx' or other param names)
+        for k, v in kwargs.items():
+            if isinstance(v, FastMCPContext):
+                return v
 
         # Check positional args
         for arg in args:
@@ -259,9 +274,16 @@ class MCPContextWrapper:
 
     def _replace_context_in_args(self, args: tuple, kwargs: dict, tool_context: ToolContext) -> tuple[tuple, dict]:
         """Replace FastMCP Context with ToolContext in arguments."""
-        # Replace in kwargs
-        if "context" in kwargs:
-            kwargs = {**kwargs, "context": tool_context}
+        # Replace in kwargs: set on whichever key carried the FastMCP context (supports 'ctx' or others)
+        new_kwargs = {}
+        replaced = False
+        for k, v in kwargs.items():
+            if isinstance(v, FastMCPContext):
+                new_kwargs[k] = tool_context
+                replaced = True
+            else:
+                new_kwargs[k] = v
+        kwargs = new_kwargs
 
         # Replace in positional args
         new_args = []

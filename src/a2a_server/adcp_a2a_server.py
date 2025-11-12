@@ -1825,7 +1825,7 @@ class AdCPRequestHandler(RequestHandler):
             # Map A2A parameters to ListAuthorizedPropertiesRequest
             from src.core.schema_adapters import ListAuthorizedPropertiesRequest as SchemaAdapterRequest
 
-            request = SchemaAdapterRequest(tags=parameters.get("tags", []))
+            request = SchemaAdapterRequest(tags=parameters.get("tags", []), context=parameters.get("context"))
 
             # Call core function directly
             # Context can be None for unauthenticated calls - tenant will be detected from headers
@@ -1882,7 +1882,8 @@ class AdCPRequestHandler(RequestHandler):
                 budget=parameters.get("budget"),
                 packages=packages,
                 push_notification_config=parameters.get("push_notification_config"),
-                context=self._tool_context_to_mcp_context(tool_context),
+                context=parameters.get("context"),
+                ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
             # Return spec-compliant response (no extra fields)
@@ -1937,7 +1938,8 @@ class AdCPRequestHandler(RequestHandler):
                 status_filter=status_filter,
                 start_date=start_date,
                 end_date=end_date,
-                context=self._tool_context_to_mcp_context(tool_context),
+                context=parameters.get("context"),
+                ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
             # Convert response to dict for A2A format
@@ -2012,7 +2014,8 @@ class AdCPRequestHandler(RequestHandler):
             response = await core_get_products_tool(
                 brief=query,
                 brand_manifest=brand_manifest,
-                context=self._tool_context_to_mcp_context(tool_context),
+                context=parameters.get("context") if isinstance(parameters, dict) else None,
+                ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
             # Convert to A2A response format

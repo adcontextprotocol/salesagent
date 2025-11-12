@@ -29,15 +29,16 @@ from src.core.validation_helpers import format_validation_error
 def _update_performance_index_impl(
     media_buy_id: str,
     performance_data: list[dict[str, Any]],
-    request_context: dict | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,
+    ctx: Context | ToolContext | None = None,
 ) -> UpdatePerformanceIndexResponse:
     """Shared implementation for update_performance_index (used by both MCP and A2A).
 
     Args:
         media_buy_id: ID of the media buy to update
         performance_data: List of performance data objects
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         UpdatePerformanceIndexResponse with update status
@@ -49,16 +50,16 @@ def _update_performance_index_impl(
     try:
         performance_objects = [ProductPerformance(**perf) for perf in performance_data]
         req = UpdatePerformanceIndexRequest(
-            media_buy_id=media_buy_id, performance_data=performance_objects, context=request_context
+            media_buy_id=media_buy_id, performance_data=performance_objects, context=context
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="update_performance_index request")) from e
 
-    if context is None:
+    if ctx is None:
         raise ValueError("Context is required for update_performance_index")
 
-    _verify_principal(req.media_buy_id, context)
-    principal_id = _get_principal_id_from_context(context)  # Already verified by _verify_principal
+    _verify_principal(req.media_buy_id, ctx)
+    principal_id = _get_principal_id_from_context(ctx)  # Already verified by _verify_principal
     if principal_id is None:
         raise ToolError("Principal ID not found in context - authentication required")
 
@@ -102,8 +103,8 @@ def update_performance_index(
     media_buy_id: str,
     performance_data: list[dict[str, Any]],
     webhook_url: str | None = None,
-    request_context: dict | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,
+    ctx: Context | ToolContext | None = None,
 ):
     """Update performance index data for a media buy.
 
@@ -113,20 +114,20 @@ def update_performance_index(
         media_buy_id: ID of the media buy to update
         performance_data: List of performance data objects
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
-        context: FastMCP context (automatically provided)
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         ToolResult with UpdatePerformanceIndexResponse data
     """
-    response = _update_performance_index_impl(media_buy_id, performance_data, request_context, context)
+    response = _update_performance_index_impl(media_buy_id, performance_data, context, ctx)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 def update_performance_index_raw(
     media_buy_id: str,
     performance_data: list[dict[str, Any]],
-    request_context: dict | None = None,
-    context: Context | ToolContext | None = None
+    context: dict | None = None,
+    ctx: Context | ToolContext | None = None,
 ):
     """Update performance data for a media buy (raw function for A2A server use).
 
@@ -135,12 +136,12 @@ def update_performance_index_raw(
     Args:
         media_buy_id: The ID of the media buy to update performance for
         performance_data: List of performance data objects
-        context: Context for authentication
+        ctx: Context for authentication
 
     Returns:
         UpdatePerformanceIndexResponse
     """
-    return _update_performance_index_impl(media_buy_id, performance_data, request_context, context)
+    return _update_performance_index_impl(media_buy_id, performance_data, context, ctx)
 
 
 # --- Human-in-the-Loop Task Queue Tools ---

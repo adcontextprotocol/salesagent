@@ -31,7 +31,7 @@ def create_get_products_request(
     brief: str = "",
     brand_manifest: dict[str, Any] | None = None,
     filters: dict[str, Any] | None = None,
-    request_context: dict[str, Any] | None = None,
+    context: dict[str, Any] | None = None,
 ) -> GetProductsRequest:
     """Create GetProductsRequest aligned with adcp v1.2.1 spec.
 
@@ -56,7 +56,7 @@ def create_get_products_request(
         brand_manifest=brand_manifest,
         brief=brief or None,
         filters=filters,
-        context=request_context,
+        context=context,
     )
 
 

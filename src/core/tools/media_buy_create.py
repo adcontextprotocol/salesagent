@@ -1210,8 +1210,8 @@ async def _create_media_buy_impl(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
-    request_context: dict[str, Any] | None = None, # Optional application level context per adcp spec
-    context: Context | ToolContext | None = None,
+    context: dict[str, Any] | None = None, # Optional application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
 
@@ -1236,7 +1236,7 @@ async def _create_media_buy_impl(
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
         push_notification_config: Push notification config for status updates (MCP/A2A)
-        context: FastMCP context (automatically provided)
+        ctx:  FastMCP context (automatically provided) (automatically provided)
 
     Returns:
         CreateMediaBuyResponse with media buy details
@@ -1272,20 +1272,20 @@ async def _create_media_buy_impl(
             webhook_url=None,  # Internal field, not in AdCP spec
             webhook_auth_token=None,  # Internal field, not in AdCP spec
             push_notification_config=push_notification_config,
-            context=request_context,
+            context=context,
         )
     except ValidationError as e:
         # Format validation errors with helpful context using shared helper
         raise ToolError(format_validation_error(e, context="request")) from e
 
     # Extract testing context first
-    if context is None:
+    if ctx is None:
         raise ToolError("Context is required")
 
-    testing_ctx = get_testing_context(context)
+    testing_ctx = get_testing_context(ctx)
 
     # Authentication and tenant setup
-    principal_id = get_principal_id_from_context(context)
+    principal_id = get_principal_id_from_context(ctx)
     if principal_id is None:
         raise ToolError("Principal ID not found in context - authentication required")
 
@@ -1316,7 +1316,7 @@ async def _create_media_buy_impl(
 
     # Context management and workflow step creation - create workflow step FIRST
     ctx_manager = get_context_manager()
-    ctx_id = context.headers.get("x-context-id") if context and hasattr(context, "headers") else None
+    ctx_id = ctx.headers.get("x-context-id") if ctx and hasattr(ctx, "headers") else None
     persistent_ctx = None
     step = None
 
@@ -1744,7 +1744,7 @@ async def _create_media_buy_impl(
                 logger.info("[INLINE_CREATIVE_DEBUG] Calling process_and_upload_package_creatives")
                 updated_packages, uploaded_ids = process_and_upload_package_creatives(
                     packages=req.packages,
-                    context=context,
+                    context=ctx,
                     testing_ctx=testing_ctx,
                 )
                 # Replace packages with updated versions (functional approach)
@@ -2285,6 +2285,7 @@ async def _create_media_buy_impl(
                 media_buy_id=media_buy_id,
                 packages=response_packages,  # Include packages with buyer_ref
                 workflow_step_id=step.step_id,
+                context=req.context,
             )
 
         # Continue with synchronized media buy creation
@@ -3088,7 +3089,7 @@ async def _create_media_buy_impl(
         # Log activity
         # Activity logging imported at module level
 
-        log_tool_activity(context, "create_media_buy", request_start_time)
+        log_tool_activity(ctx, "create_media_buy", request_start_time)
 
         # Also log specific media buy activity
         try:
@@ -3151,7 +3152,7 @@ async def _create_media_buy_impl(
             media_buy_id=filtered_data["media_buy_id"],
             packages=filtered_data["packages"],
             creative_deadline=filtered_data.get("creative_deadline"),
-            packages=filtered_data.get("packages"),
+            packages=filtered_data.get("packages") or [],
             errors=filtered_data.get("errors"),
             context=req.context,
         )
@@ -3321,9 +3322,9 @@ async def create_media_buy(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
-    request_context: dict[str, Any] | None = None, # Application level context per adcp spec
+    context: dict[str, Any] | None = None,  # payload-level context
     webhook_url: str | None = None,
-    context: Context | ToolContext | None = None,
+    ctx: Context | ToolContext | None = None,
 ):
     """Create a media buy with the specified parameters.
 
@@ -3350,7 +3351,7 @@ async def create_media_buy(
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
         push_notification_config: Push notification config dict with url, authentication (AdCP spec)
-        context: FastMCP context (automatically provided)
+        ctx:  FastMCP context (automatically provided) (automatically provided)
 
     Returns:
         ToolResult with CreateMediaBuyResponse data
@@ -3376,8 +3377,8 @@ async def create_media_buy(
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
         push_notification_config=push_notification_config,
-        request_context=request_context,
         context=context,
+        ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
@@ -3403,8 +3404,8 @@ async def create_media_buy_raw(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
-    request_context: dict[str, Any] | None = None, # Application level context per adcp spec
-    context: Context | ToolContext | None = None,
+    context: dict[str, Any] | None = None, # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None
 ):
     """Create a new media buy with specified parameters (raw function for A2A server use).
 
@@ -3431,7 +3432,7 @@ async def create_media_buy_raw(
         enable_creative_macro: Enable creative macro
         strategy_id: Strategy ID
         push_notification_config: Push notification config for status updates
-        context: FastMCP context (automatically provided)
+        ctx:  FastMCP context (automatically provided) (automatically provided)
 
     Returns:
         CreateMediaBuyResponse with media buy details
@@ -3457,8 +3458,8 @@ async def create_media_buy_raw(
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
         push_notification_config=push_notification_config,
-        request_context=request_context,
         context=context,
+        ctx=ctx,
     )
 
 

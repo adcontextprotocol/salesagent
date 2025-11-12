@@ -121,8 +121,8 @@ def _update_media_buy_impl(
     packages: list | None = None,
     creatives: list | None = None,
     push_notification_config: dict | None = None,
-    request_context: dict | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,
+    ctx: Context | ToolContext | None = None,
 ) -> UpdateMediaBuyResponse:
     """Shared implementation for update_media_buy (used by both MCP and A2A).
 
@@ -144,7 +144,8 @@ def _update_media_buy_impl(
         packages: Package-specific updates
         creatives: Add new creatives
         push_notification_config: Push notification config for status updates (AdCP spec, optional)
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         UpdateMediaBuyResponse with updated media buy details
@@ -187,13 +188,12 @@ def _update_media_buy_impl(
         "budget": budget_obj,
         "packages": packages,
         "push_notification_config": push_notification_config,
+        "context": context,
     }
     # Remove None values to avoid validation errors in strict mode
     request_params = {k: v for k, v in request_params.items() if v is not None}
 
     try:
-        if request_context is not None:
-            request_params["context"] = request_context  # type: ignore[index]
         req = UpdateMediaBuyRequest(**request_params)  # type: ignore[arg-type]
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="update_media_buy request")) from e
@@ -201,15 +201,15 @@ def _update_media_buy_impl(
     # Initialize tracking for affected packages (internal tracking, not part of schema)
     affected_packages_list: list[dict] = []
 
-    if context is None:
+    if ctx is None:
         raise ValueError("Context is required for update_media_buy")
 
     if not req.media_buy_id:
         # TODO: Handle buyer_ref case - for now just raise error
         raise ValueError("media_buy_id is required (buyer_ref lookup not yet implemented)")
 
-    _verify_principal(req.media_buy_id, context)
-    principal_id = get_principal_id_from_context(context)  # Already verified by _verify_principal
+    _verify_principal(req.media_buy_id, ctx)
+    principal_id = get_principal_id_from_context(ctx)  # Already verified by _verify_principal
 
     # Verify principal_id is not None (get_principal_id_from_context should raise if None)
     if principal_id is None:
@@ -219,7 +219,7 @@ def _update_media_buy_impl(
 
     # Create or get persistent context
     ctx_manager = get_context_manager()
-    ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
+    ctx_id = ctx.headers.get("x-context-id") if hasattr(ctx, "headers") else None
     persistent_ctx = ctx_manager.get_or_create_context(
         tenant_id=tenant["tenant_id"],
         principal_id=principal_id,  # Now guaranteed to be str
@@ -257,7 +257,7 @@ def _update_media_buy_impl(
         return response_data
 
     # Extract testing context for dry_run and testing_context parameters
-    testing_ctx = get_testing_context(context)
+    testing_ctx = get_testing_context(ctx)
 
     adapter = get_adapter(principal, dry_run=testing_ctx.dry_run, testing_context=testing_ctx)
     today = req.today or date.today()
@@ -278,6 +278,7 @@ def _update_media_buy_impl(
             buyer_ref=req.buyer_ref or "",
             packages=[],  # Required by AdCP spec
             affected_packages=[],  # Internal field for tracking changes
+            context=req.context,
         )
         ctx_manager.update_workflow_step(
             step.step_id,
@@ -560,6 +561,7 @@ def _update_media_buy_impl(
                         error_msg = f"Creative IDs not found: {', '.join(missing_ids)}"
                         response_data = UpdateMediaBuyError(
                             errors=[{"code": "creatives_not_found", "message": error_msg}],
+                            context=req.context,
                         )
                         ctx_manager.update_workflow_step(
                             step.step_id,
@@ -733,6 +735,7 @@ def _update_media_buy_impl(
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
             response_data = UpdateMediaBuyError(
                 errors=[{"code": "invalid_budget", "message": error_msg}],
+                context=req.context,
             )
             ctx_manager.update_workflow_step(
                 step.step_id,
@@ -839,8 +842,8 @@ def update_media_buy(
     packages: list = None,
     creatives: list = None,
     push_notification_config: dict | None = None,
-    request_context: dict | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # payload-level context
+    ctx: Context | ToolContext | None = None,
 ):
     """Update a media buy with campaign-level and/or package-level changes.
 
@@ -883,8 +886,8 @@ def update_media_buy(
         packages=packages,
         creatives=creatives,
         push_notification_config=push_notification_config,
-        request_context=request_context,
         context=context,
+        ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
@@ -905,8 +908,8 @@ def update_media_buy_raw(
     packages: list = None,
     creatives: list = None,
     push_notification_config: dict = None,
-    request_context: dict | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # payload-level context
+    ctx: Context | ToolContext | None = None,
 ):
     """Update an existing media buy (raw function for A2A server use).
 
@@ -928,7 +931,8 @@ def update_media_buy_raw(
         packages: Package updates
         creatives: Creative updates
         push_notification_config: Push notification config for status updates
-        context: Context for authentication
+        context: Application level context per adcp spec
+        ctx: Context for authentication
 
     Returns:
         UpdateMediaBuyResponse
@@ -949,6 +953,6 @@ def update_media_buy_raw(
         packages=packages,
         creatives=creatives,
         push_notification_config=push_notification_config,
-        request_context=request_context,
         context=context,
+        ctx=ctx,
     )

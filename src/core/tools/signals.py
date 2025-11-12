@@ -262,7 +262,8 @@ async def _activate_signal_impl(
     signal_id: str,
     campaign_id: str = None,
     media_buy_id: str = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # payload-level context
+    ctx: Context | ToolContext | None = None,
 ) -> ActivateSignalResponse:
     """Shared implementation for activate_signal (used by both MCP and A2A).
 
@@ -270,7 +271,8 @@ async def _activate_signal_impl(
         signal_id: Signal ID to activate
         campaign_id: Optional campaign ID to activate signal for
         media_buy_id: Optional media buy ID to activate signal for
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         ActivateSignalResponse with activation status
@@ -278,7 +280,7 @@ async def _activate_signal_impl(
     start_time = time.time()
 
     # Authentication required for signal activation
-    principal_id = _get_principal_id_from_context(context)
+    principal_id = _get_principal_id_from_context(ctx)
 
     # Get tenant information
     tenant = get_current_tenant()
@@ -291,9 +293,9 @@ async def _activate_signal_impl(
     principal = get_principal_object(principal_id)
 
     # Apply testing hooks
-    if not context:
+    if not ctx:
         raise ToolError("Context required for signal activation")
-    testing_ctx = get_testing_context(context)
+    testing_ctx = get_testing_context(ctx)
     campaign_info = {"endpoint": "activate_signal", "signal_id": signal_id}
     # Note: apply_testing_hooks modifies response data dict, not called here as no response yet
 
@@ -333,6 +335,7 @@ async def _activate_signal_impl(
                 task_id=task_id,
                 status=status,
                 errors=errors,
+                context=context
             )
         else:
             response = ActivateSignalResponse(
@@ -342,6 +345,7 @@ async def _activate_signal_impl(
                 estimated_activation_duration_minutes=(
                     estimated_activation_duration_minutes if activation_success else None
                 ),
+                context=context
             )
         return response
 
@@ -351,6 +355,7 @@ async def _activate_signal_impl(
             task_id=f"task_{uuid.uuid4().hex[:12]}",
             status="failed",
             errors=[{"code": "ACTIVATION_ERROR", "message": str(e)}],
+            context=context,
         )
 
 
@@ -358,7 +363,8 @@ async def activate_signal(
     signal_id: str,
     campaign_id: str = None,
     media_buy_id: str = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # payload-level context
+    ctx: Context | ToolContext | None = None,
 ):
     """Activate a signal for use in campaigns.
 
@@ -368,12 +374,13 @@ async def activate_signal(
         signal_id: Signal ID to activate
         campaign_id: Optional campaign ID to activate signal for
         media_buy_id: Optional media buy ID to activate signal for
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         ToolResult with ActivateSignalResponse data
     """
-    response = await _activate_signal_impl(signal_id, campaign_id, media_buy_id, context)
+    response = await _activate_signal_impl(signal_id, campaign_id, media_buy_id, context, ctx)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
@@ -396,7 +403,8 @@ async def activate_signal_raw(
     signal_id: str,
     campaign_id: str = None,
     media_buy_id: str = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # payload-level context
+    ctx: Context | ToolContext | None = None,
 ) -> ActivateSignalResponse:
     """Activate a signal for use in campaigns (raw function for A2A server use).
 
@@ -406,9 +414,10 @@ async def activate_signal_raw(
         signal_id: Signal ID to activate
         campaign_id: Optional campaign ID to activate signal for
         media_buy_id: Optional media buy ID to activate signal for
-        context: Context for authentication
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         ActivateSignalResponse with activation status
     """
-    return await _activate_signal_impl(signal_id, campaign_id, media_buy_id, context)
+    return await _activate_signal_impl(signal_id, campaign_id, media_buy_id, context, ctx)

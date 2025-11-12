@@ -391,12 +391,9 @@ def _get_media_buy_delivery_impl(
             sequence_number=filtered_data.get("sequence_number"),
             next_expected_at=filtered_data.get("next_expected_at"),
             errors=filtered_data.get("errors"),
+            context=req.context or None,
         )
 
-    # Echo request context in response if provided
-    if req.context is not None:
-        response.context = req.context
-        
     return response
 
 
@@ -406,10 +403,10 @@ def get_media_buy_delivery(
     status_filter: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    request_context: dict | None = None, # Application level context per adcp spec
+    context: dict | None = None, # Application level context per adcp spec
     webhook_url: str | None = None,
     push_notification_config: PushNotificationConfig | None = None,
-    context: Context | ToolContext | None = None,
+    ctx: Context | ToolContext | None = None,
 ):
     """Get delivery data for media buys.
 
@@ -423,7 +420,7 @@ def get_media_buy_delivery(
         end_date: End date for reporting period in YYYY-MM-DD format (optional)
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
         push_notification_config: Optional webhook configuration (accepted, ignored by this operation)
-        context: FastMCP context (automatically provided)
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         ToolResult with GetMediaBuyDeliveryResponse data
@@ -437,12 +434,12 @@ def get_media_buy_delivery(
             start_date=start_date,
             end_date=end_date,
             push_notification_config=push_notification_config,
-            context=request_context,
+            context=context,
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="get_media_buy_delivery request")) from e
 
-    response = _get_media_buy_delivery_impl(req, context)
+    response = _get_media_buy_delivery_impl(req, ctx)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
@@ -452,8 +449,8 @@ def get_media_buy_delivery_raw(
     status_filter: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    request_context: dict | None = None, # Application level context per adcp spec
-    context: Context | ToolContext | None = None,
+    context: dict | None = None, # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ):
     """Get delivery metrics for media buys (raw function for A2A server use).
 
@@ -478,11 +475,11 @@ def get_media_buy_delivery_raw(
         start_date=start_date,
         end_date=end_date,
         push_notification_config=None,
-        context=request_context,
+        context=context,
     )
 
     # Call the implementation
-    return _get_media_buy_delivery_impl(req, context)
+    return _get_media_buy_delivery_impl(req, ctx)
 
 
 # --- Admin Tools ---
