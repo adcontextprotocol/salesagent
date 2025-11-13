@@ -385,7 +385,10 @@ class TestMCPToolRoundtripValidation:
             product_id="roundtrip_isolated_test",
             name="Isolated Roundtrip Test Product",
             description="Testing the exact roundtrip conversion pattern",
-            format_ids=["display_300x250", "video_15s"],  # Internal field name
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+            ],  # Internal field name
             delivery_type="guaranteed",
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
@@ -442,7 +445,10 @@ class TestMCPToolRoundtripValidation:
             product_id="adcp_compliance_test",
             name="AdCP Compliance Test Product",
             description="Testing AdCP spec compliance after roundtrip",
-            format_ids=["display_300x250", "display_728x90"],  # Internal field name
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+            ],  # Internal field name
             delivery_type="non_guaranteed",
             is_custom=True,
             property_tags=["all_inventory"],  # Required per AdCP spec
@@ -500,7 +506,9 @@ class TestMCPToolRoundtripValidation:
             "product_id": "validation_error_test",
             "name": "Validation Error Test Product",
             "description": "Testing schema validation error detection",
-            "format_ids": ["display_300x250"],  # Now VALID: Accepts both formats and format_ids
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
+            ],  # Now VALID: Accepts both formats and format_ids
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -524,7 +532,9 @@ class TestMCPToolRoundtripValidation:
             "product_id": "validation_success_test",
             "name": "Validation Success Test Product",
             "description": "Testing correct schema validation",
-            "format_ids": ["display_300x250"],  # Correct field name
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
+            ],  # Correct field name
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec

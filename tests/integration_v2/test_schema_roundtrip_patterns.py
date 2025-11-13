@@ -136,7 +136,10 @@ class TestProductSchemaRoundtrip:
             "product_id": "guaranteed_roundtrip_test",
             "name": "Guaranteed Product Roundtrip Test",
             "description": "Testing guaranteed product roundtrip conversion",
-            "format_ids": ["display_300x250", "display_728x90"],
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+            ],
             "delivery_type": "guaranteed",
             "measurement": Measurement(
                 type="brand_lift", attribution="deterministic_purchase", reporting="weekly_dashboard"
@@ -165,7 +168,10 @@ class TestProductSchemaRoundtrip:
             "product_id": "non_guaranteed_roundtrip_test",
             "name": "Non-Guaranteed Product Roundtrip Test",
             "description": "Testing non-guaranteed product roundtrip conversion",
-            "format_ids": ["video_15s", "video_30s"],
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s"},
+            ],
             "delivery_type": "non_guaranteed",
             "is_custom": True,
             "property_tags": ["all_inventory"],
@@ -190,7 +196,7 @@ class TestProductSchemaRoundtrip:
             "product_id": "minimal_roundtrip_test",
             "name": "Minimal Product Roundtrip Test",
             "description": "Testing minimal product with required fields only",
-            "format_ids": ["display_320x50"],
+            "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_320x50"}],
             "delivery_type": "non_guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],
@@ -215,7 +221,11 @@ class TestProductSchemaRoundtrip:
             "product_id": "complex_roundtrip_test",
             "name": "Complex Product Roundtrip Test",
             "description": "Testing complex product with all fields populated",
-            "format_ids": ["display_300x250", "video_15s", "audio_30s"],
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "audio_30s"},
+            ],
             "delivery_type": "guaranteed",
             "measurement": Measurement(
                 type="incremental_sales_lift", attribution="probabilistic", window="30_days", reporting="real_time_api"
@@ -481,7 +491,7 @@ class TestRoundtripErrorScenarios:
                     "product_id": "type_test_2",
                     "name": "Type Test 2",
                     "description": "Testing enum validation",
-                    "format_ids": ["display_300x250"],
+                    "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                     "delivery_type": "invalid_delivery_type",  # WRONG: Invalid enum value
                     "is_fixed_price": True,
                     "is_custom": False,
@@ -494,7 +504,7 @@ class TestRoundtripErrorScenarios:
                     "product_id": "type_test_3",
                     "name": "Type Test 3",
                     "description": "Testing numeric validation",
-                    "format_ids": ["display_300x250"],
+                    "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                     "delivery_type": "guaranteed",
                     "is_fixed_price": True,
                     "min_spend": -100.0,  # WRONG: Negative min_spend (has gt=-1 validation)

@@ -389,7 +389,9 @@ class TestMCPToolsAudit:
             "product_id": "anti_pattern_test",
             "name": "Anti-pattern Test Product",
             "description": "Testing anti-pattern detection",
-            "format_ids": ["display_300x250"],  # Now VALID: Accepts both formats and format_ids
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
+            ],  # Now VALID: Accepts both formats and format_ids
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
