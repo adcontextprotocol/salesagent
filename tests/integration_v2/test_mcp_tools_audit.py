@@ -134,7 +134,7 @@ class TestMCPToolsAudit:
                 pricing_model="CPM",
                 rate="10.00",
                 is_fixed=False,
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
             )
 
             # Create test media buy

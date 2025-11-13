@@ -91,7 +91,7 @@ class TestCreateMediaBuyErrorPaths:
                 rate="10.00",
                 is_fixed=True,
                 min_spend_per_package="1000.00",
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
             )
 
             session.commit()

@@ -75,7 +75,7 @@ class TestMCPToolRoundtripValidation:
                 product_id="roundtrip_test_display",
                 name="Display Banner Product - Roundtrip Test",
                 description="Display advertising product for roundtrip validation",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "display_300x250"},
                     {"agent_url": "https://test.com", "id": "display_728x90"},
                 ],
@@ -113,7 +113,7 @@ class TestMCPToolRoundtripValidation:
                 product_id="roundtrip_test_video",
                 name="Video Ad Product - Roundtrip Test",
                 description="Video advertising product for roundtrip validation",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "video_15s"},
                     {"agent_url": "https://test.com", "id": "video_30s"},
                 ],
@@ -385,7 +385,7 @@ class TestMCPToolRoundtripValidation:
             product_id="roundtrip_isolated_test",
             name="Isolated Roundtrip Test Product",
             description="Testing the exact roundtrip conversion pattern",
-            formats=["display_300x250", "video_15s"],  # Internal field name
+            format_ids=["display_300x250", "video_15s"],  # Internal field name
             delivery_type="guaranteed",
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
@@ -442,7 +442,7 @@ class TestMCPToolRoundtripValidation:
             product_id="adcp_compliance_test",
             name="AdCP Compliance Test Product",
             description="Testing AdCP spec compliance after roundtrip",
-            formats=["display_300x250", "display_728x90"],  # Internal field name
+            format_ids=["display_300x250", "display_728x90"],  # Internal field name
             delivery_type="non_guaranteed",
             is_custom=True,
             property_tags=["all_inventory"],  # Required per AdCP spec

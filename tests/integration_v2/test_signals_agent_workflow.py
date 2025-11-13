@@ -347,7 +347,7 @@ class TestSignalsAgentWorkflow:
                 is_fixed=True,
                 min_spend_per_package="500.0",
                 delivery_type="non_guaranteed",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "300x250"},
                     {"agent_url": "https://test.com", "id": "728x90"},
                 ],
@@ -366,7 +366,7 @@ class TestSignalsAgentWorkflow:
                 is_fixed=True,
                 min_spend_per_package="750.0",
                 delivery_type="non_guaranteed",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "300x250"},
                     {"agent_url": "https://test.com", "id": "video_pre_roll"},
                 ],

@@ -79,7 +79,7 @@ class TestA2AErrorPropagation:
             add_required_setup_data(session, "a2a_error_test")
 
             # Create product using new pricing model
-            # NOTE: formats must be structured FormatId objects with agent_url, not strings
+            # NOTE: format_ids must be structured FormatId objects with agent_url, not strings
             product = create_test_product_with_pricing(
                 session=session,
                 tenant_id="a2a_error_test",
@@ -90,7 +90,7 @@ class TestA2AErrorPropagation:
                 rate="10.0",
                 is_fixed=True,
                 min_spend_per_package="1000.0",
-                formats=[{"id": "display_300x250", "agent_url": "https://test.example.com"}],
+                format_ids=[{"id": "display_300x250", "agent_url": "https://test.example.com"}],
                 delivery_type="guaranteed",
                 targeting_template={},
             )

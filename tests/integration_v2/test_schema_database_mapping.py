@@ -96,7 +96,7 @@ class TestSchemaFieldMapping:
                 product_id="field_test_001",
                 name="Field Test Product",
                 description="Test product for field access validation",
-                formats=["display_300x250"],
+                format_ids=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
                 property_tags=["all_inventory"],
@@ -163,7 +163,7 @@ class TestSchemaFieldMapping:
                 product_id="conversion_test_001",
                 name="Conversion Test Product",
                 description="Product for testing safe conversion",
-                formats=["display_300x250"],
+                format_ids=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
                 property_tags=["all_inventory"],
@@ -291,7 +291,7 @@ class TestSchemaFieldMapping:
                 product_id="json_test_001",
                 name="JSON Test Product",
                 description="Testing JSON field handling",
-                formats=["display_300x250", "display_728x90"],  # List
+                format_ids=["display_300x250", "display_728x90"],  # List
                 targeting_template={"geo": ["US"], "device": ["mobile"]},  # Dict
                 delivery_type="non_guaranteed",
                 property_tags=["all_inventory"],
@@ -343,7 +343,7 @@ class TestSchemaFieldMapping:
                 product_id="validation_test_001",
                 name="Schema Validation Product",
                 description="Testing schema validation with database data",
-                formats=["display_300x250"],
+                format_ids=["display_300x250"],
                 targeting_template={},
                 delivery_type="non_guaranteed",
                 is_custom=False,

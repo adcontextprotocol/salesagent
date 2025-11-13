@@ -260,7 +260,7 @@ def sample_products(integration_db, sample_tenant):
             product_id="guaranteed_display",
             name="Guaranteed Display Ads",
             description="Premium guaranteed display advertising",
-            formats=[
+            format_ids=[
                 {
                     "agent_url": "https://test.com",
                     "id": "display_300x250",
@@ -283,7 +283,7 @@ def sample_products(integration_db, sample_tenant):
             product_id="non_guaranteed_video",
             name="Non-Guaranteed Video",
             description="Programmatic video advertising",
-            formats=[
+            format_ids=[
                 {
                     "agent_url": "https://test.com",
                     "id": "video_15s",
@@ -545,7 +545,7 @@ def create_test_product_with_pricing(
         tenant_id=tenant_id,
         product_id=product_id,
         name=name,
-        formats=formats,
+        format_ids=formats,
         targeting_template=targeting_template,
         delivery_type=delivery_type,
         property_tags=property_tags,
@@ -734,7 +734,7 @@ def test_tenant_with_data(integration_db):
             subdomain=tenant_data["subdomain"],
             is_active=tenant_data["is_active"],
             ad_server="mock",
-            auto_approve_formats=[],  # JSONType expects list, not json.dumps()
+            auto_approve_format_ids=[],  # JSONType expects list, not json.dumps()
             human_review_required=False,
             policy_settings={},  # JSONType expects dict, not json.dumps()
             authorized_emails=["test@example.com"],  # Required for access control

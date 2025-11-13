@@ -46,7 +46,7 @@ class TestSessionManagement:
                 subdomain="test",
                 authorized_emails=["admin@test.com"],
                 authorized_domains=["test.com"],
-                auto_approve_formats=["display_300x250"],
+                auto_approve_format_ids=["display_300x250"],
                 policy_settings={"enabled": True},
             )
             session.add(tenant)
@@ -242,7 +242,7 @@ class TestJSONValidation:
                 subdomain="jsontest",
                 authorized_emails=["test@example.com"],  # Valid array
                 authorized_domains=["example.com"],  # Valid array
-                auto_approve_formats=["display_300x250"],  # Valid array
+                auto_approve_format_ids=["display_300x250"],  # Valid array
                 policy_settings={"enabled": True},  # Valid object
                 created_at=now,
                 updated_at=now,
@@ -348,7 +348,7 @@ class TestIntegration:
                     subdomain="workflow",
                     authorized_emails=["admin@workflow.com"],
                     authorized_domains=["workflow.com"],
-                    auto_approve_formats=["display_300x250", "video_16x9"],
+                    auto_approve_format_ids=["display_300x250", "video_16x9"],
                     policy_settings={"enabled": True, "require_approval": False, "max_daily_budget": 10000.0},
                     created_at=now,
                     updated_at=now,
@@ -368,7 +368,7 @@ class TestIntegration:
                     pricing_model="CPM",
                     rate="10.0",
                     is_fixed=True,
-                    formats=[
+                    format_ids=[
                         {
                             "format_id": "display_300x250",
                             "name": "Display Banner",

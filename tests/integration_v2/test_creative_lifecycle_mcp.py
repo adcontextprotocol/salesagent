@@ -66,7 +66,7 @@ class TestCreativeLifecycleMCP:
                 enable_axe_signals=True,
                 authorized_emails=[],
                 authorized_domains=[],
-                auto_approve_formats=["display_300x250", "display_728x90"],
+                auto_approve_format_ids=["display_300x250", "display_728x90"],
                 human_review_required=False,
                 approval_mode="auto-approve",  # Auto-approve creatives to avoid workflow blocking
             )
@@ -914,7 +914,7 @@ class TestCreativeLifecycleMCP:
                     product_id="prod_1",
                     name="Test Product",
                     description="Test",
-                    formats=[],
+                    format_ids=[],
                     delivery_type="non_guaranteed",
                     is_custom=False,
                     property_tags=["all_inventory"],
