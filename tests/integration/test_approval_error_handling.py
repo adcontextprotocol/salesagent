@@ -31,6 +31,7 @@ class TestApprovalErrorHandling:
         # Create a mock media buy in the database with all required data
         from src.core.database.database_session import get_db_session
         from src.core.database.models import MediaBuy
+        from src.core.database.models import MediaPackage as DBMediaPackage
 
         media_buy_id = "mb_test_error_handling"
 
@@ -59,6 +60,19 @@ class TestApprovalErrorHandling:
                 },
             )
             session.add(media_buy)
+
+            # Create a MediaPackage record so execute_approved_media_buy gets past package validation
+            # This is necessary because the function checks for packages before calling the adapter
+            media_package = DBMediaPackage(
+                media_buy_id=media_buy_id,
+                package_config={
+                    "package_id": "pkg_test_123",
+                    "product_id": product_id,
+                    "name": "Test Package",
+                    "format_ids": [],  # Empty format_ids to avoid format validation errors
+                },
+            )
+            session.add(media_package)
             session.commit()
 
         # Mock the adapter to return CreateMediaBuyError instead of CreateMediaBuySuccess
@@ -92,6 +106,7 @@ class TestApprovalErrorHandling:
         # Create a mock media buy in the database with all required data
         from src.core.database.database_session import get_db_session
         from src.core.database.models import MediaBuy
+        from src.core.database.models import MediaPackage as DBMediaPackage
 
         media_buy_id = "mb_test_empty_errors"
 
@@ -120,6 +135,18 @@ class TestApprovalErrorHandling:
                 },
             )
             session.add(media_buy)
+
+            # Create a MediaPackage record so execute_approved_media_buy gets past package validation
+            media_package = DBMediaPackage(
+                media_buy_id=media_buy_id,
+                package_config={
+                    "package_id": "pkg_test_456",
+                    "product_id": product_id,
+                    "name": "Test Package 2",
+                    "format_ids": [],  # Empty format_ids to avoid format validation errors
+                },
+            )
+            session.add(media_package)
             session.commit()
 
         # Mock the adapter to return CreateMediaBuyError with empty errors
