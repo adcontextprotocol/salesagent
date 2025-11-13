@@ -79,6 +79,7 @@ async def main():
     domains = [
         "weather.com",
         "accuweather.com",
+        "wonderstruck.org",
         "wunderground.com",
         "weather.gov",
     ]
