@@ -63,6 +63,7 @@ class TestApprovalErrorHandling:
 
             # Create a MediaPackage record so execute_approved_media_buy gets past package validation
             # This is necessary because the function checks for packages before calling the adapter
+            # Note: We don't include format_ids at all - the function will pull them from the product
             media_package = DBMediaPackage(
                 media_buy_id=media_buy_id,
                 package_id="pkg_test_123",  # Required NOT NULL primary key column
@@ -70,7 +71,7 @@ class TestApprovalErrorHandling:
                     "package_id": "pkg_test_123",
                     "product_id": product_id,
                     "name": "Test Package",
-                    "format_ids": [],  # Empty format_ids to avoid format validation errors
+                    # No format_ids - will be populated from product
                 },
             )
             session.add(media_package)
@@ -138,6 +139,7 @@ class TestApprovalErrorHandling:
             session.add(media_buy)
 
             # Create a MediaPackage record so execute_approved_media_buy gets past package validation
+            # Note: We don't include format_ids - the function will pull them from the product
             media_package = DBMediaPackage(
                 media_buy_id=media_buy_id,
                 package_id="pkg_test_456",  # Required NOT NULL primary key column
@@ -145,7 +147,7 @@ class TestApprovalErrorHandling:
                     "package_id": "pkg_test_456",
                     "product_id": product_id,
                     "name": "Test Package 2",
-                    "format_ids": [],  # Empty format_ids to avoid format validation errors
+                    # No format_ids - will be populated from product
                 },
             )
             session.add(media_package)
