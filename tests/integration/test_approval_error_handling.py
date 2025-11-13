@@ -65,6 +65,7 @@ class TestApprovalErrorHandling:
             # This is necessary because the function checks for packages before calling the adapter
             media_package = DBMediaPackage(
                 media_buy_id=media_buy_id,
+                package_id="pkg_test_123",  # Required NOT NULL primary key column
                 package_config={
                     "package_id": "pkg_test_123",
                     "product_id": product_id,
@@ -139,6 +140,7 @@ class TestApprovalErrorHandling:
             # Create a MediaPackage record so execute_approved_media_buy gets past package validation
             media_package = DBMediaPackage(
                 media_buy_id=media_buy_id,
+                package_id="pkg_test_456",  # Required NOT NULL primary key column
                 package_config={
                     "package_id": "pkg_test_456",
                     "product_id": product_id,
