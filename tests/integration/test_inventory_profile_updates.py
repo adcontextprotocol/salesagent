@@ -26,7 +26,7 @@ def test_updating_profile_formats_affects_all_products(integration_db, sample_te
                 "placements": [],
                 "include_descendants": False,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://test.example.com", "id": "format_a"},
                 {"agent_url": "https://test.example.com", "id": "format_b"},
             ],
@@ -54,7 +54,7 @@ def test_updating_profile_formats_affects_all_products(integration_db, sample_te
                 description=f"Product {i} with inventory profile",
                 inventory_profile_id=profile_id,
                 # Legacy fields (not used when profile is set)
-                formats=[],
+                format_ids=[],
                 targeting_template={},
                 delivery_type="guaranteed",
                 property_tags=["all_inventory"],
@@ -114,7 +114,7 @@ def test_updating_profile_inventory_affects_product_implementation_config(integr
                 "placements": ["placement_1"],
                 "include_descendants": False,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://test.example.com", "id": "display_300x250"},
             ],
             publisher_properties=[
@@ -140,7 +140,7 @@ def test_updating_profile_inventory_affects_product_implementation_config(integr
                 name=f"Test Product Inventory {i}",
                 description=f"Product {i} with inventory profile",
                 inventory_profile_id=profile_id,
-                formats=[],
+                format_ids=[],
                 targeting_template={},
                 delivery_type="guaranteed",
                 property_tags=["all_inventory"],
@@ -207,7 +207,7 @@ def test_updating_profile_properties_affects_all_products(integration_db, sample
                 "placements": [],
                 "include_descendants": False,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://test.example.com", "id": "display_300x250"},
             ],
             publisher_properties=[
@@ -233,7 +233,7 @@ def test_updating_profile_properties_affects_all_products(integration_db, sample
                 name=f"Test Product Props {i}",
                 description=f"Product {i} with inventory profile",
                 inventory_profile_id=profile_id,
-                formats=[],
+                format_ids=[],
                 targeting_template={},
                 delivery_type="guaranteed",
                 property_tags=["all_inventory"],

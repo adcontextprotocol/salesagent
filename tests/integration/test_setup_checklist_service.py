@@ -101,7 +101,7 @@ def setup_complete_tenant(integration_db, test_tenant_id):
             subdomain="complete",
             ad_server="google_ad_manager",
             human_review_required=True,
-            auto_approve_formats=["display_300x250"],
+            auto_approve_format_ids=["display_300x250"],
             slack_webhook_url="https://hooks.slack.com/test",
             enable_axe_signals=True,
             authorized_emails=["test@example.com"],  # Required for access control
@@ -134,7 +134,7 @@ def setup_complete_tenant(integration_db, test_tenant_id):
             product_id="prod_1",
             name="Test Product",
             description="Test",
-            formats=["display"],
+            format_ids=["display"],
             targeting_template={},
             delivery_type="guaranteed",
             property_tags=["all_inventory"],

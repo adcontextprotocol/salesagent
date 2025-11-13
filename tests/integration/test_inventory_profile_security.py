@@ -69,7 +69,7 @@ def profile_a(tenant_a):
                 "placements": ["placement_a1"],
                 "include_descendants": True,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"},
                 {"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_728x90"},
             ],
@@ -103,7 +103,7 @@ def profile_b(tenant_b):
                 "placements": ["placement_b1"],
                 "include_descendants": True,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"},
             ],
             publisher_properties=[
@@ -149,7 +149,7 @@ class TestInventoryProfileSecurity:
                 product_id="product_b_bad",
                 name="Product B (Invalid)",
                 description="Attempting to use tenant A's profile",
-                formats=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
                 targeting_template={"geo": ["US"]},
                 delivery_type="non_guaranteed",
                 inventory_profile_id=profile_a,  # SECURITY VIOLATION: References tenant A's profile!
@@ -190,7 +190,7 @@ class TestInventoryProfileSecurity:
                 product_id="product_a",
                 name="Product A",
                 description="Product A using Profile A",
-                formats=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
                 targeting_template={"geo": ["US"]},
                 delivery_type="non_guaranteed",
                 inventory_profile_id=profile_a,
@@ -203,7 +203,7 @@ class TestInventoryProfileSecurity:
                 product_id="product_b",
                 name="Product B",
                 description="Product B using Profile B",
-                formats=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
                 targeting_template={"geo": ["US"]},
                 delivery_type="non_guaranteed",
                 inventory_profile_id=profile_b,
@@ -248,7 +248,7 @@ class TestInventoryProfileSecurity:
                 product_id="product_a",
                 name="Product A",
                 description="Product A using Profile A",
-                formats=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
                 targeting_template={"geo": ["US"]},
                 delivery_type="non_guaranteed",
                 inventory_profile_id=profile_a,
@@ -261,7 +261,7 @@ class TestInventoryProfileSecurity:
                 product_id="product_b",
                 name="Product B",
                 description="Product B using Profile B",
-                formats=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
                 targeting_template={"geo": ["US"]},
                 delivery_type="non_guaranteed",
                 inventory_profile_id=profile_b,
@@ -274,11 +274,11 @@ class TestInventoryProfileSecurity:
             # Get original formats for both profiles
             stmt = select(InventoryProfile).filter_by(id=profile_a)
             profile_a_obj = session.scalars(stmt).first()
-            original_formats_a = profile_a_obj.formats.copy()
+            original_formats_a = profile_a_obj.format_ids.copy()
 
             stmt = select(InventoryProfile).filter_by(id=profile_b)
             profile_b_obj = session.scalars(stmt).first()
-            original_formats_b = profile_b_obj.formats.copy()
+            original_formats_b = profile_b_obj.format_ids.copy()
 
             # Update tenant_a's profile formats (add video format)
             profile_a_obj.format_ids = [
@@ -308,7 +308,7 @@ class TestInventoryProfileSecurity:
             assert "video_640x480" not in format_ids_b, "Product B should NOT have tenant A's new video format!"
 
             # Verify profile_b itself was not modified
-            assert profile_b_obj.format_ids == original_formats_b, "Profile B should be unchanged"
+            assert profile_b_obj.format_ids == original_formats_b, "Profile B format_ids should be unchanged"
 
             # Double-check: Query fresh from database to ensure isolation
             stmt = select(Product).filter_by(tenant_id=tenant_b, product_id="product_b")
@@ -319,4 +319,4 @@ class TestInventoryProfileSecurity:
             assert product_b_fresh.inventory_profile_id == profile_b, "Product B should still reference profile_b"
             assert (
                 profile_b_fresh.format_ids == original_formats_b
-            ), "Profile B formats should be unchanged (verified from fresh query)"
+            ), "Profile B format_ids should be unchanged (verified from fresh query)"

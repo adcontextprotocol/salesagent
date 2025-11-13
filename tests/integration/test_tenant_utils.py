@@ -32,7 +32,7 @@ def test_serialize_tenant_json_fields_are_deserialized(integration_db):
             subdomain="test_json",
             authorized_emails=["admin@test.com", "user@test.com"],
             authorized_domains=["test.com", "example.com"],
-            auto_approve_formats=["display_300x250", "video_640x480"],
+            auto_approve_format_ids=["display_300x250", "video_640x480"],
             policy_settings={"enabled": True},
             signals_agent_config={"endpoint": "https://api.example.com", "timeout": 10},
         )
@@ -48,8 +48,8 @@ def test_serialize_tenant_json_fields_are_deserialized(integration_db):
         assert isinstance(result["authorized_domains"], list)
         assert result["authorized_domains"] == ["test.com", "example.com"]
 
-        assert isinstance(result["auto_approve_formats"], list)
-        assert result["auto_approve_formats"] == ["display_300x250", "video_640x480"]
+        assert isinstance(result["auto_approve_format_ids"], list)
+        assert result["auto_approve_format_ids"] == ["display_300x250", "video_640x480"]
 
         assert isinstance(result["policy_settings"], dict)
         assert result["policy_settings"]["enabled"] is True
@@ -80,7 +80,7 @@ def test_serialize_tenant_nullable_fields_have_defaults(integration_db):
         # TEST: safe_json_loads() provides default empty lists for array fields
         assert result["authorized_emails"] == []  # Default empty list
         assert result["authorized_domains"] == []  # Default empty list
-        assert result["auto_approve_formats"] == []  # Default empty list
+        assert result["auto_approve_format_ids"] == []  # Default empty list
 
         # TEST: Nullable scalar fields are None (no default)
         assert result["virtual_host"] is None

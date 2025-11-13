@@ -178,7 +178,7 @@ class TestSchemaFieldValidation:
             "is_active",
             "enable_axe_signals",
             "human_review_required",
-            "auto_approve_formats",
+            "auto_approve_format_ids",
         }
 
         missing_tenant = required_tenant_fields - tenant_fields

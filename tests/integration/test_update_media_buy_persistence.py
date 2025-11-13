@@ -60,7 +60,7 @@ def test_tenant_setup(integration_db):
             ad_server="mock",
             is_active=True,
             human_review_required=False,
-            auto_approve_formats=[],
+            auto_approve_format_ids=[],
             policy_settings={},
         )
         session.add(tenant)

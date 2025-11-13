@@ -29,7 +29,7 @@ def test_tenant(integration_db):
             subdomain="test",
             is_active=True,
             ad_server="gam",
-            auto_approve_formats=[],
+            auto_approve_format_ids=[],
             human_review_required=False,
             policy_settings={},
             authorized_emails=["test@example.com"],
@@ -54,7 +54,7 @@ def test_profile(integration_db, test_tenant):
                 "placements": ["45678901"],
                 "include_descendants": True,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "http://test.example.com", "id": "display_300x250_image"},
                 {"agent_url": "http://test.example.com", "id": "display_728x90_image"},
             ],
@@ -81,7 +81,7 @@ def test_product_custom(integration_db, test_tenant):
             product_id="custom_product",
             name="Custom Product",
             description="Product with custom config",
-            formats=[
+            format_ids=[
                 {"agent_url": "http://custom.example.com", "id": "video_15s"},
                 {"agent_url": "http://custom.example.com", "id": "video_30s"},
             ],
@@ -116,7 +116,7 @@ def test_product_with_profile(integration_db, test_tenant, test_profile):
             description="Product using inventory profile",
             inventory_profile_id=test_profile.id,
             # Custom config exists but should be ignored when profile is set
-            formats=[{"agent_url": "http://ignored.example.com", "id": "ignored_format"}],
+            format_ids=[{"agent_url": "http://ignored.example.com", "id": "ignored_format"}],
             # Profile provides properties, so set property_tags=None to satisfy XOR constraint
             properties=None,
             property_tags=["ignored_tag"],  # This satisfies the XOR constraint
@@ -167,7 +167,7 @@ class TestEffectiveFormats:
 
             # Should NOT return product's custom formats
             assert effective != product.format_ids
-            assert product.formats[0]["id"] == "ignored_format"
+            assert product.format_ids[0]["id"] == "ignored_format"
 
     @pytest.mark.requires_db
     def test_effective_formats_returns_custom_formats_when_profile_not_set(self, integration_db, test_product_custom):
@@ -402,7 +402,7 @@ class TestEffectiveImplementationConfig:
                 name="Test Profile Fallback",
                 description="Product to test profile fallback behavior",
                 inventory_profile_id=test_profile.id,
-                formats=[{"agent_url": "http://fallback.example.com", "id": "fallback_format"}],
+                format_ids=[{"agent_url": "http://fallback.example.com", "id": "fallback_format"}],
                 # Use property_tags to satisfy XOR constraint
                 properties=None,
                 property_tags=["fallback_tag"],

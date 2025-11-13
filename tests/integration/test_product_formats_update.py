@@ -32,7 +32,7 @@ def sample_product(integration_db):
             product_id="test_product",
             name="Test Product",
             description="Test Description",
-            formats=[
+            format_ids=[
                 {"agent_url": "http://localhost:8888", "id": "old_format_1"},
                 {"agent_url": "http://localhost:8888", "id": "old_format_2"},
             ],
@@ -65,7 +65,7 @@ def test_product_formats_update_with_flag_modified(integration_db, sample_produc
         ]
 
         # Flag as modified (this is the fix)
-        attributes.flag_modified(product, "formats")
+        attributes.flag_modified(product, "format_ids")
 
         session.commit()
 
@@ -75,9 +75,9 @@ def test_product_formats_update_with_flag_modified(integration_db, sample_produc
         product = session.scalars(stmt).first()
         assert product is not None
         assert len(product.format_ids) == 3
-        assert product.formats[0]["id"] == "new_format_1"
-        assert product.formats[1]["id"] == "new_format_2"
-        assert product.formats[2]["id"] == "new_format_3"
+        assert product.format_ids[0]["id"] == "new_format_1"
+        assert product.format_ids[1]["id"] == "new_format_2"
+        assert product.format_ids[2]["id"] == "new_format_3"
 
 
 @pytest.mark.requires_db
@@ -85,7 +85,7 @@ def test_product_formats_update_without_flag_modified_fails(integration_db, samp
     """Test that reassigning product.format_ids DOES save changes even without flag_modified.
 
     When you reassign the entire field (product.format_ids = [...]), SQLAlchemy detects the change.
-    flag_modified is only needed for in-place mutations like product.formats[0] = {...}.
+    flag_modified is only needed for in-place mutations like product.format_ids[0] = {...}.
     """
     from src.core.database.database_session import get_db_session
 
@@ -102,7 +102,7 @@ def test_product_formats_update_without_flag_modified_fails(integration_db, samp
         ]
 
         # NOTE: NOT calling flag_modified, but reassignment is detected
-        # attributes.flag_modified(product, "formats")
+        # attributes.flag_modified(product, "format_ids")
 
         session.commit()
 
@@ -113,8 +113,8 @@ def test_product_formats_update_without_flag_modified_fails(integration_db, samp
         assert product is not None
         # Changes were saved because we reassigned the entire field
         assert len(product.format_ids) == 2
-        assert product.formats[0]["id"] == "should_save_1"
-        assert product.formats[1]["id"] == "should_save_2"
+        assert product.format_ids[0]["id"] == "should_save_1"
+        assert product.format_ids[1]["id"] == "should_save_2"
 
 
 @pytest.mark.requires_db

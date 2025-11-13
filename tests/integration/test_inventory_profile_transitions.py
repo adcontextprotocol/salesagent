@@ -63,7 +63,7 @@ class TestInventoryProfileTransitions:
                     "placements": [],
                     "include_descendants": True,
                 },
-                formats=[
+                format_ids=[
                     {"agent_url": "https://example.com", "id": "format_a1"},
                     {"agent_url": "https://example.com", "id": "format_a2"},
                 ],
@@ -100,7 +100,7 @@ class TestInventoryProfileTransitions:
                     "placements": [],
                     "include_descendants": True,
                 },
-                formats=[
+                format_ids=[
                     {"agent_url": "https://example.com", "id": "format_b1"},
                     {"agent_url": "https://example.com", "id": "format_b2"},
                 ],
@@ -166,7 +166,7 @@ class TestInventoryProfileTransitions:
             tenant_id=tenant,
             product_id="test_custom_to_profile",
             name="Custom to Profile Test",
-            formats=custom_formats,
+            format_ids=custom_formats,
             properties=custom_properties,
             property_tags=None,  # Using properties instead of tags
         )
@@ -359,7 +359,7 @@ class TestInventoryProfileTransitions:
             product_id="test_clear_profile",
             name="Clear Profile Test",
             inventory_profile_id=profile_a,
-            formats=[],  # Empty custom formats
+            format_ids=[],  # Empty custom formats
             properties=None,
             property_tags=["all_inventory"],
         )

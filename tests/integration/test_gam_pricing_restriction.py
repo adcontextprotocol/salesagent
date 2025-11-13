@@ -98,7 +98,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_cpcv",
             name="Video Ads - CPCV",
             description="Video inventory with CPCV pricing",
-            formats=[
+            format_ids=[
                 {
                     "agent_url": "https://creative.adcontextprotocol.org",
                     "id": "video_standard_30s",
@@ -137,7 +137,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_cpm",
             name="Display Ads - CPM",
             description="Display inventory with CPM pricing",
-            formats=[
+            format_ids=[
                 {
                     "agent_url": "https://creative.adcontextprotocol.org",
                     "id": "display_300x250_image",
@@ -176,7 +176,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_multi",
             name="Premium Package",
             description="Multiple pricing models (some unsupported)",
-            formats=[
+            format_ids=[
                 {
                     "agent_url": "https://creative.adcontextprotocol.org",
                     "id": "display_300x250_image",

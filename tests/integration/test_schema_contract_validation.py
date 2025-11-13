@@ -498,7 +498,7 @@ class TestGetProductsResponseContract:
                 product_id="response_test_1",
                 name="Response Test Product 1",
                 description="First product for response testing",
-                formats=["display_300x250"],
+                format_ids=["display_300x250"],
                 delivery_type="guaranteed",
                 is_custom=False,
                 property_tags=["all_inventory"],  # Required per AdCP spec
@@ -516,7 +516,7 @@ class TestGetProductsResponseContract:
                 product_id="response_test_2",
                 name="Response Test Product 2",
                 description="Second product for response testing",
-                formats=["video_15s"],
+                format_ids=["video_15s"],
                 delivery_type="non_guaranteed",
                 is_custom=True,
                 property_tags=["all_inventory"],  # Required per AdCP spec
@@ -628,7 +628,7 @@ class TestSchemaEvolutionSafety:
             product_id="type_evolution_test",
             name="Type Evolution Test",
             description="Testing numeric type evolution",
-            formats=["display_300x250"],
+            format_ids=["display_300x250"],
             delivery_type="guaranteed",
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec

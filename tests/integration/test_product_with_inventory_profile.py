@@ -66,7 +66,7 @@ def test_create_product_with_inventory_profile(integration_db):
                 "placements": [],
                 "include_descendants": False,
             },
-            formats=[{"id": "display_300x250", "agent_url": "https://test.com"}],
+            format_ids=[{"id": "display_300x250", "agent_url": "https://test.com"}],
             publisher_properties=[
                 {
                     "publisher_domain": "example.com",
@@ -86,7 +86,7 @@ def test_create_product_with_inventory_profile(integration_db):
             name="Test Product",
             description="Test product with profile",
             inventory_profile_id=profile_id,
-            formats=[{"id": "display_300x250", "agent_url": "https://test.com"}],
+            format_ids=[{"id": "display_300x250", "agent_url": "https://test.com"}],
             delivery_type="guaranteed",
             targeting_template={},
             implementation_config={},
@@ -161,7 +161,7 @@ def test_product_creation_validates_profile_belongs_to_tenant(integration_db):
                 "placements": [],
                 "include_descendants": False,
             },
-            formats=[{"id": "display_300x250", "agent_url": "https://test.com"}],
+            format_ids=[{"id": "display_300x250", "agent_url": "https://test.com"}],
             publisher_properties=[
                 {
                     "publisher_domain": "tenant1.com",

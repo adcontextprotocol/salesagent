@@ -68,7 +68,7 @@ class TestResponseSchemas:
         assert not hasattr(response, "context_id")
 
         # Verify AdCP-compliant fields
-        assert len(response.formats) == 2
+        assert len(response.format_ids) == 2
         assert response.formats[0].format_id.id == "display_300x250"
         assert response.formats[1].format_id.id == "video_16x9"
 

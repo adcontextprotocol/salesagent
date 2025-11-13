@@ -74,7 +74,7 @@ class TestA2AResponseAttributeAccess:
 
         # Verify expected attributes exist
         assert hasattr(response, "formats")
-        assert isinstance(response.formats, list)
+        assert isinstance(response.format_ids, list)
 
     def test_list_authorized_properties_response_attribute_access(self):
         """Verify ListAuthorizedPropertiesResponse has expected flat structure per AdCP spec."""
