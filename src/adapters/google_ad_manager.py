@@ -1069,12 +1069,75 @@ class GoogleAdManager(AdServerAdapter):
                         ],
                     )
 
-        # For allowed actions in automatic mode, return success (no errors)
-        return UpdateMediaBuySuccess(
-            media_buy_id=media_buy_id,
-            buyer_ref=buyer_ref,
-            packages=[],
-            implementation_date=today,  # Required by AdCP spec
+        # Handle package budget updates
+        if action == "update_package_budget" and package_id and budget is not None:
+            from sqlalchemy import select
+            from sqlalchemy.orm import attributes
+
+            from src.core.database.database_session import get_db_session
+            from src.core.database.models import MediaPackage
+
+            self.log(f"[GAM] Updating package {package_id} budget to {budget}")
+
+            with get_db_session() as session:
+                stmt = select(MediaPackage).where(
+                    MediaPackage.package_id == package_id, MediaPackage.media_buy_id == media_buy_id
+                )
+                media_package = session.scalars(stmt).first()
+
+                if not media_package:
+                    self.log(f"[red]Package {package_id} not found for media buy {media_buy_id}[/red]")
+                    return UpdateMediaBuyError(
+                        errors=[
+                            Error(
+                                code="package_not_found",
+                                message=f"Package {package_id} not found for media buy {media_buy_id}",
+                                details=None,
+                            )
+                        ],
+                    )
+
+                # Update budget in package_config JSON
+                media_package.package_config["budget"] = float(budget)
+                # Flag the JSON field as modified so SQLAlchemy persists it
+                attributes.flag_modified(media_package, "package_config")
+                session.commit()
+                self.log(f"[green]Updated package {package_id} budget to {budget} in database[/green]")
+
+            return UpdateMediaBuySuccess(
+                media_buy_id=media_buy_id,
+                buyer_ref=buyer_ref,
+                packages=[],  # Required by AdCP spec
+                implementation_date=today,
+            )
+
+        # Handle pause/resume actions
+        if action in ["pause_package", "resume_package", "pause_media_buy", "resume_media_buy"]:
+            # TODO: Implement pause/resume functionality via GAM API
+            self.log(f"[yellow]Action '{action}' not yet implemented for GAM adapter[/yellow]")
+            return UpdateMediaBuyError(
+                errors=[
+                    Error(
+                        code="not_implemented",
+                        message=f"Action '{action}' is not yet implemented for Google Ad Manager",
+                        details={"action": action, "adapter": "GAM"},
+                    )
+                ],
+            )
+
+        # Explicit failure for unsupported actions (no silent success)
+        self.log(f"[red]Unsupported action '{action}' for GAM adapter[/red]")
+        return UpdateMediaBuyError(
+            errors=[
+                Error(
+                    code="unsupported_action",
+                    message=f"Action '{action}' is not supported by the Google Ad Manager adapter",
+                    details={
+                        "action": action,
+                        "supported_actions": ["approve_order", "activate_order", "update_package_budget"],
+                    },
+                )
+            ],
         )
 
     def update_media_buy_performance_index(self, media_buy_id: str, package_performance: list) -> bool:
