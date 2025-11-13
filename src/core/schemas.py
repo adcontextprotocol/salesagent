@@ -2810,6 +2810,15 @@ class PackageDelivery(BaseModel):
     pacing_index: float | None = Field(
         None, ge=0, description="Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)"
     )
+    pricing_model: str | None = Field(
+        None, description="Pricing model for this package during delivery (e.g., 'cpm', 'cpc', 'vpm', 'flat_rate')"
+    )
+    rate: float | None = Field(
+        None, ge=0, description="Pricing rate for this package during delivery (required if fixed pricing, null for auction-based)"
+    )
+    currency: str | None = Field(
+        None, pattern=r"^[A-Z]{3}$", description="ISO 4217 currency code for this package during delivery (e.g., USD, EUR, GBP)"
+    )
 
 
 class DailyBreakdown(BaseModel):

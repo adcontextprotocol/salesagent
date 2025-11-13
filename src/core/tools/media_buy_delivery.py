@@ -114,7 +114,7 @@ def _get_media_buy_delivery_impl(
 
     from src.core.config_loader import get_current_tenant
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import MediaBuy
+    from src.core.database.models import MediaBuy, MediaPackage
 
     tenant = get_current_tenant()
     target_media_buys = []
@@ -224,10 +224,54 @@ def _get_media_buy_delivery_impl(
             else:
                 status = "active"
 
-            # Create delivery metrics
-            if any(
-                [testing_ctx.dry_run, testing_ctx.mock_time, testing_ctx.jump_to_event, testing_ctx.test_session_id]
-            ):
+            # Get real delivery metrics from adapter (if not in testing mode)
+            adapter_package_metrics = {}  # Map package_id -> {impressions, spend, clicks}
+            total_spend_from_adapter = 0.0
+            total_impressions_from_adapter = 0
+            
+            if not any([testing_ctx.dry_run, testing_ctx.mock_time, testing_ctx.jump_to_event, testing_ctx.test_session_id]):
+                # Call adapter to get REAL per-package delivery metrics
+                try:
+                    adapter_response = adapter.get_media_buy_delivery(
+                        media_buy_id=media_buy_id,
+                        date_range=reporting_period,
+                        today=simulation_datetime,
+                    )
+                    
+                    # Map adapter's by_package to package_id -> metrics
+                    for adapter_pkg in adapter_response.by_package:
+                        adapter_package_metrics[adapter_pkg.package_id] = {
+                            "impressions": float(adapter_pkg.impressions),
+                            "spend": float(adapter_pkg.spend),
+                            "clicks": None,  # AdapterPackageDelivery doesn't have clicks yet
+                        }
+                        total_spend_from_adapter += float(adapter_pkg.spend)
+                        total_impressions_from_adapter += int(adapter_pkg.impressions)
+                    
+                    # Use adapter's totals if available
+                    if adapter_response.totals:
+                        spend = float(adapter_response.totals.spend)
+                        impressions = int(adapter_response.totals.impressions)
+                    else:
+                        spend = total_spend_from_adapter
+                        impressions = total_impressions_from_adapter
+                        
+                except Exception as e:
+                    logger.warning(f"Could not get real delivery metrics from adapter for {media_buy_id}: {e}. Using estimated metrics.")
+                    # Fall back to estimated metrics
+                    buy_start_date_metrics: date = buy.start_date  # type: ignore[assignment]
+                    buy_end_date_metrics: date = buy.end_date  # type: ignore[assignment]
+                    campaign_days = (buy_end_date_metrics - buy_start_date_metrics).days
+                    days_elapsed = max(0, (simulation_datetime.date() - buy_start_date_metrics).days)
+
+                    if campaign_days > 0:
+                        progress = min(1.0, days_elapsed / campaign_days) if status != "ready" else 0.0
+                    else:
+                        progress = 1.0 if status == "completed" else 0.0
+
+                    spend = float(buy.budget) * progress if buy.budget else 0.0
+                    impressions = int(spend * 1000)  # Assume $1 CPM for simplicity
+            else:
                 # Use simulation for testing
                 # Note: buy.start_date and buy.end_date are Python date objects
                 buy_start_date_sim: date = buy.start_date  # type: ignore[assignment]
@@ -242,40 +286,63 @@ def _get_media_buy_delivery_impl(
 
                 spend = simulated_metrics["spend"]
                 impressions = simulated_metrics["impressions"]
-            else:
-                # Generate realistic delivery metrics
-                # Note: buy.start_date and buy.end_date are Python date objects
-                buy_start_date_metrics: date = buy.start_date  # type: ignore[assignment]
-                buy_end_date_metrics: date = buy.end_date  # type: ignore[assignment]
-                campaign_days = (buy_end_date_metrics - buy_start_date_metrics).days
-                days_elapsed = max(0, (simulation_datetime.date() - buy_start_date_metrics).days)
-
-                if campaign_days > 0:
-                    progress = min(1.0, days_elapsed / campaign_days) if status != "ready" else 0.0
-                else:
-                    progress = 1.0 if status == "completed" else 0.0
-
-                spend = float(buy.budget) * progress if buy.budget else 0.0
-                impressions = int(spend * 1000)  # Assume $1 CPM for simplicity
 
             # Create package delivery data
             package_deliveries = []
-            if buy.raw_request and isinstance(buy.raw_request, dict) and "product_ids" in buy.raw_request:
-                product_ids = buy.raw_request.get("product_ids", [])
-                for i, product_id in enumerate(product_ids):
-                    package_spend = spend / len(product_ids) if product_ids else spend
-                    package_impressions = impressions / len(product_ids) if product_ids else impressions
+            
+            # Get pricing info from MediaPackage.package_config
+            package_pricing_map = {}
+            with get_db_session() as session:
+                stmt = select(MediaPackage).where(MediaPackage.media_buy_id == media_buy_id)
+                media_packages = session.scalars(stmt).all()
+                for media_pkg in media_packages:
+                    package_config = media_pkg.package_config or {}
+                    pricing_info = package_config.get("pricing_info")
+                    if pricing_info:
+                        package_pricing_map[media_pkg.package_id] = pricing_info
+            
+            # Get packages from raw_request
+            if buy.raw_request and isinstance(buy.raw_request, dict):
+                # Try to get packages from raw_request.packages (AdCP v2.2+ format)
+                packages = buy.raw_request.get("packages", [])
+                
+                # Fallback: legacy format with product_ids
+                if not packages and "product_ids" in buy.raw_request:
+                    product_ids = buy.raw_request.get("product_ids", [])
+                    packages = [{"product_id": pid} for pid in product_ids]
+                
+                for i, pkg_data in enumerate(packages):
+                    package_id = pkg_data.get("package_id") or f"pkg_{pkg_data.get('product_id', 'unknown')}_{i}"
+                    
+                    # Get pricing info for this package
+                    pricing_info = package_pricing_map.get(package_id)
+                    
+                    # Get REAL per-package metrics from adapter if available, otherwise divide equally
+                    if package_id in adapter_package_metrics:
+                        # Use real metrics from adapter
+                        pkg_metrics = adapter_package_metrics[package_id]
+                        package_spend = pkg_metrics["spend"]
+                        package_impressions = pkg_metrics["impressions"]
+                        package_clicks = pkg_metrics.get("clicks")
+                    else:
+                        # Fallback: divide equally if adapter didn't return this package
+                        package_spend = spend / len(packages) if packages else spend
+                        package_impressions = impressions / len(packages) if packages else impressions
+                        package_clicks = None
 
                     package_deliveries.append(
                         PackageDelivery(
-                            package_id=f"pkg_{product_id}_{i}",
-                            buyer_ref=buy.raw_request.get("buyer_ref", None),
+                            package_id=package_id,
+                            buyer_ref=pkg_data.get("buyer_ref") or buy.raw_request.get("buyer_ref", None),
                             impressions=package_impressions,
                             spend=package_spend,
-                            # TODO: Calculate clicks for CPC pricing - extract pricing model from raw_request
-                            clicks=None,  # Optional field, not calculated in this implementation
+                            clicks=package_clicks,
                             video_completions=None,  # Optional field, not calculated in this implementation
                             pacing_index=1.0 if status == "active" else 0.0,
+                            # Add pricing fields from package_config
+                            pricing_model=pricing_info.get("pricing_model") if pricing_info else None,
+                            rate=float(pricing_info.get("rate")) if pricing_info and pricing_info.get("rate") is not None else None,
+                            currency=pricing_info.get("currency") if pricing_info else None,
                         )
                     )
 
