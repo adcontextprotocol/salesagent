@@ -229,7 +229,7 @@ class TestSchemaFieldMapping:
             "product_id": "test_pydantic_001",
             "name": "Pydantic Test Product",
             "description": "Testing Pydantic field access",
-            "formats": ["display_300x250"],
+            "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -397,7 +397,7 @@ class TestFieldAccessPatterns:
             "product_id": "pattern_test_001",
             "name": "Pattern Test Product",
             "description": "Testing safe access patterns",
-            "formats": ["display_300x250"],
+            "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -444,7 +444,7 @@ class TestFieldAccessPatterns:
             "product_id": "unsafe_test_001",
             "name": "Unsafe Test Product",
             "description": "Testing unsafe access patterns",
-            "formats": ["display_300x250"],
+            "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
