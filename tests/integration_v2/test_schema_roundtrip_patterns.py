@@ -428,7 +428,7 @@ class TestRoundtripErrorScenarios:
         # This should now succeed (format_ids is a valid field)
         product = Product(**valid_product_dict_with_format_ids)
         assert len(product.format_ids) == 1
-        assert product.format_ids[0]["id"] == "display_300x250"
+        assert product.format_ids[0].id == "display_300x250"
 
         # Test 2: format_ids with different format
         valid_product_dict_with_format_ids_2 = {
@@ -443,7 +443,7 @@ class TestRoundtripErrorScenarios:
 
         product2 = Product(**valid_product_dict_with_format_ids_2)
         assert len(product2.format_ids) == 1
-        assert product2.format_ids[0]["id"] == "display_728x90"
+        assert product2.format_ids[0].id == "display_728x90"
 
     def test_missing_required_field_detection(self):
         """Test detection of missing required fields."""
