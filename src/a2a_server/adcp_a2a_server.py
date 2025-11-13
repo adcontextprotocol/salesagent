@@ -1701,6 +1701,7 @@ class AdCPRequestHandler(RequestHandler):
                 deliver_to=parameters["deliver_to"],
                 filters=parameters.get("filters"),
                 max_results=parameters.get("max_results"),
+                context=parameters.get("context") or None,
             )
 
             # Call core function directly
