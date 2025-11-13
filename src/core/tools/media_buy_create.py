@@ -410,15 +410,24 @@ def _execute_adapter_media_buy_creation(
     try:
         # Type ignore needed because adapter expects MediaPackage but we pass Package (compatible types)
         response = adapter.create_media_buy(request, packages, start_time, end_time, package_pricing_info)  # type: ignore[arg-type]
-        logger.info(
-            f"[ADAPTER] create_media_buy succeeded: {response.media_buy_id} "
-            f"with {len(response.packages) if response.packages else 0} packages"
-        )
-        if response.packages:
-            for i, pkg in enumerate(response.packages):
-                # response.packages can be dicts or objects
-                pkg_id = pkg.get("package_id") if isinstance(pkg, dict) else pkg.package_id
-                logger.info(f"[ADAPTER] Response package {i}: {pkg_id}")
+
+        # Log based on response type
+        if isinstance(response, CreateMediaBuyError):
+            error_count = len(response.errors) if response.errors else 0
+            logger.error(f"[ADAPTER] create_media_buy returned error response: {error_count} error(s)")
+            if response.errors:
+                for err in response.errors:
+                    logger.error(f"[ADAPTER]   Error: {err.code} - {err.message}")
+        else:
+            logger.info(
+                f"[ADAPTER] create_media_buy succeeded: {response.media_buy_id} "
+                f"with {len(response.packages) if response.packages else 0} packages"
+            )
+            if response.packages:
+                for i, pkg in enumerate(response.packages):
+                    # response.packages can be dicts or objects
+                    pkg_id = pkg.get("package_id") if isinstance(pkg, dict) else pkg.package_id
+                    logger.info(f"[ADAPTER] Response package {i}: {pkg_id}")
         return response
     except Exception as adapter_error:
         import traceback
@@ -2542,19 +2551,19 @@ async def _create_media_buy_impl(
                 for i, pkg in enumerate(response.packages):  # type: ignore[assignment,no-redef]
                     # pkg is dict[str, Any] here (response.packages), different scope from earlier Package usage
                     logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg}")
-
-            # Type narrowing: media_buy_id must be present in successful response
-            assert response.media_buy_id is not None, "Adapter returned response without media_buy_id"
         except Exception as adapter_error:
             raise
 
-        # Check if adapter returned an error response
+        # Check if adapter returned an error response FIRST (before accessing media_buy_id)
         # With oneOf pattern, response can be CreateMediaBuySuccess or CreateMediaBuyError
-        if hasattr(response, "errors") and response.errors:
-            logger.error(
-                f"[ADAPTER] Adapter returned error response: {response.errors[0].code} - {response.errors[0].message}"
-            )
+        if isinstance(response, CreateMediaBuyError):
+            error_msg = response.errors[0].message if response.errors else "Unknown error"
+            error_code = response.errors[0].code if response.errors else "UNKNOWN"
+            logger.error(f"[ADAPTER] Adapter returned error response: {error_code} - {error_msg}")
             return response  # type: ignore[return-value]
+
+        # Type narrowing: media_buy_id must be present in successful response
+        assert response.media_buy_id is not None, "Adapter returned response without media_buy_id"
 
         # Store the media buy in memory (for backward compatibility)
         # Lazy import to avoid circular dependency

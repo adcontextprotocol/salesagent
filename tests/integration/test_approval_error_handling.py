@@ -21,11 +21,12 @@ class TestApprovalErrorHandling:
     """Test error handling when adapter creation fails during approval."""
 
     def test_execute_approved_media_buy_handles_adapter_error_response(
-        self, integration_db, sample_tenant, sample_principal, sample_product
+        self, integration_db, sample_tenant, sample_principal, sample_products
     ):
         """Test that execute_approved_media_buy handles CreateMediaBuyError response correctly."""
         tenant_id = sample_tenant["tenant_id"]
         principal_id = sample_principal["principal_id"]
+        product_id = sample_products[0]  # Get first product ID from list
 
         # Create a mock media buy in the database with all required data
         from src.core.database.database_session import get_db_session
@@ -58,7 +59,7 @@ class TestApprovalErrorHandling:
                 tenant_id=tenant_id,
                 package_config={
                     "package_id": "pkg_test_123",
-                    "product_id": sample_product["product_id"],
+                    "product_id": product_id,
                     "budget": 1000.0,
                     "pricing_model": "cpm",
                 },
@@ -87,11 +88,12 @@ class TestApprovalErrorHandling:
             assert "Requested inventory not available" in error_msg, "Should include second error message"
 
     def test_execute_approved_media_buy_handles_empty_errors(
-        self, integration_db, sample_tenant, sample_principal, sample_product
+        self, integration_db, sample_tenant, sample_principal, sample_products
     ):
         """Test that execute_approved_media_buy handles CreateMediaBuyError with no errors list."""
         tenant_id = sample_tenant["tenant_id"]
         principal_id = sample_principal["principal_id"]
+        product_id = sample_products[0]  # Get first product ID from list
 
         # Create a mock media buy in the database with all required data
         from src.core.database.database_session import get_db_session
@@ -124,7 +126,7 @@ class TestApprovalErrorHandling:
                 tenant_id=tenant_id,
                 package_config={
                     "package_id": "pkg_test_456",
-                    "product_id": sample_product["product_id"],
+                    "product_id": product_id,
                     "budget": 1000.0,
                     "pricing_model": "cpm",
                 },
