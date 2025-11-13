@@ -196,6 +196,49 @@ def media_buy_detail(tenant_id, media_buy_id):
                     "message": "This media buy is pending. It may be waiting for creatives or other requirements.",
                 }
 
+            # Fetch delivery metrics if media buy is active or completed
+            delivery_metrics = None
+            if media_buy.status in ["active", "approved", "completed"]:
+                try:
+                    from datetime import UTC, datetime, timedelta
+
+                    from src.core.helpers.adapter_helpers import get_adapter
+                    from src.core.schemas import ReportingPeriod
+
+                    # Get adapter for this principal
+                    if principal:
+                        adapter = get_adapter(principal, dry_run=False)
+
+                        # Calculate date range (last 7 days or campaign duration) - always use UTC
+                        end_date = datetime.now(UTC)
+                        seven_days_ago = datetime.now(UTC) - timedelta(days=7)
+
+                        # Ensure media_buy.start_date is timezone-aware before comparison
+                        mb_start = media_buy.start_date
+                        if mb_start and mb_start.tzinfo is None:
+                            mb_start = mb_start.replace(tzinfo=UTC)
+
+                        start_date = max(mb_start if mb_start else seven_days_ago, seven_days_ago)
+
+                        reporting_period = ReportingPeriod(start=start_date.isoformat(), end=end_date.isoformat())
+
+                        # Fetch delivery metrics from adapter
+                        delivery_response = adapter.get_media_buy_delivery(
+                            media_buy_id=media_buy_id, date_range=reporting_period, today=datetime.now(UTC)
+                        )
+
+                        delivery_metrics = {
+                            "impressions": delivery_response.totals.impressions,
+                            "spend": delivery_response.totals.spend,
+                            "clicks": delivery_response.totals.clicks,
+                            "ctr": delivery_response.totals.ctr,
+                            "currency": delivery_response.currency,
+                            "by_package": delivery_response.by_package,
+                        }
+                except Exception as e:
+                    logger.warning(f"Could not fetch delivery metrics for {media_buy_id}: {e}")
+                    # Continue without metrics - don't fail the whole page
+
             return render_template(
                 "media_buy_detail.html",
                 tenant_id=tenant_id,
@@ -208,6 +251,7 @@ def media_buy_detail(tenant_id, media_buy_id):
                 creative_assignments_by_package=creative_assignments_by_package,
                 computed_state=computed_state,
                 readiness=readiness,
+                delivery_metrics=delivery_metrics,
             )
     except Exception as e:
         logger.error(f"Error viewing media buy: {e}", exc_info=True)
