@@ -498,7 +498,7 @@ class TestFieldAccessPatterns:
             "product_id",
             "name",
             "description",
-            "formats",
+            "format_ids",
             "targeting_template",
             "delivery_type",
             "measurement",
@@ -515,7 +515,7 @@ class TestFieldAccessPatterns:
         assert not missing_fields, f"Expected database fields missing: {missing_fields}"
 
         # Fields that should NOT exist (would cause the original bug)
-        forbidden_fields = {"pricing", "cost_basis", "margin", "format_ids"}
+        forbidden_fields = {"pricing", "cost_basis", "margin", "formats"}
 
         # Verify forbidden fields don't exist
         existing_forbidden = forbidden_fields & actual_db_fields
