@@ -30,7 +30,7 @@ class TestApprovalErrorHandling:
 
         # Create a mock media buy in the database with all required data
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import MediaBuy, MediaPackage
+        from src.core.database.models import MediaBuy
 
         media_buy_id = "mb_test_error_handling"
 
@@ -59,19 +59,6 @@ class TestApprovalErrorHandling:
                 },
             )
             session.add(media_buy)
-
-            # Create media package record
-            media_package = MediaPackage(
-                package_id="pkg_test_123",
-                media_buy_id=media_buy_id,
-                package_config={
-                    "package_id": "pkg_test_123",
-                    "product_id": product_id,
-                    "budget": 1000.0,
-                    "pricing_model": "cpm",
-                },
-            )
-            session.add(media_package)
             session.commit()
 
         # Mock the adapter to return CreateMediaBuyError instead of CreateMediaBuySuccess
@@ -104,7 +91,7 @@ class TestApprovalErrorHandling:
 
         # Create a mock media buy in the database with all required data
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import MediaBuy, MediaPackage
+        from src.core.database.models import MediaBuy
 
         media_buy_id = "mb_test_empty_errors"
 
@@ -133,19 +120,6 @@ class TestApprovalErrorHandling:
                 },
             )
             session.add(media_buy)
-
-            # Create media package record
-            media_package = MediaPackage(
-                package_id="pkg_test_456",
-                media_buy_id=media_buy_id,
-                package_config={
-                    "package_id": "pkg_test_456",
-                    "product_id": product_id,
-                    "budget": 1000.0,
-                    "pricing_model": "cpm",
-                },
-            )
-            session.add(media_package)
             session.commit()
 
         # Mock the adapter to return CreateMediaBuyError with empty errors
