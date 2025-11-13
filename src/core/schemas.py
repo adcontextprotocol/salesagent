@@ -591,6 +591,33 @@ class Format(BaseModel):
 
         return None
 
+    def get_form_value(self) -> str:
+        """Get the value used in HTML form submissions for this format.
+
+        This method provides a consistent way to construct format identifiers
+        for use in form checkboxes and validation. It handles both FormatId
+        objects and string format_id values.
+
+        Returns:
+            String in format "agent_url|format_id" for use in forms
+
+        Example:
+            >>> fmt = Format(format_id=FormatId(agent_url="...", id="display_300x250"), ...)
+            >>> fmt.get_form_value()
+            'https://creative.adcontextprotocol.org/|display_300x250'
+        """
+        # Extract format_id string - handle both FormatId object and plain string
+        if hasattr(self.format_id, "id"):
+            format_id_str = self.format_id.id  # FormatId object
+        else:
+            format_id_str = str(self.format_id)  # Plain string (shouldn't happen but defensive)
+
+        # Use agent_url from Format object (not from FormatId) for consistency
+        # This matches what template rendering uses in get_creative_formats()
+        agent_url = self.agent_url or ""
+
+        return f"{agent_url}|{format_id_str}"
+
 
 # FORMAT_REGISTRY removed - now using dynamic format discovery via CreativeAgentRegistry
 #

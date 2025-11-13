@@ -672,12 +672,8 @@ def add_product(tenant_id):
                                 loop.close()
 
                         # Build set of valid format IDs for quick lookup
-                        # Use fmt.agent_url (not fmt.format_id.agent_url) to match template rendering
-                        # Template uses fmt.agent_url from get_creative_formats()
-                        valid_format_ids = {
-                            f"{fmt.agent_url}|{(fmt.format_id.id if hasattr(fmt.format_id, 'id') else str(fmt.format_id))}"
-                            for fmt in available_formats
-                        }
+                        # Use Format.get_form_value() for consistent format ID construction
+                        valid_format_ids = {fmt.get_form_value() for fmt in available_formats}
                         logger.info(f"[DEBUG] Found {len(valid_format_ids)} valid formats for tenant {tenant_id}")
                         sample_ids = list(valid_format_ids)[:5]
                         logger.info(f"[DEBUG] Sample valid format IDs: {sample_ids}")
@@ -1244,11 +1240,8 @@ def edit_product(tenant_id, product_id):
                         loop.close()
 
                 # Build set of valid format IDs for quick lookup
-                # Use fmt.agent_url (not fmt.format_id.agent_url) to match template rendering
-                valid_format_ids = {
-                    f"{fmt.agent_url}|{(fmt.format_id.id if hasattr(fmt.format_id, 'id') else str(fmt.format_id))}"
-                    for fmt in available_formats
-                }
+                # Use Format.get_form_value() for consistent format ID construction
+                valid_format_ids = {fmt.get_form_value() for fmt in available_formats}
                 logger.info(f"[DEBUG] Found {len(valid_format_ids)} valid formats for tenant {tenant_id}")
                 logger.info(f"[DEBUG] Sample valid format IDs: {list(valid_format_ids)[:5]}")
 

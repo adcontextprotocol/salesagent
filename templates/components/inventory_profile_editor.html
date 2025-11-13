@@ -532,51 +532,27 @@ Then call: window.inventoryProfileEditor.open(profileData)
     // ==================== INVENTORY SEARCH ====================
 
     function setupInventorySearch() {
-        // Ad Units search
+        // Ad Units search - press Enter to open picker with search pre-filled
         const adUnitSearch = document.getElementById('profileAdUnitSearch');
         if (adUnitSearch) {
             adUnitSearch.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    window.inventoryPicker.open('ad_unit');
-                    // Set search value in picker modal
-                    setTimeout(() => {
-                        const pickerSearch = document.getElementById('picker-search');
-                        if (pickerSearch) {
-                            pickerSearch.value = adUnitSearch.value;
-                            window.inventoryPicker.triggerSearch();
-                        }
-                    }, 100);
+                    // Open picker with search value - no setTimeout needed!
+                    window.inventoryPicker.open('ad_unit', adUnitSearch.value);
                 }
-            });
-
-            adUnitSearch.addEventListener('focus', function() {
-                // Clear "not focusable" appearance by ensuring input is enabled
-                this.disabled = false;
             });
         }
 
-        // Placements search
+        // Placements search - press Enter to open picker with search pre-filled
         const placementSearch = document.getElementById('profilePlacementSearch');
         if (placementSearch) {
             placementSearch.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    window.inventoryPicker.open('placement');
-                    // Set search value in picker modal
-                    setTimeout(() => {
-                        const pickerSearch = document.getElementById('picker-search');
-                        if (pickerSearch) {
-                            pickerSearch.value = placementSearch.value;
-                            window.inventoryPicker.triggerSearch();
-                        }
-                    }, 100);
+                    // Open picker with search value - no setTimeout needed!
+                    window.inventoryPicker.open('placement', placementSearch.value);
                 }
-            });
-
-            placementSearch.addEventListener('focus', function() {
-                // Clear "not focusable" appearance by ensuring input is enabled
-                this.disabled = false;
             });
         }
     }

@@ -96,7 +96,7 @@ Then in your template, add browse buttons:
 
     // ==================== MAIN FUNCTIONS ====================
 
-    function openInventoryPicker(type) {
+    function openInventoryPicker(type, initialSearch = '') {
         currentPickerType = type;
         const modal = document.getElementById('inventory-picker-modal');
         const title = document.getElementById('picker-modal-title');
@@ -111,24 +111,27 @@ Then in your template, add browse buttons:
             treeControls.style.display = 'none';
         }
 
-        // Clear search
+        // Set search value (either clear or use initial search)
         const searchInput = document.getElementById('picker-search');
         if (searchInput) {
-            searchInput.value = '';
+            searchInput.value = initialSearch;
         }
 
-        // Add enter key support for search
-        searchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                triggerSearch();
-            }
-        });
+        // Add enter key support for search (only add once)
+        searchInput.removeEventListener('keypress', handleSearchKeypress);
+        searchInput.addEventListener('keypress', handleSearchKeypress);
 
-        // Load inventory
-        loadInventory(type);
+        // Load inventory with initial search if provided
+        loadInventory(type, initialSearch);
 
         // Show modal
         modal.style.display = 'flex';
+    }
+
+    function handleSearchKeypress(e) {
+        if (e.key === 'Enter') {
+            triggerSearch();
+        }
     }
 
     function closeInventoryPicker() {
