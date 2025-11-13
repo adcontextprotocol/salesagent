@@ -1607,10 +1607,8 @@ class WebhookDeliveryLog(Base):
     __tablename__ = "webhook_delivery_log"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    tenant_id: Mapped[str] = mapped_column(String, ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    principal_id: Mapped[str] = mapped_column(
-        String, ForeignKey("principals.principal_id", ondelete="CASCADE"), nullable=False
-    )
+    tenant_id: Mapped[str] = mapped_column(String, nullable=False)
+    principal_id: Mapped[str] = mapped_column(String, nullable=False)
     media_buy_id: Mapped[str] = mapped_column(
         String, ForeignKey("media_buys.media_buy_id", ondelete="CASCADE"), nullable=False
     )
@@ -1644,6 +1642,10 @@ class WebhookDeliveryLog(Base):
     media_buy = relationship("MediaBuy")
 
     __table_args__ = (
+        ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(
+            ["tenant_id", "principal_id"], ["principals.tenant_id", "principals.principal_id"], ondelete="CASCADE"
+        ),
         Index("idx_webhook_log_media_buy", "media_buy_id"),
         Index("idx_webhook_log_tenant", "tenant_id"),
         Index("idx_webhook_log_status", "status"),

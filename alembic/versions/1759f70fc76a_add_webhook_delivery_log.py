@@ -42,7 +42,9 @@ def upgrade() -> None:
         sa.Column("next_retry_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["principal_id"], ["principals.principal_id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id", "principal_id"], ["principals.tenant_id", "principals.principal_id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["media_buy_id"], ["media_buys.media_buy_id"], ondelete="CASCADE"),
     )
 
