@@ -141,22 +141,43 @@ def upgrade() -> None:
     )
 
     # Note: tenants.auto_approve_format_ids can be NULL or array of strings (just IDs, not full FormatId objects)
-    # So we use a simpler validation
+    # Create a simpler validation function for array of strings
+    print("  → Creating validation function for auto_approve_format_ids")
+    string_array_validation = """
+    CREATE OR REPLACE FUNCTION validate_string_array(arr jsonb)
+    RETURNS boolean AS $$
+    DECLARE
+        elem jsonb;
+    BEGIN
+        -- NULL is valid
+        IF arr IS NULL THEN
+            RETURN true;
+        END IF;
+
+        -- Must be array
+        IF jsonb_typeof(arr) != 'array' THEN
+            RAISE EXCEPTION 'auto_approve_format_ids must be an array, got: %', jsonb_typeof(arr);
+        END IF;
+
+        -- Each element must be string
+        FOR elem IN SELECT * FROM jsonb_array_elements(arr)
+        LOOP
+            IF jsonb_typeof(elem) != 'string' THEN
+                RAISE EXCEPTION 'Each element must be a string, got: %', jsonb_typeof(elem);
+            END IF;
+        END LOOP;
+
+        RETURN true;
+    END;
+    $$ LANGUAGE plpgsql IMMUTABLE;
+    """
+    op.execute(string_array_validation)
+
     print("  → Adding CHECK constraint to tenants.auto_approve_format_ids")
-    op.execute(
-        """
-        ALTER TABLE tenants ADD CONSTRAINT tenants_auto_approve_format_ids_valid
-        CHECK (
-            auto_approve_format_ids IS NULL
-            OR (
-                jsonb_typeof(auto_approve_format_ids) = 'array'
-                AND (
-                    SELECT bool_and(jsonb_typeof(elem) = 'string')
-                    FROM jsonb_array_elements(auto_approve_format_ids) elem
-                )
-            )
-        )
-        """
+    op.create_check_constraint(
+        "tenants_auto_approve_format_ids_valid",
+        "tenants",
+        "validate_string_array(auto_approve_format_ids)",
     )
 
     print("\n✅ Migration complete! format_ids columns now have database-level type safety.")
@@ -174,9 +195,10 @@ def downgrade() -> None:
     op.drop_constraint("inventory_profiles_format_ids_valid", "inventory_profiles")
     op.drop_constraint("tenants_auto_approve_format_ids_valid", "tenants")
 
-    # Drop validation function
-    print("  → Dropping validation function")
+    # Drop validation functions
+    print("  → Dropping validation functions")
     op.execute("DROP FUNCTION IF EXISTS validate_format_ids(jsonb)")
+    op.execute("DROP FUNCTION IF EXISTS validate_string_array(jsonb)")
 
     # Rename columns back
     print("  → Renaming columns back to original names")
