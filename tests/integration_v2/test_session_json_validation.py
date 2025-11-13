@@ -370,12 +370,8 @@ class TestIntegration:
                     is_fixed=True,
                     format_ids=[
                         {
-                            "format_id": "display_300x250",
-                            "name": "Display Banner",
-                            "type": "display",
-                            "description": "Standard banner",
-                            "assets": {},
-                            "delivery_options": {},
+                            "agent_url": "https://creative.adcontextprotocol.org",
+                            "id": "display_300x250",
                         }
                     ],
                     targeting_template={"geo_targets": ["US", "CA"], "device_targets": ["desktop", "mobile"]},
@@ -412,8 +408,9 @@ class TestIntegration:
             p = session.scalars(select(Product).filter_by(product_id="prod_1")).first()
             assert p is not None
             assert len(p.format_ids) == 1
-            # format_ids is stored as a list of FormatId objects in the database
-            assert p.format_ids[0].id == "display_300x250" or p.format_ids[0]["id"] == "display_300x250"
+            # format_ids is stored as a list of dicts in the database (not FormatId objects)
+            # Database model: list[dict[str, str]] with keys: agent_url, id
+            assert p.format_ids[0]["id"] == "display_300x250"
             assert p.targeting_template["geo_targets"] == ["US", "CA"]
 
             # Check principal

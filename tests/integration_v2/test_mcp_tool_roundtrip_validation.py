@@ -257,12 +257,17 @@ class TestMCPToolRoundtripValidation:
         assert video_product is not None, "Should have found video product"
 
         # Test the specific case that was failing: formats field
-        assert display_product.format_ids == ["display_300x250", "display_728x90"]
-        assert video_product.format_ids == ["video_15s", "video_30s"]
+        # format_ids is now list[FormatId] objects, not strings
+        assert len(display_product.format_ids) == 2
+        assert display_product.format_ids[0].id == "display_300x250"
+        assert display_product.format_ids[1].id == "display_728x90"
+        assert len(video_product.format_ids) == 2
+        assert video_product.format_ids[0].id == "video_15s"
+        assert video_product.format_ids[1].id == "video_30s"
 
-        # Verify AdCP spec property works
-        assert display_product.format_ids == ["display_300x250", "display_728x90"]
-        assert video_product.format_ids == ["video_15s", "video_30s"]
+        # Verify AdCP spec property works (FormatId objects)
+        assert all(hasattr(fmt, "id") and hasattr(fmt, "agent_url") for fmt in display_product.format_ids)
+        assert all(hasattr(fmt, "id") and hasattr(fmt, "agent_url") for fmt in video_product.format_ids)
 
     def test_get_products_with_testing_hooks_roundtrip_isolated(
         self, integration_db, test_tenant_id, real_products_in_db
@@ -408,6 +413,7 @@ class TestMCPToolRoundtripValidation:
 
         # Verify the dict has the correct field name
         assert "format_ids" in product_dict
+        # model_dump_internal() returns list of strings for format_ids
         assert product_dict["format_ids"] == ["display_300x250", "video_15s"]
 
         # Step 2: Simulate testing hooks modifying the data
@@ -473,7 +479,10 @@ class TestMCPToolRoundtripValidation:
 
         # Verify AdCP spec compliance
         assert "format_ids" in adcp_dict  # AdCP spec field name
-        assert adcp_dict["format_ids"] == ["display_300x250", "display_728x90"]
+        # model_dump() serializes FormatId objects as dicts with agent_url and id
+        assert len(adcp_dict["format_ids"]) == 2
+        assert adcp_dict["format_ids"][0]["id"] == "display_300x250"
+        assert adcp_dict["format_ids"][1]["id"] == "display_728x90"
 
         # Verify required AdCP fields are present
         required_adcp_fields = [
@@ -525,7 +534,9 @@ class TestMCPToolRoundtripValidation:
 
         # This should now succeed (format_ids is a valid alias)
         product1 = ProductSchema(**product_dict_with_format_ids)
-        assert product1.format_ids == ["display_300x250"]
+        # format_ids is list[FormatId] objects
+        assert len(product1.format_ids) == 1
+        assert product1.format_ids[0].id == "display_300x250"
 
         # Test 2: format_ids should work (correct field name)
         correct_product_dict = {
@@ -551,7 +562,9 @@ class TestMCPToolRoundtripValidation:
 
         # This should succeed
         product = ProductSchema(**correct_product_dict)
-        assert product.format_ids == ["display_300x250"]
+        # format_ids is list[FormatId] objects
+        assert len(product.format_ids) == 1
+        assert product.format_ids[0].id == "display_300x250"
 
 
 class TestMCPToolRoundtripPatterns:
