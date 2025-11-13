@@ -7,6 +7,7 @@ instead of manually constructing objects to avoid validation errors.
 All factories use sensible defaults for required fields and accept overrides for customization.
 """
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from adcp import (
@@ -364,3 +365,179 @@ def create_test_pricing_option(pricing_model: str = "cpm", currency: str = "USD"
         pricing = create_test_pricing_option("cpm", "USD", rate=10.0)
     """
     return {"pricing_model": pricing_model, "currency": currency, **kwargs}
+
+
+def create_test_media_buy_request_dict(
+    buyer_ref: str = "test_buyer_ref",
+    product_ids: list[str] | None = None,
+    total_budget: float = 10000.0,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    brand_manifest: dict[str, Any] | None = None,
+    **kwargs,
+) -> dict[str, Any]:
+    """Create a test media buy request dict (works with both internal and adcp CreateMediaBuyRequest).
+
+    Note: Returns a dict instead of CreateMediaBuyRequest object because we have schema
+    duplication issues (internal vs adcp library). Dicts work with both.
+
+    Args:
+        buyer_ref: Buyer reference identifier
+        product_ids: List of product IDs to include in package. Defaults to ["test_product"]
+        total_budget: Total budget for the campaign
+        start_time: Campaign start time (ISO string). Defaults to "asap"
+        end_time: Campaign end time (ISO string). Defaults to 30 days from now
+        brand_manifest: Brand info dict. Defaults to {"name": "Test Brand", "promoted_offering": "Test Product"}
+        **kwargs: Additional optional fields (po_number, reporting_webhook, targeting_overlay, etc.)
+
+    Returns:
+        Media buy request dict suitable for create_media_buy tool
+
+    Example:
+        # Minimal request
+        request = create_test_media_buy_request_dict()
+
+        # Custom request
+        request = create_test_media_buy_request_dict(
+            buyer_ref="buyer_001",
+            product_ids=["prod_1", "prod_2"],
+            total_budget=50000.0,
+            start_time="2025-11-01T00:00:00Z",
+            end_time="2025-11-30T23:59:59Z",
+            brand_manifest={"name": "Nike", "promoted_offering": "Air Jordan 2025"}
+        )
+    """
+
+    # Default start_time to "asap"
+    if start_time is None:
+        start_time = "asap"
+
+    # Default end_time to 30 days from now
+    if end_time is None:
+        end_datetime = datetime.now(UTC) + timedelta(days=30)
+        end_time = end_datetime.isoformat()
+
+    # Default brand_manifest
+    if brand_manifest is None:
+        brand_manifest = {"name": "Test Brand", "promoted_offering": "Test Product"}
+
+    # Default product_ids
+    if product_ids is None:
+        product_ids = ["test_product"]
+
+    # Build request dict (compatible with internal CreateMediaBuyRequest)
+    request = {
+        "buyer_ref": buyer_ref,
+        "brand_manifest": brand_manifest,
+        "packages": [
+            {
+                "buyer_ref": f"{buyer_ref}_pkg_1",
+                "products": product_ids,
+                "budget": total_budget,
+            }
+        ],
+        "start_time": start_time,
+        "end_time": end_time,
+        "budget": total_budget,  # Top-level budget
+    }
+
+    # Add optional fields from kwargs
+    if "targeting_overlay" in kwargs:
+        request["packages"][0]["targeting_overlay"] = kwargs.pop("targeting_overlay")
+
+    # Merge remaining kwargs
+    request.update(kwargs)
+
+    return request
+
+
+def create_test_media_buy_dict(
+    media_buy_id: str = "test_media_buy_001",
+    buyer_ref: str = "test_buyer_ref",
+    status: str = "active",
+    promoted_offering: str = "Test Product",
+    total_budget: float = 10000.0,
+    packages: list[dict[str, Any]] | None = None,
+    **kwargs,
+) -> dict[str, Any]:
+    """Create a test MediaBuy dict (for response testing).
+
+    Note: Returns a dict instead of MediaBuy object because of schema duplication.
+
+    Args:
+        media_buy_id: Media buy identifier
+        buyer_ref: Buyer reference identifier
+        status: Media buy status ("active", "paused", "completed", etc.)
+        promoted_offering: What is being promoted
+        total_budget: Total budget for the campaign
+        packages: List of package dicts. Defaults to one test package
+        **kwargs: Additional optional fields (creative_deadline, created_at, updated_at, etc.)
+
+    Returns:
+        MediaBuy dict
+
+    Example:
+        media_buy = create_test_media_buy_dict(
+            media_buy_id="mb_001",
+            status="active",
+            promoted_offering="Nike Air Jordan 2025",
+            total_budget=50000.0
+        )
+    """
+    # Default packages if not provided
+    if packages is None:
+        packages = [
+            {
+                "package_id": "test_package",
+                "buyer_ref": "test_package_ref",
+                "status": "active",
+                "products": ["test_product"],
+                "budget": total_budget,
+            }
+        ]
+
+    return {
+        "media_buy_id": media_buy_id,
+        "buyer_ref": buyer_ref,
+        "status": status,
+        "promoted_offering": promoted_offering,
+        "total_budget": total_budget,
+        "packages": packages,
+        **kwargs,
+    }
+
+
+def create_test_package_request_dict(
+    buyer_ref: str = "test_package_ref",
+    products: list[str] | None = None,
+    budget: float = 10000.0,
+    **kwargs,
+) -> dict[str, Any]:
+    """Create a test package request dict for use in media buy requests.
+
+    Args:
+        buyer_ref: Package reference identifier
+        products: List of product IDs. Defaults to ["test_product"]
+        budget: Package budget
+        **kwargs: Additional optional fields (targeting_overlay, creative_ids, etc.)
+
+    Returns:
+        Package request dict
+
+    Example:
+        pkg = create_test_package_request_dict(
+            buyer_ref="pkg_001",
+            products=["prod_1", "prod_2"],
+            budget=25000.0,
+            targeting_overlay={"geo": {"countries": ["US"]}}
+        )
+    """
+    if products is None:
+        products = ["test_product"]
+
+    return {
+        "buyer_ref": buyer_ref,
+        "products": products,
+        "budget": budget,
+        **kwargs,
+    }
