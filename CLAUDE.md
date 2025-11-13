@@ -202,6 +202,119 @@ pytest tests/unit/test_create_media_buy.py
 
 ---
 
+### Nested Model Serialization Pattern (Pydantic)
+**🚨 MANDATORY**: Response models with nested Pydantic models MUST explicitly serialize nested objects.
+
+**The Problem:**
+Pydantic does NOT automatically call custom `model_dump()` methods on nested child models when serializing a parent model. This causes internal fields to leak into client responses, violating AdCP `"additionalProperties": false` constraint.
+
+**Example of the Bug:**
+```python
+# Child model with custom model_dump()
+class Creative(AdCPBaseModel):
+    creative_id: str
+    name: str
+    status: str = "pending"  # Internal field
+
+    def model_dump(self, **kwargs):
+        exclude = {"status"}  # Exclude internal field
+        return super().model_dump(exclude=exclude, **kwargs)
+
+# Parent model WITHOUT explicit serialization
+class GetCreativesResponse(AdCPBaseModel):
+    creatives: list[Creative]
+    # ❌ WRONG - Pydantic bypasses Creative.model_dump()!
+
+# What happens:
+creative = Creative(creative_id="c1", name="Banner", status="approved")
+creative.model_dump()  # ✅ Returns {"creative_id": "c1", "name": "Banner"} - status excluded
+
+response = GetCreativesResponse(creatives=[creative])
+response.model_dump()  # ❌ Returns {"creatives": [{"creative_id": "c1", "name": "Banner", "status": "approved"}]}
+                       # Internal field "status" leaked! Violates AdCP spec!
+```
+
+**The Solution: Explicit Nested Serialization**
+Parent models MUST override `model_dump()` to explicitly call child model serialization:
+
+```python
+# ✅ CORRECT - Parent explicitly serializes nested models
+class GetCreativesResponse(AdCPBaseModel):
+    creatives: list[Creative]
+
+    def model_dump(self, **kwargs):
+        """Override to ensure nested Creative objects use their custom model_dump()."""
+        result = super().model_dump(**kwargs)
+
+        if "creatives" in result and self.creatives:
+            # Explicitly call Creative.model_dump() for each item
+            result["creatives"] = [creative.model_dump(**kwargs) for creative in self.creatives]
+
+        return result
+```
+
+**Pattern for ALL Response Models:**
+```python
+class ParentResponse(AdCPBaseModel):
+    nested_field: NestedModel | list[NestedModel]
+
+    def model_dump(self, **kwargs):
+        """Override to ensure nested models use their custom model_dump()."""
+        result = super().model_dump(**kwargs)
+
+        # For single nested model:
+        if "nested_field" in result and self.nested_field:
+            result["nested_field"] = self.nested_field.model_dump(**kwargs)
+
+        # For list of nested models:
+        if "nested_list" in result and self.nested_list:
+            result["nested_list"] = [item.model_dump(**kwargs) for item in self.nested_list]
+
+        return result
+```
+
+**When This Pattern is Required:**
+- ✅ Any response model containing nested Pydantic models with custom `model_dump()`
+- ✅ Models with nested Creative, Signal, Package, or other domain objects
+- ✅ Any model where child models exclude internal/audit fields
+
+**Testing:**
+Every response model with nested serialization MUST have a test:
+```python
+def test_response_excludes_internal_fields_from_nested_models():
+    """Test that ParentResponse excludes internal fields from nested Child objects."""
+    # Create child with internal fields
+    child = Child(id="c1", name="Test", status="internal")  # status is internal
+
+    # Create parent response
+    response = ParentResponse(children=[child])
+
+    # Serialize to dict
+    result = response.model_dump()
+
+    # Verify internal fields excluded from nested child
+    assert "status" not in result["children"][0], "Internal field should be excluded"
+
+    # Verify required fields present
+    assert result["children"][0]["id"] == "c1"
+    assert result["children"][0]["name"] == "Test"
+```
+
+**Current Status:**
+- ✅ SyncCreativesResponse - Fixed (original bug, commit f5bd7b8a)
+- ✅ ListCreativesResponse - Fixed (commit 50e5e19f)
+- ✅ CreateCreativeResponse - Fixed (commit 50e5e19f)
+- ✅ GetCreativesResponse - Fixed (commit 50e5e19f)
+- ✅ GetSignalsResponse - Fixed (commit 50e5e19f)
+
+**References:**
+- Implementation: `src/core/schemas.py` (lines 1714-1744, 1832-1866, 1908-1926, 1974-1991, 3257-3280)
+- Tests: `tests/unit/test_*_serialization.py`
+- Original bug fix: Commit f5bd7b8a (SyncCreativesResponse)
+- Systematic fix: Commit 50e5e19f (4 additional response models)
+
+---
+
 ### Database JSON Fields Pattern (SQLAlchemy 2.0)
 **🚨 MANDATORY**: All JSON columns MUST use `JSONType` for PostgreSQL JSONB handling.
 

@@ -1350,10 +1350,17 @@ class TestAdCPContract:
         # Test creative object structure in response
         if len(adcp_response["creatives"]) > 0:
             creative = adcp_response["creatives"][0]
-            creative_required_fields = ["creative_id", "name", "format", "status"]
+            # Per AdCP spec, Creative required fields are: creative_id, name, format, assets
+            # Internal fields (status, principal_id, created_at, updated_at) should NOT be present
+            creative_required_fields = ["creative_id", "name", "format", "assets"]
             for field in creative_required_fields:
                 assert field in creative, f"Creative required field '{field}' missing"
                 assert creative[field] is not None, f"Creative required field '{field}' is None"
+
+            # Verify internal fields are excluded (should NOT be in client responses)
+            internal_fields = ["status", "principal_id", "created_at", "updated_at"]
+            for field in internal_fields:
+                assert field not in creative, f"Internal field '{field}' should be excluded from client response"
 
         # Verify required fields are present
         # Per AdCP spec, only query_summary, pagination, and creatives are required
