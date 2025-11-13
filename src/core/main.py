@@ -240,7 +240,7 @@ def get_product_catalog() -> list[Product]:
 
             # Parse formats - now stored as strings by the validator
             # Use effective_formats to auto-resolve from inventory profile if set
-            format_ids = safe_json_parse(product.effective_formats) or []
+            format_ids = safe_json_parse(product.effective_format_ids) or []
             # Ensure it's a list of strings (validator guarantees this)
             if not isinstance(format_ids, list):
                 format_ids = []

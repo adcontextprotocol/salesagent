@@ -398,7 +398,7 @@ class TestMCPToolsAudit:
 
         # This should now succeed (format_ids is a valid alias)
         product = Product(**valid_data_with_format_ids)
-        assert product.formats == ["display_300x250"]
+        assert product.format_ids == ["display_300x250"]
 
         # Anti-pattern: Type mismatches
         type_mismatch_data = {

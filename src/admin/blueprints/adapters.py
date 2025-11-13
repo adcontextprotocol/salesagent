@@ -56,7 +56,7 @@ def mock_config(tenant_id, product_id, **kwargs):
                     "update_interval_seconds": float(request.form.get("update_interval_seconds", 1.0)),
                 }
 
-                # Note: Creative formats are managed in product.formats (via add/edit product page)
+                # Note: Creative formats are managed in product.format_ids (via add/edit product page)
                 # NOT in implementation_config - removing format handling to avoid duplication
 
                 # Debug settings

@@ -60,7 +60,9 @@ class Tenant(Base, JSONValidatorMixin):
     slack_audit_webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     hitl_webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     admin_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    auto_approve_formats: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
+    # List of format ID strings (just the id part, not full FormatId objects)
+    # Validated at database level via CHECK constraint (see migration: rename_formats_to_format_ids)
+    auto_approve_format_ids: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
     human_review_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     policy_settings: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     signals_agent_config: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
@@ -164,7 +166,8 @@ class Product(Base, JSONValidatorMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Type hint: list of FormatId dicts with {agent_url: str, id: str}
-    formats: Mapped[list[dict[str, str]]] = mapped_column(JSONType, nullable=False)
+    # Validated at database level via CHECK constraint (see migration: rename_formats_to_format_ids)
+    format_ids: Mapped[list[dict[str, str]]] = mapped_column(JSONType, nullable=False)
     # Type hint: targeting template dict structure
     targeting_template: Mapped[dict] = mapped_column(JSONType, nullable=False)
     delivery_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -246,16 +249,18 @@ class Product(Base, JSONValidatorMixin):
 
     # Effective properties - auto-resolve from inventory profile if set
     @property
-    def effective_formats(self) -> list[dict[str, str]]:
-        """Get formats from inventory profile (if set) or product itself.
+    def effective_format_ids(self) -> list[dict[str, str]]:
+        """Get format_ids from inventory profile (if set) or product itself.
 
-        Returns formats as list of FormatId dicts: [{"agent_url": str, "id": str}, ...]
-        When inventory_profile_id is set, returns current profile's formats (auto-updates).
-        When inventory_profile_id is null, returns product's own formats (legacy).
+        Returns format_ids as list of FormatId dicts: [{"agent_url": str, "id": str}, ...]
+        When inventory_profile_id is set, returns current profile's format_ids (auto-updates).
+        When inventory_profile_id is null, returns product's own format_ids.
+
+        Database validation ensures all format_ids match AdCP FormatId spec.
         """
         if self.inventory_profile_id and self.inventory_profile:
-            return self.inventory_profile.formats
-        return self.formats
+            return self.inventory_profile.format_ids
+        return self.format_ids
 
     @property
     def effective_properties(self) -> list[dict] | None:
@@ -945,7 +950,8 @@ class InventoryProfile(Base, JSONValidatorMixin):
 
     # Creative formats (FormatId objects)
     # Structure: [{"agent_url": "...", "id": "display_300x250_image"}]
-    formats: Mapped[list] = mapped_column(JSONType, nullable=False)
+    # Validated at database level via CHECK constraint (see migration: rename_formats_to_format_ids)
+    format_ids: Mapped[list] = mapped_column(JSONType, nullable=False)
 
     # Publisher properties (AdCP spec-compliant)
     # Structure: [

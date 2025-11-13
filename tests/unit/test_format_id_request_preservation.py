@@ -9,7 +9,7 @@ def test_format_ids_from_request_preserved():
         def __init__(self):
             self.product_id = "display_multi_cpm"
             self.name = "Display Multi Format CPM"
-            self.formats = ["leaderboard_728x90", "display_300x250"]  # Supports both
+            self.format_ids = ["leaderboard_728x90", "display_300x250"]  # Supports both
 
     product = MockProduct()
 
@@ -37,7 +37,7 @@ def test_format_ids_from_request_preserved():
                 requested_format_ids.append(fmt)
 
         # Validate that requested formats are supported by product
-        product_format_ids = set(product.formats) if product.formats else set()
+        product_format_ids = set(product.format_ids) if product.format_ids else set()
         unsupported_formats = [f for f in requested_format_ids if f not in product_format_ids]
 
         # Should pass validation since display_300x250 is supported
@@ -46,7 +46,7 @@ def test_format_ids_from_request_preserved():
 
     # Fallback to product's formats if no request format_ids
     if not format_ids_to_use:
-        format_ids_to_use = [product.formats[0]] if product.formats else []
+        format_ids_to_use = [product.format_ids[0]] if product.format_ids else []
 
     # Verify that request format_ids take precedence (buyer chose display_300x250, not leaderboard)
     assert format_ids_to_use == ["display_300x250"], f"Expected ['display_300x250'], got {format_ids_to_use}"
@@ -60,7 +60,7 @@ def test_format_ids_fallback_to_product():
     class MockProduct:
         def __init__(self):
             self.product_id = "display_leaderboard_cpm"
-            self.formats = ["leaderboard_728x90"]
+            self.format_ids = ["leaderboard_728x90"]
 
     product = MockProduct()
 
@@ -88,7 +88,7 @@ def test_format_ids_fallback_to_product():
 
     # Fallback to product's formats if no request format_ids
     if not format_ids_to_use:
-        format_ids_to_use = [product.formats[0]] if product.formats else []
+        format_ids_to_use = [product.format_ids[0]] if product.format_ids else []
 
     # Verify that product formats are used as fallback
     assert format_ids_to_use == ["leaderboard_728x90"], f"Expected ['leaderboard_728x90'], got {format_ids_to_use}"
@@ -107,7 +107,7 @@ def test_format_ids_handles_format_id_objects():
         def __init__(self):
             self.product_id = "display_multi_cpm"
             self.name = "Display Multi Format CPM"
-            self.formats = ["leaderboard_728x90", "display_300x250"]
+            self.format_ids = ["leaderboard_728x90", "display_300x250"]
 
     product = MockProduct()
 
@@ -135,7 +135,7 @@ def test_format_ids_handles_format_id_objects():
                 requested_format_ids.append(fmt)
 
         # Validate that requested formats are supported by product
-        product_format_ids = set(product.formats) if product.formats else set()
+        product_format_ids = set(product.format_ids) if product.format_ids else set()
         unsupported_formats = [f for f in requested_format_ids if f not in product_format_ids]
 
         # Should pass validation since display_300x250 is supported
@@ -144,7 +144,7 @@ def test_format_ids_handles_format_id_objects():
 
     # Fallback to product's formats if no request format_ids
     if not format_ids_to_use:
-        format_ids_to_use = [product.formats[0]] if product.formats else []
+        format_ids_to_use = [product.format_ids[0]] if product.format_ids else []
 
     # Verify that FormatId.id is extracted correctly
     assert format_ids_to_use == ["display_300x250"], f"Expected ['display_300x250'], got {format_ids_to_use}"
@@ -158,7 +158,7 @@ def test_format_ids_validation_rejects_unsupported():
         def __init__(self):
             self.product_id = "display_leaderboard_cpm"
             self.name = "Display Leaderboard CPM"
-            self.formats = ["leaderboard_728x90"]  # Only supports leaderboard
+            self.format_ids = ["leaderboard_728x90"]  # Only supports leaderboard
 
     product = MockProduct()
 
@@ -181,7 +181,7 @@ def test_format_ids_validation_rejects_unsupported():
             requested_format_ids.append(fmt)
 
     # Validate that requested formats are supported by product
-    product_format_ids = set(product.formats) if product.formats else set()
+    product_format_ids = set(product.format_ids) if product.format_ids else set()
     unsupported_formats = [f for f in requested_format_ids if f not in product_format_ids]
 
     # Verify that unsupported format is detected
@@ -197,7 +197,7 @@ def test_format_ids_validation_accepts_supported():
         def __init__(self):
             self.product_id = "display_multi_cpm"
             self.name = "Display Multi Format CPM"
-            self.formats = ["leaderboard_728x90", "display_300x250", "display_160x600"]
+            self.format_ids = ["leaderboard_728x90", "display_300x250", "display_160x600"]
 
     product = MockProduct()
 
@@ -220,7 +220,7 @@ def test_format_ids_validation_accepts_supported():
             requested_format_ids.append(fmt)
 
     # Validate that requested formats are supported by product
-    product_format_ids = set(product.formats) if product.formats else set()
+    product_format_ids = set(product.format_ids) if product.format_ids else set()
     unsupported_formats = [f for f in requested_format_ids if f not in product_format_ids]
 
     # Verify that all requested formats are supported

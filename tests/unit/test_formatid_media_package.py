@@ -62,9 +62,9 @@ class TestMediaPackageFormatIds:
         """Test the production code path: Product.formats[0] → MediaPackage.format_ids.
 
         This replicates the error that occurred in production at src/core/main.py:4519
-        where product.formats contained FormatId objects but MediaPackage expected strings.
+        where product.format_ids contained FormatId objects but MediaPackage expected strings.
         """
-        # Simulate product.formats containing FormatId object (from database/API)
+        # Simulate product.format_ids containing FormatId object (from database/API)
         product_format = make_format_id("leaderboard_728x90")
 
         # This is what main.py:4519 does - must NOT raise ValidationError

@@ -327,7 +327,7 @@ class SetupChecklistService:
 
         # 1. Creative Approval Guidelines
         policy_settings = tenant.policy_settings or {}
-        has_approval_config = tenant.human_review_required is not None or tenant.auto_approve_formats
+        has_approval_config = tenant.human_review_required is not None or tenant.auto_approve_format_ids
         tasks.append(
             SetupTask(
                 key="creative_approval_guidelines",

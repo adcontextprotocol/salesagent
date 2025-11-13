@@ -9,7 +9,7 @@ def test_get_products_response_str_single_product():
         product_id="test",
         name="Test Product",
         description="A test",
-        formats=["banner"],
+        format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
         delivery_type="guaranteed",
         is_custom=False,
         property_tags=["all_inventory"],  # Required per AdCP spec
@@ -42,7 +42,7 @@ def test_get_products_response_str_multiple_products():
             product_id=f"test{i}",
             name=f"Test {i}",
             description="A test",
-            formats=["banner"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
             delivery_type="guaranteed",
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
@@ -82,7 +82,7 @@ def test_get_products_response_str_anonymous_user():
             product_id=f"test{i}",
             name=f"Test {i}",
             description="A test",
-            formats=["banner"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
             delivery_type="guaranteed",
             is_custom=False,
             property_tags=["all_inventory"],
@@ -115,7 +115,7 @@ def test_get_products_response_model_dump_still_has_full_data():
         product_id="test",
         name="Test Product",
         description="A test",
-        formats=["banner"],
+        format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
         delivery_type="guaranteed",
         is_custom=False,
         property_tags=["all_inventory"],  # Required per AdCP spec

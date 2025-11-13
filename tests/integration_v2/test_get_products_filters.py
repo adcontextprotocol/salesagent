@@ -272,4 +272,4 @@ class TestGetProductsFilterBehavior:
         assert hasattr(pricing, "currency")
 
         # Check formats structure
-        assert len(product.formats) > 0
+        assert len(product.format_ids) > 0

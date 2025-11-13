@@ -1,6 +1,6 @@
 """Integration tests for format conversion logic during media buy approval.
 
-Tests the conversion of product.formats (FormatReference/dict) to MediaPackage.format_ids
+Tests the conversion of product.format_ids (FormatReference/dict) to MediaPackage.format_ids
 (FormatId objects) in execute_approved_media_buy function.
 
 This tests the critical format conversion logic at lines 391-452 of media_buy_create.py.

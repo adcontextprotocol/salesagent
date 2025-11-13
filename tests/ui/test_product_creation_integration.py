@@ -235,7 +235,7 @@ def test_add_product_empty_json_fields(client, test_tenant, integration_db):
         # Product should be created (may fail if form validation rejected it)
         if product is not None:
             # Empty fields might be stored as None or empty lists/dicts depending on the database
-            assert product.formats in [None, []]
+            assert product.format_ids in [None, []]
             assert product.countries in [None, []]
             assert product.price_guidance in [None, {}]
             assert product.targeting_template in [None, {}]

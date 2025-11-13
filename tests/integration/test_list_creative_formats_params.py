@@ -115,7 +115,7 @@ def test_filtering_by_type(integration_db, sample_tenant):
             if formats and isinstance(formats[0], dict):
                 formats = [Format(**f) for f in formats]
         else:
-            formats = response.formats
+            formats = response.format_ids
 
         # All returned formats should be video type
         assert all(f.type == "video" for f in formats), "All formats should be video type"
@@ -179,7 +179,7 @@ def test_filtering_by_standard_only(integration_db, sample_tenant):
             if formats and isinstance(formats[0], dict):
                 formats = [Format(**f) for f in formats]
         else:
-            formats = response.formats
+            formats = response.format_ids
 
         # All returned formats should be standard
         assert all(f.is_standard for f in formats), "All formats should be standard"
@@ -255,7 +255,7 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
             if formats and isinstance(formats[0], dict):
                 formats = [Format(**f) for f in formats]
         else:
-            formats = response.formats
+            formats = response.format_ids
 
         # Should only return the requested formats (that exist)
         target_ids = ["display_300x250", "display_728x90"]
@@ -330,7 +330,7 @@ def test_filtering_combined(integration_db, sample_tenant):
             if formats and isinstance(formats[0], dict):
                 formats = [Format(**f) for f in formats]
         else:
-            formats = response.formats
+            formats = response.format_ids
 
         # All returned formats should match both filters
         assert all(f.type == "display" and f.is_standard for f in formats), "All formats should be display AND standard"

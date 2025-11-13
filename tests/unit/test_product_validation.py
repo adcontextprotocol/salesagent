@@ -31,7 +31,7 @@ def test_ai_provider_bug_reproduction():
         "product_id": "test_product",
         "name": "Test Product",
         "description": "Test description",
-        "formats": ["display_300x250", "audio_15s", "audio_30s"],
+        "format_ids": ["display_300x250", "audio_15s", "audio_30s"],
         "delivery_type": "guaranteed",
         "is_fixed_price": True,
         "cpm": 10.0,
@@ -88,7 +88,11 @@ def test_correct_product_construction():
         "product_id": "test_product",
         "name": "Test Product",
         "description": "Test description",
-        "formats": ["display_300x250", "audio_15s", "audio_30s"],
+        "format_ids": [
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "audio_15s"},
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "audio_30s"},
+        ],
         "delivery_type": "guaranteed",
         "is_custom": False,
         "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -118,8 +122,15 @@ def test_correct_product_construction():
 
     # Verify required fields are present
     assert "product_id" in adcp_response
-    assert "format_ids" in adcp_response  # Note: formats becomes format_ids in response
-    assert adcp_response["format_ids"] == ["display_300x250", "audio_15s", "audio_30s"]
+    assert "format_ids" in adcp_response
+    # format_ids are now FormatId objects per AdCP spec
+    assert len(adcp_response["format_ids"]) == 3
+    assert adcp_response["format_ids"][0]["id"] == "display_300x250"
+    assert adcp_response["format_ids"][1]["id"] == "audio_15s"
+    assert adcp_response["format_ids"][2]["id"] == "audio_30s"
+    # All should have the same agent_url
+    for fmt in adcp_response["format_ids"]:
+        assert fmt["agent_url"] == "https://creative.adcontextprotocol.org"
 
     # Verify internal fields are NOT in the response
     internal_fields = ["targeting_template", "price_guidance", "implementation_config", "countries", "expires_at"]

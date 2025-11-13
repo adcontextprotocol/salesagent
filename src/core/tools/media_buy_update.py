@@ -435,7 +435,9 @@ def _update_media_buy_impl(
                 )
                 # adcp v1.2.1 oneOf pattern: Check if result is Error variant
                 if hasattr(result, "errors") and result.errors:
-                    error_message = result.errors[0].message if (result.errors and len(result.errors) > 0) else "Update failed"
+                    error_message = (
+                        result.errors[0].message if (result.errors and len(result.errors) > 0) else "Update failed"
+                    )
                     response_data = UpdateMediaBuyError(errors=result.errors)
                     ctx_manager.update_workflow_step(
                         step.step_id,
@@ -468,7 +470,9 @@ def _update_media_buy_impl(
                 )
                 # adcp v1.2.1 oneOf pattern: Check if result is Error variant
                 if hasattr(result, "errors") and result.errors:
-                    error_message = result.errors[0].message if (result.errors and len(result.errors) > 0) else "Update failed"
+                    error_message = (
+                        result.errors[0].message if (result.errors and len(result.errors) > 0) else "Update failed"
+                    )
                     response_data = UpdateMediaBuyError(errors=result.errors)
                     ctx_manager.update_workflow_step(
                         step.step_id,
@@ -598,10 +602,10 @@ def _update_media_buy_impl(
                         )
                         product = session.scalars(product_stmt).first()
 
-                        if product and product.formats:
+                        if product and product.format_ids:
                             # Build set of supported formats (agent_url, format_id) tuples
                             supported_formats = set()
-                            for fmt in product.formats:
+                            for fmt in product.format_ids:
                                 if isinstance(fmt, dict):
                                     agent_url = fmt.get("agent_url")
                                     format_id = fmt.get("id") or fmt.get("format_id")
@@ -801,7 +805,9 @@ def _update_media_buy_impl(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
         packages=[],  # Required by AdCP spec
-        affected_packages=affected_packages_list if affected_packages_list else [],  # Internal field for tracking changes
+        affected_packages=(
+            affected_packages_list if affected_packages_list else []
+        ),  # Internal field for tracking changes
     )
 
     # Persist success with response data, then return

@@ -207,8 +207,8 @@ class TestMCPToolRoundtripValidation:
             else:
                 pricing_kwargs["rate"] = 10.0
 
-            # Extract format IDs from FormatId objects (db_product.formats may be list of dicts or FormatId objects)
-            formats = db_product.formats
+            # Extract format IDs from FormatId objects (db_product.format_ids may be list of dicts or FormatId objects)
+            formats = db_product.format_ids
             if formats and isinstance(formats[0], dict):
                 # Extract just the 'id' field from each format dict
                 format_ids = [f["id"] if isinstance(f, dict) else f.id for f in formats]
@@ -246,7 +246,7 @@ class TestMCPToolRoundtripValidation:
 
             # Step 4: Verify reconstruction succeeded
             assert reconstructed_product.product_id == product.product_id
-            assert reconstructed_product.formats == product.formats
+            assert reconstructed_product.format_ids == product.format_ids
             assert reconstructed_product.name == product.name
 
         # Test specific products that were created by fixture
@@ -257,8 +257,8 @@ class TestMCPToolRoundtripValidation:
         assert video_product is not None, "Should have found video product"
 
         # Test the specific case that was failing: formats field
-        assert display_product.formats == ["display_300x250", "display_728x90"]
-        assert video_product.formats == ["video_15s", "video_30s"]
+        assert display_product.format_ids == ["display_300x250", "display_728x90"]
+        assert video_product.format_ids == ["video_15s", "video_30s"]
 
         # Verify AdCP spec property works
         assert display_product.format_ids == ["display_300x250", "display_728x90"]
@@ -316,8 +316,8 @@ class TestMCPToolRoundtripValidation:
             else:
                 pricing_kwargs["rate"] = 10.0
 
-            # Extract format IDs from FormatId objects (db_product.formats may be list of dicts or FormatId objects)
-            formats = db_product.formats
+            # Extract format IDs from FormatId objects (db_product.format_ids may be list of dicts or FormatId objects)
+            formats = db_product.format_ids
             if formats and isinstance(formats[0], dict):
                 # Extract just the 'id' field from each format dict
                 format_ids = [f["id"] if isinstance(f, dict) else f.id for f in formats]
@@ -362,14 +362,14 @@ class TestMCPToolRoundtripValidation:
 
                 # Step 4: Verify reconstruction succeeded
                 assert reconstructed_product.product_id == product.product_id
-                assert reconstructed_product.formats == product.formats
+                assert reconstructed_product.format_ids == product.format_ids
                 assert reconstructed_product.name == product.name
                 assert reconstructed_product.delivery_type == product.delivery_type
 
                 # Test specific fields that were causing validation errors
                 assert hasattr(reconstructed_product, "formats")
-                assert isinstance(reconstructed_product.formats, list)
-                assert len(reconstructed_product.formats) > 0
+                assert isinstance(reconstructed_product.format_ids, list)
+                assert len(reconstructed_product.format_ids) > 0
                 assert reconstructed_product.measurement is not None
                 assert reconstructed_product.creative_policy is not None
 
@@ -426,7 +426,7 @@ class TestMCPToolRoundtripValidation:
         assert reconstructed_product.product_id == original_product.product_id
         assert reconstructed_product.name == original_product.name
         assert reconstructed_product.description == original_product.description
-        assert reconstructed_product.formats == original_product.formats
+        assert reconstructed_product.format_ids == original_product.format_ids
         assert reconstructed_product.delivery_type == original_product.delivery_type
         assert reconstructed_product.pricing_options == original_product.pricing_options
 
@@ -518,7 +518,7 @@ class TestMCPToolRoundtripValidation:
 
         # This should now succeed (format_ids is a valid alias)
         product1 = ProductSchema(**product_dict_with_format_ids)
-        assert product1.formats == ["display_300x250"]
+        assert product1.format_ids == ["display_300x250"]
 
         # Test 2: formats should also work (original field name)
         correct_product_dict = {
@@ -542,7 +542,7 @@ class TestMCPToolRoundtripValidation:
 
         # This should succeed
         product = ProductSchema(**correct_product_dict)
-        assert product.formats == ["display_300x250"]
+        assert product.format_ids == ["display_300x250"]
 
 
 class TestMCPToolRoundtripPatterns:
@@ -646,7 +646,7 @@ class TestMCPToolRoundtripPatterns:
                 # Step 6: Verify roundtrip preserved essential data
                 assert reconstructed.product_id == original.product_id
                 assert reconstructed.name == original.name
-                assert reconstructed.formats == original.formats
+                assert reconstructed.format_ids == original.format_ids
                 assert reconstructed.delivery_type == original.delivery_type
                 assert reconstructed.pricing_options == original.pricing_options
 
@@ -709,12 +709,12 @@ class TestMCPToolRoundtripPatterns:
         assert "formats" not in external_dict  # Internal field name excluded from external
 
         # Test property access
-        assert product.formats == ["display_300x250", "video_15s"]  # Internal access
+        assert product.format_ids == ["display_300x250", "video_15s"]  # Internal access
         assert product.format_ids == ["display_300x250", "video_15s"]  # External property
 
         # Test roundtrip from internal dict
         roundtrip_product = ProductSchema(**internal_dict)
-        assert roundtrip_product.formats == product.formats
+        assert roundtrip_product.format_ids == product.format_ids
         assert roundtrip_product.format_ids == product.format_ids
 
         # Verify external output is still compliant after roundtrip

@@ -174,7 +174,7 @@ class TestTenantDashboard:
             }
 
             creative_config = {
-                "auto_approve_formats": tenant_obj.auto_approve_formats or [],
+                "auto_approve_formats": tenant_obj.auto_approve_format_ids or [],
                 "human_review_required": tenant_obj.human_review_required,
             }
 

@@ -101,7 +101,7 @@ def get_tenant_config_from_db(tenant_id):
 
             # Build creative engine config from individual columns
             config["creative_engine"] = {
-                "auto_approve_formats": tenant.auto_approve_formats or [],
+                "auto_approve_formats": tenant.auto_approve_format_ids or [],
                 "human_review_required": tenant.human_review_required,
             }
 

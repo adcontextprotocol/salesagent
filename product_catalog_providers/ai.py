@@ -100,7 +100,7 @@ class AIProductCatalog(ProductCatalogProvider):
                 # Convert model to Product schema (only include AdCP-compliant fields)
                 # Build product_data with proper types
                 # Note: PostgreSQL with JSONType returns formats as Python objects (list of dicts)
-                formats_raw = product_model.formats
+                formats_raw = product_model.format_ids
 
                 # Convert database format objects to FormatId objects
                 # Database stores formats as list of dicts with 'agent_url' and 'id' keys
@@ -151,7 +151,7 @@ class AIProductCatalog(ProductCatalogProvider):
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
-                "formats": product.formats,
+                "formats": product.format_ids,
                 "delivery_type": product.delivery_type,
                 "is_custom": product.is_custom,
                 "pricing": {

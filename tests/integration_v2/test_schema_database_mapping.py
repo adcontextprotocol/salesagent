@@ -309,7 +309,7 @@ class TestSchemaFieldMapping:
             assert hasattr(product, "countries")
 
             # Access the fields to ensure no AttributeError
-            formats = product.formats
+            formats = product.format_ids
             targeting = product.targeting_template
             measurement = product.measurement
             countries = product.countries
@@ -358,7 +358,7 @@ class TestSchemaFieldMapping:
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
-                "formats": product.formats,
+                "formats": product.format_ids,
                 "delivery_type": product.delivery_type,
                 "is_custom": product.is_custom if product.is_custom is not None else False,
                 "property_tags": getattr(product, "property_tags", ["all_inventory"]),  # Required per AdCP spec

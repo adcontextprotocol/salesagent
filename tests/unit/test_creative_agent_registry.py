@@ -110,7 +110,7 @@ class TestCreativeAgentRegistry:
         mock_result = Mock()
         mock_result.status = "completed"
         mock_result.data = Mock()
-        mock_result.data.formats = mock_formats
+        mock_result.data.format_ids = mock_formats
 
         mock_agent_client.list_creative_formats = AsyncMock(return_value=mock_result)
         mock_client.agent = Mock(return_value=mock_agent_client)
@@ -268,7 +268,7 @@ class TestCreativeAgentRegistry:
         mock_result = Mock()
         mock_result.status = "completed"
         mock_result.data = Mock()
-        mock_result.data.formats = [mock_format_model]
+        mock_result.data.format_ids = [mock_format_model]
 
         mock_agent_client.list_creative_formats = AsyncMock(return_value=mock_result)
         mock_client.agent = Mock(return_value=mock_agent_client)

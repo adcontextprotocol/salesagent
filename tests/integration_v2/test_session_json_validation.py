@@ -405,13 +405,13 @@ class TestIntegration:
             # Check tenant
             t = session.scalars(select(Tenant).filter_by(tenant_id="workflow_test")).first()
             assert t is not None
-            assert t.auto_approve_formats == ["display_300x250", "video_16x9"]
+            assert t.auto_approve_format_ids == ["display_300x250", "video_16x9"]
             assert t.policy_settings["max_daily_budget"] == 10000.0
 
             # Check product
             p = session.scalars(select(Product).filter_by(product_id="prod_1")).first()
             assert p is not None
-            assert len(p.formats) == 1
+            assert len(p.format_ids) == 1
             assert p.formats[0]["format_id"] == "display_300x250"  # Format stored as dict with format_id
             assert p.targeting_template["geo_targets"] == ["US", "CA"]
 

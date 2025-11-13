@@ -172,16 +172,18 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         product_id = f"signal_{product_id_hash}"
 
         # Create AdCP-compliant Product (without internal fields like tenant_id)
-        from src.core.schemas import PriceGuidance, PricingOption
+        from src.core.schemas import FormatId, PriceGuidance, PricingOption
 
         return Product(
             product_id=product_id,
             name=product_name,
             description=product_description,
-            formats=["display_300x250", "display_728x90", "video_pre_roll"],  # Standard format IDs
+            format_ids=[
+                FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
+                FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
+                FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_pre_roll"),
+            ],
             delivery_type="non_guaranteed",  # Signals products are typically programmatic
-            floor_cpm=None,  # Optional - using pricing_options instead
-            recommended_cpm=None,  # Optional - using pricing_options instead
             measurement=None,  # Optional - signals products don't include measurement
             creative_policy=None,  # Optional - signals products don't include creative policy
             is_custom=True,  # These are custom products created from signals
@@ -247,7 +249,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
                         "product_id": db_product.product_id,
                         "name": db_product.name,
                         "description": db_product.description or f"Advertising product: {db_product.name}",
-                        "formats": db_product.formats or [],
+                        "formats": db_product.format_ids or [],
                         "delivery_type": "guaranteed" if first_pricing.get("is_fixed") else "non_guaranteed",
                         "is_fixed_price": first_pricing.get("is_fixed", False),
                         "cpm": first_pricing.get("rate"),

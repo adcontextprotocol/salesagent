@@ -179,15 +179,15 @@ class TestInventoryProfileTransitions:
             )
             product = session.scalars(stmt).first()
 
-            assert product.formats == custom_formats
+            assert product.format_ids == custom_formats
             assert product.properties == custom_properties
-            assert product.effective_formats == custom_formats
+            assert product.effective_format_ids == custom_formats
             assert product.effective_properties == custom_properties
 
             # Get profile data for comparison
             stmt = select(InventoryProfile).where(InventoryProfile.id == profile_a)
             profile = session.scalars(stmt).first()
-            profile_formats = profile.formats
+            profile_formats = profile.format_ids
             profile_properties = profile.publisher_properties
 
             # Set inventory_profile_id to existing profile
@@ -197,15 +197,15 @@ class TestInventoryProfileTransitions:
             session.refresh(product.inventory_profile)  # Ensure relationship is loaded
 
             # Assert effective_formats returns profile data
-            assert product.effective_formats == profile_formats
-            assert product.effective_formats != custom_formats
+            assert product.effective_format_ids == profile_formats
+            assert product.effective_format_ids != custom_formats
 
             # Assert effective_properties returns profile data
             assert product.effective_properties == profile_properties
             assert product.effective_properties != custom_properties
 
             # Assert custom data still exists in database (not deleted)
-            assert product.formats == custom_formats
+            assert product.format_ids == custom_formats
             assert product.properties == custom_properties
 
         # Cleanup
@@ -244,7 +244,7 @@ class TestInventoryProfileTransitions:
 
             # Initially using profile
             assert product.inventory_profile_id == profile_a
-            assert product.effective_formats == profile.formats
+            assert product.effective_format_ids == profile.format_ids
             assert product.effective_properties == profile.publisher_properties
 
             # Clear inventory_profile_id (set to None)
@@ -259,7 +259,7 @@ class TestInventoryProfileTransitions:
                 }
             ]
 
-            product.formats = custom_formats
+            product.format_ids = custom_formats
             product.properties = custom_properties
             product.property_tags = None
 
@@ -267,7 +267,7 @@ class TestInventoryProfileTransitions:
             session.refresh(product)
 
             # Assert effective_formats returns custom data
-            assert product.effective_formats == custom_formats
+            assert product.effective_format_ids == custom_formats
 
             # Assert effective_properties returns custom data
             assert product.effective_properties == custom_properties
@@ -310,11 +310,11 @@ class TestInventoryProfileTransitions:
             profile_b_obj = session.scalars(stmt_b).first()
 
             # Assert effective_formats returns profile_a formats
-            assert product.effective_formats == profile_a_obj.formats
+            assert product.effective_format_ids == profile_a_obj.format_ids
             assert product.effective_properties == profile_a_obj.publisher_properties
 
             # Verify we have the expected profile_a data
-            profile_a_format_ids = [f["id"] for f in profile_a_obj.formats]
+            profile_a_format_ids = [f["id"] for f in profile_a_obj.format_ids]
             assert "format_a1" in profile_a_format_ids
             assert "format_a2" in profile_a_format_ids
 
@@ -325,16 +325,16 @@ class TestInventoryProfileTransitions:
             session.refresh(product.inventory_profile)  # Reload relationship
 
             # Assert effective_formats returns profile_b formats
-            assert product.effective_formats == profile_b_obj.formats
+            assert product.effective_format_ids == profile_b_obj.format_ids
             assert product.effective_properties == profile_b_obj.publisher_properties
 
             # Verify we now have profile_b data
-            profile_b_format_ids = [f["id"] for f in profile_b_obj.formats]
+            profile_b_format_ids = [f["id"] for f in profile_b_obj.format_ids]
             assert "format_b1" in profile_b_format_ids
             assert "format_b2" in profile_b_format_ids
 
             # Verify profile_a data is NOT returned
-            current_format_ids = [f["id"] for f in product.effective_formats]
+            current_format_ids = [f["id"] for f in product.effective_format_ids]
             assert "format_a1" not in current_format_ids
             assert "format_a2" not in current_format_ids
 
@@ -377,7 +377,7 @@ class TestInventoryProfileTransitions:
 
             # Initially using profile
             assert product.inventory_profile_id == profile_a
-            assert product.effective_formats == profile.formats
+            assert product.effective_format_ids == profile.format_ids
 
             # Clear inventory_profile_id
             product.inventory_profile_id = None
@@ -388,8 +388,8 @@ class TestInventoryProfileTransitions:
             # System should return empty custom config gracefully
             assert product.inventory_profile_id is None
 
-            # effective_formats should return empty list (product.formats)
-            effective_formats = product.effective_formats
+            # effective_formats should return empty list (product.format_ids)
+            effective_formats = product.effective_format_ids
             assert isinstance(effective_formats, list)
             assert effective_formats == []
 

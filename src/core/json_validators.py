@@ -45,7 +45,7 @@ class PlatformMappingModel(BaseModel):
 
 
 class CreativeFormatModel(BaseModel):
-    """Model for product.formats array items."""
+    """Model for product.format_ids array items."""
 
     format_id: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1)

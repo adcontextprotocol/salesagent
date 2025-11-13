@@ -137,7 +137,7 @@ async def test_filter_by_format_ids_with_formatid_objects(mock_context):
 
     # Verify the product has the requested format
     product_format_ids = []
-    for fmt in result.products[0].formats:
+    for fmt in result.products[0].format_ids:
         if isinstance(fmt, dict):
             product_format_ids.append(fmt.get("id"))
         elif hasattr(fmt, "id"):

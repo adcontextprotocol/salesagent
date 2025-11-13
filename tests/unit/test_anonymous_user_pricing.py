@@ -9,7 +9,7 @@ def test_product_with_empty_pricing_options():
         product_id="test-1",
         name="Test Product",
         description="Test",
-        formats=["display_banner_728x90"],
+        format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_banner_728x90"}],
         delivery_type="guaranteed",
         pricing_options=[],
         property_tags=["all_inventory"],
@@ -29,7 +29,7 @@ def test_product_with_pricing_options():
         product_id="test-2",
         name="Test Product",
         description="Test",
-        formats=["display_banner_728x90"],
+        format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_banner_728x90"}],
         delivery_type="guaranteed",
         pricing_options=[
             PricingOption(
@@ -56,7 +56,7 @@ def test_product_pricing_options_defaults_to_empty_list():
         product_id="test-3",
         name="Test Product",
         description="Test",
-        formats=["display_banner_728x90"],
+        format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_banner_728x90"}],
         delivery_type="guaranteed",
         property_tags=["all_inventory"],
         # pricing_options not provided - should default to []

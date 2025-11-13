@@ -43,7 +43,7 @@ class TestConfigUtilities:
         mock_tenant.adapter_config = '{"google_ad_manager": {"enabled": true}}'
         mock_tenant.max_daily_budget = 10000
         mock_tenant.enable_axe_signals = True
-        mock_tenant.auto_approve_formats = ["display_300x250"]
+        mock_tenant.auto_approve_format_ids = ["display_300x250"]
         mock_tenant.human_review_required = False
         mock_tenant.policy_settings = '{"strict": false}'
 

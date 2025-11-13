@@ -48,7 +48,7 @@ def sample_product(integration_db):
 
 @pytest.mark.requires_db
 def test_product_formats_update_with_flag_modified(integration_db, sample_product):
-    """Test that updating product.formats with flag_modified saves changes."""
+    """Test that updating product.format_ids with flag_modified saves changes."""
     from src.core.database.database_session import get_db_session
 
     # Update the product's formats
@@ -58,7 +58,7 @@ def test_product_formats_update_with_flag_modified(integration_db, sample_produc
         assert product is not None
 
         # Update formats
-        product.formats = [
+        product.format_ids = [
             {"agent_url": "http://localhost:8888", "id": "new_format_1"},
             {"agent_url": "http://localhost:8888", "id": "new_format_2"},
             {"agent_url": "http://localhost:8888", "id": "new_format_3"},
@@ -74,7 +74,7 @@ def test_product_formats_update_with_flag_modified(integration_db, sample_produc
         stmt = select(Product).filter_by(product_id=sample_product)
         product = session.scalars(stmt).first()
         assert product is not None
-        assert len(product.formats) == 3
+        assert len(product.format_ids) == 3
         assert product.formats[0]["id"] == "new_format_1"
         assert product.formats[1]["id"] == "new_format_2"
         assert product.formats[2]["id"] == "new_format_3"
@@ -82,9 +82,9 @@ def test_product_formats_update_with_flag_modified(integration_db, sample_produc
 
 @pytest.mark.requires_db
 def test_product_formats_update_without_flag_modified_fails(integration_db, sample_product):
-    """Test that reassigning product.formats DOES save changes even without flag_modified.
+    """Test that reassigning product.format_ids DOES save changes even without flag_modified.
 
-    When you reassign the entire field (product.formats = [...]), SQLAlchemy detects the change.
+    When you reassign the entire field (product.format_ids = [...]), SQLAlchemy detects the change.
     flag_modified is only needed for in-place mutations like product.formats[0] = {...}.
     """
     from src.core.database.database_session import get_db_session
@@ -96,7 +96,7 @@ def test_product_formats_update_without_flag_modified_fails(integration_db, samp
         assert product is not None
 
         # Reassign formats (this IS detected by SQLAlchemy)
-        product.formats = [
+        product.format_ids = [
             {"agent_url": "http://localhost:8888", "id": "should_save_1"},
             {"agent_url": "http://localhost:8888", "id": "should_save_2"},
         ]
@@ -112,7 +112,7 @@ def test_product_formats_update_without_flag_modified_fails(integration_db, samp
         product = session.scalars(stmt).first()
         assert product is not None
         # Changes were saved because we reassigned the entire field
-        assert len(product.formats) == 2
+        assert len(product.format_ids) == 2
         assert product.formats[0]["id"] == "should_save_1"
         assert product.formats[1]["id"] == "should_save_2"
 
