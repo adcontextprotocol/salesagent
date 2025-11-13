@@ -23,8 +23,9 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import requests
-from urllib.parse import urlparse, urlunparse
+
 from src.core.database.models import PushNotificationConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,7 +90,7 @@ class ProtocolWebhookService:
             return False
 
         url = _normalize_localhost_for_docker(push_notification_config.url)
-        
+
         # Build notification payload (AdCP standard format)
         payload: dict[str, Any] = {
             "task_id": task_id,
@@ -109,13 +110,18 @@ class ProtocolWebhookService:
         logger.info(f"push_notification_config: {push_notification_config}")
 
         # Apply authentication based on schemes
-        if push_notification_config.authentication_type == "HMAC-SHA256" and push_notification_config.authentication_token:
+        if (
+            push_notification_config.authentication_type == "HMAC-SHA256"
+            and push_notification_config.authentication_token
+        ):
             # Sign payload with HMAC-SHA256
 
             timestamp = str(int(time.time()))
             payload_str = json.dumps(payload, sort_keys=False, separators=(",", ":"))
             message = f"{timestamp}.{payload_str}"
-            signature = hmac.new(push_notification_config.authentication_token.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+            signature = hmac.new(
+                push_notification_config.authentication_token.encode("utf-8"), message.encode("utf-8"), hashlib.sha256
+            ).hexdigest()
 
             headers["X-AdCP-Signature"] = f"sha256={signature}"
             headers["X-AdCP-Timestamp"] = timestamp

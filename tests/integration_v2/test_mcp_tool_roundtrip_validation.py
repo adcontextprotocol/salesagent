@@ -493,30 +493,39 @@ class TestMCPToolRoundtripValidation:
         """
         Test that we can detect schema validation errors that would occur in production.
 
-        This test demonstrates what happens when field mappings are incorrect.
+        NOTE: format_ids is now accepted as a valid alias for formats (via AliasChoices).
+        This test validates that both formats and format_ids work correctly.
         """
-        # Create a dict with the WRONG field name (simulating the bug)
-        invalid_product_dict = {
+        # Test 1: format_ids should work (now a valid alias)
+        product_dict_with_format_ids = {
             "product_id": "validation_error_test",
             "name": "Validation Error Test Product",
             "description": "Testing schema validation error detection",
-            "format_ids": ["display_300x250"],  # WRONG: AdCP field name in internal dict
+            "format_ids": ["display_300x250"],  # Now VALID: Accepts both formats and format_ids
             "delivery_type": "guaranteed",
-            "is_fixed_price": True,
-            "cpm": 10.0,
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [
+                {
+                    "pricing_option_id": "cpm_usd_fixed",
+                    "pricing_model": "cpm",
+                    "rate": 10.0,
+                    "currency": "USD",
+                    "is_fixed": True,
+                }
+            ],
         }
 
-        # This should fail with "formats field required" if we try to create Product object
-        with pytest.raises(ValueError, match="formats"):
-            ProductSchema(**invalid_product_dict)
+        # This should now succeed (format_ids is a valid alias)
+        product1 = ProductSchema(**product_dict_with_format_ids)
+        assert product1.formats == ["display_300x250"]
 
-        # Now test the CORRECT approach
+        # Test 2: formats should also work (original field name)
         correct_product_dict = {
             "product_id": "validation_success_test",
             "name": "Validation Success Test Product",
             "description": "Testing correct schema validation",
-            "formats": ["display_300x250"],  # CORRECT: Internal field name
+            "formats": ["display_300x250"],  # Original field name
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -534,7 +543,6 @@ class TestMCPToolRoundtripValidation:
         # This should succeed
         product = ProductSchema(**correct_product_dict)
         assert product.formats == ["display_300x250"]
-        assert product.format_ids == ["display_300x250"]  # Property works correctly
 
 
 class TestMCPToolRoundtripPatterns:

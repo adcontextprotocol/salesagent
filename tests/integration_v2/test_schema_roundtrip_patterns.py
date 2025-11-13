@@ -411,22 +411,37 @@ class TestRoundtripErrorScenarios:
 
     def test_field_name_mismatch_detection(self):
         """Test detection of field name mismatches that cause validation errors."""
-        # This simulates the bug where external field names were used in internal dicts
-        invalid_product_dict = {
+        # NOTE: format_ids is now accepted as a valid alias for formats (via AliasChoices)
+        # This test now validates that BOTH formats and format_ids work correctly
+
+        # Test 1: format_ids should work (serialization alias is now also validation alias)
+        valid_product_dict_with_format_ids = {
             "product_id": "field_mismatch_test",
             "name": "Field Mismatch Test",
             "description": "Testing field name mismatch detection",
-            "format_ids": ["display_300x250"],  # WRONG: External field name in internal dict
+            "format_ids": ["display_300x250"],  # Now VALID: Accepts both formats and format_ids
             "delivery_type": "guaranteed",
-            "is_fixed_price": True,
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
-        from pydantic import ValidationError
+        # This should now succeed (format_ids is a valid alias)
+        product = Product(**valid_product_dict_with_format_ids)
+        assert product.formats == ["display_300x250"]
 
-        # This should fail with validation error
-        with pytest.raises((ValueError, ValidationError), match="formats"):
-            Product(**invalid_product_dict)
+        # Test 2: formats should also work (original field name)
+        valid_product_dict_with_formats = {
+            "product_id": "field_mismatch_test_2",
+            "name": "Field Mismatch Test 2",
+            "description": "Testing with formats field",
+            "formats": ["display_728x90"],  # Original field name
+            "delivery_type": "guaranteed",
+            "is_custom": False,
+            "property_tags": ["all_inventory"],
+        }
+
+        product2 = Product(**valid_product_dict_with_formats)
+        assert product2.formats == ["display_728x90"]
 
     def test_missing_required_field_detection(self):
         """Test detection of missing required fields."""

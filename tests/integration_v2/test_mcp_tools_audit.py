@@ -375,30 +375,32 @@ class TestMCPToolsAudit:
         """
         Test for anti-patterns that lead to field mapping issues.
 
-        These patterns would cause validation errors in production:
-        1. Using external field names in internal dicts
-        2. Missing required fields after conversion
-        3. Type mismatches during reconstruction
+        NOTE: format_ids is now accepted as a valid alias for formats (via AliasChoices).
+        This test has been updated to test actual anti-patterns.
+
+        Anti-patterns tested:
+        1. Missing required fields (property_tags)
+        2. Type mismatches during reconstruction
         """
-        # Anti-pattern 1: External field names in internal data
-        # This simulates the original bug in get_products
-        anti_pattern_data = {
+        # Test that format_ids now works (it's a valid alias)
+        from src.core.schemas import Product
+
+        valid_data_with_format_ids = {
             "product_id": "anti_pattern_test",
             "name": "Anti-pattern Test Product",
             "description": "Testing anti-pattern detection",
-            "format_ids": ["display_300x250"],  # WRONG: External name in internal data
+            "format_ids": ["display_300x250"],  # Now VALID: Accepts both formats and format_ids
             "delivery_type": "guaranteed",
-            "is_fixed_price": True,
             "is_custom": False,
+            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "pricing_options": [],  # Can be empty for anonymous users
         }
 
-        # This should fail with validation error
-        from src.core.schemas import Product
+        # This should now succeed (format_ids is a valid alias)
+        product = Product(**valid_data_with_format_ids)
+        assert product.formats == ["display_300x250"]
 
-        with pytest.raises(ValueError, match="formats"):
-            Product(**anti_pattern_data)
-
-        # Anti-pattern 2: Type mismatches
+        # Anti-pattern: Type mismatches
         type_mismatch_data = {
             "media_buy_id": "type_mismatch_test",
             "buyer_ref": "mismatch_ref",

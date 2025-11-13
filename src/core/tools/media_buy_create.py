@@ -1833,39 +1833,35 @@ async def _create_media_buy_impl(
                 elif pkg.buyer_ref:
                     pkg_name = f"{pkg.buyer_ref} - Package {idx}"
 
-                # Serialize the full package to include all fields (budget, targeting, etc.)
-                # Use model_dump_internal to get complete package data
-                if hasattr(pkg, "model_dump_internal"):
-                    pkg_dict = pkg.model_dump_internal()
-                elif hasattr(pkg, "model_dump"):
-                    pkg_dict = pkg.model_dump(exclude_none=True, mode="python")
-                else:
-                    pkg_dict = {}
-
-                # Build response with complete package data (matching auto-approval path)
+                # Build Package object with complete package data (matching auto-approval path)
                 # NOTE: Do NOT set package status here - Package.status is PackageStatus (draft/active/paused/completed)
                 # The workflow approval state is tracked separately in WorkflowStep.status (TaskStatus)
-                pending_packages.append(
+                from src.core.schemas import Package
+
+                # Create Package object from request package, adding generated fields
+                pkg_data = pkg.model_dump(exclude_none=True)
+                pkg_data.update(
                     {
-                        **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
                         "package_id": package_id,
-                        "name": pkg_name,
                         "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request package
                         # Package status should be null until the package is actually created in the ad server
                         # After approval + adapter creation, it will be set to "draft" or "active" by the adapter
                     }
                 )
+                pending_packages.append(Package(**pkg_data))
 
                 # Update the package in raw_request with the generated package_id so UI can find it
                 raw_request_dict["packages"][idx - 1]["package_id"] = package_id
 
             # Remap package_pricing_info from index-based keys to actual package IDs
             # Note: pending_packages loop used enumerate(req.packages, 1) but pricing used enumerate(req.packages) starting at 0
-            package_pricing_info = {}
+            package_pricing_info: dict[str, dict[str, Any]] = {}
             # Map pricing info from package index to package_id
-            for pkg_idx, pkg_data in enumerate(pending_packages):
+            for pkg_idx, pkg_obj in enumerate(pending_packages):
                 if pkg_idx in package_pricing_info_by_index:
-                    package_pricing_info[pkg_data["package_id"]] = package_pricing_info_by_index[pkg_idx]
+                    # Only add to dict if package_id is not None
+                    if pkg_obj.package_id is not None:
+                        package_pricing_info[pkg_obj.package_id] = package_pricing_info_by_index[pkg_idx]
                 else:
                     logger.warning(f"No pricing info found for package index {pkg_idx}")
             logger.debug(f"[PRICING] Mapped {len(package_pricing_info)} package pricing info")
@@ -1935,21 +1931,21 @@ async def _create_media_buy_impl(
             with get_db_session() as session:
                 from src.core.database.models import MediaPackage as DBMediaPackage
 
-                for pkg_data in pending_packages:
+                for pkg_obj in pending_packages:
                     # Sanitize status to ensure AdCP spec compliance
-                    raw_status = pkg_data.get("status")
+                    raw_status = pkg_obj.status
                     sanitized_status = _sanitize_package_status(raw_status)
 
                     package_config = {
-                        "package_id": pkg_data["package_id"],
-                        "name": pkg_data.get("name"),
+                        "package_id": pkg_obj.package_id,  # type: ignore[index]
+                        "name": getattr(pkg_obj, "name", None),
                         "status": sanitized_status,  # Only store AdCP-compliant status values
                     }
                     # Add full package data from raw_request
                     for idx, req_pkg in enumerate(req.packages):
-                        if idx == pending_packages.index(pkg_data):
+                        if idx == pending_packages.index(pkg_obj):
                             # Get pricing info for this package if available
-                            pricing_info_for_package = package_pricing_info.get(pkg_data["package_id"])
+                            pricing_info_for_package = package_pricing_info.get(pkg_obj.package_id) if pkg_obj.package_id else None  # type: ignore[index]
 
                             # Serialize budget: normalize to object format for database storage
                             # ADCP 2.5.0 sends flat numbers, but we normalize to object with currency for DB
@@ -2061,7 +2057,7 @@ async def _create_media_buy_impl(
                         if package.creative_ids:
                             # Get package_id from pending_packages (already generated)
                             pkg_id: str | None = (
-                                pending_packages[i].get("package_id") if i < len(pending_packages) else None
+                                pending_packages[i].package_id if i < len(pending_packages) else None  # type: ignore[union-attr]
                             )
                             if not pkg_id:
                                 logger.error(f"Cannot assign creatives: No package_id for package {i}")
@@ -2494,14 +2490,18 @@ async def _create_media_buy_impl(
 
         # Remap package_pricing_info from index-based keys to actual package IDs
         # Note: packages loop used enumerate(products_in_buy, 1) but pricing used enumerate(req.packages) starting at 0
-        package_pricing_info = {}
+        remapped_package_pricing_info: dict[str, dict[str, Any]] = {}
         # Map pricing info from index to package_id
         for pkg_idx, pkg in enumerate(packages):
             if pkg_idx in package_pricing_info_by_index:
-                package_pricing_info[pkg.package_id] = package_pricing_info_by_index[pkg_idx]
+                # Only add to dict if package_id is not None
+                if pkg.package_id is not None:
+                    remapped_package_pricing_info[pkg.package_id] = package_pricing_info_by_index[pkg_idx]
             else:
                 logger.warning(f"No pricing info found for package index {pkg_idx}")
-        logger.debug(f"[PRICING] Mapped {len(package_pricing_info)} package pricing info")
+        logger.debug(f"[PRICING] Mapped {len(remapped_package_pricing_info)} package pricing info")
+        # Reassign to package_pricing_info for use later
+        package_pricing_info = remapped_package_pricing_info
 
         # Create the media buy using the adapter (SYNCHRONOUS operation)
         # Defensive null check: ensure start_time and end_time are set
@@ -2990,7 +2990,7 @@ async def _create_media_buy_impl(
             else:
                 # Fallback if adapter didn't return enough packages
                 logger.warning(f"Adapter returned fewer packages than request. Using request package {i}")
-                response_package_dict = {}
+                response_package_dict = {}  # type: ignore[assignment]
 
             # CRITICAL: Save package_id from adapter response BEFORE merge
             adapter_package_id = response_package_dict.get("package_id")

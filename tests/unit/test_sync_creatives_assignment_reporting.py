@@ -70,13 +70,14 @@ class TestSyncCreativesAssignmentReporting:
             assigned_to=["pkg_1", "pkg_2", "pkg_3"],
         )
 
-        # Serialize to dict
+        # Serialize to dict (model_dump() defaults to exclude_none=True per AdCP spec)
         result_dict = result.model_dump()
 
         assert result_dict["creative_id"] == "test_creative_4"
         assert result_dict["action"] == "created"
         assert result_dict["assigned_to"] == ["pkg_1", "pkg_2", "pkg_3"]
-        assert "assignment_errors" in result_dict  # Should be present even if None
+        # assignment_errors is None, so excluded by default (exclude_none=True)
+        assert "assignment_errors" not in result_dict
 
     def test_sync_creative_result_excludes_none_assignments(self):
         """Test that None assignment fields can be excluded from serialization."""
