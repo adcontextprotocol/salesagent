@@ -324,6 +324,7 @@ def _get_media_buy_delivery_impl(
             "media_buy_count": media_buy_count,
         },
         media_buy_deliveries=deliveries,
+        context=req.context or None,
     )
 
     # Apply testing hooks if needed
