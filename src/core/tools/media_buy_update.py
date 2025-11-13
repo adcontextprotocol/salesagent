@@ -310,8 +310,6 @@ def _update_media_buy_impl(
     if req.start_time or req.end_time or req.budget or (req.packages and any(pkg.budget for pkg in req.packages)):
         from decimal import Decimal
 
-        from sqlalchemy import select
-
         from src.core.database.database_session import get_db_session
         from src.core.database.models import CurrencyLimit
         from src.core.database.models import MediaBuy as MediaBuyModel
@@ -527,8 +525,6 @@ def _update_media_buy_impl(
                         error_message=error_msg,
                     )
                     return response_data
-
-                from sqlalchemy import select
 
                 from src.core.database.database_session import get_db_session
                 from src.core.database.models import Creative as DBCreative
@@ -750,7 +746,6 @@ def _update_media_buy_impl(
                     )
                     return response_data
 
-                from sqlalchemy import select
                 from sqlalchemy.orm import attributes
 
                 from src.core.database.database_session import get_db_session
