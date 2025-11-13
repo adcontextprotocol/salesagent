@@ -26,6 +26,7 @@ def test_update_package_budget_persists_to_database():
     # Create a minimal mock adapter
     mock_adapter = Mock(spec=GoogleAdManager)
     mock_adapter.log = Mock()
+    mock_adapter.tenant_id = "tenant_test123"  # Add tenant_id for tenant isolation
     mock_adapter._is_admin_principal = Mock(return_value=False)
     mock_adapter._requires_manual_approval = Mock(return_value=False)
     mock_adapter.workflow_manager = Mock()
@@ -78,6 +79,7 @@ def test_update_package_budget_returns_error_when_package_not_found():
     # Create a minimal mock adapter
     mock_adapter = Mock(spec=GoogleAdManager)
     mock_adapter.log = Mock()
+    mock_adapter.tenant_id = "tenant_test123"  # Add tenant_id for tenant isolation
     mock_adapter._is_admin_principal = Mock(return_value=False)
     mock_adapter._requires_manual_approval = Mock(return_value=False)
     mock_adapter.workflow_manager = Mock()

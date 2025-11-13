@@ -1077,11 +1077,33 @@ class GoogleAdManager(AdServerAdapter):
             from src.core.database.database_session import get_db_session
             from src.core.database.models import MediaPackage
 
+            # Validate budget is positive (security: prevent negative/zero budgets)
+            if budget <= 0:
+                self.log(f"[red]Invalid budget value: {budget} (must be positive)[/red]")
+                return UpdateMediaBuyError(
+                    errors=[
+                        Error(
+                            code="invalid_budget",
+                            message=f"Budget must be positive, got {budget}",
+                            details={"budget": budget},
+                        )
+                    ],
+                )
+
             self.log(f"[GAM] Updating package {package_id} budget to {budget}")
 
             with get_db_session() as session:
-                stmt = select(MediaPackage).where(
-                    MediaPackage.package_id == package_id, MediaPackage.media_buy_id == media_buy_id
+                # Security: Join with MediaBuy for tenant isolation
+                from src.core.database.models import MediaBuy as MediaBuyModel
+
+                stmt = (
+                    select(MediaPackage)
+                    .join(MediaBuyModel, MediaPackage.media_buy_id == MediaBuyModel.media_buy_id)
+                    .where(
+                        MediaPackage.package_id == package_id,
+                        MediaPackage.media_buy_id == media_buy_id,
+                        MediaBuyModel.tenant_id == self.tenant_id,
+                    )
                 )
                 media_package = session.scalars(stmt).first()
 

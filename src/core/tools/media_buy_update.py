@@ -893,6 +893,57 @@ def _update_media_buy_impl(
 
         if update_values:
             with get_db_session() as db_session:
+                # Get existing media buy to check date range consistency
+                from sqlalchemy import select as sqlalchemy_select
+
+                existing_mb_stmt = sqlalchemy_select(MediaBuy).where(MediaBuy.media_buy_id == req.media_buy_id)
+                existing_mb = db_session.scalars(existing_mb_stmt).first()
+
+                if not existing_mb:
+                    error_msg = f"Media buy {req.media_buy_id} not found"
+                    response_data = UpdateMediaBuyError(
+                        errors=[{"code": "media_buy_not_found", "message": error_msg}],
+                    )
+                    ctx_manager.update_workflow_step(
+                        step.step_id,
+                        status="failed",
+                        response_data=response_data.model_dump(),
+                        error_message=error_msg,
+                    )
+                    return response_data
+
+                # Validate date range: end_time must be after start_time
+                # Type guard: Ensure we're working with datetime objects (not SQLAlchemy DateTime)
+                start_val = update_values.get("start_time", existing_mb.start_time)
+                end_val = update_values.get("end_time", existing_mb.end_time)
+
+                # Convert to Python datetime if needed (handle SQLAlchemy DateTime)
+                final_start_time: datetime | None = None
+                final_end_time: datetime | None = None
+
+                if start_val is not None:
+                    final_start_time = (
+                        start_val if isinstance(start_val, datetime) else datetime.fromisoformat(str(start_val))
+                    )
+                if end_val is not None:
+                    final_end_time = end_val if isinstance(end_val, datetime) else datetime.fromisoformat(str(end_val))
+
+                if final_start_time and final_end_time and final_end_time <= final_start_time:
+                    error_msg = (
+                        f"Invalid date range: end_time ({final_end_time.isoformat()}) "
+                        f"must be after start_time ({final_start_time.isoformat()})"
+                    )
+                    response_data = UpdateMediaBuyError(
+                        errors=[{"code": "invalid_date_range", "message": error_msg}],
+                    )
+                    ctx_manager.update_workflow_step(
+                        step.step_id,
+                        status="failed",
+                        response_data=response_data.model_dump(),
+                        error_message=error_msg,
+                    )
+                    return response_data
+
                 update_stmt = (
                     sqlalchemy_update(MediaBuy).where(MediaBuy.media_buy_id == req.media_buy_id).values(**update_values)
                 )
