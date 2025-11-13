@@ -142,7 +142,7 @@ class DeliveryDataModel(BaseModel):
 class JSONValidatorMixin:
     """Mixin to add JSON validation to SQLAlchemy models."""
 
-    @validates("authorized_emails", "authorized_domains", "auto_approve_formats")
+    @validates("authorized_emails", "authorized_domains", "auto_approve_format_ids")
     def validate_json_array_fields(self, key, value):
         """Validate that these fields are JSON arrays."""
         return ensure_json_array(value, default=[])

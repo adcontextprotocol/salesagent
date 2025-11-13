@@ -191,7 +191,7 @@ def create_tenant():
                 slack_audit_webhook_url=data.get("slack_audit_webhook_url"),
                 hitl_webhook_url=data.get("hitl_webhook_url"),
                 admin_token=admin_token,
-                auto_approve_formats=json.dumps(data.get("auto_approve_formats", ["display_300x250"])),
+                auto_approve_format_ids=json.dumps(data.get("auto_approve_format_ids", ["display_300x250"])),
                 human_review_required=data.get("human_review_required", True),
                 policy_settings=json.dumps(data.get("policy_settings", {})),
                 created_at=datetime.now(UTC),
@@ -432,8 +432,8 @@ def update_tenant(tenant_id):
                 tenant.slack_audit_webhook_url = data["slack_audit_webhook_url"]
             if "hitl_webhook_url" in data:
                 tenant.hitl_webhook_url = data["hitl_webhook_url"]
-            if "auto_approve_formats" in data:
-                tenant.auto_approve_format_ids = json.dumps(data["auto_approve_formats"])
+            if "auto_approve_format_ids" in data:
+                tenant.auto_approve_format_ids = json.dumps(data["auto_approve_format_ids"])
             if "human_review_required" in data:
                 tenant.human_review_required = data["human_review_required"]
             if "policy_settings" in data:

@@ -136,7 +136,7 @@ def init_db_ci():
                     policy_settings=None,  # SQL NULL
                     signals_agent_config=None,  # SQL NULL
                     ai_policy=None,  # SQL NULL
-                    auto_approve_formats=["display_300x250", "display_728x90"],
+                    auto_approve_format_ids=["display_300x250", "display_728x90"],
                     human_review_required=False,
                     created_at=now,
                     updated_at=now,

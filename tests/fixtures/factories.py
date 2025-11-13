@@ -31,7 +31,7 @@ class TenantFactory:
         default_config = {
             "adapters": {"mock": {"enabled": True, "manual_approval_required": False}},
             "creative_engine": {
-                "auto_approve_formats": ["display_300x250", "display_728x90"],
+                "auto_approve_format_ids": ["display_300x250", "display_728x90"],
                 "human_review_required": False,
             },
             "features": {"max_daily_budget": 10000, "enable_axe_signals": True},

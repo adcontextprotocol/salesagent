@@ -47,7 +47,7 @@ def init_db(exit_on_error=False):
                 billing_plan="standard",
                 ad_server="mock",
                 enable_axe_signals=True,
-                auto_approve_formats=json.dumps(
+                auto_approve_format_ids=json.dumps(
                     [
                         "display_300x250",
                         "display_728x90",

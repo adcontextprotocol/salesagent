@@ -90,7 +90,7 @@ def init_db(exit_on_error=False):
                 enable_axe_signals=True,
                 admin_token=admin_token,
                 human_review_required=True,
-                auto_approve_formats=["display_300x250", "display_728x90", "display_320x50"],
+                auto_approve_format_ids=["display_300x250", "display_728x90", "display_320x50"],
                 created_at=now,
                 updated_at=now,
             )

@@ -48,7 +48,7 @@ def test_tenant(integration_db):
             subdomain="test-product",
             ad_server="mock",
             enable_axe_signals=True,
-            auto_approve_formats=[],  # Formats now come from creative agents, not local database
+            auto_approve_format_ids=[],  # Formats now come from creative agents, not local database
             human_review_required=False,
             billing_plan="basic",
             is_active=True,

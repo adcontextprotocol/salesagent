@@ -85,7 +85,7 @@ def load_config() -> dict[str, Any]:
     config = {
         "ad_server": {"adapter": tenant.get("ad_server", "mock"), "enabled": True},
         "creative_engine": {
-            "auto_approve_formats": tenant.get("auto_approve_formats", []),
+            "auto_approve_format_ids": tenant.get("auto_approve_format_ids", []),
             "human_review_required": tenant.get("human_review_required", True),
         },
         "features": {
