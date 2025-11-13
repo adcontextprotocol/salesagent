@@ -125,6 +125,8 @@ async def _get_products_impl(
             testing_ctx = testing_ctx_raw
         principal_id: str | None = context.principal_id
         tenant: dict[str, Any] = {"tenant_id": context.tenant_id}  # Simplified tenant info
+        # Ensure ContextVar is populated for helpers that require tenant context
+        set_current_tenant(tenant)
     else:
         # Legacy path - extract from FastMCP Context
         if context is None:

@@ -40,7 +40,7 @@ from src.core.validation_helpers import format_validation_error
 
 
 def _get_media_buy_delivery_impl(
-    req: GetMediaBuyDeliveryRequest, context: Context | ToolContext | None
+    req: GetMediaBuyDeliveryRequest, ctx: Context | ToolContext | None
 ) -> GetMediaBuyDeliveryResponse:
     """Get delivery data for one or more media buys.
 
@@ -49,13 +49,13 @@ def _get_media_buy_delivery_impl(
     """
 
     # Validate context is provided
-    if context is None:
+    if ctx is None:
         raise ToolError("Context is required")
 
     # Extract testing context for time simulation and event jumping
-    testing_ctx = get_testing_context(context)
+    testing_ctx = get_testing_context(ctx)
 
-    principal_id = get_principal_id_from_context(context)
+    principal_id = get_principal_id_from_context(ctx)
     if not principal_id:
         # Return AdCP-compliant error response
         return GetMediaBuyDeliveryResponse(

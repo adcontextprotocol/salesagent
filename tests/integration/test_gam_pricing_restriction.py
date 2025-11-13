@@ -298,7 +298,7 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify adapter returned error response
@@ -351,7 +351,7 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify response (adcp v1.2.1 oneOf pattern)
@@ -401,7 +401,7 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify adapter returned error response
@@ -454,7 +454,7 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify response (adcp v1.2.1 oneOf pattern)

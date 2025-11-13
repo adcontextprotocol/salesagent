@@ -296,7 +296,8 @@ async def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
+        context=None,
     )
 
     assert response.media_buy_id is not None
@@ -340,7 +341,8 @@ async def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_prici
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        context=None,
+        ctx=context,
     )
 
     assert response.media_buy_id is not None
@@ -384,7 +386,8 @@ async def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
+        context=None,
     )
 
     # Check for errors in response (AdCP 2.4 compliant)
@@ -429,7 +432,8 @@ async def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_prod
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
+        context=None,
     )
 
     assert response.media_buy_id is not None
@@ -472,7 +476,8 @@ async def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        context=None,
+        ctx=context,
     )
 
     # Check for errors in response (AdCP 2.4 compliant)
@@ -517,7 +522,8 @@ async def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_prici
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
+        context=None,
     )
 
     assert response.media_buy_id is not None
@@ -560,7 +566,8 @@ async def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pr
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
+        context=None,
     )
 
     # Check for errors in response (AdCP 2.4 compliant)

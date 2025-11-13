@@ -396,7 +396,7 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify response (AdCP 2.4 compliant)
@@ -451,7 +451,7 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify response (AdCP 2.4 compliant)
@@ -507,7 +507,7 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify response (AdCP 2.4 compliant)
@@ -564,7 +564,7 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify response (AdCP 2.4 compliant)
@@ -634,7 +634,7 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify response (AdCP 2.4 compliant)
@@ -704,7 +704,7 @@ async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify response (AdCP 2.4 compliant)

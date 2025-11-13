@@ -167,7 +167,7 @@ class TestAuthenticationRequirements:
 
         # Call without context (no auth)
         with pytest.raises((ToolError, ValueError)) as exc_info:
-            _get_media_buy_delivery_impl(req=req, context=None)
+            _get_media_buy_delivery_impl(req=req, ctx=None)
 
         error_msg = str(exc_info.value)
         # May raise ToolError for missing auth or ValueError for missing context

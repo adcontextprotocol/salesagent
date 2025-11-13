@@ -83,6 +83,7 @@ from src.core.tools import (
 )
 from src.core.tools import (
     list_creative_formats_raw as core_list_creative_formats_tool,
+    ListCreativesRequest
 )
 from src.core.tools import (
     list_creatives_raw as core_list_creatives_tool,
@@ -1541,8 +1542,7 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="list_creatives",
             )
 
-            # Call core function with optional parameters (fixing original validation bug)
-            response = core_list_creatives_tool(
+            req = ListCreativesRequest(
                 media_buy_id=parameters.get("media_buy_id"),
                 buyer_ref=parameters.get("buyer_ref"),
                 status=parameters.get("status"),
@@ -1556,6 +1556,11 @@ class AdCPRequestHandler(RequestHandler):
                 sort_by=parameters.get("sort_by", "created_date"),
                 sort_order=parameters.get("sort_order", "desc"),
                 context=parameters.get("context"),
+            )
+
+            # Call core function with optional parameters (fixing original validation bug)
+            response = core_list_creatives_tool(
+                req=req,
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 

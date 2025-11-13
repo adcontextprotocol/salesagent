@@ -88,7 +88,7 @@ class TestDuplicateProductValidation:
                 start_time=start_time,
                 end_time=end_time,
                 budget=Budget(total=2500, currency="USD"),
-                context=mock_context,
+                ctx=mock_context,
             )
 
             # Verify response contains error about duplicate products
@@ -175,7 +175,7 @@ class TestDuplicateProductValidation:
                 start_time=start_time,
                 end_time=end_time,
                 budget=Budget(total=6300, currency="USD"),
-                context=mock_context,
+                ctx=mock_context,
             )
 
             # Verify both duplicate products are mentioned
