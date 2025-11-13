@@ -202,7 +202,7 @@ class TestGetProductsFilterBehavior:
         result = await get_products(
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             brief="",
-            context=context,
+            ctx=context,
         )
 
         # Verify we got products (baseline test)
@@ -226,7 +226,7 @@ class TestGetProductsFilterBehavior:
         result = await get_products(
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             brief="",
-            context=context,
+            ctx=context,
         )
 
         # Should return all 5 products created in fixture
@@ -250,7 +250,7 @@ class TestGetProductsFilterBehavior:
         result = await get_products(
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             brief="",
-            context=context,
+            ctx=context,
         )
 
         # Check first product has all required fields

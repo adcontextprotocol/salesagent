@@ -233,7 +233,7 @@ class TestCreateMediaBuyV24Format:
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=5000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-001",
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure
@@ -286,7 +286,7 @@ class TestCreateMediaBuyV24Format:
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=8000.0, currency="EUR"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-002",
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure
@@ -346,7 +346,7 @@ class TestCreateMediaBuyV24Format:
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=total_budget_value, currency="USD"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-003",
-            context=context,
+            ctx=context,
         )
 
         # Verify all packages serialized correctly
@@ -390,7 +390,7 @@ class TestCreateMediaBuyV24Format:
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=6000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-A2A-001",
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure (same as MCP)
@@ -431,7 +431,7 @@ class TestCreateMediaBuyV24Format:
             total_budget=4000.0,  # Legacy parameter
             start_date=(datetime.now(UTC) + timedelta(days=1)).date(),  # Legacy parameter
             end_date=(datetime.now(UTC) + timedelta(days=31)).date(),  # Legacy parameter
-            context=context,
+            ctx=context,
         )
 
         # Verify response
