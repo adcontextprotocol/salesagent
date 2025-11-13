@@ -164,8 +164,8 @@ class TestMCPEndpointsComprehensive:
                 assert "product_id" in product
                 assert "name" in product
                 assert "description" in product
-                # AdCP spec uses "formats" (array of FormatId objects), not "format_ids"
-                assert "formats" in product
+                # AdCP spec uses "format_ids" (array of FormatId objects)
+                assert "format_ids" in product
                 assert "delivery_type" in product
                 assert product["delivery_type"] in ["guaranteed", "non_guaranteed"]
                 # Pricing options should be included

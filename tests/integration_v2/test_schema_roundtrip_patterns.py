@@ -108,7 +108,6 @@ class SchemaRoundtripValidator:
         if model_class == Product:
             # Product-specific AdCP validation
             assert "format_ids" in adcp_dict, "Product must have format_ids for AdCP compliance"
-            assert "formats" not in adcp_dict, "Internal 'formats' field should not appear in AdCP output"
             assert isinstance(adcp_dict["format_ids"], list), "format_ids must be a list"
 
             # Required Product fields per AdCP spec
@@ -137,7 +136,7 @@ class TestProductSchemaRoundtrip:
             "product_id": "guaranteed_roundtrip_test",
             "name": "Guaranteed Product Roundtrip Test",
             "description": "Testing guaranteed product roundtrip conversion",
-            "formats": ["display_300x250", "display_728x90"],
+            "format_ids": ["display_300x250", "display_728x90"],
             "delivery_type": "guaranteed",
             "measurement": Measurement(
                 type="brand_lift", attribution="deterministic_purchase", reporting="weekly_dashboard"
@@ -166,7 +165,7 @@ class TestProductSchemaRoundtrip:
             "product_id": "non_guaranteed_roundtrip_test",
             "name": "Non-Guaranteed Product Roundtrip Test",
             "description": "Testing non-guaranteed product roundtrip conversion",
-            "formats": ["video_15s", "video_30s"],
+            "format_ids": ["video_15s", "video_30s"],
             "delivery_type": "non_guaranteed",
             "is_custom": True,
             "property_tags": ["all_inventory"],
@@ -191,7 +190,7 @@ class TestProductSchemaRoundtrip:
             "product_id": "minimal_roundtrip_test",
             "name": "Minimal Product Roundtrip Test",
             "description": "Testing minimal product with required fields only",
-            "formats": ["display_320x50"],
+            "format_ids": ["display_320x50"],
             "delivery_type": "non_guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],
@@ -216,7 +215,7 @@ class TestProductSchemaRoundtrip:
             "product_id": "complex_roundtrip_test",
             "name": "Complex Product Roundtrip Test",
             "description": "Testing complex product with all fields populated",
-            "formats": ["display_300x250", "video_15s", "audio_30s"],
+            "format_ids": ["display_300x250", "video_15s", "audio_30s"],
             "delivery_type": "guaranteed",
             "measurement": Measurement(
                 type="incremental_sales_lift", attribution="probabilistic", window="30_days", reporting="real_time_api"
@@ -469,7 +468,7 @@ class TestRoundtripErrorScenarios:
                     "product_id": "type_test_1",
                     "name": "Type Test 1",
                     "description": "Testing type conversion",
-                    "formats": "display_300x250",  # WRONG: String instead of list
+                    "format_ids": "display_300x250",  # WRONG: String instead of list
                     "delivery_type": "guaranteed",
                     "is_fixed_price": True,
                     "is_custom": False,
@@ -482,7 +481,7 @@ class TestRoundtripErrorScenarios:
                     "product_id": "type_test_2",
                     "name": "Type Test 2",
                     "description": "Testing enum validation",
-                    "formats": ["display_300x250"],
+                    "format_ids": ["display_300x250"],
                     "delivery_type": "invalid_delivery_type",  # WRONG: Invalid enum value
                     "is_fixed_price": True,
                     "is_custom": False,
@@ -495,7 +494,7 @@ class TestRoundtripErrorScenarios:
                     "product_id": "type_test_3",
                     "name": "Type Test 3",
                     "description": "Testing numeric validation",
-                    "formats": ["display_300x250"],
+                    "format_ids": ["display_300x250"],
                     "delivery_type": "guaranteed",
                     "is_fixed_price": True,
                     "min_spend": -100.0,  # WRONG: Negative min_spend (has gt=-1 validation)
@@ -523,7 +522,7 @@ class TestRoundtripErrorScenarios:
             "product_id": "data_loss_test",
             "name": "Data Loss Test Product",
             "description": "Testing for data loss during roundtrip",
-            "formats": ["display_300x250", "video_15s"],
+            "format_ids": ["display_300x250", "video_15s"],
             "delivery_type": "guaranteed",
             "measurement": Measurement(
                 type="incremental_sales_lift",

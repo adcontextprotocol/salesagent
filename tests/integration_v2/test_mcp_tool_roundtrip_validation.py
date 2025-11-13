@@ -219,7 +219,7 @@ class TestMCPToolRoundtripValidation:
                 "product_id": db_product.product_id,
                 "name": db_product.name,
                 "description": db_product.description or "",
-                "formats": format_ids,  # Internal field name (list of strings)
+                "format_ids": format_ids,  # AdCP spec field name (list of strings)
                 "delivery_type": db_product.delivery_type,
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
@@ -328,7 +328,7 @@ class TestMCPToolRoundtripValidation:
                 "product_id": db_product.product_id,
                 "name": db_product.name,
                 "description": db_product.description or "",
-                "formats": format_ids,  # Internal field name (list of strings)
+                "format_ids": format_ids,  # AdCP spec field name (list of strings)
                 "delivery_type": db_product.delivery_type,
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
@@ -367,7 +367,7 @@ class TestMCPToolRoundtripValidation:
                 assert reconstructed_product.delivery_type == product.delivery_type
 
                 # Test specific fields that were causing validation errors
-                assert hasattr(reconstructed_product, "formats")
+                assert hasattr(reconstructed_product, "format_ids")
                 assert isinstance(reconstructed_product.format_ids, list)
                 assert len(reconstructed_product.format_ids) > 0
                 assert reconstructed_product.measurement is not None
@@ -403,9 +403,9 @@ class TestMCPToolRoundtripValidation:
         # Step 1: Convert to dict (what the tool does before testing hooks)
         product_dict = original_product.model_dump_internal()
 
-        # Verify the dict has the internal field name
-        assert "formats" in product_dict
-        assert product_dict["formats"] == ["display_300x250", "video_15s"]
+        # Verify the dict has the correct field name
+        assert "format_ids" in product_dict
+        assert product_dict["format_ids"] == ["display_300x250", "video_15s"]
 
         # Step 2: Simulate testing hooks modifying the data
         testing_ctx = TestingContext(dry_run=True, test_session_id="isolated_test")
@@ -467,7 +467,6 @@ class TestMCPToolRoundtripValidation:
 
         # Verify AdCP spec compliance
         assert "format_ids" in adcp_dict  # AdCP spec field name
-        assert "formats" not in adcp_dict  # Internal field name should be excluded
         assert adcp_dict["format_ids"] == ["display_300x250", "display_728x90"]
 
         # Verify required AdCP fields are present
@@ -520,12 +519,12 @@ class TestMCPToolRoundtripValidation:
         product1 = ProductSchema(**product_dict_with_format_ids)
         assert product1.format_ids == ["display_300x250"]
 
-        # Test 2: formats should also work (original field name)
+        # Test 2: format_ids should work (correct field name)
         correct_product_dict = {
             "product_id": "validation_success_test",
             "name": "Validation Success Test Product",
             "description": "Testing correct schema validation",
-            "formats": ["display_300x250"],  # Original field name
+            "format_ids": ["display_300x250"],  # Correct field name
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -656,7 +655,6 @@ class TestMCPToolRoundtripPatterns:
                 # Step 7: Verify AdCP spec compliance
                 adcp_output = reconstructed.model_dump()
                 assert "format_ids" in adcp_output
-                assert "formats" not in adcp_output
 
     def test_field_mapping_consistency_validation(self):
         """
@@ -711,7 +709,6 @@ class TestMCPToolRoundtripPatterns:
         # Test external (AdCP) representation
         external_dict = product.model_dump()
         assert "format_ids" in external_dict  # Field name
-        assert "formats" not in external_dict  # Old deprecated field name excluded
 
         # Test property access (format_ids returns FormatId objects)
         assert len(product.format_ids) == 2

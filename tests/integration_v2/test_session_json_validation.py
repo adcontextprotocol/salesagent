@@ -412,7 +412,8 @@ class TestIntegration:
             p = session.scalars(select(Product).filter_by(product_id="prod_1")).first()
             assert p is not None
             assert len(p.format_ids) == 1
-            assert p.formats[0]["format_id"] == "display_300x250"  # Format stored as dict with format_id
+            # format_ids is stored as a list of FormatId objects in the database
+            assert p.format_ids[0].id == "display_300x250" or p.format_ids[0]["id"] == "display_300x250"
             assert p.targeting_template["geo_targets"] == ["US", "CA"]
 
             # Check principal

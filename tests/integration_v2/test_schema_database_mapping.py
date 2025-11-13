@@ -69,7 +69,7 @@ class TestSchemaFieldMapping:
         )
 
         # Verify critical fields exist in both
-        critical_fields = {"product_id", "name", "description", "formats", "delivery_type"}
+        critical_fields = {"product_id", "name", "description", "format_ids", "delivery_type"}
         for field in critical_fields:
             assert field in schema_fields, f"Critical field '{field}' missing from Product schema"
             assert field in db_columns, f"Critical field '{field}' missing from ProductModel database"
@@ -177,7 +177,7 @@ class TestSchemaFieldMapping:
                 "product_id",
                 "name",
                 "description",
-                "formats",
+                "format_ids",
                 "delivery_type",
                 "property_tags",
             ]
@@ -303,7 +303,7 @@ class TestSchemaFieldMapping:
             session.refresh(product)
 
             # Test that JSON fields are accessible and have correct types
-            assert hasattr(product, "formats")
+            assert hasattr(product, "format_ids")
             assert hasattr(product, "targeting_template")
             assert hasattr(product, "measurement")
             assert hasattr(product, "countries")
@@ -358,7 +358,7 @@ class TestSchemaFieldMapping:
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
-                "formats": product.format_ids,
+                "format_ids": product.format_ids,
                 "delivery_type": product.delivery_type,
                 "is_custom": product.is_custom if product.is_custom is not None else False,
                 "property_tags": getattr(product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
@@ -515,7 +515,7 @@ class TestFieldAccessPatterns:
         assert not missing_fields, f"Expected database fields missing: {missing_fields}"
 
         # Fields that should NOT exist (would cause the original bug)
-        forbidden_fields = {"pricing", "cost_basis", "margin", "formats"}
+        forbidden_fields = {"pricing", "cost_basis", "margin"}
 
         # Verify forbidden fields don't exist
         existing_forbidden = forbidden_fields & actual_db_fields

@@ -97,7 +97,7 @@ class TestDatabaseProductsIntegration:
             assert hasattr(db_product, "product_id")
             assert hasattr(db_product, "name")
             assert hasattr(db_product, "description")
-            assert hasattr(db_product, "formats")
+            assert hasattr(db_product, "format_ids")
             assert hasattr(db_product, "delivery_type")
 
             # Test pricing_options relationship exists

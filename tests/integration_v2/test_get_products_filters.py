@@ -258,7 +258,7 @@ class TestGetProductsFilterBehavior:
         assert hasattr(product, "product_id")
         assert hasattr(product, "name")
         assert hasattr(product, "description")
-        assert hasattr(product, "formats")
+        assert hasattr(product, "format_ids")
         assert hasattr(product, "delivery_type")
 
         # Check pricing_options field (new v2 model)
