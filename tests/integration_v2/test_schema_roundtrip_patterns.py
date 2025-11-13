@@ -419,29 +419,31 @@ class TestRoundtripErrorScenarios:
             "product_id": "field_mismatch_test",
             "name": "Field Mismatch Test",
             "description": "Testing field name mismatch detection",
-            "format_ids": ["display_300x250"],  # Now VALID: Accepts both formats and format_ids
+            "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
         }
 
-        # This should now succeed (format_ids is a valid alias)
+        # This should now succeed (format_ids is a valid field)
         product = Product(**valid_product_dict_with_format_ids)
-        assert product.format_ids == ["display_300x250"]
+        assert len(product.format_ids) == 1
+        assert product.format_ids[0]["id"] == "display_300x250"
 
-        # Test 2: formats should also work (original field name)
-        valid_product_dict_with_formats = {
+        # Test 2: format_ids with different format
+        valid_product_dict_with_format_ids_2 = {
             "product_id": "field_mismatch_test_2",
             "name": "Field Mismatch Test 2",
-            "description": "Testing with formats field",
-            "formats": ["display_728x90"],  # Original field name
+            "description": "Testing with different format",
+            "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}],
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],
         }
 
-        product2 = Product(**valid_product_dict_with_formats)
-        assert product2.format_ids == ["display_728x90"]
+        product2 = Product(**valid_product_dict_with_format_ids_2)
+        assert len(product2.format_ids) == 1
+        assert product2.format_ids[0]["id"] == "display_728x90"
 
     def test_missing_required_field_detection(self):
         """Test detection of missing required fields."""
