@@ -1434,10 +1434,6 @@ class GetProductsRequest(AdCPBaseModel):
         None,
         description="Structured filters for product discovery",
     )
-<<<<<<< HEAD
-
-=======
->>>>>>> 544d693a (chore: undo unrelated changes)
 
 class GetProductsResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response for get_products tool (AdCP v2.4 spec compliant).
