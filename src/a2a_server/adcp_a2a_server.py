@@ -83,7 +83,6 @@ from src.core.tools import (
 )
 from src.core.tools import (
     list_creative_formats_raw as core_list_creative_formats_tool,
-    ListCreativesRequest
 )
 from src.core.tools import (
     list_creatives_raw as core_list_creatives_tool,
@@ -1541,8 +1540,9 @@ class AdCPRequestHandler(RequestHandler):
                 auth_token=auth_token,
                 tool_name="list_creatives",
             )
-
-            req = ListCreativesRequest(
+            
+            # Call core function with optional parameters (fixing original validation bug)
+            response = core_list_creatives_tool(
                 media_buy_id=parameters.get("media_buy_id"),
                 buyer_ref=parameters.get("buyer_ref"),
                 status=parameters.get("status"),
@@ -1556,11 +1556,6 @@ class AdCPRequestHandler(RequestHandler):
                 sort_by=parameters.get("sort_by", "created_date"),
                 sort_order=parameters.get("sort_order", "desc"),
                 context=parameters.get("context"),
-            )
-
-            # Call core function with optional parameters (fixing original validation bug)
-            response = core_list_creatives_tool(
-                req=req,
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
@@ -1778,7 +1773,7 @@ class AdCPRequestHandler(RequestHandler):
             )
 
             # Call core function with request
-            response = core_list_creative_formats_tool(req=req, context=self._tool_context_to_mcp_context(tool_context))
+            response = core_list_creative_formats_tool(req=req, ctx=self._tool_context_to_mcp_context(tool_context))
 
             # Convert response to dict
             if isinstance(response, dict):
