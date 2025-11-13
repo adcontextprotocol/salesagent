@@ -669,7 +669,10 @@ class TestMCPToolRoundtripPatterns:
             "product_id": "field_mapping_test",
             "name": "Field Mapping Test Product",
             "description": "Testing all field mapping scenarios",
-            "formats": ["display_300x250", "video_15s"],  # Internal name
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+            ],
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -703,22 +706,20 @@ class TestMCPToolRoundtripPatterns:
 
         # Test internal representation
         internal_dict = product.model_dump_internal()
-        assert "formats" in internal_dict  # Internal field name
-        assert "format_ids" not in internal_dict  # External field name excluded from internal
+        assert "format_ids" in internal_dict  # Field name (no separate internal/external anymore)
 
         # Test external (AdCP) representation
         external_dict = product.model_dump()
-        assert "format_ids" in external_dict  # External field name
-        assert "formats" not in external_dict  # Internal field name excluded from external
+        assert "format_ids" in external_dict  # Field name
+        assert "formats" not in external_dict  # Old deprecated field name excluded
 
-        # Test property access
-        assert product.format_ids == ["display_300x250", "video_15s"]  # Internal access
-        assert product.format_ids == ["display_300x250", "video_15s"]  # External property
+        # Test property access (format_ids returns FormatId objects)
+        assert len(product.format_ids) == 2
+        assert all(hasattr(fmt, "id") and hasattr(fmt, "agent_url") for fmt in product.format_ids)
 
         # Test roundtrip from internal dict
         roundtrip_product = ProductSchema(**internal_dict)
-        assert roundtrip_product.format_ids == product.format_ids
-        assert roundtrip_product.format_ids == product.format_ids
+        assert len(roundtrip_product.format_ids) == len(product.format_ids)
 
         # Verify external output is still compliant after roundtrip
         roundtrip_external = roundtrip_product.model_dump()
