@@ -522,7 +522,10 @@ class TestRoundtripErrorScenarios:
             "product_id": "data_loss_test",
             "name": "Data Loss Test Product",
             "description": "Testing for data loss during roundtrip",
-            "format_ids": ["display_300x250", "video_15s"],
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+            ],
             "delivery_type": "guaranteed",
             "measurement": Measurement(
                 type="incremental_sales_lift",
