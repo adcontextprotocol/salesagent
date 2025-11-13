@@ -383,12 +383,14 @@ def create_test_media_buy_request_dict(
 
     Args:
         buyer_ref: Buyer reference identifier
-        product_ids: List of product IDs to include in package. Defaults to ["test_product"]
+        product_ids: List of product IDs to include in a single package. Defaults to ["test_product"]
+                     Note: All products go into one package. Use packages kwarg for multi-package scenarios.
         total_budget: Total budget for the campaign
         start_time: Campaign start time (ISO string). Defaults to "asap"
         end_time: Campaign end time (ISO string). Defaults to 30 days from now
         brand_manifest: Brand info dict. Defaults to {"name": "Test Brand", "promoted_offering": "Test Product"}
         **kwargs: Additional optional fields (po_number, reporting_webhook, targeting_overlay, etc.)
+                  targeting_overlay goes into the package, all others go to top level
 
     Returns:
         Media buy request dict suitable for create_media_buy tool
@@ -441,11 +443,12 @@ def create_test_media_buy_request_dict(
         "budget": total_budget,  # Top-level budget
     }
 
-    # Add optional fields from kwargs
-    if "targeting_overlay" in kwargs:
-        request["packages"][0]["targeting_overlay"] = kwargs.pop("targeting_overlay")
+    # Handle targeting_overlay specially (goes in package, not top-level)
+    targeting_overlay = kwargs.pop("targeting_overlay", None)
+    if targeting_overlay is not None:
+        request["packages"][0]["targeting_overlay"] = targeting_overlay
 
-    # Merge remaining kwargs
+    # Merge remaining kwargs to top level
     request.update(kwargs)
 
     return request
