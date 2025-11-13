@@ -246,6 +246,9 @@ Then call: window.inventoryProfileEditor.open(profileData)
         loadFormats();
         loadAuthorizedProperties();
 
+        // Set up search functionality for inventory fields
+        setupInventorySearch();
+
         // Set up property mode toggle
         document.getElementById('profilePropertyModeAll').addEventListener('change', handlePropertyModeChange);
         document.getElementById('profilePropertyModeSpecific').addEventListener('change', handlePropertyModeChange);
@@ -524,6 +527,34 @@ Then call: window.inventoryProfileEditor.open(profileData)
                 item.style.display = text.includes(query) ? 'block' : 'none';
             });
         });
+    }
+
+    // ==================== INVENTORY SEARCH ====================
+
+    function setupInventorySearch() {
+        // Ad Units search - press Enter to open picker with search pre-filled
+        const adUnitSearch = document.getElementById('profileAdUnitSearch');
+        if (adUnitSearch) {
+            adUnitSearch.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    // Open picker with search value - no setTimeout needed!
+                    window.inventoryPicker.open('ad_unit', adUnitSearch.value);
+                }
+            });
+        }
+
+        // Placements search - press Enter to open picker with search pre-filled
+        const placementSearch = document.getElementById('profilePlacementSearch');
+        if (placementSearch) {
+            placementSearch.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    // Open picker with search value - no setTimeout needed!
+                    window.inventoryPicker.open('placement', placementSearch.value);
+                }
+            });
+        }
     }
 
     window.inventoryProfileEditor.toggleFormat = function(formatId, formatName, agentUrl) {

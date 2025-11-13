@@ -113,6 +113,7 @@ def get_creative_formats(
                 else str(fmt.format_id)
             ),  # Extract string ID from FormatId object
             "agent_url": fmt.agent_url,
+            "form_value": fmt.get_form_value(),  # Use helper for consistent format ID construction
             "name": fmt.name,
             "type": fmt.type,
             "category": fmt.category,
@@ -672,10 +673,8 @@ def add_product(tenant_id):
                                 loop.close()
 
                         # Build set of valid format IDs for quick lookup
-                        # Format objects have format_id (FormatId object with agent_url and id)
-                        valid_format_ids = {
-                            f"{fmt.format_id.agent_url}|{fmt.format_id.id}" for fmt in available_formats
-                        }
+                        # Use Format.get_form_value() for consistent format ID construction
+                        valid_format_ids = {fmt.get_form_value() for fmt in available_formats}
                         logger.info(f"[DEBUG] Found {len(valid_format_ids)} valid formats for tenant {tenant_id}")
                         sample_ids = list(valid_format_ids)[:5]
                         logger.info(f"[DEBUG] Sample valid format IDs: {sample_ids}")
@@ -699,22 +698,14 @@ def add_product(tenant_id):
 
                         agent_url, format_id = fmt_str.split("|", 1)
 
-                        # Normalize agent_url by ensuring it has a trailing slash
-                        # Form submits without trailing slash, but Format objects have trailing slash
-                        if not agent_url.endswith("/"):
-                            agent_url_normalized = agent_url + "/"
-                        else:
-                            agent_url_normalized = agent_url
-
-                        normalized_fmt_str = f"{agent_url_normalized}|{format_id}"
-
-                        # Validate format exists (using normalized URL)
-                        if normalized_fmt_str not in valid_format_ids:
+                        # No normalization needed - use exact match
+                        # Both form submission and valid_format_ids now use fmt.agent_url consistently
+                        # Validate format exists
+                        if fmt_str not in valid_format_ids:
                             invalid_formats.append(format_id)
-                            logger.warning(
-                                f"Invalid format ID selected: {format_id} from {agent_url} (normalized: {agent_url_normalized})"
-                            )
-                            logger.warning(f"Looking for: {normalized_fmt_str} in valid_format_ids")
+                            logger.warning(f"Invalid format ID selected: {format_id} from {agent_url}")
+                            logger.warning(f"Looking for: {fmt_str} in valid_format_ids")
+                            logger.warning(f"Available format IDs (first 10): {list(valid_format_ids)[:10]}")
                             continue
 
                         # Store with original agent_url (without forcing trailing slash)
@@ -1250,8 +1241,10 @@ def edit_product(tenant_id, product_id):
                         loop.close()
 
                 # Build set of valid format IDs for quick lookup
-                valid_format_ids = {f"{fmt.format_id.agent_url}|{fmt.format_id.id}" for fmt in available_formats}
+                # Use Format.get_form_value() for consistent format ID construction
+                valid_format_ids = {fmt.get_form_value() for fmt in available_formats}
                 logger.info(f"[DEBUG] Found {len(valid_format_ids)} valid formats for tenant {tenant_id}")
+                logger.info(f"[DEBUG] Sample valid format IDs: {list(valid_format_ids)[:5]}")
 
                 # Validate and convert formats
                 validated_formats = []
@@ -1263,18 +1256,14 @@ def edit_product(tenant_id, product_id):
 
                     agent_url, format_id = fmt_str.split("|", 1)
 
-                    # Normalize agent_url by ensuring it has a trailing slash
-                    if not agent_url.endswith("/"):
-                        agent_url_normalized = agent_url + "/"
-                    else:
-                        agent_url_normalized = agent_url
-
-                    normalized_fmt_str = f"{agent_url_normalized}|{format_id}"
-
-                    # Validate format exists (using normalized URL)
-                    if normalized_fmt_str not in valid_format_ids:
+                    # No normalization needed - use exact match
+                    # Both form submission and valid_format_ids now use fmt.agent_url consistently
+                    # Validate format exists
+                    if fmt_str not in valid_format_ids:
                         invalid_formats.append(format_id)
                         logger.warning(f"Invalid format ID: {format_id} from {agent_url}")
+                        logger.warning(f"Looking for: {fmt_str} in valid_format_ids")
+                        logger.warning(f"Available format IDs (first 10): {list(valid_format_ids)[:10]}")
                         continue
 
                     validated_formats.append({"agent_url": agent_url, "id": format_id})
