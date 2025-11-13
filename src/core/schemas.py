@@ -762,6 +762,10 @@ class Targeting(BaseModel):
     # Frequency control
     frequency_cap: FrequencyCap | None = None  # Impression limits per user/period
 
+    # AXE segment targeting (AdCP 3.0.3)
+    axe_include_segment: str | None = None  # AXE segment ID to include for targeting
+    axe_exclude_segment: str | None = None  # AXE segment ID to exclude from targeting
+
     # Connection type targeting
     connection_type_any_of: list[int] | None = None  # OpenRTB connection types
     connection_type_none_of: list[int] | None = None
