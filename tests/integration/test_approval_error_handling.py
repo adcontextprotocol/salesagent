@@ -56,7 +56,6 @@ class TestApprovalErrorHandling:
             media_package = MediaPackage(
                 package_id="pkg_test_123",
                 media_buy_id=media_buy_id,
-                tenant_id=tenant_id,
                 package_config={
                     "package_id": "pkg_test_123",
                     "product_id": product_id,
@@ -123,7 +122,6 @@ class TestApprovalErrorHandling:
             media_package = MediaPackage(
                 package_id="pkg_test_456",
                 media_buy_id=media_buy_id,
-                tenant_id=tenant_id,
                 package_config={
                     "package_id": "pkg_test_456",
                     "product_id": product_id,

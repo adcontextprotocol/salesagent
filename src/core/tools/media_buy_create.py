@@ -2547,14 +2547,10 @@ async def _create_media_buy_impl(
             response = _execute_adapter_media_buy_creation(
                 req, packages, start_time, end_time, package_pricing_info, principal, testing_ctx
             )
-            if response.packages:
-                for i, pkg in enumerate(response.packages):  # type: ignore[assignment,no-redef]
-                    # pkg is dict[str, Any] here (response.packages), different scope from earlier Package usage
-                    logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg}")
         except Exception as adapter_error:
             raise
 
-        # Check if adapter returned an error response FIRST (before accessing media_buy_id)
+        # Check if adapter returned an error response FIRST (before accessing any fields)
         # With oneOf pattern, response can be CreateMediaBuySuccess or CreateMediaBuyError
         if isinstance(response, CreateMediaBuyError):
             error_msg = response.errors[0].message if response.errors else "Unknown error"
@@ -2562,8 +2558,15 @@ async def _create_media_buy_impl(
             logger.error(f"[ADAPTER] Adapter returned error response: {error_code} - {error_msg}")
             return response  # type: ignore[return-value]
 
+        # At this point, response is CreateMediaBuySuccess - safe to access success-specific fields
         # Type narrowing: media_buy_id must be present in successful response
         assert response.media_buy_id is not None, "Adapter returned response without media_buy_id"
+
+        # Log response packages for debugging
+        if response.packages:
+            for i, pkg in enumerate(response.packages):  # type: ignore[assignment,no-redef]
+                # pkg is dict[str, Any] here (response.packages), different scope from earlier Package usage
+                logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg}")
 
         # Store the media buy in memory (for backward compatibility)
         # Lazy import to avoid circular dependency
