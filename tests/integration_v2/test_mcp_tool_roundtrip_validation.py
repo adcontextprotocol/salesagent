@@ -562,7 +562,7 @@ class TestMCPToolRoundtripPatterns:
                     "product_id": "pattern_guaranteed",
                     "name": "Guaranteed Display Product",
                     "description": "Pattern test for guaranteed products",
-                    "formats": ["display_300x250"],
+                    "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                     "delivery_type": "guaranteed",
                     "is_custom": False,
                     "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -584,7 +584,10 @@ class TestMCPToolRoundtripPatterns:
                     "product_id": "pattern_non_guaranteed",
                     "name": "Non-Guaranteed Video Product",
                     "description": "Pattern test for non-guaranteed products",
-                    "formats": ["video_15s", "video_30s"],
+                    "format_ids": [
+                        {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+                        {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s"},
+                    ],
                     "delivery_type": "non_guaranteed",
                     "is_custom": True,
                     "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -607,7 +610,7 @@ class TestMCPToolRoundtripPatterns:
                     "product_id": "pattern_minimal",
                     "name": "Minimal Product",
                     "description": "Pattern test with minimal fields",
-                    "formats": ["display_728x90"],
+                    "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}],
                     "delivery_type": "non_guaranteed",
                     "is_custom": False,
                     "property_tags": ["all_inventory"],  # Required per AdCP spec
