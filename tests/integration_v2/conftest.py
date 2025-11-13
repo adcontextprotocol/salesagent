@@ -463,7 +463,7 @@ def create_test_product_with_pricing(
     currency: str = "USD",
     min_spend_per_package: Decimal | float | str | None = None,
     price_guidance: dict | None = None,
-    formats: list[dict[str, str]] | None = None,
+    format_ids: list[dict[str, str]] | None = None,
     targeting_template: dict | None = None,
     delivery_type: str = "guaranteed_impressions",
     property_tags: list[str] | None = None,
@@ -484,7 +484,7 @@ def create_test_product_with_pricing(
         is_fixed: True for fixed pricing, False for auction
         currency: Currency code (default: USD)
         min_spend_per_package: Minimum spend per package (optional)
-        formats: Creative formats (default: standard 300x250)
+        format_ids: Creative formats (default: standard 300x250)
         targeting_template: Targeting template (default: empty)
         delivery_type: Delivery type (default: guaranteed_impressions)
         property_tags: Property tags (default: ["all_inventory"])
@@ -510,9 +510,9 @@ def create_test_product_with_pricing(
     if product_id is None:
         product_id = f"test_product_{uuid.uuid4().hex[:8]}"
 
-    # Default formats (standard display ad)
-    if formats is None:
-        formats = [{"agent_url": "https://test.com", "id": "300x250"}]
+    # Default format_ids (standard display ad)
+    if format_ids is None:
+        format_ids = [{"agent_url": "https://test.com", "id": "300x250"}]
 
     # Default targeting template
     if targeting_template is None:
@@ -545,7 +545,7 @@ def create_test_product_with_pricing(
         tenant_id=tenant_id,
         product_id=product_id,
         name=name,
-        format_ids=formats,
+        format_ids=format_ids,
         targeting_template=targeting_template,
         delivery_type=delivery_type,
         property_tags=property_tags,

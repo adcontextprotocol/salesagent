@@ -139,7 +139,7 @@ class TestDatabaseProductsIntegration:
                 "product_id",
                 "name",
                 "description",
-                "formats",
+                "format_ids",
                 "delivery_type",
                 "targeting_template",
                 "measurement",
