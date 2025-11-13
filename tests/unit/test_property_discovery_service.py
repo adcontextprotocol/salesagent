@@ -279,6 +279,178 @@ class TestPropertyDiscoveryService:
 
         mock_db_patcher.stop()
 
+    @pytest.mark.asyncio
+    async def test_sync_properties_unrestricted_agent_all_properties(self):
+        """Test syncing when agent has no property restrictions (access to all properties).
+
+        Per AdCP spec: if property_ids/property_tags/properties/publisher_properties
+        are all missing/empty, agent has access to ALL properties from that publisher.
+        """
+        mock_db_patcher, mock_session = MockSetup.create_mock_db_session()
+
+        # Mock database queries to return empty lists
+        def create_mock_scalars():
+            mock_scalars = Mock()
+            mock_scalars.first.return_value = None
+            mock_scalars.all.return_value = []
+            return mock_scalars
+
+        mock_session.scalars.side_effect = lambda *args: create_mock_scalars()
+
+        # Mock adagents.json with unrestricted agent (no property_ids field)
+        # AND top-level properties array
+        mock_adagents_data = {
+            "authorized_agents": [
+                {
+                    "url": "https://wonderstruck.sales-agent.scope3.com",
+                    "authorized_for": "Authorized for display banners",
+                    # Note: No property_ids, property_tags, properties, or publisher_properties fields
+                    # This means access to ALL properties from this publisher
+                }
+            ],
+            "properties": [
+                {
+                    "property_id": "main_site",
+                    "property_type": "website",
+                    "name": "Main site",
+                    "identifiers": [{"type": "domain", "value": "wonderstruck.org"}],
+                    "tags": ["sites"],
+                },
+                {
+                    "property_id": "mobile_app",
+                    "property_type": "mobile_app",
+                    "name": "Mobile App",
+                    "identifiers": [{"type": "bundle_id", "value": "com.wonderstruck.app"}],
+                    "tags": ["apps"],
+                },
+            ],
+        }
+
+        with patch("src.services.property_discovery_service.fetch_adagents", new_callable=AsyncMock) as mock_fetch:
+            with patch("src.services.property_discovery_service.get_all_properties") as mock_props:
+                with patch("src.services.property_discovery_service.get_all_tags") as mock_tags:
+                    mock_fetch.return_value = mock_adagents_data
+                    # get_all_properties returns empty list (no per-agent properties)
+                    mock_props.return_value = []
+                    mock_tags.return_value = ["sites", "apps"]
+
+                    # Test sync
+                    stats = await self.service.sync_properties_from_adagents("tenant1", ["wonderstruck.org"])
+
+                    # Verify results - should sync ALL top-level properties
+                    assert stats["domains_synced"] == 1
+                    assert stats["properties_found"] == 2, "Should sync both top-level properties"
+                    assert stats["tags_found"] == 2
+                    assert stats["properties_created"] == 2
+                    assert len(stats["errors"]) == 0
+
+        mock_db_patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_sync_properties_unrestricted_agent_no_top_level_properties(self):
+        """Test unrestricted agent when no top-level properties exist (edge case)."""
+        mock_db_patcher, mock_session = MockSetup.create_mock_db_session()
+
+        def create_mock_scalars():
+            mock_scalars = Mock()
+            mock_scalars.first.return_value = None
+            mock_scalars.all.return_value = []
+            return mock_scalars
+
+        mock_session.scalars.side_effect = lambda *args: create_mock_scalars()
+
+        # Unrestricted agent but no top-level properties
+        mock_adagents_data = {
+            "authorized_agents": [
+                {
+                    "url": "https://sales-agent.example.com",
+                    "authorized_for": "All properties",
+                    # No property restrictions
+                }
+            ],
+            # No top-level properties array
+        }
+
+        with patch("src.services.property_discovery_service.fetch_adagents", new_callable=AsyncMock) as mock_fetch:
+            with patch("src.services.property_discovery_service.get_all_properties") as mock_props:
+                with patch("src.services.property_discovery_service.get_all_tags") as mock_tags:
+                    mock_fetch.return_value = mock_adagents_data
+                    mock_props.return_value = []
+                    mock_tags.return_value = []
+
+                    stats = await self.service.sync_properties_from_adagents("tenant1", ["example.com"])
+
+                    # Should handle gracefully - no properties to sync
+                    assert stats["domains_synced"] == 1
+                    assert stats["properties_found"] == 0
+                    assert len(stats["errors"]) == 0
+
+        mock_db_patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_sync_properties_mixed_restricted_unrestricted(self):
+        """Test adagents.json with both restricted and unrestricted agents.
+
+        If ANY agent is unrestricted, we should sync all top-level properties.
+        """
+        mock_db_patcher, mock_session = MockSetup.create_mock_db_session()
+
+        def create_mock_scalars():
+            mock_scalars = Mock()
+            mock_scalars.first.return_value = None
+            mock_scalars.all.return_value = []
+            return mock_scalars
+
+        mock_session.scalars.side_effect = lambda *args: create_mock_scalars()
+
+        mock_adagents_data = {
+            "authorized_agents": [
+                {
+                    "url": "https://restricted-agent.example.com",
+                    "authorized_for": "Only main site",
+                    "property_ids": ["main_site"],  # Restricted to specific property
+                },
+                {
+                    "url": "https://unrestricted-agent.example.com",
+                    "authorized_for": "All properties",
+                    # No restrictions - access to all
+                },
+            ],
+            "properties": [
+                {
+                    "property_id": "main_site",
+                    "property_type": "website",
+                    "identifiers": [{"type": "domain", "value": "example.com"}],
+                },
+                {
+                    "property_id": "mobile_app",
+                    "property_type": "mobile_app",
+                    "identifiers": [{"type": "bundle_id", "value": "com.example.app"}],
+                },
+            ],
+        }
+
+        with patch("src.services.property_discovery_service.fetch_adagents", new_callable=AsyncMock) as mock_fetch:
+            with patch("src.services.property_discovery_service.get_all_properties") as mock_props:
+                with patch("src.services.property_discovery_service.get_all_tags") as mock_tags:
+                    mock_fetch.return_value = mock_adagents_data
+                    mock_props.return_value = [
+                        {
+                            "property_id": "main_site",
+                            "property_type": "website",
+                            "identifiers": [{"type": "domain", "value": "example.com"}],
+                        }
+                    ]
+                    mock_tags.return_value = []
+
+                    stats = await self.service.sync_properties_from_adagents("tenant1", ["example.com"])
+
+                    # Should sync ALL properties (because of unrestricted agent)
+                    assert stats["domains_synced"] == 1
+                    assert stats["properties_found"] == 2, "Should sync all properties due to unrestricted agent"
+
+        mock_db_patcher.stop()
+
     def test_sync_properties_sync_wrapper(self):
         """Test that sync wrapper calls async implementation."""
         with patch.object(self.service, "sync_properties_from_adagents", new_callable=AsyncMock) as mock_async:

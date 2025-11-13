@@ -131,10 +131,52 @@ class PropertyDiscoveryService:
                             logger.error(f"❌ Error syncing {domain}: {result}", exc_info=True)
                         continue
 
-                    adagents_data = result
+                    adagents_data: dict[str, Any] = result  # type: ignore[assignment]
 
-                    # Extract all properties
-                    properties = get_all_properties(adagents_data)
+                    # Extract all properties from top-level "properties" array
+                    # Note: Some adagents.json files list properties at top-level,
+                    # others list them per-agent in "authorized_agents[].properties"
+                    all_properties_from_file = adagents_data.get("properties", [])
+
+                    # Check if any agent has no property restrictions (means access to ALL properties)
+                    # Per AdCP spec: if property_ids/property_tags/properties/publisher_properties
+                    # are all missing/empty, agent has access to ALL properties from this publisher
+                    authorized_agents = adagents_data.get("authorized_agents", [])
+                    has_unrestricted_agent = False
+                    for agent in authorized_agents:
+                        if not isinstance(agent, dict):
+                            continue
+                        # Check if ALL authorization fields are missing/empty
+                        has_property_ids = bool(agent.get("property_ids"))
+                        has_property_tags = bool(agent.get("property_tags"))
+                        has_properties = bool(agent.get("properties"))
+                        has_publisher_properties = bool(agent.get("publisher_properties"))
+
+                        if not (has_property_ids or has_property_tags or has_properties or has_publisher_properties):
+                            has_unrestricted_agent = True
+                            logger.info(
+                                f"Found unrestricted agent {agent.get('url')} - "
+                                f"authorized for ALL properties from {domain}"
+                            )
+                            break
+
+                    # Extract properties using adcp library
+                    # This gets properties explicitly listed in authorized_agents[].properties
+                    properties_from_agents = get_all_properties(adagents_data)
+
+                    # If we have an unrestricted agent AND top-level properties exist,
+                    # sync all top-level properties (since agent has access to all of them)
+                    if has_unrestricted_agent and all_properties_from_file:
+                        logger.info(
+                            f"Syncing all {len(all_properties_from_file)} top-level properties "
+                            f"(unrestricted agent has access to all)"
+                        )
+                        # Use top-level properties as the authoritative list
+                        properties = all_properties_from_file
+                    else:
+                        # Use per-agent properties (standard case)
+                        properties = properties_from_agents
+
                     stats["properties_found"] += len(properties)
                     logger.info(f"Found {len(properties)} properties from {domain}")
 
