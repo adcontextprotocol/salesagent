@@ -15,7 +15,6 @@ from src.core.audit_logger import get_audit_logger
 from src.core.auth import (
     get_principal_from_context,
 )
-from src.core.helpers import get_principal_id_from_context as _get_principal_id_from_context
 from src.landing import generate_tenant_landing_page
 
 logger = logging.getLogger(__name__)
@@ -770,12 +769,16 @@ if unified_mode:
             Dict containing tasks list and pagination info
         """
 
-        # Get tenant and principal info
-        tenant = get_current_tenant()
-        # Import here to avoid circular dependency
-        from src.core.tools.signals import _get_principal_id_from_context  # type: ignore[attr-defined]
+        # Establish tenant context first (CRITICAL for multi-tenancy)
+        # This resolves tenant from headers (apx-incoming-host, host, x-adcp-tenant)
+        # and sets it in the ContextVar before any database queries
+        principal_id, tenant = get_principal_from_context(context, require_valid_token=True)
 
-        principal_id = _get_principal_id_from_context(context)
+        if not tenant:
+            raise ToolError("No tenant context available. Check x-adcp-auth token and host headers.")
+
+        # Set tenant context explicitly for this async context
+        set_current_tenant(tenant)
 
         with get_db_session() as session:
             # Base query for workflow steps in this tenant
@@ -862,9 +865,14 @@ if unified_mode:
             Dict containing complete task details
         """
 
-        # Get tenant info
-        tenant = get_current_tenant()
-        principal_id = _get_principal_id_from_context(context)
+        # Establish tenant context first (CRITICAL for multi-tenancy)
+        principal_id, tenant = get_principal_from_context(context, require_valid_token=True)
+
+        if not tenant:
+            raise ToolError("No tenant context available. Check x-adcp-auth token and host headers.")
+
+        # Set tenant context explicitly for this async context
+        set_current_tenant(tenant)
 
         with get_db_session() as session:
             # Find the task in this tenant
@@ -929,9 +937,14 @@ if unified_mode:
             Dict containing task completion status
         """
 
-        # Get tenant info
-        tenant = get_current_tenant()
-        principal_id = _get_principal_id_from_context(context)
+        # Establish tenant context first (CRITICAL for multi-tenancy)
+        principal_id, tenant = get_principal_from_context(context, require_valid_token=True)
+
+        if not tenant:
+            raise ToolError("No tenant context available. Check x-adcp-auth token and host headers.")
+
+        # Set tenant context explicitly for this async context
+        set_current_tenant(tenant)
 
         if status not in ["completed", "failed"]:
             raise ValueError(f"Invalid status '{status}'. Must be 'completed' or 'failed'")
