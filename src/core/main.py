@@ -267,7 +267,7 @@ def get_product_catalog() -> list[Product]:
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
-                "formats": format_ids,
+                "format_ids": format_ids,
                 "delivery_type": product.delivery_type,
                 "pricing_options": pricing_options,
                 "measurement": (
