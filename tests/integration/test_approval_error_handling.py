@@ -36,6 +36,8 @@ class TestApprovalErrorHandling:
 
         with get_db_session() as session:
             # Create media buy record
+            start_dt = datetime.now(UTC)
+            end_dt = start_dt.replace(month=12)
             media_buy = MediaBuy(
                 media_buy_id=media_buy_id,
                 tenant_id=tenant_id,
@@ -44,8 +46,10 @@ class TestApprovalErrorHandling:
                 order_name="Test Order",
                 advertiser_name="Test Advertiser",
                 status="pending_approval",
-                start_time=datetime.now(UTC),
-                end_time=datetime.now(UTC).replace(month=12),
+                start_date=start_dt.date(),
+                end_date=end_dt.date(),
+                start_time=start_dt,
+                end_time=end_dt,
                 raw_request={
                     "buyer_ref": "test_ref_123",
                     "promoted_offering": "test_product",
@@ -104,6 +108,8 @@ class TestApprovalErrorHandling:
 
         with get_db_session() as session:
             # Create media buy record
+            start_dt = datetime.now(UTC)
+            end_dt = start_dt.replace(month=12)
             media_buy = MediaBuy(
                 media_buy_id=media_buy_id,
                 tenant_id=tenant_id,
@@ -112,8 +118,10 @@ class TestApprovalErrorHandling:
                 order_name="Test Order 2",
                 advertiser_name="Test Advertiser 2",
                 status="pending_approval",
-                start_time=datetime.now(UTC),
-                end_time=datetime.now(UTC).replace(month=12),
+                start_date=start_dt.date(),
+                end_date=end_dt.date(),
+                start_time=start_dt,
+                end_time=end_dt,
                 raw_request={
                     "buyer_ref": "test_ref_456",
                     "promoted_offering": "test_product",
