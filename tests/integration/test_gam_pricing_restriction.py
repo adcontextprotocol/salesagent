@@ -287,29 +287,28 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
+    from src.core.schemas import CreateMediaBuyError
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
-    # GAM adapter rejects unsupported pricing models during validation
-    # In dry_run mode, this manifests as media_buy_id=None which triggers ToolError
-    with pytest.raises(Exception) as exc_info:
-        await _create_media_buy_impl(
-            buyer_ref=request.buyer_ref,
-            brand_manifest=request.brand_manifest,
-            packages=request.packages,
-            start_time=request.start_time,
-            end_time=request.end_time,
-            budget=request.budget,
-            context=context,
-        )
+    # GAM adapter rejects unsupported pricing models by returning CreateMediaBuyError
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=context,
+    )
 
-    error_msg = str(exc_info.value).lower()
-    # Check error indicates CPCV/pricing model rejection or media_buy_id failure
+    # Verify adapter returned error response
+    assert isinstance(response, CreateMediaBuyError), f"Expected CreateMediaBuyError, got {type(response)}"
+
+    # Check error indicates CPCV/pricing model rejection
+    assert response.errors, "Expected error messages in CreateMediaBuyError"
+    error_msg = " ".join([err.message.lower() for err in response.errors])
     assert (
-        "cpcv" in error_msg
-        or "pricing" in error_msg
-        or "not supported" in error_msg
-        or "media_buy_id" in error_msg
-        or "gam" in error_msg
+        "cpcv" in error_msg or "pricing" in error_msg or "not supported" in error_msg or "gam" in error_msg
     ), f"Expected pricing/GAM error, got: {error_msg}"
 
 
@@ -392,22 +391,28 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    # GAM adapter rejects unsupported pricing models during validation
-    # In dry_run mode, this manifests as media_buy_id=None which triggers ToolError
-    with pytest.raises(Exception) as exc_info:
-        response = await _create_media_buy_impl(
-            buyer_ref=request.buyer_ref,
-            brand_manifest=request.brand_manifest,
-            packages=request.packages,
-            start_time=request.start_time,
-            end_time=request.end_time,
-            budget=request.budget,
-            context=context,
-        )
+    from src.core.schemas import CreateMediaBuyError
 
-    # Check error message indicates CPP/pricing model rejection
-    error_msg = str(exc_info.value).lower()
-    assert "cpp" in error_msg or "pricing" in error_msg or "not supported" in error_msg or "media_buy_id" in error_msg
+    # GAM adapter rejects unsupported pricing models by returning CreateMediaBuyError
+    response = await _create_media_buy_impl(
+        buyer_ref=request.buyer_ref,
+        brand_manifest=request.brand_manifest,
+        packages=request.packages,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        budget=request.budget,
+        context=context,
+    )
+
+    # Verify adapter returned error response
+    assert isinstance(response, CreateMediaBuyError), f"Expected CreateMediaBuyError, got {type(response)}"
+
+    # Check error indicates CPP/pricing model rejection
+    assert response.errors, "Expected error messages in CreateMediaBuyError"
+    error_msg = " ".join([err.message.lower() for err in response.errors])
+    assert (
+        "cpp" in error_msg or "pricing" in error_msg or "not supported" in error_msg or "gam" in error_msg
+    ), f"Expected pricing/GAM error, got: {error_msg}"
 
 
 @pytest.mark.requires_db
