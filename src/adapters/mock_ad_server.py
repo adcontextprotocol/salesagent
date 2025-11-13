@@ -1189,13 +1189,52 @@ class MockAdServer(AdServerAdapter):
         else:
             self.log("Would retrieve delivery data from ad server")
 
+        # Build per-package breakdown if packages are available
+        from src.core.schemas import AdapterPackageDelivery
+
+        by_package = []
+        if media_buy_id in self._media_buys:
+            buy = self._media_buys[media_buy_id]
+            packages = buy.get("packages", [])
+            
+            if packages:
+                # Calculate per-package metrics by dividing total spend/impressions proportionally
+                # Use package budget as weight for distribution
+                total_package_budget = sum(
+                    float(pkg.get("budget", {}).get("total", 0) if isinstance(pkg.get("budget"), dict) else pkg.get("budget", 0))
+                    for pkg in packages
+                )
+                
+                for pkg in packages:
+                    package_id = pkg.get("package_id", "unknown")
+                    package_budget = float(
+                        pkg.get("budget", {}).get("total", 0) if isinstance(pkg.get("budget"), dict) else pkg.get("budget", 0)
+                    )
+                    
+                    if total_package_budget > 0:
+                        # Distribute spend/impressions proportionally based on package budget
+                        package_spend = spend * (package_budget / total_package_budget)
+                        package_impressions = int(impressions * (package_budget / total_package_budget))
+                    else:
+                        # Equal distribution if no budget info
+                        package_spend = spend / len(packages) if packages else spend
+                        package_impressions = int(impressions / len(packages) if packages else impressions)
+                    
+                    by_package.append(
+                        AdapterPackageDelivery(
+                            package_id=package_id,
+                            impressions=package_impressions,
+                            spend=package_spend,
+                        )
+                    )
+
         return AdapterGetMediaBuyDeliveryResponse(
             media_buy_id=media_buy_id,
             reporting_period=date_range,
             totals=DeliveryTotals(
                 impressions=impressions, spend=spend, clicks=100, ctr=0.0, video_completions=5000, completion_rate=0.0
             ),
-            by_package=[],
+            by_package=by_package,
             currency="USD",
         )
 
