@@ -113,6 +113,7 @@ def get_creative_formats(
                 else str(fmt.format_id)
             ),  # Extract string ID from FormatId object
             "agent_url": fmt.agent_url,
+            "form_value": fmt.get_form_value(),  # Use helper for consistent format ID construction
             "name": fmt.name,
             "type": fmt.type,
             "category": fmt.category,
