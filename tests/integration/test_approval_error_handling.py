@@ -52,8 +52,10 @@ class TestApprovalErrorHandling:
                 end_time=end_dt,
                 raw_request={
                     "buyer_ref": "test_ref_123",
-                    "promoted_offering": "test_product",
+                    "brand_manifest": {"advertiser_name": "Test Advertiser"},
                     "packages": [],
+                    "start_time": start_dt.isoformat(),
+                    "end_time": end_dt.isoformat(),
                 },
             )
             session.add(media_buy)
@@ -124,8 +126,10 @@ class TestApprovalErrorHandling:
                 end_time=end_dt,
                 raw_request={
                     "buyer_ref": "test_ref_456",
-                    "promoted_offering": "test_product",
+                    "brand_manifest": {"advertiser_name": "Test Advertiser 2"},
                     "packages": [],
+                    "start_time": start_dt.isoformat(),
+                    "end_time": end_dt.isoformat(),
                 },
             )
             session.add(media_buy)
