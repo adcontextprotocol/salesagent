@@ -741,6 +741,14 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
             request, packages, start_time, end_time, package_pricing_info, principal, testing_ctx  # type: ignore[arg-type]
         )
 
+        # Check if adapter returned an error response
+        if isinstance(response, CreateMediaBuyError):
+            # Adapter returned error response (not an exception)
+            error_messages = [str(err) for err in response.errors] if response.errors else ["Unknown error"]
+            error_msg = "; ".join(error_messages)
+            logger.error(f"[APPROVAL] Adapter creation failed for {media_buy_id}: {error_msg}")
+            return False, error_msg
+
         logger.info(f"[APPROVAL] Adapter creation succeeded for {media_buy_id}: {response.media_buy_id}")
 
         # Upload and associate inline creatives if any exist
@@ -850,6 +858,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
                     # Call adapter's add_creative_assets method
                     # For GAM, the media_buy_id is the GAM order ID
+                    # At this point, we know response is CreateMediaBuySuccess (checked above)
                     gam_order_id: str = response.media_buy_id if response.media_buy_id else ""
 
                     try:
