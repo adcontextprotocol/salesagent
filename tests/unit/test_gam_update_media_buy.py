@@ -176,3 +176,60 @@ def test_pause_resume_actions_return_not_implemented_error():
         assert len(result.errors) == 1
         assert result.errors[0].code == "not_implemented"
         assert action in result.errors[0].message
+
+
+def test_update_package_budget_rejects_budget_below_delivery():
+    """Test that update_package_budget rejects budget less than current spend."""
+    from src.adapters.google_ad_manager import GoogleAdManager
+
+    media_buy_id = "mb_test123"
+    package_id = "pkg_test456"
+    current_spend = 15000.0
+    new_budget = 10000  # Less than current spend
+
+    # Mock database session and MediaPackage with delivery metrics
+    mock_package = Mock()
+    mock_package.package_id = package_id
+    mock_package.package_config = {
+        "budget": 19000,
+        "product_id": "prod_1",
+        "delivery_metrics": {"spend": current_spend, "impressions_delivered": 50000},
+    }
+
+    # Create a minimal mock adapter
+    mock_adapter = Mock(spec=GoogleAdManager)
+    mock_adapter.log = Mock()
+    mock_adapter.tenant_id = "tenant_test123"
+    mock_adapter._is_admin_principal = Mock(return_value=False)
+    mock_adapter._requires_manual_approval = Mock(return_value=False)
+    mock_adapter.workflow_manager = Mock()
+
+    with patch("src.core.database.database_session.get_db_session") as mock_db:
+        mock_session = MagicMock()
+        mock_db.return_value.__enter__.return_value = mock_session
+
+        # Mock the query to return our test package
+        mock_scalars = Mock()
+        mock_scalars.first.return_value = mock_package
+        mock_session.scalars.return_value = mock_scalars
+
+        # Call the actual method
+        result = GoogleAdManager.update_media_buy(
+            mock_adapter,
+            media_buy_id=media_buy_id,
+            buyer_ref="buyer_test",
+            action="update_package_budget",
+            package_id=package_id,
+            budget=new_budget,
+            today=datetime.now(),
+        )
+
+        # Verify error response
+        assert isinstance(result, UpdateMediaBuyError)
+        assert len(result.errors) == 1
+        assert result.errors[0].code == "budget_below_delivery"
+        assert str(new_budget) in result.errors[0].message
+        assert str(current_spend) in result.errors[0].message
+
+        # Verify commit was NOT called (budget rejected)
+        mock_session.commit.assert_not_called()

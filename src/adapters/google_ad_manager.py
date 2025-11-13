@@ -1090,7 +1090,7 @@ class GoogleAdManager(AdServerAdapter):
                     ],
                 )
 
-            self.log(f"[GAM] Updating package {package_id} budget to {budget}")
+            self.log(f"[GAM] Updating package {package_id} budget to {budget} (with delivery validation)")
 
             with get_db_session() as session:
                 # Security: Join with MediaBuy for tenant isolation
@@ -1119,12 +1119,41 @@ class GoogleAdManager(AdServerAdapter):
                         ],
                     )
 
+                # Validate budget isn't less than delivery to date
+                delivery_metrics = media_package.package_config.get("delivery_metrics", {})
+                current_spend = float(delivery_metrics.get("spend", 0))
+
+                if budget < current_spend:
+                    self.log(
+                        f"[red]Cannot set budget ${budget} below current spend ${current_spend} "
+                        f"for package {package_id}[/red]"
+                    )
+                    return UpdateMediaBuyError(
+                        errors=[
+                            Error(
+                                code="budget_below_delivery",
+                                message=f"Cannot set budget ${budget} below current spend ${current_spend}",
+                                details={
+                                    "requested_budget": budget,
+                                    "current_spend": current_spend,
+                                    "package_id": package_id,
+                                },
+                            )
+                        ],
+                    )
+
+                # TODO: Sync budget change to GAM line item
+                # Currently only updates database - does NOT sync to GAM API
+                # This creates data inconsistency between our database and GAM
+                # See: Comments #2 & #3 on PR - need to implement GAM API sync
+
                 # Update budget in package_config JSON
                 media_package.package_config["budget"] = float(budget)
                 # Flag the JSON field as modified so SQLAlchemy persists it
                 attributes.flag_modified(media_package, "package_config")
                 session.commit()
-                self.log(f"[green]Updated package {package_id} budget to {budget} in database[/green]")
+                self.log(f"[yellow]⚠️  Updated package {package_id} budget to {budget} in database ONLY[/yellow]")
+                self.log("[yellow]⚠️  GAM sync NOT implemented - GAM still has old budget[/yellow]")
 
             return UpdateMediaBuySuccess(
                 media_buy_id=media_buy_id,

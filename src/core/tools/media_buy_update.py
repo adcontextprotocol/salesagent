@@ -822,6 +822,11 @@ def _update_media_buy_impl(
             )
             return response_data
 
+        # TODO: Sync budget change to GAM order
+        # Currently only updates database - does NOT sync to GAM API
+        # This creates data inconsistency between our database and GAM
+        # Need to implement: adapter.orders_manager.update_order_budget(order_id, total_budget)
+
         # Persist top-level budget update to database
         # Note: In-memory media_buys dict removed after refactor
         # Media buys are persisted in database, not in-memory state
@@ -838,9 +843,10 @@ def _update_media_buy_impl(
                 )
                 db_session.execute(update_stmt)
                 db_session.commit()
-                logger.info(
-                    f"[update_media_buy] Updated MediaBuy {req.media_buy_id} budget to {total_budget} {budget_currency}"
+                logger.warning(
+                    f"⚠️  Updated MediaBuy {req.media_buy_id} budget to {total_budget} {budget_currency} in database ONLY"
                 )
+                logger.warning("⚠️  GAM sync NOT implemented - GAM still has old budget")
 
             # Track top-level budget update in affected_packages
             # When top-level budget changes, all packages are affected
@@ -864,6 +870,11 @@ def _update_media_buy_impl(
 
     # Handle start_time/end_time updates
     if req.start_time is not None or req.end_time is not None:
+        # TODO: Sync date changes to GAM order
+        # Currently only updates database - does NOT sync to GAM API
+        # This creates data inconsistency between our database and GAM
+        # Need to implement: adapter.orders_manager.update_order_dates(order_id, start_time, end_time)
+
         from sqlalchemy import update as sqlalchemy_update
 
         from src.core.database.models import MediaBuy
@@ -944,10 +955,11 @@ def _update_media_buy_impl(
                 )
                 db_session.execute(update_stmt)
                 db_session.commit()
-                logger.info(
-                    f"[update_media_buy] Updated MediaBuy {req.media_buy_id} dates: "
+                logger.warning(
+                    f"⚠️  Updated MediaBuy {req.media_buy_id} dates in database ONLY: "
                     f"start_time={update_values.get('start_time')}, end_time={update_values.get('end_time')}"
                 )
+                logger.warning("⚠️  GAM sync NOT implemented - GAM still has old dates")
 
     # Note: Budget validation already done above (lines 286-396)
     # Package-level updates already handled above (lines 422-709)
