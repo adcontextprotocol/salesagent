@@ -178,10 +178,9 @@ class TestAdCPReferenceImplementation:
                     "demographic": {"age_range": "25-44"},
                 },
                 webhook_url=webhook_server["url"],  # Async notifications!
+                context={"e2e": "create_media_buy"},
             )
-            # Add application-level context to request
-            media_buy_request["context"] = {"e2e": "create_media_buy"}
-
+            
             # Create media buy (pass params directly - no req wrapper)
             media_buy_result = await client.call_tool("create_media_buy", media_buy_request)
             media_buy_data = parse_tool_result(media_buy_result)
