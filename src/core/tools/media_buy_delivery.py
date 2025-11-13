@@ -230,7 +230,8 @@ def _get_media_buy_delivery_impl(
             total_impressions_from_adapter = 0
             
             if not any([testing_ctx.dry_run, testing_ctx.mock_time, testing_ctx.jump_to_event, testing_ctx.test_session_id]):
-                # Call adapter to get REAL per-package delivery metrics
+                # Call adapter to get per-package delivery metrics
+                # Note: Mock adapter returns simulated data, GAM adapter returns real data from Reporting API
                 try:
                     adapter_response = adapter.get_media_buy_delivery(
                         media_buy_id=media_buy_id,
