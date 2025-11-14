@@ -19,8 +19,6 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from googleads import ad_manager
-
 from src.adapters.gam.client import GAMClientManager
 from src.adapters.gam_inventory_discovery import (
     AdUnit,
@@ -62,31 +60,6 @@ class GAMInventoryManager:
                 client = self.client_manager.get_client()
                 self._discovery = GAMInventoryDiscovery(client, self.tenant_id)
         return self._discovery
-
-    def _get_axe_key_name(self) -> str:
-        """Get the configured AXE custom targeting key name from adapter config.
-
-        Returns:
-            AXE custom targeting key name (defaults to "axe_segment")
-        """
-        from sqlalchemy import select
-
-        from src.core.database.database_session import get_db_session
-        from src.core.database.models import AdapterConfig
-
-        try:
-            with get_db_session() as session:
-                stmt = select(AdapterConfig).filter_by(tenant_id=self.tenant_id)
-                adapter_config = session.scalars(stmt).first()
-
-                if adapter_config and adapter_config.gam_axe_custom_targeting_key:
-                    return adapter_config.gam_axe_custom_targeting_key
-
-                # Default to "axe_segment" if not configured
-                return "axe_segment"
-        except Exception as e:
-            logger.warning(f"Failed to read AXE key name from config: {e}. Using default 'axe_segment'")
-            return "axe_segment"
 
     def discover_ad_units(self, parent_id: str | None = None, max_depth: int = 10) -> list[AdUnit]:
         """Discover ad units in the GAM network.
@@ -200,59 +173,6 @@ class GAMInventoryManager:
         return discovery.sync_all(
             fetch_custom_targeting_values=fetch_values, max_custom_targeting_values_per_key=custom_targeting_limit
         )
-
-    def ensure_axe_custom_targeting_key(self, key_name: str) -> dict[str, Any]:
-        """Ensure AXE custom targeting key exists in GAM, creating it if necessary.
-
-        Args:
-            key_name: Name of the custom targeting key (e.g., "axe_segment")
-
-        Returns:
-            Dictionary with key details: {"key_id": str, "name": str, "created": bool}
-        """
-        if self.dry_run:
-            logger.info(f"[DRY RUN] Would ensure AXE custom targeting key '{key_name}' exists")
-            return {"key_id": "dry_run_key_123", "name": key_name, "created": False, "dry_run": True}
-
-        logger.info(f"Ensuring AXE custom targeting key '{key_name}' exists in GAM")
-
-        # Get GAM client
-        client = self.client_manager.get_client()
-        custom_targeting_service = client.GetService("CustomTargetingService")
-
-        # Check if key already exists
-        statement_builder = ad_manager.StatementBuilder(version="v202505")
-        statement_builder.Where("name = :name")
-        statement_builder.WithBindVariable("name", key_name)
-
-        try:
-            response = custom_targeting_service.getCustomTargetingKeysByStatement(statement_builder.ToStatement())
-
-            if "results" in response and len(response["results"]) > 0:
-                # Key already exists
-                existing_key = response["results"][0]
-                key_id = str(existing_key["id"])
-                logger.info(f"AXE custom targeting key '{key_name}' already exists (ID: {key_id})")
-                return {"key_id": key_id, "name": key_name, "created": False}
-
-            # Key doesn't exist, create it
-            logger.info(f"Creating AXE custom targeting key '{key_name}'")
-
-            new_key = {
-                "displayName": key_name,
-                "name": key_name,
-                "type": "FREEFORM",  # Allows any string value
-            }
-
-            created_keys = custom_targeting_service.createCustomTargetingKeys([new_key])
-            key_id = str(created_keys[0]["id"])
-
-            logger.info(f"Created AXE custom targeting key '{key_name}' (ID: {key_id})")
-            return {"key_id": key_id, "name": key_name, "created": True}
-
-        except Exception as e:
-            logger.error(f"Failed to ensure AXE custom targeting key '{key_name}': {e}")
-            raise ValueError(f"Failed to ensure AXE custom targeting key '{key_name}': {e}") from e
 
     def build_ad_unit_tree(self) -> dict[str, Any]:
         """Build hierarchical tree structure of ad units.
