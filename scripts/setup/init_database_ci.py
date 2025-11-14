@@ -321,7 +321,7 @@ def init_db_ci():
                         product_id=p["product_id"],
                         name=p["name"],
                         description=p["description"],
-                        formats=p["formats"],
+                        format_ids=p["formats"],
                         targeting_template=p["targeting_template"],
                         delivery_type=p["delivery_type"],
                         property_tags=["all_inventory"],  # Required per AdCP spec

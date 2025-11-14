@@ -136,7 +136,7 @@ def init_db(exit_on_error=False):
                     product_id="prod_display_premium",
                     name="Premium Display Package",
                     description="Premium display advertising across news and sports sections",
-                    formats=[
+                    format_ids=[
                         {
                             "agent_url": "https://creatives.adcontextprotocol.org",
                             "id": "display_300x250",
@@ -157,7 +157,7 @@ def init_db(exit_on_error=False):
                     product_id="prod_video_sports",
                     name="Sports Video Package",
                     description="Pre-roll video ads for sports content",
-                    formats=[
+                    format_ids=[
                         {
                             "agent_url": "https://creatives.adcontextprotocol.org",
                             "id": "video_preroll",
@@ -287,7 +287,7 @@ def init_db(exit_on_error=False):
                         product_id=p["product_id"],
                         name=p["name"],
                         description=p["description"],
-                        formats=p["formats"],
+                        format_ids=p["formats"],
                         targeting_template=p["targeting_template"],
                         delivery_type=p["delivery_type"],
                         is_fixed_price=p["is_fixed_price"],
