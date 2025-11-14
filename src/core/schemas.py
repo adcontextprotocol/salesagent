@@ -1307,11 +1307,15 @@ class ProductPerformance(BaseModel):
 class UpdatePerformanceIndexRequest(AdCPBaseModel):
     media_buy_id: str
     performance_data: list[ProductPerformance]
+    context: dict[str, Any] | None = Field(
+        None, description="Application-level context provided by the client (echoed in responses)"
+    )
 
 
 class UpdatePerformanceIndexResponse(AdCPBaseModel):
     status: str
     detail: str
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
@@ -1387,6 +1391,9 @@ class GetProductsRequest(AdCPBaseModel):
         "",
         description="Brief description of the advertising campaign or requirements (optional)",
     )
+    context: dict[str, Any] | None = Field(
+        None, description="Application-level context provided by the client (echoed in responses)"
+    )
     brand_manifest: "BrandManifest | str" = Field(
         ...,
         description="Brand information manifest (inline object or URL string). REQUIRED per AdCP v2.2.0 spec.",
@@ -1409,6 +1416,8 @@ class GetProductsResponse(NestedModelSerializerMixin, AdCPBaseModel):
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
+
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     # Required AdCP domain fields
     products: list[Product] = Field(..., description="List of available advertising products")
@@ -1446,6 +1455,10 @@ class ListCreativeFormatsRequest(AdCPBaseModel):
 
     All parameters are optional filters per AdCP spec.
     """
+
+    context: dict[str, Any] | None = Field(
+        None, description="Application-level context provided by the client (echoed in responses)"
+    )
 
     adcp_version: str = Field(
         default="1.0.0",
@@ -1503,6 +1516,8 @@ class ListCreativeFormatsResponse(NestedModelSerializerMixin, AdCPBaseModel):
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
+
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     formats: list[Format] = Field(..., description="Full format definitions per AdCP spec")
     creative_agents: list[dict[str, Any]] | None = Field(
@@ -1743,6 +1758,9 @@ class SyncCreativesRequest(AdCPBaseModel):
     """
 
     creatives: list[Creative] = Field(..., description="Array of creative assets to sync (create or update)")
+    context: dict[str, Any] | None = Field(
+        None, description="Application-level context provided by the client (echoed in responses)"
+    )
     patch: bool = Field(
         False,
         description="When true, only provided fields are updated (partial update). When false, entire creative is replaced (full upsert).",
@@ -1883,6 +1901,7 @@ class SyncCreativesResponse(AdCPBaseModel):
     creatives: list[SyncCreativeResult] = Field(..., description="Results for each creative processed")
 
     # Optional fields (per official spec)
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
     dry_run: bool | None = Field(None, description="Whether this was a dry run (no actual changes made)")
 
     @model_serializer(mode="wrap")
@@ -1952,6 +1971,9 @@ class ListCreativesRequest(AdCPBaseModel):
 
     media_buy_id: str | None = Field(None, description="Filter by media buy ID")
     buyer_ref: str | None = Field(None, description="Filter by buyer reference")
+    context: dict[str, Any] | None = Field(
+        None, description="Application-level context provided by the client (echoed in responses)"
+    )
     status: str | None = Field(None, description="Filter by creative status (pending, approved, rejected)")
     format: str | None = Field(None, description="Filter by creative format")
     tags: list[str] | None = Field(None, description="Filter by tags")
@@ -2011,6 +2033,8 @@ class ListCreativesResponse(AdCPBaseModel):
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
+
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     # Required AdCP domain fields
     query_summary: QuerySummary = Field(..., description="Summary of the query that was executed")
@@ -2530,6 +2554,9 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         None,
         description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
     )
+    context: dict[str, Any] | None = Field(
+        None, description="Application-level context provided by the client (echoed in responses)"
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -2757,6 +2784,9 @@ class GetMediaBuyDeliveryRequest(AdCPBaseModel):
     push_notification_config: PushNotificationConfig | None = Field(
         None, description="Push notification configuration for async task updates."
     )
+    context: dict[str, Any] | None = Field(
+        None, description="Application-level context provided by the client (echoed in responses)"
+    )
 
 
 # AdCP-compliant delivery models
@@ -2842,6 +2872,7 @@ class GetMediaBuyDeliveryResponse(NestedModelSerializerMixin, AdCPBaseModel):
         ..., description="Array of delivery data for each media buy"
     )
     errors: list[dict] | None = Field(None, description="Task-specific errors and warnings")
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
@@ -2968,6 +2999,9 @@ class UpdateMediaBuyRequest(AdCPBaseModel):
     push_notification_config: dict[str, Any] | None = Field(
         None,
         description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
+    )
+    context: dict[str, Any] | None = Field(
+        None, description="Application-level context provided by the client (echoed in responses)"
     )
     today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
@@ -3355,6 +3389,7 @@ class GetSignalsRequest(AdCPBaseModel):
     deliver_to: SignalDeliverTo | None = Field(None, description="Where the signals need to be delivered")
     filters: SignalFilters | None = Field(None, description="Filters to refine results")
     max_results: int | None = Field(None, ge=1, description="Maximum number of results to return")
+    context: dict[str, Any] | None = Field(None, description="Application-level context provided by the client")
 
     # Backward compatibility properties (deprecated)
     @property
@@ -3380,6 +3415,7 @@ class GetSignalsResponse(AdCPBaseModel):
     """
 
     signals: list[Signal] = Field(..., description="Array of available signals")
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     @model_serializer(mode="wrap")
     def _serialize_nested_models(self, serializer, info):
@@ -3423,6 +3459,7 @@ class ActivateSignalRequest(AdCPBaseModel):
     signal_id: str = Field(..., description="Signal ID to activate")
     campaign_id: str | None = Field(None, description="Optional campaign ID to activate signal for")
     media_buy_id: str | None = Field(None, description="Optional media buy ID to activate signal for")
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
 
 class ActivateSignalResponse(AdCPBaseModel):
@@ -3436,6 +3473,7 @@ class ActivateSignalResponse(AdCPBaseModel):
     signal_id: str = Field(..., description="Activated signal ID")
     activation_details: dict[str, Any] | None = Field(None, description="Platform-specific activation details")
     errors: list[Error] | None = Field(None, description="Optional error reporting")
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
@@ -3451,6 +3489,7 @@ class SimulationControlRequest(AdCPBaseModel):
     strategy_id: str = Field(..., description="Strategy ID to control (must be simulation strategy with 'sim_' prefix)")
     action: Literal["jump_to", "reset", "set_scenario"] = Field(..., description="Action to perform on the simulation")
     parameters: dict[str, Any] = Field(default_factory=dict, description="Action-specific parameters")
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
 
 class SimulationControlResponse(AdCPBaseModel):
@@ -3460,6 +3499,7 @@ class SimulationControlResponse(AdCPBaseModel):
     message: str | None = None
     current_state: dict[str, Any] | None = None
     simulation_time: datetime | None = None
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
@@ -3573,6 +3613,9 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
     adcp_version: str = Field(
         default="1.0.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version for this request"
     )
+    context: dict[str, Any] | None = Field(
+        None, description="Application-level context provided by the client (echoed in responses)"
+    )
     publisher_domains: list[str] | None = Field(
         None,
         description="Filter to specific publisher domains (optional). If omitted, returns all publishers this agent represents.",
@@ -3600,6 +3643,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     """
 
     publisher_domains: list[str] = Field(..., description="Publisher domains this agent is authorized to represent")
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
     primary_channels: list[str] | None = Field(
         None, description="Primary advertising channels in this portfolio (helps buyers filter relevance)"
     )

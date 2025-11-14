@@ -54,6 +54,7 @@ def build_adcp_media_buy_request(
     pacing: str = "even",
     webhook_url: str | None = None,
     brand_manifest: dict[str, Any] | str | None = None,  # AdCP spec field (preferred)
+    context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Build a valid AdCP V2.3 create_media_buy request.
@@ -124,6 +125,9 @@ def build_adcp_media_buy_request(
             "reporting_frequency": "daily",
             "authentication": {"type": "none"},
         }
+
+    if context:
+        request["context"] = context
 
     return request
 

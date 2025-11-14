@@ -133,7 +133,7 @@ def test_update_media_buy_assigns_creatives_to_package(integration_db):
                     "creative_ids": ["creative_1", "creative_2"],
                 }
             ],
-            context=mock_context,
+            ctx=mock_context,
         )
 
     # Verify response
@@ -310,7 +310,7 @@ def test_update_media_buy_replaces_creatives(integration_db):
                     "creative_ids": ["creative_2", "creative_3"],
                 }
             ],
-            context=mock_context,
+            ctx=mock_context,
         )
 
     # Verify response
@@ -437,7 +437,7 @@ def test_update_media_buy_rejects_missing_creatives(integration_db):
                     "creative_ids": ["nonexistent_creative"],
                 }
             ],
-            context=mock_context,
+            ctx=mock_context,
         )
 
     # Verify error response

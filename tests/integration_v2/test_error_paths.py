@@ -163,6 +163,7 @@ class TestCreateMediaBuyErrorPaths:
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
+            context={"trace_id": "auth-missing-principal"},
             packages=[
                 {
                     "package_id": "pkg1",
@@ -173,7 +174,7 @@ class TestCreateMediaBuyErrorPaths:
             start_time=future_start.isoformat(),
             end_time=future_end.isoformat(),
             budget={"total": 5000.0, "currency": "USD"},
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure - error cases return CreateMediaBuyError
@@ -188,6 +189,8 @@ class TestCreateMediaBuyErrorPaths:
         assert isinstance(error, Error)
         assert error.code == "authentication_error"
         assert "principal" in error.message.lower() or "not found" in error.message.lower()
+        # Context echoed back
+        assert response.context == {"trace_id": "auth-missing-principal"}
 
     async def test_start_time_in_past_returns_validation_error(self, test_tenant_with_principal):
         """Test that start_time in past returns Error response with validation_error code.
@@ -211,6 +214,7 @@ class TestCreateMediaBuyErrorPaths:
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
+            context={"trace_id": "past-start"},
             packages=[
                 {
                     "package_id": "pkg1",
@@ -221,7 +225,7 @@ class TestCreateMediaBuyErrorPaths:
             start_time=past_start.isoformat(),
             end_time=past_end.isoformat(),
             budget={"total": 5000.0, "currency": "USD"},
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure - error cases return CreateMediaBuyError
@@ -234,6 +238,8 @@ class TestCreateMediaBuyErrorPaths:
         error = response.errors[0]
         assert isinstance(error, Error)
         assert error.code == "validation_error"
+        # Context echoed back
+        assert response.context == {"trace_id": "past-start"}
         assert "past" in error.message.lower() or "start" in error.message.lower()
 
     async def test_end_time_before_start_returns_validation_error(self, test_tenant_with_principal):
@@ -263,7 +269,7 @@ class TestCreateMediaBuyErrorPaths:
             start_time=start.isoformat(),
             end_time=end.isoformat(),
             budget={"total": 5000.0, "currency": "USD"},
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure - error cases return CreateMediaBuyError
@@ -310,7 +316,7 @@ class TestCreateMediaBuyErrorPaths:
                 start_time=future_start.isoformat(),
                 end_time=future_end.isoformat(),
                 budget={"total": -1000.0, "currency": "USD"},
-                context=context,
+                ctx=context,
             )
 
         error_message = str(exc_info.value)
@@ -338,7 +344,7 @@ class TestCreateMediaBuyErrorPaths:
             start_time=future_start.isoformat(),
             end_time=future_end.isoformat(),
             budget={"total": 5000.0, "currency": "USD"},
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure - error cases return CreateMediaBuyError
@@ -394,7 +400,7 @@ class TestSyncCreativesErrorPaths:
         try:
             response = await sync_creatives_raw(
                 creatives=invalid_creatives,
-                context=context,
+                ctx=context,
             )
             # If it returns, check for errors
             assert response is not None
@@ -439,7 +445,7 @@ class TestListCreativesErrorPaths:
         with pytest.raises(ToolError) as exc_info:
             await list_creatives_raw(
                 created_after="not-a-date",  # Invalid format
-                context=context,
+                ctx=context,
             )
 
         # Verify it's a proper ToolError, not NameError

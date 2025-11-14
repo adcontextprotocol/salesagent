@@ -346,7 +346,7 @@ def process_and_upload_package_creatives(
                 dry_run=testing_ctx.dry_run if testing_ctx else False,
                 validation_mode="strict",
                 push_notification_config=None,
-                context=context,  # For principal_id extraction
+                ctx=context,  # For principal_id extraction
             )
 
             # Extract creative IDs from response

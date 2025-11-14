@@ -154,7 +154,7 @@ def test_update_media_buy_with_database_persisted_buy(test_tenant_setup):
     response = _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref="updated_ref",
-        context=context,
+        ctx=context,
     )
 
     # Verify response
@@ -190,5 +190,5 @@ def test_update_media_buy_requires_media_buy_id():
         _update_media_buy_impl(
             media_buy_id=None,
             buyer_ref="test_ref",
-            context=context,
+            ctx=context,
         )

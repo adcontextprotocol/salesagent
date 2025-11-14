@@ -279,7 +279,7 @@ class TestMinimumSpendValidation:
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             budget=Budget(total=500.0, currency="USD"),  # Explicit USD
-            context=context,
+            ctx=context,
         )
 
         # Verify validation failed
@@ -314,7 +314,7 @@ class TestMinimumSpendValidation:
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             budget=Budget(total=3000.0, currency="USD"),
-            context=context,
+            ctx=context,
         )
 
         # Verify validation failed
@@ -349,7 +349,7 @@ class TestMinimumSpendValidation:
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             budget=Budget(total=750.0, currency="USD"),
-            context=context,
+            ctx=context,
         )
 
         # Should succeed - verify we got a media_buy_id
@@ -380,7 +380,7 @@ class TestMinimumSpendValidation:
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             budget=Budget(total=2000.0, currency="USD"),
-            context=context,
+            ctx=context,
         )
 
         # Should succeed - verify we got a media_buy_id
@@ -414,7 +414,7 @@ class TestMinimumSpendValidation:
                 start_time=start_time.isoformat(),
                 end_time=end_time.isoformat(),
                 budget=Budget(total=100000.0, currency="USD"),
-                context=context,
+                ctx=context,
             )
 
         # Verify the error message indicates adapter rejection
@@ -447,7 +447,7 @@ class TestMinimumSpendValidation:
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             budget=Budget(total=800.0, currency="USD"),  # Changed to USD to match actual behavior
-            context=context,
+            ctx=context,
         )
 
         # Verify validation failed with USD minimum
@@ -492,7 +492,7 @@ class TestMinimumSpendValidation:
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
             budget=Budget(total=100.0, currency="GBP"),
-            context=context,
+            ctx=context,
         )
 
         # Should succeed - verify we got a media_buy_id
