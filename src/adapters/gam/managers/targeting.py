@@ -46,7 +46,11 @@ class GAMTargetingManager:
         self._load_axe_keys()
 
     def _load_geo_mappings(self):
-        """Load geo mappings from JSON file."""
+        """Load static geo mappings from JSON file on disk.
+
+        Loads AdCP country codes → GAM geo IDs from gam_geo_mappings.json.
+        This is static data that doesn't change per tenant.
+        """
         try:
             # Look for the geo mappings file relative to the adapters directory
             mapping_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gam_geo_mappings.json")
@@ -70,7 +74,7 @@ class GAMTargetingManager:
             self.geo_metro_map = {}
 
     def _load_axe_keys(self):
-        """Load AXE custom targeting key names from adapter config.
+        """Load tenant-specific AXE configuration from database.
 
         Per AdCP spec, three separate keys are required:
         - axe_include_key: For axe_include_segment targeting
@@ -78,6 +82,7 @@ class GAMTargetingManager:
         - axe_macro_key: For creative macro substitution
 
         These are adapter-agnostic and work with all ad server adapters.
+        Different from _load_geo_mappings() which loads static data from file.
         """
         from sqlalchemy import select
 
