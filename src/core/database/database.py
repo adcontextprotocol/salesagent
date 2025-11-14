@@ -220,11 +220,8 @@ def init_db(exit_on_error=False):
                         "description": "Premium news site display inventory",
                         "formats": [
                             {
-                                "format_id": "display_300x250",
-                                "name": "Medium Rectangle",
-                                "type": "display",
-                                "width": 300,
-                                "height": 250,
+                                "agent_url": "https://creatives.adcontextprotocol.org",
+                                "id": "display_300x250",
                             }
                         ],
                         "targeting_template": {
@@ -247,11 +244,8 @@ def init_db(exit_on_error=False):
                         "description": "General display inventory across all properties",
                         "formats": [
                             {
-                                "format_id": "display_728x90",
-                                "name": "Leaderboard",
-                                "type": "display",
-                                "width": 728,
-                                "height": 90,
+                                "agent_url": "https://creatives.adcontextprotocol.org",
+                                "id": "display_728x90",
                             }
                         ],
                         "targeting_template": {
