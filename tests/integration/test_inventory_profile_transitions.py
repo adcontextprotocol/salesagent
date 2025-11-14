@@ -126,7 +126,7 @@ class TestInventoryProfileTransitions:
     def create_product(self, tenant_id, product_id, name, **kwargs):
         """Helper to create a product with minimal required fields."""
         defaults = {
-            "formats": [],
+            "format_ids": [],
             "targeting_template": {},
             "delivery_type": "standard",
             "properties": None,
