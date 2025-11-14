@@ -128,7 +128,7 @@ class TestA2AMessageFieldValidation:
         with mock_auth_context(handler):
             params = {
                 "brand_manifest": {"name": "Test product search"},
-                "brief": "Looking for display ads",
+                "brief": "Looking for display ads"
             }
 
             result = await handler._handle_get_products_skill(params, sample_principal["access_token"])

@@ -51,7 +51,7 @@ class TestAuthenticationRequirements:
 
         # Call without context (no auth)
         with pytest.raises(ToolError) as exc_info:
-            _sync_creatives_impl(creatives=creatives, context=None)
+            _sync_creatives_impl(creatives=creatives, ctx=None)
 
         error_msg = str(exc_info.value)
         assert "Authentication required" in error_msg
@@ -76,7 +76,7 @@ class TestAuthenticationRequirements:
         ]
 
         with pytest.raises(ToolError) as exc_info:
-            _sync_creatives_impl(creatives=creatives, context=invalid_context)
+            _sync_creatives_impl(creatives=creatives, ctx=invalid_context)
 
         assert "Authentication required" in str(exc_info.value)
 
@@ -86,7 +86,7 @@ class TestAuthenticationRequirements:
 
         # Call without context (no auth)
         with pytest.raises(ToolError) as exc_info:
-            _list_creatives_impl(context=None)
+            _list_creatives_impl(ctx=None)
 
         error_msg = str(exc_info.value)
         assert "x-adcp-auth" in error_msg
@@ -167,7 +167,7 @@ class TestAuthenticationRequirements:
 
         # Call without context (no auth)
         with pytest.raises((ToolError, ValueError)) as exc_info:
-            _get_media_buy_delivery_impl(req=req, context=None)
+            _get_media_buy_delivery_impl(req=req, ctx=None)
 
         error_msg = str(exc_info.value)
         # May raise ToolError for missing auth or ValueError for missing context
@@ -190,7 +190,7 @@ class TestAuthenticationRequirements:
             _update_performance_index_impl(
                 media_buy_id="test_buy",
                 performance_data=[{"product_id": "prod1", "performance_index": 0.8}],
-                context=None,
+                ctx=None,
             )
 
         error_msg = str(exc_info.value)
@@ -211,9 +211,9 @@ class TestAuthenticationRequirements:
 
         from src.core.tools.signals import _activate_signal_impl
 
-        # Call without context (no auth) - function signature: signal_id, campaign_id, media_buy_id, context
+        # Call without context (no auth) - function signature: signal_id, campaign_id, media_buy_id, ctx
         with pytest.raises(ToolError) as exc_info:
-            asyncio.run(_activate_signal_impl(signal_id="test_signal", media_buy_id="test_buy", context=None))
+            asyncio.run(_activate_signal_impl(signal_id="test_signal", media_buy_id="test_buy", ctx=None))
 
         error_msg = str(exc_info.value)
         assert "authentication required" in error_msg.lower() or "principal" in error_msg.lower()
@@ -227,14 +227,14 @@ class TestAuthenticationWithMockedContext:
         from src.core.tools.creatives import _sync_creatives_impl
 
         # Create ToolContext with None principal_id (invalid token scenario)
-        context = Mock(spec=ToolContext)
-        context.principal_id = None
-        context.tenant_id = "test_tenant"
+        ctx = Mock(spec=ToolContext)
+        ctx.principal_id = None
+        ctx.tenant_id = "test_tenant"
 
         creatives = [{"creative_id": "test", "name": "Test", "assets": {}}]
 
         with pytest.raises(ToolError) as exc_info:
-            _sync_creatives_impl(creatives=creatives, context=context)
+            _sync_creatives_impl(creatives=creatives, ctx=ctx)
 
         assert "Authentication required" in str(exc_info.value)
 
@@ -243,14 +243,14 @@ class TestAuthenticationWithMockedContext:
         from src.core.tools.creatives import _sync_creatives_impl
 
         # Create ToolContext with empty principal_id
-        context = Mock(spec=ToolContext)
-        context.principal_id = ""  # Empty string
-        context.tenant_id = "test_tenant"
+        ctx = Mock(spec=ToolContext)
+        ctx.principal_id = ""  # Empty string
+        ctx.tenant_id = "test_tenant"
 
         creatives = [{"creative_id": "test", "name": "Test", "assets": {}}]
 
         with pytest.raises(ToolError) as exc_info:
-            _sync_creatives_impl(creatives=creatives, context=context)
+            _sync_creatives_impl(creatives=creatives, ctx=ctx)
 
         assert "Authentication required" in str(exc_info.value)
 
@@ -263,7 +263,7 @@ class TestAuthenticationErrorMessages:
         from src.core.tools.creatives import _sync_creatives_impl
 
         with pytest.raises(ToolError) as exc_info:
-            _sync_creatives_impl(creatives=[], context=None)
+            _sync_creatives_impl(creatives=[], ctx=None)
 
         error_msg = str(exc_info.value)
         # Should mention the header name so users know what to fix

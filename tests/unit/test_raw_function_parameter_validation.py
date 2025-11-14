@@ -32,7 +32,7 @@ class TestRawFunctionParameterValidation:
         raw_sig = inspect.signature(get_products_raw)
         helper_sig = inspect.signature(create_get_products_request)
 
-        raw_params = set(raw_sig.parameters.keys()) - {"context"}
+        raw_params = set(raw_sig.parameters.keys()) - {"ctx"}
         helper_params = set(helper_sig.parameters.keys())
 
         # Check: All non-context params in raw should either:
@@ -57,7 +57,7 @@ class TestRawFunctionParameterValidation:
         ), f"get_products_raw has parameters not in helper and not documented as valid: {missing_in_helper}"
 
     def test_all_raw_functions_have_context_parameter(self):
-        """All _raw functions should accept a context parameter."""
+        """All _raw functions should accept a ctx parameter."""
         from src.core import tools
 
         raw_functions = [name for name in dir(tools) if name.endswith("_raw") and callable(getattr(tools, name))]
@@ -65,7 +65,7 @@ class TestRawFunctionParameterValidation:
         for func_name in raw_functions:
             func = getattr(tools, func_name)
             sig = inspect.signature(func)
-            assert "context" in sig.parameters, f"{func_name} missing 'context' parameter"
+            assert "ctx" in sig.parameters, f"{func_name} missing 'ctx' parameter"
 
     def test_raw_functions_dont_drop_parameters_silently(self):
         """Test that raw functions don't accept parameters they don't use.
@@ -98,7 +98,7 @@ class TestRawFunctionParameterValidation:
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name.endswith("_raw"):
                 func_name = node.name
-                params = {arg.arg for arg in node.args.args} - {"self", "context"}
+                params = {arg.arg for arg in node.args.args} - {"self", "ctx"}
 
                 # Find all names used in function body
                 used_names = set()
@@ -130,7 +130,7 @@ class TestRawFunctionParameterValidation:
         # This test documents what we expect the signature to be
         # If this fails, it means the helper changed and we need to update callers
         # Note: promoted_offering removed per adcp v1.2.1 migration
-        expected_params = ["brief", "brand_manifest", "filters"]
+        expected_params = ["brief", "brand_manifest", "filters", "context"]
 
         assert params == expected_params, (
             f"create_get_products_request signature changed!\n"
@@ -199,7 +199,7 @@ class TestHelperFunctionDocumentation:
         # Verify create_get_products_request (the one that caused the bug)
         assert "create_get_products_request" in signatures
         # Note: promoted_offering removed per adcp v1.2.1 migration
-        expected = ["brief", "brand_manifest", "filters"]
+        expected = ["brief", "brand_manifest", "filters", "context"]
         actual = signatures["create_get_products_request"]
         assert actual == expected, (
             f"create_get_products_request signature changed!\n"
