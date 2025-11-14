@@ -998,6 +998,160 @@ class GAMOrdersManager:
 
         return created_line_item_ids
 
+    def update_line_item_budget(
+        self, line_item_id: str, new_budget: float, pricing_model: str, currency: str = "USD"
+    ) -> bool:
+        """Update line item budget in GAM by modifying costPerUnit and primaryGoal.
+
+        Args:
+            line_item_id: GAM line item ID
+            new_budget: New budget amount
+            pricing_model: Pricing model (cpm, cpc, vcpm, flat_rate)
+            currency: Currency code (default: USD)
+
+        Returns:
+            True if update successful, False otherwise
+        """
+        if self.dry_run:
+            logger.info(
+                f"[DRY RUN] Would update line item {line_item_id} budget to {new_budget} {currency} "
+                f"(pricing: {pricing_model})"
+            )
+            return True
+
+        try:
+            line_item_service = self.client_manager.get_service("LineItemService")
+
+            # Get current line item
+            statement_builder = ad_manager.StatementBuilder()
+            statement_builder.Where("id = :lineItemId")
+            statement_builder.WithBindVariable("lineItemId", int(line_item_id))
+            statement = statement_builder.ToStatement()
+
+            result = line_item_service.getLineItemsByStatement(statement)
+            line_items = result.get("results", []) if isinstance(result, dict) else getattr(result, "results", [])
+
+            if not line_items:
+                logger.error(f"Line item {line_item_id} not found in GAM")
+                return False
+
+            line_item = line_items[0]
+
+            # Calculate new goal units based on pricing model
+            # Budget = (costPerUnit / 1000) * goal_units for CPM
+            # Budget = costPerUnit * goal_units for CPC
+            current_cost_per_unit_micro = line_item.get("costPerUnit", {}).get("microAmount", 0)
+            current_cost_per_unit = float(current_cost_per_unit_micro) / 1_000_000
+
+            if current_cost_per_unit <= 0:
+                logger.error(f"Invalid costPerUnit for line item {line_item_id}: {current_cost_per_unit}")
+                return False
+
+            # Calculate new goal units based on pricing model
+            if pricing_model in ["cpm", "vcpm"]:
+                # CPM/VCPM: budget = (rate / 1000) * impressions → impressions = budget / (rate / 1000)
+                new_goal_units = int((new_budget * 1000) / current_cost_per_unit)
+            elif pricing_model == "cpc":
+                # CPC: budget = rate * clicks → clicks = budget / rate
+                new_goal_units = int(new_budget / current_cost_per_unit)
+            elif pricing_model == "flat_rate":
+                # FLAT_RATE: Keep existing goal units (100% for sponsorship)
+                new_goal_units = line_item.get("primaryGoal", {}).get("units", 100)
+            else:
+                logger.error(f"Unsupported pricing model for budget update: {pricing_model}")
+                return False
+
+            # Update line item
+            line_item["primaryGoal"]["units"] = new_goal_units
+
+            # Update the line item in GAM
+            updated_line_items = line_item_service.updateLineItems([line_item])
+
+            if updated_line_items:
+                logger.info(
+                    f"✓ Updated line item {line_item_id} budget: ${new_budget} {currency} "
+                    f"(goal units: {new_goal_units}, pricing: {pricing_model})"
+                )
+                return True
+            else:
+                logger.error(f"Failed to update line item {line_item_id} - GAM API returned no results")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error updating line item {line_item_id} budget: {e}")
+            return False
+
+    def pause_line_item(self, line_item_id: str) -> bool:
+        """Pause line item in GAM by setting status to PAUSED.
+
+        Args:
+            line_item_id: GAM line item ID
+
+        Returns:
+            True if pause successful, False otherwise
+        """
+        return self._update_line_item_status(line_item_id, "PAUSED")
+
+    def resume_line_item(self, line_item_id: str) -> bool:
+        """Resume line item in GAM by setting status to READY.
+
+        Args:
+            line_item_id: GAM line item ID
+
+        Returns:
+            True if resume successful, False otherwise
+        """
+        return self._update_line_item_status(line_item_id, "READY")
+
+    def _update_line_item_status(self, line_item_id: str, new_status: str) -> bool:
+        """Update line item status in GAM.
+
+        Args:
+            line_item_id: GAM line item ID
+            new_status: New status (READY, PAUSED, etc.)
+
+        Returns:
+            True if update successful, False otherwise
+        """
+        if self.dry_run:
+            logger.info(f"[DRY RUN] Would update line item {line_item_id} status to {new_status}")
+            return True
+
+        try:
+            line_item_service = self.client_manager.get_service("LineItemService")
+
+            # Get current line item
+            statement_builder = ad_manager.StatementBuilder()
+            statement_builder.Where("id = :lineItemId")
+            statement_builder.WithBindVariable("lineItemId", int(line_item_id))
+            statement = statement_builder.ToStatement()
+
+            result = line_item_service.getLineItemsByStatement(statement)
+            line_items = result.get("results", []) if isinstance(result, dict) else getattr(result, "results", [])
+
+            if not line_items:
+                logger.error(f"Line item {line_item_id} not found in GAM")
+                return False
+
+            line_item = line_items[0]
+
+            # Update status
+            line_item["status"] = new_status
+
+            # Update the line item in GAM
+            updated_line_items = line_item_service.updateLineItems([line_item])
+
+            if updated_line_items:
+                logger.info(f"✓ Updated line item {line_item_id} status to {new_status}")
+                return True
+            else:
+                logger.error(f"Failed to update line item {line_item_id} status - GAM API returned no results")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error updating line item {line_item_id} status: {e}")
+            return False
+
     def get_advertisers(
         self, search_query: str | None = None, limit: int = 500, fetch_all: bool = False
     ) -> list[dict[str, Any]]:
