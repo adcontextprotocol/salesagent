@@ -274,6 +274,7 @@ def update_adapter(tenant_id):
         # Support both JSON (from our frontend) and form data (from tests)
         if request.is_json:
             new_adapter = request.json.get("adapter")
+            logger.info(f"update_adapter received JSON payload: {request.json}")
         else:
             new_adapter = request.form.get("adapter")
 
@@ -354,7 +355,8 @@ def update_adapter(tenant_id):
                     adapter_config_obj.gam_order_name_template = order_name_template
                 if line_item_name_template:
                     adapter_config_obj.gam_line_item_name_template = line_item_name_template
-                if axe_custom_targeting_key:
+                # Allow empty string to clear AXE configuration (check for None, not truthiness)
+                if axe_custom_targeting_key is not None:
                     adapter_config_obj.gam_axe_custom_targeting_key = axe_custom_targeting_key
                 adapter_config_obj.gam_manual_approval_required = manual_approval
             elif new_adapter == "mock":
