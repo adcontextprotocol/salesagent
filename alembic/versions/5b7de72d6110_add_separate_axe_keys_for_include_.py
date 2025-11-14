@@ -1,7 +1,7 @@
 """add_separate_axe_keys_for_include_exclude_macro
 
 Revision ID: 5b7de72d6110
-Revises: 986aa36f9589
+Revises: 039d59477ab4
 Create Date: 2025-11-14 10:17:03.312132
 
 """
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "5b7de72d6110"
-down_revision: Union[str, Sequence[str], None] = "986aa36f9589"
+down_revision: Union[str, Sequence[str], None] = "039d59477ab4"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
