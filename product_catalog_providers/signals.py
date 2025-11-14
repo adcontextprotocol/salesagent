@@ -249,7 +249,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
                         "product_id": db_product.product_id,
                         "name": db_product.name,
                         "description": db_product.description or f"Advertising product: {db_product.name}",
-                        "formats": db_product.format_ids or [],
+                        "format_ids": db_product.format_ids or [],
                         "delivery_type": "guaranteed" if first_pricing.get("is_fixed") else "non_guaranteed",
                         "is_fixed_price": first_pricing.get("is_fixed", False),
                         "cpm": first_pricing.get("rate"),
@@ -265,23 +265,23 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
                     }
 
                     # Handle JSON fields (might be strings in SQLite)
-                    if isinstance(product_data["formats"], str):
+                    if isinstance(product_data["format_ids"], str):
                         import json
 
                         try:
-                            product_data["formats"] = json.loads(product_data["formats"])
+                            product_data["format_ids"] = json.loads(product_data["format_ids"])
                         except json.JSONDecodeError:
-                            product_data["formats"] = []
+                            product_data["format_ids"] = []
 
-                    # Extract format IDs if formats are objects
-                    if product_data["formats"]:
+                    # Extract format IDs if format_ids are objects
+                    if product_data["format_ids"]:
                         format_ids = []
-                        for fmt in product_data["formats"]:
+                        for fmt in product_data["format_ids"]:
                             if isinstance(fmt, dict) and "format_id" in fmt:
                                 format_ids.append(fmt["format_id"])
                             elif isinstance(fmt, str):
                                 format_ids.append(fmt)
-                        product_data["formats"] = format_ids
+                        product_data["format_ids"] = format_ids
 
                     product = Product(**product_data)
                     products.append(product)

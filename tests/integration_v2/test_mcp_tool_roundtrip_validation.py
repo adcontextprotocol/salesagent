@@ -207,19 +207,26 @@ class TestMCPToolRoundtripValidation:
             else:
                 pricing_kwargs["rate"] = 10.0
 
-            # Extract format IDs from FormatId objects (db_product.format_ids may be list of dicts or FormatId objects)
+            # Convert format_ids to FormatId objects if they're dicts or strings
             formats = db_product.format_ids
-            if formats and isinstance(formats[0], dict):
-                # Extract just the 'id' field from each format dict
-                format_ids = [f["id"] if isinstance(f, dict) else f.id for f in formats]
-            else:
-                format_ids = formats
+            format_id_objects = []
+            if formats:
+                for f in formats:
+                    if isinstance(f, dict):
+                        # Already a dict with agent_url and id
+                        format_id_objects.append(f)
+                    elif isinstance(f, str):
+                        # String ID - convert to FormatId dict
+                        format_id_objects.append({"agent_url": "https://creative.adcontextprotocol.org", "id": f})
+                    else:
+                        # FormatId object - keep as is
+                        format_id_objects.append(f)
 
             product_data = {
                 "product_id": db_product.product_id,
                 "name": db_product.name,
                 "description": db_product.description or "",
-                "format_ids": format_ids,  # AdCP spec field name (list of strings)
+                "format_ids": format_id_objects,  # FormatId objects or dicts
                 "delivery_type": db_product.delivery_type,
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
@@ -321,19 +328,26 @@ class TestMCPToolRoundtripValidation:
             else:
                 pricing_kwargs["rate"] = 10.0
 
-            # Extract format IDs from FormatId objects (db_product.format_ids may be list of dicts or FormatId objects)
+            # Convert format_ids to FormatId objects if they're dicts or strings
             formats = db_product.format_ids
-            if formats and isinstance(formats[0], dict):
-                # Extract just the 'id' field from each format dict
-                format_ids = [f["id"] if isinstance(f, dict) else f.id for f in formats]
-            else:
-                format_ids = formats
+            format_id_objects = []
+            if formats:
+                for f in formats:
+                    if isinstance(f, dict):
+                        # Already a dict with agent_url and id
+                        format_id_objects.append(f)
+                    elif isinstance(f, str):
+                        # String ID - convert to FormatId dict
+                        format_id_objects.append({"agent_url": "https://creative.adcontextprotocol.org", "id": f})
+                    else:
+                        # FormatId object - keep as is
+                        format_id_objects.append(f)
 
             product_data = {
                 "product_id": db_product.product_id,
                 "name": db_product.name,
                 "description": db_product.description or "",
-                "format_ids": format_ids,  # AdCP spec field name (list of strings)
+                "format_ids": format_id_objects,  # FormatId objects or dicts
                 "delivery_type": db_product.delivery_type,
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
