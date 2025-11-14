@@ -515,7 +515,10 @@ def sample_products(integration_db, sample_tenant):
                 product_id="guaranteed_display",
                 name="Guaranteed Display Ads",
                 description="Premium guaranteed display advertising",
-                format_ids=["display_300x250", "display_728x90"],  # Format IDs only, not objects
+                format_ids=[
+                    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+                ],
                 targeting_template={"geo_country": {"values": ["US"], "required": False}},
                 delivery_type="guaranteed",
                 property_tags=["all_inventory"],  # Required per AdCP spec
@@ -532,7 +535,10 @@ def sample_products(integration_db, sample_tenant):
                 product_id="non_guaranteed_video",
                 name="Non-Guaranteed Video",
                 description="Programmatic video advertising",
-                format_ids=["video_15s", "video_30s"],  # Format IDs only, not objects
+                format_ids=[
+                    {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+                    {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s"},
+                ],
                 targeting_template={},
                 delivery_type="non_guaranteed",
                 property_tags=["all_inventory"],  # Required per AdCP spec

@@ -269,7 +269,7 @@ def test_add_product_postgresql_validation(client, test_tenant):
                 tenant_id="test_product_tenant",
                 product_id="test_bad_json",
                 name="Bad JSON Product",
-                formats='"["display_300x250"]"',  # Double-encoded string
+                format_ids='"[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}]"',  # Double-encoded string
                 countries='"["US"]"',  # Double-encoded string
                 delivery_type="guaranteed",
             )
@@ -280,7 +280,7 @@ def test_add_product_postgresql_validation(client, test_tenant):
         except Exception as e:
             # PostgreSQL should reject double-encoded JSON
             session.rollback()
-            assert "check_formats_is_array" in str(e) or "check_countries_is_array" in str(e) or "JSON" in str(e)
+            assert "check_format_ids_is_array" in str(e) or "check_countries_is_array" in str(e) or "JSON" in str(e)
 
 
 @pytest.mark.requires_db

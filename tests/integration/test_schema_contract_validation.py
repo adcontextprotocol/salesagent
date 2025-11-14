@@ -154,7 +154,10 @@ class TestProductSchemaContract:
             "product_id": "contract_test_product",
             "name": "Contract Test Product",
             "description": "Product for testing AdCP contract compliance",
-            "formats": ["display_300x250", "video_15s"],  # Internal field name
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+            ],
             "delivery_type": "guaranteed",
             "measurement": {
                 "type": "brand_lift",
@@ -209,7 +212,10 @@ class TestProductSchemaContract:
             "product_id": "mapping_test_product",
             "name": "Mapping Test Product",
             "description": "Testing field mapping consistency",
-            "formats": ["display_300x250", "display_728x90"],  # Internal field
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+            ],
             "delivery_type": "non_guaranteed",
             "is_custom": True,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -224,8 +230,9 @@ class TestProductSchemaContract:
             ],
         }
 
-        # Internal to external field mappings
-        field_mappings = {"formats": "format_ids"}  # Internal: formats, External: format_ids
+        # Note: format_ids is now used directly (no internal/external mapping needed)
+        # This test validates the product can be created and serialized correctly
+        field_mappings = {}  # No mappings needed with format_ids
 
         validator.validate_field_mapping_consistency(Product, test_data, field_mappings)
 
@@ -236,7 +243,11 @@ class TestProductSchemaContract:
             "product_id": "roundtrip_safety_test",
             "name": "Roundtrip Safety Test Product",
             "description": "Testing roundtrip safety with complex data",
-            "formats": ["display_300x250", "video_15s", "audio_30s"],
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "audio_30s"},
+            ],
             "delivery_type": "guaranteed",
             "measurement": {
                 "type": "incremental_sales_lift",
@@ -282,7 +293,9 @@ class TestProductSchemaContract:
             "product_id": "minimal_contract_test",
             "name": "Minimal Contract Test",
             "description": "Testing with minimal required fields only",
-            "formats": ["display_300x250"],
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+            ],
             "delivery_type": "non_guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -498,7 +511,9 @@ class TestGetProductsResponseContract:
                 product_id="response_test_1",
                 name="Response Test Product 1",
                 description="First product for response testing",
-                format_ids=["display_300x250"],
+                format_ids=[
+                    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                ],
                 delivery_type="guaranteed",
                 is_custom=False,
                 property_tags=["all_inventory"],  # Required per AdCP spec
@@ -516,7 +531,9 @@ class TestGetProductsResponseContract:
                 product_id="response_test_2",
                 name="Response Test Product 2",
                 description="Second product for response testing",
-                format_ids=["video_15s"],
+                format_ids=[
+                    {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+                ],
                 delivery_type="non_guaranteed",
                 is_custom=True,
                 property_tags=["all_inventory"],  # Required per AdCP spec
@@ -566,7 +583,9 @@ class TestSchemaEvolutionSafety:
             "product_id": "evolution_test",
             "name": "Evolution Test Product",
             "description": "Testing schema evolution safety",
-            "formats": ["display_300x250"],
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+            ],
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -597,7 +616,9 @@ class TestSchemaEvolutionSafety:
             "product_id": "removal_test",
             "name": "Removal Test Product",
             "description": "Testing field removal safety",
-            "formats": ["display_300x250"],
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+            ],
             "delivery_type": "non_guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -628,7 +649,9 @@ class TestSchemaEvolutionSafety:
             product_id="type_evolution_test",
             name="Type Evolution Test",
             description="Testing numeric type evolution",
-            format_ids=["display_300x250"],
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+            ],
             delivery_type="guaranteed",
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
