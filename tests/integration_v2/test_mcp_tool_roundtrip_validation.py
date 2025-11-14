@@ -413,8 +413,11 @@ class TestMCPToolRoundtripValidation:
 
         # Verify the dict has the correct field name
         assert "format_ids" in product_dict
-        # model_dump_internal() returns list of strings for format_ids
-        assert product_dict["format_ids"] == ["display_300x250", "video_15s"]
+        # model_dump_internal() returns list of dicts for format_ids (FormatId objects serialized)
+        assert product_dict["format_ids"] == [
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+        ]
 
         # Step 2: Simulate testing hooks modifying the data
         testing_ctx = TestingContext(dry_run=True, test_session_id="isolated_test")
