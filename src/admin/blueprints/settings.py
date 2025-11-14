@@ -339,19 +339,13 @@ def update_adapter(tenant_id):
                     )
                     # Three separate AXE keys per AdCP spec
                     axe_include_key = (
-                        request.json.get("gam_axe_include_key", "").strip()
-                        if request.json.get("gam_axe_include_key")
-                        else ""
+                        request.json.get("axe_include_key", "").strip() if request.json.get("axe_include_key") else ""
                     )
                     axe_exclude_key = (
-                        request.json.get("gam_axe_exclude_key", "").strip()
-                        if request.json.get("gam_axe_exclude_key")
-                        else ""
+                        request.json.get("axe_exclude_key", "").strip() if request.json.get("axe_exclude_key") else ""
                     )
                     axe_macro_key = (
-                        request.json.get("gam_axe_macro_key", "").strip()
-                        if request.json.get("gam_axe_macro_key")
-                        else ""
+                        request.json.get("axe_macro_key", "").strip() if request.json.get("axe_macro_key") else ""
                     )
                 else:
                     network_code = request.form.get("gam_network_code", "").strip()
@@ -363,9 +357,9 @@ def update_adapter(tenant_id):
                     # Legacy single AXE key (deprecated)
                     axe_custom_targeting_key = request.form.get("gam_axe_custom_targeting_key", "").strip()
                     # Three separate AXE keys per AdCP spec
-                    axe_include_key = request.form.get("gam_axe_include_key", "").strip()
-                    axe_exclude_key = request.form.get("gam_axe_exclude_key", "").strip()
-                    axe_macro_key = request.form.get("gam_axe_macro_key", "").strip()
+                    axe_include_key = request.form.get("axe_include_key", "").strip()
+                    axe_exclude_key = request.form.get("axe_exclude_key", "").strip()
+                    axe_macro_key = request.form.get("axe_macro_key", "").strip()
 
                 if network_code:
                     adapter_config_obj.gam_network_code = network_code
@@ -381,11 +375,11 @@ def update_adapter(tenant_id):
                 if axe_custom_targeting_key is not None:
                     adapter_config_obj.gam_axe_custom_targeting_key = axe_custom_targeting_key
                 if axe_include_key is not None:
-                    adapter_config_obj.gam_axe_include_key = axe_include_key
+                    adapter_config_obj.axe_include_key = axe_include_key
                 if axe_exclude_key is not None:
-                    adapter_config_obj.gam_axe_exclude_key = axe_exclude_key
+                    adapter_config_obj.axe_exclude_key = axe_exclude_key
                 if axe_macro_key is not None:
-                    adapter_config_obj.gam_axe_macro_key = axe_macro_key
+                    adapter_config_obj.axe_macro_key = axe_macro_key
                 adapter_config_obj.gam_manual_approval_required = manual_approval
             elif new_adapter == "mock":
                 if request.is_json:

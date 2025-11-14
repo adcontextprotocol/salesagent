@@ -765,26 +765,27 @@ class AdapterConfig(Base):
     gam_line_item_name_template: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # AXE (Audience Exchange) custom targeting keys (AdCP spec requires separate keys for each purpose)
+    # These are adapter-agnostic and work with GAM, Kevel, Mock, or any other adapter
     gam_axe_custom_targeting_key: Mapped[str | None] = mapped_column(
         String(100),
         nullable=True,
         server_default="axe_segment",
-        comment="DEPRECATED: Legacy single key for AXE targeting. Use gam_axe_include_key, gam_axe_exclude_key, gam_axe_macro_key instead.",
+        comment="DEPRECATED: Legacy single key for AXE targeting. Use axe_include_key, axe_exclude_key, axe_macro_key instead.",
     )
-    gam_axe_include_key: Mapped[str | None] = mapped_column(
+    axe_include_key: Mapped[str | None] = mapped_column(
         String(100),
         nullable=True,
-        comment="GAM custom targeting key for AXE include segments (axe_include_segment)",
+        comment="Custom targeting key for AXE include segments (axe_include_segment) - works with all adapters",
     )
-    gam_axe_exclude_key: Mapped[str | None] = mapped_column(
+    axe_exclude_key: Mapped[str | None] = mapped_column(
         String(100),
         nullable=True,
-        comment="GAM custom targeting key for AXE exclude segments (axe_exclude_segment)",
+        comment="Custom targeting key for AXE exclude segments (axe_exclude_segment) - works with all adapters",
     )
-    gam_axe_macro_key: Mapped[str | None] = mapped_column(
+    axe_macro_key: Mapped[str | None] = mapped_column(
         String(100),
         nullable=True,
-        comment="GAM custom targeting key for AXE creative macro segments (enable_creative_macro)",
+        comment="Custom targeting key for AXE creative macro segments (enable_creative_macro) - works with all adapters",
     )
 
     # NOTE: gam_company_id (advertiser_id) is per-principal, stored in Principal.platform_mappings

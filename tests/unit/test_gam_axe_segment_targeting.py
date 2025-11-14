@@ -17,9 +17,9 @@ from src.core.schemas import Targeting
 def mock_adapter_config_three_keys():
     """Fixture for mocked adapter config with all three AXE keys configured."""
     mock_config = MagicMock()
-    mock_config.gam_axe_include_key = "audience_include"
-    mock_config.gam_axe_exclude_key = "audience_exclude"
-    mock_config.gam_axe_macro_key = "audience_macro"
+    mock_config.axe_include_key = "audience_include"
+    mock_config.axe_exclude_key = "audience_exclude"
+    mock_config.axe_macro_key = "audience_macro"
     return mock_config
 
 
@@ -27,9 +27,9 @@ def mock_adapter_config_three_keys():
 def mock_adapter_config_no_keys():
     """Fixture for mocked adapter config with no AXE keys configured."""
     mock_config = MagicMock()
-    mock_config.gam_axe_include_key = None
-    mock_config.gam_axe_exclude_key = None
-    mock_config.gam_axe_macro_key = None
+    mock_config.axe_include_key = None
+    mock_config.axe_exclude_key = None
+    mock_config.axe_macro_key = None
     return mock_config
 
 
@@ -150,7 +150,7 @@ def test_axe_segments_optional(mock_adapter_config_three_keys):
 
 
 def test_axe_include_segment_fails_if_key_not_configured(mock_adapter_config_no_keys):
-    """Test that axe_include_segment fails with clear error if gam_axe_include_key not configured."""
+    """Test that axe_include_segment fails with clear error if axe_include_key not configured."""
     with patch("src.core.database.database_session.get_db_session") as mock_session:
         mock_db = MagicMock()
         mock_session.return_value.__enter__.return_value = mock_db
@@ -166,11 +166,11 @@ def test_axe_include_segment_fails_if_key_not_configured(mock_adapter_config_no_
         with pytest.raises(ValueError) as exc_info:
             manager.build_targeting(targeting_overlay)
 
-        assert "gam_axe_include_key not configured" in str(exc_info.value)
+        assert "axe_include_key not configured" in str(exc_info.value)
 
 
 def test_axe_exclude_segment_fails_if_key_not_configured(mock_adapter_config_no_keys):
-    """Test that axe_exclude_segment fails with clear error if gam_axe_exclude_key not configured."""
+    """Test that axe_exclude_segment fails with clear error if axe_exclude_key not configured."""
     with patch("src.core.database.database_session.get_db_session") as mock_session:
         mock_db = MagicMock()
         mock_session.return_value.__enter__.return_value = mock_db
@@ -186,4 +186,4 @@ def test_axe_exclude_segment_fails_if_key_not_configured(mock_adapter_config_no_
         with pytest.raises(ValueError) as exc_info:
             manager.build_targeting(targeting_overlay)
 
-        assert "gam_axe_exclude_key not configured" in str(exc_info.value)
+        assert "axe_exclude_key not configured" in str(exc_info.value)

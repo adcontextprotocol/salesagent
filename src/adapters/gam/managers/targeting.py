@@ -73,9 +73,11 @@ class GAMTargetingManager:
         """Load AXE custom targeting key names from adapter config.
 
         Per AdCP spec, three separate keys are required:
-        - gam_axe_include_key: For axe_include_segment targeting
-        - gam_axe_exclude_key: For axe_exclude_segment targeting
-        - gam_axe_macro_key: For creative macro substitution
+        - axe_include_key: For axe_include_segment targeting
+        - axe_exclude_key: For axe_exclude_segment targeting
+        - axe_macro_key: For creative macro substitution
+
+        These are adapter-agnostic and work with all ad server adapters.
         """
         from sqlalchemy import select
 
@@ -88,9 +90,9 @@ class GAMTargetingManager:
                 adapter_config = session.scalars(stmt).first()
 
                 if adapter_config:
-                    self.axe_include_key = adapter_config.gam_axe_include_key
-                    self.axe_exclude_key = adapter_config.gam_axe_exclude_key
-                    self.axe_macro_key = adapter_config.gam_axe_macro_key
+                    self.axe_include_key = adapter_config.axe_include_key
+                    self.axe_exclude_key = adapter_config.axe_exclude_key
+                    self.axe_macro_key = adapter_config.axe_macro_key
 
                     logger.info(
                         f"Loaded AXE keys for tenant {self.tenant_id}: "
@@ -323,7 +325,7 @@ class GAMTargetingManager:
         if targeting_overlay.axe_include_segment:
             if not self.axe_include_key:
                 raise ValueError(
-                    "AXE include segment targeting requested but gam_axe_include_key not configured. "
+                    "AXE include segment targeting requested but axe_include_key not configured. "
                     "Configure AXE keys in tenant adapter settings to support this targeting."
                 )
             custom_targeting[self.axe_include_key] = targeting_overlay.axe_include_segment
@@ -334,7 +336,7 @@ class GAMTargetingManager:
         if targeting_overlay.axe_exclude_segment:
             if not self.axe_exclude_key:
                 raise ValueError(
-                    "AXE exclude segment targeting requested but gam_axe_exclude_key not configured. "
+                    "AXE exclude segment targeting requested but axe_exclude_key not configured. "
                     "Configure AXE keys in tenant adapter settings to support this targeting."
                 )
             # GAM supports negative targeting via NOT_ prefix

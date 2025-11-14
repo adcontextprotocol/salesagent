@@ -88,12 +88,12 @@
     </div>
 
     <!-- Hidden inputs for AXE configuration -->
-    <input type="hidden" id="gam_axe_include_key"
-           value="{{ adapter_config.get('gam_axe_include_key', '') if adapter_config else '' }}">
-    <input type="hidden" id="gam_axe_exclude_key"
-           value="{{ adapter_config.get('gam_axe_exclude_key', '') if adapter_config else '' }}">
-    <input type="hidden" id="gam_axe_macro_key"
-           value="{{ adapter_config.get('gam_axe_macro_key', '') if adapter_config else '' }}">
+    <input type="hidden" id="axe_include_key"
+           value="{{ adapter_config.get('axe_include_key', '') if adapter_config else '' }}">
+    <input type="hidden" id="axe_exclude_key"
+           value="{{ adapter_config.get('axe_exclude_key', '') if adapter_config else '' }}">
+    <input type="hidden" id="axe_macro_key"
+           value="{{ adapter_config.get('axe_macro_key', '') if adapter_config else '' }}">
 
     <!-- Tabs for different targeting types -->
     <ul class="nav nav-tabs mb-4" role="tablist">
@@ -694,9 +694,9 @@ function populateAxeDropdowns() {
     });
 
     // Set selected values from current configuration
-    const includeKey = document.getElementById('gam_axe_include_key').value;
-    const excludeKey = document.getElementById('gam_axe_exclude_key').value;
-    const macroKey = document.getElementById('gam_axe_macro_key').value;
+    const includeKey = document.getElementById('axe_include_key').value;
+    const excludeKey = document.getElementById('axe_exclude_key').value;
+    const macroKey = document.getElementById('axe_macro_key').value;
 
     if (includeKey) document.getElementById('axe-include-key-select').value = includeKey;
     if (excludeKey) document.getElementById('axe-exclude-key-select').value = excludeKey;
@@ -936,9 +936,9 @@ async function saveAxeKey(keyType) {
 
         // Map type to database field name
         const fieldMap = {
-            'include': 'gam_axe_include_key',
-            'exclude': 'gam_axe_exclude_key',
-            'macro': 'gam_axe_macro_key'
+            'include': 'axe_include_key',
+            'exclude': 'axe_exclude_key',
+            'macro': 'axe_macro_key'
         };
         const fieldName = fieldMap[keyType];
 
@@ -984,9 +984,9 @@ function updateAxeKeyStatus(keyType, keyName) {
 
 // Update all AXE status displays on page load
 function updateAllAxeStatuses() {
-    updateAxeKeyStatus('include', document.getElementById('gam_axe_include_key').value);
-    updateAxeKeyStatus('exclude', document.getElementById('gam_axe_exclude_key').value);
-    updateAxeKeyStatus('macro', document.getElementById('gam_axe_macro_key').value);
+    updateAxeKeyStatus('include', document.getElementById('axe_include_key').value);
+    updateAxeKeyStatus('exclude', document.getElementById('axe_exclude_key').value);
+    updateAxeKeyStatus('macro', document.getElementById('axe_macro_key').value);
 }
 
 // Manual entry save
