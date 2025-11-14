@@ -60,7 +60,65 @@ def upgrade() -> None:
     op.alter_column("tenants", "auto_approve_formats", new_column_name="auto_approve_format_ids")
 
     # ========================================================================
-    # 2. Add JSON schema validation constraints
+    # 2. Transform existing data to new FormatId structure
+    # ========================================================================
+
+    print("\n🔄 Transforming existing format data to AdCP-compliant structure...")
+
+    # Transform products.format_ids: extract format_id → id, add agent_url
+    transform_products = """
+    UPDATE products
+    SET format_ids = (
+        SELECT jsonb_agg(
+            jsonb_build_object(
+                'agent_url', 'https://creatives.adcontextprotocol.org',
+                'id', COALESCE(elem->>'format_id', elem->>'id')
+            )
+        )
+        FROM jsonb_array_elements(format_ids) elem
+    )
+    WHERE format_ids IS NOT NULL
+      AND jsonb_typeof(format_ids) = 'array'
+      AND jsonb_array_length(format_ids) > 0
+      -- Only transform if not already in new format (missing agent_url)
+      AND NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements(format_ids) elem
+          WHERE elem ? 'agent_url'
+      );
+    """
+    print("  → Transforming products.format_ids...")
+    result = op.get_bind().execute(transform_products)
+    print(f"    ✓ Transformed {result.rowcount} product records")
+
+    # Transform inventory_profiles.format_ids
+    transform_inventory = """
+    UPDATE inventory_profiles
+    SET format_ids = (
+        SELECT jsonb_agg(
+            jsonb_build_object(
+                'agent_url', 'https://creatives.adcontextprotocol.org',
+                'id', COALESCE(elem->>'format_id', elem->>'id')
+            )
+        )
+        FROM jsonb_array_elements(format_ids) elem
+    )
+    WHERE format_ids IS NOT NULL
+      AND jsonb_typeof(format_ids) = 'array'
+      AND jsonb_array_length(format_ids) > 0
+      -- Only transform if not already in new format
+      AND NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements(format_ids) elem
+          WHERE elem ? 'agent_url'
+      );
+    """
+    print("  → Transforming inventory_profiles.format_ids...")
+    result = op.get_bind().execute(transform_inventory)
+    print(f"    ✓ Transformed {result.rowcount} inventory profile records")
+
+    print("  ✅ Data transformation complete")
+
+    # ========================================================================
+    # 3. Add JSON schema validation constraints
     # ========================================================================
 
     print("\n🔒 Adding JSON schema validation constraints...")
