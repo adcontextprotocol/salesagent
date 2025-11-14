@@ -220,12 +220,12 @@ class CreativeAgentRegistry:
             if result.status == "completed":
                 formats_data = result.data
                 logger.info(
-                    f"_fetch_formats_from_agent: Got response with {len(formats_data.format_ids) if formats_data and hasattr(formats_data, 'formats') else 'N/A'} formats"
+                    f"_fetch_formats_from_agent: Got response with {len(formats_data.formats) if formats_data and hasattr(formats_data, 'formats') else 'N/A'} formats"
                 )
 
                 # Convert to Format objects
                 formats = []
-                for fmt_data in formats_data.format_ids:
+                for fmt_data in formats_data.formats:
                     # Ensure agent_url is set
                     fmt_dict = fmt_data if isinstance(fmt_data, dict) else fmt_data.model_dump()
                     fmt_dict["agent_url"] = agent.agent_url
