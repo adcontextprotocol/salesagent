@@ -66,13 +66,13 @@ def upgrade() -> None:
 
     print("\n🔄 Transforming existing format data to AdCP-compliant structure...")
 
-    # Transform products.format_ids: extract format_id → id, add agent_url
+    # Transform products.format_ids: extract format_id → id, preserve agent_url
     transform_products = """
     UPDATE products
     SET format_ids = (
         SELECT jsonb_agg(
             jsonb_build_object(
-                'agent_url', 'https://creatives.adcontextprotocol.org',
+                'agent_url', COALESCE(elem->>'agent_url', 'https://creatives.adcontextprotocol.org'),
                 'id', COALESCE(elem->>'format_id', elem->>'id')
             )
         )
@@ -91,13 +91,13 @@ def upgrade() -> None:
     result = op.get_bind().execute(text(transform_products))
     print(f"    ✓ Transformed {result.rowcount} product records")
 
-    # Transform inventory_profiles.format_ids
+    # Transform inventory_profiles.format_ids: preserve agent_url
     transform_inventory = """
     UPDATE inventory_profiles
     SET format_ids = (
         SELECT jsonb_agg(
             jsonb_build_object(
-                'agent_url', 'https://creatives.adcontextprotocol.org',
+                'agent_url', COALESCE(elem->>'agent_url', 'https://creatives.adcontextprotocol.org'),
                 'id', COALESCE(elem->>'format_id', elem->>'id')
             )
         )
