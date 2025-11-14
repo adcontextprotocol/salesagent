@@ -139,7 +139,7 @@ class GoogleAdManager(AdServerAdapter):
                     logger.warning(f"Could not auto-detect trafficker_id: {e}")
 
             # Initialize manager components
-            self.targeting_manager = GAMTargetingManager()
+            self.targeting_manager = GAMTargetingManager(tenant_id or "")
 
             # Initialize orders manager (advertiser_id/trafficker_id optional for query operations)
             self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
@@ -166,7 +166,7 @@ class GoogleAdManager(AdServerAdapter):
             self.log("[yellow]Running in dry-run mode - GAM client not initialized[/yellow]")
 
             # Initialize managers for dry-run mode (they can work without real client)
-            self.targeting_manager = GAMTargetingManager()
+            self.targeting_manager = GAMTargetingManager(tenant_id or "")
 
             # Initialize orders manager in dry-run mode
             self.orders_manager = GAMOrdersManager(None, self.advertiser_id, self.trafficker_id, dry_run=True)  # type: ignore[arg-type]

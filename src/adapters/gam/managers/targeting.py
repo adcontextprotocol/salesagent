@@ -29,12 +29,21 @@ class GAMTargetingManager:
     # Supported media types
     SUPPORTED_MEDIA_TYPES = {"video", "display", "native"}
 
-    def __init__(self):
-        """Initialize targeting manager."""
-        self.geo_country_map = {}
-        self.geo_region_map = {}
-        self.geo_metro_map = {}
+    def __init__(self, tenant_id: str):
+        """Initialize targeting manager.
+
+        Args:
+            tenant_id: Tenant ID for loading adapter configuration
+        """
+        self.tenant_id = tenant_id
+        self.geo_country_map: dict[str, str] = {}
+        self.geo_region_map: dict[str, dict[str, str]] = {}
+        self.geo_metro_map: dict[str, str] = {}
+        self.axe_include_key: str | None = None
+        self.axe_exclude_key: str | None = None
+        self.axe_macro_key: str | None = None
         self._load_geo_mappings()
+        self._load_axe_keys()
 
     def _load_geo_mappings(self):
         """Load geo mappings from JSON file."""
@@ -59,6 +68,40 @@ class GAMTargetingManager:
             self.geo_country_map = {}
             self.geo_region_map = {}
             self.geo_metro_map = {}
+
+    def _load_axe_keys(self):
+        """Load AXE custom targeting key names from adapter config.
+
+        Per AdCP spec, three separate keys are required:
+        - gam_axe_include_key: For axe_include_segment targeting
+        - gam_axe_exclude_key: For axe_exclude_segment targeting
+        - gam_axe_macro_key: For creative macro substitution
+        """
+        from sqlalchemy import select
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import AdapterConfig
+
+        try:
+            with get_db_session() as session:
+                stmt = select(AdapterConfig).filter_by(tenant_id=self.tenant_id)
+                adapter_config = session.scalars(stmt).first()
+
+                if adapter_config:
+                    self.axe_include_key = adapter_config.gam_axe_include_key
+                    self.axe_exclude_key = adapter_config.gam_axe_exclude_key
+                    self.axe_macro_key = adapter_config.gam_axe_macro_key
+
+                    logger.info(
+                        f"Loaded AXE keys for tenant {self.tenant_id}: "
+                        f"include={self.axe_include_key}, "
+                        f"exclude={self.axe_exclude_key}, "
+                        f"macro={self.axe_macro_key}"
+                    )
+                else:
+                    logger.warning(f"No adapter config found for tenant {self.tenant_id}")
+        except Exception as e:
+            logger.warning(f"Failed to load AXE keys from config: {e}")
 
     def _lookup_region_id(self, region_code: str) -> str | None:
         """Look up region ID across all countries.
@@ -276,23 +319,28 @@ class GAMTargetingManager:
                 logger.info(f"  {key}: {value}")
 
         # AXE segment targeting (AdCP 3.0.3 axe_include_segment/axe_exclude_segment)
-        if targeting_overlay.axe_include_segment or targeting_overlay.axe_exclude_segment:
-            # TODO: Get AXE custom targeting key name from adapter config (gam_axe_custom_targeting_key)
-            # For now, use default "axe_segment"
-            # Need to pass adapter config to build_targeting() method or store in __init__
-            axe_key = "axe_segment"
-
-            if targeting_overlay.axe_include_segment:
-                custom_targeting[axe_key] = targeting_overlay.axe_include_segment
-                logger.info(f"Adding AXE include segment targeting: {axe_key}={targeting_overlay.axe_include_segment}")
-
-            if targeting_overlay.axe_exclude_segment:
-                # GAM supports negative targeting via NOT_ prefix
-                exclude_key = f"NOT_{axe_key}"
-                custom_targeting[exclude_key] = targeting_overlay.axe_exclude_segment
-                logger.info(
-                    f"Adding AXE exclude segment targeting: {exclude_key}={targeting_overlay.axe_exclude_segment}"
+        # Per AdCP spec, three separate keys are required for include, exclude, and macro segments
+        if targeting_overlay.axe_include_segment:
+            if not self.axe_include_key:
+                raise ValueError(
+                    "AXE include segment targeting requested but gam_axe_include_key not configured. "
+                    "Configure AXE keys in tenant adapter settings to support this targeting."
                 )
+            custom_targeting[self.axe_include_key] = targeting_overlay.axe_include_segment
+            logger.info(
+                f"Adding AXE include segment targeting: {self.axe_include_key}={targeting_overlay.axe_include_segment}"
+            )
+
+        if targeting_overlay.axe_exclude_segment:
+            if not self.axe_exclude_key:
+                raise ValueError(
+                    "AXE exclude segment targeting requested but gam_axe_exclude_key not configured. "
+                    "Configure AXE keys in tenant adapter settings to support this targeting."
+                )
+            # GAM supports negative targeting via NOT_ prefix
+            exclude_key = f"NOT_{self.axe_exclude_key}"
+            custom_targeting[exclude_key] = targeting_overlay.axe_exclude_segment
+            logger.info(f"Adding AXE exclude segment targeting: {exclude_key}={targeting_overlay.axe_exclude_segment}")
 
         if custom_targeting:
             gam_targeting["customTargeting"] = custom_targeting
