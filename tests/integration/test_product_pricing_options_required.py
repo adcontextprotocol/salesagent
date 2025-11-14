@@ -240,7 +240,7 @@ def test_product_without_eager_loading_fails_validation(integration_db):
             "product_id": loaded_product.product_id,
             "name": loaded_product.name,
             "description": loaded_product.description,
-            "formats": loaded_product.format_ids if isinstance(loaded_product.format_ids, list) else [],
+            "format_ids": loaded_product.format_ids if isinstance(loaded_product.format_ids, list) else [],
             "delivery_type": loaded_product.delivery_type,
             "property_tags": loaded_product.property_tags if loaded_product.property_tags else ["all_inventory"],
             # NOTE: pricing_options is intentionally missing - will use default_factory=list
