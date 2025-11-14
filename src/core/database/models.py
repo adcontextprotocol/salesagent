@@ -763,6 +763,12 @@ class AdapterConfig(Base):
     gam_manual_approval_required: Mapped[bool] = mapped_column(Boolean, default=False)
     gam_order_name_template: Mapped[str | None] = mapped_column(String(500), nullable=True)
     gam_line_item_name_template: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    gam_axe_custom_targeting_key: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        server_default="axe_segment",
+        comment="GAM custom targeting key name for AXE segment targeting (AdCP 3.0.3 axe_include_segment/axe_exclude_segment)",
+    )
     # NOTE: gam_company_id (advertiser_id) is per-principal, stored in Principal.platform_mappings
 
     # Kevel

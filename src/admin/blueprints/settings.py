@@ -330,6 +330,11 @@ def update_adapter(tenant_id):
                         else ""
                     )
                     manual_approval = request.json.get("gam_manual_approval", False)
+                    axe_custom_targeting_key = (
+                        request.json.get("gam_axe_custom_targeting_key", "").strip()
+                        if request.json.get("gam_axe_custom_targeting_key")
+                        else ""
+                    )
                 else:
                     network_code = request.form.get("gam_network_code", "").strip()
                     refresh_token = request.form.get("gam_refresh_token", "").strip()
@@ -337,6 +342,7 @@ def update_adapter(tenant_id):
                     order_name_template = request.form.get("order_name_template", "").strip()
                     line_item_name_template = request.form.get("line_item_name_template", "").strip()
                     manual_approval = request.form.get("gam_manual_approval") == "on"
+                    axe_custom_targeting_key = request.form.get("gam_axe_custom_targeting_key", "").strip()
 
                 if network_code:
                     adapter_config_obj.gam_network_code = network_code
@@ -348,6 +354,8 @@ def update_adapter(tenant_id):
                     adapter_config_obj.gam_order_name_template = order_name_template
                 if line_item_name_template:
                     adapter_config_obj.gam_line_item_name_template = line_item_name_template
+                if axe_custom_targeting_key:
+                    adapter_config_obj.gam_axe_custom_targeting_key = axe_custom_targeting_key
                 adapter_config_obj.gam_manual_approval_required = manual_approval
             elif new_adapter == "mock":
                 if request.is_json:

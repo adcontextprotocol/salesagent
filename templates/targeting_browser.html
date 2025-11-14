@@ -87,6 +87,10 @@
         <span id="sync-message">Loading targeting data...</span>
     </div>
 
+    <!-- Hidden input for AXE configuration -->
+    <input type="hidden" id="gam_axe_custom_targeting_key"
+           value="{{ adapter_config.get('gam_axe_custom_targeting_key', '') if adapter_config else '' }}">
+
     <!-- Tabs for different targeting types -->
     <ul class="nav nav-tabs mb-4" role="tablist">
         <li class="nav-item">
@@ -110,6 +114,31 @@
     <div class="tab-content" style="min-height: 700px;">
         <!-- Custom Targeting Tab -->
         <div class="tab-pane fade show active" id="custom-targeting" role="tabpanel">
+            <!-- AXE Status Banner (when configured) -->
+            <div id="axe-status-banner" class="alert alert-success mb-3" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        <strong>AXE Segments Configured:</strong>
+                        <code id="axe-current-key" class="ms-2"></code>
+                    </div>
+                    <button class="btn btn-sm btn-outline-success" onclick="clearAxeConfiguration()">
+                        Change
+                    </button>
+                </div>
+            </div>
+
+            <!-- AXE Not Configured Banner -->
+            <div id="axe-not-configured-banner" class="alert alert-warning mb-3">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                <strong>AXE Segment Targeting Not Configured</strong>
+                <p class="mb-0 mt-2 small">
+                    To enable AdCP campaigns with AXE audience segments, click "Use for AXE" on a custom targeting key below
+                    that contains your AXE segment IDs. Look for keys like "axe_segment", "audience_id", or "segment_key".
+                    <a href="#" data-bs-toggle="modal" data-bs-target="#axeHelpModal">Learn more →</a>
+                </p>
+            </div>
+
             <div class="row" style="min-height: 600px;">
                 <div class="col-md-4" style="min-width: 350px;">
                     <h3>Custom Targeting Keys</h3>
@@ -121,6 +150,34 @@
                     </div>
                     <div class="list-group" id="keys-list" style="min-height: 400px; max-height: 600px; overflow-y: auto; background-color: #f8f9fa; border: 1px solid #dee2e6;">
                         <!-- Keys will be loaded here -->
+                    </div>
+
+                    <!-- Manual Entry Option (collapsed by default) -->
+                    <div class="mt-3">
+                        <details>
+                            <summary class="btn btn-link p-0">
+                                <i class="bi bi-pencil"></i> Use a key not synced yet
+                            </summary>
+                            <div class="card mt-2">
+                                <div class="card-body">
+                                    <label class="form-label small">Enter custom targeting key name:</label>
+                                    <div class="input-group">
+                                        <input type="text"
+                                               id="axe-manual-key-input"
+                                               class="form-control form-control-sm font-monospace"
+                                               placeholder="e.g., axe_segment">
+                                        <button class="btn btn-sm btn-primary"
+                                                onclick="saveAxeKeyManual()">
+                                            Set as AXE Key
+                                        </button>
+                                    </div>
+                                    <div class="form-text">
+                                        Enter the exact name of your GAM custom targeting key.
+                                        Useful if setting up before syncing inventory.
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
                     </div>
                 </div>
                 <div class="col-md-8" style="min-width: 500px;">
@@ -190,6 +247,54 @@
                         <!-- Labels will be loaded here -->
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AXE Help Modal -->
+<div class="modal fade" id="axeHelpModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">About AXE Segment Targeting</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>What is AXE?</h6>
+                <p>
+                    AXE (Audience Exchange) is a cross-platform audience segment format used in AdCP.
+                    It enables buyers to target first-party audience segments across multiple publishers.
+                </p>
+
+                <h6>Why Configure This?</h6>
+                <p>
+                    When buyers request targeting like <code>axe_include_segment: ["x8dj3k"]</code>,
+                    your system needs to know which GAM custom targeting key contains these segment IDs.
+                </p>
+
+                <h6>How It Works:</h6>
+                <ul>
+                    <li><strong>Include:</strong> <code>your_key=x8dj3k</code></li>
+                    <li><strong>Exclude:</strong> <code>NOT_your_key=y9kl4m</code></li>
+                </ul>
+
+                <h6>Common Key Names:</h6>
+                <ul>
+                    <li><code>axe_segment</code></li>
+                    <li><code>audience_id</code></li>
+                    <li><code>segment_key</code></li>
+                    <li><code>external_audience</code></li>
+                </ul>
+
+                <p class="mb-0">
+                    <a href="https://adcontextprotocol.org/docs/targeting#axe-segments" target="_blank">
+                        Learn more in the AdCP documentation →
+                    </a>
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -334,7 +439,9 @@ function updateSyncInfo(lastSync) {
 function renderCustomKeys() {
     console.log('renderCustomKeys called');
     const keysList = document.getElementById('keys-list');
+    const currentAxeKey = document.getElementById('gam_axe_custom_targeting_key').value;
     console.log('keysList element:', keysList);
+    console.log('currentAxeKey:', currentAxeKey);
 
     if (!keysList) {
         console.error('keys-list element not found!');
@@ -365,49 +472,105 @@ function renderCustomKeys() {
 
     console.log('filteredKeys count:', filteredKeys.length);
 
+    if (filteredKeys.length === 0) {
+        keysList.innerHTML = `
+            <div class="text-center p-4">
+                <i class="bi bi-search text-muted" style="font-size: 3rem;"></i>
+                <p class="text-muted mt-2">No custom targeting keys found</p>
+                <button class="btn btn-primary btn-sm" onclick="syncTargetingData()">
+                    <i class="fas fa-sync"></i> Sync from GAM
+                </button>
+            </div>
+        `;
+        return;
+    }
+
     filteredKeys.forEach((key, index) => {
         console.log(`Processing key ${index}:`, key.name);
-        const item = document.createElement('a');
-        item.href = '#';
-        item.className = 'list-group-item list-group-item-action';
+        const isAxeKey = key.name === currentAxeKey;
 
-        // Create elements manually to avoid innerHTML issues
-        const wrapper = document.createElement('div');
-        wrapper.className = 'd-flex justify-content-between align-items-start';
+        const item = document.createElement('div');
+        item.className = 'list-group-item';
 
-        const leftDiv = document.createElement('div');
+        // Three-column layout: Key info | Metadata | AXE action
+        const row = document.createElement('div');
+        row.className = 'row align-items-center';
+
+        // Column 1: Key info (clickable to view values)
+        const keyInfoCol = document.createElement('div');
+        keyInfoCol.className = 'col-7';
+        keyInfoCol.role = 'button';
+        keyInfoCol.onclick = () => selectKey(key);
+
+        const keyInfoDiv = document.createElement('div');
         const title = document.createElement('h6');
         title.className = 'mb-1';
         title.textContent = key.display_name || key.name;
-        leftDiv.appendChild(title);
+
+        if (isAxeKey) {
+            const axeBadge = document.createElement('span');
+            axeBadge.className = 'badge bg-success ms-2';
+            axeBadge.textContent = '🎯 AXE Key';
+            title.appendChild(axeBadge);
+        }
+
+        keyInfoDiv.appendChild(title);
 
         const subtitle = document.createElement('small');
         subtitle.className = 'text-muted';
         subtitle.textContent = `Key: ${key.name}`;
-        leftDiv.appendChild(subtitle);
+        keyInfoDiv.appendChild(subtitle);
 
-        const rightDiv = document.createElement('div');
-        const badge = document.createElement('span');
-        badge.className = `badge bg-${key.type === 'PREDEFINED' ? 'primary' : 'secondary'}`;
-        badge.textContent = key.type || 'UNKNOWN';
-        rightDiv.appendChild(badge);
+        keyInfoCol.appendChild(keyInfoDiv);
+        row.appendChild(keyInfoCol);
+
+        // Column 2: Metadata
+        const metadataCol = document.createElement('div');
+        metadataCol.className = 'col-3 text-end';
+
+        const typeBadge = document.createElement('span');
+        typeBadge.className = `badge bg-${key.type === 'PREDEFINED' ? 'primary' : 'secondary'}`;
+        typeBadge.textContent = key.type || 'UNKNOWN';
+        metadataCol.appendChild(typeBadge);
 
         if (key.metadata && key.metadata.values_count) {
-            rightDiv.appendChild(document.createElement('br'));
-            const small = document.createElement('small');
-            small.textContent = `${key.metadata.values_count} values`;
-            rightDiv.appendChild(small);
+            metadataCol.appendChild(document.createElement('br'));
+            const valueCount = document.createElement('small');
+            valueCount.className = 'text-muted';
+            valueCount.textContent = `${key.metadata.values_count} values`;
+            metadataCol.appendChild(valueCount);
         }
 
-        wrapper.appendChild(leftDiv);
-        wrapper.appendChild(rightDiv);
-        item.appendChild(wrapper);
+        row.appendChild(metadataCol);
 
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            selectKey(key);
-        });
+        // Column 3: AXE Action Button
+        const actionCol = document.createElement('div');
+        actionCol.className = 'col-2 text-end';
 
+        if (isAxeKey) {
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'btn btn-sm btn-outline-secondary';
+            removeBtn.title = 'Remove as AXE key';
+            removeBtn.onclick = (e) => {
+                e.stopPropagation();
+                clearAxeConfiguration();
+            };
+            removeBtn.innerHTML = '<i class="bi bi-x-circle"></i>';
+            actionCol.appendChild(removeBtn);
+        } else {
+            const useBtn = document.createElement('button');
+            useBtn.className = 'btn btn-sm btn-outline-primary';
+            useBtn.title = 'Use for AXE segments';
+            useBtn.onclick = (e) => {
+                e.stopPropagation();
+                setAxeKey(key.name);
+            };
+            useBtn.textContent = 'Use for AXE';
+            actionCol.appendChild(useBtn);
+        }
+
+        row.appendChild(actionCol);
+        item.appendChild(row);
         keysList.appendChild(item);
 
         if (index === 0) {
@@ -419,6 +582,9 @@ function renderCustomKeys() {
 
     console.log('Finished rendering, keysList innerHTML length:', keysList.innerHTML.length);
     console.log('keysList children count:', keysList.children.length);
+
+    // Update status banners
+    updateAxeStatusBanners();
 }
 
 // Select a custom targeting key
@@ -629,5 +795,114 @@ document.getElementById('search-labels').addEventListener('input', renderLabels)
 
 // Load data on page load
 loadTargetingData();
+
+// ===========================================================================
+// AXE Segment Targeting Configuration (Inline)
+// ===========================================================================
+
+// Update status banners based on configuration
+function updateAxeStatusBanners() {
+    const configuredBanner = document.getElementById('axe-status-banner');
+    const notConfiguredBanner = document.getElementById('axe-not-configured-banner');
+    const currentAxeKey = document.getElementById('gam_axe_custom_targeting_key').value;
+
+    if (currentAxeKey && currentAxeKey !== '') {
+        configuredBanner.style.display = 'block';
+        notConfiguredBanner.style.display = 'none';
+        document.getElementById('axe-current-key').textContent = currentAxeKey;
+    } else {
+        configuredBanner.style.display = 'none';
+        notConfiguredBanner.style.display = 'block';
+    }
+}
+
+// Set AXE key with confirmation if changing
+async function setAxeKey(keyName) {
+    const currentAxeKey = document.getElementById('gam_axe_custom_targeting_key').value;
+
+    // Confirm if changing existing key
+    if (currentAxeKey && currentAxeKey !== '') {
+        const confirmChange = confirm(
+            `Change AXE segment key from "${currentAxeKey}" to "${keyName}"?\n\n` +
+            `This will affect how future AdCP campaigns target AXE segments.`
+        );
+        if (!confirmChange) return;
+    }
+
+    // Save configuration
+    await saveAxeKeyToServer(keyName);
+}
+
+// Clear AXE configuration
+async function clearAxeConfiguration() {
+    const confirmClear = confirm(
+        'Remove AXE segment targeting configuration?\n\n' +
+        'AdCP campaigns using AXE segments will fail until you configure a new key.'
+    );
+    if (!confirmClear) return;
+
+    await saveAxeKeyToServer('');
+}
+
+// Save to server
+async function saveAxeKeyToServer(keyName) {
+    try {
+        const response = await fetch(scriptRoot + `/tenant/${tenantId}/settings/adapter`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                adapter: '{{ tenant.ad_server }}',
+                gam_axe_custom_targeting_key: keyName
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to save configuration');
+        }
+
+        // Update hidden field
+        document.getElementById('gam_axe_custom_targeting_key').value = keyName;
+
+        // Re-render keys list to show updated badges/buttons
+        renderCustomKeys();
+
+        // Show success toast
+        showToast(keyName ?
+            `✅ AXE key set to: ${keyName}` :
+            '✅ AXE configuration removed',
+            'success');
+
+    } catch (error) {
+        console.error('Error saving AXE configuration:', error);
+        showToast('❌ Failed to save AXE configuration', 'danger');
+    }
+}
+
+// Manual entry save
+async function saveAxeKeyManual() {
+    const input = document.getElementById('axe-manual-key-input');
+    const keyName = input.value.trim();
+
+    if (!keyName) {
+        showToast('Please enter a key name', 'warning');
+        return;
+    }
+
+    await saveAxeKeyToServer(keyName);
+    input.value = '';  // Clear input
+}
+
+// Simple toast notification
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type} position-fixed top-0 end-0 m-3`;
+    toast.style.zIndex = '9999';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => toast.remove(), 3000);
+}
+
 </script>
 {% endblock %}

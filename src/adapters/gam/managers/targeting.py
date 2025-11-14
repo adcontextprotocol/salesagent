@@ -275,6 +275,25 @@ class GAMTargetingManager:
                 custom_targeting[key] = value
                 logger.info(f"  {key}: {value}")
 
+        # AXE segment targeting (AdCP 3.0.3 axe_include_segment/axe_exclude_segment)
+        if targeting_overlay.axe_include_segment or targeting_overlay.axe_exclude_segment:
+            # TODO: Get AXE custom targeting key name from adapter config (gam_axe_custom_targeting_key)
+            # For now, use default "axe_segment"
+            # Need to pass adapter config to build_targeting() method or store in __init__
+            axe_key = "axe_segment"
+
+            if targeting_overlay.axe_include_segment:
+                custom_targeting[axe_key] = targeting_overlay.axe_include_segment
+                logger.info(f"Adding AXE include segment targeting: {axe_key}={targeting_overlay.axe_include_segment}")
+
+            if targeting_overlay.axe_exclude_segment:
+                # GAM supports negative targeting via NOT_ prefix
+                exclude_key = f"NOT_{axe_key}"
+                custom_targeting[exclude_key] = targeting_overlay.axe_exclude_segment
+                logger.info(
+                    f"Adding AXE exclude segment targeting: {exclude_key}={targeting_overlay.axe_exclude_segment}"
+                )
+
         if custom_targeting:
             gam_targeting["customTargeting"] = custom_targeting
 
