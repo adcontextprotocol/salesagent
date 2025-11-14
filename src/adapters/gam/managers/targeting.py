@@ -82,7 +82,17 @@ class GAMTargetingManager:
         - axe_macro_key: For creative macro substitution
 
         These are adapter-agnostic and work with all ad server adapters.
-        Different from _load_geo_mappings() which loads static data from file.
+
+        **Why Standalone Function:**
+        This is separate from _load_geo_mappings() because:
+        1. Different data sources: Database (tenant-specific) vs. File (static)
+        2. Different lifecycles: Per-tenant config vs. one-time initialization
+        3. Different loading patterns: SQL query vs. JSON file read
+        4. Clear separation of concerns: Tenant config vs. static mappings
+
+        While this could be part of a generic "load_tenant_config" function,
+        keeping it separate makes it easier to understand, test, and maintain.
+        Each method has a single, clear responsibility.
         """
         from sqlalchemy import select
 
