@@ -309,6 +309,7 @@ class TestA2AAdCPCompliance:
             {
                 "brief": "Video advertising for sports content",
                 "brand_manifest": {"name": "Athletic apparel brand"},
+                "context": {"e2e": "get_products"},
             },
         )
 
@@ -316,6 +317,9 @@ class TestA2AAdCPCompliance:
         compliance_report.add_result(validation_result)
 
         assert "skill" in validation_result
+        # Verify context echoed
+        payload = compliance_client.extract_adcp_payload_from_a2a_response(response)
+        assert payload and payload.get("context") == {"e2e": "get_products"}
 
     @pytest.mark.asyncio
     async def test_explicit_skill_create_media_buy(self, compliance_client, compliance_report):
@@ -327,6 +331,7 @@ class TestA2AAdCPCompliance:
                 "total_budget": 10000.0,
                 "flight_start_date": "2025-02-01",
                 "flight_end_date": "2025-02-28",
+                "context": {"e2e": "create_media_buy"},
             },
         )
 
@@ -334,6 +339,9 @@ class TestA2AAdCPCompliance:
         compliance_report.add_result(validation_result)
 
         assert "skill" in validation_result
+        # Verify context echoed
+        payload = compliance_client.extract_adcp_payload_from_a2a_response(response)
+        assert payload and payload.get("context") == {"e2e": "create_media_buy"}
 
     @pytest.mark.asyncio
     async def test_explicit_skill_get_signals(self, compliance_client, compliance_report):

@@ -154,7 +154,7 @@ class TestCrossPrincipalSecurity:
                 "host": "security-test.sales-agent.scope3.com",
             },
         ):
-            response = _list_creatives_impl(context=mock_context_b)
+            response = _list_creatives_impl(ctx=mock_context_b)
 
             assert isinstance(response, ListCreativesResponse)
 
@@ -185,7 +185,7 @@ class TestCrossPrincipalSecurity:
                 _update_media_buy_impl(
                     media_buy_id="media_buy_a",  # Owned by Principal A!
                     buyer_ref="hacked_by_b",
-                    context=mock_context_b,
+                    ctx=mock_context_b,
                 )
 
             # Verify media buy was NOT modified
@@ -219,7 +219,7 @@ class TestCrossPrincipalSecurity:
                 "host": "security-test.sales-agent.scope3.com",
             },
         ):
-            response = _get_media_buy_delivery_impl(req=request, context=mock_context_b)
+            response = _get_media_buy_delivery_impl(req=request, ctx=mock_context_b)
 
             # Principal B should NOT see Principal A's media buy
             assert len(response.media_buy_deliveries) == 0, "Principal B should not see Principal A's delivery data!"
@@ -286,7 +286,7 @@ class TestCrossPrincipalSecurity:
                 "host": "security-test.sales-agent.scope3.com",
             },
         ):
-            response = _list_creatives_impl(context=mock_context_a)
+            response = _list_creatives_impl(ctx=mock_context_a)
 
             # Should only see their own creative, not creative_c from other tenant
             creative_ids = [c.creative_id for c in response.creatives]

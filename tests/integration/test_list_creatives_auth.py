@@ -139,7 +139,7 @@ class TestListCreativesAuthentication:
             from fastmcp.exceptions import ToolError
 
             with pytest.raises(ToolError, match="Missing x-adcp-auth header"):
-                core_list_creatives_tool(context=mock_context)
+                core_list_creatives_tool(ctx=mock_context)
 
     def test_authenticated_user_sees_only_own_creatives(self):
         """Test that authenticated users only see their own creatives.
@@ -160,7 +160,7 @@ class TestListCreativesAuthentication:
                 "host": "auth-test.sales-agent.scope3.com",
             },
         ):
-            response = core_list_creatives_tool(context=mock_context)
+            response = core_list_creatives_tool(ctx=mock_context)
 
             # Verify response structure
             assert isinstance(response, ListCreativesResponse)
@@ -192,7 +192,7 @@ class TestListCreativesAuthentication:
                 "host": "auth-test.sales-agent.scope3.com",
             },
         ):
-            response = core_list_creatives_tool(context=mock_context_b)
+            response = core_list_creatives_tool(ctx=mock_context_b)
 
             # Verify response structure
             assert isinstance(response, ListCreativesResponse)
@@ -228,4 +228,4 @@ class TestListCreativesAuthentication:
 
             # This should raise ToolError due to invalid authentication
             with pytest.raises(ToolError, match="INVALID_AUTH_TOKEN"):
-                core_list_creatives_tool(context=mock_context)
+                core_list_creatives_tool(ctx=mock_context)

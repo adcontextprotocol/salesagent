@@ -42,7 +42,9 @@ class TestA2ASpecCompliance:
         }
 
         # Verify this is spec-compliant
-        response = ListAuthorizedPropertiesResponse(**response_data)
+        # Include context and ensure it's present in payload
+        ctx = {"user_id": "1234567890"}
+        response = ListAuthorizedPropertiesResponse(**response_data, context=ctx)
 
         # Check response has NO extra fields
         spec_fields = {
@@ -53,6 +55,7 @@ class TestA2ASpecCompliance:
             "advertising_policies",
             "last_updated",
             "errors",
+            "context",
         }
         response_fields = set(response.model_dump().keys())
         extra_fields = response_fields - spec_fields
@@ -69,10 +72,11 @@ class TestA2ASpecCompliance:
             "errors": None,
         }
 
-        response = GetProductsResponse(**response_data)
+        ctx = {"user_id": "1234567890"}
+        response = GetProductsResponse(**response_data, context=ctx)
 
         # Check no extra fields
-        spec_fields = {"products", "errors", "status"}
+        spec_fields = {"products", "errors", "status", "context"}
         response_fields = set(response.model_dump().keys())
         extra_fields = response_fields - spec_fields
 
@@ -95,10 +99,11 @@ class TestA2ASpecCompliance:
             "dry_run": False,
         }
 
-        response = SyncCreativesResponse(**response_data)
+        ctx = {"user_id": "1234567890"}
+        response = SyncCreativesResponse(**response_data, context=ctx)
 
         # Check no extra fields
-        spec_fields = {"creatives", "dry_run"}
+        spec_fields = {"creatives", "dry_run", "context"}
         response_fields = set(response.model_dump().keys())
         extra_fields = response_fields - spec_fields
 
@@ -116,7 +121,8 @@ class TestA2ASpecCompliance:
             "creatives": [],
         }
 
-        response = ListCreativesResponse(**response_data)
+        ctx = {"user_id": "1234567890"}
+        response = ListCreativesResponse(**response_data, context=ctx)
 
         # Check no extra fields
         spec_fields = {
@@ -126,6 +132,7 @@ class TestA2ASpecCompliance:
             "context_id",
             "format_summary",
             "status_summary",
+            "context",
         }
         response_fields = set(response.model_dump().keys())
         extra_fields = response_fields - spec_fields
@@ -141,10 +148,11 @@ class TestA2ASpecCompliance:
             "errors": None,
         }
 
-        response = ListCreativeFormatsResponse(**response_data)
+        ctx = {"user_id": "1234567890"}
+        response = ListCreativeFormatsResponse(**response_data, context=ctx)
 
         # Check no extra fields
-        spec_fields = {"formats", "creative_agents", "errors", "status"}
+        spec_fields = {"formats", "creative_agents", "errors", "status", "context"}
         response_fields = set(response.model_dump().keys())
         extra_fields = response_fields - spec_fields
 
@@ -153,9 +161,11 @@ class TestA2ASpecCompliance:
 
     def test_create_media_buy_spec_compliance(self):
         """Test create_media_buy returns only spec-defined fields."""
+        ctx = {"user_id": "1234567890"}
         response = CreateMediaBuyResponse(
             buyer_ref="test-123",
             media_buy_id="mb-456",
+            context=ctx,
         )
 
         # Check response can be dumped (has all required fields)
@@ -172,9 +182,11 @@ class TestA2ASpecCompliance:
 
     def test_update_media_buy_spec_compliance(self):
         """Test update_media_buy returns only spec-defined fields."""
+        ctx = {"user_id": "1234567890"}
         response = UpdateMediaBuyResponse(
             buyer_ref="test-123",
             media_buy_id="mb-456",
+            context=ctx,
         )
 
         response_dict = response.model_dump()
@@ -192,6 +204,7 @@ class TestA2ASpecCompliance:
 
         from src.core.schemas import ReportingPeriod
 
+        ctx = {"user_id": "1234567890"}
         response = GetMediaBuyDeliveryResponse(
             reporting_period=ReportingPeriod(
                 start=datetime.now(UTC).isoformat(),
@@ -199,6 +212,7 @@ class TestA2ASpecCompliance:
             ),
             currency="USD",
             media_buy_deliveries=[],
+            context=ctx,
         )
 
         response_dict = response.model_dump()

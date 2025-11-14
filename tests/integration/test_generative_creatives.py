@@ -133,7 +133,7 @@ class TestGenerativeCreatives:
         context = MockContext()
 
         result = sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-001",
@@ -209,7 +209,7 @@ class TestGenerativeCreatives:
         context = MockContext()
 
         result = sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "static-creative-001",
@@ -257,7 +257,7 @@ class TestGenerativeCreatives:
         context = MockContext()
 
         result = sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-002",
@@ -308,7 +308,7 @@ class TestGenerativeCreatives:
 
         # Test with "brief" role
         sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-003",
@@ -355,7 +355,7 @@ class TestGenerativeCreatives:
 
         # No message in assets
         sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-004",
@@ -404,7 +404,7 @@ class TestGenerativeCreatives:
 
         # Create initial creative
         sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-005",
@@ -430,7 +430,7 @@ class TestGenerativeCreatives:
         )
 
         sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-005",  # Same ID
@@ -483,7 +483,7 @@ class TestGenerativeCreatives:
         }
 
         sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "gen-creative-006",

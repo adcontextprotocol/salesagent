@@ -27,6 +27,7 @@ async def test_public_policy_allows_no_brand_manifest():
     mock_request.brand_manifest = None
     mock_request.brief = "Athletic footwear"
     mock_request.filters = None
+    mock_request.context = None
 
     # Create mock context with public policy
     mock_context = MagicMock()
@@ -89,6 +90,7 @@ async def test_require_brand_policy_rejects_no_brand_manifest():
     mock_request.brand_manifest = None
     mock_request.brief = "Athletic footwear"
     mock_request.filters = None
+    mock_request.context = None
 
     # Create mock context with require_brand policy
     mock_context = MagicMock()
@@ -130,6 +132,7 @@ async def test_require_brand_policy_accepts_with_brand_manifest():
     mock_request.brand_manifest = mock_brand_manifest
     mock_request.brief = "Athletic footwear"
     mock_request.filters = None
+    mock_request.context = None
 
     # Create mock context with require_brand policy
     mock_context = MagicMock()
@@ -194,6 +197,7 @@ async def test_require_auth_policy_rejects_no_auth():
     mock_request.brand_manifest = mock_brand_manifest
     mock_request.brief = "Athletic footwear"
     mock_request.filters = None
+    mock_request.context = None
 
     # Create mock context with require_auth policy
     mock_context = MagicMock()
@@ -229,6 +233,7 @@ async def test_require_auth_policy_accepts_with_auth():
     mock_request.brand_manifest = None
     mock_request.brief = "Athletic footwear"
     mock_request.filters = None
+    mock_request.context = None
 
     # Create mock context with require_auth policy
     mock_context = MagicMock()

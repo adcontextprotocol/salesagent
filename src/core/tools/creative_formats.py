@@ -36,7 +36,7 @@ def _list_creative_formats_impl(
 
     # Use default request if none provided
     if req is None:
-        req = ListCreativeFormatsRequest(type=None, standard_only=None, category=None, format_ids=None)
+        req = ListCreativeFormatsRequest(type=None, standard_only=None, category=None, format_ids=None, context=None)
 
     # For discovery endpoints, authentication is optional
     # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
@@ -121,7 +121,7 @@ def _list_creative_formats_impl(
     )
 
     # Create response (no message/specification_version - not in adapter schema)
-    response = ListCreativeFormatsResponse(formats=formats, creative_agents=None, errors=None)
+    response = ListCreativeFormatsResponse(formats=formats, creative_agents=None, errors=None, context=req.context)
 
     # Always return Pydantic model - MCP wrapper will handle serialization
     # Schema enhancement (if needed) should happen in the MCP wrapper, not here
@@ -134,7 +134,8 @@ def list_creative_formats(
     category: str | None = None,
     format_ids: list[str] | None = None,
     webhook_url: str | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None, # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ):
     """List all available creative formats (AdCP spec endpoint).
 
@@ -146,7 +147,7 @@ def list_creative_formats(
         category: Filter by format category (standard, custom)
         format_ids: Filter by specific format IDs
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
-        context: FastMCP context (automatically provided)
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         ToolResult with ListCreativeFormatsResponse data
@@ -166,16 +167,18 @@ def list_creative_formats(
             standard_only=standard_only,
             category=category,
             format_ids=format_ids_objects,
+            context=context,
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creative_formats request")) from e
 
-    response = _list_creative_formats_impl(req, context)
+    response = _list_creative_formats_impl(req, ctx)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 def list_creative_formats_raw(
-    req: ListCreativeFormatsRequest | None = None, context: Context | ToolContext | None = None
+    req: ListCreativeFormatsRequest | None = None,
+    ctx: Context | ToolContext | None = None,
 ) -> ListCreativeFormatsResponse:
     """List all available creative formats (raw function for A2A server use).
 
@@ -183,9 +186,9 @@ def list_creative_formats_raw(
 
     Args:
         req: Optional request with filter parameters
-        context: FastMCP context
+        ctx: FastMCP context
 
     Returns:
         ListCreativeFormatsResponse with all available formats
     """
-    return _list_creative_formats_impl(req, context)
+    return _list_creative_formats_impl(req, ctx)
