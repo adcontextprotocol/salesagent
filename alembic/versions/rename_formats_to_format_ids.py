@@ -72,7 +72,7 @@ def upgrade() -> None:
     SET format_ids = (
         SELECT jsonb_agg(
             jsonb_build_object(
-                'agent_url', COALESCE(elem->>'agent_url', 'https://creatives.adcontextprotocol.org'),
+                'agent_url', COALESCE(elem->>'agent_url', 'https://creative.adcontextprotocol.org'),
                 'id', COALESCE(elem->>'format_id', elem->>'id')
             )
         )
@@ -97,7 +97,7 @@ def upgrade() -> None:
     SET format_ids = (
         SELECT jsonb_agg(
             jsonb_build_object(
-                'agent_url', COALESCE(elem->>'agent_url', 'https://creatives.adcontextprotocol.org'),
+                'agent_url', COALESCE(elem->>'agent_url', 'https://creative.adcontextprotocol.org'),
                 'id', COALESCE(elem->>'format_id', elem->>'id')
             )
         )
