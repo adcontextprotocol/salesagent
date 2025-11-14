@@ -30,6 +30,7 @@ Create Date: {DATE}
 from collections.abc import Sequence
 
 from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision: str = "rename_formats_to_format_ids"
@@ -87,7 +88,7 @@ def upgrade() -> None:
       );
     """
     print("  → Transforming products.format_ids...")
-    result = op.get_bind().execute(transform_products)
+    result = op.get_bind().execute(text(transform_products))
     print(f"    ✓ Transformed {result.rowcount} product records")
 
     # Transform inventory_profiles.format_ids
@@ -112,7 +113,7 @@ def upgrade() -> None:
       );
     """
     print("  → Transforming inventory_profiles.format_ids...")
-    result = op.get_bind().execute(transform_inventory)
+    result = op.get_bind().execute(text(transform_inventory))
     print(f"    ✓ Transformed {result.rowcount} inventory profile records")
 
     print("  ✅ Data transformation complete")
