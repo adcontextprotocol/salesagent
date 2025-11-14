@@ -766,12 +766,7 @@ class AdapterConfig(Base):
 
     # AXE (Audience Exchange) custom targeting keys (AdCP spec requires separate keys for each purpose)
     # These are adapter-agnostic and work with GAM, Kevel, Mock, or any other adapter
-    gam_axe_custom_targeting_key: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-        server_default="axe_segment",
-        comment="DEPRECATED: Legacy single key for AXE targeting. Use axe_include_key, axe_exclude_key, axe_macro_key instead.",
-    )
+    # Note: gam_axe_custom_targeting_key was removed - use the three separate keys below
     axe_include_key: Mapped[str | None] = mapped_column(
         String(100),
         nullable=True,
