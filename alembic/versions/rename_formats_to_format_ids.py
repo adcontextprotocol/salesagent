@@ -81,10 +81,10 @@ def upgrade() -> None:
     WHERE format_ids IS NOT NULL
       AND jsonb_typeof(format_ids) = 'array'
       AND jsonb_array_length(format_ids) > 0
-      -- Only transform if not already in new format (missing agent_url)
-      AND NOT EXISTS (
+      -- Only transform if not already in correct format (has 'id' key, not 'format_id')
+      AND EXISTS (
           SELECT 1 FROM jsonb_array_elements(format_ids) elem
-          WHERE elem ? 'agent_url'
+          WHERE elem ? 'format_id' OR NOT (elem ? 'id')
       );
     """
     print("  → Transforming products.format_ids...")
@@ -106,10 +106,10 @@ def upgrade() -> None:
     WHERE format_ids IS NOT NULL
       AND jsonb_typeof(format_ids) = 'array'
       AND jsonb_array_length(format_ids) > 0
-      -- Only transform if not already in new format
-      AND NOT EXISTS (
+      -- Only transform if not already in correct format (has 'id' key, not 'format_id')
+      AND EXISTS (
           SELECT 1 FROM jsonb_array_elements(format_ids) elem
-          WHERE elem ? 'agent_url'
+          WHERE elem ? 'format_id' OR NOT (elem ? 'id')
       );
     """
     print("  → Transforming inventory_profiles.format_ids...")
