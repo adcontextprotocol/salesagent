@@ -1,5 +1,6 @@
 """Tests for setup checklist service."""
 
+import json
 import os
 from unittest.mock import patch
 
@@ -406,6 +407,7 @@ class TestSetupChecklistService:
                     product2_data["targeting_template"] if isinstance(product2_data["targeting_template"], dict) else {}
                 ),
                 delivery_type=product2_data["delivery_type"],
+                property_tags=["all_inventory"],  # Required by ck_product_properties_xor constraint
             )
             db_session.add(product2)
 
@@ -453,6 +455,7 @@ class TestSetupChecklistService:
                     product3_data["targeting_template"] if isinstance(product3_data["targeting_template"], dict) else {}
                 ),
                 delivery_type=product3_data["delivery_type"],
+                property_tags=["all_inventory"],  # Required by ck_product_properties_xor constraint
             )
             db_session.add(product3)
 
@@ -508,13 +511,40 @@ class TestSetupChecklistService:
             assert "recommended" in status
             assert "optional" in status
 
-        # Cleanup
+        # Cleanup - Delete child objects first to avoid foreign key violations
         with get_db_session() as db_session:
             for tenant_id in tenant_ids:
+                # Delete child objects (CASCADE will handle some, but explicit is clearer)
+                # Delete principals
+                stmt = select(Principal).filter_by(tenant_id=tenant_id)
+                principals = db_session.scalars(stmt).all()
+                for principal in principals:
+                    db_session.delete(principal)
+
+                # Delete products
+                stmt = select(Product).filter_by(tenant_id=tenant_id)
+                products = db_session.scalars(stmt).all()
+                for product in products:
+                    db_session.delete(product)
+
+                # Delete authorized properties
+                stmt = select(AuthorizedProperty).filter_by(tenant_id=tenant_id)
+                properties = db_session.scalars(stmt).all()
+                for prop in properties:
+                    db_session.delete(prop)
+
+                # Delete currency limits
+                stmt = select(CurrencyLimit).filter_by(tenant_id=tenant_id)
+                currencies = db_session.scalars(stmt).all()
+                for currency in currencies:
+                    db_session.delete(currency)
+
+                # Finally delete tenant
                 stmt = select(Tenant).filter_by(tenant_id=tenant_id)
                 tenant = db_session.scalars(stmt).first()
                 if tenant:
                     db_session.delete(tenant)
+
             db_session.commit()
 
     def test_bulk_setup_status_with_empty_list(self, integration_db):
