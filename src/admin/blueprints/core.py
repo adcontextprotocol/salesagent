@@ -110,6 +110,51 @@ def index():
         from src.services.setup_checklist_service import SetupChecklistService
 
         with get_db_session() as db_session:
+            # Pagination
+            page = request.args.get("page", 1, type=int)
+            per_page = request.args.get("per_page", 50, type=int)
+            per_page = min(per_page, 100)  # Max 100 per page
+
+            # Filters
+            config_filter = request.args.get("configured", "all")  # all, configured, not-configured
+            activity_filter = request.args.get("activity", "all")  # all, has-activity, no-activity
+
+            # Get total count with filters
+            from datetime import UTC, datetime, timedelta
+
+            from sqlalchemy import func
+
+            # Helper function to apply filters consistently
+            def apply_tenant_filters(query, config_filter, activity_filter):
+                """Apply configuration and activity filters to tenant query."""
+                # Configuration filter
+                if config_filter == "configured":
+                    query = query.where(Tenant.ad_server.isnot(None), Tenant.ad_server != "")
+                elif config_filter == "not-configured":
+                    query = query.where((Tenant.ad_server.is_(None)) | (Tenant.ad_server == ""))
+
+                # Activity filter (use EXISTS for better performance than subquery)
+                if activity_filter == "has-activity":
+                    query = query.where(
+                        select(MediaBuy.media_buy_id).where(MediaBuy.tenant_id == Tenant.tenant_id).exists()
+                    )
+                elif activity_filter == "no-activity":
+                    query = query.where(
+                        ~select(MediaBuy.media_buy_id).where(MediaBuy.tenant_id == Tenant.tenant_id).exists()
+                    )
+
+                return query
+
+            # Build base query with filters
+            count_stmt = select(func.count()).select_from(Tenant).where(Tenant.is_active == True)  # noqa: E712
+            count_stmt = apply_tenant_filters(count_stmt, config_filter, activity_filter)
+
+            total_tenants = db_session.scalar(count_stmt) or 0
+
+            # Calculate pagination
+            total_pages = (total_tenants + per_page - 1) // per_page if total_tenants > 0 else 1
+            offset = (page - 1) * per_page
+
             # Eager load adapter_config to avoid N+1 queries
             stmt = (
                 select(Tenant)
@@ -117,34 +162,48 @@ def index():
                 .filter_by(is_active=True)
                 .order_by(Tenant.name)
             )
+
+            # Apply same filters to main query
+            stmt = apply_tenant_filters(stmt, config_filter, activity_filter)
+
+            stmt = stmt.limit(per_page).offset(offset)
             tenants = db_session.scalars(stmt).all()
+
+            # Bulk fetch setup status for all tenants on this page (single query per metric)
+            tenant_ids = [t.tenant_id for t in tenants]
+            setup_statuses = SetupChecklistService.get_bulk_setup_status(tenant_ids)
+
+            # Bulk fetch media buy counts (total and recent) for all tenants on this page
+            thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
+
+            # Total media buy counts per tenant
+            total_buys_stmt = (
+                select(MediaBuy.tenant_id, func.count())
+                .where(MediaBuy.tenant_id.in_(tenant_ids))
+                .group_by(MediaBuy.tenant_id)
+            )
+            total_buys_counts = dict(db_session.execute(total_buys_stmt).all())
+
+            # Recent media buy counts per tenant (last 30 days)
+            recent_buys_stmt = (
+                select(MediaBuy.tenant_id, func.count())
+                .where(MediaBuy.tenant_id.in_(tenant_ids))
+                .where(MediaBuy.created_at >= thirty_days_ago)
+                .group_by(MediaBuy.tenant_id)
+            )
+            recent_buys_counts = dict(db_session.execute(recent_buys_stmt).all())
+
             tenant_list = []
             for tenant in tenants:
                 # Check if configured
                 is_configured = is_tenant_ad_server_configured(tenant.tenant_id)
 
-                # Check for recent activity (media buys in last 30 days)
-                from datetime import UTC, datetime, timedelta
+                # Get counts from bulk queries (default to 0 if tenant has no buys)
+                total_buys_count = total_buys_counts.get(tenant.tenant_id, 0)
+                recent_buys_count = recent_buys_counts.get(tenant.tenant_id, 0)
 
-                thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
-                recent_buys_stmt = (
-                    select(MediaBuy)
-                    .filter_by(tenant_id=tenant.tenant_id)
-                    .filter(MediaBuy.created_at >= thirty_days_ago)
-                )
-                recent_buys_count = len(list(db_session.scalars(recent_buys_stmt).all()))
-
-                # Get total media buys for all-time activity
-                total_buys_stmt = select(MediaBuy).filter_by(tenant_id=tenant.tenant_id)
-                total_buys_count = len(list(db_session.scalars(total_buys_stmt).all()))
-
-                # Get setup checklist status
-                setup_status = None
-                try:
-                    checklist_service = SetupChecklistService(tenant.tenant_id)
-                    setup_status = checklist_service.get_setup_status()
-                except Exception as e:
-                    logger.warning(f"Failed to load setup status for tenant {tenant.tenant_id}: {e}")
+                # Get setup status from bulk query results
+                setup_status = setup_statuses.get(tenant.tenant_id)
 
                 tenant_list.append(
                     {
@@ -165,7 +224,19 @@ def index():
         # Get environment info for URL generation
         is_production = os.environ.get("PRODUCTION") == "true"
         mcp_port = int(os.environ.get("ADCP_SALES_PORT", 8080)) if not is_production else None
-        return render_template("index.html", tenants=tenant_list, mcp_port=mcp_port, is_production=is_production)
+
+        return render_template(
+            "index.html",
+            tenants=tenant_list,
+            mcp_port=mcp_port,
+            is_production=is_production,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages,
+            total_tenants=total_tenants,
+            config_filter=config_filter,
+            activity_filter=activity_filter,
+        )
 
     elif session.get("role") in ["tenant_admin", "tenant_user"]:
         # Tenant admin/user - redirect to their tenant dashboard

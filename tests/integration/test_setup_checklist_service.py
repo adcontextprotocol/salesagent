@@ -348,6 +348,174 @@ class TestSetupChecklistService:
                 assert "action_url" in step
                 assert "priority" in step
 
+    def test_bulk_setup_status_for_multiple_tenants(self, integration_db):
+        """Test bulk setup status calculation for multiple tenants efficiently."""
+        from datetime import UTC, datetime
+
+        from src.core.database.database_session import get_db_session
+
+        # Create 3 test tenants with varying setup levels
+        tenant_ids = ["bulk_tenant_1", "bulk_tenant_2", "bulk_tenant_3"]
+
+        with get_db_session() as db_session:
+            now = datetime.now(UTC)
+
+            # Tenant 1: Minimal setup (no ad server, no products)
+            tenant1 = Tenant(
+                tenant_id=tenant_ids[0],
+                name="Bulk Test Tenant 1",
+                subdomain="bulk1",
+                ad_server=None,
+                created_at=now,
+                updated_at=now,
+                is_active=True,
+            )
+            db_session.add(tenant1)
+
+            # Tenant 2: Partial setup (ad server configured, has products)
+            tenant2 = Tenant(
+                tenant_id=tenant_ids[1],
+                name="Bulk Test Tenant 2",
+                subdomain="bulk2",
+                ad_server="mock",
+                created_at=now,
+                updated_at=now,
+                is_active=True,
+            )
+            db_session.add(tenant2)
+
+            # Add currency and product for tenant 2
+            currency2 = CurrencyLimit(
+                tenant_id=tenant_ids[1], currency_code="USD", min_package_budget=0.0, max_daily_package_spend=10000.0
+            )
+            db_session.add(currency2)
+
+            product2 = Product(
+                tenant_id=tenant_ids[1],
+                product_id="bulk_product_2",
+                name="Test Product",
+                description="Test",
+                pricing_model="CPM",
+                created_at=now,
+                updated_at=now,
+            )
+            db_session.add(product2)
+
+            # Tenant 3: Complete setup
+            tenant3 = Tenant(
+                tenant_id=tenant_ids[2],
+                name="Bulk Test Tenant 3",
+                subdomain="bulk3",
+                ad_server="mock",
+                created_at=now,
+                updated_at=now,
+                is_active=True,
+                authorized_domains=["example.com"],
+            )
+            db_session.add(tenant3)
+
+            # Add complete setup for tenant 3
+            currency3 = CurrencyLimit(
+                tenant_id=tenant_ids[2], currency_code="USD", min_package_budget=0.0, max_daily_package_spend=10000.0
+            )
+            db_session.add(currency3)
+
+            property3 = AuthorizedProperty(
+                tenant_id=tenant_ids[2],
+                domain="example.com",
+                verification_method="dns",
+                verification_status="verified",
+                created_at=now,
+            )
+            db_session.add(property3)
+
+            product3 = Product(
+                tenant_id=tenant_ids[2],
+                product_id="bulk_product_3",
+                name="Test Product",
+                description="Test",
+                pricing_model="CPM",
+                created_at=now,
+                updated_at=now,
+            )
+            db_session.add(product3)
+
+            principal3 = Principal(
+                tenant_id=tenant_ids[2],
+                principal_id="bulk_principal_3",
+                name="Test Principal",
+                access_token="test_token",
+                created_at=now,
+            )
+            db_session.add(principal3)
+
+            db_session.commit()
+
+        # Call bulk setup status method
+        statuses = SetupChecklistService.get_bulk_setup_status(tenant_ids)
+
+        # Verify all tenants returned
+        assert len(statuses) == 3
+        assert set(statuses.keys()) == set(tenant_ids)
+
+        # Verify tenant 1 has low progress (minimal setup)
+        status1 = statuses[tenant_ids[0]]
+        assert status1["progress_percent"] < 30
+        assert not status1["ready_for_orders"]
+
+        # Verify tenant 2 has medium progress
+        status2 = statuses[tenant_ids[1]]
+        assert 30 <= status2["progress_percent"] < 80
+
+        # Verify tenant 3 has high progress (near complete)
+        status3 = statuses[tenant_ids[2]]
+        assert status3["progress_percent"] > 70
+
+        # Verify structure matches single-tenant query
+        for status in statuses.values():
+            assert "progress_percent" in status
+            assert "completed_count" in status
+            assert "total_count" in status
+            assert "ready_for_orders" in status
+            assert "critical" in status
+            assert "recommended" in status
+            assert "optional" in status
+
+        # Cleanup
+        with get_db_session() as db_session:
+            for tenant_id in tenant_ids:
+                stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+                tenant = db_session.scalars(stmt).first()
+                if tenant:
+                    db_session.delete(tenant)
+            db_session.commit()
+
+    def test_bulk_setup_status_with_empty_list(self, integration_db):
+        """Test bulk setup status handles empty tenant list."""
+        statuses = SetupChecklistService.get_bulk_setup_status([])
+        assert statuses == {}
+
+    def test_bulk_setup_status_matches_single_query(self, integration_db, setup_complete_tenant, test_tenant_id):
+        """Test that bulk query produces same results as single-tenant query."""
+        # Get status via single query
+        single_service = SetupChecklistService(test_tenant_id)
+        single_status = single_service.get_setup_status()
+
+        # Get status via bulk query
+        bulk_statuses = SetupChecklistService.get_bulk_setup_status([test_tenant_id])
+        bulk_status = bulk_statuses[test_tenant_id]
+
+        # Compare key metrics
+        assert single_status["progress_percent"] == bulk_status["progress_percent"]
+        assert single_status["completed_count"] == bulk_status["completed_count"]
+        assert single_status["total_count"] == bulk_status["total_count"]
+        assert single_status["ready_for_orders"] == bulk_status["ready_for_orders"]
+
+        # Compare task counts
+        assert len(single_status["critical"]) == len(bulk_status["critical"])
+        assert len(single_status["recommended"]) == len(bulk_status["recommended"])
+        assert len(single_status["optional"]) == len(bulk_status["optional"])
+
 
 class TestSetupValidation:
     """Tests for setup validation functions."""
@@ -408,27 +576,24 @@ class TestTaskDetails:
 
     def test_gemini_api_key_detection(self, integration_db, setup_minimal_tenant, test_tenant_id):
         """Test tenant-specific Gemini API key detection (moved to optional tasks)."""
+        from src.core.database.database_session import get_db_session
+
         # Without key (tenant.gemini_api_key is None)
         service = SetupChecklistService(test_tenant_id)
         status = service.get_setup_status()
         gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
         assert not gemini_task["is_complete"]
 
-        # Skip "with key" test if ENCRYPTION_KEY not available (CI environment)
-        # This is acceptable because the critical functionality (detecting None) is tested above
-        if os.getenv("ENCRYPTION_KEY"):
-            from src.core.database.database_session import get_db_session
+        # With tenant-specific key
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=test_tenant_id)).first()
+            tenant.gemini_api_key = "test_tenant_key"  # Set tenant-specific key
+            db_session.commit()
 
-            # With tenant-specific key
-            with get_db_session() as db_session:
-                tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=test_tenant_id)).first()
-                tenant.gemini_api_key = "test_tenant_key"  # Set tenant-specific key
-                db_session.commit()
-
-            service = SetupChecklistService(test_tenant_id)
-            status = service.get_setup_status()
-            gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
-            assert gemini_task["is_complete"]
+        service = SetupChecklistService(test_tenant_id)
+        status = service.get_setup_status()
+        gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
+        assert gemini_task["is_complete"]
 
     def test_currency_count_in_details(self, integration_db, test_tenant_id):
         """Test that currency count is shown in task details."""

@@ -17,27 +17,31 @@
     {% if tenants %}
     <!-- Filter Controls -->
     <div style="margin-bottom: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
-        <div style="display: flex; gap: 2rem; align-items: center; flex-wrap: wrap;">
+        <form method="get" action="{{ script_name }}/" style="display: flex; gap: 2rem; align-items: center; flex-wrap: wrap;">
             <div>
                 <label style="font-weight: bold; margin-right: 0.5rem;">Configuration:</label>
-                <select id="configFilter" style="padding: 0.25rem 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
-                    <option value="all">All</option>
-                    <option value="configured">Configured</option>
-                    <option value="not-configured">Not Configured</option>
+                <select name="configured" style="padding: 0.25rem 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="all" {% if config_filter == 'all' %}selected{% endif %}>All</option>
+                    <option value="configured" {% if config_filter == 'configured' %}selected{% endif %}>Configured</option>
+                    <option value="not-configured" {% if config_filter == 'not-configured' %}selected{% endif %}>Not Configured</option>
                 </select>
             </div>
             <div>
                 <label style="font-weight: bold; margin-right: 0.5rem;">Activity:</label>
-                <select id="activityFilter" style="padding: 0.25rem 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
-                    <option value="all">All</option>
-                    <option value="has-activity">Has Activity</option>
-                    <option value="no-activity">No Activity</option>
+                <select name="activity" style="padding: 0.25rem 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="all" {% if activity_filter == 'all' %}selected{% endif %}>All</option>
+                    <option value="has-activity" {% if activity_filter == 'has-activity' %}selected{% endif %}>Has Activity</option>
+                    <option value="no-activity" {% if activity_filter == 'no-activity' %}selected{% endif %}>No Activity</option>
                 </select>
             </div>
+            <button type="submit" class="btn btn-small" style="padding: 0.25rem 1rem;">Apply Filters</button>
             <div style="margin-left: auto; color: #666;">
-                Showing: <strong id="visibleCount">{{ tenants|length }}</strong> of {{ tenants|length }} accounts
+                Showing: <strong>{{ tenants|length }}</strong> of {{ total_tenants }} accounts
+                {% if total_pages > 1 %}
+                (page {{ page }} of {{ total_pages }})
+                {% endif %}
             </div>
-        </div>
+        </form>
     </div>
 
     <table>
@@ -55,7 +59,7 @@
         </thead>
         <tbody>
             {% for tenant in tenants %}
-            <tr data-configured="{{ 'true' if tenant.is_configured else 'false' }}" data-has-activity="{{ 'true' if tenant.has_activity else 'false' }}">
+            <tr>
                 <td><strong>{{ tenant.name }}</strong></td>
                 <td>
                     {% if tenant.virtual_host %}
@@ -131,58 +135,28 @@
             {% endfor %}
         </tbody>
     </table>
+
+    <!-- Pagination Controls -->
+    {% if total_pages > 1 %}
+    <div style="margin-top: 1.5rem; display: flex; justify-content: center; align-items: center; gap: 0.5rem;">
+        {% if page > 1 %}
+        <a href="?page=1&per_page={{ per_page }}&configured={{ config_filter }}&activity={{ activity_filter }}" class="btn btn-small">First</a>
+        <a href="?page={{ page - 1 }}&per_page={{ per_page }}&configured={{ config_filter }}&activity={{ activity_filter }}" class="btn btn-small">Previous</a>
+        {% endif %}
+
+        <span style="padding: 0 1rem; color: #666;">
+            Page {{ page }} of {{ total_pages }}
+        </span>
+
+        {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}&per_page={{ per_page }}&configured={{ config_filter }}&activity={{ activity_filter }}" class="btn btn-small">Next</a>
+        <a href="?page={{ total_pages }}&per_page={{ per_page }}&configured={{ config_filter }}&activity={{ activity_filter }}" class="btn btn-small">Last</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
     {% else %}
     <p>No tenants found. <a href="{{ script_name }}/create_tenant">Create your first tenant</a>.</p>
     {% endif %}
 </div>
-
-<script>
-// Client-side filtering for tenant list
-document.addEventListener('DOMContentLoaded', function() {
-    const configFilter = document.getElementById('configFilter');
-    const activityFilter = document.getElementById('activityFilter');
-    const visibleCount = document.getElementById('visibleCount');
-    const tableRows = document.querySelectorAll('tbody tr');
-    const totalCount = tableRows.length;
-
-    function applyFilters() {
-        const configValue = configFilter.value;
-        const activityValue = activityFilter.value;
-        let visibleRows = 0;
-
-        tableRows.forEach(row => {
-            let showRow = true;
-
-            // Apply configuration filter
-            if (configValue === 'configured' && row.dataset.configured !== 'true') {
-                showRow = false;
-            } else if (configValue === 'not-configured' && row.dataset.configured !== 'false') {
-                showRow = false;
-            }
-
-            // Apply activity filter
-            if (activityValue === 'has-activity' && row.dataset.hasActivity !== 'true') {
-                showRow = false;
-            } else if (activityValue === 'no-activity' && row.dataset.hasActivity !== 'false') {
-                showRow = false;
-            }
-
-            // Show/hide row
-            if (showRow) {
-                row.style.display = '';
-                visibleRows++;
-            } else {
-                row.style.display = 'none';
-            }
-        });
-
-        // Update count
-        visibleCount.textContent = visibleRows;
-    }
-
-    // Attach event listeners
-    configFilter.addEventListener('change', applyFilters);
-    activityFilter.addEventListener('change', applyFilters);
-});
-</script>
 {% endblock %}
