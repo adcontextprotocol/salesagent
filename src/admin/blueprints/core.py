@@ -13,7 +13,7 @@ from sqlalchemy import select, text
 from src.admin.utils import require_auth  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Principal, Tenant
+from src.core.database.models import Tenant
 from src.core.domain_config import (
     extract_subdomain_from_host,
     is_sales_agent_domain,
@@ -107,8 +107,54 @@ def index():
 
         from src.core.database.models import MediaBuy
         from src.core.tenant_status import is_tenant_ad_server_configured
+        from src.services.setup_checklist_service import SetupChecklistService
 
         with get_db_session() as db_session:
+            # Pagination
+            page = request.args.get("page", 1, type=int)
+            per_page = request.args.get("per_page", 50, type=int)
+            per_page = min(per_page, 100)  # Max 100 per page
+
+            # Filters
+            config_filter = request.args.get("configured", "all")  # all, configured, not-configured
+            activity_filter = request.args.get("activity", "all")  # all, has-activity, no-activity
+
+            # Get total count with filters
+            from datetime import UTC, datetime, timedelta
+
+            from sqlalchemy import func
+
+            # Helper function to apply filters consistently
+            def apply_tenant_filters(query, config_filter, activity_filter):
+                """Apply configuration and activity filters to tenant query."""
+                # Configuration filter
+                if config_filter == "configured":
+                    query = query.where(Tenant.ad_server.isnot(None), Tenant.ad_server != "")
+                elif config_filter == "not-configured":
+                    query = query.where((Tenant.ad_server.is_(None)) | (Tenant.ad_server == ""))
+
+                # Activity filter (use EXISTS for better performance than subquery)
+                if activity_filter == "has-activity":
+                    query = query.where(
+                        select(MediaBuy.media_buy_id).where(MediaBuy.tenant_id == Tenant.tenant_id).exists()
+                    )
+                elif activity_filter == "no-activity":
+                    query = query.where(
+                        ~select(MediaBuy.media_buy_id).where(MediaBuy.tenant_id == Tenant.tenant_id).exists()
+                    )
+
+                return query
+
+            # Build base query with filters
+            count_stmt = select(func.count()).select_from(Tenant).where(Tenant.is_active == True)  # noqa: E712
+            count_stmt = apply_tenant_filters(count_stmt, config_filter, activity_filter)
+
+            total_tenants = db_session.scalar(count_stmt) or 0
+
+            # Calculate pagination
+            total_pages = (total_tenants + per_page - 1) // per_page if total_tenants > 0 else 1
+            offset = (page - 1) * per_page
+
             # Eager load adapter_config to avoid N+1 queries
             stmt = (
                 select(Tenant)
@@ -116,26 +162,48 @@ def index():
                 .filter_by(is_active=True)
                 .order_by(Tenant.name)
             )
+
+            # Apply same filters to main query
+            stmt = apply_tenant_filters(stmt, config_filter, activity_filter)
+
+            stmt = stmt.limit(per_page).offset(offset)
             tenants = db_session.scalars(stmt).all()
+
+            # Bulk fetch setup status for all tenants on this page (single query per metric)
+            tenant_ids = [t.tenant_id for t in tenants]
+            setup_statuses = SetupChecklistService.get_bulk_setup_status(tenant_ids)
+
+            # Bulk fetch media buy counts (total and recent) for all tenants on this page
+            thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
+
+            # Total media buy counts per tenant
+            total_buys_stmt = (
+                select(MediaBuy.tenant_id, func.count())
+                .where(MediaBuy.tenant_id.in_(tenant_ids))
+                .group_by(MediaBuy.tenant_id)
+            )
+            total_buys_counts = dict(db_session.execute(total_buys_stmt).all())
+
+            # Recent media buy counts per tenant (last 30 days)
+            recent_buys_stmt = (
+                select(MediaBuy.tenant_id, func.count())
+                .where(MediaBuy.tenant_id.in_(tenant_ids))
+                .where(MediaBuy.created_at >= thirty_days_ago)
+                .group_by(MediaBuy.tenant_id)
+            )
+            recent_buys_counts = dict(db_session.execute(recent_buys_stmt).all())
+
             tenant_list = []
             for tenant in tenants:
                 # Check if configured
                 is_configured = is_tenant_ad_server_configured(tenant.tenant_id)
 
-                # Check for recent activity (media buys in last 30 days)
-                from datetime import UTC, datetime, timedelta
+                # Get counts from bulk queries (default to 0 if tenant has no buys)
+                total_buys_count = total_buys_counts.get(tenant.tenant_id, 0)
+                recent_buys_count = recent_buys_counts.get(tenant.tenant_id, 0)
 
-                thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
-                recent_buys_stmt = (
-                    select(MediaBuy)
-                    .filter_by(tenant_id=tenant.tenant_id)
-                    .filter(MediaBuy.created_at >= thirty_days_ago)
-                )
-                recent_buys_count = len(list(db_session.scalars(recent_buys_stmt).all()))
-
-                # Get total media buys for all-time activity
-                total_buys_stmt = select(MediaBuy).filter_by(tenant_id=tenant.tenant_id)
-                total_buys_count = len(list(db_session.scalars(total_buys_stmt).all()))
+                # Get setup status from bulk query results
+                setup_status = setup_statuses.get(tenant.tenant_id)
 
                 tenant_list.append(
                     {
@@ -150,12 +218,25 @@ def index():
                         "recent_buys_count": recent_buys_count,
                         "total_buys_count": total_buys_count,
                         "has_activity": total_buys_count > 0,
+                        "setup_status": setup_status,
                     }
                 )
         # Get environment info for URL generation
         is_production = os.environ.get("PRODUCTION") == "true"
         mcp_port = int(os.environ.get("ADCP_SALES_PORT", 8080)) if not is_production else None
-        return render_template("index.html", tenants=tenant_list, mcp_port=mcp_port, is_production=is_production)
+
+        return render_template(
+            "index.html",
+            tenants=tenant_list,
+            mcp_port=mcp_port,
+            is_production=is_production,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages,
+            total_tenants=total_tenants,
+            config_filter=config_filter,
+            activity_filter=activity_filter,
+        )
 
     elif session.get("role") in ["tenant_admin", "tenant_user"]:
         # Tenant admin/user - redirect to their tenant dashboard
@@ -266,7 +347,7 @@ def create_tenant():
         # Get form data
         tenant_name = request.form.get("name", "").strip()
         subdomain = request.form.get("subdomain", "").strip()
-        ad_server = request.form.get("ad_server", "mock").strip()
+        ad_server = request.form.get("ad_server", "").strip() or None  # Default to None, not mock
 
         if not tenant_name:
             flash("Tenant name is required", "error")
@@ -332,21 +413,10 @@ def create_tenant():
                 )
 
             db_session.add(new_tenant)
-
-            # Create default principal for the tenant
-            default_principal = Principal(
-                tenant_id=tenant_id,
-                principal_id=f"{tenant_id}_default",
-                name=f"{tenant_name} Default Principal",
-                access_token=admin_token,  # Use same token for simplicity
-                platform_mappings=json.dumps(
-                    {"mock": {"advertiser_id": f"default_{tenant_id[:8]}", "advertiser_name": f"{tenant_name} Default"}}
-                ),
-                created_at=datetime.now(UTC),
-            )
-            db_session.add(default_principal)
-
             db_session.commit()
+
+            # Note: No default principal created - principals must be added manually
+            # to map to real advertiser accounts in the ad server (GAM, Kevel, etc.)
 
             flash(f"Tenant '{tenant_name}' created successfully!", "success")
             return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
