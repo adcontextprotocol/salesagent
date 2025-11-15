@@ -20,11 +20,13 @@ def mock_adapter_config_three_keys():
     mock_config.axe_include_key = "audience_include"
     mock_config.axe_exclude_key = "audience_exclude"
     mock_config.axe_macro_key = "audience_macro"
-    # Mock custom_targeting_keys with ID mappings for the AXE keys
+    # Mock custom_targeting_keys with ID mappings for the AXE keys and custom keys
     mock_config.custom_targeting_keys = {
         "audience_include": "12345",
         "audience_exclude": "67890",
         "audience_macro": "11111",
+        "custom_key1": "22222",  # Custom key for test_axe_segments_combine_with_other_custom_targeting
+        "custom_key2": "33333",  # Custom key for test_axe_segments_combine_with_other_custom_targeting
     }
     return mock_config
 
