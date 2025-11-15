@@ -20,6 +20,12 @@ def mock_adapter_config_three_keys():
     mock_config.axe_include_key = "audience_include"
     mock_config.axe_exclude_key = "audience_exclude"
     mock_config.axe_macro_key = "audience_macro"
+    # Mock custom_targeting_keys with ID mappings for the AXE keys
+    mock_config.custom_targeting_keys = {
+        "audience_include": "12345",
+        "audience_exclude": "67890",
+        "audience_macro": "11111",
+    }
     return mock_config
 
 
@@ -30,6 +36,8 @@ def mock_adapter_config_no_keys():
     mock_config.axe_include_key = None
     mock_config.axe_exclude_key = None
     mock_config.axe_macro_key = None
+    # Empty custom_targeting_keys (no keys synced from GAM)
+    mock_config.custom_targeting_keys = {}
     return mock_config
 
 
