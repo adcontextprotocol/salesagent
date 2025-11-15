@@ -69,7 +69,7 @@ class TestSchemaFieldMapping:
         )
 
         # Verify critical fields exist in both
-        critical_fields = {"product_id", "name", "description", "formats", "delivery_type"}
+        critical_fields = {"product_id", "name", "description", "format_ids", "delivery_type"}
         for field in critical_fields:
             assert field in schema_fields, f"Critical field '{field}' missing from Product schema"
             assert field in db_columns, f"Critical field '{field}' missing from ProductModel database"
@@ -96,7 +96,7 @@ class TestSchemaFieldMapping:
                 product_id="field_test_001",
                 name="Field Test Product",
                 description="Test product for field access validation",
-                formats=["display_300x250"],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                 targeting_template={},
                 delivery_type="non_guaranteed",
                 property_tags=["all_inventory"],
@@ -163,7 +163,7 @@ class TestSchemaFieldMapping:
                 product_id="conversion_test_001",
                 name="Conversion Test Product",
                 description="Product for testing safe conversion",
-                formats=["display_300x250"],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                 targeting_template={},
                 delivery_type="non_guaranteed",
                 property_tags=["all_inventory"],
@@ -177,7 +177,7 @@ class TestSchemaFieldMapping:
                 "product_id",
                 "name",
                 "description",
-                "formats",
+                "format_ids",
                 "delivery_type",
                 "property_tags",
             ]
@@ -229,7 +229,7 @@ class TestSchemaFieldMapping:
             "product_id": "test_pydantic_001",
             "name": "Pydantic Test Product",
             "description": "Testing Pydantic field access",
-            "formats": ["display_300x250"],
+            "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -291,7 +291,10 @@ class TestSchemaFieldMapping:
                 product_id="json_test_001",
                 name="JSON Test Product",
                 description="Testing JSON field handling",
-                formats=["display_300x250", "display_728x90"],  # List
+                format_ids=[
+                    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+                ],  # List
                 targeting_template={"geo": ["US"], "device": ["mobile"]},  # Dict
                 delivery_type="non_guaranteed",
                 property_tags=["all_inventory"],
@@ -303,13 +306,13 @@ class TestSchemaFieldMapping:
             session.refresh(product)
 
             # Test that JSON fields are accessible and have correct types
-            assert hasattr(product, "formats")
+            assert hasattr(product, "format_ids")
             assert hasattr(product, "targeting_template")
             assert hasattr(product, "measurement")
             assert hasattr(product, "countries")
 
             # Access the fields to ensure no AttributeError
-            formats = product.formats
+            formats = product.format_ids
             targeting = product.targeting_template
             measurement = product.measurement
             countries = product.countries
@@ -343,7 +346,7 @@ class TestSchemaFieldMapping:
                 product_id="validation_test_001",
                 name="Schema Validation Product",
                 description="Testing schema validation with database data",
-                formats=["display_300x250"],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                 targeting_template={},
                 delivery_type="non_guaranteed",
                 is_custom=False,
@@ -358,7 +361,7 @@ class TestSchemaFieldMapping:
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
-                "formats": product.formats,
+                "format_ids": product.format_ids,
                 "delivery_type": product.delivery_type,
                 "is_custom": product.is_custom if product.is_custom is not None else False,
                 "property_tags": getattr(product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
@@ -397,7 +400,7 @@ class TestFieldAccessPatterns:
             "product_id": "pattern_test_001",
             "name": "Pattern Test Product",
             "description": "Testing safe access patterns",
-            "formats": ["display_300x250"],
+            "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -444,7 +447,7 @@ class TestFieldAccessPatterns:
             "product_id": "unsafe_test_001",
             "name": "Unsafe Test Product",
             "description": "Testing unsafe access patterns",
-            "formats": ["display_300x250"],
+            "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -498,7 +501,7 @@ class TestFieldAccessPatterns:
             "product_id",
             "name",
             "description",
-            "formats",
+            "format_ids",
             "targeting_template",
             "delivery_type",
             "measurement",
@@ -515,7 +518,7 @@ class TestFieldAccessPatterns:
         assert not missing_fields, f"Expected database fields missing: {missing_fields}"
 
         # Fields that should NOT exist (would cause the original bug)
-        forbidden_fields = {"pricing", "cost_basis", "margin", "format_ids"}
+        forbidden_fields = {"pricing", "cost_basis", "margin"}
 
         # Verify forbidden fields don't exist
         existing_forbidden = forbidden_fields & actual_db_fields

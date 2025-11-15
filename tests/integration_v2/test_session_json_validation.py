@@ -46,7 +46,7 @@ class TestSessionManagement:
                 subdomain="test",
                 authorized_emails=["admin@test.com"],
                 authorized_domains=["test.com"],
-                auto_approve_formats=["display_300x250"],
+                auto_approve_format_ids=["display_300x250"],
                 policy_settings={"enabled": True},
             )
             session.add(tenant)
@@ -242,7 +242,7 @@ class TestJSONValidation:
                 subdomain="jsontest",
                 authorized_emails=["test@example.com"],  # Valid array
                 authorized_domains=["example.com"],  # Valid array
-                auto_approve_formats=["display_300x250"],  # Valid array
+                auto_approve_format_ids=["display_300x250"],  # Valid array
                 policy_settings={"enabled": True},  # Valid object
                 created_at=now,
                 updated_at=now,
@@ -348,7 +348,7 @@ class TestIntegration:
                     subdomain="workflow",
                     authorized_emails=["admin@workflow.com"],
                     authorized_domains=["workflow.com"],
-                    auto_approve_formats=["display_300x250", "video_16x9"],
+                    auto_approve_format_ids=["display_300x250", "video_16x9"],
                     policy_settings={"enabled": True, "require_approval": False, "max_daily_budget": 10000.0},
                     created_at=now,
                     updated_at=now,
@@ -368,14 +368,10 @@ class TestIntegration:
                     pricing_model="CPM",
                     rate="10.0",
                     is_fixed=True,
-                    formats=[
+                    format_ids=[
                         {
-                            "format_id": "display_300x250",
-                            "name": "Display Banner",
-                            "type": "display",
-                            "description": "Standard banner",
-                            "assets": {},
-                            "delivery_options": {},
+                            "agent_url": "https://creative.adcontextprotocol.org",
+                            "id": "display_300x250",
                         }
                     ],
                     targeting_template={"geo_targets": ["US", "CA"], "device_targets": ["desktop", "mobile"]},
@@ -405,14 +401,16 @@ class TestIntegration:
             # Check tenant
             t = session.scalars(select(Tenant).filter_by(tenant_id="workflow_test")).first()
             assert t is not None
-            assert t.auto_approve_formats == ["display_300x250", "video_16x9"]
+            assert t.auto_approve_format_ids == ["display_300x250", "video_16x9"]
             assert t.policy_settings["max_daily_budget"] == 10000.0
 
             # Check product
             p = session.scalars(select(Product).filter_by(product_id="prod_1")).first()
             assert p is not None
-            assert len(p.formats) == 1
-            assert p.formats[0]["format_id"] == "display_300x250"  # Format stored as dict with format_id
+            assert len(p.format_ids) == 1
+            # format_ids is stored as a list of dicts in the database (not FormatId objects)
+            # Database model: list[dict[str, str]] with keys: agent_url, id
+            assert p.format_ids[0]["id"] == "display_300x250"
             assert p.targeting_template["geo_targets"] == ["US", "CA"]
 
             # Check principal

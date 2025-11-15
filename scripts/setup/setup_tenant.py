@@ -21,7 +21,7 @@ def create_tenant(args):
     subdomain = args.subdomain or tenant_id
 
     # Extract configuration values
-    auto_approve_formats = ["display_300x250", "display_728x90"]
+    auto_approve_format_ids = ["display_300x250", "display_728x90"]
     human_review_required = not args.auto_approve_all
     admin_token = args.admin_token or secrets.token_urlsafe(32)
 
@@ -58,7 +58,7 @@ def create_tenant(args):
             ad_server=args.adapter,
             enable_axe_signals=True,
             admin_token=admin_token,
-            auto_approve_formats=auto_approve_formats,
+            auto_approve_format_ids=auto_approve_format_ids,
             human_review_required=human_review_required,
             policy_settings=policy_settings,
             authorized_domains=json.dumps(authorized_domains) if authorized_domains else None,

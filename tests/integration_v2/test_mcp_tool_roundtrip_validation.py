@@ -75,7 +75,7 @@ class TestMCPToolRoundtripValidation:
                 product_id="roundtrip_test_display",
                 name="Display Banner Product - Roundtrip Test",
                 description="Display advertising product for roundtrip validation",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "display_300x250"},
                     {"agent_url": "https://test.com", "id": "display_728x90"},
                 ],
@@ -113,7 +113,7 @@ class TestMCPToolRoundtripValidation:
                 product_id="roundtrip_test_video",
                 name="Video Ad Product - Roundtrip Test",
                 description="Video advertising product for roundtrip validation",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "video_15s"},
                     {"agent_url": "https://test.com", "id": "video_30s"},
                 ],
@@ -207,19 +207,26 @@ class TestMCPToolRoundtripValidation:
             else:
                 pricing_kwargs["rate"] = 10.0
 
-            # Extract format IDs from FormatId objects (db_product.formats may be list of dicts or FormatId objects)
-            formats = db_product.formats
-            if formats and isinstance(formats[0], dict):
-                # Extract just the 'id' field from each format dict
-                format_ids = [f["id"] if isinstance(f, dict) else f.id for f in formats]
-            else:
-                format_ids = formats
+            # Convert format_ids to FormatId objects if they're dicts or strings
+            formats = db_product.format_ids
+            format_id_objects = []
+            if formats:
+                for f in formats:
+                    if isinstance(f, dict):
+                        # Already a dict with agent_url and id
+                        format_id_objects.append(f)
+                    elif isinstance(f, str):
+                        # String ID - convert to FormatId dict
+                        format_id_objects.append({"agent_url": "https://creative.adcontextprotocol.org", "id": f})
+                    else:
+                        # FormatId object - keep as is
+                        format_id_objects.append(f)
 
             product_data = {
                 "product_id": db_product.product_id,
                 "name": db_product.name,
                 "description": db_product.description or "",
-                "formats": format_ids,  # Internal field name (list of strings)
+                "format_ids": format_id_objects,  # FormatId objects or dicts
                 "delivery_type": db_product.delivery_type,
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
@@ -246,7 +253,7 @@ class TestMCPToolRoundtripValidation:
 
             # Step 4: Verify reconstruction succeeded
             assert reconstructed_product.product_id == product.product_id
-            assert reconstructed_product.formats == product.formats
+            assert reconstructed_product.format_ids == product.format_ids
             assert reconstructed_product.name == product.name
 
         # Test specific products that were created by fixture
@@ -257,12 +264,17 @@ class TestMCPToolRoundtripValidation:
         assert video_product is not None, "Should have found video product"
 
         # Test the specific case that was failing: formats field
-        assert display_product.formats == ["display_300x250", "display_728x90"]
-        assert video_product.formats == ["video_15s", "video_30s"]
+        # format_ids is now list[FormatId] objects, not strings
+        assert len(display_product.format_ids) == 2
+        assert display_product.format_ids[0].id == "display_300x250"
+        assert display_product.format_ids[1].id == "display_728x90"
+        assert len(video_product.format_ids) == 2
+        assert video_product.format_ids[0].id == "video_15s"
+        assert video_product.format_ids[1].id == "video_30s"
 
-        # Verify AdCP spec property works
-        assert display_product.format_ids == ["display_300x250", "display_728x90"]
-        assert video_product.format_ids == ["video_15s", "video_30s"]
+        # Verify AdCP spec property works (FormatId objects)
+        assert all(hasattr(fmt, "id") and hasattr(fmt, "agent_url") for fmt in display_product.format_ids)
+        assert all(hasattr(fmt, "id") and hasattr(fmt, "agent_url") for fmt in video_product.format_ids)
 
     def test_get_products_with_testing_hooks_roundtrip_isolated(
         self, integration_db, test_tenant_id, real_products_in_db
@@ -316,19 +328,26 @@ class TestMCPToolRoundtripValidation:
             else:
                 pricing_kwargs["rate"] = 10.0
 
-            # Extract format IDs from FormatId objects (db_product.formats may be list of dicts or FormatId objects)
-            formats = db_product.formats
-            if formats and isinstance(formats[0], dict):
-                # Extract just the 'id' field from each format dict
-                format_ids = [f["id"] if isinstance(f, dict) else f.id for f in formats]
-            else:
-                format_ids = formats
+            # Convert format_ids to FormatId objects if they're dicts or strings
+            formats = db_product.format_ids
+            format_id_objects = []
+            if formats:
+                for f in formats:
+                    if isinstance(f, dict):
+                        # Already a dict with agent_url and id
+                        format_id_objects.append(f)
+                    elif isinstance(f, str):
+                        # String ID - convert to FormatId dict
+                        format_id_objects.append({"agent_url": "https://creative.adcontextprotocol.org", "id": f})
+                    else:
+                        # FormatId object - keep as is
+                        format_id_objects.append(f)
 
             product_data = {
                 "product_id": db_product.product_id,
                 "name": db_product.name,
                 "description": db_product.description or "",
-                "formats": format_ids,  # Internal field name (list of strings)
+                "format_ids": format_id_objects,  # FormatId objects or dicts
                 "delivery_type": db_product.delivery_type,
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
@@ -362,14 +381,14 @@ class TestMCPToolRoundtripValidation:
 
                 # Step 4: Verify reconstruction succeeded
                 assert reconstructed_product.product_id == product.product_id
-                assert reconstructed_product.formats == product.formats
+                assert reconstructed_product.format_ids == product.format_ids
                 assert reconstructed_product.name == product.name
                 assert reconstructed_product.delivery_type == product.delivery_type
 
                 # Test specific fields that were causing validation errors
-                assert hasattr(reconstructed_product, "formats")
-                assert isinstance(reconstructed_product.formats, list)
-                assert len(reconstructed_product.formats) > 0
+                assert hasattr(reconstructed_product, "format_ids")
+                assert isinstance(reconstructed_product.format_ids, list)
+                assert len(reconstructed_product.format_ids) > 0
                 assert reconstructed_product.measurement is not None
                 assert reconstructed_product.creative_policy is not None
 
@@ -385,7 +404,10 @@ class TestMCPToolRoundtripValidation:
             product_id="roundtrip_isolated_test",
             name="Isolated Roundtrip Test Product",
             description="Testing the exact roundtrip conversion pattern",
-            formats=["display_300x250", "video_15s"],  # Internal field name
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+            ],  # Internal field name
             delivery_type="guaranteed",
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
@@ -403,9 +425,13 @@ class TestMCPToolRoundtripValidation:
         # Step 1: Convert to dict (what the tool does before testing hooks)
         product_dict = original_product.model_dump_internal()
 
-        # Verify the dict has the internal field name
-        assert "formats" in product_dict
-        assert product_dict["formats"] == ["display_300x250", "video_15s"]
+        # Verify the dict has the correct field name
+        assert "format_ids" in product_dict
+        # model_dump_internal() returns list of dicts for format_ids (FormatId objects serialized)
+        assert product_dict["format_ids"] == [
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+        ]
 
         # Step 2: Simulate testing hooks modifying the data
         testing_ctx = TestingContext(dry_run=True, test_session_id="isolated_test")
@@ -426,7 +452,7 @@ class TestMCPToolRoundtripValidation:
         assert reconstructed_product.product_id == original_product.product_id
         assert reconstructed_product.name == original_product.name
         assert reconstructed_product.description == original_product.description
-        assert reconstructed_product.formats == original_product.formats
+        assert reconstructed_product.format_ids == original_product.format_ids
         assert reconstructed_product.delivery_type == original_product.delivery_type
         assert reconstructed_product.pricing_options == original_product.pricing_options
 
@@ -442,7 +468,10 @@ class TestMCPToolRoundtripValidation:
             product_id="adcp_compliance_test",
             name="AdCP Compliance Test Product",
             description="Testing AdCP spec compliance after roundtrip",
-            formats=["display_300x250", "display_728x90"],  # Internal field name
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+            ],  # Internal field name
             delivery_type="non_guaranteed",
             is_custom=True,
             property_tags=["all_inventory"],  # Required per AdCP spec
@@ -467,8 +496,10 @@ class TestMCPToolRoundtripValidation:
 
         # Verify AdCP spec compliance
         assert "format_ids" in adcp_dict  # AdCP spec field name
-        assert "formats" not in adcp_dict  # Internal field name should be excluded
-        assert adcp_dict["format_ids"] == ["display_300x250", "display_728x90"]
+        # model_dump() serializes FormatId objects as dicts with agent_url and id
+        assert len(adcp_dict["format_ids"]) == 2
+        assert adcp_dict["format_ids"][0]["id"] == "display_300x250"
+        assert adcp_dict["format_ids"][1]["id"] == "display_728x90"
 
         # Verify required AdCP fields are present
         required_adcp_fields = [
@@ -501,7 +532,9 @@ class TestMCPToolRoundtripValidation:
             "product_id": "validation_error_test",
             "name": "Validation Error Test Product",
             "description": "Testing schema validation error detection",
-            "format_ids": ["display_300x250"],  # Now VALID: Accepts both formats and format_ids
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
+            ],  # Now VALID: Accepts both formats and format_ids
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -518,14 +551,18 @@ class TestMCPToolRoundtripValidation:
 
         # This should now succeed (format_ids is a valid alias)
         product1 = ProductSchema(**product_dict_with_format_ids)
-        assert product1.formats == ["display_300x250"]
+        # format_ids is list[FormatId] objects
+        assert len(product1.format_ids) == 1
+        assert product1.format_ids[0].id == "display_300x250"
 
-        # Test 2: formats should also work (original field name)
+        # Test 2: format_ids should work (correct field name)
         correct_product_dict = {
             "product_id": "validation_success_test",
             "name": "Validation Success Test Product",
             "description": "Testing correct schema validation",
-            "formats": ["display_300x250"],  # Original field name
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
+            ],  # Correct field name
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -542,7 +579,9 @@ class TestMCPToolRoundtripValidation:
 
         # This should succeed
         product = ProductSchema(**correct_product_dict)
-        assert product.formats == ["display_300x250"]
+        # format_ids is list[FormatId] objects
+        assert len(product.format_ids) == 1
+        assert product.format_ids[0].id == "display_300x250"
 
 
 class TestMCPToolRoundtripPatterns:
@@ -562,7 +601,7 @@ class TestMCPToolRoundtripPatterns:
                     "product_id": "pattern_guaranteed",
                     "name": "Guaranteed Display Product",
                     "description": "Pattern test for guaranteed products",
-                    "formats": ["display_300x250"],
+                    "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                     "delivery_type": "guaranteed",
                     "is_custom": False,
                     "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -584,7 +623,10 @@ class TestMCPToolRoundtripPatterns:
                     "product_id": "pattern_non_guaranteed",
                     "name": "Non-Guaranteed Video Product",
                     "description": "Pattern test for non-guaranteed products",
-                    "formats": ["video_15s", "video_30s"],
+                    "format_ids": [
+                        {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+                        {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s"},
+                    ],
                     "delivery_type": "non_guaranteed",
                     "is_custom": True,
                     "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -607,7 +649,7 @@ class TestMCPToolRoundtripPatterns:
                     "product_id": "pattern_minimal",
                     "name": "Minimal Product",
                     "description": "Pattern test with minimal fields",
-                    "formats": ["display_728x90"],
+                    "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}],
                     "delivery_type": "non_guaranteed",
                     "is_custom": False,
                     "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -646,14 +688,13 @@ class TestMCPToolRoundtripPatterns:
                 # Step 6: Verify roundtrip preserved essential data
                 assert reconstructed.product_id == original.product_id
                 assert reconstructed.name == original.name
-                assert reconstructed.formats == original.formats
+                assert reconstructed.format_ids == original.format_ids
                 assert reconstructed.delivery_type == original.delivery_type
                 assert reconstructed.pricing_options == original.pricing_options
 
                 # Step 7: Verify AdCP spec compliance
                 adcp_output = reconstructed.model_dump()
                 assert "format_ids" in adcp_output
-                assert "formats" not in adcp_output
 
     def test_field_mapping_consistency_validation(self):
         """
@@ -666,7 +707,10 @@ class TestMCPToolRoundtripPatterns:
             "product_id": "field_mapping_test",
             "name": "Field Mapping Test Product",
             "description": "Testing all field mapping scenarios",
-            "formats": ["display_300x250", "video_15s"],  # Internal name
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+            ],
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -700,22 +744,19 @@ class TestMCPToolRoundtripPatterns:
 
         # Test internal representation
         internal_dict = product.model_dump_internal()
-        assert "formats" in internal_dict  # Internal field name
-        assert "format_ids" not in internal_dict  # External field name excluded from internal
+        assert "format_ids" in internal_dict  # Field name (no separate internal/external anymore)
 
         # Test external (AdCP) representation
         external_dict = product.model_dump()
-        assert "format_ids" in external_dict  # External field name
-        assert "formats" not in external_dict  # Internal field name excluded from external
+        assert "format_ids" in external_dict  # Field name
 
-        # Test property access
-        assert product.formats == ["display_300x250", "video_15s"]  # Internal access
-        assert product.format_ids == ["display_300x250", "video_15s"]  # External property
+        # Test property access (format_ids returns FormatId objects)
+        assert len(product.format_ids) == 2
+        assert all(hasattr(fmt, "id") and hasattr(fmt, "agent_url") for fmt in product.format_ids)
 
         # Test roundtrip from internal dict
         roundtrip_product = ProductSchema(**internal_dict)
-        assert roundtrip_product.formats == product.formats
-        assert roundtrip_product.format_ids == product.format_ids
+        assert len(roundtrip_product.format_ids) == len(product.format_ids)
 
         # Verify external output is still compliant after roundtrip
         roundtrip_external = roundtrip_product.model_dump()

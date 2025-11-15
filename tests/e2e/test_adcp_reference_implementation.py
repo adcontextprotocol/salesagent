@@ -149,8 +149,8 @@ class TestAdCPReferenceImplementation:
             product = products_data["products"][0]
             product_id = product["product_id"]
             print(f"   ✓ Found product: {product['name']} ({product_id})")
-            # AdCP spec uses 'formats' not 'format_ids'
-            print(f"   ✓ Formats: {product['formats']}")
+            # Product uses 'format_ids' field
+            print(f"   ✓ Formats: {product['format_ids']}")
 
             # Get creative formats (no req wrapper - takes optional params directly)
             formats_result = await client.call_tool("list_creative_formats", {})
@@ -180,7 +180,7 @@ class TestAdCPReferenceImplementation:
                 webhook_url=webhook_server["url"],  # Async notifications!
                 context={"e2e": "create_media_buy"},
             )
-            
+
             # Create media buy (pass params directly - no req wrapper)
             media_buy_result = await client.call_tool("create_media_buy", media_buy_request)
             media_buy_data = parse_tool_result(media_buy_result)

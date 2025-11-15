@@ -52,7 +52,7 @@ class TestListCreativesAuthentication:
                 enable_axe_signals=True,
                 authorized_emails=[],
                 authorized_domains=[],
-                auto_approve_formats=["display_300x250"],
+                auto_approve_format_ids=["display_300x250"],
                 human_review_required=False,
             )
             session.add(tenant)

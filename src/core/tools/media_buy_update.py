@@ -630,10 +630,10 @@ def _update_media_buy_impl(
                         )
                         product = session.scalars(product_stmt).first()
 
-                        if product and product.formats:
+                        if product and product.format_ids:
                             # Build set of supported formats (agent_url, format_id) tuples
                             supported_formats = set()
-                            for fmt in product.formats:
+                            for fmt in product.format_ids:
                                 if isinstance(fmt, dict):
                                     agent_url = fmt.get("agent_url")
                                     format_id = fmt.get("id") or fmt.get("format_id")

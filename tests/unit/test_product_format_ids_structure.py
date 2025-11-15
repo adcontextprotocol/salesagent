@@ -13,7 +13,7 @@ def test_product_format_ids_serialize_as_objects():
         product_id="test-product",
         name="Test Product",
         description="Test Description",
-        formats=[
+        format_ids=[
             FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
             FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
         ],
@@ -54,16 +54,19 @@ def test_product_format_ids_serialize_as_objects():
         assert not isinstance(fmt, str), f"format_id should not be a string: {fmt}"
 
 
-def test_product_format_ids_with_unknown_format():
-    """Test that unknown format IDs get default agent_url and don't fail.
+def test_product_format_ids_with_custom_agent():
+    """Test that format IDs from custom creative agents serialize correctly.
 
-    This ensures graceful handling of legacy data with format IDs not in the cache.
+    This ensures we support format IDs from different creative agent implementations.
     """
     product = Product(
         product_id="test-product",
         name="Test Product",
         description="Test Description",
-        formats=["unknown_format", "video_15s"],  # Unknown formats as strings
+        format_ids=[
+            FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
+            FormatId(agent_url="https://custom-publisher.com/.well-known/adcp/sales", id="custom_format"),
+        ],
         delivery_type="guaranteed",
         property_tags=["all_inventory"],
         pricing_options=[
@@ -81,15 +84,13 @@ def test_product_format_ids_with_unknown_format():
     # Serialize - should NOT raise an error
     serialized = product.model_dump(mode="json", by_alias=True)
 
-    # Should gracefully handle unknown formats
+    # Should handle custom agent URLs
     assert "format_ids" in serialized
-    assert len(serialized["format_ids"]) == 2, "Should have 2 format_ids even for unknown formats"
+    assert len(serialized["format_ids"]) == 2, "Should have 2 format_ids"
 
-    # Unknown formats should get default agent_url and proper structure
-    for fmt in serialized["format_ids"]:
-        assert isinstance(fmt, dict), f"Even unknown formats should be objects: {fmt}"
-        assert "agent_url" in fmt, f"Unknown format missing agent_url: {fmt}"
-        assert "id" in fmt, f"Unknown format missing id: {fmt}"
-        # Default agent_url for unknown formats
-        assert fmt["agent_url"] == "https://creative.adcontextprotocol.org"
-        assert fmt["id"] in ["unknown_format", "video_15s"]
+    # Verify both standard and custom format IDs preserve their agent URLs
+    assert serialized["format_ids"][0]["agent_url"] == "https://creative.adcontextprotocol.org"
+    assert serialized["format_ids"][0]["id"] == "display_300x250"
+
+    assert serialized["format_ids"][1]["agent_url"] == "https://custom-publisher.com/.well-known/adcp/sales"
+    assert serialized["format_ids"][1]["id"] == "custom_format"

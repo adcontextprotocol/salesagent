@@ -35,6 +35,25 @@ from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 logger = logging.getLogger(__name__)
 
 
+def get_recommended_cpm(product: Product) -> float | None:
+    """Extract recommended CPM from product's pricing_options.
+
+    Uses p75 (75th percentile) as the recommended value per AdCP price_guidance spec.
+
+    Args:
+        product: Product schema object
+
+    Returns:
+        Recommended CPM value (p75) from price_guidance, or None if not available
+    """
+    for option in product.pricing_options:
+        if option.pricing_model.upper() == "CPM" and option.price_guidance:
+            p75 = option.price_guidance.p75
+            if p75 is not None:
+                return float(p75)
+    return None
+
+
 def convert_product_model_to_schema(product_model) -> Product:
     """Convert database Product model to Product schema.
 
@@ -52,7 +71,7 @@ def convert_product_model_to_schema(product_model) -> Product:
     product_data["product_id"] = product_model.product_id
     product_data["name"] = product_model.name
     product_data["description"] = product_model.description
-    product_data["formats"] = product_model.effective_formats  # Auto-resolves from profile if set
+    product_data["format_ids"] = product_model.effective_format_ids  # Auto-resolves from profile if set
     product_data["targeting_template"] = product_model.targeting_template
     product_data["delivery_type"] = product_model.delivery_type
 
@@ -406,8 +425,8 @@ async def _get_products_impl(
 
     logger.info(f"[GET_PRODUCTS] Total products (static + dynamic): {len(products)}")
 
-    # Enrich products with dynamic pricing (AdCP PR #79)
-    # Calculate floor_cpm, recommended_cpm, estimated_exposures from cached metrics
+    # Enrich products with dynamic pricing from cached performance metrics
+    # Updates pricing_options with price_guidance (floor, recommended) and estimated_exposures
     try:
         from src.services.dynamic_pricing_service import DynamicPricingService
 
@@ -442,11 +461,11 @@ async def _get_products_impl(
 
             # Filter by format_types
             if req.filters.format_types:
-                # Product.formats is list[str] (format IDs), need to look up types from FORMAT_REGISTRY
+                # Product.format_ids is list[str] (format IDs), need to look up types from FORMAT_REGISTRY
                 from src.core.schemas import get_format_by_id
 
                 product_format_types = set()
-                for format_id in product.formats:
+                for format_id in product.format_ids:
                     if isinstance(format_id, str):
                         format_obj = get_format_by_id(format_id)
                         if format_obj:
@@ -460,9 +479,9 @@ async def _get_products_impl(
 
             # Filter by format_ids
             if req.filters.format_ids:
-                # Product.formats is list[str] or list[dict] (format IDs)
-                product_format_ids = set()
-                for format_id in product.formats:
+                # Product.format_ids is list[str] or list[dict] (format IDs)
+                product_format_ids: set[str] = set()
+                for format_id in product.format_ids:
                     if isinstance(format_id, str):
                         product_format_ids.add(format_id)
                     elif isinstance(format_id, dict):
@@ -495,8 +514,8 @@ async def _get_products_impl(
                 # Check if all formats are IAB standard formats
                 # IAB standard formats typically follow patterns like "display_", "video_", "audio_", "native_"
                 has_only_standard = True
-                for format_id in product.formats:
-                    format_id_str = None
+                for format_id in product.format_ids:
+                    format_id_str: str | None = None
                     if isinstance(format_id, str):
                         format_id_str = format_id
                     elif isinstance(format_id, dict):
@@ -550,12 +569,14 @@ async def _get_products_impl(
                         f"({product.estimated_exposures}) < min_exposures ({min_exposures})"
                     )
             else:
-                # For non-guaranteed, include if recommended_cpm is set (indicates it can meet min_exposures)
-                # or if no recommended_cpm is set (product doesn't provide exposure estimates)
-                if product.recommended_cpm is not None:
+                # For non-guaranteed, include if recommended CPM is set in price_guidance
+                # (indicates it can meet min_exposures) or if no pricing data available
+                # (product doesn't provide exposure estimates)
+                recommended = get_recommended_cpm(product)
+                if recommended is not None:
                     filtered_products.append(product)
                 else:
-                    # Include non-guaranteed products without recommended_cpm (can't filter by exposure estimates)
+                    # Include non-guaranteed products without price_guidance (can't filter by exposure estimates)
                     filtered_products.append(product)
         eligible_products = filtered_products
 
@@ -604,7 +625,7 @@ async def _get_products_impl(
 
     # Response __str__() will generate appropriate message based on content
     resp = GetProductsResponse(products=modified_products, errors=None, context=req.context)
-    
+
     return resp
 
 
@@ -662,7 +683,7 @@ async def get_products_raw(
     min_exposures: int | None = None,
     filters: dict | None = None,
     strategy_id: str | None = None,
-    context: dict | None = None, # Application level context per adcp spec
+    context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ) -> GetProductsResponse:
     """Get available products matching the brief.
@@ -740,7 +761,7 @@ def get_product_catalog() -> list[Product]:
                 return value
 
             # Parse formats - now stored as strings by the validator
-            format_ids = safe_json_parse(product.formats) or []
+            format_ids = safe_json_parse(product.format_ids) or []
             # Ensure it's a list of strings (validator guarantees this)
             if not isinstance(format_ids, list):
                 format_ids = []

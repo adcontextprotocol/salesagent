@@ -73,7 +73,7 @@ class TestDatabaseProductsIntegration:
                 product_id="test_prod_001",
                 name="Integration Test Product",
                 description="A test product for database integration testing",
-                formats=[{"agent_url": "https://test.com", "id": "300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "300x250"}],
                 targeting_template={"geo": ["country"], "device": ["desktop", "mobile"]},
                 delivery_type="non_guaranteed",
                 pricing_model="CPM",
@@ -97,7 +97,7 @@ class TestDatabaseProductsIntegration:
             assert hasattr(db_product, "product_id")
             assert hasattr(db_product, "name")
             assert hasattr(db_product, "description")
-            assert hasattr(db_product, "formats")
+            assert hasattr(db_product, "format_ids")
             assert hasattr(db_product, "delivery_type")
 
             # Test pricing_options relationship exists
@@ -139,7 +139,7 @@ class TestDatabaseProductsIntegration:
                 "product_id",
                 "name",
                 "description",
-                "formats",
+                "format_ids",
                 "delivery_type",
                 "targeting_template",
                 "measurement",
@@ -188,7 +188,7 @@ class TestDatabaseProductsIntegration:
                 product_id="test_display_001",
                 name="Display Banner Product",
                 description="Display advertising product",
-                formats=[{"agent_url": "https://test.com", "id": "300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "300x250"}],
                 delivery_type="guaranteed",
                 pricing_model="CPM",
                 rate=Decimal("10.00"),
@@ -203,7 +203,7 @@ class TestDatabaseProductsIntegration:
                 product_id="test_video_001",
                 name="Video Ad Product",
                 description="Video advertising product",
-                formats=[{"agent_url": "https://test.com", "id": "video_15s"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "video_15s"}],
                 delivery_type="non_guaranteed",
                 pricing_model="CPM",
                 floor_cpm=Decimal("5.00"),
@@ -288,7 +288,7 @@ class TestDatabasePerformanceOptimization:
                     product_id=f"perf_test_{i:03d}",
                     name=f"Performance Test Product {i}",
                     description=f"Product {i} for performance testing",
-                    formats=[{"agent_url": "https://test.com", "id": "300x250"}],
+                    format_ids=[{"agent_url": "https://test.com", "id": "300x250"}],
                     targeting_template={"geo": ["US"], "device": ["desktop", "mobile"]},
                     delivery_type="non_guaranteed",
                     pricing_model="CPM",

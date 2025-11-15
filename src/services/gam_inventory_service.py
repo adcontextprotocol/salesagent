@@ -1204,9 +1204,9 @@ class GAMInventoryService:
 
         # Extract product characteristics
         creative_sizes: list[dict[str, int]] = []
-        if product.formats:
+        if product.format_ids:
             # Parse formats to get sizes
-            for format_id in product.formats:
+            for format_id in product.format_ids:
                 if isinstance(format_id, str) and "display" in format_id:
                     # Extract size from format like "display_300x250"
                     parts = format_id.split("_")

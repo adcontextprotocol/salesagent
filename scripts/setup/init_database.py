@@ -90,7 +90,7 @@ def init_db(exit_on_error=False):
                 enable_axe_signals=True,
                 admin_token=admin_token,
                 human_review_required=True,
-                auto_approve_formats=["display_300x250", "display_728x90", "display_320x50"],
+                auto_approve_format_ids=["display_300x250", "display_728x90", "display_320x50"],
                 created_at=now,
                 updated_at=now,
             )
@@ -136,7 +136,7 @@ def init_db(exit_on_error=False):
                     product_id="prod_display_premium",
                     name="Premium Display Package",
                     description="Premium display advertising across news and sports sections",
-                    formats=[
+                    format_ids=[
                         {
                             "agent_url": "https://creatives.adcontextprotocol.org",
                             "id": "display_300x250",
@@ -157,7 +157,7 @@ def init_db(exit_on_error=False):
                     product_id="prod_video_sports",
                     name="Sports Video Package",
                     description="Pre-roll video ads for sports content",
-                    formats=[
+                    format_ids=[
                         {
                             "agent_url": "https://creatives.adcontextprotocol.org",
                             "id": "video_preroll",
@@ -287,7 +287,7 @@ def init_db(exit_on_error=False):
                         product_id=p["product_id"],
                         name=p["name"],
                         description=p["description"],
-                        formats=p["formats"],
+                        format_ids=p["formats"],
                         targeting_template=p["targeting_template"],
                         delivery_type=p["delivery_type"],
                         is_fixed_price=p["is_fixed_price"],

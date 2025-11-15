@@ -23,7 +23,7 @@ def test_inventory_sync_checks_gam_inventory_not_products():
         mock_tenant.authorized_emails = ["test@example.com"]
         mock_tenant.policy_settings = {}
         mock_tenant.human_review_required = None
-        mock_tenant.auto_approve_formats = None
+        mock_tenant.auto_approve_format_ids = None
         mock_tenant.order_name_template = None
         mock_tenant.line_item_name_template = None
         mock_tenant.slack_webhook_url = None
@@ -83,7 +83,7 @@ def test_inventory_sync_incomplete_when_no_gam_inventory():
         mock_tenant.authorized_emails = ["test@example.com"]
         mock_tenant.policy_settings = {}
         mock_tenant.human_review_required = None
-        mock_tenant.auto_approve_formats = None
+        mock_tenant.auto_approve_format_ids = None
         mock_tenant.order_name_template = None
         mock_tenant.line_item_name_template = None
         mock_tenant.slack_webhook_url = None

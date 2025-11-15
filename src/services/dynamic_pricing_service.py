@@ -1,8 +1,8 @@
 """
-Dynamic Pricing Service for AdCP PR #79
+Dynamic Pricing Service
 
-Calculates floor_cpm, recommended_cpm, and estimated_exposures dynamically
-from cached format performance metrics.
+Calculates dynamic pricing from cached format performance metrics
+and updates product pricing_options with price_guidance.
 
 Uses historical GAM reporting data aggregated by country + creative format.
 """
@@ -14,7 +14,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from src.core.database.models import FormatPerformanceMetrics
-from src.core.schemas import Product
+from src.core.schemas import PriceGuidance, PricingModel, PricingOption, Product
 
 logger = logging.getLogger(__name__)
 
@@ -33,16 +33,19 @@ class DynamicPricingService:
         min_exposures: int | None = None,
     ) -> list[Product]:
         """
-        Enrich products with dynamically calculated PR #79 fields.
+        Enrich products with dynamically calculated pricing from performance metrics.
+
+        Updates or adds a CPM pricing option with price_guidance containing floor and
+        recommended CPM values based on historical performance data.
 
         Args:
             products: List of products to enrich
             tenant_id: Tenant ID for looking up metrics
             country_code: ISO country code for filtering (None = all countries)
-            min_exposures: Minimum impressions needed (affects recommended_cpm)
+            min_exposures: Minimum impressions needed (affects recommended price)
 
         Returns:
-            Products with populated floor_cpm, recommended_cpm, estimated_exposures
+            Products with updated pricing_options containing dynamic price_guidance
         """
         if not products:
             return products
@@ -59,21 +62,18 @@ class DynamicPricingService:
             try:
                 pricing = self._calculate_product_pricing(product, tenant_id, country_code, min_exposures, cutoff_date)
 
-                # Update product fields with dynamic pricing
-                # Note: currency is now in pricing_options, not on Product top-level
-                product.floor_cpm = pricing["floor_cpm"]
-                product.recommended_cpm = pricing["recommended_cpm"]
-                product.estimated_exposures = pricing["estimated_exposures"]
+                # Update or add pricing option with dynamic price_guidance
+                self._update_pricing_options(product, pricing)
 
                 logger.debug(
-                    f"Product {product.product_id}: floor_cpm={pricing['floor_cpm']}, "
-                    f"recommended_cpm={pricing['recommended_cpm']}, "
+                    f"Product {product.product_id}: price_guidance={{ "
+                    f"floor: {pricing['floor_cpm']}, "
+                    f"recommended: {pricing['recommended_cpm']} }}, "
                     f"estimated_exposures={pricing['estimated_exposures']}"
                 )
 
             except Exception as e:
-                logger.warning(f"Failed to calculate pricing for product {product.product_id}: {e}. Using defaults.")
-                # Leave defaults (floor_cpm, recommended_cpm, estimated_exposures remain None)
+                logger.warning(f"Failed to calculate pricing for product {product.product_id}: {e}. Skipping.")
 
         return products
 
@@ -89,7 +89,7 @@ class DynamicPricingService:
         # Extract creative sizes from product format IDs
         # Format IDs like "display_300x250" -> "300x250"
         creative_sizes = []
-        for format_id in product.formats:
+        for format_id in product.format_ids:
             # Handle FormatId objects (dict or object with .id attribute)
             # Pydantic validation may return dict, object, or string depending on context
             if isinstance(format_id, dict):
@@ -110,7 +110,7 @@ class DynamicPricingService:
 
         if not creative_sizes:
             logger.warning(
-                f"Product {product.product_id} has no recognizable creative sizes in formats: {product.formats}"
+                f"Product {product.product_id} has no recognizable creative sizes in format_ids: {product.format_ids}"
             )
             return self._default_pricing()
 
@@ -204,3 +204,72 @@ class DynamicPricingService:
             "recommended_cpm": None,
             "estimated_exposures": None,
         }
+
+    def _update_pricing_options(self, product: Product, pricing: dict) -> None:
+        """
+        Update product's pricing_options with calculated price_guidance.
+
+        Finds existing CPM pricing option or creates new one, then updates
+        its price_guidance with floor (median) and p75 (recommended) values.
+        """
+        floor_cpm = pricing.get("floor_cpm")
+        recommended_cpm = pricing.get("recommended_cpm")
+
+        # Skip if no pricing data available
+        if floor_cpm is None and recommended_cpm is None:
+            return
+
+        # Find existing CPM pricing option
+        cpm_option = None
+        for option in product.pricing_options:
+            if option.pricing_model.upper() == "CPM":
+                cpm_option = option
+                break
+
+        if cpm_option:
+            # Update existing option's price_guidance
+            # Create new PriceGuidance object with updated values
+            existing_guidance = cpm_option.price_guidance
+            updated_floor = (
+                floor_cpm if floor_cpm is not None else (existing_guidance.floor if existing_guidance else None)
+            )
+            updated_p75 = (
+                recommended_cpm
+                if recommended_cpm is not None
+                else (existing_guidance.p75 if existing_guidance else None)
+            )
+
+            if updated_floor is not None:
+                cpm_option.price_guidance = PriceGuidance(
+                    floor=updated_floor,
+                    p25=None,
+                    p50=None,
+                    p75=updated_p75,
+                    p90=None,
+                )
+                logger.debug(f"Updated existing CPM pricing option for {product.product_id}")
+        else:
+            # Create new CPM pricing option with price_guidance
+            if floor_cpm is not None:
+                price_guidance_obj = PriceGuidance(
+                    floor=floor_cpm,
+                    p25=None,
+                    p50=None,
+                    p75=recommended_cpm,  # p75 is the recommended value
+                    p90=None,
+                )
+
+                new_option = PricingOption(
+                    pricing_option_id=f"{product.product_id}_dynamic_cpm",
+                    pricing_model=PricingModel.CPM,
+                    rate=None,
+                    currency=pricing.get("currency", "USD"),
+                    is_fixed=True,
+                    price_guidance=price_guidance_obj,
+                    parameters=None,
+                    min_spend_per_package=None,
+                    supported=None,
+                    unsupported_reason=None,
+                )
+                product.pricing_options.append(new_option)
+                logger.debug(f"Created new CPM pricing option for {product.product_id}")

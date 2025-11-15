@@ -134,7 +134,7 @@ class TestMCPToolsAudit:
                 pricing_model="CPM",
                 rate="10.00",
                 is_fixed=False,
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
             )
 
             # Create test media buy
@@ -389,7 +389,9 @@ class TestMCPToolsAudit:
             "product_id": "anti_pattern_test",
             "name": "Anti-pattern Test Product",
             "description": "Testing anti-pattern detection",
-            "format_ids": ["display_300x250"],  # Now VALID: Accepts both formats and format_ids
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
+            ],  # Now VALID: Accepts both formats and format_ids
             "delivery_type": "guaranteed",
             "is_custom": False,
             "property_tags": ["all_inventory"],  # Required per AdCP spec
@@ -398,7 +400,9 @@ class TestMCPToolsAudit:
 
         # This should now succeed (format_ids is a valid alias)
         product = Product(**valid_data_with_format_ids)
-        assert product.formats == ["display_300x250"]
+        # format_ids is list[FormatId] objects
+        assert len(product.format_ids) == 1
+        assert product.format_ids[0].id == "display_300x250"
 
         # Anti-pattern: Type mismatches
         type_mismatch_data = {

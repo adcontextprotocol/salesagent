@@ -24,7 +24,7 @@ def test_profile_formats_match_adcp_format_id_schema():
             "placements": [],
             "include_descendants": False,
         },
-        formats=[
+        format_ids=[
             {"agent_url": "https://test.example.com", "id": "display_300x250"},
             {"agent_url": "https://test.example.com", "id": "display_728x90"},
             {"agent_url": "https://buyer.example.com", "id": "video_15s"},
@@ -38,9 +38,9 @@ def test_profile_formats_match_adcp_format_id_schema():
     )
 
     # Verify each format is valid FormatId object
-    assert len(profile.formats) == 3
+    assert len(profile.format_ids) == 3
 
-    for format_dict in profile.formats:
+    for format_dict in profile.format_ids:
         # Validate structure matches AdCP FormatId schema
         assert "agent_url" in format_dict, "FormatId must have agent_url field"
         assert "id" in format_dict, "FormatId must have id field"
@@ -69,7 +69,7 @@ def test_profile_publisher_properties_match_adcp_property_schema():
             "placements": [],
             "include_descendants": False,
         },
-        formats=[
+        format_ids=[
             {"agent_url": "https://test.example.com", "id": "display_300x250"},
         ],
         publisher_properties=[
@@ -136,7 +136,7 @@ def test_product_with_profile_passes_adcp_validation():
             "placements": [],
             "include_descendants": False,
         },
-        formats=[
+        format_ids=[
             {"agent_url": "https://test.example.com", "id": "display_300x250"},
             {"agent_url": "https://test.example.com", "id": "display_728x90"},
         ],
@@ -159,7 +159,7 @@ def test_product_with_profile_passes_adcp_validation():
         description="Product for AdCP validation testing",
         inventory_profile_id=1,  # Simulate having a profile
         inventory_profile=profile,  # Link the profile
-        formats=[],  # Not used when profile is set
+        format_ids=[],  # Not used when profile is set
         targeting_template={"geo_country": {"values": ["US"], "required": False}},
         delivery_type="guaranteed",
         property_tags=["all_inventory"],  # Fallback, not used with profile
@@ -168,7 +168,7 @@ def test_product_with_profile_passes_adcp_validation():
     )
 
     # Get effective values from product (these come from profile)
-    effective_formats = product.effective_formats
+    effective_formats = product.effective_format_ids
     effective_properties = product.effective_properties
 
     # Validate effective_formats match AdCP FormatId schema
@@ -195,7 +195,7 @@ def test_product_with_profile_passes_adcp_validation():
         "product_id": product.product_id,
         "name": product.name,
         "description": product.description,
-        "formats": [FormatId(**f) for f in effective_formats],
+        "format_ids": [FormatId(**f) for f in effective_formats],
         "delivery_type": product.delivery_type,
         "properties": [Property(**p) for p in effective_properties],
         "targeting_template": product.targeting_template,
@@ -208,7 +208,7 @@ def test_product_with_profile_passes_adcp_validation():
     # Verify schema fields
     assert product_schema.product_id == product.product_id
     assert product_schema.name == product.name
-    assert len(product_schema.formats) == 2
+    assert len(product_schema.format_ids) == 2
     assert len(product_schema.properties) == 1
     assert product_schema.delivery_type == "guaranteed"
 
@@ -276,7 +276,7 @@ def test_product_with_profile_has_no_internal_fields_in_serialization():
             "placements": [],
             "include_descendants": False,
         },
-        formats=[
+        format_ids=[
             {"agent_url": "https://test.example.com", "id": "display_300x250"},
         ],
         publisher_properties=[
@@ -297,7 +297,7 @@ def test_product_with_profile_has_no_internal_fields_in_serialization():
         description="Product for serialization testing",
         inventory_profile_id=1,
         inventory_profile=profile,
-        formats=[],
+        format_ids=[],
         targeting_template={},
         delivery_type="guaranteed",
         property_tags=["all_inventory"],
@@ -306,14 +306,14 @@ def test_product_with_profile_has_no_internal_fields_in_serialization():
     )
 
     # Simulate product serialization for AdCP API
-    effective_formats = product.effective_formats
+    effective_formats = product.effective_format_ids
     effective_properties = product.effective_properties
 
     product_data = {
         "product_id": product.product_id,
         "name": product.name,
         "description": product.description,
-        "formats": [FormatId(**f) for f in effective_formats],
+        "format_ids": [FormatId(**f) for f in effective_formats],
         "delivery_type": product.delivery_type,
         "countries": product.countries,
         "properties": [Property(**p) for p in effective_properties],

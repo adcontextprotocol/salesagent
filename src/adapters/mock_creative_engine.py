@@ -13,14 +13,14 @@ class MockCreativeEngine(CreativeEngineAdapter):
         self.human_review_required = config.get("human_review_required", True)
         self.adaptation_time_days = config.get("adaptation_time_days", 3)
         # Formats that can be auto-approved
-        self.auto_approve_formats = set(config.get("auto_approve_formats", []))
+        self.auto_approve_format_ids = set(config.get("auto_approve_formats", []))
 
     def process_creatives(self, creatives: list[Creative]) -> list[CreativeStatus]:
         """Simulates processing creatives, returning their status."""
         processed = []
         for creative in creatives:
             # Check if format is auto-approvable
-            is_auto_approvable = creative.format_id in self.auto_approve_formats
+            is_auto_approvable = creative.format_id in self.auto_approve_format_ids
 
             # Determine status based on format and configuration
             status: Literal["pending_review", "approved", "rejected", "adaptation_required"]

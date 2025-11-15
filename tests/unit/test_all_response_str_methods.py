@@ -43,7 +43,7 @@ class TestResponseStrMethods:
             product_id="test",
             name="Test",
             description="Test",
-            formats=["banner"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
             delivery_type="guaranteed",
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
@@ -67,7 +67,7 @@ class TestResponseStrMethods:
                 product_id=f"p{i}",
                 name=f"Product {i}",
                 description="Test",
-                formats=["banner"],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
                 property_tags=["all_inventory"],  # Required per AdCP spec
                 delivery_type="guaranteed",
                 is_custom=False,
@@ -93,7 +93,7 @@ class TestResponseStrMethods:
                 product_id=f"p{i}",
                 name=f"Product {i}",
                 description="Test",
-                formats=["banner"],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
                 property_tags=["all_inventory"],
                 delivery_type="guaranteed",
                 is_custom=False,

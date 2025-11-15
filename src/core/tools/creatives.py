@@ -47,7 +47,7 @@ def _sync_creatives_impl(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict | None = None,
-    context: dict | None = None, # Application level context per adcp spec
+    context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
@@ -1309,10 +1309,10 @@ def _sync_creatives_impl(
                         )
                         product = session.scalars(product_stmt).first()
 
-                        if product and product.formats:
+                        if product and product.format_ids:
                             # Build set of supported formats (agent_url, format_id) tuples
                             supported_formats: set[tuple[str, str]] = set()
-                            for fmt in product.formats:
+                            for fmt in product.format_ids:
                                 if isinstance(fmt, dict):
                                     agent_url_val = fmt.get("agent_url")
                                     format_id_val = fmt.get("id") or fmt.get("format_id")
@@ -1654,7 +1654,7 @@ async def sync_creatives(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict | None = None,
-    context: dict | None = None, # Application level context per adcp spec
+    context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
@@ -1709,7 +1709,7 @@ def _list_creatives_impl(
     limit: int = 50,
     sort_by: str = "created_date",
     sort_order: str = "desc",
-    context: dict | None = None, # Application level context per adcp spec
+    context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ) -> ListCreativesResponse:
     """List and search creative library (AdCP spec endpoint).
@@ -2050,7 +2050,7 @@ async def list_creatives(
     sort_by: str = "created_date",
     sort_order: str = "desc",
     webhook_url: str | None = None,
-    context: dict | None = None, # Application level context per adcp spec
+    context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """List and filter creative assets from the centralized library.
@@ -2096,7 +2096,7 @@ def sync_creatives_raw(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict = None,
-    context: dict | None = None, # Application level context per adcp spec
+    context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """Sync creative assets to the centralized creative library (raw function for A2A server use).
@@ -2143,7 +2143,7 @@ def list_creatives_raw(
     limit: int = 50,
     sort_by: str = "created_date",
     sort_order: str = "desc",
-    context: dict | None = None, # Application level context per adcp spec
+    context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """List creative assets with filtering and pagination (raw function for A2A server use).

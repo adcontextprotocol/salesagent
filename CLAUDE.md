@@ -882,6 +882,43 @@ uv run alembic revision -m "description"
 
 **⚠️ NEVER modify existing migrations after commit!**
 
+### Tenant Creation Defaults
+**🚨 IMPORTANT**: New tenant defaults have changed to reflect production requirements.
+
+**Default Behavior:**
+- **Ad Server**: Defaults to `None` (not "mock") - forces explicit configuration
+- **No Default Principal**: Principals must be manually created to map to real advertiser accounts in the ad server (GAM, Kevel, etc.)
+- **Setup Status**: New tenants start at ~6% completion (only basic tenant record created)
+
+**Why These Defaults:**
+1. **Production-First**: Mock adapter should only be used for testing/development
+2. **Explicit Configuration**: Forces setup of real ad server integration before accepting orders
+3. **Real Advertiser Mapping**: Principals must map to actual advertiser accounts (GAM advertiser ID, Kevel advertiser ID, etc.)
+4. **Setup Visibility**: Low initial progress clearly shows what needs configuration
+
+**Critical Setup Tasks** (in order):
+1. ⚠️ **Ad Server Configuration** (BLOCKER) - Must configure GAM/Kevel/Triton before proceeding
+2. **Currency Limits** - At least one currency (e.g., USD) required for budget validation
+3. **Authorized Properties** - Configure domains/properties for verification
+4. **Inventory Sync** - Sync ad units from ad server (GAM) or configure per product (Kevel/Triton)
+5. **Products** - Create at least one advertising product
+6. **Principals (Advertisers)** - Map to real advertiser accounts in ad server
+7. **Access Control** - Configure authorized domains/emails
+
+**Optional Setup Tasks:**
+- **Gemini AI Features** - Tenant-specific API key (moved from critical to optional)
+- **Signals Discovery** - Enable AXE signals for advanced targeting
+- **Multiple Currencies** - Support international advertisers
+
+**Recommended Setup Tasks:**
+- **Creative Approval** - Configure auto-approval rules
+- **Naming Conventions** - Customize order/line item templates
+- **Budget Controls** - Set daily budget limits
+- **Slack Integration** - Order notifications
+- **Custom Domain** - CNAME for branded experience
+
+See `src/services/setup_checklist_service.py` for complete task definitions.
+
 ### Database Initialization Dependencies
 **🚨 CRITICAL**: Products have implicit dependencies that MUST be satisfied before creation.
 

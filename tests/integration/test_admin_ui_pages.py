@@ -146,7 +146,7 @@ class TestTenantIsolation:
                 subdomain=tenant1_data["subdomain"],
                 is_active=True,
                 ad_server="mock",
-                auto_approve_formats=[],
+                auto_approve_format_ids=[],
                 human_review_required=False,
                 policy_settings={},
             )
@@ -156,7 +156,7 @@ class TestTenantIsolation:
                 subdomain=tenant2_data["subdomain"],
                 is_active=True,
                 ad_server="mock",
-                auto_approve_formats=[],
+                auto_approve_format_ids=[],
                 human_review_required=False,
                 policy_settings={},
             )

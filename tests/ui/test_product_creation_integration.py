@@ -48,7 +48,7 @@ def test_tenant(integration_db):
             subdomain="test-product",
             ad_server="mock",
             enable_axe_signals=True,
-            auto_approve_formats=[],  # Formats now come from creative agents, not local database
+            auto_approve_format_ids=[],  # Formats now come from creative agents, not local database
             human_review_required=False,
             billing_plan="basic",
             is_active=True,
@@ -235,7 +235,7 @@ def test_add_product_empty_json_fields(client, test_tenant, integration_db):
         # Product should be created (may fail if form validation rejected it)
         if product is not None:
             # Empty fields might be stored as None or empty lists/dicts depending on the database
-            assert product.formats in [None, []]
+            assert product.format_ids in [None, []]
             assert product.countries in [None, []]
             assert product.price_guidance in [None, {}]
             assert product.targeting_template in [None, {}]
@@ -269,7 +269,7 @@ def test_add_product_postgresql_validation(client, test_tenant):
                 tenant_id="test_product_tenant",
                 product_id="test_bad_json",
                 name="Bad JSON Product",
-                formats='"["display_300x250"]"',  # Double-encoded string
+                format_ids='"[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}]"',  # Double-encoded string
                 countries='"["US"]"',  # Double-encoded string
                 delivery_type="guaranteed",
             )
@@ -280,7 +280,7 @@ def test_add_product_postgresql_validation(client, test_tenant):
         except Exception as e:
             # PostgreSQL should reject double-encoded JSON
             session.rollback()
-            assert "check_formats_is_array" in str(e) or "check_countries_is_array" in str(e) or "JSON" in str(e)
+            assert "check_format_ids_is_array" in str(e) or "check_countries_is_array" in str(e) or "JSON" in str(e)
 
 
 @pytest.mark.requires_db

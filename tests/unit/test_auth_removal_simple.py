@@ -115,7 +115,7 @@ class TestAuthRemovalChanges:
             product_id="test_product",
             name="Test Product",
             description="Test description",
-            formats=["display_300x250"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             delivery_type="non_guaranteed",
             property_tags=["all_inventory"],  # Required per AdCP spec
             pricing_options=[
@@ -171,7 +171,7 @@ class TestAuthRemovalChanges:
             product_id="test_product",
             name="Test Product",
             description="Test description",
-            formats=["display_300x250"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             delivery_type="non_guaranteed",
             property_tags=["all_inventory"],  # Required per AdCP spec
             pricing_options=[

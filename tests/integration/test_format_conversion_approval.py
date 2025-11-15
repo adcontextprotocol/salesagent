@@ -1,6 +1,6 @@
 """Integration tests for format conversion logic during media buy approval.
 
-Tests the conversion of product.formats (FormatReference/dict) to MediaPackage.format_ids
+Tests the conversion of product.format_ids (FormatReference/dict) to MediaPackage.format_ids
 (FormatId objects) in execute_approved_media_buy function.
 
 This tests the critical format conversion logic at lines 391-452 of media_buy_create.py.
@@ -168,7 +168,7 @@ class TestFormatConversionApproval:
                 product_id=product_id,
                 name="Format Reference Product",
                 description="Product with FormatReference format",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "https://creatives.example.com",
                         "format_id": "display_300x250",  # Legacy field name
@@ -267,7 +267,7 @@ class TestFormatConversionApproval:
                 product_id=product_id,
                 name="Invalid Format Product",
                 description="Product with missing agent_url",
-                formats=[
+                format_ids=[
                     {
                         "format_id": "display_300x250",
                         # Missing agent_url - should fail
@@ -365,7 +365,7 @@ class TestFormatConversionApproval:
                 product_id=product_id,
                 name="Empty Agent URL Product",
                 description="Product with empty agent_url",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "",  # Empty string - should fail
                         "format_id": "display_300x250",
@@ -462,7 +462,7 @@ class TestFormatConversionApproval:
                 product_id=product_id,
                 name="Invalid URL Product",
                 description="Product with non-HTTP URL",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "ftp://creatives.example.com",  # FTP not allowed
                         "format_id": "display_300x250",
@@ -562,7 +562,7 @@ class TestFormatConversionApproval:
                 product_id=product_id,
                 name="No Format ID Product",
                 description="Product with missing format_id",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "https://creatives.example.com",
                         # Missing format_id/id - should fail
@@ -660,7 +660,7 @@ class TestFormatConversionApproval:
                 product_id=product_id,
                 name="Format ID Product",
                 description="Product with FormatId format",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "https://creatives.example.com",
                         "id": "display_728x90",  # New field name per AdCP spec
@@ -757,7 +757,7 @@ class TestFormatConversionApproval:
                 product_id=product_id,
                 name="Missing ID Product",
                 description="Product with dict missing both id fields",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "https://creatives.example.com",
                         "name": "Display Ad",  # Wrong field - not id or format_id
@@ -854,7 +854,7 @@ class TestFormatConversionApproval:
                 product_id=product_id,
                 name="Empty Formats Product",
                 description="Product with no formats",
-                formats=[],  # Empty list - should fail
+                format_ids=[],  # Empty list - should fail
                 targeting_template={},
                 delivery_type="guaranteed",
                 property_tags=["all_inventory"],
@@ -946,7 +946,7 @@ class TestFormatConversionApproval:
                 product_id=product_id,
                 name="Mixed Formats Product",
                 description="Product with different format styles",
-                formats=[
+                format_ids=[
                     # FormatReference style (legacy)
                     {
                         "agent_url": "https://creatives.example.com",
@@ -1054,7 +1054,7 @@ class TestFormatConversionApproval:
                 product_id=product_id,
                 name="Invalid Type Product",
                 description="Product with string format (should be dict)",
-                formats=["display_300x250"],  # String instead of dict - should fail
+                format_ids=["display_300x250"],  # String instead of dict - should fail
                 targeting_template={},
                 delivery_type="guaranteed",
                 property_tags=["all_inventory"],

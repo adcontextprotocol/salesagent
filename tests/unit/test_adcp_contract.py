@@ -88,7 +88,9 @@ class TestAdCPContract:
             product_id="test_product",
             name="Test Product",
             description="A test product for AdCP protocol",
-            formats=["display_300x250"],  # Now stores format IDs as strings
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
+            ],  # Now stores FormatId objects per AdCP spec
             targeting_template={"geo_country": {"values": ["US", "CA"], "required": False}},
             delivery_type="guaranteed",  # AdCP: guaranteed or non_guaranteed
             is_custom=False,
@@ -111,12 +113,12 @@ class TestAdCPContract:
         )
 
         # Convert to dict (simulating database retrieval and conversion)
-        # The validator now ensures formats are stored as strings
+        # format_ids are now FormatId objects per AdCP spec
         model_dict = {
             "product_id": model.product_id,
             "name": model.name,
             "description": model.description,
-            "formats": model.formats,  # Now guaranteed to be strings by validator
+            "format_ids": model.format_ids,  # FormatId objects with agent_url and id
             "delivery_type": model.delivery_type,
             "pricing_options": [pricing_option],
             "is_custom": model.is_custom,
@@ -132,10 +134,11 @@ class TestAdCPContract:
         assert schema.name == "Test Product"
         assert schema.description == "A test product for AdCP protocol"
         assert schema.delivery_type in ["guaranteed", "non_guaranteed"]
-        assert len(schema.formats) > 0
+        assert len(schema.format_ids) > 0
 
-        # Verify format IDs match AdCP (now strings)
-        assert schema.formats[0] == "display_300x250"
+        # Verify format IDs match AdCP (now FormatId objects)
+        assert schema.format_ids[0].id == "display_300x250"
+        assert schema.format_ids[0].agent_url == "https://creative.adcontextprotocol.org"
 
     def test_product_non_guaranteed(self):
         """Test non-guaranteed product (AdCP spec compliant - no price_guidance)."""
@@ -144,7 +147,9 @@ class TestAdCPContract:
             product_id="test_ng_product",
             name="Non-Guaranteed Product",
             description="AdCP non-guaranteed product",
-            formats=["video_15s"],  # Now stores format IDs as strings
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"}
+            ],  # Now stores format IDs as strings
             targeting_template={},
             delivery_type="non_guaranteed",
             is_custom=False,
@@ -157,7 +162,7 @@ class TestAdCPContract:
             "product_id": model.product_id,
             "name": model.name,
             "description": model.description,
-            "formats": model.formats,
+            "format_ids": model.format_ids,
             "delivery_type": model.delivery_type,
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
@@ -217,18 +222,18 @@ class TestAdCPContract:
     def test_product_pr79_fields(self):
         """Test Product schema compliance with AdCP PR #79 (filtering and pricing enhancements).
 
-        PR #79 adds:
+        AdCP pricing enhancements:
         - min_exposures filter in get_products request
-        - currency field (ISO 4217)
+        - currency field (ISO 4217) in pricing_options
         - estimated_exposures for guaranteed products
-        - floor_cpm and recommended_cpm for non-guaranteed products
+        - price_guidance (floor, percentiles) in pricing_options for non-guaranteed products
         """
         # Test guaranteed product with estimated_exposures
         guaranteed_product = ProductSchema(
             product_id="test_guaranteed",
             name="Guaranteed Product",
             description="Test product with exposure estimates",
-            formats=["display_300x250"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             delivery_type="guaranteed",
             pricing_options=[
                 PricingOptionSchema(
@@ -248,12 +253,12 @@ class TestAdCPContract:
         assert "estimated_exposures" in adcp_response
         assert adcp_response["estimated_exposures"] == 50000
 
-        # Test non-guaranteed product with floor_cpm and recommended_cpm
+        # Test non-guaranteed product with price_guidance in pricing_options
         non_guaranteed_product = ProductSchema(
             product_id="test_non_guaranteed",
             name="Non-Guaranteed Product",
             description="Test product with CPM guidance",
-            formats=["video_15s"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"}],
             delivery_type="non_guaranteed",
             pricing_options=[
                 PricingOptionSchema(
@@ -262,17 +267,19 @@ class TestAdCPContract:
                     rate=None,
                     currency="EUR",
                     is_fixed=False,
-                    price_guidance={"floor": 5.0, "p90": 8.5},
+                    price_guidance={"floor": 5.0, "p75": 8.5, "p90": 10.0},
                 )
             ],
-            floor_cpm=5.0,
-            recommended_cpm=8.5,
             property_tags=["all_inventory"],  # Required per AdCP spec
         )
 
         adcp_response = non_guaranteed_product.model_dump()
         # Currency is now in pricing_options, not at product level
         assert adcp_response["pricing_options"][0]["currency"] == "EUR"
+        # Verify price_guidance contains floor and percentile values
+        assert adcp_response["pricing_options"][0]["price_guidance"]["floor"] == 5.0
+        assert adcp_response["pricing_options"][0]["price_guidance"]["p75"] == 8.5  # p75 used as recommended
+        assert adcp_response["pricing_options"][0]["price_guidance"]["p90"] == 10.0
 
         # Verify GetProductsRequest requires brand_manifest per AdCP v2.2.0 spec
         # Should succeed with brand_manifest
@@ -301,7 +308,7 @@ class TestAdCPContract:
             product_id="test_product_tags",
             name="Product with Tags",
             description="Product using property tags",
-            formats=["display_300x250"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             delivery_type="guaranteed",
             cpm=10.0,
             property_tags=["premium_sports", "local_news"],
@@ -336,7 +343,7 @@ class TestAdCPContract:
             product_id="test_product_properties",
             name="Product with Properties",
             description="Product with full property objects",
-            formats=["video_15s"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"}],
             delivery_type="non_guaranteed",
             properties=[property_obj],
             pricing_options=[
@@ -362,7 +369,7 @@ class TestAdCPContract:
                 product_id="test_product_no_props",
                 name="Invalid Product",
                 description="Missing property information",
-                formats=["display_300x250"],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                 delivery_type="guaranteed",
                 cpm=10.0,
                 pricing_options=[
@@ -445,7 +452,7 @@ class TestAdCPContract:
             "name": "name",
             "description": "description",
             "delivery_type": "delivery_type",  # Must be "guaranteed" or "non_guaranteed"
-            "formats": "formats",
+            "format_ids": "format_ids",
             "is_custom": "is_custom",
             "expires_at": "expires_at",
         }
@@ -456,7 +463,7 @@ class TestAdCPContract:
             product_id="test_mapping",
             name="Test",
             description="Test product",
-            formats=[],
+            format_ids=[],
             targeting_template={},
             delivery_type="guaranteed",
             is_custom=False,
@@ -481,7 +488,7 @@ class TestAdCPContract:
                 product_id="test",
                 name="Test",
                 description="Test",
-                formats=[],
+                format_ids=[],
                 delivery_type=delivery_type,
                 cpm=10.0,
                 property_tags=["all_inventory"],  # Required per AdCP spec
@@ -503,7 +510,7 @@ class TestAdCPContract:
                 product_id="test",
                 name="Test",
                 description="Test",
-                formats=[],
+                format_ids=[],
                 delivery_type="programmatic",  # Not AdCP compliant
                 cpm=10.0,
                 property_tags=["all_inventory"],  # Required per AdCP spec
@@ -525,7 +532,7 @@ class TestAdCPContract:
                 product_id="test",
                 name="Test Product",
                 description="Test",
-                formats=[],
+                format_ids=[],
                 delivery_type="guaranteed",
                 cpm=10.0,
                 implementation_config={"internal": "data"},  # Should be excluded
@@ -1459,7 +1466,10 @@ class TestAdCPContract:
             product_id="prod_1",
             name="Premium Display",
             description="High-quality display advertising",
-            formats=["display_300x250", "display_728x90"],
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+            ],
             delivery_type="guaranteed",
             measurement=None,
             creative_policy=None,
@@ -2343,7 +2353,7 @@ class TestAdCPContract:
             product_id="p1",
             name="Tagged Product",
             description="Product using property tags",
-            formats=["display_300x250"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             property_tags=["sports", "premium"],
             delivery_type="guaranteed",
             cpm=10.0,
@@ -2365,7 +2375,7 @@ class TestAdCPContract:
             product_id="p2",
             name="Property Product",
             description="Product using full properties",
-            formats=["display_300x250"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             properties=[
                 Property(
                     property_type="website",
@@ -2395,7 +2405,7 @@ class TestAdCPContract:
                 product_id="p3",
                 name="Invalid Product",
                 description="Product with both fields (invalid)",
-                formats=["display_300x250"],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                 properties=[
                     Property(
                         property_type="website",
