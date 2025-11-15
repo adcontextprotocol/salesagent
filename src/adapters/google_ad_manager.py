@@ -139,7 +139,7 @@ class GoogleAdManager(AdServerAdapter):
                     logger.warning(f"Could not auto-detect trafficker_id: {e}")
 
             # Initialize manager components
-            self.targeting_manager = GAMTargetingManager(tenant_id or "")
+            self.targeting_manager = GAMTargetingManager(tenant_id or "", gam_client=self.client)
 
             # Initialize orders manager (advertiser_id/trafficker_id optional for query operations)
             self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
@@ -637,6 +637,9 @@ class GoogleAdManager(AdServerAdapter):
             )
             self.log(f"✓ Created {len(line_item_ids)} line items")
 
+            # NOTE: platform_line_item_id persistence is handled by media_buy_create.py
+            # after response object is returned. See CreateMediaBuySuccess._platform_line_item_ids mapping.
+
             # Approve the order now that it has line items
             # GAM requires line items to exist before an order can be APPROVED
             # Try once - if forecasting not ready, start background task
@@ -745,13 +748,31 @@ class GoogleAdManager(AdServerAdapter):
 
                 package_responses.append(guaranteed_package_dict)
 
-            return CreateMediaBuySuccess(
+            # Create response and attach platform_line_item_id mapping for database persistence
+            # This mapping is used by media_buy_create.py to update MediaPackage records
+            response = CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
                 media_buy_id=order_id,
                 creative_deadline=None,
                 workflow_step_id=step_id,
                 packages=package_responses,
             )
+
+            # Store platform_line_item_id mapping as a non-standard attribute
+            # This survives Pydantic validation since it's set after construction
+            platform_line_item_ids = {}
+            for pkg_dict in package_responses:
+                if "package_id" in pkg_dict and "platform_line_item_id" in pkg_dict:
+                    platform_line_item_ids[pkg_dict["package_id"]] = pkg_dict["platform_line_item_id"]
+
+            self.log(f"[DEBUG] Guaranteed path: Created platform_line_item_ids mapping: {platform_line_item_ids}")
+
+            # Attach to response object (bypass Pydantic validation)
+            object.__setattr__(response, "_platform_line_item_ids", platform_line_item_ids)
+            self.log("[DEBUG] Attached _platform_line_item_ids to response object")
+            self.log(f"[DEBUG] Verify attribute exists: {hasattr(response, '_platform_line_item_ids')}")
+
+            return response
 
         # Build package responses with ALL package data + line_item_ids for creative association
         package_responses = []
@@ -801,9 +822,27 @@ class GoogleAdManager(AdServerAdapter):
 
             package_responses.append(final_package_dict)
 
-        return CreateMediaBuySuccess(
+        # Create response and store platform_line_item_id mapping for database persistence
+        # This mapping is used by media_buy_create.py to update MediaPackage records
+        response = CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "", media_buy_id=order_id, creative_deadline=None, packages=package_responses
         )
+
+        # Store platform_line_item_id mapping as a non-standard attribute
+        # This survives Pydantic validation since it's set after construction
+        platform_line_item_ids = {}
+        for pkg_dict in package_responses:
+            if "package_id" in pkg_dict and "platform_line_item_id" in pkg_dict:
+                platform_line_item_ids[pkg_dict["package_id"]] = pkg_dict["platform_line_item_id"]
+
+        self.log(f"[DEBUG] Created platform_line_item_ids mapping: {platform_line_item_ids}")
+
+        # Attach to response object (bypass Pydantic validation)
+        object.__setattr__(response, "_platform_line_item_ids", platform_line_item_ids)
+        self.log("[DEBUG] Attached _platform_line_item_ids to response object")
+        self.log(f"[DEBUG] Verify attribute exists: {hasattr(response, '_platform_line_item_ids')}")
+
+        return response
 
     def archive_order(self, order_id: str) -> bool:
         """Archive a GAM order for cleanup purposes (delegated to orders manager)."""

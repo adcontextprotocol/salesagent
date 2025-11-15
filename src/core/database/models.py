@@ -783,6 +783,11 @@ class AdapterConfig(Base):
         comment="Custom targeting key for AXE creative macro segments (enable_creative_macro) - works with all adapters",
     )
 
+    # Custom targeting key ID mappings for GAM
+    # Maps key names → GAM custom targeting key IDs (e.g., {"axe_include_segment": "123456789"})
+    # This allows the adapter to resolve key names to IDs without additional API calls
+    custom_targeting_keys: Mapped[dict] = mapped_column(JSONType, nullable=False, server_default=text("'{}'::jsonb"))
+
     # NOTE: gam_company_id (advertiser_id) is per-principal, stored in Principal.platform_mappings
 
     # Kevel

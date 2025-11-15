@@ -520,9 +520,12 @@ function updateSyncInfo(lastSync) {
 function renderCustomKeys() {
     console.log('renderCustomKeys called');
     const keysList = document.getElementById('keys-list');
-    const currentAxeKey = document.getElementById('gam_axe_custom_targeting_key').value;
+    // Get all three AXE keys
+    const axeIncludeKey = document.getElementById('axe_include_key').value;
+    const axeExcludeKey = document.getElementById('axe_exclude_key').value;
+    const axeMacroKey = document.getElementById('axe_macro_key').value;
     console.log('keysList element:', keysList);
-    console.log('currentAxeKey:', currentAxeKey);
+    console.log('AXE keys:', { include: axeIncludeKey, exclude: axeExcludeKey, macro: axeMacroKey });
 
     if (!keysList) {
         console.error('keys-list element not found!');
@@ -568,7 +571,11 @@ function renderCustomKeys() {
 
     filteredKeys.forEach((key, index) => {
         console.log(`Processing key ${index}:`, key.name);
-        const isAxeKey = key.name === currentAxeKey;
+        // Check if this key is used for any AXE purpose
+        const isAxeInclude = key.name === axeIncludeKey;
+        const isAxeExclude = key.name === axeExcludeKey;
+        const isAxeMacro = key.name === axeMacroKey;
+        const isAxeKey = isAxeInclude || isAxeExclude || isAxeMacro;
 
         const item = document.createElement('div');
         item.className = 'list-group-item';
@@ -591,7 +598,12 @@ function renderCustomKeys() {
         if (isAxeKey) {
             const axeBadge = document.createElement('span');
             axeBadge.className = 'badge bg-success ms-2';
-            axeBadge.textContent = '🎯 AXE Key';
+            // Show which type(s) of AXE key this is
+            const axeTypes = [];
+            if (isAxeInclude) axeTypes.push('Include');
+            if (isAxeExclude) axeTypes.push('Exclude');
+            if (isAxeMacro) axeTypes.push('Macro');
+            axeBadge.textContent = `🎯 AXE (${axeTypes.join(', ')})`;
             title.appendChild(axeBadge);
         }
 
@@ -624,31 +636,12 @@ function renderCustomKeys() {
 
         row.appendChild(metadataCol);
 
-        // Column 3: AXE Action Button
+        // Column 3: AXE Key Badge (no action button - use the AXE Configuration modal instead)
         const actionCol = document.createElement('div');
         actionCol.className = 'col-2 text-end';
 
-        if (isAxeKey) {
-            const removeBtn = document.createElement('button');
-            removeBtn.className = 'btn btn-sm btn-outline-secondary';
-            removeBtn.title = 'Remove as AXE key';
-            removeBtn.onclick = (e) => {
-                e.stopPropagation();
-                clearAxeConfiguration();
-            };
-            removeBtn.innerHTML = '<i class="bi bi-x-circle"></i>';
-            actionCol.appendChild(removeBtn);
-        } else {
-            const useBtn = document.createElement('button');
-            useBtn.className = 'btn btn-sm btn-outline-primary';
-            useBtn.title = 'Use for AXE segments';
-            useBtn.onclick = (e) => {
-                e.stopPropagation();
-                setAxeKey(key.name);
-            };
-            useBtn.textContent = 'Use for AXE';
-            actionCol.appendChild(useBtn);
-        }
+        // Note: We don't add action buttons here anymore since AXE keys are managed via the
+        // dedicated AXE Configuration modal at the top of the page
 
         row.appendChild(actionCol);
         item.appendChild(row);

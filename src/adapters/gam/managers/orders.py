@@ -735,11 +735,21 @@ class GAMOrdersManager:
                 from src.adapters.gam.pricing_compatibility import PricingCompatibility
 
                 pricing_model = pricing_info["pricing_model"]
-                is_guaranteed = pricing_info["is_fixed"]
+                is_fixed_price = pricing_info["is_fixed"]  # Fixed vs auction pricing (pricing type)
                 currency = pricing_info["currency"]
 
-                # Determine rate based on pricing type
-                if is_guaranteed:
+                # Determine delivery guarantee from product (not pricing)
+                # IMPORTANT: delivery_type (guaranteed/non-guaranteed inventory) is SEPARATE from
+                # is_fixed (fixed vs auction pricing). A product can be:
+                # - guaranteed inventory with fixed pricing (STANDARD with CPM)
+                # - guaranteed inventory with auction pricing (STANDARD with bid_price)
+                # - non-guaranteed inventory with fixed pricing (PRICE_PRIORITY with CPM)
+                # - non-guaranteed inventory with auction pricing (PRICE_PRIORITY with bid_price)
+                delivery_type = product.get("delivery_type") if product else None
+                is_guaranteed = delivery_type == "guaranteed"
+
+                # Determine rate based on pricing type (fixed vs auction)
+                if is_fixed_price:
                     # Fixed pricing: use rate directly
                     rate = pricing_info["rate"]
                 else:
@@ -783,6 +793,8 @@ class GAMOrdersManager:
                     log(f"  Pricing: {pricing_model.upper()} @ ${rate:,.2f} {currency} → GAM {cost_type}")
 
                 # Select appropriate line item type based on pricing + guarantees
+                # Automatically select based on pricing model and product's delivery guarantee
+                # The select_line_item_type method ensures compatibility between pricing and line item type
                 line_item_type = PricingCompatibility.select_line_item_type(pricing_model, is_guaranteed)
                 priority = PricingCompatibility.get_default_priority(line_item_type)
 
@@ -999,7 +1011,7 @@ class GAMOrdersManager:
         return created_line_item_ids
 
     def update_line_item_budget(
-        self, line_item_id: str, new_budget: float, pricing_model: str, currency: str = "USD"
+        self, line_item_id: str, new_budget: float, pricing_model: str, currency: str = "USD", max_retries: int = 5
     ) -> bool:
         """Update line item budget in GAM by modifying costPerUnit and primaryGoal.
 
@@ -1008,6 +1020,7 @@ class GAMOrdersManager:
             new_budget: New budget amount
             pricing_model: Pricing model (cpm, cpc, vcpm, flat_rate)
             currency: Currency code (default: USD)
+            max_retries: Maximum number of retries for NO_FORECAST_YET errors (default: 5)
 
         Returns:
             True if update successful, False otherwise
@@ -1019,67 +1032,101 @@ class GAMOrdersManager:
             )
             return True
 
-        try:
-            line_item_service = self.client_manager.get_service("LineItemService")
+        import time
 
-            # Get current line item
-            statement_builder = ad_manager.StatementBuilder()
-            statement_builder.Where("id = :lineItemId")
-            statement_builder.WithBindVariable("lineItemId", int(line_item_id))
-            statement = statement_builder.ToStatement()
+        for attempt in range(max_retries):
+            try:
+                line_item_service = self.client_manager.get_service("LineItemService")
 
-            result = line_item_service.getLineItemsByStatement(statement)
-            line_items = result.get("results", []) if isinstance(result, dict) else getattr(result, "results", [])
+                # Get current line item
+                statement_builder = ad_manager.StatementBuilder()
+                statement_builder.Where("id = :lineItemId")
+                statement_builder.WithBindVariable("lineItemId", int(line_item_id))
+                statement = statement_builder.ToStatement()
 
-            if not line_items:
-                logger.error(f"Line item {line_item_id} not found in GAM")
-                return False
+                result = line_item_service.getLineItemsByStatement(statement)
+                line_items = result.get("results", []) if isinstance(result, dict) else getattr(result, "results", [])
 
-            line_item = line_items[0]
+                if not line_items:
+                    logger.error(f"Line item {line_item_id} not found in GAM")
+                    return False
 
-            # Calculate new goal units based on pricing model
-            # Budget = (costPerUnit / 1000) * goal_units for CPM
-            # Budget = costPerUnit * goal_units for CPC
-            current_cost_per_unit_micro = line_item.get("costPerUnit", {}).get("microAmount", 0)
-            current_cost_per_unit = float(current_cost_per_unit_micro) / 1_000_000
+                line_item = line_items[0]
 
-            if current_cost_per_unit <= 0:
-                logger.error(f"Invalid costPerUnit for line item {line_item_id}: {current_cost_per_unit}")
-                return False
+                # Calculate new goal units based on pricing model
+                # Budget = (costPerUnit / 1000) * goal_units for CPM
+                # Budget = costPerUnit * goal_units for CPC
+                # Handle both dict and object responses from GAM API
+                if isinstance(line_item, dict):
+                    current_cost_per_unit_micro = line_item.get("costPerUnit", {}).get("microAmount", 0)
+                else:
+                    cost_per_unit = getattr(line_item, "costPerUnit", None)
+                    current_cost_per_unit_micro = getattr(cost_per_unit, "microAmount", 0) if cost_per_unit else 0
 
-            # Calculate new goal units based on pricing model
-            if pricing_model in ["cpm", "vcpm"]:
-                # CPM/VCPM: budget = (rate / 1000) * impressions → impressions = budget / (rate / 1000)
-                new_goal_units = int((new_budget * 1000) / current_cost_per_unit)
-            elif pricing_model == "cpc":
-                # CPC: budget = rate * clicks → clicks = budget / rate
-                new_goal_units = int(new_budget / current_cost_per_unit)
-            elif pricing_model == "flat_rate":
-                # FLAT_RATE: Keep existing goal units (100% for sponsorship)
-                new_goal_units = line_item.get("primaryGoal", {}).get("units", 100)
-            else:
-                logger.error(f"Unsupported pricing model for budget update: {pricing_model}")
-                return False
+                current_cost_per_unit = float(current_cost_per_unit_micro) / 1_000_000
 
-            # Update line item
-            line_item["primaryGoal"]["units"] = new_goal_units
+                if current_cost_per_unit <= 0:
+                    logger.error(f"Invalid costPerUnit for line item {line_item_id}: {current_cost_per_unit}")
+                    return False
 
-            # Update the line item in GAM
-            updated_line_items = line_item_service.updateLineItems([line_item])
+                # Calculate new goal units based on pricing model
+                if pricing_model in ["cpm", "vcpm"]:
+                    # CPM/VCPM: budget = (rate / 1000) * impressions → impressions = budget / (rate / 1000)
+                    new_goal_units = int((new_budget * 1000) / current_cost_per_unit)
+                elif pricing_model == "cpc":
+                    # CPC: budget = rate * clicks → clicks = budget / rate
+                    new_goal_units = int(new_budget / current_cost_per_unit)
+                elif pricing_model == "flat_rate":
+                    # FLAT_RATE: Keep existing goal units (100% for sponsorship)
+                    if isinstance(line_item, dict):
+                        new_goal_units = line_item.get("primaryGoal", {}).get("units", 100)
+                    else:
+                        primary_goal = getattr(line_item, "primaryGoal", None)
+                        new_goal_units = getattr(primary_goal, "units", 100) if primary_goal else 100
+                else:
+                    logger.error(f"Unsupported pricing model for budget update: {pricing_model}")
+                    return False
 
-            if updated_line_items:
-                logger.info(
-                    f"✓ Updated line item {line_item_id} budget: ${new_budget} {currency} "
-                    f"(goal units: {new_goal_units}, pricing: {pricing_model})"
-                )
-                return True
-            else:
-                logger.error(f"Failed to update line item {line_item_id} - GAM API returned no results")
-                return False
+                # Update line item (works for both dict and object)
+                if isinstance(line_item, dict):
+                    line_item["primaryGoal"]["units"] = new_goal_units
+                else:
+                    line_item.primaryGoal.units = new_goal_units
 
-        except Exception as e:
-            logger.error(f"Error updating line item {line_item_id} budget: {e}")
-            return False
+                # Update the line item in GAM
+                updated_line_items = line_item_service.updateLineItems([line_item])
+
+                if updated_line_items:
+                    logger.info(
+                        f"✓ Updated line item {line_item_id} budget: ${new_budget} {currency} "
+                        f"(goal units: {new_goal_units}, pricing: {pricing_model})"
+                    )
+                    return True
+                else:
+                    logger.error(f"Failed to update line item {line_item_id} - GAM API returned no results")
+                    return False
+
+            except Exception as e:
+                error_str = str(e)
+                # Check if this is a NO_FORECAST_YET error
+                if "NO_FORECAST_YET" in error_str and attempt < max_retries - 1:
+                    # Wait with exponential backoff (capped at 30s)
+                    # Sequence: 5s, 10s, 20s, 30s, 30s (total ~95s for 5 retries)
+                    wait_time = min(5 * (2**attempt), 30)
+                    logger.warning(
+                        f"⏳ Line item {line_item_id} forecasting not ready yet - retrying in {wait_time}s "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
+                    time.sleep(wait_time)
+                    continue  # Retry
+                else:
+                    # Non-retryable error or last attempt
+                    logger.error(f"Error updating line item {line_item_id} budget: {e}")
+                    return False
+
+        # All retries exhausted
+        logger.error(f"Failed to update line item {line_item_id} budget after {max_retries} attempts")
+        return False
 
     def pause_line_item(self, line_item_id: str) -> bool:
         """Pause line item in GAM by setting status to PAUSED.
