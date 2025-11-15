@@ -395,7 +395,9 @@ class TestSetupChecklistService:
                 product_id="bulk_product_2",
                 name="Test Product",
                 description="Test",
-                pricing_model="CPM",
+                format_ids=[],
+                targeting_template={},
+                delivery_type="standard",
                 created_at=now,
                 updated_at=now,
             )
@@ -434,7 +436,9 @@ class TestSetupChecklistService:
                 product_id="bulk_product_3",
                 name="Test Product",
                 description="Test",
-                pricing_model="CPM",
+                format_ids=[],
+                targeting_template={},
+                delivery_type="standard",
                 created_at=now,
                 updated_at=now,
             )
