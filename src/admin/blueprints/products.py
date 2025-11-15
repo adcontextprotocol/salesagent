@@ -341,13 +341,15 @@ def list_products(tenant_id):
 
                 # Parse formats and resolve names from creative agents
                 formats_data = (
-                    product.formats
-                    if isinstance(product.formats, list)
-                    else json.loads(product.formats) if product.formats else []
+                    product.format_ids
+                    if isinstance(product.format_ids, list)
+                    else json.loads(product.format_ids) if product.format_ids else []
                 )
 
                 # Debug: Log raw formats data
-                logger.info(f"[DEBUG] Product {product.product_id} raw product.formats from DB: {product.formats}")
+                logger.info(
+                    f"[DEBUG] Product {product.product_id} raw product.format_ids from DB: {product.format_ids}"
+                )
                 logger.info(f"[DEBUG] Product {product.product_id} formats_data after parsing: {formats_data}")
                 logger.info(
                     f"[DEBUG] Product {product.product_id} formats_data type: {type(formats_data)}, len: {len(formats_data)}"
@@ -1329,8 +1331,8 @@ def edit_product(tenant_id, product_id):
 
                 # Apply validated formats (already validated above, outside session)
                 if validated_formats is not None:
-                    product.formats = validated_formats
-                    logger.info(f"[DEBUG] Updated product.formats to: {validated_formats}")
+                    product.format_ids = validated_formats
+                    logger.info(f"[DEBUG] Updated product.format_ids to: {validated_formats}")
                     # Flag JSONB column as modified so SQLAlchemy generates UPDATE
                     from sqlalchemy.orm import attributes
 
@@ -1612,23 +1614,23 @@ def edit_product(tenant_id, product_id):
                 from sqlalchemy import inspect as sa_inspect
 
                 logger.info(f"[DEBUG] About to commit product {product_id}")
-                logger.info(f"[DEBUG] product.formats = {product.formats}")
-                logger.info(f"[DEBUG] product.formats type = {type(product.formats)}")
+                logger.info(f"[DEBUG] product.format_ids = {product.format_ids}")
+                logger.info(f"[DEBUG] product.format_ids type = {type(product.format_ids)}")
                 logger.info(f"[DEBUG] SQLAlchemy dirty objects: {db_session.dirty}")
 
                 # Check if product is in dirty set and formats was modified
                 if product in db_session.dirty:
                     insp = sa_inspect(product)
-                    if insp.attrs.formats.history.has_changes():
-                        logger.info("[DEBUG] formats attribute was modified")
+                    if insp.attrs.format_ids.history.has_changes():
+                        logger.info("[DEBUG] format_ids attribute was modified")
                     else:
-                        logger.info("[DEBUG] formats attribute NOT modified (flag_modified may be needed)")
+                        logger.info("[DEBUG] format_ids attribute NOT modified (flag_modified may be needed)")
 
                 db_session.commit()
 
                 # Debug: Verify formats after commit by re-querying
                 db_session.refresh(product)
-                logger.info(f"[DEBUG] After commit - product.formats from DB: {product.formats}")
+                logger.info(f"[DEBUG] After commit - product.format_ids from DB: {product.format_ids}")
 
                 flash(f"Product '{product.name}' updated successfully", "success")
                 return redirect(url_for("products.list_products", tenant_id=tenant_id))
@@ -1695,9 +1697,9 @@ def edit_product(tenant_id, product_id):
                 "cpm": cpm,
                 "price_guidance": price_guidance,
                 "formats": (
-                    product.formats
-                    if isinstance(product.formats, list)
-                    else json.loads(product.formats) if product.formats else []
+                    product.format_ids
+                    if isinstance(product.format_ids, list)
+                    else json.loads(product.format_ids) if product.format_ids else []
                 ),
                 "countries": (
                     product.countries

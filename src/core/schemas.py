@@ -23,7 +23,7 @@ from adcp import (
     UpdateMediaBuySuccess as AdCPUpdateMediaBuySuccess,
 )
 from adcp.types.generated import PushNotificationConfig
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
 
 class CreativeStatusEnum(Enum):
@@ -500,7 +500,7 @@ class FormatReference(BaseModel):
     DEPRECATED: Use FormatId instead. This class is maintained for backward compatibility.
     FormatReference serializes as FormatId (with 'id' field) but accepts 'format_id' for legacy code.
 
-    Used in Product.formats to store full format references with agent URL.
+    Used in Product.format_ids to store full format references with agent URL.
     This enables dynamic format resolution from the correct creative agent.
 
     Example:
@@ -1004,10 +1004,10 @@ class Product(BaseModel):
     product_id: str
     name: str
     description: str
-    formats: list["FormatId | FormatReference"] | list[str] = Field(
-        validation_alias=AliasChoices("formats", "format_ids"),
-        serialization_alias="format_ids",
-        description="Array of supported creative format IDs - structured format_id objects with agent_url and id",
+    format_ids: list["FormatId"] = Field(
+        ...,
+        description="Array of supported creative format IDs with agent_url and id per AdCP spec. "
+        "Database validation ensures all format_ids match FormatId structure.",
     )
     delivery_type: Literal["guaranteed", "non_guaranteed"]
 
@@ -1018,14 +1018,6 @@ class Product(BaseModel):
     pricing_options: list[PricingOption] = Field(
         default_factory=list,
         description="Available pricing models for this product (AdCP PR #88). May be empty for unauthenticated requests.",
-    )
-
-    # Pricing fields (AdCP PR #88)
-    floor_cpm: float | None = Field(
-        None, description="Calculated dynamically from pricing_options price_guidance", gt=0
-    )
-    recommended_cpm: float | None = Field(
-        None, description="Calculated dynamically from pricing_options price_guidance", gt=0
     )
 
     # Other fields
@@ -1115,26 +1107,9 @@ class Product(BaseModel):
 
         return self
 
-    @property
-    def format_ids(self) -> list[str]:
-        """AdCP spec compliant property name for formats.
-
-        Returns format IDs only (for backward compatibility).
-        If formats are FormatReference objects, extracts format_id from each.
-        """
-        if not self.formats:
-            return []
-
-        # Handle legacy string format IDs
-        if isinstance(self.formats[0], str):
-            return self.formats  # type: ignore
-
-        # Handle new FormatReference objects
-        return [fmt.format_id for fmt in self.formats]  # type: ignore
-
-    @field_serializer("formats", when_used="json")
-    def serialize_formats_for_json(self, formats: list) -> list:
-        """Serialize formats as FormatId objects per AdCP spec.
+    @field_serializer("format_ids", when_used="json")
+    def serialize_format_ids_for_json(self, format_ids: list) -> list:
+        """Serialize format_ids as FormatId objects per AdCP spec.
 
         Returns list of FormatId objects with agent_url and id fields.
         Pydantic will automatically serialize these as dicts with both fields.
@@ -1142,14 +1117,14 @@ class Product(BaseModel):
         For unknown format IDs, uses a default agent_url to ensure graceful handling
         of legacy data.
         """
-        if not formats:
+        if not format_ids:
             return []
 
         # Default agent_url for unknown formats
         DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"
 
         result = []
-        for fmt in formats:
+        for fmt in format_ids:
             if isinstance(fmt, str):
                 # Legacy string format - convert to FormatId object
                 from src.core.format_cache import upgrade_legacy_format_id
@@ -1340,9 +1315,7 @@ class UpdatePerformanceIndexRequest(AdCPBaseModel):
 class UpdatePerformanceIndexResponse(AdCPBaseModel):
     status: str
     detail: str
-    context: dict[str, Any] | None = Field(
-        None, description="Application-level context echoed from the request"
-    )
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     def __str__(self) -> str:
         """Return human-readable text for MCP content field."""
@@ -1435,6 +1408,7 @@ class GetProductsRequest(AdCPBaseModel):
         description="Structured filters for product discovery",
     )
 
+
 class GetProductsResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response for get_products tool (AdCP v2.4 spec compliant).
 
@@ -1442,9 +1416,8 @@ class GetProductsResponse(NestedModelSerializerMixin, AdCPBaseModel):
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
-    context: dict[str, Any] | None = Field(
-        None, description="Application-level context echoed from the request"
-    )
+
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     # Required AdCP domain fields
     products: list[Product] = Field(..., description="List of available advertising products")
@@ -1482,6 +1455,7 @@ class ListCreativeFormatsRequest(AdCPBaseModel):
 
     All parameters are optional filters per AdCP spec.
     """
+
     context: dict[str, Any] | None = Field(
         None, description="Application-level context provided by the client (echoed in responses)"
     )
@@ -1542,9 +1516,8 @@ class ListCreativeFormatsResponse(NestedModelSerializerMixin, AdCPBaseModel):
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
-    context: dict[str, Any] | None = Field(
-        None, description="Application-level context echoed from the request"
-    )
+
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     formats: list[Format] = Field(..., description="Full format definitions per AdCP spec")
     creative_agents: list[dict[str, Any]] | None = Field(
@@ -1928,9 +1901,7 @@ class SyncCreativesResponse(AdCPBaseModel):
     creatives: list[SyncCreativeResult] = Field(..., description="Results for each creative processed")
 
     # Optional fields (per official spec)
-    context: dict[str, Any] | None = Field(
-        None, description="Application-level context echoed from the request"
-    )
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
     dry_run: bool | None = Field(None, description="Whether this was a dry run (no actual changes made)")
 
     @model_serializer(mode="wrap")
@@ -2062,9 +2033,8 @@ class ListCreativesResponse(AdCPBaseModel):
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
-    context: dict[str, Any] | None = Field(
-        None, description="Application-level context echoed from the request"
-    )
+
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     # Required AdCP domain fields
     query_summary: QuerySummary = Field(..., description="Summary of the query that was executed")
@@ -2902,9 +2872,7 @@ class GetMediaBuyDeliveryResponse(NestedModelSerializerMixin, AdCPBaseModel):
         ..., description="Array of delivery data for each media buy"
     )
     errors: list[dict] | None = Field(None, description="Task-specific errors and warnings")
-    context: dict[str, Any] | None = Field(
-        None, description="Application-level context echoed from the request"
-    )
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
@@ -3493,6 +3461,7 @@ class ActivateSignalRequest(AdCPBaseModel):
     media_buy_id: str | None = Field(None, description="Optional media buy ID to activate signal for")
     context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
+
 class ActivateSignalResponse(AdCPBaseModel):
     """Response from signal activation (AdCP v2.4 spec compliant).
 
@@ -3674,9 +3643,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     """
 
     publisher_domains: list[str] = Field(..., description="Publisher domains this agent is authorized to represent")
-    context: dict[str, Any] | None = Field(
-        None, description="Application-level context echoed from the request"
-    )
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
     primary_channels: list[str] | None = Field(
         None, description="Primary advertising channels in this portfolio (helps buyers filter relevance)"
     )

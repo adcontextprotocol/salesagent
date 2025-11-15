@@ -627,7 +627,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                     from src.core.schemas import FormatReference
 
                     format_ids_list: list[FormatIdType] = []
-                    formats = product.formats or []
+                    formats = product.format_ids or []
 
                     logger.debug(f"[APPROVAL] Converting {len(formats)} formats for package {package_id}")
 
@@ -1210,7 +1210,7 @@ async def _create_media_buy_impl(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
-    context: dict[str, Any] | None = None, # Optional application level context per adcp spec
+    context: dict[str, Any] | None = None,  # Optional application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
@@ -2152,9 +2152,9 @@ async def _create_media_buy_impl(
                     delivery_type = product.delivery_type if hasattr(product, "delivery_type") else "non_guaranteed"
                     # Extract format IDs as strings for config generation
                     formats_list: list[str] | None = None
-                    if hasattr(product, "formats") and product.formats:
+                    if hasattr(product, "formats") and product.format_ids:
                         formats_list = []
-                        for fmt in product.formats:
+                        for fmt in product.format_ids:
                             if isinstance(fmt, str):
                                 formats_list.append(fmt)
                             elif isinstance(fmt, dict):
@@ -2339,8 +2339,8 @@ async def _create_media_buy_impl(
                 # Note: AdCP JSON uses "id" field, but Pydantic object uses "format_id" attribute
                 # Build set of (agent_url, format_id) tuples for comparison
                 product_format_keys = set()
-                if pkg_product.formats:
-                    for fmt in pkg_product.formats:  # type: ignore[assignment]
+                if pkg_product.format_ids:
+                    for fmt in pkg_product.format_ids:  # type: ignore[assignment]
                         agent_url: str | None = None
                         format_id: str | None = None
 
@@ -2436,12 +2436,12 @@ async def _create_media_buy_impl(
 
             # Fallback to product's formats if no request format_ids
             if not format_ids_to_use:
-                if pkg_product.formats:
-                    # Convert product.formats to FormatId objects if they're strings
+                if pkg_product.format_ids:
+                    # Convert product.format_ids to FormatId objects if they're strings
                     format_ids_to_use = []
                     # Get default creative agent URL from tenant config (tenant is dict[str, Any])
                     default_agent_url = tenant.get("creative_agent_url") or "https://creative.adcontextprotocol.org"
-                    for fmt in pkg_product.formats:  # type: ignore[assignment]
+                    for fmt in pkg_product.format_ids:  # type: ignore[assignment]
                         if isinstance(fmt, str):
                             # Convert legacy string format to FormatId object
                             format_ids_to_use.append(FormatId(agent_url=default_agent_url, id=fmt))
@@ -3404,8 +3404,8 @@ async def create_media_buy_raw(
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
     push_notification_config: dict[str, Any] | None = None,
-    context: dict[str, Any] | None = None, # Application level context per adcp spec
-    ctx: Context | ToolContext | None = None
+    context: dict[str, Any] | None = None,  # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ):
     """Create a new media buy with specified parameters (raw function for A2A server use).
 

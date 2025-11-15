@@ -132,7 +132,9 @@ class TestMockServerResponseHeaders:
             product_id="test",
             name="Test Product",
             description="Real product object for testing",
-            formats=["display_300x250"],  # Internal field name
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
+            ],  # Internal field name
             delivery_type="non_guaranteed",
             is_custom=False,
             property_tags=["all_inventory"],  # Required per AdCP spec
@@ -169,8 +171,10 @@ class TestMockServerResponseHeaders:
         reconstructed_product = modified_products[0]
         assert reconstructed_product.product_id == "test"
         assert reconstructed_product.name == "Test Product"
-        assert reconstructed_product.formats == ["display_300x250"]  # Internal field preserved
-        assert reconstructed_product.format_ids == ["display_300x250"]  # AdCP property works
+        # format_ids are now FormatId objects per AdCP spec
+        assert len(reconstructed_product.format_ids) == 1
+        assert reconstructed_product.format_ids[0].id == "display_300x250"
+        assert reconstructed_product.format_ids[0].agent_url == "https://creative.adcontextprotocol.org"
 
     def test_response_headers_in_debug_mode(self):
         """Test that debug mode includes response header information."""

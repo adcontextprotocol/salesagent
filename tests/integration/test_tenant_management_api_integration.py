@@ -84,7 +84,7 @@ def test_tenant(integration_db):
             subdomain="test",
             ad_server="mock",
             enable_axe_signals=True,
-            auto_approve_formats=[],
+            auto_approve_format_ids=[],
             human_review_required=False,
             billing_plan="basic",
             is_active=True,

@@ -26,7 +26,7 @@ def test_updating_profile_formats_affects_all_products(integration_db, sample_te
                 "placements": [],
                 "include_descendants": False,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://test.example.com", "id": "format_a"},
                 {"agent_url": "https://test.example.com", "id": "format_b"},
             ],
@@ -54,7 +54,7 @@ def test_updating_profile_formats_affects_all_products(integration_db, sample_te
                 description=f"Product {i} with inventory profile",
                 inventory_profile_id=profile_id,
                 # Legacy fields (not used when profile is set)
-                formats=[],
+                format_ids=[],
                 targeting_template={},
                 delivery_type="guaranteed",
                 property_tags=["all_inventory"],
@@ -70,7 +70,7 @@ def test_updating_profile_formats_affects_all_products(integration_db, sample_te
         stmt = select(Product).where(Product.tenant_id == sample_tenant["tenant_id"])
         db_products = session.scalars(stmt).all()
         for product in db_products:
-            effective_formats = product.effective_formats
+            effective_formats = product.effective_format_ids
             assert len(effective_formats) == 2
             assert {"agent_url": "https://test.example.com", "id": "format_a"} in effective_formats
             assert {"agent_url": "https://test.example.com", "id": "format_b"} in effective_formats
@@ -78,7 +78,7 @@ def test_updating_profile_formats_affects_all_products(integration_db, sample_te
         # Update profile formats
         stmt = select(InventoryProfile).where(InventoryProfile.id == profile_id)
         profile = session.scalars(stmt).first()
-        profile.formats = [
+        profile.format_ids = [
             {"agent_url": "https://test.example.com", "id": "format_c"},
             {"agent_url": "https://test.example.com", "id": "format_d"},
         ]
@@ -90,7 +90,7 @@ def test_updating_profile_formats_affects_all_products(integration_db, sample_te
         assert len(db_products) == 3
 
         for product in db_products:
-            effective_formats = product.effective_formats
+            effective_formats = product.effective_format_ids
             assert len(effective_formats) == 2
             assert {"agent_url": "https://test.example.com", "id": "format_c"} in effective_formats
             assert {"agent_url": "https://test.example.com", "id": "format_d"} in effective_formats
@@ -114,7 +114,7 @@ def test_updating_profile_inventory_affects_product_implementation_config(integr
                 "placements": ["placement_1"],
                 "include_descendants": False,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://test.example.com", "id": "display_300x250"},
             ],
             publisher_properties=[
@@ -140,7 +140,7 @@ def test_updating_profile_inventory_affects_product_implementation_config(integr
                 name=f"Test Product Inventory {i}",
                 description=f"Product {i} with inventory profile",
                 inventory_profile_id=profile_id,
-                formats=[],
+                format_ids=[],
                 targeting_template={},
                 delivery_type="guaranteed",
                 property_tags=["all_inventory"],
@@ -207,7 +207,7 @@ def test_updating_profile_properties_affects_all_products(integration_db, sample
                 "placements": [],
                 "include_descendants": False,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://test.example.com", "id": "display_300x250"},
             ],
             publisher_properties=[
@@ -233,7 +233,7 @@ def test_updating_profile_properties_affects_all_products(integration_db, sample
                 name=f"Test Product Props {i}",
                 description=f"Product {i} with inventory profile",
                 inventory_profile_id=profile_id,
-                formats=[],
+                format_ids=[],
                 targeting_template={},
                 delivery_type="guaranteed",
                 property_tags=["all_inventory"],

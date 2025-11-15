@@ -51,7 +51,7 @@ class TestMCPEndpointsComprehensive:
                 enable_axe_signals=True,
                 authorized_emails=["test@example.com"],  # Required for setup validation
                 authorized_domains=[],
-                auto_approve_formats=["display_300x250"],
+                auto_approve_format_ids=["display_300x250"],
                 human_review_required=False,
                 admin_token="test_admin_token",
             )
@@ -79,7 +79,7 @@ class TestMCPEndpointsComprehensive:
                 product_id="display_news",
                 name="Display Ads - News Sites",
                 description="Premium display advertising on news websites",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "https://test.com",
                         "id": "display_300x250",
@@ -101,7 +101,7 @@ class TestMCPEndpointsComprehensive:
                 product_id="video_sports",
                 name="Video Ads - Sports Content",
                 description="In-stream video ads on sports content",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "https://test.com",
                         "id": "video_15s",
@@ -164,8 +164,8 @@ class TestMCPEndpointsComprehensive:
                 assert "product_id" in product
                 assert "name" in product
                 assert "description" in product
-                # AdCP spec uses "formats" (array of FormatId objects), not "format_ids"
-                assert "formats" in product
+                # AdCP spec uses "format_ids" (array of FormatId objects)
+                assert "format_ids" in product
                 assert "delivery_type" in product
                 assert product["delivery_type"] in ["guaranteed", "non_guaranteed"]
                 # Pricing options should be included

@@ -80,7 +80,7 @@ class TestCreateMediaBuyRoundtrip:
                 is_fixed=True,
                 currency="USD",
                 min_spend_per_package="1000.0",
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 targeting_template={},
                 delivery_type="guaranteed",
             )

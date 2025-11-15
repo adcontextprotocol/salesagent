@@ -81,7 +81,7 @@ def test_tenant_and_products(integration_db):
             pricing_model="CPM",
             rate="10.00",
             is_fixed=False,
-            formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+            format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
         )
 
         product2 = create_test_product_with_pricing(
@@ -92,7 +92,7 @@ def test_tenant_and_products(integration_db):
             pricing_model="CPM",
             rate="15.00",
             is_fixed=False,
-            formats=[{"agent_url": "https://test.com", "id": "video_30s"}],
+            format_ids=[{"agent_url": "https://test.com", "id": "video_30s"}],
         )
 
         # Product with invalid format data (for pattern validation testing)
@@ -104,7 +104,7 @@ def test_tenant_and_products(integration_db):
             pricing_model="CPM",
             rate="20.00",
             is_fixed=False,
-            formats='[{"format_id": "test", "type": "invalid_type"}]',  # Invalid type for testing
+            format_ids='[{"format_id": "test", "type": "invalid_type"}]',  # Invalid type for testing
         )
 
         session.commit()

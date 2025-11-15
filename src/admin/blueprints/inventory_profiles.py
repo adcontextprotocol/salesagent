@@ -155,7 +155,7 @@ def list_inventory_profiles(tenant_id: str):
                     "name": profile.name,
                     "description": profile.description,
                     "inventory_summary": _get_inventory_summary(profile.inventory_config),
-                    "format_summary": _get_format_summary(profile.formats, tenant_id),
+                    "format_summary": _get_format_summary(profile.format_ids, tenant_id),
                     "property_summary": _get_property_summary(profile.publisher_properties),
                     "product_count": product_count,
                     "created_at": profile.created_at,
@@ -325,7 +325,7 @@ def edit_inventory_profile(tenant_id: str, profile_id: int):
                 # Update formats
                 formats = json.loads(form_data.get("formats", "[]"))
                 if formats:
-                    profile.formats = formats
+                    profile.format_ids = formats
 
                 # Update publisher properties
                 publisher_properties_json = form_data.get("publisher_properties", "").strip()
@@ -463,7 +463,7 @@ def get_inventory_profile_api(tenant_id: str, profile_id: int):
                 "targeted_ad_unit_ids": ",".join(profile.inventory_config.get("ad_units", [])),
                 "targeted_placement_ids": ",".join(profile.inventory_config.get("placements", [])),
                 "include_descendants": profile.inventory_config.get("include_descendants", True),
-                "formats": profile.formats,
+                "formats": profile.format_ids,
                 "publisher_properties": profile.publisher_properties,
                 "property_mode": "all",  # Default to "all" mode for now (no DB column yet)
                 "targeting_template": profile.targeting_template,
@@ -489,8 +489,8 @@ def preview_inventory_profile(tenant_id: str, profile_id: int):
                 "description": profile.description,
                 "ad_unit_count": len(profile.inventory_config.get("ad_units", [])),
                 "placement_count": len(profile.inventory_config.get("placements", [])),
-                "format_count": len(profile.formats),
-                "format_summary": _get_format_summary(profile.formats, tenant_id),
+                "format_count": len(profile.format_ids),
+                "format_summary": _get_format_summary(profile.format_ids, tenant_id),
                 "property_summary": _get_property_summary(profile.publisher_properties),
             }
         )
@@ -522,7 +522,7 @@ def list_inventory_profiles_api(tenant_id: str):
                     "name": profile.name,
                     "description": profile.description,
                     "inventory_summary": _get_inventory_summary(profile.inventory_config),
-                    "format_summary": _get_format_summary(profile.formats, tenant_id),
+                    "format_summary": _get_format_summary(profile.format_ids, tenant_id),
                     "property_summary": _get_property_summary(profile.publisher_properties),
                     "product_count": product_count,
                     "created_at": profile.created_at.isoformat() if profile.created_at else None,  # type: ignore[attr-defined]

@@ -99,7 +99,7 @@ def create_principal_with_platform_mappings(
 
 
 def create_test_product(
-    tenant_id: str, product_id: str, name: str, description: str, formats: list[str] = None, **kwargs: Any
+    tenant_id: str, product_id: str, name: str, description: str, format_ids: list[dict] = None, **kwargs: Any
 ) -> Product:
     """Create a Product object with sensible test defaults.
 
@@ -111,7 +111,7 @@ def create_test_product(
         product_id: Unique product identifier
         name: Product name
         description: Product description
-        formats: List of format IDs (defaults to display formats)
+        format_ids: List of FormatId dicts (defaults to display formats)
         **kwargs: Additional fields to pass to Product constructor
 
     Returns:
@@ -125,8 +125,11 @@ def create_test_product(
             description="Display advertising for testing"
         )
     """
-    if formats is None:
-        formats = ["display_300x250", "display_728x90"]
+    if format_ids is None:
+        format_ids = [
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+        ]
 
     # Set sensible defaults for required fields
     kwargs.setdefault("targeting_template", {"geo": ["US"], "device": ["desktop", "mobile"]})
@@ -137,7 +140,7 @@ def create_test_product(
     kwargs.setdefault("is_custom", False)
 
     return Product(
-        tenant_id=tenant_id, product_id=product_id, name=name, description=description, formats=formats, **kwargs
+        tenant_id=tenant_id, product_id=product_id, name=name, description=description, format_ids=format_ids, **kwargs
     )
 
 

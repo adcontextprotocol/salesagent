@@ -364,7 +364,7 @@ async def create_test_tenant_with_principal(**kwargs) -> dict:
             enable_axe_signals=True,
             authorized_emails=["test@example.com"],
             authorized_domains=["example.com"],
-            auto_approve_formats=["display_300x250", "display_728x90"],
+            auto_approve_format_ids=["display_300x250", "display_728x90"],
             human_review_required=False,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),

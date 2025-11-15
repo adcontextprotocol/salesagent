@@ -111,7 +111,7 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     "product_id": product_obj.product_id,
                     "name": product_obj.name,
                     "description": product_obj.description,
-                    "formats": product_obj.formats,
+                    "format_ids": product_obj.format_ids,
                     "pricing_options": pricing_options,
                     "delivery_type": product_obj.delivery_type,  # Required by AdCP spec
                     "is_custom": product_obj.is_custom,

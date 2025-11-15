@@ -17,6 +17,8 @@ from src.core.schemas import (
     CreateMediaBuyResponse,
     CreateMediaBuySuccess,
     MediaPackage,
+    PriceGuidance,
+    PricingModel,
     Principal,
     Product,
 )
@@ -331,6 +333,8 @@ class XandrAdapter(AdServerAdapter):
     def get_products(self) -> list[Product]:
         """Get available products (placement groups in Xandr)."""
         try:
+            from src.core.schemas import FormatId, PricingOption
+
             # In Xandr, products map to placement groups or custom deals
             # For now, return standard IAB formats as products
             products = [
@@ -338,10 +342,26 @@ class XandrAdapter(AdServerAdapter):
                     product_id="xandr_display_standard",
                     name="Display - Standard Banners",
                     description="Standard display banner placements (supports geo, device, os, browser targeting)",
-                    formats=["display_728x90", "display_300x250", "display_320x50"],
+                    format_ids=[
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_320x50"),
+                    ],
                     delivery_type="non_guaranteed",
-                    floor_cpm=0.50,
-                    recommended_cpm=10.0,
+                    pricing_options=[
+                        PricingOption(
+                            pricing_option_id="xandr_display_cpm",
+                            pricing_model=PricingModel.CPM,
+                            rate=None,
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance=PriceGuidance(floor=0.50, p25=None, p50=None, p75=10.0, p90=None),
+                            parameters=None,
+                            min_spend_per_package=None,
+                            supported=None,
+                            unsupported_reason=None,
+                        )
+                    ],
                     property_tags=["all_inventory"],
                     measurement=None,
                     creative_policy=None,
@@ -358,10 +378,25 @@ class XandrAdapter(AdServerAdapter):
                     product_id="xandr_video_instream",
                     name="Video - In-Stream",
                     description="Pre-roll, mid-roll, and post-roll video (supports geo, device, content targeting)",
-                    formats=["video_16x9", "video_9x16"],
+                    format_ids=[
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_9x16"),
+                    ],
                     delivery_type="non_guaranteed",
-                    floor_cpm=10.0,
-                    recommended_cpm=30.0,
+                    pricing_options=[
+                        PricingOption(
+                            pricing_option_id="xandr_video_cpm",
+                            pricing_model=PricingModel.CPM,
+                            rate=None,
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance=PriceGuidance(floor=10.0, p25=None, p50=None, p75=30.0, p90=None),
+                            parameters=None,
+                            min_spend_per_package=None,
+                            supported=None,
+                            unsupported_reason=None,
+                        )
+                    ],
                     property_tags=["all_inventory"],
                     measurement=None,
                     creative_policy=None,
@@ -378,10 +413,25 @@ class XandrAdapter(AdServerAdapter):
                     product_id="xandr_native",
                     name="Native Advertising",
                     description="Native ad placements (supports geo, device, context targeting)",
-                    formats=["native_1x1", "native_1.2x1"],
+                    format_ids=[
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="native_1x1"),
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="native_1.2x1"),
+                    ],
                     delivery_type="non_guaranteed",
-                    floor_cpm=2.0,
-                    recommended_cpm=15.0,
+                    pricing_options=[
+                        PricingOption(
+                            pricing_option_id="xandr_native_cpm",
+                            pricing_model=PricingModel.CPM,
+                            rate=None,
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance=PriceGuidance(floor=2.0, p25=None, p50=None, p75=15.0, p90=None),
+                            parameters=None,
+                            min_spend_per_package=None,
+                            supported=None,
+                            unsupported_reason=None,
+                        )
+                    ],
                     property_tags=["all_inventory"],
                     measurement=None,
                     creative_policy=None,
@@ -398,10 +448,26 @@ class XandrAdapter(AdServerAdapter):
                     product_id="xandr_deals",
                     name="Private Marketplace Deals",
                     description="Access to premium inventory through deals (pricing varies by deal)",
-                    formats=["display_300x250", "display_728x90", "video_16x9"],
+                    format_ids=[
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
+                    ],
                     delivery_type="non_guaranteed",
-                    floor_cpm=5.0,
-                    recommended_cpm=25.0,
+                    pricing_options=[
+                        PricingOption(
+                            pricing_option_id="xandr_deals_cpm",
+                            pricing_model=PricingModel.CPM,
+                            rate=None,
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance=PriceGuidance(floor=5.0, p25=None, p50=None, p75=25.0, p90=None),
+                            parameters=None,
+                            min_spend_per_package=None,
+                            supported=None,
+                            unsupported_reason=None,
+                        )
+                    ],
                     property_tags=["all_inventory"],
                     measurement=None,
                     creative_policy=None,

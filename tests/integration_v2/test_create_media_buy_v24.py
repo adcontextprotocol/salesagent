@@ -79,7 +79,7 @@ class TestCreateMediaBuyV24Format:
                 product_id="prod_test_v24_usd",
                 name="Test Product V24 USD",
                 description="Test product for v2.4 format (USD)",
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 delivery_type="guaranteed",
                 pricing_model="CPM",
                 rate="10.0",
@@ -95,7 +95,7 @@ class TestCreateMediaBuyV24Format:
                 product_id="prod_test_v24_eur",
                 name="Test Product V24 EUR",
                 description="Test product for v2.4 format (EUR)",
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 delivery_type="guaranteed",
                 pricing_model="CPM",
                 rate="10.0",
@@ -111,7 +111,7 @@ class TestCreateMediaBuyV24Format:
                 product_id="prod_test_v24_gbp",
                 name="Test Product V24 GBP",
                 description="Test product for v2.4 format (GBP)",
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 delivery_type="guaranteed",
                 pricing_model="CPM",
                 rate="10.0",
@@ -147,7 +147,7 @@ class TestCreateMediaBuyV24Format:
                     "tenant_id": "test_tenant_v24",
                     "name": "Test V24 Tenant",
                     "ad_server": "mock",
-                    "auto_approve_formats": ["display_300x250"],
+                    "auto_approve_format_ids": ["display_300x250"],
                 }
             )
 

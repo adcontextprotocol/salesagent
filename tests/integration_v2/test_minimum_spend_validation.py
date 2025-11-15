@@ -128,7 +128,7 @@ class TestMinimumSpendValidation:
                 is_fixed=True,
                 currency="USD",
                 min_spend_per_package=None,  # No override, uses currency limit
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 targeting_template={},
                 delivery_type="guaranteed",
             )
@@ -160,7 +160,7 @@ class TestMinimumSpendValidation:
                 is_fixed=True,
                 currency="USD",
                 min_spend_per_package="5000.00",  # Product-specific override
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 targeting_template={},
                 delivery_type="guaranteed",
             )
@@ -177,7 +177,7 @@ class TestMinimumSpendValidation:
                 is_fixed=True,
                 currency="USD",
                 min_spend_per_package="500.00",  # Lower override
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 targeting_template={},
                 delivery_type="guaranteed",
             )
@@ -194,7 +194,7 @@ class TestMinimumSpendValidation:
                 is_fixed=True,
                 currency="GBP",
                 min_spend_per_package=None,  # No override, will use currency limit (which has no minimum for GBP)
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 targeting_template={},
                 delivery_type="guaranteed",
             )

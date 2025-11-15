@@ -47,7 +47,7 @@ class TestProductsDataValidation:
                 description="Should appear once, not duplicated",
                 delivery_type="guaranteed",
                 countries=["US"],
-                formats=[],
+                format_ids=[],
                 targeting_template={},
                 property_tags=["all_inventory"],  # Required per AdCP spec
                 pricing_model="cpm",
@@ -114,7 +114,7 @@ class TestProductsDataValidation:
                     description="Test product",
                     delivery_type="guaranteed",
                     countries=["US"],
-                    formats=[],
+                    format_ids=[],
                     targeting_template={},
                     property_tags=["all_inventory"],  # Required per AdCP spec
                     pricing_model="cpm",
@@ -165,7 +165,7 @@ class TestProductsDataValidation:
                 is_fixed=True,
                 delivery_type="guaranteed",
                 countries=["US"],
-                formats=[],
+                format_ids=[],
                 targeting_template={},
                 property_tags=["all_inventory"],  # Required per AdCP spec
             )

@@ -77,7 +77,7 @@ def mock_tenant():
     tenant.adapter_config = '{"mock": {"enabled": true}}'
     tenant.max_daily_budget = 10000
     tenant.enable_axe_signals = True
-    tenant.auto_approve_formats = ["display_300x250"]
+    tenant.auto_approve_format_ids = ["display_300x250"]
     tenant.human_review_required = False
     tenant.policy_settings = '{"enabled": false}'
     return tenant
@@ -107,7 +107,7 @@ def mock_product():
     product.base_price = 10.0
     product.currency = "USD"
     product.min_spend = 100.0
-    product.formats = '["display", "video"]'
+    product.format_ids = '["display", "video"]'
     product.countries = '["US", "CA"]'
     return product
 
