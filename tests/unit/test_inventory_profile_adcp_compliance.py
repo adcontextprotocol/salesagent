@@ -197,7 +197,7 @@ def test_product_with_profile_passes_adcp_validation():
         "description": product.description,
         "format_ids": [FormatId(**f) for f in effective_formats],
         "delivery_type": product.delivery_type,
-        "properties": [Property(**p) for p in effective_properties],
+        "publisher_properties": [Property(**p) for p in effective_properties],
         "targeting_template": product.targeting_template,
     }
 
@@ -209,7 +209,7 @@ def test_product_with_profile_passes_adcp_validation():
     assert product_schema.product_id == product.product_id
     assert product_schema.name == product.name
     assert len(product_schema.format_ids) == 2
-    assert len(product_schema.properties) == 1
+    assert len(product_schema.publisher_properties) == 1
     assert product_schema.delivery_type == "guaranteed"
 
 
@@ -316,7 +316,7 @@ def test_product_with_profile_has_no_internal_fields_in_serialization():
         "format_ids": [FormatId(**f) for f in effective_formats],
         "delivery_type": product.delivery_type,
         "countries": product.countries,
-        "properties": [Property(**p) for p in effective_properties],
+        "publisher_properties": [Property(**p) for p in effective_properties],
         "targeting_template": product.targeting_template,
     }
 
@@ -326,7 +326,8 @@ def test_product_with_profile_has_no_internal_fields_in_serialization():
         "inventory_profile_id",
         "inventory_profile",
         "implementation_config",
-        "property_tags",  # When properties are used
+        "property_tags",  # Legacy field, replaced by publisher_properties
+        "properties",  # Internal database field, external API uses publisher_properties
         "created_at",
         "updated_at",
     ]
