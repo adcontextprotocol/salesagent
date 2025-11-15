@@ -429,11 +429,13 @@ class TestSetupChecklistService:
             db_session.add(currency3)
 
             property3 = AuthorizedProperty(
+                property_id="prop_bulk_3",
                 tenant_id=tenant_ids[2],
-                domain="example.com",
-                verification_method="dns",
+                property_type="website",
+                name="Test Property",
+                identifiers=[{"type": "domain", "value": "example.com"}],
+                publisher_domain="example.com",
                 verification_status="verified",
-                created_at=now,
             )
             db_session.add(property3)
 
@@ -458,8 +460,8 @@ class TestSetupChecklistService:
                 tenant_id=tenant_ids[2],
                 principal_id="bulk_principal_3",
                 name="Test Principal",
-                access_token="test_token",
-                created_at=now,
+                access_token="test_token_bulk_3",
+                platform_mappings={},
             )
             db_session.add(principal3)
 
