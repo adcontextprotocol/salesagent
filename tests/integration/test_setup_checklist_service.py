@@ -4,6 +4,7 @@ import os
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import select
 
 from src.core.database.models import (
     AuthorizedProperty,
@@ -208,44 +209,40 @@ class TestSetupChecklistService:
 
     def test_minimal_tenant_incomplete_setup(self, integration_db, setup_minimal_tenant, test_tenant_id):
         """Test that minimal tenant shows all critical tasks incomplete."""
-        with patch.dict(os.environ, {}, clear=True):  # No GEMINI_API_KEY
-            service = SetupChecklistService(test_tenant_id)
-            status = service.get_setup_status()
+        service = SetupChecklistService(test_tenant_id)
+        status = service.get_setup_status()
 
-            # Should have low progress
-            assert status["progress_percent"] < 50
-            assert not status["ready_for_orders"]
+        # Should have low progress
+        assert status["progress_percent"] < 50
+        assert not status["ready_for_orders"]
 
-            # Check critical tasks are incomplete
-            critical = {task["key"]: task for task in status["critical"]}
-            assert not critical["gemini_api_key"]["is_complete"]
-            assert not critical["currency_limits"]["is_complete"]
-            assert not critical["ad_server_connected"]["is_complete"]
-            assert not critical["authorized_properties"]["is_complete"]
-            assert not critical["inventory_synced"]["is_complete"]
-            assert not critical["products_created"]["is_complete"]
-            assert not critical["principals_created"]["is_complete"]
+        # Check critical tasks are incomplete (Gemini moved to optional)
+        critical = {task["key"]: task for task in status["critical"]}
+        assert not critical["currency_limits"]["is_complete"]
+        assert not critical["ad_server_connected"]["is_complete"]
+        assert not critical["authorized_properties"]["is_complete"]
+        assert not critical["inventory_synced"]["is_complete"]
+        assert not critical["products_created"]["is_complete"]
+        assert not critical["principals_created"]["is_complete"]
 
     def test_complete_tenant_ready_for_orders(self, integration_db, setup_complete_tenant, test_tenant_id):
         """Test that fully configured tenant shows all critical tasks complete."""
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}):
-            service = SetupChecklistService(test_tenant_id)
-            status = service.get_setup_status()
+        service = SetupChecklistService(test_tenant_id)
+        status = service.get_setup_status()
 
-            # Should have 100% critical complete
-            assert status["ready_for_orders"]
-            critical_complete = all(task["is_complete"] for task in status["critical"])
-            assert critical_complete
+        # Should have 100% critical complete
+        assert status["ready_for_orders"]
+        critical_complete = all(task["is_complete"] for task in status["critical"])
+        assert critical_complete
 
-            # Check specific critical tasks
-            critical = {task["key"]: task for task in status["critical"]}
-            assert critical["gemini_api_key"]["is_complete"]
-            assert critical["currency_limits"]["is_complete"]
-            assert critical["ad_server_connected"]["is_complete"]
-            assert critical["authorized_properties"]["is_complete"]
-            assert critical["inventory_synced"]["is_complete"]
-            assert critical["products_created"]["is_complete"]
-            assert critical["principals_created"]["is_complete"]
+        # Check specific critical tasks (Gemini moved to optional)
+        critical = {task["key"]: task for task in status["critical"]}
+        assert critical["currency_limits"]["is_complete"]
+        assert critical["ad_server_connected"]["is_complete"]
+        assert critical["authorized_properties"]["is_complete"]
+        assert critical["inventory_synced"]["is_complete"]
+        assert critical["products_created"]["is_complete"]
+        assert critical["principals_created"]["is_complete"]
 
     def test_recommended_tasks_tracked(self, integration_db, setup_complete_tenant, test_tenant_id):
         """Test that recommended tasks are properly tracked."""
@@ -412,20 +409,25 @@ class TestTaskDetails:
     """Tests for individual task checking logic."""
 
     def test_gemini_api_key_detection(self, integration_db, setup_minimal_tenant, test_tenant_id):
-        """Test GEMINI_API_KEY environment variable detection."""
-        # Without key
-        with patch.dict(os.environ, {}, clear=True):
-            service = SetupChecklistService(test_tenant_id)
-            status = service.get_setup_status()
-            gemini_task = next(t for t in status["critical"] if t["key"] == "gemini_api_key")
-            assert not gemini_task["is_complete"]
+        """Test tenant-specific Gemini API key detection (moved to optional tasks)."""
+        from src.core.database.database_session import get_db_session
 
-        # With key
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}):
-            service = SetupChecklistService(test_tenant_id)
-            status = service.get_setup_status()
-            gemini_task = next(t for t in status["critical"] if t["key"] == "gemini_api_key")
-            assert gemini_task["is_complete"]
+        # Without key (tenant.gemini_api_key is None)
+        service = SetupChecklistService(test_tenant_id)
+        status = service.get_setup_status()
+        gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
+        assert not gemini_task["is_complete"]
+
+        # With tenant-specific key
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=test_tenant_id)).first()
+            tenant.gemini_api_key = "test_tenant_key"  # Set tenant-specific key
+            db_session.commit()
+
+        service = SetupChecklistService(test_tenant_id)
+        status = service.get_setup_status()
+        gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
+        assert gemini_task["is_complete"]
 
     def test_currency_count_in_details(self, integration_db, test_tenant_id):
         """Test that currency count is shown in task details."""
