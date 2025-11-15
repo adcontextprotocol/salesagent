@@ -137,7 +137,14 @@ class TestMockServerResponseHeaders:
             ],  # Internal field name
             delivery_type="non_guaranteed",
             is_custom=False,
-            property_tags=["all_inventory"],  # Required per AdCP spec
+            publisher_properties=[
+                {
+                    "property_type": "website",
+                    "name": "Test Property",
+                    "identifiers": [{"type": "domain", "value": "test.com"}],
+                    "publisher_domain": "test.com",
+                }
+            ],
             pricing_options=[
                 PricingOption(
                     pricing_option_id="cpm_usd_auction",

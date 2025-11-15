@@ -46,7 +46,14 @@ class TestResponseStrMethods:
             format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
             delivery_type="guaranteed",
             is_custom=False,
-            property_tags=["all_inventory"],  # Required per AdCP spec
+            publisher_properties=[
+                {
+                    "property_type": "website",
+                    "name": "Test Property",
+                    "identifiers": [{"type": "domain", "value": "test.com"}],
+                    "publisher_domain": "test.com",
+                }
+            ],  # Required per AdCP spec
             pricing_options=[
                 PricingOptionSchema(
                     pricing_option_id="cpm_usd_fixed",
@@ -68,7 +75,14 @@ class TestResponseStrMethods:
                 name=f"Product {i}",
                 description="Test",
                 format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
-                property_tags=["all_inventory"],  # Required per AdCP spec
+                publisher_properties=[
+                    {
+                        "property_type": "website",
+                        "name": "Test Property",
+                        "identifiers": [{"type": "domain", "value": "test.com"}],
+                        "publisher_domain": "test.com",
+                    }
+                ],  # Required per AdCP spec
                 delivery_type="guaranteed",
                 is_custom=False,
                 pricing_options=[
@@ -94,7 +108,14 @@ class TestResponseStrMethods:
                 name=f"Product {i}",
                 description="Test",
                 format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
-                property_tags=["all_inventory"],
+                publisher_properties=[
+                    {
+                        "property_type": "website",
+                        "name": "Test Property",
+                        "identifiers": [{"type": "domain", "value": "test.com"}],
+                        "publisher_domain": "test.com",
+                    }
+                ],
                 delivery_type="guaranteed",
                 is_custom=False,
                 pricing_options=[

@@ -95,7 +95,14 @@ def test_correct_product_construction():
         ],
         "delivery_type": "guaranteed",
         "is_custom": False,
-        "property_tags": ["all_inventory"],  # Required per AdCP spec
+        "publisher_properties": [
+            {
+                "property_type": "website",
+                "name": "Test Property",
+                "identifiers": [{"type": "domain", "value": "test.com"}],
+                "publisher_domain": "test.com",
+            }
+        ],  # Required per AdCP spec
         "pricing_options": [
             {
                 "pricing_option_id": "cpm_usd_fixed",

@@ -333,7 +333,7 @@ class XandrAdapter(AdServerAdapter):
     def get_products(self) -> list[Product]:
         """Get available products (placement groups in Xandr)."""
         try:
-            from src.core.schemas import FormatId, PricingOption
+            from src.core.schemas import FormatId, PricingOption, Property, PropertyIdentifier
 
             # In Xandr, products map to placement groups or custom deals
             # For now, return standard IAB formats as products
@@ -362,11 +362,18 @@ class XandrAdapter(AdServerAdapter):
                             unsupported_reason=None,
                         )
                     ],
-                    property_tags=["all_inventory"],
+                    publisher_properties=[
+                        Property(
+                            property_type="website",
+                            name="All Inventory",
+                            identifiers=[PropertyIdentifier(type="domain", value="*")],
+                            publisher_domain="*",
+                            tags=None,
+                        )
+                    ],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
-                    properties=None,
                     estimated_exposures=None,
                     delivery_measurement=None,
                     product_card=None,
@@ -397,11 +404,18 @@ class XandrAdapter(AdServerAdapter):
                             unsupported_reason=None,
                         )
                     ],
-                    property_tags=["all_inventory"],
+                    publisher_properties=[
+                        Property(
+                            property_type="website",
+                            name="All Inventory",
+                            identifiers=[PropertyIdentifier(type="domain", value="*")],
+                            publisher_domain="*",
+                            tags=None,
+                        )
+                    ],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
-                    properties=None,
                     estimated_exposures=None,
                     delivery_measurement=None,
                     product_card=None,
@@ -432,11 +446,18 @@ class XandrAdapter(AdServerAdapter):
                             unsupported_reason=None,
                         )
                     ],
-                    property_tags=["all_inventory"],
+                    publisher_properties=[
+                        Property(
+                            property_type="website",
+                            name="All Inventory",
+                            identifiers=[PropertyIdentifier(type="domain", value="*")],
+                            publisher_domain="*",
+                            tags=None,
+                        )
+                    ],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
-                    properties=None,
                     estimated_exposures=None,
                     delivery_measurement=None,
                     product_card=None,
@@ -468,11 +489,18 @@ class XandrAdapter(AdServerAdapter):
                             unsupported_reason=None,
                         )
                     ],
-                    property_tags=["all_inventory"],
+                    publisher_properties=[
+                        Property(
+                            property_type="website",
+                            name="All Inventory",
+                            identifiers=[PropertyIdentifier(type="domain", value="*")],
+                            publisher_domain="*",
+                            tags=None,
+                        )
+                    ],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
-                    properties=None,
                     estimated_exposures=None,
                     delivery_measurement=None,
                     product_card=None,

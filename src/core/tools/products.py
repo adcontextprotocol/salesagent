@@ -85,14 +85,16 @@ def convert_product_model_to_schema(product_model) -> Product:
     if product_model.countries:
         product_data["countries"] = product_model.countries
 
-    # Property authorization (one is required)
+    # Publisher properties (required per AdCP spec)
     # Use effective_properties to auto-resolve from profile
+    # Note: Database stores as 'properties' but AdCP spec uses 'publisher_properties'
     effective_props = product_model.effective_properties
-    effective_tags = product_model.effective_property_tags
-    if effective_props:
-        product_data["properties"] = effective_props
-    elif effective_tags:
-        product_data["property_tags"] = effective_tags
+    if not effective_props:
+        raise ValueError(
+            f"Product {product_model.product_id} has no publisher_properties. "
+            "All products must have at least one property per AdCP spec."
+        )
+    product_data["publisher_properties"] = effective_props
 
     # Product detail fields
     if product_model.delivery_measurement:

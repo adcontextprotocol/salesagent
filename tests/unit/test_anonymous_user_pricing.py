@@ -12,7 +12,14 @@ def test_product_with_empty_pricing_options():
         format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_banner_728x90"}],
         delivery_type="guaranteed",
         pricing_options=[],
-        property_tags=["all_inventory"],
+        publisher_properties=[
+            {
+                "property_type": "website",
+                "name": "Test Property",
+                "identifiers": [{"type": "domain", "value": "test.com"}],
+                "publisher_domain": "test.com",
+            }
+        ],
     )
 
     # Verify the product serializes correctly without pricing_options field
@@ -40,7 +47,14 @@ def test_product_with_pricing_options():
                 rate=10.0,
             )
         ],
-        property_tags=["all_inventory"],
+        publisher_properties=[
+            {
+                "property_type": "website",
+                "name": "Test Property",
+                "identifiers": [{"type": "domain", "value": "test.com"}],
+                "publisher_domain": "test.com",
+            }
+        ],
     )
 
     # Verify the product serializes with pricing_options
@@ -58,7 +72,14 @@ def test_product_pricing_options_defaults_to_empty_list():
         description="Test",
         format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_banner_728x90"}],
         delivery_type="guaranteed",
-        property_tags=["all_inventory"],
+        publisher_properties=[
+            {
+                "property_type": "website",
+                "name": "Test Property",
+                "identifiers": [{"type": "domain", "value": "test.com"}],
+                "publisher_domain": "test.com",
+            }
+        ],
         # pricing_options not provided - should default to []
     )
 

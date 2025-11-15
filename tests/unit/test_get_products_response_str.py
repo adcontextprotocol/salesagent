@@ -12,7 +12,14 @@ def test_get_products_response_str_single_product():
         format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
         delivery_type="guaranteed",
         is_custom=False,
-        property_tags=["all_inventory"],  # Required per AdCP spec
+        publisher_properties=[
+            {
+                "property_type": "website",
+                "name": "Test Property",
+                "identifiers": [{"type": "domain", "value": "test.com"}],
+                "publisher_domain": "test.com",
+            }
+        ],
         pricing_options=[
             PricingOption(
                 pricing_option_id="cpm_usd_fixed",
@@ -45,7 +52,14 @@ def test_get_products_response_str_multiple_products():
             format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
             delivery_type="guaranteed",
             is_custom=False,
-            property_tags=["all_inventory"],  # Required per AdCP spec
+            publisher_properties=[
+                {
+                    "property_type": "website",
+                    "name": "Test Property",
+                    "identifiers": [{"type": "domain", "value": "test.com"}],
+                    "publisher_domain": "test.com",
+                }
+            ],
             pricing_options=[
                 PricingOption(
                     pricing_option_id="cpm_usd_fixed",
@@ -85,7 +99,14 @@ def test_get_products_response_str_anonymous_user():
             format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
             delivery_type="guaranteed",
             is_custom=False,
-            property_tags=["all_inventory"],
+            publisher_properties=[
+                {
+                    "property_type": "website",
+                    "name": "Test Property",
+                    "identifiers": [{"type": "domain", "value": "test.com"}],
+                    "publisher_domain": "test.com",
+                }
+            ],
             pricing_options=[
                 PricingOption(
                     pricing_option_id="cpm_usd_auction",
@@ -118,7 +139,14 @@ def test_get_products_response_model_dump_still_has_full_data():
         format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
         delivery_type="guaranteed",
         is_custom=False,
-        property_tags=["all_inventory"],  # Required per AdCP spec
+        publisher_properties=[
+            {
+                "property_type": "website",
+                "name": "Test Property",
+                "identifiers": [{"type": "domain", "value": "test.com"}],
+                "publisher_domain": "test.com",
+            }
+        ],
         pricing_options=[
             PricingOption(
                 pricing_option_id="cpm_usd_fixed",

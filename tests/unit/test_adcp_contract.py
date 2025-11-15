@@ -123,7 +123,14 @@ class TestAdCPContract:
             "pricing_options": [pricing_option],
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
-            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "publisher_properties": [
+                {
+                    "property_type": "website",
+                    "name": "Test Property",
+                    "identifiers": [{"type": "domain", "value": "test.com"}],
+                    "publisher_domain": "test.com",
+                }
+            ],  # Required per AdCP spec
         }
 
         # Should be convertible to AdCP schema
@@ -166,7 +173,14 @@ class TestAdCPContract:
             "delivery_type": model.delivery_type,
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
-            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "publisher_properties": [
+                {
+                    "property_type": "website",
+                    "name": "Test Property",
+                    "identifiers": [{"type": "domain", "value": "test.com"}],
+                    "publisher_domain": "test.com",
+                }
+            ],  # Required per AdCP spec
             "pricing_options": [
                 PricingOptionSchema(
                     pricing_option_id="cpm_usd_fixed", pricing_model="cpm", rate=10.0, currency="USD", is_fixed=True
@@ -245,7 +259,14 @@ class TestAdCPContract:
                 )
             ],
             estimated_exposures=50000,
-            property_tags=["all_inventory"],  # Required per AdCP spec
+            publisher_properties=[
+                {
+                    "property_type": "website",
+                    "name": "Test Property",
+                    "identifiers": [{"type": "domain", "value": "test.com"}],
+                    "publisher_domain": "test.com",
+                }
+            ],  # Required per AdCP spec
         )
 
         # Verify AdCP-compliant response includes PR #79 fields
@@ -270,7 +291,14 @@ class TestAdCPContract:
                     price_guidance={"floor": 5.0, "p75": 8.5, "p90": 10.0},
                 )
             ],
-            property_tags=["all_inventory"],  # Required per AdCP spec
+            publisher_properties=[
+                {
+                    "property_type": "website",
+                    "name": "Test Property",
+                    "identifiers": [{"type": "domain", "value": "test.com"}],
+                    "publisher_domain": "test.com",
+                }
+            ],  # Required per AdCP spec
         )
 
         adcp_response = non_guaranteed_product.model_dump()
@@ -296,39 +324,13 @@ class TestAdCPContract:
         with pytest.raises(ValidationError):
             GetProductsRequest(brief="Just a brief")
 
-    def test_product_properties_or_tags_required(self):
-        """Test Product schema requires either properties or property_tags per AdCP spec oneOf constraint.
+    def test_product_publisher_properties_required(self):
+        """Test Product schema requires publisher_properties per AdCP spec.
 
-        AdCP spec requires products to have at least one of:
-        - properties: Array of full Property objects for adagents.json validation
-        - property_tags: Array of tag strings (buyers use list_authorized_properties for details)
+        AdCP spec requires products to have publisher_properties:
+        - publisher_properties: Array of full Property objects for adagents.json validation
         """
-        # Test with property_tags (recommended approach)
-        product_with_tags = ProductSchema(
-            product_id="test_product_tags",
-            name="Product with Tags",
-            description="Product using property tags",
-            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
-            delivery_type="guaranteed",
-            cpm=10.0,
-            property_tags=["premium_sports", "local_news"],
-            pricing_options=[
-                PricingOptionSchema(
-                    pricing_option_id="cpm_usd_fixed",
-                    pricing_model="cpm",
-                    rate=10.0,
-                    currency="USD",
-                    is_fixed=True,
-                )
-            ],
-        )
-
-        adcp_response = product_with_tags.model_dump()
-        assert "property_tags" in adcp_response
-        assert adcp_response["property_tags"] == ["premium_sports", "local_news"]
-        assert len(adcp_response["property_tags"]) >= 1
-
-        # Test with full properties
+        # Test with publisher_properties (AdCP-compliant approach)
         from src.core.schemas import Property, PropertyIdentifier
 
         property_obj = Property(
@@ -345,7 +347,7 @@ class TestAdCPContract:
             description="Product with full property objects",
             format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"}],
             delivery_type="non_guaranteed",
-            properties=[property_obj],
+            publisher_properties=[property_obj],
             pricing_options=[
                 PricingOptionSchema(
                     pricing_option_id="cpm_usd_auction",
@@ -358,20 +360,21 @@ class TestAdCPContract:
         )
 
         adcp_response = product_with_properties.model_dump()
-        assert "properties" in adcp_response
-        assert len(adcp_response["properties"]) >= 1
-        assert adcp_response["properties"][0]["property_type"] == "website"
-        assert adcp_response["properties"][0]["publisher_domain"] == "example.com"
+        assert "publisher_properties" in adcp_response
+        assert len(adcp_response["publisher_properties"]) >= 1
+        assert adcp_response["publisher_properties"][0]["property_type"] == "website"
+        assert adcp_response["publisher_properties"][0]["publisher_domain"] == "example.com"
 
-        # Test without either properties or property_tags should fail (strict validation enabled)
-        with pytest.raises(ValueError, match="properties.*property_tags"):
+        # Test without publisher_properties should fail (strict validation enabled)
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="publisher_properties"):
             ProductSchema(
                 product_id="test_product_no_props",
                 name="Invalid Product",
                 description="Missing property information",
                 format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                 delivery_type="guaranteed",
-                cpm=10.0,
                 pricing_options=[
                     PricingOptionSchema(
                         pricing_option_id="cpm_usd_fixed",
@@ -381,7 +384,7 @@ class TestAdCPContract:
                         is_fixed=True,
                     )
                 ],
-                # Missing both properties and property_tags
+                # Missing publisher_properties
             )
 
     def test_adcp_create_media_buy_request(self):
@@ -490,8 +493,14 @@ class TestAdCPContract:
                 description="Test",
                 format_ids=[],
                 delivery_type=delivery_type,
-                cpm=10.0,
-                property_tags=["all_inventory"],  # Required per AdCP spec
+                publisher_properties=[
+                    {
+                        "property_type": "website",
+                        "name": "Test Property",
+                        "identifiers": [{"type": "domain", "value": "test.com"}],
+                        "publisher_domain": "test.com",
+                    }
+                ],  # Required per AdCP spec
                 pricing_options=[
                     PricingOptionSchema(
                         pricing_option_id="cpm_usd_fixed",
@@ -512,8 +521,14 @@ class TestAdCPContract:
                 description="Test",
                 format_ids=[],
                 delivery_type="programmatic",  # Not AdCP compliant
-                cpm=10.0,
-                property_tags=["all_inventory"],  # Required per AdCP spec
+                publisher_properties=[
+                    {
+                        "property_type": "website",
+                        "name": "Test Property",
+                        "identifiers": [{"type": "domain", "value": "test.com"}],
+                        "publisher_domain": "test.com",
+                    }
+                ],  # Required per AdCP spec
                 pricing_options=[
                     PricingOptionSchema(
                         pricing_option_id="cpm_usd_fixed",
@@ -534,9 +549,15 @@ class TestAdCPContract:
                 description="Test",
                 format_ids=[],
                 delivery_type="guaranteed",
-                cpm=10.0,
                 implementation_config={"internal": "data"},  # Should be excluded
-                property_tags=["all_inventory"],  # Required per AdCP spec
+                publisher_properties=[
+                    {
+                        "property_type": "website",
+                        "name": "Test Property",
+                        "identifiers": [{"type": "domain", "value": "test.com"}],
+                        "publisher_domain": "test.com",
+                    }
+                ],  # Required per AdCP spec
                 pricing_options=[
                     PricingOptionSchema(
                         pricing_option_id="cpm_usd_fixed",
@@ -1474,7 +1495,14 @@ class TestAdCPContract:
             measurement=None,
             creative_policy=None,
             is_custom=False,
-            property_tags=["all_inventory"],  # Required per AdCP spec
+            publisher_properties=[
+                {
+                    "property_type": "website",
+                    "name": "Test Property",
+                    "identifiers": [{"type": "domain", "value": "test.com"}],
+                    "publisher_domain": "test.com",
+                }
+            ],  # Required per AdCP spec
             pricing_options=[
                 PricingOptionSchema(
                     pricing_option_id="cpm_usd_fixed",
@@ -2344,39 +2372,17 @@ class TestAdCPContract:
         assert isinstance(request.start_time, datetime)
         assert request.start_time == start_date
 
-    def test_product_properties_xor_constraint(self):
-        """Test that Product enforces AdCP oneOf constraint (exactly one of properties/property_tags)."""
+    def test_product_publisher_properties_constraint(self):
+        """Test that Product requires publisher_properties per AdCP spec."""
         from src.core.schemas import Product, Property, PropertyIdentifier
 
-        # Valid: property_tags only
-        product_with_tags = Product(
-            product_id="p1",
-            name="Tagged Product",
-            description="Product using property tags",
-            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
-            property_tags=["sports", "premium"],
-            delivery_type="guaranteed",
-            cpm=10.0,
-            pricing_options=[
-                PricingOptionSchema(
-                    pricing_option_id="cpm_usd_fixed",
-                    pricing_model="cpm",
-                    rate=10.0,
-                    currency="USD",
-                    is_fixed=True,
-                )
-            ],
-        )
-        assert product_with_tags.property_tags == ["sports", "premium"]
-        assert product_with_tags.properties is None
-
-        # Valid: properties only
+        # Valid: publisher_properties with full Property objects
         product_with_properties = Product(
-            product_id="p2",
+            product_id="p1",
             name="Property Product",
             description="Product using full properties",
             format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
-            properties=[
+            publisher_properties=[
                 Property(
                     property_type="website",
                     name="Example Site",
@@ -2385,7 +2391,6 @@ class TestAdCPContract:
                 )
             ],
             delivery_type="guaranteed",
-            cpm=10.0,
             pricing_options=[
                 PricingOptionSchema(
                     pricing_option_id="cpm_usd_fixed",
@@ -2396,27 +2401,19 @@ class TestAdCPContract:
                 )
             ],
         )
-        assert len(product_with_properties.properties) == 1
-        assert product_with_properties.property_tags is None
+        assert len(product_with_properties.publisher_properties) == 1
+        assert product_with_properties.publisher_properties[0].name == "Example Site"
 
-        # Invalid: both properties and property_tags set (violates oneOf)
-        with pytest.raises(ValueError, match="cannot have both"):
+        # Invalid: missing publisher_properties (required)
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="publisher_properties"):
             Product(
-                product_id="p3",
+                product_id="p2",
                 name="Invalid Product",
-                description="Product with both fields (invalid)",
+                description="Product without publisher_properties",
                 format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
-                properties=[
-                    Property(
-                        property_type="website",
-                        name="Example Site",
-                        identifiers=[PropertyIdentifier(type="domain", value="example.com")],
-                        publisher_domain="example.com",
-                    )
-                ],
-                property_tags=["sports"],  # This violates oneOf constraint
                 delivery_type="guaranteed",
-                cpm=10.0,
                 pricing_options=[
                     PricingOptionSchema(
                         pricing_option_id="cpm_usd_fixed",
@@ -2426,6 +2423,7 @@ class TestAdCPContract:
                         is_fixed=True,
                     )
                 ],
+                # Missing publisher_properties - should fail
             )
 
     def test_create_media_buy_with_brand_manifest_inline(self):

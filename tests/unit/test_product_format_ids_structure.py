@@ -18,7 +18,14 @@ def test_product_format_ids_serialize_as_objects():
             FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
         ],
         delivery_type="guaranteed",
-        property_tags=["all_inventory"],
+        publisher_properties=[
+            {
+                "property_type": "website",
+                "name": "Test Property",
+                "identifiers": [{"type": "domain", "value": "test.com"}],
+                "publisher_domain": "test.com",
+            }
+        ],
         pricing_options=[
             PricingOption(
                 pricing_option_id="opt1",
@@ -68,7 +75,14 @@ def test_product_format_ids_with_custom_agent():
             FormatId(agent_url="https://custom-publisher.com/.well-known/adcp/sales", id="custom_format"),
         ],
         delivery_type="guaranteed",
-        property_tags=["all_inventory"],
+        publisher_properties=[
+            {
+                "property_type": "website",
+                "name": "Test Property",
+                "identifiers": [{"type": "domain", "value": "test.com"}],
+                "publisher_domain": "test.com",
+            }
+        ],
         pricing_options=[
             PricingOption(
                 pricing_option_id="opt1",

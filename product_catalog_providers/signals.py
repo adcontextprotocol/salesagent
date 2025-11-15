@@ -172,7 +172,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         product_id = f"signal_{product_id_hash}"
 
         # Create AdCP-compliant Product (without internal fields like tenant_id)
-        from src.core.schemas import FormatId, PriceGuidance, PricingOption
+        from src.core.schemas import FormatId, PriceGuidance, PricingOption, Property, PropertyIdentifier
 
         return Product(
             product_id=product_id,
@@ -188,8 +188,15 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             creative_policy=None,  # Optional - signals products don't include creative policy
             is_custom=True,  # These are custom products created from signals
             brief_relevance=f"Generated from {len(signals)} signals in {category} category for: {brief[:100]}...",
-            property_tags=["all_inventory"],  # Required per AdCP spec (using property_tags instead of properties)
-            properties=None,  # Using property_tags instead
+            publisher_properties=[
+                Property(
+                    property_type="website",
+                    name="All Inventory",
+                    identifiers=[PropertyIdentifier(type="domain", value="*")],
+                    publisher_domain="*",  # Wildcard for all inventory
+                    tags=None,  # No specific tags for all inventory
+                )
+            ],  # Required per AdCP spec
             estimated_exposures=None,  # Optional - signals products don't have exposure estimates
             delivery_measurement=None,  # Optional - new field from product details
             product_card=None,  # Optional - new field from product details

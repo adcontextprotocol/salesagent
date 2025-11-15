@@ -1032,15 +1032,10 @@ class Product(BaseModel):
         default=None,
         description="Ad server-specific configuration for implementing this product (placements, line item settings, etc.)",
     )
-    # AdCP property authorization fields (at least one required per spec)
-    properties: list["Property"] | None = Field(
-        None,
-        description="Full property objects covered by this product for adagents.json validation",
-        min_length=1,
-    )
-    property_tags: list[str] | None = Field(
-        None,
-        description="Tags identifying groups of properties (use list_authorized_properties for details)",
+    # AdCP property authorization field (required per spec)
+    publisher_properties: list["Property"] = Field(
+        ...,
+        description="Publisher properties covered by this product for adagents.json validation per AdCP spec",
         min_length=1,
     )
     # AdCP PR #79 fields - populated dynamically from historical reporting data
@@ -1083,26 +1078,15 @@ class Product(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_properties_or_tags(self) -> "Product":
-        """Validate that at least one of properties or property_tags is provided per AdCP spec.
+    def validate_publisher_properties(self) -> "Product":
+        """Validate publisher_properties per AdCP spec.
 
-        Per AdCP spec, products must have either:
-        - properties: Full Property objects for adagents.json validation
-        - property_tags: Tag strings (buyers use list_authorized_properties for details)
+        Per AdCP spec, products must have at least one publisher property.
         """
-        has_properties = self.properties and len(self.properties) > 0
-        has_tags = self.property_tags and len(self.property_tags) > 0
-
-        if not has_properties and not has_tags:
+        if not self.publisher_properties or len(self.publisher_properties) == 0:
             raise ValueError(
-                "Product must have either 'properties' or 'property_tags' per AdCP spec. "
-                "Use property_tags=['all_inventory'] as a default if unsure."
-            )
-
-        if has_properties and has_tags:
-            raise ValueError(
-                "Product cannot have both 'properties' and 'property_tags' (AdCP oneOf constraint). "
-                "Use properties for full validation OR property_tags for tag-based authorization, not both."
+                "Product must have at least one publisher_property per AdCP spec. "
+                "Properties identify the inventory covered by this product."
             )
 
         return self

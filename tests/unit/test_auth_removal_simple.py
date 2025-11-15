@@ -117,7 +117,14 @@ class TestAuthRemovalChanges:
             description="Test description",
             format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             delivery_type="non_guaranteed",
-            property_tags=["all_inventory"],  # Required per AdCP spec
+            publisher_properties=[
+                {
+                    "property_type": "website",
+                    "name": "Test Property",
+                    "identifiers": [{"type": "domain", "value": "test.com"}],
+                    "publisher_domain": "test.com",
+                }
+            ],
             pricing_options=[
                 PricingOption(
                     pricing_option_id="cpm_usd_fixed",
@@ -173,7 +180,14 @@ class TestAuthRemovalChanges:
             description="Test description",
             format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             delivery_type="non_guaranteed",
-            property_tags=["all_inventory"],  # Required per AdCP spec
+            publisher_properties=[
+                {
+                    "property_type": "website",
+                    "name": "Test Property",
+                    "identifiers": [{"type": "domain", "value": "test.com"}],
+                    "publisher_domain": "test.com",
+                }
+            ],
             pricing_options=[
                 PricingOption(
                     pricing_option_id="cpm_usd_fixed",
