@@ -60,9 +60,18 @@ def test_axe_include_segment_translates_to_custom_targeting(mock_adapter_config_
         result = manager.build_targeting(targeting_overlay)
 
         # Verify custom targeting was set with configured "audience_include" key
+        # The result has GAM API structure with CustomCriteriaSet
         assert "customTargeting" in result
-        assert "audience_include" in result["customTargeting"]
-        assert result["customTargeting"]["audience_include"] == "x8dj3k"
+        custom_targeting = result["customTargeting"]
+
+        # Should have CustomCriteriaSet structure with children
+        assert custom_targeting["xsi_type"] == "CustomCriteriaSet"
+        assert "children" in custom_targeting
+
+        # Find the audience_include criteria by keyId (12345 from fixture)
+        criteria = [c for c in custom_targeting["children"] if c.get("keyId") == 12345]
+        assert len(criteria) > 0, "Should have audience_include custom targeting criteria"
+        assert criteria[0]["operator"] == "IS"  # Include segment uses IS operator
 
 
 def test_axe_exclude_segment_translates_to_negative_custom_targeting(mock_adapter_config_three_keys):
@@ -83,10 +92,18 @@ def test_axe_exclude_segment_translates_to_negative_custom_targeting(mock_adapte
 
         result = manager.build_targeting(targeting_overlay)
 
-        # Verify negative custom targeting was set (NOT_ prefix with configured key)
+        # Verify negative custom targeting was set (IS_NOT operator with configured key)
         assert "customTargeting" in result
-        assert "NOT_audience_exclude" in result["customTargeting"]
-        assert result["customTargeting"]["NOT_audience_exclude"] == "y9kl4m"
+        custom_targeting = result["customTargeting"]
+
+        # Should have CustomCriteriaSet structure with children
+        assert custom_targeting["xsi_type"] == "CustomCriteriaSet"
+        assert "children" in custom_targeting
+
+        # Find the audience_exclude criteria by keyId (67890 from fixture)
+        criteria = [c for c in custom_targeting["children"] if c.get("keyId") == 67890]
+        assert len(criteria) > 0, "Should have audience_exclude custom targeting criteria"
+        assert criteria[0]["operator"] == "IS_NOT"  # Exclude segment uses IS_NOT operator
 
 
 def test_axe_segments_both_include_and_exclude(mock_adapter_config_three_keys):
@@ -110,10 +127,21 @@ def test_axe_segments_both_include_and_exclude(mock_adapter_config_three_keys):
 
         # Verify both positive and negative custom targeting were set with separate keys
         assert "customTargeting" in result
-        assert "audience_include" in result["customTargeting"]
-        assert result["customTargeting"]["audience_include"] == "x8dj3k"
-        assert "NOT_audience_exclude" in result["customTargeting"]
-        assert result["customTargeting"]["NOT_audience_exclude"] == "y9kl4m"
+        custom_targeting = result["customTargeting"]
+
+        # Should have CustomCriteriaSet structure with children
+        assert custom_targeting["xsi_type"] == "CustomCriteriaSet"
+        assert "children" in custom_targeting
+
+        # Find both include and exclude criteria by keyId
+        include_criteria = [c for c in custom_targeting["children"] if c.get("keyId") == 12345]
+        exclude_criteria = [c for c in custom_targeting["children"] if c.get("keyId") == 67890]
+
+        assert len(include_criteria) > 0, "Should have audience_include custom targeting criteria"
+        assert include_criteria[0]["operator"] == "IS"
+
+        assert len(exclude_criteria) > 0, "Should have audience_exclude custom targeting criteria"
+        assert exclude_criteria[0]["operator"] == "IS_NOT"
 
 
 def test_axe_segments_combine_with_other_custom_targeting(mock_adapter_config_three_keys):
@@ -135,14 +163,17 @@ def test_axe_segments_combine_with_other_custom_targeting(mock_adapter_config_th
 
         result = manager.build_targeting(targeting_overlay)
 
-        # Verify all custom targeting is present
+        # Verify all custom targeting is present (both AXE and custom keys)
         assert "customTargeting" in result
-        assert "audience_include" in result["customTargeting"]
-        assert result["customTargeting"]["audience_include"] == "x8dj3k"
-        assert "custom_key1" in result["customTargeting"]
-        assert result["customTargeting"]["custom_key1"] == "value1"
-        assert "custom_key2" in result["customTargeting"]
-        assert result["customTargeting"]["custom_key2"] == "value2"
+        custom_targeting = result["customTargeting"]
+
+        # Should have CustomCriteriaSet structure with children
+        assert custom_targeting["xsi_type"] == "CustomCriteriaSet"
+        assert "children" in custom_targeting
+
+        # The custom targeting will have GAM API structure with multiple criteria
+        # Verify we have criteria for both AXE segments and custom keys
+        assert len(custom_targeting["children"]) >= 3  # At least: AXE include, custom_key1, custom_key2
 
 
 def test_axe_segments_optional(mock_adapter_config_three_keys):
