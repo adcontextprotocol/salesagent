@@ -385,7 +385,7 @@ class TestSetupChecklistService:
             db_session.add(tenant2)
 
             # Add currency and product for tenant 2
-            from tests.fixtures.factories import ProductFactory
+            from tests.fixtures.factories import PrincipalFactory, ProductFactory
 
             currency2 = CurrencyLimit(
                 tenant_id=tenant_ids[1], currency_code="USD", min_package_budget=0.0, max_daily_package_spend=10000.0
@@ -456,12 +456,23 @@ class TestSetupChecklistService:
             )
             db_session.add(product3)
 
-            principal3 = Principal(
+            # Use PrincipalFactory to create principal with valid platform_mappings
+            principal3_data = PrincipalFactory.create(
                 tenant_id=tenant_ids[2],
                 principal_id="bulk_principal_3",
                 name="Test Principal",
                 access_token="test_token_bulk_3",
-                platform_mappings={},
+            )
+            principal3 = Principal(
+                tenant_id=principal3_data["tenant_id"],
+                principal_id=principal3_data["principal_id"],
+                name=principal3_data["name"],
+                access_token=principal3_data["access_token"],
+                platform_mappings=(
+                    json.loads(principal3_data["platform_mappings"])
+                    if isinstance(principal3_data["platform_mappings"], str)
+                    else principal3_data["platform_mappings"]
+                ),
             )
             db_session.add(principal3)
 
