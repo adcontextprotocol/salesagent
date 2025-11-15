@@ -5,7 +5,6 @@ to help new users understand what they need to do before taking their first orde
 """
 
 import logging
-import os
 from typing import Any
 
 from sqlalchemy import func, select
@@ -145,20 +144,7 @@ class SetupChecklistService:
             )
         )
 
-        # 2. Gemini API Key
-        gemini_configured = bool(os.getenv("GEMINI_API_KEY"))
-        tasks.append(
-            SetupTask(
-                key="gemini_api_key",
-                name="Gemini API Key",
-                description="AI features require Google Gemini API key",
-                is_complete=gemini_configured,
-                action_url=None,  # Environment variable, not in UI
-                details="Set GEMINI_API_KEY in .env.secrets file" if not gemini_configured else None,
-            )
-        )
-
-        # 3. Currency Limits
+        # 2. Currency Limits
         stmt = select(func.count()).select_from(CurrencyLimit).where(CurrencyLimit.tenant_id == self.tenant_id)
         currency_count = session.scalar(stmt) or 0
         tasks.append(
@@ -172,7 +158,7 @@ class SetupChecklistService:
             )
         )
 
-        # 4. Authorized Properties
+        # 3. Authorized Properties
         stmt = (
             select(func.count()).select_from(AuthorizedProperty).where(AuthorizedProperty.tenant_id == self.tenant_id)
         )
@@ -188,7 +174,7 @@ class SetupChecklistService:
             )
         )
 
-        # 5. Inventory Synced (adapter-specific behavior)
+        # 4. Inventory Synced (adapter-specific behavior)
         # Check if tenant has synced inventory from ad server
         # - None: No adapter selected, must configure ad server first (incomplete)
         # - GAM: Requires sync from Google Ad Manager (checks GAMInventory table)
@@ -265,7 +251,7 @@ class SetupChecklistService:
                 )
             )
 
-        # 6. Products Created
+        # 5. Products Created
         stmt = select(func.count()).select_from(Product).where(Product.tenant_id == self.tenant_id)
         product_count = session.scalar(stmt) or 0
         tasks.append(
@@ -279,7 +265,7 @@ class SetupChecklistService:
             )
         )
 
-        # 7. Principals Created
+        # 6. Principals Created
         stmt = select(func.count()).select_from(Principal).where(Principal.tenant_id == self.tenant_id)
         principal_count = session.scalar(stmt) or 0
         tasks.append(
@@ -295,7 +281,7 @@ class SetupChecklistService:
             )
         )
 
-        # 8. Access Control Configured
+        # 7. Access Control Configured
         has_domains = bool(tenant.authorized_domains and len(tenant.authorized_domains) > 0)
         has_emails = bool(tenant.authorized_emails and len(tenant.authorized_emails) > 0)
         access_control_configured = bool(has_domains or has_emails)
@@ -427,7 +413,22 @@ class SetupChecklistService:
             )
         )
 
-        # 2. Multiple Currencies
+        # 2. Gemini AI Features (Optional - Tenant-Specific)
+        gemini_configured = bool(tenant.gemini_api_key)
+        tasks.append(
+            SetupTask(
+                key="gemini_api_key",
+                name="Gemini AI Features",
+                description="Enable AI-assisted product recommendations and creative policy checks",
+                is_complete=gemini_configured,
+                action_url=f"/tenant/{self.tenant_id}/settings#integrations",
+                details=(
+                    "AI features enabled" if gemini_configured else "Optional: Configure Gemini API key for AI features"
+                ),
+            )
+        )
+
+        # 3. Multiple Currencies
         stmt = select(func.count()).select_from(CurrencyLimit).where(CurrencyLimit.tenant_id == self.tenant_id)
         currency_count = session.scalar(stmt) or 0
         multiple_currencies = currency_count > 1

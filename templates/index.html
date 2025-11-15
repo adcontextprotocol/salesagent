@@ -46,6 +46,7 @@
                 <th>Name</th>
                 <th>Tenant Access</th>
                 <th>Configuration</th>
+                <th>Setup Status</th>
                 <th>Activity</th>
                 <th>Ad Server</th>
                 <th>Created</th>
@@ -77,6 +78,28 @@
                     <span class="status status-active">✓ Configured</span>
                     {% else %}
                     <span class="status status-inactive">⚠ Pending</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if tenant.setup_status %}
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <div style="flex: 1; min-width: 120px;">
+                            <div style="background: #e9ecef; height: 20px; border-radius: 10px; overflow: hidden;">
+                                <div style="background: {% if tenant.setup_status.progress_percent == 100 %}#28a745{% elif tenant.setup_status.progress_percent >= 60 %}#ffc107{% else %}#dc3545{% endif %}; height: 100%; width: {{ tenant.setup_status.progress_percent }}%; transition: width 0.3s;"></div>
+                            </div>
+                        </div>
+                        <div style="min-width: 60px; text-align: right;">
+                            <strong>{{ tenant.setup_status.progress_percent }}%</strong>
+                            <br><small style="color: #666;">{{ tenant.setup_status.completed_count }}/{{ tenant.setup_status.total_count }}</small>
+                        </div>
+                    </div>
+                    {% if tenant.setup_status.ready_for_orders %}
+                    <small style="color: #28a745;">✓ Ready for orders</small>
+                    {% else %}
+                    <small style="color: #dc3545;">{{ tenant.setup_status.critical|selectattr('is_complete', 'equalto', false)|list|length }} critical tasks remaining</small>
+                    {% endif %}
+                    {% else %}
+                    <span style="color: #999;">N/A</span>
                     {% endif %}
                 </td>
                 <td>

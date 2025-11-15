@@ -13,7 +13,7 @@ from sqlalchemy import select, text
 from src.admin.utils import require_auth  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Principal, Tenant
+from src.core.database.models import Tenant
 from src.core.domain_config import (
     extract_subdomain_from_host,
     is_sales_agent_domain,
@@ -107,6 +107,7 @@ def index():
 
         from src.core.database.models import MediaBuy
         from src.core.tenant_status import is_tenant_ad_server_configured
+        from src.services.setup_checklist_service import SetupChecklistService
 
         with get_db_session() as db_session:
             # Eager load adapter_config to avoid N+1 queries
@@ -137,6 +138,14 @@ def index():
                 total_buys_stmt = select(MediaBuy).filter_by(tenant_id=tenant.tenant_id)
                 total_buys_count = len(list(db_session.scalars(total_buys_stmt).all()))
 
+                # Get setup checklist status
+                setup_status = None
+                try:
+                    checklist_service = SetupChecklistService(tenant.tenant_id)
+                    setup_status = checklist_service.get_setup_status()
+                except Exception as e:
+                    logger.warning(f"Failed to load setup status for tenant {tenant.tenant_id}: {e}")
+
                 tenant_list.append(
                     {
                         "tenant_id": tenant.tenant_id,
@@ -150,6 +159,7 @@ def index():
                         "recent_buys_count": recent_buys_count,
                         "total_buys_count": total_buys_count,
                         "has_activity": total_buys_count > 0,
+                        "setup_status": setup_status,
                     }
                 )
         # Get environment info for URL generation
@@ -266,7 +276,7 @@ def create_tenant():
         # Get form data
         tenant_name = request.form.get("name", "").strip()
         subdomain = request.form.get("subdomain", "").strip()
-        ad_server = request.form.get("ad_server", "mock").strip()
+        ad_server = request.form.get("ad_server", "").strip() or None  # Default to None, not mock
 
         if not tenant_name:
             flash("Tenant name is required", "error")
@@ -332,21 +342,10 @@ def create_tenant():
                 )
 
             db_session.add(new_tenant)
-
-            # Create default principal for the tenant
-            default_principal = Principal(
-                tenant_id=tenant_id,
-                principal_id=f"{tenant_id}_default",
-                name=f"{tenant_name} Default Principal",
-                access_token=admin_token,  # Use same token for simplicity
-                platform_mappings=json.dumps(
-                    {"mock": {"advertiser_id": f"default_{tenant_id[:8]}", "advertiser_name": f"{tenant_name} Default"}}
-                ),
-                created_at=datetime.now(UTC),
-            )
-            db_session.add(default_principal)
-
             db_session.commit()
+
+            # Note: No default principal created - principals must be added manually
+            # to map to real advertiser accounts in the ad server (GAM, Kevel, etc.)
 
             flash(f"Tenant '{tenant_name}' created successfully!", "success")
             return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
