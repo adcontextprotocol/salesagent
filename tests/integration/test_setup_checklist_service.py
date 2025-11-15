@@ -385,19 +385,27 @@ class TestSetupChecklistService:
             db_session.add(tenant2)
 
             # Add currency and product for tenant 2
+            from tests.fixtures.factories import ProductFactory
+
             currency2 = CurrencyLimit(
                 tenant_id=tenant_ids[1], currency_code="USD", min_package_budget=0.0, max_daily_package_spend=10000.0
             )
             db_session.add(currency2)
 
+            # Use ProductFactory to create product with all required fields
+            product2_data = ProductFactory.create(
+                tenant_id=tenant_ids[1], product_id="bulk_product_2", name="Test Product", format_ids=[]
+            )
             product2 = Product(
-                tenant_id=tenant_ids[1],
-                product_id="bulk_product_2",
-                name="Test Product",
-                description="Test",
-                format_ids=[],
-                targeting_template={},
-                delivery_type="standard",
+                tenant_id=product2_data["tenant_id"],
+                product_id=product2_data["product_id"],
+                name=product2_data["name"],
+                description=product2_data["description"],
+                format_ids=product2_data["format_ids"] if isinstance(product2_data["format_ids"], list) else [],
+                targeting_template=(
+                    product2_data["targeting_template"] if isinstance(product2_data["targeting_template"], dict) else {}
+                ),
+                delivery_type=product2_data["delivery_type"],
             )
             db_session.add(product2)
 
@@ -429,14 +437,20 @@ class TestSetupChecklistService:
             )
             db_session.add(property3)
 
+            # Use ProductFactory for product3 as well
+            product3_data = ProductFactory.create(
+                tenant_id=tenant_ids[2], product_id="bulk_product_3", name="Test Product", format_ids=[]
+            )
             product3 = Product(
-                tenant_id=tenant_ids[2],
-                product_id="bulk_product_3",
-                name="Test Product",
-                description="Test",
-                format_ids=[],
-                targeting_template={},
-                delivery_type="standard",
+                tenant_id=product3_data["tenant_id"],
+                product_id=product3_data["product_id"],
+                name=product3_data["name"],
+                description=product3_data["description"],
+                format_ids=product3_data["format_ids"] if isinstance(product3_data["format_ids"], list) else [],
+                targeting_template=(
+                    product3_data["targeting_template"] if isinstance(product3_data["targeting_template"], dict) else {}
+                ),
+                delivery_type=product3_data["delivery_type"],
             )
             db_session.add(product3)
 
