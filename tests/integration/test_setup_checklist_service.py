@@ -1,7 +1,7 @@
 """Tests for setup checklist service."""
 
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import select
@@ -34,8 +34,6 @@ def test_tenant_id():
 def setup_minimal_tenant(integration_db, test_tenant_id):
     """Create minimal tenant for testing (incomplete setup)."""
     from datetime import UTC, datetime
-
-    from sqlalchemy import select
 
     from src.core.database.database_session import get_db_session
 
@@ -76,7 +74,7 @@ def setup_complete_tenant(integration_db, test_tenant_id):
     """Create fully configured tenant for testing."""
     from datetime import UTC, datetime
 
-    from sqlalchemy import delete, select
+    from sqlalchemy import delete
 
     from src.core.database.database_session import get_db_session
 
@@ -410,24 +408,33 @@ class TestTaskDetails:
 
     def test_gemini_api_key_detection(self, integration_db, setup_minimal_tenant, test_tenant_id):
         """Test tenant-specific Gemini API key detection (moved to optional tasks)."""
-        from src.core.database.database_session import get_db_session
-
         # Without key (tenant.gemini_api_key is None)
         service = SetupChecklistService(test_tenant_id)
         status = service.get_setup_status()
         gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
         assert not gemini_task["is_complete"]
 
-        # With tenant-specific key
-        with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=test_tenant_id)).first()
-            tenant.gemini_api_key = "test_tenant_key"  # Set tenant-specific key
-            db_session.commit()
+        # With tenant-specific key - patch tenant query to return tenant with key set
+        # We mock at the query level to avoid triggering encryption in CI (no ENCRYPTION_KEY set)
+        with patch("src.services.setup_checklist_service.get_db_session") as mock_db_context:
+            # Create mock tenant with gemini_api_key attribute
+            mock_tenant = MagicMock()
+            mock_tenant.tenant_id = test_tenant_id
+            mock_tenant.gemini_api_key = "test_key"  # Simulate key being set
 
-        service = SetupChecklistService(test_tenant_id)
-        status = service.get_setup_status()
-        gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
-        assert gemini_task["is_complete"]
+            # Setup context manager and session chain
+            mock_session = MagicMock()
+            mock_scalars = MagicMock()
+            mock_scalars.first.return_value = mock_tenant
+            mock_session.scalars.return_value = mock_scalars
+            mock_session.__enter__.return_value = mock_session
+            mock_session.__exit__.return_value = None
+            mock_db_context.return_value = mock_session
+
+            service = SetupChecklistService(test_tenant_id)
+            status = service.get_setup_status()
+            gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
+            assert gemini_task["is_complete"]
 
     def test_currency_count_in_details(self, integration_db, test_tenant_id):
         """Test that currency count is shown in task details."""
