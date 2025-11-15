@@ -398,8 +398,6 @@ class TestSetupChecklistService:
                 format_ids=[],
                 targeting_template={},
                 delivery_type="standard",
-                created_at=now,
-                updated_at=now,
             )
             db_session.add(product2)
 
@@ -439,8 +437,6 @@ class TestSetupChecklistService:
                 format_ids=[],
                 targeting_template={},
                 delivery_type="standard",
-                created_at=now,
-                updated_at=now,
             )
             db_session.add(product3)
 
