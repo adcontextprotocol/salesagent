@@ -48,7 +48,9 @@ def test_axe_include_segment_translates_to_custom_targeting(mock_adapter_config_
         mock_session.return_value.__enter__.return_value = mock_db
         mock_db.scalars.return_value.first.return_value = mock_adapter_config_three_keys
 
-        manager = GAMTargetingManager("tenant_123")
+        # Mock GAM client for custom targeting value operations
+        mock_gam_client = MagicMock()
+        manager = GAMTargetingManager("tenant_123", gam_client=mock_gam_client)
 
         targeting_overlay = Targeting(
             geo_country_any_of=["US"],
@@ -70,7 +72,9 @@ def test_axe_exclude_segment_translates_to_negative_custom_targeting(mock_adapte
         mock_session.return_value.__enter__.return_value = mock_db
         mock_db.scalars.return_value.first.return_value = mock_adapter_config_three_keys
 
-        manager = GAMTargetingManager("tenant_123")
+        # Mock GAM client for custom targeting value operations
+        mock_gam_client = MagicMock()
+        manager = GAMTargetingManager("tenant_123", gam_client=mock_gam_client)
 
         targeting_overlay = Targeting(
             geo_country_any_of=["US"],
@@ -92,7 +96,9 @@ def test_axe_segments_both_include_and_exclude(mock_adapter_config_three_keys):
         mock_session.return_value.__enter__.return_value = mock_db
         mock_db.scalars.return_value.first.return_value = mock_adapter_config_three_keys
 
-        manager = GAMTargetingManager("tenant_123")
+        # Mock GAM client for custom targeting value operations
+        mock_gam_client = MagicMock()
+        manager = GAMTargetingManager("tenant_123", gam_client=mock_gam_client)
 
         targeting_overlay = Targeting(
             geo_country_any_of=["US"],
@@ -117,7 +123,9 @@ def test_axe_segments_combine_with_other_custom_targeting(mock_adapter_config_th
         mock_session.return_value.__enter__.return_value = mock_db
         mock_db.scalars.return_value.first.return_value = mock_adapter_config_three_keys
 
-        manager = GAMTargetingManager("tenant_123")
+        # Mock GAM client for custom targeting value operations
+        mock_gam_client = MagicMock()
+        manager = GAMTargetingManager("tenant_123", gam_client=mock_gam_client)
 
         targeting_overlay = Targeting(
             geo_country_any_of=["US"],
