@@ -1,6 +1,12 @@
 """Test that GetProductsResponse __str__ provides human-readable content for protocols."""
 
-from src.core.schemas import GetProductsResponse, PricingOption, Product
+from tests.helpers.adcp_factories import (
+    create_test_cpm_pricing_option,
+    create_test_format_id,
+    create_test_publisher_properties_by_tag,
+)
+
+from src.core.schemas import GetProductsResponse, Product
 
 
 def test_get_products_response_str_single_product():
@@ -9,24 +15,15 @@ def test_get_products_response_str_single_product():
         product_id="test",
         name="Test Product",
         description="A test",
-        format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
+        format_ids=[create_test_format_id("banner")],
         delivery_type="guaranteed",
-        is_custom=False,
-        publisher_properties=[
-            {
-                "property_type": "website",
-                "name": "Test Property",
-                "identifiers": [{"type": "domain", "value": "test.com"}],
-                "publisher_domain": "test.com",
-            }
-        ],
+        delivery_measurement={"provider": "test_provider", "notes": "Test measurement"},
+        publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="test.com")],
         pricing_options=[
-            PricingOption(
+            create_test_cpm_pricing_option(
                 pricing_option_id="cpm_usd_fixed",
-                pricing_model="cpm",
-                rate=10.0,
                 currency="USD",
-                is_fixed=True,
+                rate=10.0,
                 min_spend_per_package=100.0,
             )
         ],
@@ -49,24 +46,15 @@ def test_get_products_response_str_multiple_products():
             product_id=f"test{i}",
             name=f"Test {i}",
             description="A test",
-            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
+            format_ids=[create_test_format_id("banner")],
             delivery_type="guaranteed",
-            is_custom=False,
-            publisher_properties=[
-                {
-                    "property_type": "website",
-                    "name": "Test Property",
-                    "identifiers": [{"type": "domain", "value": "test.com"}],
-                    "publisher_domain": "test.com",
-                }
-            ],
+            delivery_measurement={"provider": "test_provider", "notes": "Test measurement"},
+            publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="test.com")],
             pricing_options=[
-                PricingOption(
+                create_test_cpm_pricing_option(
                     pricing_option_id="cpm_usd_fixed",
-                    pricing_model="cpm",
-                    rate=10.0,
                     currency="USD",
-                    is_fixed=True,
+                    rate=10.0,
                     min_spend_per_package=100.0,
                 )
             ],
@@ -96,26 +84,18 @@ def test_get_products_response_str_anonymous_user():
             product_id=f"test{i}",
             name=f"Test {i}",
             description="A test",
-            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
+            format_ids=[create_test_format_id("banner")],
             delivery_type="guaranteed",
-            is_custom=False,
-            publisher_properties=[
-                {
-                    "property_type": "website",
-                    "name": "Test Property",
-                    "identifiers": [{"type": "domain", "value": "test.com"}],
-                    "publisher_domain": "test.com",
-                }
-            ],
+            delivery_measurement={"provider": "test_provider", "notes": "Test measurement"},
+            publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="test.com")],
             pricing_options=[
-                PricingOption(
-                    pricing_option_id="cpm_usd_auction",
-                    pricing_model="cpm",
-                    currency="USD",
-                    is_fixed=False,
-                    price_guidance={"floor": 1.0, "suggested_rate": 5.0},
-                    # No rate field - indicates anonymous user
-                )
+                {
+                    "pricing_option_id": "cpm_usd_auction",
+                    "pricing_model": "cpm",
+                    "currency": "USD",
+                    "price_guidance": {"floor": 1.0, "suggested_rate": 5.0},
+                    # No rate field - indicates anonymous user (auction pricing)
+                }
             ],
         )
         for i in range(2)
@@ -136,24 +116,15 @@ def test_get_products_response_model_dump_still_has_full_data():
         product_id="test",
         name="Test Product",
         description="A test",
-        format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "banner"}],
+        format_ids=[create_test_format_id("banner")],
         delivery_type="guaranteed",
-        is_custom=False,
-        publisher_properties=[
-            {
-                "property_type": "website",
-                "name": "Test Property",
-                "identifiers": [{"type": "domain", "value": "test.com"}],
-                "publisher_domain": "test.com",
-            }
-        ],
+        delivery_measurement={"provider": "test_provider", "notes": "Test measurement"},
+        publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="test.com")],
         pricing_options=[
-            PricingOption(
+            create_test_cpm_pricing_option(
                 pricing_option_id="cpm_usd_fixed",
-                pricing_model="cpm",
-                rate=10.0,
                 currency="USD",
-                is_fixed=True,
+                rate=10.0,
                 min_spend_per_package=100.0,
             )
         ],

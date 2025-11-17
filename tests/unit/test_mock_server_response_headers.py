@@ -7,7 +7,6 @@ the AdCP testing specification.
 
 from datetime import datetime
 
-from src.core.schemas import PricingOption
 from src.core.testing_hooks import (
     AdCPTestContext,
     CampaignEvent,
@@ -123,6 +122,10 @@ class TestMockServerResponseHeaders:
 
     def test_response_headers_without_campaign_info(self):
         """Test response headers when no campaign info is available."""
+        from tests.helpers.adcp_factories import (
+            create_test_format_id,
+            create_test_publisher_properties_by_tag,
+        )
         from src.core.schemas import Product
 
         testing_ctx = AdCPTestContext(dry_run=True, test_session_id="test_no_campaign")
@@ -132,31 +135,21 @@ class TestMockServerResponseHeaders:
             product_id="test",
             name="Test Product",
             description="Real product object for testing",
-            format_ids=[
-                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
-            ],  # Internal field name
+            format_ids=[create_test_format_id("display_300x250")],
             delivery_type="non_guaranteed",
-            is_custom=False,
-            publisher_properties=[
-                {
-                    "property_type": "website",
-                    "name": "Test Property",
-                    "identifiers": [{"type": "domain", "value": "test.com"}],
-                    "publisher_domain": "test.com",
-                }
-            ],
+            delivery_measurement={"provider": "test_provider", "notes": "Test measurement"},
+            publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="test.com")],
             pricing_options=[
-                PricingOption(
-                    pricing_option_id="cpm_usd_auction",
-                    pricing_model="cpm",
-                    currency="USD",
-                    is_fixed=False,
-                    price_guidance={"floor": 1.0, "suggested_rate": 5.0},
-                )
+                {
+                    "pricing_option_id": "cpm_usd_auction",
+                    "pricing_model": "cpm",
+                    "currency": "USD",
+                    "price_guidance": {"floor": 1.0, "suggested_rate": 5.0},
+                }
             ],
         )
 
-        response_data = {"products": [test_product.model_dump_internal()]}
+        response_data = {"products": [test_product.model_dump()]}
 
         result = apply_testing_hooks(response_data, testing_ctx, "get_products")
 
@@ -171,7 +164,8 @@ class TestMockServerResponseHeaders:
         assert "X-Next-Event-Time" not in headers
 
         # CRITICAL: Test roundtrip conversion - this would catch the "formats field required" bug
-        modified_products = [Product(**p) for p in result["products"]]
+        # Filter out computed fields (pricing_summary is a @property, not a model field)
+        modified_products = [Product(**{k: v for k, v in p.items() if k != "pricing_summary"}) for p in result["products"]]
 
         # Verify the roundtrip worked correctly
         assert len(modified_products) == 1
