@@ -21,14 +21,26 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Fix agent URLs in format_ids: creatives → creative."""
-    # Update all products with wrong agent URL in format_ids
+    # Update all format_ids in all products with wrong agent URL
+    # Must iterate through array elements to update ALL formats, not just first one
     op.execute(
         """
         UPDATE products
-        SET format_ids = jsonb_set(
-            format_ids,
-            '{0,agent_url}',
-            '"https://creative.adcontextprotocol.org"'
+        SET format_ids = (
+            SELECT COALESCE(
+                jsonb_agg(
+                    jsonb_build_object(
+                        'agent_url', REPLACE(
+                            elem->>'agent_url',
+                            'creatives.adcontextprotocol.org',
+                            'creative.adcontextprotocol.org'
+                        ),
+                        'id', elem->>'id'
+                    )
+                ),
+                '[]'::jsonb
+            )
+            FROM jsonb_array_elements(format_ids) elem
         )
         WHERE format_ids::text LIKE '%creatives.adcontextprotocol.org%'
     """
@@ -37,14 +49,25 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Revert agent URLs back to creatives."""
-    # Revert the URL change
+    # Revert all format_ids in all products back to old URL
     op.execute(
         """
         UPDATE products
-        SET format_ids = jsonb_set(
-            format_ids,
-            '{0,agent_url}',
-            '"https://creatives.adcontextprotocol.org"'
+        SET format_ids = (
+            SELECT COALESCE(
+                jsonb_agg(
+                    jsonb_build_object(
+                        'agent_url', REPLACE(
+                            elem->>'agent_url',
+                            'creative.adcontextprotocol.org',
+                            'creatives.adcontextprotocol.org'
+                        ),
+                        'id', elem->>'id'
+                    )
+                ),
+                '[]'::jsonb
+            )
+            FROM jsonb_array_elements(format_ids) elem
         )
         WHERE format_ids::text LIKE '%creative.adcontextprotocol.org%'
     """
