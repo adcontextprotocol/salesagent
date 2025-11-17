@@ -181,7 +181,9 @@ class TestMockServerResponseHeaders:
         # format_ids are now FormatId objects per AdCP spec
         assert len(reconstructed_product.format_ids) == 1
         assert reconstructed_product.format_ids[0].id == "display_300x250"
-        assert str(reconstructed_product.format_ids[0].agent_url).rstrip("/") == "https://creative.adcontextprotocol.org"  # AnyUrl adds trailing slash
+        assert (
+            str(reconstructed_product.format_ids[0].agent_url).rstrip("/") == "https://creative.adcontextprotocol.org"
+        )  # AnyUrl adds trailing slash
 
     def test_response_headers_in_debug_mode(self):
         """Test that debug mode includes response header information."""

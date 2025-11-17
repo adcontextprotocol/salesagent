@@ -52,7 +52,6 @@ from src.core.schemas import (
     Targeting,
     TaskStatus,
 )
-from src.core.schemas import PricingOption as PricingOptionSchema
 from src.core.schemas import (
     Principal as PrincipalSchema,
 )
@@ -241,6 +240,11 @@ class TestAdCPContract:
         - estimated_exposures for guaranteed products
         - price_guidance (floor, percentiles) in pricing_options for non-guaranteed products
         """
+        from tests.helpers.adcp_factories import (
+            create_test_cpm_pricing_option,
+            create_test_publisher_properties_by_tag,
+        )
+
         # Test guaranteed product with estimated_exposures
         guaranteed_product = ProductSchema(
             product_id="test_guaranteed",
@@ -248,23 +252,20 @@ class TestAdCPContract:
             description="Test product with exposure estimates",
             format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             delivery_type="guaranteed",
+            delivery_measurement={
+                "provider": "test_provider",
+                "notes": "Test measurement",
+            },  # Required per AdCP spec
             pricing_options=[
-                PricingOptionSchema(
+                create_test_cpm_pricing_option(
                     pricing_option_id="cpm_usd_fixed",
-                    pricing_model="cpm",
-                    rate=15.0,
                     currency="USD",
-                    is_fixed=True,
+                    rate=15.0,
                 )
             ],
             estimated_exposures=50000,
             publisher_properties=[
-                {
-                    "property_type": "website",
-                    "name": "Test Property",
-                    "identifiers": [{"type": "domain", "value": "test.com"}],
-                    "publisher_domain": "test.com",
-                }
+                create_test_publisher_properties_by_tag(publisher_domain="test.com")
             ],  # Required per AdCP spec
         )
 
@@ -280,23 +281,20 @@ class TestAdCPContract:
             description="Test product with CPM guidance",
             format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"}],
             delivery_type="non_guaranteed",
+            delivery_measurement={
+                "provider": "test_provider",
+                "notes": "Test measurement",
+            },  # Required per AdCP spec
             pricing_options=[
-                PricingOptionSchema(
-                    pricing_option_id="cpm_eur_auction",
-                    pricing_model="cpm",
-                    rate=None,
-                    currency="EUR",
-                    is_fixed=False,
-                    price_guidance={"floor": 5.0, "p75": 8.5, "p90": 10.0},
-                )
+                {
+                    "pricing_option_id": "cpm_eur_auction",
+                    "pricing_model": "cpm",
+                    "currency": "EUR",
+                    "price_guidance": {"floor": 5.0, "p75": 8.5, "p90": 10.0},
+                }
             ],
             publisher_properties=[
-                {
-                    "property_type": "website",
-                    "name": "Test Property",
-                    "identifiers": [{"type": "domain", "value": "test.com"}],
-                    "publisher_domain": "test.com",
-                }
+                create_test_publisher_properties_by_tag(publisher_domain="test.com")
             ],  # Required per AdCP spec
         )
 
@@ -329,40 +327,42 @@ class TestAdCPContract:
         AdCP spec requires products to have publisher_properties:
         - publisher_properties: Array of full Property objects for adagents.json validation
         """
-        # Test with publisher_properties (AdCP-compliant approach)
-        from src.core.schemas import Property, PropertyIdentifier
-
-        property_obj = Property(
-            property_type="website",
-            name="Example News Site",
-            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
-            tags=["premium_sports"],
-            publisher_domain="example.com",
+        from tests.helpers.adcp_factories import (
+            create_test_cpm_pricing_option,
+            create_test_publisher_properties_by_tag,
         )
 
+        # Test with publisher_properties (AdCP-compliant approach using factory)
         product_with_properties = ProductSchema(
             product_id="test_product_properties",
             name="Product with Properties",
             description="Product with full property objects",
             format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"}],
             delivery_type="non_guaranteed",
-            publisher_properties=[property_obj],
-            pricing_options=[
-                PricingOptionSchema(
-                    pricing_option_id="cpm_usd_auction",
-                    pricing_model="cpm",
-                    currency="USD",
-                    is_fixed=False,
-                    price_guidance={"floor": 1.0, "suggested_rate": 5.0},
+            delivery_measurement={
+                "provider": "test_provider",
+                "notes": "Test measurement",
+            },  # Required per AdCP spec
+            publisher_properties=[
+                create_test_publisher_properties_by_tag(
+                    publisher_domain="example.com", property_tags=["premium_sports"]
                 )
+            ],
+            pricing_options=[
+                {
+                    "pricing_option_id": "cpm_usd_auction",
+                    "pricing_model": "cpm",
+                    "currency": "USD",
+                    "price_guidance": {"floor": 1.0, "suggested_rate": 5.0},
+                }
             ],
         )
 
         adcp_response = product_with_properties.model_dump()
         assert "publisher_properties" in adcp_response
         assert len(adcp_response["publisher_properties"]) >= 1
-        assert adcp_response["publisher_properties"][0]["property_type"] == "website"
         assert adcp_response["publisher_properties"][0]["publisher_domain"] == "example.com"
+        assert adcp_response["publisher_properties"][0]["property_tags"] == ["premium_sports"]
 
         # Test without publisher_properties should fail (strict validation enabled)
         from pydantic import ValidationError
@@ -374,13 +374,15 @@ class TestAdCPContract:
                 description="Missing property information",
                 format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                 delivery_type="guaranteed",
+                delivery_measurement={
+                    "provider": "test_provider",
+                    "notes": "Test measurement",
+                },  # Required per AdCP spec
                 pricing_options=[
-                    PricingOptionSchema(
+                    create_test_cpm_pricing_option(
                         pricing_option_id="cpm_usd_fixed",
-                        pricing_model="cpm",
-                        rate=10.0,
                         currency="USD",
-                        is_fixed=True,
+                        rate=10.0,
                     )
                 ],
                 # Missing publisher_properties
@@ -419,31 +421,20 @@ class TestAdCPContract:
 
     def test_format_schema_compliance(self):
         """Test that Format schema matches AdCP specifications."""
-        format_data = {
-            "format_id": FormatId(agent_url="https://creative.adcontextprotocol.org", id="native_feed"),
-            "name": "Native Feed Ad",
-            "type": "native",
-            "is_standard": True,
-            "iab_specification": "IAB Native Ad Specification",
-            "requirements": {"width": 300, "height": 250},
-            # assets_required follows new AdCP spec structure (asset_id is required per Oct 17 schema update)
-            "assets_required": [
-                {
-                    "asset_id": "primary_image",
-                    "asset_type": "image",
-                    "quantity": 1,
-                    "requirements": {"width": 300, "height": 250},
-                }
-            ],
-        }
+        from tests.helpers.adcp_factories import create_test_format_id
 
-        format_obj = Format(**format_data)
+        # Create AdCP-compliant Format directly (only fields supported by adcp library)
+        format_obj = Format(
+            format_id=create_test_format_id("native_feed"),
+            name="Native Feed Ad",
+            type="native",
+        )
 
         # AdCP format requirements (new spec structure)
         assert format_obj.format_id is not None
-        assert format_obj.type in ["display", "video", "audio", "native", "dooh"]
-        assert format_obj.is_standard is True
-        assert format_obj.requirements is not None
+        # format_obj.type is an enum, check its value
+        assert format_obj.type.value in ["display", "video", "audio", "native", "dooh"]
+        assert format_obj.name == "Native Feed Ad"
 
     def test_field_mapping_consistency(self):
         """Test that field names are consistent between models and schemas."""
@@ -481,6 +472,11 @@ class TestAdCPContract:
 
     def test_adcp_delivery_type_values(self):
         """Test that delivery_type uses AdCP-compliant values."""
+        from tests.helpers.adcp_factories import (
+            create_test_cpm_pricing_option,
+            create_test_publisher_properties_by_tag,
+        )
+
         # AdCP specifies exactly these two values
         valid_delivery_types = ["guaranteed", "non_guaranteed"]
 
@@ -492,25 +488,21 @@ class TestAdCPContract:
                 description="Test",
                 format_ids=[],
                 delivery_type=delivery_type,
-                publisher_properties=[
-                    {
-                        "property_type": "website",
-                        "name": "Test Property",
-                        "identifiers": [{"type": "domain", "value": "test.com"}],
-                        "publisher_domain": "test.com",
-                    }
-                ],  # Required per AdCP spec
+                delivery_measurement={
+                    "provider": "test_provider",
+                    "notes": "Test measurement",
+                },  # Required per AdCP spec
+                publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="test.com")],
                 pricing_options=[
-                    PricingOptionSchema(
+                    create_test_cpm_pricing_option(
                         pricing_option_id="cpm_usd_fixed",
-                        pricing_model="cpm",
-                        rate=10.0,
                         currency="USD",
-                        is_fixed=True,
+                        rate=10.0,
                     )
                 ],
             )
-            assert product.delivery_type in valid_delivery_types
+            # delivery_type is an enum, check its value
+            assert product.delivery_type.value in valid_delivery_types
 
         # Invalid values should fail
         with pytest.raises(ValueError):
@@ -520,27 +512,27 @@ class TestAdCPContract:
                 description="Test",
                 format_ids=[],
                 delivery_type="programmatic",  # Not AdCP compliant
-                publisher_properties=[
-                    {
-                        "property_type": "website",
-                        "name": "Test Property",
-                        "identifiers": [{"type": "domain", "value": "test.com"}],
-                        "publisher_domain": "test.com",
-                    }
-                ],  # Required per AdCP spec
+                delivery_measurement={
+                    "provider": "test_provider",
+                    "notes": "Test measurement",
+                },  # Required per AdCP spec
+                publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="test.com")],
                 pricing_options=[
-                    PricingOptionSchema(
+                    create_test_cpm_pricing_option(
                         pricing_option_id="cpm_usd_fixed",
-                        pricing_model="cpm",
-                        rate=10.0,
                         currency="USD",
-                        is_fixed=True,
+                        rate=10.0,
                     )
                 ],
             )
 
     def test_adcp_response_excludes_internal_fields(self):
         """Test that AdCP responses don't expose internal fields."""
+        from tests.helpers.adcp_factories import (
+            create_test_cpm_pricing_option,
+            create_test_publisher_properties_by_tag,
+        )
+
         products = [
             ProductSchema(
                 product_id="test",
@@ -548,22 +540,17 @@ class TestAdCPContract:
                 description="Test",
                 format_ids=[],
                 delivery_type="guaranteed",
+                delivery_measurement={
+                    "provider": "test_provider",
+                    "notes": "Test measurement",
+                },  # Required per AdCP spec
                 implementation_config={"internal": "data"},  # Should be excluded
-                publisher_properties=[
-                    {
-                        "property_type": "website",
-                        "name": "Test Property",
-                        "identifiers": [{"type": "domain", "value": "test.com"}],
-                        "publisher_domain": "test.com",
-                    }
-                ],  # Required per AdCP spec
+                publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="test.com")],
                 pricing_options=[
-                    PricingOptionSchema(
+                    create_test_cpm_pricing_option(
                         pricing_option_id="cpm_usd_fixed",
-                        pricing_model="cpm",
-                        rate=10.0,
                         currency="USD",
-                        is_fixed=True,
+                        rate=10.0,
                     )
                 ],
             )
@@ -1478,9 +1465,12 @@ class TestAdCPContract:
 
     def test_get_products_response_adcp_compliance(self):
         """Test that GetProductsResponse complies with AdCP get-products-response schema."""
-
         # Create Product using the actual Product model (not ProductSchema)
         from src.core.schemas import Product as ProductModel
+        from tests.helpers.adcp_factories import (
+            create_test_cpm_pricing_option,
+            create_test_publisher_properties_by_tag,
+        )
 
         product = ProductModel(
             product_id="prod_1",
@@ -1491,24 +1481,19 @@ class TestAdCPContract:
                 {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
             ],
             delivery_type="guaranteed",
+            delivery_measurement={
+                "provider": "test_provider",
+                "notes": "Test measurement",
+            },  # Required per AdCP spec
             measurement=None,
             creative_policy=None,
             is_custom=False,
-            publisher_properties=[
-                {
-                    "property_type": "website",
-                    "name": "Test Property",
-                    "identifiers": [{"type": "domain", "value": "test.com"}],
-                    "publisher_domain": "test.com",
-                }
-            ],  # Required per AdCP spec
+            publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="test.com")],
             pricing_options=[
-                PricingOptionSchema(
+                create_test_cpm_pricing_option(
                     pricing_option_id="cpm_usd_fixed",
-                    pricing_model="cpm",
-                    rate=10.0,
                     currency="USD",
-                    is_fixed=True,
+                    rate=10.0,
                 )
             ],
         )
@@ -2378,35 +2363,35 @@ class TestAdCPContract:
 
     def test_product_publisher_properties_constraint(self):
         """Test that Product requires publisher_properties per AdCP spec."""
-        from src.core.schemas import Product, Property, PropertyIdentifier
+        from src.core.schemas import Product
+        from tests.helpers.adcp_factories import (
+            create_test_cpm_pricing_option,
+            create_test_publisher_properties_by_tag,
+        )
 
-        # Valid: publisher_properties with full Property objects
+        # Valid: publisher_properties using factory
         product_with_properties = Product(
             product_id="p1",
             name="Property Product",
             description="Product using full properties",
             format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
-            publisher_properties=[
-                Property(
-                    property_type="website",
-                    name="Example Site",
-                    identifiers=[PropertyIdentifier(type="domain", value="example.com")],
-                    publisher_domain="example.com",
-                )
-            ],
             delivery_type="guaranteed",
+            delivery_measurement={
+                "provider": "test_provider",
+                "notes": "Test measurement",
+            },  # Required per AdCP spec
+            publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="example.com")],
             pricing_options=[
-                PricingOptionSchema(
+                create_test_cpm_pricing_option(
                     pricing_option_id="cpm_usd_fixed",
-                    pricing_model="cpm",
-                    rate=10.0,
                     currency="USD",
-                    is_fixed=True,
+                    rate=10.0,
                 )
             ],
         )
         assert len(product_with_properties.publisher_properties) == 1
-        assert product_with_properties.publisher_properties[0].name == "Example Site"
+        # publisher_properties is a discriminated union object, access via attribute
+        assert product_with_properties.publisher_properties[0].publisher_domain == "example.com"
 
         # Invalid: missing publisher_properties (required)
         from pydantic import ValidationError
@@ -2418,13 +2403,15 @@ class TestAdCPContract:
                 description="Product without publisher_properties",
                 format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                 delivery_type="guaranteed",
+                delivery_measurement={
+                    "provider": "test_provider",
+                    "notes": "Test measurement",
+                },  # Required per AdCP spec
                 pricing_options=[
-                    PricingOptionSchema(
+                    create_test_cpm_pricing_option(
                         pricing_option_id="cpm_usd_fixed",
-                        pricing_model="cpm",
-                        rate=10.0,
                         currency="USD",
-                        is_fixed=True,
+                        rate=10.0,
                     )
                 ],
                 # Missing publisher_properties - should fail

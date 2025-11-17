@@ -546,10 +546,12 @@ class XandrAdapter(AdServerAdapter):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
                 # Create minimal AdCP-compliant Package response
-                package_responses.append({
-                    "buyer_ref": buyer_ref,
-                    "package_id": package.package_id,
-                })
+                package_responses.append(
+                    {
+                        "buyer_ref": buyer_ref,
+                        "package_id": package.package_id,
+                    }
+                )
 
             return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
@@ -648,10 +650,12 @@ class XandrAdapter(AdServerAdapter):
                 # Build package response - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
                 # - buyer_ref (required)
                 # - package_id (required)
-                package_responses.append({
-                    "buyer_ref": buyer_ref,
-                    "package_id": package.package_id,
-                })
+                package_responses.append(
+                    {
+                        "buyer_ref": buyer_ref,
+                        "package_id": package.package_id,
+                    }
+                )
 
             return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",

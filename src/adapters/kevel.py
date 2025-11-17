@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 import requests
 
@@ -363,10 +363,12 @@ class Kevel(AdServerAdapter):
                 # Build package response - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
                 # - buyer_ref (required)
                 # - package_id (required)
-                package_responses.append({
-                    "buyer_ref": buyer_ref,
-                    "package_id": package.package_id,
-                })
+                package_responses.append(
+                    {
+                        "buyer_ref": buyer_ref,
+                        "package_id": package.package_id,
+                    }
+                )
 
             # Use the actual campaign ID from Kevel
             media_buy_id = f"kevel_{campaign_id}"
@@ -387,10 +389,12 @@ class Kevel(AdServerAdapter):
                 # Build package response - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
                 # - buyer_ref (required)
                 # - package_id (required)
-                package_responses.append({
-                    "buyer_ref": buyer_ref,
-                    "package_id": package.package_id,
-                })
+                package_responses.append(
+                    {
+                        "buyer_ref": buyer_ref,
+                        "package_id": package.package_id,
+                    }
+                )
 
         return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "unknown",

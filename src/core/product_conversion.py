@@ -87,14 +87,12 @@ def convert_product_model_to_schema(product_model) -> Product:
         # Default measurement provider
         product_data["delivery_measurement"] = {
             "provider": "publisher",
-            "notes": "Measurement methodology not specified"
+            "notes": "Measurement methodology not specified",
         }
 
     # pricing_options: Convert database PricingOption models to AdCP discriminated unions
     if product_model.pricing_options:
-        product_data["pricing_options"] = [
-            convert_pricing_option_to_adcp(po) for po in product_model.pricing_options
-        ]
+        product_data["pricing_options"] = [convert_pricing_option_to_adcp(po) for po in product_model.pricing_options]
     else:
         product_data["pricing_options"] = []
 

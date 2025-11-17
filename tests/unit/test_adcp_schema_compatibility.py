@@ -29,7 +29,9 @@ class TestADCPSchemaCompatibility:
         format_obj = Format(**adcp_format_data)
 
         assert format_obj.format_id.id == "display_300x250"
-        assert str(format_obj.format_id.agent_url).rstrip("/") == "https://creative.adcontextprotocol.org"  # AnyUrl adds trailing slash
+        assert (
+            str(format_obj.format_id.agent_url).rstrip("/") == "https://creative.adcontextprotocol.org"
+        )  # AnyUrl adds trailing slash
         assert format_obj.name == "Display 300x250"
         assert format_obj.type == "display"
 
@@ -43,7 +45,9 @@ class TestADCPSchemaCompatibility:
         format_id = FormatId(**adcp_format_id)
 
         assert format_id.id == "video_1920x1080"
-        assert str(format_id.agent_url).rstrip("/") == "https://creative.adcontextprotocol.org"  # AnyUrl adds trailing slash
+        assert (
+            str(format_id.agent_url).rstrip("/") == "https://creative.adcontextprotocol.org"
+        )  # AnyUrl adds trailing slash
 
     def test_format_id_requires_both_fields(self):
         """Test FormatId requires both agent_url and id (AdCP v2.4 compliance)."""
@@ -103,7 +107,9 @@ class TestADCPSchemaCompatibility:
         # Format-level agent_url is preserved
         assert str(format_obj.agent_url).rstrip("/") == "https://custom-agent.example.com"  # AnyUrl adds trailing slash
         # FormatId agent_url is also preserved
-        assert str(format_obj.format_id.agent_url).rstrip("/") == "https://creative.adcontextprotocol.org"  # AnyUrl adds trailing slash
+        assert (
+            str(format_obj.format_id.agent_url).rstrip("/") == "https://creative.adcontextprotocol.org"
+        )  # AnyUrl adds trailing slash
 
     def test_format_with_renders(self):
         """Test Format model handles renders correctly (AdCP v2.4 spec)."""
@@ -217,7 +223,9 @@ class TestADCPSchemaCompatibility:
 
         # Verify all fields match
         assert reconstructed.format_id.id == "roundtrip_format"
-        assert str(reconstructed.format_id.agent_url).rstrip("/") == "https://roundtrip.example.com"  # AnyUrl adds trailing slash
+        assert (
+            str(reconstructed.format_id.agent_url).rstrip("/") == "https://roundtrip.example.com"
+        )  # AnyUrl adds trailing slash
         assert reconstructed.name == "Roundtrip Format"
         assert reconstructed.type == "video"
         assert reconstructed.renders == [{"role": "primary", "dimensions": {"width": 1280, "height": 720}}]

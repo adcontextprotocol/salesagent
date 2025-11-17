@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 import requests
 
@@ -273,10 +273,12 @@ class TritonDigital(AdServerAdapter):
                 # Build package response - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
                 # - buyer_ref (required)
                 # - package_id (required)
-                package_responses.append({
-                    "buyer_ref": buyer_ref,
-                    "package_id": package.package_id,
-                })
+                package_responses.append(
+                    {
+                        "buyer_ref": buyer_ref,
+                        "package_id": package.package_id,
+                    }
+                )
 
             # Use the actual campaign ID from Triton
             media_buy_id = f"triton_{campaign_id}"
@@ -297,10 +299,12 @@ class TritonDigital(AdServerAdapter):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
                 # Create minimal AdCP-compliant Package response
-                package_responses.append({
-                    "buyer_ref": buyer_ref,
-                    "package_id": package.package_id,
-                })
+                package_responses.append(
+                    {
+                        "buyer_ref": buyer_ref,
+                        "package_id": package.package_id,
+                    }
+                )
 
         return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "unknown",

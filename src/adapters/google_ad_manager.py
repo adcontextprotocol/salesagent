@@ -524,10 +524,12 @@ class GoogleAdManager(AdServerAdapter):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
                 # Create minimal AdCP-compliant Package response
-                package_responses.append({
-                    "buyer_ref": buyer_ref,
-                    "package_id": package.package_id,
-                })
+                package_responses.append(
+                    {
+                        "buyer_ref": buyer_ref,
+                        "package_id": package.package_id,
+                    }
+                )
 
             if step_id:
                 return CreateMediaBuySuccess(
@@ -673,7 +675,7 @@ class GoogleAdManager(AdServerAdapter):
             # - buyer_ref (required)
             # - package_id (required)
             package_responses = []
-            for idx, (package, line_item_id) in enumerate(zip(packages, line_item_ids, strict=False)):
+            for idx, (package, _line_item_id) in enumerate(zip(packages, line_item_ids, strict=False)):
                 # Get matching request package for buyer_ref
                 matching_req_package = None
                 if request.packages and idx < len(request.packages):
@@ -684,10 +686,12 @@ class GoogleAdManager(AdServerAdapter):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
                 # Create minimal AdCP-compliant Package response
-                package_responses.append({
-                    "buyer_ref": buyer_ref,
-                    "package_id": package.package_id,
-                })
+                package_responses.append(
+                    {
+                        "buyer_ref": buyer_ref,
+                        "package_id": package.package_id,
+                    }
+                )
 
             return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
@@ -701,7 +705,7 @@ class GoogleAdManager(AdServerAdapter):
         # - buyer_ref (required)
         # - package_id (required)
         package_responses = []
-        for idx, (package, line_item_id) in enumerate(zip(packages, line_item_ids, strict=False)):
+        for idx, (package, _line_item_id) in enumerate(zip(packages, line_item_ids, strict=False)):
             # Get matching request package for buyer_ref
             matching_req_package = None
             if request.packages and idx < len(request.packages):
@@ -712,10 +716,12 @@ class GoogleAdManager(AdServerAdapter):
                 buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
             # Create minimal AdCP-compliant Package response
-            package_responses.append({
-                "buyer_ref": buyer_ref,
-                "package_id": package.package_id,
-            })
+            package_responses.append(
+                {
+                    "buyer_ref": buyer_ref,
+                    "package_id": package.package_id,
+                }
+            )
 
         return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "", media_buy_id=order_id, creative_deadline=None, packages=package_responses

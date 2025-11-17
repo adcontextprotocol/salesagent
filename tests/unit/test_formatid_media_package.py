@@ -35,7 +35,9 @@ class TestMediaPackageFormatIds:
         assert len(package.format_ids) == 1
         assert isinstance(package.format_ids[0], FormatId)
         assert package.format_ids[0].id == "display_300x250"
-        assert str(package.format_ids[0].agent_url).rstrip("/") == DEFAULT_AGENT_URL.rstrip("/")  # AnyUrl adds trailing slash
+        assert str(package.format_ids[0].agent_url).rstrip("/") == DEFAULT_AGENT_URL.rstrip(
+            "/"
+        )  # AnyUrl adds trailing slash
 
     def test_media_package_accepts_multiple_format_ids(self):
         """MediaPackage must accept multiple FormatId objects."""

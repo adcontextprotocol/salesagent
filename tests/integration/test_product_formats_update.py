@@ -43,7 +43,11 @@ def sample_product(integration_db):
             description=product_data.description,
             format_ids=[fmt.model_dump(mode="json") for fmt in product_data.format_ids],
             targeting_template={},
-            delivery_type=product_data.delivery_type.value if hasattr(product_data.delivery_type, 'value') else product_data.delivery_type,
+            delivery_type=(
+                product_data.delivery_type.value
+                if hasattr(product_data.delivery_type, "value")
+                else product_data.delivery_type
+            ),
             property_tags=["all_inventory"],
         )
         session.add(product)

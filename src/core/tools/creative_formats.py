@@ -135,7 +135,7 @@ def list_creative_formats(
     category: str | None = None,
     format_ids: list[str] | None = None,
     webhook_url: str | None = None,
-    context: dict | None = None, # Application level context per adcp spec
+    context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """List all available creative formats (AdCP spec endpoint).

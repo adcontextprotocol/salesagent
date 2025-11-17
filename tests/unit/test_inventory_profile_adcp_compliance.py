@@ -49,7 +49,9 @@ def test_profile_formats_match_adcp_format_id_schema():
 
         # Validate using Pydantic schema
         format_obj = FormatId(**format_dict)
-        assert str(format_obj.agent_url).rstrip("/") == format_dict["agent_url"].rstrip("/")  # AnyUrl adds trailing slash
+        assert str(format_obj.agent_url).rstrip("/") == format_dict["agent_url"].rstrip(
+            "/"
+        )  # AnyUrl adds trailing slash
         assert format_obj.id == format_dict["id"]
 
         # Verify no extra fields (AdCP compliance)

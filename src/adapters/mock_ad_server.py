@@ -792,10 +792,12 @@ class MockAdServer(AdServerAdapter):
                 buyer_ref = request.packages[idx].buyer_ref or buyer_ref
 
             # Create minimal AdCP-compliant Package response (only buyer_ref + package_id)
-            response_packages.append({
-                "buyer_ref": buyer_ref,
-                "package_id": package_id,
-            })
+            response_packages.append(
+                {
+                    "buyer_ref": buyer_ref,
+                    "package_id": package_id,
+                }
+            )
 
         self.log(f"[DEBUG] MockAdapter: Returning {len(response_packages)} packages in response")
         return CreateMediaBuySuccess(

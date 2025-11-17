@@ -1,6 +1,5 @@
 """Database-backed product catalog provider (current implementation)."""
 
-import json
 import logging
 from typing import Any
 
@@ -8,9 +7,8 @@ from sqlalchemy.orm import joinedload
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ProductModel
-from src.core.database.product_pricing import get_product_pricing_options
 from src.core.product_conversion import convert_product_model_to_schema
-from src.core.schemas import PriceGuidance, PricingModel, PricingOption, PricingParameters, Product
+from src.core.schemas import Product
 
 from .base import ProductCatalogProvider
 
