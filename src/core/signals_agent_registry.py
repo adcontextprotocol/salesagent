@@ -31,9 +31,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from adcp import ADCPMultiAgentClient, AgentConfig
+from adcp import ADCPMultiAgentClient, AgentConfig, Protocol
 from adcp.exceptions import ADCPAuthenticationError, ADCPConnectionError, ADCPError, ADCPTimeoutError
-from adcp.types.generated import GetSignalsRequest
+from adcp.types.generated import DeliverTo, Destination1, GetSignalsRequest
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ class SignalsAgentRegistry:
             config = AgentConfig(
                 id=agent.name,  # Use name as ID for readability
                 agent_uri=agent.agent_url,
-                protocol="mcp",  # Signals agents use MCP protocol
+                protocol=Protocol.MCP,  # Signals agents use MCP protocol
                 auth_token=auth_token,
                 auth_type=auth_type,
                 auth_header=agent.auth_header or "x-adcp-auth",
@@ -186,15 +186,15 @@ class SignalsAgentRegistry:
             # Build deliver_to (required in new schema)
             # Per AdCP spec, deliver_to requires countries and destinations arrays
             # destinations requires at least 1 item - use a generic "all platforms" destination
-            deliver_to = {
-                "countries": [],  # Empty = all countries
-                "destinations": [
-                    {
-                        "type": "platform",  # Generic platform destination
-                        "platform": "all",  # All platforms
-                    }
+            deliver_to = DeliverTo(
+                countries=[],  # Empty = all countries
+                destinations=[
+                    Destination1(
+                        type="platform",  # Generic platform destination
+                        platform="all",  # All platforms
+                    )
                 ],
-            }
+            )
 
             # Create typed request (AdCP v2.2.0 format)
             request = GetSignalsRequest(
@@ -214,6 +214,9 @@ class SignalsAgentRegistry:
             # Handle response based on status
             if result.status == "completed":
                 # Synchronous completion
+                if result.data is None:
+                    logger.warning("Completed status but no data in response")
+                    return []
                 signals = result.data.signals
                 total_duration = time.time() - start_time
                 logger.info(f"[TIMING] Got {len(signals)} signals synchronously in {total_duration:.2f}s total")
@@ -224,6 +227,9 @@ class SignalsAgentRegistry:
             elif result.status == "submitted":
                 # Asynchronous completion - webhook registered
                 total_duration = time.time() - start_time
+                if result.submitted is None:
+                    logger.warning("Submitted status but no submitted info in response")
+                    return []
                 logger.info(
                     f"[TIMING] Async operation submitted in {total_duration:.2f}s, "
                     f"webhook: {result.submitted.webhook_url}"

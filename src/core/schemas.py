@@ -21,6 +21,7 @@ from adcp.types.aliases import (
 )
 from adcp.types.generated import Error, PushNotificationConfig
 from adcp.types.generated_poc.format import Format as LibraryFormat
+from adcp.types.generated_poc.format import Type as FormatTypeEnum
 from adcp.types.generated_poc.format_id import FormatId as LibraryFormatId
 
 # Import library Product, Format, and FormatId to ensure we use canonical AdCP schema
@@ -254,8 +255,7 @@ CreateMediaBuyResponse = CreateMediaBuySuccess | CreateMediaBuyError
 class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
     """Successful update_media_buy response extending adcp v1.2.1 type.
 
-    Extends the official adcp UpdateMediaBuySuccess type with internal workflow tracking
-    and affected_packages field.
+    Extends the official adcp UpdateMediaBuySuccess type with internal workflow tracking.
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
@@ -263,7 +263,7 @@ class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
 
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
-    affected_packages: list[dict[str, Any]] = Field(default_factory=list, description="Packages affected by update")
+    # Note: affected_packages is defined in parent class (AdCPUpdateMediaBuySuccess)
 
     @model_serializer(mode="wrap")
     def _serialize_model(self, serializer, info):
@@ -696,7 +696,7 @@ def convert_format_ids_to_formats(format_ids: list[str], tenant_id: str | None =
                 Format(  # type: ignore[call-arg]
                     format_id=FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id=format_id),
                     name=format_id.replace("_", " ").title(),
-                    type="display",  # Default to display
+                    type=FormatTypeEnum.display,  # Default to display type
                 )
             )
     return formats
@@ -1141,7 +1141,18 @@ class Product(LibraryProduct):
 
         summary_parts = []
         for option in self.pricing_options:
-            model = option.pricing_model.value if hasattr(option.pricing_model, "value") else option.pricing_model
+            # Handle both enum and string pricing_model
+            # pricing_model could be Literal string or enum with .value
+            pricing_model = option.pricing_model
+            if isinstance(pricing_model, str):
+                # It's already a string (Literal)
+                model = pricing_model
+            elif hasattr(pricing_model, "value"):
+                # It's an enum
+                model = pricing_model.value
+            else:
+                # Fallback: convert to string
+                model = str(pricing_model)
             model_upper = model.upper()
 
             # Discriminated union: presence of 'rate' means fixed, 'price_guidance' means auction
@@ -1286,13 +1297,7 @@ class UpdatePerformanceIndexResponse(AdCPBaseModel):
 
 
 # --- Discovery ---
-class FormatType(str, Enum):
-    """Valid format types per AdCP spec."""
-
-    VIDEO = "video"
-    DISPLAY = "display"
-    AUDIO = "audio"
-    # Note: "native" is not in cached AdCP schema v1.6.0, only video/display/audio
+# Note: FormatType is imported from adcp library as FormatTypeEnum
 
 
 class DeliveryType(str, Enum):
@@ -1313,7 +1318,7 @@ class ProductFilters(BaseModel):
         None,
         description="Filter for fixed price vs auction products",
     )
-    format_types: list[FormatType] | None = Field(
+    format_types: list[FormatTypeEnum] | None = Field(
         None,
         description="Filter by format types",
     )
@@ -1607,8 +1612,8 @@ class Creative(AdCPBaseModel):
 
     @property
     def format_agent_url(self) -> str:
-        """Get agent URL from FormatId object."""
-        return self.format.agent_url
+        """Get agent URL string from FormatId object."""
+        return str(self.format.agent_url)
 
     def model_dump(self, **kwargs):
         """Override to exclude internal fields by default for AdCP compliance."""

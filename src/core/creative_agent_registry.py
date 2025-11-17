@@ -18,8 +18,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from adcp import ADCPMultiAgentClient, AgentConfig, ListCreativeFormatsRequest
+from adcp import ADCPMultiAgentClient, AgentConfig, ListCreativeFormatsRequest, Protocol
 from adcp.exceptions import ADCPAuthenticationError, ADCPConnectionError, ADCPError, ADCPTimeoutError
+from adcp.types.generated_poc.list_creative_formats_request import AssetType, Type as FormatType
 
 from src.core.schemas import Format, FormatId
 from src.core.utils.mcp_client import create_mcp_client  # Keep for custom tools (preview, build)
@@ -105,7 +106,7 @@ class CreativeAgentRegistry:
             config = AgentConfig(
                 id=agent.name,
                 agent_uri=agent.agent_url,
-                protocol="mcp",
+                protocol=Protocol.MCP,
                 auth_token=auth_token,
                 auth_type=auth_type,
                 auth_header=agent.auth_header or "x-adcp-auth",
@@ -199,6 +200,16 @@ class CreativeAgentRegistry:
         logger = logging.getLogger(__name__)
 
         try:
+            # Convert string asset_types to AssetType enums
+            typed_asset_types: list[AssetType] | None = None
+            if asset_types:
+                typed_asset_types = [AssetType(at) for at in asset_types]
+
+            # Convert string type_filter to FormatType enum
+            typed_format_type: FormatType | None = None
+            if type_filter:
+                typed_format_type = FormatType(type_filter)
+
             # Build request parameters
             request = ListCreativeFormatsRequest(
                 max_width=max_width,
@@ -206,9 +217,9 @@ class CreativeAgentRegistry:
                 min_width=min_width,
                 min_height=min_height,
                 is_responsive=is_responsive,
-                asset_types=asset_types,
+                asset_types=typed_asset_types,
                 name_search=name_search,
-                type=type_filter,
+                type=typed_format_type,
             )
 
             # Call agent using adcp library
@@ -219,8 +230,12 @@ class CreativeAgentRegistry:
             # Handle response based on status
             if result.status == "completed":
                 formats_data = result.data
+                if formats_data is None:
+                    logger.warning("Completed status but no data in response")
+                    return []
+
                 logger.info(
-                    f"_fetch_formats_from_agent: Got response with {len(formats_data.formats) if formats_data and hasattr(formats_data, 'formats') else 'N/A'} formats"
+                    f"_fetch_formats_from_agent: Got response with {len(formats_data.formats) if hasattr(formats_data, 'formats') else 'N/A'} formats"
                 )
 
                 # Convert to Format objects
