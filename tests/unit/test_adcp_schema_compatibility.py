@@ -33,7 +33,7 @@ class TestADCPSchemaCompatibility:
             str(format_obj.format_id.agent_url).rstrip("/") == "https://creative.adcontextprotocol.org"
         )  # AnyUrl adds trailing slash
         assert format_obj.name == "Display 300x250"
-        assert format_obj.type == "display"
+        assert format_obj.type.value == "display"  # Type is an enum, compare with .value
 
     def test_format_id_from_adcp_response(self):
         """Test FormatId model can be created from adcp library format_id."""
@@ -90,8 +90,8 @@ class TestADCPSchemaCompatibility:
         assert signal.pricing.cpm == 5.0
 
     def test_format_with_agent_url_override(self):
-        """Test Format model allows agent_url to be set at top level."""
-        # adcp library sets agent_url at Format level (not just in FormatId)
+        """Test Format model does NOT allow agent_url at top level (only in format_id)."""
+        # Per adcp library schema, agent_url only exists in format_id, not at Format level
         adcp_format_data = {
             "format_id": {
                 "agent_url": "https://creative.adcontextprotocol.org",
@@ -99,17 +99,15 @@ class TestADCPSchemaCompatibility:
             },
             "name": "Display 728x90",
             "type": "display",
-            "agent_url": "https://custom-agent.example.com",  # Top-level override
         }
 
         format_obj = Format(**adcp_format_data)
 
-        # Format-level agent_url is preserved
-        assert str(format_obj.agent_url).rstrip("/") == "https://custom-agent.example.com"  # AnyUrl adds trailing slash
-        # FormatId agent_url is also preserved
+        # Only FormatId has agent_url
         assert (
             str(format_obj.format_id.agent_url).rstrip("/") == "https://creative.adcontextprotocol.org"
         )  # AnyUrl adds trailing slash
+        assert format_obj.type.value == "display"  # Type is an enum
 
     def test_format_with_renders(self):
         """Test Format model handles renders correctly (AdCP v2.4 spec)."""
@@ -120,11 +118,17 @@ class TestADCPSchemaCompatibility:
             },
             "name": "Test Format",
             "type": "display",
-            "renders": [{"role": "primary", "dimensions": {"width": 1920, "height": 1080}}],
+            "renders": [{"role": "primary", "dimensions": {"width": 1920, "height": 1080, "unit": "px"}}],
         }
 
         format_obj = Format(**format_data)
-        assert format_obj.renders == [{"role": "primary", "dimensions": {"width": 1920, "height": 1080}}]
+        assert format_obj.type.value == "display"  # Type is an enum
+        # Renders is a list of Render objects (Pydantic models), compare dict representation
+        assert len(format_obj.renders) == 1
+        assert format_obj.renders[0].role == "primary"
+        assert format_obj.renders[0].dimensions.width == 1920
+        assert format_obj.renders[0].dimensions.height == 1080
+        assert format_obj.renders[0].dimensions.unit.value == "px"  # Unit is an enum
 
     def test_format_minimal_required_fields(self):
         """Test Format model works with only required fields."""
@@ -139,7 +143,7 @@ class TestADCPSchemaCompatibility:
 
         format_obj = Format(**format_data)
         assert format_obj.name == "Minimal Format"
-        assert format_obj.type == "audio"
+        assert format_obj.type.value == "audio"  # Type is an enum, compare with .value
         assert format_obj.renders is None
 
     def test_format_with_platform_config(self):
@@ -208,8 +212,7 @@ class TestADCPSchemaCompatibility:
             },
             "name": "Roundtrip Format",
             "type": "video",
-            "renders": [{"role": "primary", "dimensions": {"width": 1280, "height": 720}}],
-            "agent_url": "https://roundtrip.example.com",
+            "renders": [{"role": "primary", "dimensions": {"width": 1280, "height": 720, "unit": "px"}}],
         }
 
         # Create format from data
@@ -227,5 +230,10 @@ class TestADCPSchemaCompatibility:
             str(reconstructed.format_id.agent_url).rstrip("/") == "https://roundtrip.example.com"
         )  # AnyUrl adds trailing slash
         assert reconstructed.name == "Roundtrip Format"
-        assert reconstructed.type == "video"
-        assert reconstructed.renders == [{"role": "primary", "dimensions": {"width": 1280, "height": 720}}]
+        assert reconstructed.type.value == "video"  # Type is an enum, compare with .value
+        # Renders is a list of Render Pydantic objects
+        assert len(reconstructed.renders) == 1
+        assert reconstructed.renders[0].role == "primary"
+        assert reconstructed.renders[0].dimensions.width == 1280
+        assert reconstructed.renders[0].dimensions.height == 720
+        assert reconstructed.renders[0].dimensions.unit.value == "px"  # Unit is an enum
