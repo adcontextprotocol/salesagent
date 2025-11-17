@@ -183,6 +183,18 @@ def _extract_creative_url_and_dimensions(
 ) -> tuple[str | None, int | None, int | None]:
     """Extract URL and dimensions from creative data.
 
+    TECHNICAL DEBT: Handles mixed creative data structures in production.
+    - Modern (AdCP v2.4): data.assets[asset_id] with typed asset objects (~10% of creatives)
+    - Legacy: data.url, data.width, data.height at top-level (~90% of creatives)
+
+    Production Status (2025-01-17): 89 legacy, 10 modern creatives.
+    This extraction function provides backwards compatibility until legacy creatives are migrated.
+
+    TODO: Full migration path:
+    1. Refactor Creative schemas to extend adcp library types (like ProductFilters pattern)
+    2. Create data migration script for 89 legacy creatives
+    3. Remove this extraction function once all creatives use AdCP v2.4 structure
+
     Extraction priority:
     1. Format spec assets_required (most specific - AdCP v2.4 compliant)
     2. Top-level fields (backwards compatibility)
