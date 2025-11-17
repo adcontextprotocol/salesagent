@@ -1,6 +1,6 @@
 """Test that Product format_ids are serialized as proper FormatId objects."""
 
-from src.core.schemas import FormatId, PricingOption, Product
+from tests.helpers.adcp_factories import create_test_product
 
 
 def test_product_format_ids_serialize_as_objects():
@@ -9,33 +9,10 @@ def test_product_format_ids_serialize_as_objects():
     This test verifies the fix for the Wonderstruck issue where format_ids were
     being serialized as string representations instead of proper objects.
     """
-    product = Product(
+    # Use factory - automatically creates valid Product with FormatId objects
+    product = create_test_product(
         product_id="test-product",
-        name="Test Product",
-        description="Test Description",
-        format_ids=[
-            FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-            FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
-        ],
-        delivery_type="guaranteed",
-        publisher_properties=[
-            {
-                "property_type": "website",
-                "name": "Test Property",
-                "identifiers": [{"type": "domain", "value": "test.com"}],
-                "publisher_domain": "test.com",
-            }
-        ],
-        pricing_options=[
-            PricingOption(
-                pricing_option_id="opt1",
-                pricing_model="cpm",
-                is_auction=True,
-                is_fixed=False,
-                currency="USD",
-                price_guidance={"floor": 5.0, "ceiling": 10.0},
-            )
-        ],
+        format_ids=["display_300x250", "display_728x90"],  # Factory converts to FormatId objects
     )
 
     # Serialize using model_dump with alias (this is what gets sent to clients)
@@ -66,32 +43,12 @@ def test_product_format_ids_with_custom_agent():
 
     This ensures we support format IDs from different creative agent implementations.
     """
-    product = Product(
+    # Use factory with mixed format IDs - some from standard agent, some from custom
+    product = create_test_product(
         product_id="test-product",
-        name="Test Product",
-        description="Test Description",
         format_ids=[
-            FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-            FormatId(agent_url="https://custom-publisher.com/.well-known/adcp/sales", id="custom_format"),
-        ],
-        delivery_type="guaranteed",
-        publisher_properties=[
-            {
-                "property_type": "website",
-                "name": "Test Property",
-                "identifiers": [{"type": "domain", "value": "test.com"}],
-                "publisher_domain": "test.com",
-            }
-        ],
-        pricing_options=[
-            PricingOption(
-                pricing_option_id="opt1",
-                pricing_model="cpm",
-                is_auction=True,
-                is_fixed=False,
-                currency="USD",
-                price_guidance={"floor": 5.0, "ceiling": 10.0},
-            )
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+            {"agent_url": "https://custom-publisher.com/.well-known/adcp/sales", "id": "custom_format"},
         ],
     )
 
