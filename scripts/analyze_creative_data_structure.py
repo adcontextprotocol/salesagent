@@ -9,7 +9,6 @@ This script queries creatives from both local and production databases to unders
 
 import json
 import os
-import sys
 from collections import Counter
 from typing import Any
 
@@ -116,12 +115,12 @@ def query_database(db_url: str, label: str) -> None:
             pct = (count / len(creatives)) * 100
             print(f"  {struct_type:15s}: {count:3d} ({pct:5.1f}%)")
 
-        print(f"\nField Presence:")
+        print("\nField Presence:")
         print(f"  With 'assets' dict:        {has_assets_count} creatives")
         print(f"  With legacy top-level:     {has_legacy_fields_count} creatives")
 
         # Print sample structures
-        print(f"\nSample Structures:")
+        print("\nSample Structures:")
         for i, sample in enumerate(sample_structures, 1):
             print(f"\n  Sample {i}: {sample['structure']['type']}")
             print(f"    Creative ID: {sample['creative_id']}")
@@ -131,7 +130,7 @@ def query_database(db_url: str, label: str) -> None:
             print(f"    Structure: {json.dumps(sample['structure'], indent=6)}")
 
         # Query for actual data examples
-        print(f"\nDetailed Data Examples:")
+        print("\nDetailed Data Examples:")
         for struct_type in ["adcp_v2.4", "legacy", "unknown"]:
             cursor.execute(
                 """

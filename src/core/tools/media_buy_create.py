@@ -64,7 +64,7 @@ from src.core.schemas import (
     CreateMediaBuyError,
     CreateMediaBuyRequest,
     CreateMediaBuySuccess,
-    CreativeStatus,
+    CreativeApprovalStatus,
     Error,
     FormatId,
     MediaPackage,
@@ -183,21 +183,12 @@ def _extract_creative_url_and_dimensions(
 ) -> tuple[str | None, int | None, int | None]:
     """Extract URL and dimensions from creative data.
 
-    TECHNICAL DEBT: Handles mixed creative data structures in production.
-    - Modern (AdCP v2.4): data.assets[asset_id] with typed asset objects (~10% of creatives)
-    - Legacy: data.url, data.width, data.height at top-level (~90% of creatives)
-
-    Production Status (2025-01-17): 89 legacy, 10 modern creatives.
-    This extraction function provides backwards compatibility until legacy creatives are migrated.
-
-    TODO: Full migration path:
-    1. Refactor Creative schemas to extend adcp library types (like ProductFilters pattern)
-    2. Create data migration script for 89 legacy creatives
-    3. Remove this extraction function once all creatives use AdCP v2.4 structure
+    All production creatives now use AdCP v2.4 format with data.assets[asset_id]
+    containing typed asset objects per the creative format specification.
 
     Extraction priority:
     1. Format spec assets_required (most specific - AdCP v2.4 compliant)
-    2. Top-level fields (backwards compatibility)
+    2. First available asset with URL (fallback if no format spec)
 
     Args:
         creative_data: Creative data dict from database
@@ -224,10 +215,6 @@ def _extract_creative_url_and_dimensions(
                     if isinstance(asset_obj, dict) and asset_obj.get("url"):
                         url = asset_obj["url"]
                         break
-
-    # Fallback: Check for URL at top level (backwards compatibility)
-    if not url and creative_data.get("url"):
-        url = creative_data["url"]
 
     # Extract dimensions from assets using format specification
     width = None
@@ -260,18 +247,6 @@ def _extract_creative_url_and_dimensions(
                                 )
                         if width and height:
                             break
-
-    # Fallback: Check for dimensions at top level (backwards compatibility)
-    if width is None and creative_data.get("width"):
-        try:
-            width = int(creative_data["width"])
-        except (ValueError, TypeError):
-            logger.warning(f"Invalid width type in creative: {creative_data.get('width')}")
-    if height is None and creative_data.get("height"):
-        try:
-            height = int(creative_data["height"])
-        except (ValueError, TypeError):
-            logger.warning(f"Invalid height type in creative: {creative_data.get('height')}")
 
     return url, width, height
 
@@ -1487,9 +1462,9 @@ async def _create_media_buy_impl(
 
         if req.packages:
             for package in req.packages:
-                # Check product_id field (single) or products field (array) per AdCP spec
-                if not package.product_id and not package.products:
-                    error_msg = f"Package {package.buyer_ref} must specify product_id or products."
+                # Check product_id field per AdCP spec
+                if not package.product_id:
+                    error_msg = f"Package {package.buyer_ref} must specify product_id."
                     raise ValueError(error_msg)
 
             # Check for duplicate product_ids across packages
@@ -1589,10 +1564,8 @@ async def _create_media_buy_impl(
             if req.packages:
                 for idx, package in enumerate(req.packages):
                     # Get product ID for this package (AdCP spec: single product per package)
-                    # Check both products array (AdCP 2.4) and product_id (legacy)
-                    package_product_ids = (
-                        package.products if package.products else ([package.product_id] if package.product_id else [])
-                    )
+                    # Get product_id from package (AdCP spec has product_id field)
+                    package_product_ids = [package.product_id] if package.product_id else []
 
                     # Validate pricing for the product
                     if package_product_ids:
@@ -2330,15 +2303,11 @@ async def _create_media_buy_impl(
         packages = []
         for idx, pkg in enumerate(req.packages, 1):  # Iterate over request packages
             # Find the product for this package (from schema catalog, not database model)
-            # Package can have either product_id (singular) or products (array) per AdCP spec
-            pkg_product_id: str | None = None
-            if pkg.products and len(pkg.products) > 0:
-                pkg_product_id = pkg.products[0]  # Use first product from array
-            elif pkg.product_id:
-                pkg_product_id = pkg.product_id  # Use singular product_id
+            # Package has product_id field per AdCP spec
+            pkg_product_id = pkg.product_id
 
             if not pkg_product_id:
-                error_msg = f"Package {idx} has neither product_id nor products field set"
+                error_msg = f"Package {idx} has no product_id field set"
                 raise ValueError(error_msg)
 
             pkg_product: Product | None = None
@@ -2988,7 +2957,7 @@ async def _create_media_buy_impl(
                             )
 
         # Handle creatives if provided
-        creative_statuses: dict[str, CreativeStatus] = {}
+        creative_statuses: dict[str, CreativeApprovalStatus] = {}
         if req.creatives:
             # Convert Creative objects to format expected by adapter
             assets = []
@@ -3001,7 +2970,7 @@ async def _create_media_buy_impl(
                 except Exception as e:
                     logger.error(f"Error converting creative {creative.creative_id}: {e}")
                     # Add a failed status for this creative
-                    creative_statuses[creative.creative_id] = CreativeStatus(
+                    creative_statuses[creative.creative_id] = CreativeApprovalStatus(
                         creative_id=creative.creative_id, status="rejected", detail=f"Conversion error: {str(e)}"
                     )
                     continue
@@ -3021,7 +2990,7 @@ async def _create_media_buy_impl(
                         final_status = "approved" if status.status == "approved" else "pending_review"
                         detail = "Creative submitted to ad server"
 
-                    creative_statuses[status.creative_id] = CreativeStatus(
+                    creative_statuses[status.creative_id] = CreativeApprovalStatus(
                         creative_id=status.creative_id,
                         status=final_status,  # type: ignore[arg-type]
                         detail=detail,

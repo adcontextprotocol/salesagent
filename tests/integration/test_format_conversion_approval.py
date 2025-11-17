@@ -26,7 +26,15 @@ from src.core.database.models import (
 from src.core.tools.media_buy_create import execute_approved_media_buy
 
 
-def create_media_package(media_buy_id: str, package_id: str, product_id: str, budget: float, tenant_id: str):
+def create_media_package(
+    media_buy_id: str,
+    package_id: str,
+    product_id: str,
+    budget: float,
+    tenant_id: str,
+    buyer_ref: str = "pkg_buyer_ref",
+    pricing_option_id: str = "pricing_opt_1",
+):
     """Helper function to create MediaPackage record (required for execute_approved_media_buy)."""
     with get_db_session() as session:
         media_package = MediaPackage(
@@ -36,7 +44,9 @@ def create_media_package(media_buy_id: str, package_id: str, product_id: str, bu
             package_config={
                 "package_id": package_id,
                 "product_id": product_id,
+                "buyer_ref": buyer_ref,
                 "budget": budget,
+                "pricing_option_id": pricing_option_id,
             },
         )
         session.add(media_package)
@@ -214,7 +224,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -313,7 +325,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -411,7 +425,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -508,7 +524,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -608,7 +626,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -706,7 +726,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1500.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -803,7 +825,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -895,7 +919,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -1003,7 +1029,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 2000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -1095,7 +1123,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },

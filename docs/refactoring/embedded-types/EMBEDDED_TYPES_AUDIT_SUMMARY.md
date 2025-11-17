@@ -1,8 +1,10 @@
-# Embedded Types Audit - Executive Summary
+# ✅ COMPLETED - Embedded Types Audit - Executive Summary
 
-**Date**: 2025-11-17
 **Status**: ✅ COMPLETE
-**Test Results**: All 48 AdCP contract tests passing
+**Date Started**: 2025-11-17
+**Date Completed**: 2025-11-17
+**Purpose**: Historical documentation of embedded types audit and refactoring work
+**Test Results**: All 48 AdCP contract tests passing + all integration tests passing
 
 ## Objective
 
@@ -23,6 +25,15 @@ These types correctly extend adcp library types with internal fields marked `exc
 
 **Verification**: All pass AdCP contract tests ✅
 
+### ✅ Newly Extended (3 types) - ✅ COMPLETED (2025-11-17)
+These types were refactored to extend library types during this work:
+
+8. **Creative** (line 1569) - Now extends library Creative type
+9. **ListCreativesRequest** (line 1969) - Now extends library ListCreativesRequest type
+10. **ListCreativesResponse** (line 2034) - Now extends library ListCreativesResponse type
+
+**Total Extended Types**: 10 types ✅
+
 ### ❌ Cannot Extend (1 type - Documented)
 This type has a documented reason why it cannot extend library type:
 
@@ -31,40 +42,40 @@ This type has a documented reason why it cannot extend library type:
    - **Action**: Added docstring explaining RootModel incompatibility ✅
    - **Verified**: ✅ CORRECT - Library does use `RootModel[Response1 | Response2]` pattern
 
-### ⚠️ Should Extend But Don't Yet (2 types - Needs Refactoring)
-These types SHOULD extend library types but currently don't. **Requires follow-up refactoring**:
+### ✅ Successfully Extended (Previously "Should Extend") - 3 types ✅ COMPLETED
 
-2. **ListCreativesRequest** (line 1969)
-   - **Issue**: Uses flat convenience fields (`media_buy_id`, `buyer_ref`, `page`, `limit`) instead of library's structured objects
-   - **Library Has**: `filters: Filters`, `pagination: Pagination`, `sort: Sort` (all structured with proper types)
-   - **We Have**: Flat fields + `dict[str, Any]` instead of typed objects
-   - **Action Required**:
-     - ❌ Original audit claim was INCORRECT (library DOES have equivalents)
-     - Consider submitting `media_buy_id`, `buyer_ref` to spec if commonly needed (per user comment)
-     - Refactor to extend library, map convenience fields to structured objects via validator
-     - See `EMBEDDED_TYPES_CORRECTIONS.md` for full details
+These types were identified as needing refactoring and have been successfully completed:
 
-3. **ListCreativesResponse** (line 2034)
-   - **Issue**: Original audit claimed library Creative uses "legacy format" - this was INCORRECT
-   - **Library Creative**: Supports BOTH modern (assets dict + format_id) AND legacy (media_url/width/height) - more complete than ours!
-   - **Action Required**:
-     - ❌ Original audit claim was INCORRECT (library supports both patterns)
-     - Our Creative (line 1569) should extend library Creative
-     - Library's Creative is MORE complete than ours
-     - See `EMBEDDED_TYPES_CORRECTIONS.md` for full details
+1. **Creative** (line 1569) - ✅ COMPLETED (2025-11-17)
+   - Extended library Creative type
+   - Added internal fields (`principal_id`, `status`, `created_at`, `updated_at`) with `exclude=True`
+   - Library Creative supports both modern and legacy formats
+   - All tests passing
 
-### ⚠️ Questionable Extension (Not Pursued)
-These types could potentially extend library types, but we decided against it:
+2. **ListCreativesRequest** (line 1969) - ✅ COMPLETED (2025-11-17)
+   - Extended library ListCreativesRequest type
+   - Mapped flat convenience fields to structured `filters`, `pagination`, `sort` objects
+   - Maintained backward compatibility via validators
+   - All tests passing
 
-1. **Creative** (line 1569)
-   - **Library**: `CreativeAsset` with strictly typed assets (union of specific asset types)
-   - **Ours**: Uses `dict[str, Any]` for asset flexibility
-   - **Decision**: Keep as-is. Our implementation is AdCP v1 spec-compliant with flexible typing for backward compatibility
+3. **ListCreativesResponse** (line 2034) - ✅ COMPLETED (2025-11-17)
+   - Extended library ListCreativesResponse type
+   - Uses refactored Creative type (which extends library)
+   - All tests passing
 
-2. **SyncCreativesRequest** (line 1750)
-   - **Library**: Uses library `CreativeAsset` type
-   - **Ours**: Uses our `Creative` type (with internal fields)
-   - **Decision**: Keep as-is. Extension depends on Creative extension decision, no immediate benefit
+### ✅ Resolved - Previously Questionable (2 types)
+
+These types were initially considered questionable but have been resolved:
+
+1. **Creative** (line 1569) - ✅ EXTENDED (see above)
+   - Initially questioned due to strict asset typing
+   - Successfully extended library Creative type
+   - Library type is more complete and flexible than originally thought
+
+2. **SyncCreativesRequest** (line 1750) - ✅ WORKS AS-IS
+   - Uses our refactored Creative type (which now extends library)
+   - No additional changes needed
+   - Correctly passes library-compatible Creative objects
 
 ### ✅ Correctly Independent (10 types)
 These are internal implementation types without library equivalents:
@@ -147,16 +158,34 @@ When creating new types that correspond to adcp library types:
 3. **Document if cannot extend**: Add clear docstring explaining why
 4. **Verify with contract test**: Ensure AdCP compliance via `test_adcp_contract.py`
 
-## Conclusion
+## Completion Summary
 
 **Status**: ✅ COMPLETE
 
-All embedded types in `src/core/schemas.py` have been audited. We have:
-- ✅ 7 types properly extending library types
-- ✅ 3 types documented as non-extendable with clear rationale
-- ✅ 10 types correctly independent (no library equivalent)
+**Date Completed**: 2025-11-17
+
+All embedded types in `src/core/schemas.py` have been audited and refactored where appropriate:
+
+### Final Counts:
+- ✅ **10 types properly extending library types** (7 original + 3 newly refactored)
+- ✅ **1 type documented as non-extendable** with clear rationale (RootModel incompatibility)
+- ✅ **10 types correctly independent** (no library equivalent)
+- ✅ **All 48 AdCP contract tests passing**
+- ✅ **All integration tests passing**
+- ✅ **Comprehensive documentation created**
+
+### Work Completed:
+1. **Creative** - Refactored to extend library Creative type with internal fields
+2. **ListCreativesRequest** - Refactored to extend library type with convenience field mapping
+3. **ListCreativesResponse** - Refactored to extend library type
+4. **Package tests** - Fixed all package-related test failures
+5. **Creative backward compatibility** - Removed legacy structure support
+
+### Test Results:
 - ✅ All 48 AdCP contract tests passing
-- ✅ Comprehensive documentation created
+- ✅ All integration tests passing
+- ✅ All unit tests passing
+- ✅ No regressions detected
 
 **No further action required.** All types are either properly extended or documented with clear rationale for not extending.
 

@@ -22,9 +22,9 @@ from src.core.schemas import (
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
     Creative,
+    CreativeApprovalStatus,
     CreativeAssignment,
     CreativePolicy,
-    CreativeStatus,
     Format,
     FormatId,
     GetMediaBuyDeliveryRequest,
@@ -623,7 +623,8 @@ class TestAdCPContract:
         adcp_response = creative.model_dump()
 
         # Verify required AdCP v1 fields are present
-        adcp_required_fields = ["creative_id", "name", "format", "assets"]
+        # Note: Library uses 'format_id' not 'format' (spec-compliant naming)
+        adcp_required_fields = ["creative_id", "name", "format_id", "assets"]
         for field in adcp_required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
@@ -636,14 +637,23 @@ class TestAdCPContract:
         # This is correct AdCP behavior - optional fields should be omitted if not set
 
         # Verify internal fields are EXCLUDED from AdCP response
-        internal_fields = ["principal_id", "created_at", "updated_at", "status"]
+        # Note: After refactoring to use library Creative:
+        # - principal_id: Still internal (excluded)
+        # - created_at/updated_at: Legacy aliases (excluded, use created_date/updated_date instead)
+        # - status: Now a SPEC field (included), not internal
+        internal_fields = ["principal_id", "created_at", "updated_at"]
         for field in internal_fields:
             assert field not in adcp_response, f"Internal field '{field}' exposed in AdCP response"
 
-        # Verify format is FormatId object
-        assert isinstance(adcp_response["format"], dict), "Format should be FormatId object"
-        assert adcp_response["format"]["id"] == "display_300x250", "Format ID should be display_300x250"
-        assert "agent_url" in adcp_response["format"], "Format should have agent_url"
+        # Verify spec fields that were previously internal are now present
+        assert "status" in adcp_response, "Status is now a spec field, should be present"
+        assert "created_date" in adcp_response, "created_date is a spec field"
+        assert "updated_date" in adcp_response, "updated_date is a spec field"
+
+        # Verify format_id is FormatId object
+        assert isinstance(adcp_response["format_id"], dict), "format_id should be FormatId object (as dict)"
+        assert adcp_response["format_id"]["id"] == "display_300x250", "Format ID should be display_300x250"
+        assert "agent_url" in adcp_response["format_id"], "format_id should have agent_url"
 
         # Verify assets dict is present
         assert isinstance(adcp_response["assets"], dict), "Assets should be a dict"
@@ -1014,15 +1024,15 @@ class TestAdCPContract:
         ), f"CreativePolicy response should have exactly 3 fields, got {len(adcp_response)}"
 
     def test_creative_status_adcp_compliance(self):
-        """Test that CreativeStatus model complies with AdCP creative-status schema."""
-        status = CreativeStatus(
+        """Test that CreativeApprovalStatus model complies with AdCP creative-status schema."""
+        status = CreativeApprovalStatus(
             creative_id="creative_123",
             status="approved",
             detail="Creative approved for all placements",
             estimated_approval_time=datetime.now() + timedelta(hours=1),
         )
 
-        # Test model_dump (CreativeStatus doesn't have internal fields currently)
+        # Test model_dump (CreativeApprovalStatus doesn't have internal fields currently)
         adcp_response = status.model_dump()
 
         # Verify required AdCP fields are present
@@ -1159,7 +1169,8 @@ class TestAdCPContract:
 
         # Test creative object structure (AdCP v1 spec)
         creative_obj = adcp_response["creatives"][0]
-        creative_required_fields = ["creative_id", "name", "format", "assets"]  # AdCP v1 spec required fields
+        # Note: Library uses 'format_id' not 'format' (spec-compliant naming)
+        creative_required_fields = ["creative_id", "name", "format_id", "assets"]  # AdCP v1 spec required fields
         for field in creative_required_fields:
             assert field in creative_obj, f"Creative required field '{field}' missing"
             assert creative_obj[field] is not None, f"Creative required field '{field}' is None"
@@ -1225,68 +1236,82 @@ class TestAdCPContract:
             assert isinstance(adcp_response["dry_run"], bool), "dry_run must be boolean"
 
     def test_list_creatives_request_adcp_compliance(self):
-        """Test that ListCreativesRequest model complies with AdCP list-creatives schema."""
+        """Test that ListCreativesRequest model complies with AdCP list-creatives schema.
+
+        After refactoring to extend library type (EMBEDDED_TYPES_CORRECTIONS.md):
+        - Accepts flat convenience fields (media_buy_id, page, limit, sort_by, etc.)
+        - Maps them to structured AdCP objects via @model_validator(mode="before")
+        - Convenience fields marked with exclude=True (internal only)
+        - Serialization outputs structured AdCP-compliant fields (filters, pagination, sort)
+        """
+        # Create request using convenience fields
         request = ListCreativesRequest(
-            media_buy_id="mb_123",
-            buyer_ref="buyer_456",
-            status="approved",
-            format="display_300x250",  # Uses format, not format_id
-            tags=["sports", "premium"],
-            created_after=datetime.now(UTC) - timedelta(days=30),
-            created_before=datetime.now(UTC),
-            limit=50,
-            # Note: ListCreativesRequest uses page, not offset
-            page=1,
-            sort_by="created_date",  # Uses created_date, not created_at
-            sort_order="desc",
+            media_buy_id="mb_123",  # Internal convenience field
+            buyer_ref="buyer_456",  # Internal convenience field
+            status="approved",  # Mapped to filters.status
+            format="display_300x250",  # Mapped to filters.format
+            tags=["sports", "premium"],  # Mapped to filters.tags
+            created_after=datetime.now(UTC) - timedelta(days=30),  # Mapped to filters.created_after
+            created_before=datetime.now(UTC),  # Mapped to filters.created_before
+            limit=50,  # Mapped to pagination.limit
+            page=1,  # Mapped to pagination.offset
+            sort_by="created_date",  # Mapped to sort.field
+            sort_order="desc",  # Mapped to sort.direction
         )
 
-        # Test model_dump (ListCreativesRequest doesn't have internal fields)
+        # Test model_dump - should output AdCP-compliant structured fields
         adcp_response = request.model_dump()
 
-        # Verify that fields we set are present in the dump
-        # Note: Per AdCP spec, optional fields with None values should be omitted
-        expected_fields = [
+        # Verify internal convenience fields are EXCLUDED from serialization
+        excluded_fields = [
             "media_buy_id",
             "buyer_ref",
             "status",
-            "format",  # Uses format, not format_id
+            "format",
             "tags",
             "created_after",
             "created_before",
-            # "search" omitted - not set, so should not be in dump
-            "page",  # Uses page, not offset
+            "search",
+            "page",
             "limit",
             "sort_by",
             "sort_order",
         ]
-        for field in expected_fields:
-            assert field in adcp_response, f"Expected field '{field}' missing from response"
+        for field in excluded_fields:
+            assert field not in adcp_response, f"Internal field '{field}' should be excluded from serialization"
 
-        # Verify that unset optional fields WITHOUT defaults are omitted (not present with null values)
-        assert "search" not in adcp_response, "Unset optional field 'search' should be omitted, not null"
-        assert "filters" not in adcp_response, "Unset optional field should be omitted"
-        assert "pagination" not in adcp_response, "Unset optional field should be omitted"
-        assert "sort" not in adcp_response, "Unset optional field should be omitted"
-        assert "fields" not in adcp_response, "Unset optional field should be omitted"
+        # Verify structured AdCP fields are present
+        assert "filters" in adcp_response, "AdCP structured 'filters' field must be present"
+        assert "sort" in adcp_response, "AdCP structured 'sort' field must be present"
 
-        # Fields WITH defaults should be present (include_performance=False, page=1, limit=50, etc.)
+        # Note: pagination may or may not be present depending on defaults
+        # If page=1 and limit=50 (defaults), pagination might not be created
+
+        # Verify filters structure
+        filters = adcp_response["filters"]
+        # Status is converted to CreativeStatus enum by library
+        assert filters["status"].value == "approved", "filters.status should match input"
+        assert filters["format"] == "display_300x250", "filters.format should match input"
+        assert filters["tags"] == ["sports", "premium"], "filters.tags should match input"
+        assert "created_after" in filters, "filters.created_after should be present"
+        assert "created_before" in filters, "filters.created_before should be present"
+
+        # Verify sort structure
+        sort = adcp_response["sort"]
+        # Field and direction are converted to enums by library
+        assert sort["field"].value == "created_date", "sort.field should match input sort_by"
+        assert sort["direction"].value == "desc", "sort.direction should match input sort_order"
+
+        # Fields WITH defaults should be present (include_performance, include_assignments, include_sub_assets)
         assert "include_performance" in adcp_response, "Field with default should be present"
         assert adcp_response["include_performance"] is False, "Default value should match"
+        assert "include_assignments" in adcp_response, "Field with default should be present"
+        assert adcp_response["include_assignments"] is True, "Default value should match (library default)"
 
-        # Verify AdCP-specific requirements
-        if adcp_response.get("status"):
-            valid_statuses = ["pending_review", "approved", "rejected", "adaptation_required"]
-            assert adcp_response["status"] in valid_statuses, f"Invalid status: {adcp_response['status']}"
-
-        if adcp_response.get("limit") is not None:
-            assert adcp_response["limit"] > 0, "Limit must be positive"
-
-        if adcp_response.get("page") is not None:
-            assert adcp_response["page"] >= 1, "Page must be >= 1"
-
-        if adcp_response.get("sort_order"):
-            assert adcp_response["sort_order"] in ["asc", "desc"], "Sort order must be asc or desc"
+        # Verify that unset optional fields are omitted
+        assert (
+            "fields" not in adcp_response or adcp_response["fields"] is None
+        ), "Unset optional field should be omitted or None"
 
         # Verify field count (flexible - all fields optional)
         assert len(adcp_response) >= 0, "ListCreativesRequest can have 0 or more fields"
@@ -1376,15 +1401,16 @@ class TestAdCPContract:
         # Test creative object structure in response
         if len(adcp_response["creatives"]) > 0:
             creative = adcp_response["creatives"][0]
-            # Per AdCP spec, Creative required fields are: creative_id, name, format, assets
-            # Internal fields (status, principal_id, created_at, updated_at) should NOT be present
-            creative_required_fields = ["creative_id", "name", "format", "assets"]
+            # Per AdCP spec, Creative required fields are: creative_id, name, format_id, assets
+            # Note: Library uses 'format_id' not 'format', and status is now a spec field
+            creative_required_fields = ["creative_id", "name", "format_id", "assets"]
             for field in creative_required_fields:
                 assert field in creative, f"Creative required field '{field}' missing"
                 assert creative[field] is not None, f"Creative required field '{field}' is None"
 
-            # Verify internal fields are excluded (should NOT be in client responses)
-            internal_fields = ["status", "principal_id", "created_at", "updated_at"]
+            # Verify internal-only fields are excluded (should NOT be in client responses)
+            # Note: status is now a SPEC field (included), created_at/updated_at are legacy aliases (excluded)
+            internal_fields = ["principal_id", "created_at", "updated_at"]
             for field in internal_fields:
                 assert field not in creative, f"Internal field '{field}' should be excluded from client response"
 
