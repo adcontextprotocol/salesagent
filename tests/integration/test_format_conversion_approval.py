@@ -19,11 +19,11 @@ from src.core.database.models import (
     MediaPackage,
     PricingOption,
     Principal,
-    Product,
     PropertyTag,
     Tenant,
 )
 from src.core.tools.media_buy_create import execute_approved_media_buy
+from tests.helpers.adcp_factories import create_test_db_product
 
 
 def create_media_package(
@@ -173,7 +173,7 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with FormatReference-style dict (has format_id field)
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Format Reference Product",
@@ -181,12 +181,9 @@ class TestFormatConversionApproval:
                 format_ids=[
                     {
                         "agent_url": "https://creatives.example.com",
-                        "format_id": "display_300x250",  # Legacy field name
+                        "id": "display_300x250",  # Changed from format_id to id
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -274,20 +271,17 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with invalid format (no agent_url)
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Invalid Format Product",
                 description="Product with missing agent_url",
                 format_ids=[
                     {
-                        "format_id": "display_300x250",
+                        "id": "display_300x250",
                         # Missing agent_url - should fail
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -374,7 +368,7 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with empty agent_url
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Empty Agent URL Product",
@@ -382,12 +376,9 @@ class TestFormatConversionApproval:
                 format_ids=[
                     {
                         "agent_url": "",  # Empty string - should fail
-                        "format_id": "display_300x250",
+                        "id": "display_300x250",
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -473,7 +464,7 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with invalid URL scheme
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Invalid URL Product",
@@ -481,12 +472,9 @@ class TestFormatConversionApproval:
                 format_ids=[
                     {
                         "agent_url": "ftp://creatives.example.com",  # FTP not allowed
-                        "format_id": "display_300x250",
+                        "id": "display_300x250",
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -575,7 +563,7 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with missing format_id
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="No Format ID Product",
@@ -586,9 +574,6 @@ class TestFormatConversionApproval:
                         # Missing format_id/id - should fail
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -675,7 +660,7 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with FormatId-style dict (has 'id' field, not 'format_id')
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Format ID Product",
@@ -686,9 +671,6 @@ class TestFormatConversionApproval:
                         "id": "display_728x90",  # New field name per AdCP spec
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -774,7 +756,7 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with dict missing both id fields
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Missing ID Product",
@@ -785,9 +767,6 @@ class TestFormatConversionApproval:
                         "name": "Display Ad",  # Wrong field - not id or format_id
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -873,15 +852,12 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with empty formats list
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Empty Formats Product",
                 description="Product with no formats",
                 format_ids=[],  # Empty list - should fail
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -967,31 +943,28 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with multiple format types
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Mixed Formats Product",
                 description="Product with different format styles",
                 format_ids=[
-                    # FormatReference style (legacy)
+                    # FormatId style
                     {
                         "agent_url": "https://creatives.example.com",
-                        "format_id": "display_300x250",
+                        "id": "display_300x250",
                     },
-                    # FormatId style (new)
+                    # FormatId style
                     {
                         "agent_url": "https://creatives.example.com",
                         "id": "display_728x90",
                     },
-                    # Another FormatId style
+                    # FormatId style
                     {
                         "agent_url": "https://creatives.example.com",
                         "id": "display_160x600",
                     },
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -1077,15 +1050,12 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with invalid format type (string instead of dict)
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Invalid Type Product",
                 description="Product with string format (should be dict)",
                 format_ids=["display_300x250"],  # String instead of dict - should fail
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 

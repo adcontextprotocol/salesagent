@@ -19,6 +19,7 @@ from src.core.database.models import PricingOption as DBPricingOption
 from src.core.database.models import Product as ProductModel
 from src.core.schemas import Principal as PrincipalSchema
 from src.core.schemas import Product
+from tests.helpers.adcp_factories import create_test_db_product
 from tests.utils.database_helpers import (
     create_tenant_with_timestamps,
 )
@@ -93,15 +94,13 @@ class TestSchemaFieldMapping:
             session.add(tenant)
 
             # Create minimal product
-            product = ProductModel(
+            product = create_test_db_product(
                 tenant_id=tenant_id,
                 product_id="field_test_001",
                 name="Field Test Product",
                 description="Test product for field access validation",
                 format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
-                targeting_template={},
                 delivery_type="non_guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
             session.commit()
@@ -160,15 +159,13 @@ class TestSchemaFieldMapping:
             )
             session.add(tenant)
 
-            product = ProductModel(
+            product = create_test_db_product(
                 tenant_id=tenant_id,
                 product_id="conversion_test_001",
                 name="Conversion Test Product",
                 description="Product for testing safe conversion",
                 format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
-                targeting_template={},
                 delivery_type="non_guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
             session.commit()
@@ -293,7 +290,7 @@ class TestSchemaFieldMapping:
             session.add(tenant)
 
             # Test with various JSON field formats
-            product = ProductModel(
+            product = create_test_db_product(
                 tenant_id=tenant_id,
                 product_id="json_test_001",
                 name="JSON Test Product",
@@ -301,13 +298,13 @@ class TestSchemaFieldMapping:
                 format_ids=[
                     {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
                     {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
-                ],  # List
-                targeting_template={"geo": ["US"], "device": ["mobile"]},  # Dict
+                ],
                 delivery_type="non_guaranteed",
-                property_tags=["all_inventory"],
-                measurement={"viewability": True, "brand_safety": True},  # Dict
-                countries=["US", "CA", "UK"],  # List
             )
+            # Manually set additional JSON fields that aren't part of the factory defaults
+            product.targeting_template = {"geo": ["US"], "device": ["mobile"]}
+            product.measurement = {"viewability": True, "brand_safety": True}
+            product.countries = ["US", "CA", "UK"]
             session.add(product)
             session.commit()
             session.refresh(product)
@@ -348,16 +345,13 @@ class TestSchemaFieldMapping:
             )
             session.add(tenant)
 
-            product = ProductModel(
+            product = create_test_db_product(
                 tenant_id=tenant_id,
                 product_id="validation_test_001",
                 name="Schema Validation Product",
                 description="Testing schema validation with database data",
                 format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
-                targeting_template={},
                 delivery_type="non_guaranteed",
-                is_custom=False,
-                property_tags=["all_inventory"],
             )
             session.add(product)
             session.commit()

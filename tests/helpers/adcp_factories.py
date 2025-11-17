@@ -703,3 +703,99 @@ def create_test_package_request_dict(
         "budget": budget,
         **kwargs,
     }
+
+
+def create_test_db_product(
+    tenant_id: str,
+    product_id: str = "test_product",
+    name: str = "Test Product",
+    description: str = "Test product description",
+    format_ids: list[dict[str, str]] | None = None,
+    property_tags: list[str] | None = None,
+    property_ids: list[str] | None = None,
+    properties: list[dict] | None = None,
+    delivery_type: str = "guaranteed",
+    targeting_template: dict[str, Any] | None = None,
+    inventory_profile_id: int | None = None,
+    **kwargs,
+):
+    """Create a test Product database record with tenant_id.
+
+    This factory creates database Product records (from src.core.database.models.Product)
+    for tests that need to insert Products into the database. The database Product model
+    uses legacy field names (property_tags, property_ids, properties) that get converted
+    to publisher_properties when serializing to AdCP format.
+
+    Use this factory for integration tests that create Product database records.
+    Use create_test_product() for AdCP-compliant Product objects without tenant_id.
+
+    Args:
+        tenant_id: Tenant identifier (REQUIRED for database Product)
+        product_id: Product identifier
+        name: Product name
+        description: Product description
+        format_ids: List of format ID dicts with {agent_url: str, id: str}. Defaults to display_300x250
+        property_tags: List of property tags (e.g., ["all_inventory", "premium"]). Default: ["all_inventory"]
+        property_ids: List of property IDs (alternative to property_tags)
+        properties: List of full Property objects (legacy, alternative to property_tags/property_ids)
+        delivery_type: "guaranteed" or "non_guaranteed"
+        targeting_template: Targeting template dict. Defaults to empty dict
+        inventory_profile_id: Optional inventory profile ID to link
+        **kwargs: Additional optional fields (measurement, creative_policy, implementation_config, etc.)
+
+    Returns:
+        Database Product model instance ready to be added to session
+
+    Example:
+        # Minimal database product
+        from src.core.database.models import Product as DBProduct
+        product = create_test_db_product(tenant_id="test_tenant")
+
+        # Custom database product with inventory profile
+        product = create_test_db_product(
+            tenant_id="test_tenant",
+            product_id="video_premium",
+            format_ids=[{"agent_url": "https://creative.example.com", "id": "video_1920x1080"}],
+            property_tags=["premium", "sports"],
+            inventory_profile_id=123
+        )
+
+        # Add to database
+        with get_db_session() as session:
+            session.add(product)
+            session.commit()
+    """
+    # Import database Product model
+    from src.core.database.models import Product as DBProduct
+
+    # Default format_ids if not provided
+    if format_ids is None:
+        format_ids = [
+            {
+                "agent_url": "https://creative.adcontextprotocol.org",
+                "id": "display_300x250",
+            }
+        ]
+
+    # Default property_tags if no property authorization provided
+    if property_tags is None and property_ids is None and properties is None:
+        property_tags = ["all_inventory"]
+
+    # Default targeting_template
+    if targeting_template is None:
+        targeting_template = {}
+
+    return DBProduct(
+        tenant_id=tenant_id,
+        product_id=product_id,
+        name=name,
+        description=description,
+        format_ids=format_ids,
+        property_tags=property_tags,
+        property_ids=property_ids,
+        properties=properties,
+        delivery_type=delivery_type,
+        targeting_template=targeting_template,
+        inventory_profile_id=inventory_profile_id,
+        **kwargs,
+    )

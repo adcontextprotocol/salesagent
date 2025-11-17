@@ -16,10 +16,10 @@ from src.core.database.models import (
     InventoryProfile,
     PricingOption,
     Principal,
-    Product,
 )
 from src.core.tools import create_media_buy_raw
 from tests.e2e.adcp_request_builder import build_adcp_media_buy_request
+from tests.helpers.adcp_factories import create_test_db_product
 
 
 @pytest.mark.e2e
@@ -54,16 +54,13 @@ def test_create_media_buy_with_profile_based_product_uses_profile_inventory(db_s
         session.flush()
 
         # Create product referencing profile
-        product = Product(
+        product = create_test_db_product(
             tenant_id=sample_tenant["tenant_id"],
             product_id="test_product_media_buy",
             name="Profile-Based Product",
             description="Product using inventory profile",
             inventory_profile_id=profile.id,
             format_ids=[],
-            targeting_template={},
-            delivery_type="guaranteed",
-            property_tags=["all_inventory"],
             is_custom=False,
             countries=["US"],
         )
@@ -180,16 +177,13 @@ def test_create_media_buy_with_profile_based_product_validates_formats(db_sessio
         session.flush()
 
         # Create product referencing profile
-        product = Product(
+        product = create_test_db_product(
             tenant_id=sample_tenant["tenant_id"],
             product_id="test_product_format_validation",
             name="Format Validation Product",
             description="Product using inventory profile",
             inventory_profile_id=profile.id,
             format_ids=[],
-            targeting_template={},
-            delivery_type="guaranteed",
-            property_tags=["all_inventory"],
             is_custom=False,
             countries=["US"],
         )
@@ -286,16 +280,13 @@ def test_multiple_products_same_profile_in_media_buy(db_session, sample_tenant):
         # Create 3 products referencing same profile
         products = []
         for i in range(3):
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=sample_tenant["tenant_id"],
                 product_id=f"test_product_shared_{i}",
                 name=f"Shared Profile Product {i}",
                 description=f"Product {i} sharing profile",
                 inventory_profile_id=profile.id,
                 format_ids=[],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
                 is_custom=False,
                 countries=["US"],
             )
@@ -401,16 +392,13 @@ def test_media_buy_reflects_profile_updates_made_after_product_creation(db_sessi
         profile_id = profile.id
 
         # Create product referencing profile
-        product = Product(
+        product = create_test_db_product(
             tenant_id=sample_tenant["tenant_id"],
             product_id="test_product_updates",
             name="Product with Updatable Profile",
             description="Product using updatable profile",
             inventory_profile_id=profile_id,
             format_ids=[],
-            targeting_template={},
-            delivery_type="guaranteed",
-            property_tags=["all_inventory"],
             is_custom=False,
             countries=["US"],
         )

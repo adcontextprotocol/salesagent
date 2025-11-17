@@ -16,7 +16,8 @@ Tests cover:
 import pytest
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import InventoryProfile, Product, Tenant
+from src.core.database.models import InventoryProfile, Tenant
+from tests.helpers.adcp_factories import create_test_db_product
 
 
 @pytest.fixture
@@ -76,7 +77,7 @@ def test_profile(integration_db, test_tenant):
 def test_product_custom(integration_db, test_tenant):
     """Create a product with custom configuration (no profile)."""
     with get_db_session() as session:
-        product = Product(
+        product = create_test_db_product(
             tenant_id=test_tenant.tenant_id,
             product_id="custom_product",
             name="Custom Product",
@@ -85,8 +86,6 @@ def test_product_custom(integration_db, test_tenant):
                 {"agent_url": "http://custom.example.com", "id": "video_15s"},
                 {"agent_url": "http://custom.example.com", "id": "video_30s"},
             ],
-            # Use property_tags for custom (no profile)
-            properties=None,
             property_tags=["premium", "video"],
             implementation_config={
                 "targeted_ad_unit_ids": ["custom_unit_1", "custom_unit_2"],
@@ -94,8 +93,6 @@ def test_product_custom(integration_db, test_tenant):
                 "include_descendants": False,
                 "custom_field": "custom_value",
             },
-            targeting_template={},
-            delivery_type="guaranteed",
             is_custom=True,
             countries=["US"],
         )
@@ -109,7 +106,7 @@ def test_product_custom(integration_db, test_tenant):
 def test_product_with_profile(integration_db, test_tenant, test_profile):
     """Create a product referencing the test_profile."""
     with get_db_session() as session:
-        product = Product(
+        product = create_test_db_product(
             tenant_id=test_tenant.tenant_id,
             product_id="profile_product",
             name="Profile-Based Product",
@@ -117,14 +114,11 @@ def test_product_with_profile(integration_db, test_tenant, test_profile):
             inventory_profile_id=test_profile.id,
             # Custom config exists but should be ignored when profile is set
             format_ids=[{"agent_url": "http://ignored.example.com", "id": "ignored_format"}],
-            # Profile provides properties, so set property_tags=None to satisfy XOR constraint
-            properties=None,
-            property_tags=["ignored_tag"],  # This satisfies the XOR constraint
+            # Profile provides properties, so set property_tags to satisfy XOR constraint
+            property_tags=["ignored_tag"],
             implementation_config={
                 "targeted_ad_unit_ids": ["ignored_unit"],
             },
-            targeting_template={},
-            delivery_type="guaranteed",
             is_custom=False,
             countries=["US"],
         )
@@ -396,21 +390,17 @@ class TestEffectiveImplementationConfig:
         """
         with get_db_session() as session:
             # Create product with valid profile_id
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant.tenant_id,
                 product_id="test_profile_fallback",
                 name="Test Profile Fallback",
                 description="Product to test profile fallback behavior",
                 inventory_profile_id=test_profile.id,
                 format_ids=[{"agent_url": "http://fallback.example.com", "id": "fallback_format"}],
-                # Use property_tags to satisfy XOR constraint
-                properties=None,
                 property_tags=["fallback_tag"],
                 implementation_config={
                     "targeted_ad_unit_ids": ["fallback_unit"],
                 },
-                targeting_template={},
-                delivery_type="guaranteed",
                 is_custom=True,
                 countries=["US"],
             )
@@ -421,6 +411,8 @@ class TestEffectiveImplementationConfig:
         # Reload product in a new session without loading the relationship
         with get_db_session() as session:
             from sqlalchemy import select
+
+            from src.core.database.models import Product
 
             stmt = select(Product).where(Product.product_id == product_id)
             product = session.scalars(stmt).first()

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import attributes
 
 from src.core.database.models import Product, Tenant
-from tests.helpers.adcp_factories import create_test_product
+from tests.helpers.adcp_factories import create_test_db_product
 
 
 @pytest.fixture
@@ -37,27 +37,16 @@ def test_create_product_with_multiple_format_ids(integration_db, test_tenant):
 
     # Create product with 3 different format IDs
     with get_db_session() as session:
-        product_data = create_test_product(
+        db_product = create_test_db_product(
+            tenant_id=test_tenant,
             product_id="multi_format_product",
             name="Multi-Format Product",
             description="Product with multiple formats",
-            format_ids=["display_300x250", "display_728x90", "video_15s"],
-        )
-
-        # Convert to database model (use mode="json" to convert Pydantic types to primitives)
-        db_product = Product(
-            tenant_id=test_tenant,
-            product_id=product_data.product_id,
-            name=product_data.name,
-            description=product_data.description,
-            format_ids=[fmt.model_dump(mode="json") for fmt in product_data.format_ids],
-            delivery_type=(
-                product_data.delivery_type.value
-                if hasattr(product_data.delivery_type, "value")
-                else product_data.delivery_type
-            ),
-            property_tags=["all_inventory"],
-            targeting_template={},
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+            ],
         )
         session.add(db_product)
         session.commit()
@@ -93,24 +82,14 @@ def test_update_product_format_ids_preserves_all_formats(integration_db, test_te
 
     # Create initial product with 2 formats
     with get_db_session() as session:
-        product_data = create_test_product(
-            product_id="update_format_product",
-            format_ids=["display_300x250", "display_728x90"],
-        )
-
-        db_product = Product(
+        db_product = create_test_db_product(
             tenant_id=test_tenant,
-            product_id=product_data.product_id,
-            name=product_data.name,
-            description=product_data.description,
-            format_ids=[fmt.model_dump(mode="json") for fmt in product_data.format_ids],
-            delivery_type=(
-                product_data.delivery_type.value
-                if hasattr(product_data.delivery_type, "value")
-                else product_data.delivery_type
-            ),
-            property_tags=["all_inventory"],
-            targeting_template={},
+            product_id="update_format_product",
+            name="Update Format Test Product",
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+            ],
         )
         session.add(db_product)
         session.commit()
@@ -147,8 +126,9 @@ def test_product_format_ids_migration_compatibility(integration_db, test_tenant)
     from src.core.database.database_session import get_db_session
 
     # Create product with old 'creatives' URL (pre-migration format)
+    # Note: We still use create_test_db_product but manually override format_ids with old URLs
     with get_db_session() as session:
-        product = Product(
+        product = create_test_db_product(
             tenant_id=test_tenant,
             product_id="legacy_format_product",
             name="Legacy Product",
@@ -158,9 +138,6 @@ def test_product_format_ids_migration_compatibility(integration_db, test_tenant)
                 {"agent_url": "https://creatives.adcontextprotocol.org", "id": "format_2"},
                 {"agent_url": "https://creatives.adcontextprotocol.org", "id": "format_3"},
             ],
-            delivery_type="guaranteed",
-            property_tags=["all_inventory"],
-            targeting_template={},
         )
         session.add(product)
         session.commit()
