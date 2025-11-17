@@ -70,7 +70,6 @@ from src.core.schemas import (
     Principal,
     Product,
     Targeting,
-    TaskStatus,
 )
 from src.core.testing_hooks import TestingContext, apply_testing_hooks, get_testing_context
 from src.core.tool_context import ToolContext
@@ -1867,8 +1866,8 @@ async def _create_media_buy_impl(
                     {
                         "package_id": package_id,
                         "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request package
-                        # Package status should be null until the package is actually created in the ad server
-                        # After approval + adapter creation, it will be set to "draft" or "active" by the adapter
+                        "status": "draft",  # Set initial status (required by AdCP spec)
+                        # Status will be updated to "active" after approval + adapter creation
                     }
                 )
                 pending_packages.append(Package(**pkg_data))
@@ -2236,7 +2235,7 @@ async def _create_media_buy_impl(
                         "package_id": package_id,
                         "name": f"{pkg.product_id} - Package {idx}",
                         "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request
-                        "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
+                        "status": "draft",  # Package is pending approval (AdCP-compliant status)
                     }
                 )
 
