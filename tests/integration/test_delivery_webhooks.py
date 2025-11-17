@@ -6,6 +6,9 @@ import pytest
 
 from src.services.delivery_webhook_scheduler import DeliveryWebhookScheduler
 
+# TODO: @yusuf - We actually need to:
+# - Test the scheduler is calling sending webhooks correctly in every correct intervals
+# - Test the sending contains correct payloads/data according to the adcp spec
 
 @pytest.fixture
 def scheduler():
@@ -19,6 +22,8 @@ async def test_scheduler_start_stop(scheduler):
     # Start scheduler
     await scheduler.start()
     assert scheduler.is_running is True
+
+    # TODO: @yusuf - Why _task is not None? shouldn't it be None because we just started the scheduler?
     assert scheduler._task is not None
 
     # Stop scheduler
@@ -32,6 +37,7 @@ async def test_scheduler_start_when_already_running(scheduler):
     await scheduler.start()
     assert scheduler.is_running is True
 
+    # TODO: @yusuf - Either remove this test or fix it to actually test the warning logging when the scheduler is already running
     # Try to start again - should log warning but not fail
     await scheduler.start()
     assert scheduler.is_running is True
