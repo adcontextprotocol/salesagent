@@ -219,7 +219,7 @@ class TestMCPEndpointsComprehensive:
         """Test that AdCP v2.4 schema maintains backward compatibility."""
         from datetime import date
 
-        from src.core.schemas import Budget, CreateMediaBuyRequest, Package
+        from src.core.schemas import Budget, CreateMediaBuyRequest, PackageRequest
 
         # Test 1: Legacy format should work
         legacy_request = CreateMediaBuyRequest(
@@ -256,8 +256,12 @@ class TestMCPEndpointsComprehensive:
             po_number="PO-V24-67890",  # Required per AdCP spec
             budget=Budget(total=10000.0, currency="EUR", pacing="asap"),
             packages=[
-                Package(buyer_ref="pkg_1", product_id="prod_1", budget=6000.0),  # Float budget per AdCP v2.2.0
-                Package(buyer_ref="pkg_2", product_id="prod_2", budget=4000.0),  # Float budget per AdCP v2.2.0
+                PackageRequest(
+                    buyer_ref="pkg_1", product_id="prod_1", budget=6000.0, pricing_option_id="default"
+                ),  # Float budget per AdCP v2.2.0
+                PackageRequest(
+                    buyer_ref="pkg_2", product_id="prod_2", budget=4000.0, pricing_option_id="default"
+                ),  # Float budget per AdCP v2.2.0
             ],
             start_time=datetime.now(UTC),
             end_time=datetime.now(UTC) + timedelta(days=30),

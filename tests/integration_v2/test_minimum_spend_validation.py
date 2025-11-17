@@ -31,7 +31,7 @@ from src.core.database.models import (
     PropertyTag,
     Tenant,
 )
-from src.core.schemas import Budget, Package
+from src.core.schemas import Budget, PackageRequest
 from src.core.tools.media_buy_create import _create_media_buy_impl
 from tests.integration_v2.conftest import create_test_product_with_pricing
 
@@ -270,7 +270,7 @@ class TestMinimumSpendValidation:
             buyer_ref="minspend_test_1",
             brand_manifest={"name": "Test Campaign"},
             packages=[
-                Package(
+                PackageRequest(
                     buyer_ref="minspend_test_1",
                     product_id="prod_global",
                     budget=500.0,  # Below $1000 minimum per AdCP v2.2.0, currency from pricing_option
@@ -305,7 +305,7 @@ class TestMinimumSpendValidation:
             buyer_ref="minspend_test_2",
             brand_manifest={"name": "Test Campaign"},
             packages=[
-                Package(
+                PackageRequest(
                     buyer_ref="minspend_test_2",
                     product_id="prod_high",
                     budget=3000.0,  # Below $5000 product minimum per AdCP v2.2.0, currency from pricing_option
@@ -340,7 +340,7 @@ class TestMinimumSpendValidation:
             buyer_ref="minspend_test_3",
             brand_manifest={"name": "Test Campaign"},
             packages=[
-                Package(
+                PackageRequest(
                     buyer_ref="minspend_test_3",
                     product_id="prod_low",
                     budget=750.0,  # Above $500 product min, below $1000 currency limit per AdCP v2.2.0
@@ -371,7 +371,7 @@ class TestMinimumSpendValidation:
             buyer_ref="minspend_test_4",
             brand_manifest={"name": "Test Campaign"},
             packages=[
-                Package(
+                PackageRequest(
                     buyer_ref="minspend_test_4",
                     product_id="prod_global",
                     budget=2000.0,  # Above $1000 minimum per AdCP v2.2.0, currency from pricing_option
@@ -405,7 +405,7 @@ class TestMinimumSpendValidation:
                 buyer_ref="minspend_test_5",
                 brand_manifest={"name": "Test Campaign"},
                 packages=[
-                    Package(
+                    PackageRequest(
                         buyer_ref="minspend_test_5",
                         product_id="prod_global",
                         budget=100000.0,  # Excessive budget per AdCP v2.2.0 float format
@@ -438,7 +438,7 @@ class TestMinimumSpendValidation:
             buyer_ref="minspend_test_6",
             brand_manifest={"name": "Test Campaign"},
             packages=[
-                Package(
+                PackageRequest(
                     buyer_ref="minspend_test_6",
                     product_id="prod_global",
                     budget=800.0,  # Below $1000 minimum per AdCP v2.2.0, currency from pricing_option
@@ -483,7 +483,7 @@ class TestMinimumSpendValidation:
             buyer_ref="minspend_test_7",
             brand_manifest={"name": "Test Campaign"},
             packages=[
-                Package(
+                PackageRequest(
                     buyer_ref="minspend_test_7",
                     product_id="prod_global_gbp",  # Use GBP product
                     budget=100.0,  # Low budget, no minimum for GBP per AdCP v2.2.0, currency from pricing_option
