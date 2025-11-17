@@ -24,6 +24,12 @@ from adcp.types.generated_poc.format import Format as LibraryFormat
 from adcp.types.generated_poc.format import Type as FormatTypeEnum
 from adcp.types.generated_poc.format_id import FormatId as LibraryFormatId
 from adcp.types.generated_poc.get_products_request import Filters as LibraryFilters
+from adcp.types.generated_poc.list_creative_formats_request import (
+    ListCreativeFormatsRequest as LibraryListCreativeFormatsRequest,
+)
+from adcp.types.generated_poc.list_creative_formats_response import (
+    ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse,
+)
 
 # Import library Package and PackageRequest for proper request/response separation
 from adcp.types.generated_poc.package import Package as LibraryPackage
@@ -32,20 +38,9 @@ from adcp.types.generated_poc.package_request import PackageRequest as LibraryPa
 # Import library Product, Format, and FormatId to ensure we use canonical AdCP schema
 from adcp.types.generated_poc.product import Product as LibraryProduct
 
+# Import Creative-related library types
 # Import AffectedPackage for UpdateMediaBuySuccess response
 from adcp.types.generated_poc.update_media_buy_response import AffectedPackage as LibraryAffectedPackage
-
-# Import Creative-related library types
-from adcp.types.generated_poc.sync_creatives_request import SyncCreativesRequest as LibrarySyncCreativesRequest
-from adcp.types.generated_poc.sync_creatives_response import SyncCreativesResponse as LibrarySyncCreativesResponse
-from adcp.types.generated_poc.list_creatives_request import ListCreativesRequest as LibraryListCreativesRequest
-from adcp.types.generated_poc.list_creatives_response import ListCreativesResponse as LibraryListCreativesResponse
-from adcp.types.generated_poc.list_creative_formats_request import (
-    ListCreativeFormatsRequest as LibraryListCreativeFormatsRequest,
-)
-from adcp.types.generated_poc.list_creative_formats_response import (
-    ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse,
-)
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
 
@@ -1895,6 +1890,11 @@ class AssignmentResult(BaseModel):
 class SyncCreativesResponse(AdCPBaseModel):
     """Response from syncing creative assets (AdCP v2.4 spec compliant).
 
+    NOTE: Does not extend library type due to incompatible discriminated union pattern.
+    The library uses RootModel with discriminated union (success vs error variants),
+    which conflicts with our protocol envelope wrapping pattern. Our implementation
+    provides equivalent functionality with proper internal field exclusion.
+
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
@@ -2038,6 +2038,11 @@ class Pagination(BaseModel):
 
 class ListCreativesResponse(AdCPBaseModel):
     """Response from listing creative assets (AdCP v2.4 spec compliant).
+
+    NOTE: Does not extend library type due to incompatible nested Creative structure.
+    The library's nested Creative type uses legacy format (media_url, width, height, click_url),
+    while our Creative type is AdCP v1 spec-compliant (format_id + assets). Our implementation
+    provides equivalent functionality with proper nested model serialization.
 
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
