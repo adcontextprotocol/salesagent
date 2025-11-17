@@ -55,7 +55,7 @@ class TestGetProductsRequestAlignment:
         assert req.brief == "Looking for display advertising on tech sites"
         assert req.adcp_version == "1.6.0"
         assert req.filters is not None
-        assert req.filters.delivery_type == "guaranteed"
+        assert req.filters.delivery_type.value == "guaranteed"
         # format_types are stored as enum objects internally but serialize to strings
         assert [ft.value for ft in req.filters.format_types] == ["video", "display"]
         assert len(req.filters.format_ids) == 2
@@ -74,7 +74,8 @@ class TestGetProductsRequestAlignment:
         )
 
         assert req.filters is not None
-        assert req.filters.delivery_type == "non_guaranteed"
+        # Library uses enum for delivery_type
+        assert req.filters.delivery_type.value == "non_guaranteed"
         assert [ft.value for ft in req.filters.format_types] == ["video"]
 
     def test_partial_filters(self):
@@ -85,7 +86,7 @@ class TestGetProductsRequestAlignment:
         )
 
         assert req.filters is not None
-        assert req.filters.delivery_type == "guaranteed"
+        assert req.filters.delivery_type.value == "guaranteed"
         assert req.filters.format_types is None
 
     def test_adcp_version_validation(self):
@@ -118,13 +119,13 @@ class TestGetProductsRequestAlignment:
         req1 = GetProductsRequest(
             brand_manifest={"name": "Test product"}, filters=ProductFilters(delivery_type="guaranteed")
         )
-        assert req1.filters.delivery_type == "guaranteed"
+        assert req1.filters.delivery_type.value == "guaranteed"
 
         # Non-guaranteed products
         req2 = GetProductsRequest(
             brand_manifest={"name": "Test product"}, filters=ProductFilters(delivery_type="non_guaranteed")
         )
-        assert req2.filters.delivery_type == "non_guaranteed"
+        assert req2.filters.delivery_type.value == "non_guaranteed"
 
 
 class TestProductFiltersModel:
@@ -142,7 +143,7 @@ class TestProductFiltersModel:
     def test_single_field_filters(self):
         """Test filters with only one field set."""
         filters = ProductFilters(delivery_type="guaranteed")
-        assert filters.delivery_type == "guaranteed"
+        assert filters.delivery_type.value == "guaranteed"
 
     def test_boolean_filters(self):
         """Test boolean filter fields (standard_formats_only)."""
@@ -221,7 +222,7 @@ class TestAdCPSchemaCompatibility:
             },
         )
 
-        assert req.filters.delivery_type == "non_guaranteed"
+        assert req.filters.delivery_type.value == "non_guaranteed"
         assert [ft.value for ft in req.filters.format_types] == ["video"]
         assert len(req.filters.format_ids) == 2
         assert req.filters.format_ids[0].id == "video_30s"
@@ -291,5 +292,5 @@ class TestRegressionPrevention:
         assert req.brand_manifest.name == "purina cat food"
         assert req.brief == "video advertising campaigns"
         assert req.adcp_version == "1.6.0"
-        assert req.filters.delivery_type == "guaranteed"
+        assert req.filters.delivery_type.value == "guaranteed"
         assert [ft.value for ft in req.filters.format_types] == ["video"]

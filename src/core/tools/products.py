@@ -402,6 +402,16 @@ async def _get_products_impl(
             if req.filters.delivery_type and product.delivery_type != req.filters.delivery_type:
                 continue
 
+            # Filter by is_fixed_price (check pricing_options)
+            if req.filters.is_fixed_price is not None:
+                # Check if product has any pricing option matching the fixed/auction filter
+                # Use getattr for discriminated union field access
+                has_matching_pricing = any(
+                    getattr(po, "is_fixed", None) == req.filters.is_fixed_price for po in product.pricing_options
+                )
+                if not has_matching_pricing:
+                    continue
+
             # Filter by format_types
             if req.filters.format_types:
                 # Product.format_ids is list[str] (format IDs), need to look up types from FORMAT_REGISTRY

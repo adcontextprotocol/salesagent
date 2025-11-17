@@ -23,6 +23,7 @@ from adcp.types.generated import Error, PushNotificationConfig
 from adcp.types.generated_poc.format import Format as LibraryFormat
 from adcp.types.generated_poc.format import Type as FormatTypeEnum
 from adcp.types.generated_poc.format_id import FormatId as LibraryFormatId
+from adcp.types.generated_poc.get_products_request import Filters as LibraryFilters
 
 # Import library Package and PackageRequest for proper request/response separation
 from adcp.types.generated_poc.package import Package as LibraryPackage
@@ -1349,25 +1350,23 @@ class DeliveryType(str, Enum):
     NON_GUARANTEED = "non_guaranteed"
 
 
-class ProductFilters(BaseModel):
-    """Structured filters for product discovery per AdCP spec."""
+class ProductFilters(LibraryFilters):
+    """Product filters extending library Filters from AdCP spec.
 
-    delivery_type: DeliveryType | None = Field(
-        None,
-        description="Filter by delivery type",
-    )
-    format_types: list[FormatTypeEnum] | None = Field(
-        None,
-        description="Filter by format types",
-    )
-    format_ids: list["FormatId"] | None = Field(
-        None,
-        description="Filter by specific format IDs",
-    )
-    standard_formats_only: bool | None = Field(
-        None,
-        description="Only return products accepting IAB standard formats",
-    )
+    Inherits all AdCP-compliant filter fields from adcp library's Filters class,
+    ensuring we stay in sync with spec updates. All fields come from the library:
+    - delivery_type: Filter by delivery type (guaranteed, auction)
+    - format_ids: Filter by specific format IDs
+    - format_types: Filter by format types (video, display, audio)
+    - is_fixed_price: Filter for fixed price vs auction products
+    - min_exposures: Minimum exposures for measurement validity
+    - standard_formats_only: Only return IAB standard formats
+
+    This pattern ensures:
+    - External requests use library Filters (spec-compliant)
+    - We automatically get spec updates when library updates
+    - No manual field duplication = no drift from spec
+    """
 
     @model_validator(mode="before")
     @classmethod
