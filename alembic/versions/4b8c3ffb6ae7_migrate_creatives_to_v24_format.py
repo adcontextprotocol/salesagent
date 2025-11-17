@@ -156,11 +156,12 @@ def upgrade() -> None:
             new_data.pop(field, None)
 
         # Update database (convert dict to JSON string for PostgreSQL JSONB)
+        # Use CAST instead of :: for type conversion with parameters
         conn.execute(
             text(
                 """
                 UPDATE creatives
-                SET data = :new_data::jsonb
+                SET data = CAST(:new_data AS jsonb)
                 WHERE creative_id = :creative_id
             """
             ),
@@ -238,11 +239,12 @@ def downgrade() -> None:
         new_data.pop("assets", None)
 
         # Update database (convert dict to JSON string for PostgreSQL JSONB)
+        # Use CAST instead of :: for type conversion with parameters
         conn.execute(
             text(
                 """
                 UPDATE creatives
-                SET data = :new_data::jsonb
+                SET data = CAST(:new_data AS jsonb)
                 WHERE creative_id = :creative_id
             """
             ),
