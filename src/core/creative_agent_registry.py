@@ -224,11 +224,14 @@ class CreativeAgentRegistry:
                 )
 
                 # Convert to Format objects
+                # Note: Format now extends adcp library's Format class.
+                # fmt_data is a library Format with format_id.agent_url already set per spec.
+                # We convert to our Format subclass to get any additional internal fields.
                 formats = []
                 for fmt_data in formats_data.formats:
-                    # Ensure agent_url is set
+                    # Convert library Format to our Format (which extends it)
+                    # model_dump() preserves Pydantic types (AnyUrl, etc.) since we're in the same type hierarchy
                     fmt_dict = fmt_data if isinstance(fmt_data, dict) else fmt_data.model_dump()
-                    fmt_dict["agent_url"] = agent.agent_url
                     formats.append(Format(**fmt_dict))
 
                 return formats

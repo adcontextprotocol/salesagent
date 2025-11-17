@@ -26,7 +26,7 @@ from src.core.config_loader import set_current_tenant
 from src.core.database.database_session import get_db_session
 from src.core.schema_adapters import GetProductsResponse
 from src.core.schema_helpers import create_get_products_request
-from src.core.schemas import Product
+from src.core.schemas import Product  # Extends library Product
 from src.core.testing_hooks import apply_testing_hooks, get_testing_context
 from src.core.tool_context import ToolContext
 from src.core.validation_helpers import format_validation_error, safe_parse_json_field
@@ -63,17 +63,37 @@ def convert_product_model_to_schema(product_model) -> Product:
     Returns:
         Product schema object
     """
-
-    # Use model_dump_internal() to get all fields
+    # Map fields from model to schema
     product_data = {}
 
-    # Map fields from model to schema
+    # Required fields per AdCP spec
     product_data["product_id"] = product_model.product_id
     product_data["name"] = product_model.name
     product_data["description"] = product_model.description
-    product_data["format_ids"] = product_model.effective_format_ids  # Auto-resolves from profile if set
-    product_data["targeting_template"] = product_model.targeting_template
     product_data["delivery_type"] = product_model.delivery_type
+
+    # format_ids: Use effective_format_ids which auto-resolves from profile if set
+    product_data["format_ids"] = product_model.effective_format_ids or []
+
+    # publisher_properties: Use effective_properties which returns AdCP 2.0.0 discriminated union format
+    effective_props = product_model.effective_properties
+    if not effective_props:
+        raise ValueError(
+            f"Product {product_model.product_id} has no publisher_properties. "
+            "All products must have at least one property per AdCP spec."
+        )
+    product_data["publisher_properties"] = effective_props
+
+    # delivery_measurement: Ensure it's always present (required per AdCP spec)
+    if product_model.delivery_measurement:
+        product_data["delivery_measurement"] = product_model.delivery_measurement
+    else:
+        # Default to empty dict (will be excluded during serialization if not set)
+        # Note: delivery_measurement is optional in our schema but recommended
+        product_data["delivery_measurement"] = None
+
+    # pricing_options: Use model's pricing_options relationship (required)
+    product_data["pricing_options"] = product_model.pricing_options if product_model.pricing_options else []
 
     # Optional fields
     if product_model.measurement:
@@ -84,21 +104,6 @@ def convert_product_model_to_schema(product_model) -> Product:
         product_data["price_guidance"] = product_model.price_guidance
     if product_model.countries:
         product_data["countries"] = product_model.countries
-
-    # Publisher properties (required per AdCP spec)
-    # Use effective_properties to auto-resolve from profile
-    # Note: Database stores as 'properties' but AdCP spec uses 'publisher_properties'
-    effective_props = product_model.effective_properties
-    if not effective_props:
-        raise ValueError(
-            f"Product {product_model.product_id} has no publisher_properties. "
-            "All products must have at least one property per AdCP spec."
-        )
-    product_data["publisher_properties"] = effective_props
-
-    # Product detail fields
-    if product_model.delivery_measurement:
-        product_data["delivery_measurement"] = product_model.delivery_measurement
     if product_model.product_card:
         product_data["product_card"] = product_model.product_card
     if product_model.product_card_detailed:
@@ -625,7 +630,9 @@ async def _get_products_impl(
         for product in modified_products:
             product.pricing_options = []
 
-    # Response __str__() will generate appropriate message based on content
+    # No conversion needed - our Product extends library Product
+    # When serialized, Pydantic automatically uses library Product fields
+    # Internal-only fields (implementation_config) excluded by model_dump()
     resp = GetProductsResponse(products=modified_products, errors=None, context=req.context)
 
     return resp
@@ -728,14 +735,11 @@ def get_product_catalog() -> list[Product]:
     Returns:
         List of Product objects with full pricing options
     """
-    import json
-
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 
     from src.core.config_loader import get_current_tenant
     from src.core.database.models import Product as ModelProduct
-    from src.core.schemas import PricingOption as PricingOptionSchema
 
     tenant = get_current_tenant()
 
@@ -746,80 +750,18 @@ def get_product_catalog() -> list[Product]:
             .options(
                 selectinload(ModelProduct.pricing_options),
                 selectinload(ModelProduct.inventory_profile),  # Avoid N+1 query
+                selectinload(ModelProduct.tenant),  # For publisher_domain resolution
             )
         )
         products = session.scalars(stmt).all()
 
+        # Use convert_product_model_to_schema for consistency
         loaded_products = []
         for product in products:
-            # Convert ORM model to Pydantic schema
-            # Parse JSON fields that might be strings (SQLite) or dicts (PostgreSQL)
-            def safe_json_parse(value):
-                if isinstance(value, str):
-                    try:
-                        return json.loads(value)
-                    except (json.JSONDecodeError, TypeError):
-                        return value
-                return value
-
-            # Parse formats - now stored as strings by the validator
-            format_ids = safe_json_parse(product.format_ids) or []
-            # Ensure it's a list of strings (validator guarantees this)
-            if not isinstance(format_ids, list):
-                format_ids = []
-
-            # Convert pricing_options ORM objects to Pydantic objects
-            pricing_options = []
-            logger.info(
-                f"Product {product.name} ({product.product_id}) has {len(product.pricing_options)} pricing options loaded"
-            )
-            for po in product.pricing_options:
-                fixed_str = "fixed" if po.is_fixed else "auction"
-                pricing_option_data = {
-                    "pricing_option_id": f"{po.pricing_model}_{po.currency.lower()}_{fixed_str}",
-                    "pricing_model": po.pricing_model,
-                    "rate": float(po.rate) if po.rate else None,
-                    "currency": po.currency,
-                    "is_fixed": po.is_fixed,
-                    "price_guidance": safe_json_parse(po.price_guidance) if po.price_guidance else None,
-                    "parameters": safe_json_parse(po.parameters) if po.parameters else None,
-                    "min_spend_per_package": float(po.min_spend_per_package) if po.min_spend_per_package else None,
-                }
-                pricing_options.append(PricingOptionSchema(**pricing_option_data))
-
-            product_data = {
-                "product_id": product.product_id,
-                "name": product.name,
-                "description": product.description,
-                "formats": format_ids,
-                "delivery_type": product.delivery_type,
-                "pricing_options": pricing_options,
-                "measurement": (
-                    safe_json_parse(product.measurement)
-                    if hasattr(product, "measurement") and product.measurement
-                    else None
-                ),
-                "creative_policy": (
-                    safe_json_parse(product.creative_policy)
-                    if hasattr(product, "creative_policy") and product.creative_policy
-                    else None
-                ),
-                "is_custom": product.is_custom,
-                "expires_at": product.expires_at,
-                # Note: brief_relevance is populated dynamically when brief is provided
-                "implementation_config": safe_json_parse(product.implementation_config),
-                # Required per AdCP spec: either properties OR property_tags
-                "properties": (
-                    safe_json_parse(product.properties)
-                    if hasattr(product, "properties") and product.properties
-                    else None
-                ),
-                "property_tags": (
-                    safe_json_parse(product.property_tags)
-                    if hasattr(product, "property_tags") and product.property_tags
-                    else ["all_inventory"]  # Default required per AdCP spec
-                ),
-            }
-            loaded_products.append(Product(**product_data))
+            try:
+                loaded_products.append(convert_product_model_to_schema(product))
+            except ValueError as e:
+                logger.warning(f"Skipping product {product.product_id}: {e}")
+                continue
 
     return loaded_products

@@ -10,15 +10,19 @@ All factories use sensible defaults for required fields and accept overrides for
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from adcp import (
+# Import types from adcp 2.1.0 library - these are the canonical schemas
+from adcp.types.generated import (
     BrandManifest,
     CreativeAsset,
     Format,
     FormatId,
     Package,
-    Product,
     Property,
 )
+from adcp.types.generated_poc.product import Product
+
+# Import url helper for type-safe AnyUrl construction
+from src.core.schemas import url
 
 
 def create_test_product(
@@ -77,8 +81,9 @@ def create_test_product(
             format_id_objects.append(fmt)
 
     # Default publisher_properties if not provided
+    # Must be discriminated union format (by_id or by_tag variant)
     if publisher_properties is None:
-        publisher_properties = [create_test_property_dict()]
+        publisher_properties = [create_test_publisher_properties_by_tag()]
 
     # Default delivery_measurement if not provided
     if delivery_measurement is None:
@@ -88,8 +93,9 @@ def create_test_product(
         }
 
     # Default pricing_options if not provided
+    # Must be proper discriminated union (CpmFixedRatePricingOption, etc.)
     if pricing_options is None:
-        pricing_options = [{"pricing_model": "cpm", "currency": "USD"}]
+        pricing_options = [create_test_cpm_pricing_option()]
 
     return Product(
         product_id=product_id,
@@ -117,10 +123,10 @@ def create_minimal_product(**overrides) -> Product:
         "product_id": "minimal",
         "name": "Minimal",
         "description": "Minimal test product",
-        "publisher_properties": [create_test_property_dict()],
+        "publisher_properties": [create_test_publisher_properties_by_tag()],
         "format_ids": [create_test_format_id("display_300x250")],
         "delivery_type": "guaranteed",
-        "pricing_options": [{"pricing_model": "cpm", "currency": "USD"}],
+        "pricing_options": [create_test_cpm_pricing_option()],
         "delivery_measurement": {"provider": "test", "notes": "Test"},
     }
     defaults.update(overrides)
@@ -154,7 +160,7 @@ def create_test_format_id(
     Example:
         format_id = create_test_format_id("video_1920x1080")
     """
-    return FormatId(agent_url=agent_url, id=format_id)
+    return FormatId(agent_url=url(agent_url), id=format_id)
 
 
 def create_test_format(
@@ -187,6 +193,74 @@ def create_test_format(
     return Format(format_id=format_id, name=name, type=type, is_standard=is_standard, **kwargs)
 
 
+def create_test_publisher_properties_by_tag(
+    publisher_domain: str = "test.example.com",
+    property_tags: list[str] | None = None,
+    **kwargs,
+) -> dict[str, Any]:
+    """Create test publisher_properties in by_tag variant (discriminated union).
+
+    This is the AdCP 2.0.0+ discriminated union format for tag-based property selection.
+
+    Args:
+        publisher_domain: Domain of the publisher
+        property_tags: List of property tags. Defaults to ["all_inventory"]
+        **kwargs: Additional optional fields
+
+    Returns:
+        Publisher properties dict in by_tag variant format
+
+    Example:
+        props = create_test_publisher_properties_by_tag(
+            publisher_domain="news.example.com",
+            property_tags=["premium", "sports"]
+        )
+    """
+    if property_tags is None:
+        property_tags = ["all_inventory"]
+
+    return {
+        "publisher_domain": publisher_domain,
+        "property_tags": property_tags,
+        "selection_type": "by_tag",
+        **kwargs,
+    }
+
+
+def create_test_publisher_properties_by_id(
+    publisher_domain: str = "test.example.com",
+    property_ids: list[str] | None = None,
+    **kwargs,
+) -> dict[str, Any]:
+    """Create test publisher_properties in by_id variant (discriminated union).
+
+    This is the AdCP 2.0.0+ discriminated union format for ID-based property selection.
+
+    Args:
+        publisher_domain: Domain of the publisher
+        property_ids: List of property IDs. Defaults to ["test_property_1"]
+        **kwargs: Additional optional fields
+
+    Returns:
+        Publisher properties dict in by_id variant format
+
+    Example:
+        props = create_test_publisher_properties_by_id(
+            publisher_domain="news.example.com",
+            property_ids=["prop_001", "prop_002"]
+        )
+    """
+    if property_ids is None:
+        property_ids = ["test_property_1"]
+
+    return {
+        "publisher_domain": publisher_domain,
+        "property_ids": property_ids,
+        "selection_type": "by_id",
+        **kwargs,
+    }
+
+
 def create_test_property_dict(
     publisher_domain: str = "test.example.com",
     property_id: str = "test_property_1",
@@ -195,6 +269,10 @@ def create_test_property_dict(
     **kwargs,
 ) -> dict[str, Any]:
     """Create a test property dict for use in publisher_properties.
+
+    DEPRECATED: Use create_test_publisher_properties_by_tag() or
+    create_test_publisher_properties_by_id() instead. This function creates
+    legacy format that is not compatible with adcp 2.1.0 Product schema.
 
     Note: Returns a dict, not a Property object, because adcp.Product
     expects publisher_properties as a list of dicts.
@@ -347,8 +425,44 @@ def create_test_brand_manifest(
     return BrandManifest(name=name, promoted_offering=promoted_offering, **kwargs)
 
 
+def create_test_cpm_pricing_option(
+    pricing_option_id: str = "cpm_option_1",
+    currency: str = "USD",
+    rate: float = 10.0,
+    **kwargs,
+) -> dict[str, Any]:
+    """Create a test CPM fixed rate pricing option (discriminated union).
+
+    This creates a proper AdCP 2.0+ CpmFixedRatePricingOption discriminated union.
+    The presence of 'rate' field (vs 'price_guidance') determines this is fixed rate.
+
+    Args:
+        pricing_option_id: Unique identifier for this pricing option
+        currency: Currency code (3-letter ISO)
+        rate: CPM rate in the specified currency
+        **kwargs: Additional optional fields (min_spend_per_package, etc.)
+
+    Returns:
+        CPM pricing option dict suitable for Product.pricing_options
+
+    Example:
+        pricing = create_test_cpm_pricing_option(rate=15.0, currency="EUR")
+    """
+    return {
+        "pricing_option_id": pricing_option_id,
+        "pricing_model": "cpm",
+        "currency": currency,
+        "rate": rate,
+        **kwargs,
+    }
+
+
 def create_test_pricing_option(pricing_model: str = "cpm", currency: str = "USD", **kwargs) -> dict[str, Any]:
     """Create a test pricing option dict.
+
+    DEPRECATED: Use create_test_cpm_pricing_option() or other specific pricing
+    functions instead. This function creates incomplete pricing options that
+    don't match adcp 2.1.0 discriminated union requirements.
 
     Note: Returns a dict because PricingOption in adcp is a discriminated union
     with complex internal structure. Tests should use dicts.

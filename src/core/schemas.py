@@ -7,23 +7,44 @@ from datetime import UTC, date, datetime, time
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from adcp import (
-    CreateMediaBuyError as AdCPCreateMediaBuyError,
+from adcp.types.aliases import (
+    CreateMediaBuyErrorResponse as AdCPCreateMediaBuyError,
 )
-from adcp import (
-    CreateMediaBuySuccess as AdCPCreateMediaBuySuccess,
+from adcp.types.aliases import (
+    CreateMediaBuySuccessResponse as AdCPCreateMediaBuySuccess,
 )
-from adcp import (
-    Error,
+from adcp.types.aliases import (
+    UpdateMediaBuyErrorResponse as AdCPUpdateMediaBuyError,
 )
-from adcp import (
-    UpdateMediaBuyError as AdCPUpdateMediaBuyError,
+from adcp.types.aliases import (
+    UpdateMediaBuySuccessResponse as AdCPUpdateMediaBuySuccess,
 )
-from adcp import (
-    UpdateMediaBuySuccess as AdCPUpdateMediaBuySuccess,
-)
-from adcp.types.generated import PushNotificationConfig
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
+from adcp.types.generated import Error, PushNotificationConfig
+from adcp.types.generated_poc.format import Format as LibraryFormat
+from adcp.types.generated_poc.format_id import FormatId as LibraryFormatId
+
+# Import library Product, Format, and FormatId to ensure we use canonical AdCP schema
+from adcp.types.generated_poc.product import Product as LibraryProduct
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
+
+
+# Helper function for creating AnyUrl instances (eliminates mypy warnings)
+def url(value: str) -> AnyUrl:
+    """Convert string to AnyUrl for type-safe URL construction.
+
+    This helper eliminates mypy warnings when passing strings to AnyUrl fields.
+    Pydantic's AnyUrl accepts strings at runtime and validates/converts them automatically.
+
+    Usage:
+        FormatId(agent_url=url("https://example.com"), id="test")
+
+    Args:
+        value: URL string to convert
+
+    Returns:
+        AnyUrl instance (auto-validated by Pydantic)
+    """
+    return AnyUrl(value)  # type: ignore[return-value]  # Pydantic handles string -> AnyUrl conversion
 
 
 class CreativeStatusEnum(Enum):
@@ -516,55 +537,55 @@ class FormatReference(BaseModel):
     format_id: str = Field(..., serialization_alias="id", description="Format ID within that agent's format catalog")
 
 
-class Format(BaseModel):
-    """Creative format definition per AdCP v2.4 spec.
+class Format(LibraryFormat):
+    """Creative format definition per AdCP spec.
 
-    Represents a creative format with its requirements. The agent_url field identifies
+    Extends the adcp library's Format class. The format_id.agent_url field identifies
     the authoritative creative agent that provides this format (e.g., the reference
     creative agent at https://creative.adcontextprotocol.org).
+
+    Note: All spec-defined fields are inherited from adcp.types.generated_poc.format.Format.
+    We only add internal fields here marked with exclude=True.
     """
 
-    format_id: "FormatId" = Field(..., description="Format identifier (FormatId object per AdCP spec)")
-    agent_url: str | None = Field(
+    # Internal fields for backward compatibility and convenience
+    # These are NOT part of the AdCP spec and are excluded from serialization
+    platform_config: dict[str, Any] | None = Field(
         None,
-        description="Base URL of the agent that provides this format (authoritative source). "
-        "E.g., 'https://creative.adcontextprotocol.org', 'https://dco.example.com'",
+        exclude=True,
+        description="Internal: Platform-specific configuration (e.g., gam, kevel) for creative mapping",
     )
-    name: str = Field(..., description="Human-readable format name")
-    type: Literal["audio", "video", "display", "native", "dooh", "rich_media", "universal", "generative"] = Field(
-        ..., description="Media type of this format"
+    category: Literal["standard", "custom", "generative"] | None = Field(
+        None, exclude=True, description="Internal: Format category (not in AdCP spec)"
     )
-    category: Literal["standard", "custom", "generative"] | None = Field(None, description="Format category")
     is_standard: bool | None = Field(
-        None, description="Whether this follows IAB specifications or AdCP standard format definitions"
-    )
-    iab_specification: str | None = Field(None, description="Name of the IAB specification (if applicable)")
-    description: str | None = Field(None, description="Human-readable description of the format")
-    renders: list[dict[str, Any]] | None = Field(
-        None,
-        description="Specification of rendered pieces (AdCP v2.4 spec). "
-        "Each render contains role and dimensions. Most formats have a single 'primary' render.",
+        None, exclude=True, description="Internal: Whether this follows IAB specifications (not in AdCP spec)"
     )
     requirements: dict[str, Any] | None = Field(
-        None, description="Technical specifications for this format (e.g., dimensions, duration, file size limits)"
+        None,
+        exclude=True,
+        description="Internal: Legacy technical specifications (not in AdCP spec, use renders instead)",
     )
-    assets_required: list[AssetRequirement] | None = Field(
-        None, description="Array of required assets or asset groups for this format"
-    )
-    delivery: dict[str, Any] | None = Field(
-        None, description="Delivery method specifications (e.g., hosted, VAST, third-party tags)"
+    iab_specification: str | None = Field(
+        None, exclude=True, description="Internal: Name of IAB specification (not in AdCP spec)"
     )
     accepts_3p_tags: bool | None = Field(
-        None, description="Whether this format can accept third-party served creative tags"
+        None, exclude=True, description="Internal: Whether format accepts third-party tags (not in AdCP spec)"
     )
-    supported_macros: list[str] | None = Field(None, description="List of universal macros supported by this format")
-    platform_config: dict[str, Any] | None = Field(
-        None, description="Platform-specific configuration (e.g., gam, kevel) for creative mapping"
-    )
-    output_format_ids: list["FormatId"] | None = Field(
-        None,
-        description="For generative formats: array of FormatId objects this format can generate per AdCP spec",
-    )
+
+    @property
+    def agent_url(self) -> str | None:
+        """Convenience property to access agent_url from format_id.
+
+        Returns the agent_url from format_id.agent_url per AdCP spec.
+        This property exists for backward compatibility with code that expects format.agent_url.
+
+        Returns:
+            Agent URL string, or None if not available
+        """
+        if hasattr(self.format_id, "agent_url"):
+            return str(self.format_id.agent_url)
+        return None
 
     def get_primary_dimensions(self) -> tuple[int, int] | None:
         """Extract primary dimensions from renders array.
@@ -572,17 +593,16 @@ class Format(BaseModel):
         Returns:
             Tuple of (width, height) in pixels, or None if not available.
         """
-        # Try renders field first (AdCP v2.4 spec)
+        # Try renders field first (AdCP spec - renders is list of Render objects)
         if self.renders and len(self.renders) > 0:
             primary_render = self.renders[0]  # First render is typically primary
-            if "dimensions" in primary_render:
-                dims = primary_render["dimensions"]
-                width = dims.get("width")
-                height = dims.get("height")
-                if width is not None and height is not None:
-                    return (int(width), int(height))
+            if hasattr(primary_render, "dimensions") and primary_render.dimensions:
+                dims = primary_render.dimensions
+                # dimensions is a Dimensions object with width/height attributes
+                if dims.width is not None and dims.height is not None:
+                    return (int(dims.width), int(dims.height))
 
-        # Fallback to requirements field (legacy)
+        # Fallback to requirements field (legacy, internal field)
         if self.requirements:
             width = self.requirements.get("width")
             height = self.requirements.get("height")
@@ -609,12 +629,11 @@ class Format(BaseModel):
         # Extract format_id string - handle both FormatId object and plain string
         if hasattr(self.format_id, "id"):
             format_id_str = self.format_id.id  # FormatId object
+            # Get agent_url from FormatId (per AdCP spec)
+            agent_url = str(self.format_id.agent_url) if hasattr(self.format_id, "agent_url") else ""
         else:
             format_id_str = str(self.format_id)  # Plain string (shouldn't happen but defensive)
-
-        # Use agent_url from Format object (not from FormatId) for consistency
-        # This matches what template rendering uses in get_creative_formats()
-        agent_url = self.agent_url or ""
+            agent_url = ""
 
         return f"{agent_url}|{format_id_str}"
 
@@ -675,7 +694,7 @@ def convert_format_ids_to_formats(format_ids: list[str], tenant_id: str | None =
             # For unknown format IDs, create a minimal Format object with FormatId
             formats.append(
                 Format(  # type: ignore[call-arg]
-                    format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id=format_id),
+                    format_id=FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id=format_id),
                     name=format_id.replace("_", " ").title(),
                     type="display",  # Default to display
                 )
@@ -1000,69 +1019,25 @@ class Placement(BaseModel):
     )
 
 
-class Product(BaseModel):
-    product_id: str
-    name: str
-    description: str
-    format_ids: list["FormatId"] = Field(
-        ...,
-        description="Array of supported creative format IDs with agent_url and id per AdCP spec. "
-        "Database validation ensures all format_ids match FormatId structure.",
-    )
-    delivery_type: Literal["guaranteed", "non_guaranteed"]
+class Product(LibraryProduct):
+    """Product schema extending library Product with internal fields.
 
-    # NEW: Pricing options (AdCP PR #88)
-    # Note: This is populated from database relationship, not a column
-    # REQUIRED: All products must have at least one pricing option in database
-    # Can be empty list for anonymous users (hidden for privacy)
-    pricing_options: list[PricingOption] = Field(
-        default_factory=list,
-        description="Available pricing models for this product (AdCP PR #88). May be empty for unauthenticated requests.",
-    )
+    Inherits all AdCP-compliant fields from adcp library's Product,
+    ensuring we stay in sync with spec updates. Adds only internal-only
+    fields that we need for our implementation.
 
-    # Other fields
-    measurement: Measurement | None = Field(None, description="Measurement capabilities included with this product")
-    creative_policy: CreativePolicy | None = Field(None, description="Creative requirements and restrictions")
-    is_custom: bool = Field(default=False)
-    brief_relevance: str | None = Field(
-        None, description="Explanation of why this product matches the brief (populated when brief is provided)"
-    )
-    expires_at: datetime | None = None
+    This pattern ensures:
+    - External serialization uses library Product (spec-compliant)
+    - Internal code has extra fields it needs (implementation_config)
+    - No conversion functions needed - inheritance handles it
+    - Automatic updates when library Product changes
+    """
+
+    # Internal-only fields (not in AdCP spec)
     implementation_config: dict[str, Any] | None = Field(
         default=None,
-        description="Ad server-specific configuration for implementing this product (placements, line item settings, etc.)",
-    )
-    # AdCP property authorization field (required per spec)
-    publisher_properties: list["Property"] = Field(
-        ...,
-        description="Publisher properties covered by this product for adagents.json validation per AdCP spec",
-        min_length=1,
-    )
-    # AdCP PR #79 fields - populated dynamically from historical reporting data
-    # These are NOT stored in database, calculated on-demand from product_performance_metrics
-    estimated_exposures: int | None = Field(None, description="Estimated impressions (calculated dynamically)", gt=0)
-
-    # Product detail fields (AdCP v1 spec compliance)
-    delivery_measurement: DeliveryMeasurement | None = Field(
-        None,
-        description="Measurement provider and methodology for delivery metrics. REQUIRED per AdCP spec.",
-    )
-    product_card: ProductCard | None = Field(
-        None,
-        description="Optional standard visual card (300x400px) for displaying this product in user interfaces",
-    )
-    product_card_detailed: ProductCardDetailed | None = Field(
-        None,
-        description="Optional detailed card with carousel and full specifications for rich product presentation",
-    )
-    placements: list[Placement] | None = Field(
-        None,
-        description="Optional array of specific placements within this product",
-        min_length=1,
-    )
-    reporting_capabilities: dict[str, Any] | None = Field(
-        None,
-        description="Available reports and reporting capabilities for this product",
+        description="Internal: Ad server-specific configuration for implementing this product",
+        exclude=True,  # Exclude from serialization by default
     )
 
     @model_validator(mode="after")
@@ -1117,14 +1092,14 @@ class Product(BaseModel):
                     result.append(upgrade_legacy_format_id(fmt))
                 except ValueError:
                     # Unknown format - use default agent_url
-                    result.append(FormatId(agent_url=DEFAULT_AGENT_URL, id=fmt))
+                    result.append(FormatId(agent_url=url(DEFAULT_AGENT_URL), id=fmt))
             elif isinstance(fmt, FormatId):
                 # Already a FormatId object
                 result.append(fmt)
             elif isinstance(fmt, dict):
                 # Dict representation - convert to FormatId
                 if "id" in fmt and "agent_url" in fmt:
-                    result.append(FormatId(agent_url=fmt["agent_url"], id=fmt["id"]))
+                    result.append(FormatId(agent_url=url(fmt["agent_url"]), id=fmt["id"]))
                 elif "id" in fmt:
                     # Missing agent_url - try upgrade, fallback to default
                     from src.core.format_cache import upgrade_legacy_format_id
@@ -1132,20 +1107,20 @@ class Product(BaseModel):
                     try:
                         result.append(upgrade_legacy_format_id(fmt["id"]))
                     except ValueError:
-                        result.append(FormatId(agent_url=DEFAULT_AGENT_URL, id=fmt["id"]))
+                        result.append(FormatId(agent_url=url(DEFAULT_AGENT_URL), id=fmt["id"]))
                 else:
                     raise ValueError(f"Invalid format dict: {fmt}")
             else:
                 # Other object types (like FormatReference)
                 if hasattr(fmt, "agent_url") and hasattr(fmt, "id"):
-                    result.append(FormatId(agent_url=fmt.agent_url, id=fmt.id))
+                    result.append(FormatId(agent_url=url(str(fmt.agent_url)), id=fmt.id))
                 elif hasattr(fmt, "format_id"):
                     from src.core.format_cache import upgrade_legacy_format_id
 
                     try:
                         result.append(upgrade_legacy_format_id(fmt.format_id))
                     except ValueError:
-                        result.append(FormatId(agent_url=DEFAULT_AGENT_URL, id=fmt.format_id))
+                        result.append(FormatId(agent_url=url(DEFAULT_AGENT_URL), id=fmt.format_id))
                 else:
                     raise ValueError(f"Cannot serialize format: {fmt}")
 
@@ -1157,6 +1132,9 @@ class Product(BaseModel):
 
         Returns string like: "CPM: $8-$15 (auction), CPCV: $0.35 (fixed)"
         Returns None if no pricing information available.
+
+        Note: Works with discriminated union pricing options (library Product).
+        Fixed rate options have 'rate' field, auction options have 'price_guidance' field.
         """
         if not self.pricing_options or len(self.pricing_options) == 0:
             return None
@@ -1166,10 +1144,11 @@ class Product(BaseModel):
             model = option.pricing_model.value if hasattr(option.pricing_model, "value") else option.pricing_model
             model_upper = model.upper()
 
-            if option.is_fixed and option.rate:
+            # Discriminated union: presence of 'rate' means fixed, 'price_guidance' means auction
+            if hasattr(option, "rate") and option.rate:
                 # Fixed pricing: show rate
                 summary_parts.append(f"{model_upper}: ${option.rate:.2f} ({option.currency}, fixed)")
-            elif not option.is_fixed and option.price_guidance:
+            elif hasattr(option, "price_guidance") and option.price_guidance:
                 # Auction pricing: show floor-p90 range
                 floor = option.price_guidance.floor
                 p90 = option.price_guidance.p90 if option.price_guidance.p90 else option.price_guidance.p50
@@ -1536,13 +1515,13 @@ class CreativeGroup(BaseModel):
     tags: list[str] | None = []
 
 
-class FormatId(BaseModel):
-    """AdCP v2.4 format identifier object."""
+class FormatId(LibraryFormatId):
+    """AdCP format identifier - extends library FormatId with convenience methods.
 
-    agent_url: str = Field(..., description="URL of the agent defining this format")
-    id: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$", description="Format identifier")
-
-    model_config = {"extra": "forbid"}
+    Note: The inherited agent_url field has type AnyUrl, but Pydantic accepts strings
+    at runtime and automatically validates/converts them. This causes mypy warnings
+    (str vs AnyUrl) which are safe to ignore - the code works correctly at runtime.
+    """
 
     def __str__(self) -> str:
         """Return human-readable format identifier for display in UIs."""

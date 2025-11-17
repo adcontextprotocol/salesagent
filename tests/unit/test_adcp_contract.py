@@ -99,17 +99,13 @@ class TestAdCPContract:
             implementation_config={"internal": "config"},
         )
 
-        # Create pricing option for the product
+        # Create pricing option using library discriminated union format
+        from tests.helpers.adcp_factories import create_test_cpm_pricing_option, create_test_publisher_properties_by_tag
 
-        pricing_option = PricingOptionSchema(
+        pricing_option = create_test_cpm_pricing_option(
             pricing_option_id="cpm_usd_fixed",
-            pricing_model="cpm",
-            rate=10.50,
             currency="USD",
-            is_fixed=True,
-            price_guidance=None,
-            parameters=None,
-            min_spend_per_package=None,
+            rate=10.50,
         )
 
         # Convert to dict (simulating database retrieval and conversion)
@@ -124,13 +120,12 @@ class TestAdCPContract:
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
             "publisher_properties": [
-                {
-                    "property_type": "website",
-                    "name": "Test Property",
-                    "identifiers": [{"type": "domain", "value": "test.com"}],
-                    "publisher_domain": "test.com",
-                }
-            ],  # Required per AdCP spec
+                create_test_publisher_properties_by_tag(publisher_domain="test.com")
+            ],  # Required per AdCP spec - discriminated union format
+            "delivery_measurement": {
+                "provider": "test_provider",
+                "notes": "Test measurement",
+            },  # Required per AdCP spec
         }
 
         # Should be convertible to AdCP schema
@@ -140,12 +135,12 @@ class TestAdCPContract:
         assert schema.product_id == "test_product"
         assert schema.name == "Test Product"
         assert schema.description == "A test product for AdCP protocol"
-        assert schema.delivery_type in ["guaranteed", "non_guaranteed"]
+        assert str(schema.delivery_type.value) in ["guaranteed", "non_guaranteed"]  # Enum value
         assert len(schema.format_ids) > 0
 
         # Verify format IDs match AdCP (now FormatId objects)
         assert schema.format_ids[0].id == "display_300x250"
-        assert schema.format_ids[0].agent_url == "https://creative.adcontextprotocol.org"
+        assert str(schema.format_ids[0].agent_url).rstrip("/") == "https://creative.adcontextprotocol.org"
 
     def test_product_non_guaranteed(self):
         """Test non-guaranteed product (AdCP spec compliant - no price_guidance)."""
@@ -165,6 +160,9 @@ class TestAdCPContract:
             implementation_config=None,
         )
 
+        # Use library discriminated union format
+        from tests.helpers.adcp_factories import create_test_cpm_pricing_option, create_test_publisher_properties_by_tag
+
         model_dict = {
             "product_id": model.product_id,
             "name": model.name,
@@ -174,24 +172,25 @@ class TestAdCPContract:
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
             "publisher_properties": [
-                {
-                    "property_type": "website",
-                    "name": "Test Property",
-                    "identifiers": [{"type": "domain", "value": "test.com"}],
-                    "publisher_domain": "test.com",
-                }
-            ],  # Required per AdCP spec
+                create_test_publisher_properties_by_tag(publisher_domain="test.com")
+            ],  # Required per AdCP spec - discriminated union format
             "pricing_options": [
-                PricingOptionSchema(
-                    pricing_option_id="cpm_usd_fixed", pricing_model="cpm", rate=10.0, currency="USD", is_fixed=True
+                create_test_cpm_pricing_option(
+                    pricing_option_id="cpm_usd_fixed",
+                    currency="USD",
+                    rate=10.0,
                 )
             ],
+            "delivery_measurement": {
+                "provider": "test_provider",
+                "notes": "Test measurement",
+            },  # Required per AdCP spec
         }
 
         schema = ProductSchema(**model_dict)
 
         # AdCP spec: non_guaranteed products use auction-based pricing (no price_guidance)
-        assert schema.delivery_type == "non_guaranteed"
+        assert str(schema.delivery_type.value) == "non_guaranteed"  # Enum value
 
     def test_principal_model_to_schema(self):
         """Test that Principal model matches AdCP authentication requirements."""
@@ -1412,13 +1411,13 @@ class TestAdCPContract:
 
         # Create success response with domain fields only (per AdCP PR #113)
         # Protocol fields (status, task_id, message) are added by transport layer
+        # Note: creative_deadline must be timezone-aware datetime (adcp 2.0.0)
+        # Note: packages in response only have package_id and buyer_ref (adcp 2.0.0)
         successful_response = CreateMediaBuySuccess(
             media_buy_id="mb_12345",
             buyer_ref="br_67890",
-            packages=[
-                {"package_id": "pkg_1", "product_id": "prod_1", "budget": 5000.0, "targeting": {}, "status": "active"}
-            ],
-            creative_deadline=(datetime.now() + timedelta(days=7)).isoformat(),
+            packages=[{"package_id": "pkg_1", "buyer_ref": "br_67890"}],
+            creative_deadline=datetime.now(UTC) + timedelta(days=7),
         )
 
         # Test successful response AdCP compliance
@@ -1629,22 +1628,27 @@ class TestAdCPContract:
         from src.core.schemas import UpdateMediaBuyError, UpdateMediaBuySuccess
 
         # Create successful update response (oneOf success branch)
+        # Note: implementation_date must be timezone-aware datetime (adcp 2.0.0)
+        # Note: packages field removed from response in adcp 2.0.0, only affected_packages remains
         response = UpdateMediaBuySuccess(
             media_buy_id="buy_123",
             buyer_ref="ref_123",
-            packages=[{"package_id": "pkg_1", "status": "active"}],
-            implementation_date=(datetime.now() + timedelta(hours=1)).isoformat(),
-            affected_packages=[],
+            implementation_date=datetime.now(UTC) + timedelta(hours=1),
+            affected_packages=[{"package_id": "pkg_1", "buyer_ref": "ref_123"}],
         )
 
         # Test AdCP-compliant response
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["media_buy_id", "buyer_ref", "packages"]
+        required_fields = ["media_buy_id", "buyer_ref"]
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+
+        # Verify affected_packages if provided
+        if "affected_packages" in adcp_response:
+            assert isinstance(adcp_response["affected_packages"], list), "affected_packages must be array"
 
         # Note: implementation_date and affected_packages are internal fields
         # excluded by model_dump() per AdCP PR #113
