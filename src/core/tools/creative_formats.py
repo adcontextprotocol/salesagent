@@ -102,7 +102,8 @@ def _list_creative_formats_impl(
         ]
 
     # Sort formats by type and name for consistent ordering
-    formats.sort(key=lambda f: (f.type, f.name))
+    # Use .value to convert enum to string for sorting (enums don't support < comparison)
+    formats.sort(key=lambda f: (f.type.value, f.name))
 
     # Log the operation
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])

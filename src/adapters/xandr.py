@@ -531,15 +531,25 @@ class XandrAdapter(AdServerAdapter):
                 {"request": request.dict(), "principal": self.principal.name, "advertiser_id": self.advertiser_id},
             )
 
-            # Build package responses
+            # Build package responses - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
+            # - buyer_ref (required)
+            # - package_id (required)
             package_responses = []
-            for package in packages:
-                package_responses.append(
-                    {
-                        "package_id": package.package_id,
-                        "status": "active",  # Required by AdCP spec
-                    }
-                )
+            for idx, package in enumerate(packages):
+                # Get matching request package for buyer_ref
+                matching_req_package = None
+                if request.packages and idx < len(request.packages):
+                    matching_req_package = request.packages[idx]
+
+                buyer_ref = "unknown"  # Default fallback
+                if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
+                    buyer_ref = matching_req_package.buyer_ref or buyer_ref
+
+                # Create minimal AdCP-compliant Package response
+                package_responses.append({
+                    "buyer_ref": buyer_ref,
+                    "package_id": package.package_id,
+                })
 
             return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
@@ -584,7 +594,7 @@ class XandrAdapter(AdServerAdapter):
             package_responses = []
 
             # Create line items for each package
-            for package in packages:
+            for idx, package in enumerate(packages):
                 if not self.advertiser_id:
                     raise ValueError("Advertiser ID is required for creating line items")
 
@@ -626,14 +636,22 @@ class XandrAdapter(AdServerAdapter):
                 li_response = self._make_request("POST", "/line-item", li_data)
                 li_id = li_response["response"]["line-item"]["id"]
 
-                # Build package response with package_id and platform_line_item_id
-                package_responses.append(
-                    {
-                        "package_id": package.package_id,
-                        "platform_line_item_id": str(li_id),
-                        "status": "active",  # Required by AdCP spec
-                    }
-                )
+                # Get matching request package for buyer_ref
+                matching_req_package = None
+                if request.packages and idx < len(request.packages):
+                    matching_req_package = request.packages[idx]
+
+                buyer_ref = "unknown"  # Default fallback
+                if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
+                    buyer_ref = matching_req_package.buyer_ref or buyer_ref
+
+                # Build package response - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
+                # - buyer_ref (required)
+                # - package_id (required)
+                package_responses.append({
+                    "buyer_ref": buyer_ref,
+                    "package_id": package.package_id,
+                })
 
             return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",

@@ -54,69 +54,8 @@ def get_recommended_cpm(product: Product) -> float | None:
     return None
 
 
-def convert_product_model_to_schema(product_model) -> Product:
-    """Convert database Product model to Product schema.
-
-    Args:
-        product_model: Product database model
-
-    Returns:
-        Product schema object
-    """
-    # Map fields from model to schema
-    product_data = {}
-
-    # Required fields per AdCP spec
-    product_data["product_id"] = product_model.product_id
-    product_data["name"] = product_model.name
-    product_data["description"] = product_model.description
-    product_data["delivery_type"] = product_model.delivery_type
-
-    # format_ids: Use effective_format_ids which auto-resolves from profile if set
-    product_data["format_ids"] = product_model.effective_format_ids or []
-
-    # publisher_properties: Use effective_properties which returns AdCP 2.0.0 discriminated union format
-    effective_props = product_model.effective_properties
-    if not effective_props:
-        raise ValueError(
-            f"Product {product_model.product_id} has no publisher_properties. "
-            "All products must have at least one property per AdCP spec."
-        )
-    product_data["publisher_properties"] = effective_props
-
-    # delivery_measurement: Ensure it's always present (required per AdCP spec)
-    if product_model.delivery_measurement:
-        product_data["delivery_measurement"] = product_model.delivery_measurement
-    else:
-        # Default to empty dict (will be excluded during serialization if not set)
-        # Note: delivery_measurement is optional in our schema but recommended
-        product_data["delivery_measurement"] = None
-
-    # pricing_options: Use model's pricing_options relationship (required)
-    product_data["pricing_options"] = product_model.pricing_options if product_model.pricing_options else []
-
-    # Optional fields
-    if product_model.measurement:
-        product_data["measurement"] = product_model.measurement
-    if product_model.creative_policy:
-        product_data["creative_policy"] = product_model.creative_policy
-    if product_model.price_guidance:
-        product_data["price_guidance"] = product_model.price_guidance
-    if product_model.countries:
-        product_data["countries"] = product_model.countries
-    if product_model.product_card:
-        product_data["product_card"] = product_model.product_card
-    if product_model.product_card_detailed:
-        product_data["product_card_detailed"] = product_model.product_card_detailed
-    if product_model.placements:
-        product_data["placements"] = product_model.placements
-    if product_model.reporting_capabilities:
-        product_data["reporting_capabilities"] = product_model.reporting_capabilities
-
-    # Default is_custom to False if not set
-    product_data["is_custom"] = product_model.is_custom if product_model.is_custom else False
-
-    return Product(**product_data)
+# Import conversion utilities from dedicated module to avoid circular imports
+from src.core.product_conversion import convert_product_model_to_schema
 
 
 async def _get_products_impl(
@@ -588,7 +527,8 @@ async def _get_products_impl(
         eligible_products = filtered_products
 
     # Apply testing hooks to response
-    response_data = {"products": [p.model_dump_internal() for p in eligible_products]}
+    # AdCP library Product uses model_dump(), not model_dump_internal()
+    response_data = {"products": [p.model_dump() for p in eligible_products]}
     response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")  # type: ignore[arg-type]
 
     # Reconstruct products from modified data

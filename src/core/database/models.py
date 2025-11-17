@@ -287,15 +287,21 @@ class Product(Base, JSONValidatorMixin):
             return self.properties
         elif self.property_ids:
             # AdCP 2.0.0 by_id variant
-            # Get publisher_domain from tenant or first property
-            publisher_domain = self.tenant.domain if hasattr(self, "tenant") and self.tenant else "unknown"
+            # Get publisher_domain from tenant (use subdomain or virtual_host)
+            if hasattr(self, "tenant") and self.tenant:
+                publisher_domain = self.tenant.virtual_host or f"{self.tenant.subdomain}.example.com"
+            else:
+                publisher_domain = "unknown"
             return [
                 {"publisher_domain": publisher_domain, "property_ids": self.property_ids, "selection_type": "by_id"}
             ]
         elif self.property_tags:
             # AdCP 2.0.0 by_tag variant
-            # Get publisher_domain from tenant
-            publisher_domain = self.tenant.domain if hasattr(self, "tenant") and self.tenant else "unknown"
+            # Get publisher_domain from tenant (use subdomain or virtual_host)
+            if hasattr(self, "tenant") and self.tenant:
+                publisher_domain = self.tenant.virtual_host or f"{self.tenant.subdomain}.example.com"
+            else:
+                publisher_domain = "unknown"
             return [
                 {"publisher_domain": publisher_domain, "property_tags": self.property_tags, "selection_type": "by_tag"}
             ]

@@ -601,6 +601,24 @@ let inventoryCache = null;
 // ============================================================================
 
 /**
+ * Helper function to add sizes to inventory cache
+ * Eliminates duplicate size extraction code
+ * @param {Array} sizes - Array of size objects with width and height properties
+ */
+function addSizesToCache(sizes) {
+    if (!sizes || !Array.isArray(sizes)) return;
+
+    sizes.forEach(size => {
+        const sizeKey = `${size.width}x${size.height}`;
+        inventoryCache.extractedSizes.add(sizeKey);
+        inventoryCache.sizeUnitCounts.set(
+            sizeKey,
+            (inventoryCache.sizeUnitCounts.get(sizeKey) || 0) + 1
+        );
+    });
+}
+
+/**
  * Extract all sizes from selected ad units and placements
  * Note: Defined early so it's available in DOMContentLoaded handler
  */
@@ -631,16 +649,9 @@ async function extractSizesFromInventory() {
         console.log('extractSizesFromUnit: item.children =', item.children);
         console.log('extractSizesFromUnit: item.metadata.sizes =', item.metadata?.sizes);
 
-        // Extract sizes from this unit
+        // Extract sizes from this unit using helper function
         if (item.metadata && item.metadata.sizes) {
-            item.metadata.sizes.forEach(size => {
-                const sizeKey = `${size.width}x${size.height}`;
-                inventoryCache.extractedSizes.add(sizeKey);
-                inventoryCache.sizeUnitCounts.set(
-                    sizeKey,
-                    (inventoryCache.sizeUnitCounts.get(sizeKey) || 0) + 1
-                );
-            });
+            addSizesToCache(item.metadata.sizes);
         }
 
         // Recursively extract sizes from children (for hierarchical ad units)
@@ -649,17 +660,8 @@ async function extractSizesFromInventory() {
             console.log('extractSizesFromUnit: found', item.children.length, 'children');
             item.children.forEach(child => {
                 console.log('extractSizesFromUnit: processing child', child.id, 'sizes:', child.sizes);
-                // Child has sizes directly from tree API
-                if (child.sizes && Array.isArray(child.sizes)) {
-                    child.sizes.forEach(size => {
-                        const sizeKey = `${size.width}x${size.height}`;
-                        inventoryCache.extractedSizes.add(sizeKey);
-                        inventoryCache.sizeUnitCounts.set(
-                            sizeKey,
-                            (inventoryCache.sizeUnitCounts.get(sizeKey) || 0) + 1
-                        );
-                    });
-                }
+                // Child has sizes directly from tree API - use helper function
+                addSizesToCache(child.sizes);
                 // Recursively process grandchildren if they exist
                 if (child.children && Array.isArray(child.children)) {
                     // Cache this child so we can process its children recursively
@@ -723,16 +725,9 @@ async function extractSizesFromInventory() {
             for (const adUnitId of placement.metadata.ad_unit_ids) {
                 const adUnit = inventoryCache.adUnits.get(adUnitId);
 
-                // Extract sizes from this ad unit
+                // Extract sizes from this ad unit using helper function
                 if (adUnit && adUnit.metadata && adUnit.metadata.sizes) {
-                    adUnit.metadata.sizes.forEach(size => {
-                        const sizeKey = `${size.width}x${size.height}`;
-                        inventoryCache.extractedSizes.add(sizeKey);
-                        inventoryCache.sizeUnitCounts.set(
-                            sizeKey,
-                            (inventoryCache.sizeUnitCounts.get(sizeKey) || 0) + 1
-                        );
-                    });
+                    addSizesToCache(adUnit.metadata.sizes);
                 }
             }
         }

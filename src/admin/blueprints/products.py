@@ -9,11 +9,14 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
+from adcp.exceptions import ADCPConnectionError, ADCPError, ADCPTimeoutError
+
 from src.admin.utils import require_tenant_access  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import PricingOption, Product, ProductInventoryMapping, Tenant
 from src.core.database.product_pricing import get_product_pricing_options
+from src.core.schemas import Format
 from src.core.validation import sanitize_form_data
 from src.services.gam_product_config_service import GAMProductConfigService
 
@@ -23,7 +26,7 @@ logger = logging.getLogger(__name__)
 products_bp = Blueprint("products", __name__)
 
 
-def _format_to_dict(fmt) -> dict:
+def _format_to_dict(fmt: Format) -> dict:
     """Convert a Format object to a frontend-compatible dict.
 
     Uses library's model_dump() for consistency, keeping nested format_id structure
@@ -136,8 +139,14 @@ def get_creative_formats(
             name_search=name_search,
             type_filter=type_filter,
         )
-    except (asyncio.CancelledError, TimeoutError, Exception) as e:
-        logger.warning(f"Failed to fetch formats from creative agent registry: {e}")
+    except (asyncio.CancelledError, TimeoutError, ADCPTimeoutError) as e:
+        logger.warning(f"Timeout fetching formats from creative agent registry: {e}")
+        formats = []  # Return empty list if format fetching fails
+    except (ADCPConnectionError, ADCPError) as e:
+        logger.warning(f"Failed to connect to creative agent registry: {e}")
+        formats = []  # Return empty list if format fetching fails
+    except RuntimeError as e:
+        logger.warning(f"Runtime error fetching formats (event loop issue): {e}")
         formats = []  # Return empty list if format fetching fails
 
     logger.info(f"get_creative_formats: Fetched {len(formats)} formats from registry for tenant {tenant_id}")
