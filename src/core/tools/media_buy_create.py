@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlparse
 
+from adcp.types.generated_poc.media_buy_status import MediaBuyStatus
+from adcp.types.generated_poc.package_status import PackageStatus
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -102,7 +104,8 @@ def _sanitize_package_status(status: Any) -> str | None:
     Returns:
         Valid AdCP PackageStatus or None
     """
-    VALID_PACKAGE_STATUSES = {"draft", "active", "paused", "completed"}
+    # Use library enum as source of truth for valid values
+    VALID_PACKAGE_STATUSES = {s.value for s in PackageStatus}
 
     if status is None:
         return None
@@ -135,12 +138,16 @@ def _determine_media_buy_status(
 
     This ensures consistent status across all adapters (GAM, Mock, Kevel, etc.).
 
-    Status Priority (highest to lowest):
-    1. pending_approval: Manual approval required, not yet approved
-    2. needs_creatives: Buy created but no creatives OR creatives not approved
-    3. ready: Scheduled for future start
-    4. active: Currently delivering
-    5. completed: Past end date
+    Status Priority (highest to lowest) - ALL SPEC-COMPLIANT:
+    1. pending_activation: Manual approval required OR needs creatives OR scheduled for future
+    2. active: Currently delivering (has creatives, approved, within flight dates)
+    3. completed: Past end date
+    4. paused: (Reserved for future use - not currently returned)
+
+    Internal states mapped to spec statuses:
+    - "pending_approval" → pending_activation (awaiting manual approval)
+    - "needs_creatives" → pending_activation (missing or unapproved creatives)
+    - "ready" → pending_activation (scheduled for future start)
 
     Args:
         manual_approval_required: Whether the media buy requires manual approval
@@ -151,26 +158,24 @@ def _determine_media_buy_status(
         now: Current time (defaults to datetime.now(UTC))
 
     Returns:
-        Status string matching AdCP media buy statuses
+        Status string matching AdCP MediaBuyStatus enum (pending_activation, active, paused, completed)
     """
     if now is None:
         now = datetime.now(UTC)
 
-    # Priority 1: Pending approval (highest priority)
-    if manual_approval_required:
-        return "pending_approval"
+    # Priority 1: Completed (past end date - check first to avoid false pending_activation)
+    if now > end_time:
+        return MediaBuyStatus.completed.value
 
-    # Priority 2: Needs creatives (either missing or not approved)
-    if not has_creatives or not creatives_approved:
-        return "needs_creatives"
+    # Priority 2: Pending activation (any blocking condition or scheduled for future)
+    # - Manual approval required
+    # - Missing creatives or unapproved creatives
+    # - Scheduled for future start
+    if manual_approval_required or not has_creatives or not creatives_approved or now < start_time:
+        return MediaBuyStatus.pending_activation.value
 
-    # Priority 3-5: Flight-based status
-    if now < start_time:
-        return "ready"  # Scheduled to go live at flight start date
-    elif now > end_time:
-        return "completed"
-    else:
-        return "active"
+    # Priority 3: Active (currently delivering - all conditions met)
+    return MediaBuyStatus.active.value
 
 
 def _extract_creative_url_and_dimensions(
