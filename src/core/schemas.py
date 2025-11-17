@@ -237,6 +237,7 @@ class CreateMediaBuySuccess(AdCPCreateMediaBuySuccess):
             data.pop("workflow_step_id", None)
 
         # Auto-handle nested Pydantic models
+        # For packages array, exclude internal platform_line_item_id from AdCP responses
         for field_name in self.__class__.model_fields:
             field_value = getattr(self, field_name, None)
             if field_value is None:
@@ -244,7 +245,11 @@ class CreateMediaBuySuccess(AdCPCreateMediaBuySuccess):
 
             if isinstance(field_value, list) and field_value:
                 if isinstance(field_value[0], BaseModel):
-                    data[field_name] = [item.model_dump() for item in field_value]
+                    # Exclude internal fields from Package objects in AdCP responses
+                    if field_name == "packages":
+                        data[field_name] = [item.model_dump(exclude={"platform_line_item_id"}) for item in field_value]
+                    else:
+                        data[field_name] = [item.model_dump() for item in field_value]
             elif isinstance(field_value, BaseModel):
                 data[field_name] = field_value.model_dump()
 
@@ -844,6 +849,10 @@ class Targeting(BaseModel):
 
     # Frequency control
     frequency_cap: FrequencyCap | None = None  # Impression limits per user/period
+
+    # AXE segment targeting (AdCP 3.0.3)
+    axe_include_segment: str | None = None  # AXE segment ID to include for targeting
+    axe_exclude_segment: str | None = None  # AXE segment ID to exclude from targeting
 
     # Connection type targeting
     connection_type_any_of: list[int] | None = None  # OpenRTB connection types
@@ -2597,6 +2606,12 @@ class PackageRequest(LibraryPackageRequest):
 
     # Internal fields (not in AdCP spec) - excluded from API responses
     tenant_id: str | None = Field(None, description="Internal: Tenant ID for multi-tenancy", exclude=True)
+    media_buy_id: str | None = Field(None, description="Internal: Associated media buy ID", exclude=True)
+    platform_line_item_id: str | None = Field(
+        None, description="Internal: Platform-specific line item ID", exclude=True
+    )
+    created_at: datetime | None = Field(None, description="Internal: Creation timestamp", exclude=True)
+    updated_at: datetime | None = Field(None, description="Internal: Last update timestamp", exclude=True)
     metadata: dict[str, Any] | None = Field(None, description="Internal: Additional metadata", exclude=True)
 
     # Legacy field (deprecated - use pricing_option_id instead)

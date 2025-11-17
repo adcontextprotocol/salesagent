@@ -1125,7 +1125,7 @@ function searchInventory() {
     if (inventoryType) params.append('type', inventoryType);
     if (status) params.append('status', status);
 
-    // Note: inventory search endpoint may not exist yet - keeping as manual URL
+    // Use scriptRoot for proxy deployment support
     const scriptRoot = '{{ request.script_root }}' || '';
     fetch(scriptRoot + `/api/tenant/${tenantId}/inventory/search?${params.toString()}`, {
         credentials: 'same-origin'

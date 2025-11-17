@@ -73,7 +73,6 @@ from src.core.schemas import (
     Principal,
     Product,
     Targeting,
-    TaskStatus,
 )
 from src.core.schemas import (
     url as make_url,
@@ -1865,8 +1864,8 @@ async def _create_media_buy_impl(
                     {
                         "package_id": package_id,
                         "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request package
-                        # Package status should be null until the package is actually created in the ad server
-                        # After approval + adapter creation, it will be set to "draft" or "active" by the adapter
+                        "status": "draft",  # Set initial status (required by AdCP spec)
+                        # Status will be updated to "active" after approval + adapter creation
                     }
                 )
                 pending_packages.append(Package(**pkg_data))
@@ -2234,7 +2233,7 @@ async def _create_media_buy_impl(
                         "package_id": package_id,
                         "name": f"{pkg.product_id} - Package {idx}",
                         "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request
-                        "status": TaskStatus.INPUT_REQUIRED,  # Consistent with TaskStatus enum (requires approval)
+                        "status": "draft",  # Package is pending approval (AdCP-compliant status)
                     }
                 )
 
@@ -2741,6 +2740,39 @@ async def _create_media_buy_impl(
                 logger.info(
                     f"Saved {len(packages_to_save)} packages to media_packages table for media_buy {response.media_buy_id}"
                 )
+
+                # Update packages with platform_line_item_id from adapter response
+                # This is required for update_media_buy operations (budget updates, pause/resume)
+                # Adapters (like GAM) attach a _platform_line_item_ids mapping to the response object
+                platform_line_item_ids = getattr(response, "_platform_line_item_ids", {})
+
+                if platform_line_item_ids:
+                    logger.info(f"[DEBUG] Found platform_line_item_ids mapping: {platform_line_item_ids}")
+
+                    for pkg_id, line_item_id in platform_line_item_ids.items():
+                        # Update the package_config with platform_line_item_id
+                        from sqlalchemy import select
+
+                        from src.core.database.models import MediaPackage as DBMediaPackage
+
+                        package_stmt = select(DBMediaPackage).filter_by(
+                            media_buy_id=response.media_buy_id, package_id=pkg_id
+                        )
+                        pkg_record: DBMediaPackage | None = session.scalars(package_stmt).first()
+                        if pkg_record:
+                            # Update package_config JSON with platform_line_item_id
+                            pkg_record.package_config["platform_line_item_id"] = str(line_item_id)
+                            from sqlalchemy.orm import attributes
+
+                            attributes.flag_modified(pkg_record, "package_config")
+                            logger.info(f"✓ Updated package {pkg_id} with platform_line_item_id: {line_item_id}")
+                        else:
+                            logger.warning(f"⚠️  Could not find DB package {pkg_id} to save platform_line_item_id")
+
+                    session.commit()
+                    logger.info("✓ Saved platform_line_item_ids to database")
+                else:
+                    logger.info("[DEBUG] No platform_line_item_ids found on response object")
 
         # Handle creative_ids in packages if provided (immediate association)
         if req.packages:

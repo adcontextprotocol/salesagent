@@ -168,6 +168,7 @@ jobs:
         GOOGLE_CLIENT_ID: test_client_id
         GOOGLE_CLIENT_SECRET: test_client_secret
         SUPER_ADMIN_EMAILS: test@example.com
+        ENCRYPTION_KEY: PEg0SNGQyvzi4Nft-ForSzK8AGXyhRtql1MgoUsfUHk=
         ADCP_TESTING: true
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
@@ -240,6 +241,7 @@ jobs:
         GOOGLE_CLIENT_ID: test_client_id
         GOOGLE_CLIENT_SECRET: test_client_secret
         SUPER_ADMIN_EMAILS: test@example.com
+        ENCRYPTION_KEY: PEg0SNGQyvzi4Nft-ForSzK8AGXyhRtql1MgoUsfUHk=
         ADCP_TESTING: true
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
