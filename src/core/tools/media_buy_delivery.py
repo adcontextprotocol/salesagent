@@ -75,6 +75,7 @@ def _get_media_buy_delivery_impl(
             },
             media_buy_deliveries=[],
             errors=[{"code": "principal_id_missing", "message": "Principal ID not found in context"}],
+            context=req.context or None,
         )
 
     # Get the Principal object
@@ -94,6 +95,7 @@ def _get_media_buy_delivery_impl(
             },
             media_buy_deliveries=[],
             errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
+            context=req.context or None,
         )
 
     # Get the appropriate adapter
@@ -102,10 +104,25 @@ def _get_media_buy_delivery_impl(
 
     # Determine reporting period
     if req.start_date and req.end_date:
-        # TODO: @yusuf - We need to validate the date range before using it.
         # Use provided date range
         start_dt = datetime.strptime(req.start_date, "%Y-%m-%d")
         end_dt = datetime.strptime(req.end_date, "%Y-%m-%d")
+
+        if start_dt >= end_dt:
+            return GetMediaBuyDeliveryResponse(
+                reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
+                currency="USD",
+                aggregated_totals={
+                    "impressions": 0,
+                    "spend": 0,
+                    "clicks": None,
+                    "video_completions": None,
+                    "media_buy_count": 0,
+                },
+                media_buy_deliveries=[],
+                errors=[{"code": "invalid_date_range", "message": "Start date must be before end date"}],
+                context=req.context or None,
+            )
     else:
         # Default to last 30 days
         end_dt = datetime.now()
