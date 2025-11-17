@@ -241,8 +241,8 @@ class DynamicPricingService:
             )
 
             if updated_floor is not None:
-                # Set price_guidance using setattr for discriminated union
-                cpm_option.price_guidance = PriceGuidance(floor=updated_floor, p25=None, p50=None, p75=updated_p75, p90=None)  # type: ignore[misc]
+                # Set price_guidance on discriminated union
+                cpm_option.price_guidance = PriceGuidance(floor=updated_floor, p25=None, p50=None, p75=updated_p75, p90=None)  # type: ignore[union-attr]
                 logger.debug(f"Updated existing CPM pricing option for {product.product_id}")
         else:
             # Create new CPM pricing option with price_guidance

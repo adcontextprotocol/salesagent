@@ -559,10 +559,10 @@ async def _get_products_impl(
                         # Get pricing model as string (handle both enum and literal)
                         pricing_model = getattr(option.pricing_model, "value", option.pricing_model)
                         # Add supported annotation (will be included in response)
-                        # Use setattr for dynamic attribute assignment on discriminated unions
-                        option.supported = pricing_model in supported_models  # type: ignore[misc]
+                        # Use dynamic attribute assignment on discriminated unions
+                        option.supported = pricing_model in supported_models  # type: ignore[union-attr]
                         if not getattr(option, "supported", False):
-                            option.unsupported_reason = f"Current adapter does not support {pricing_model.upper()} pricing"  # type: ignore[misc]
+                            option.unsupported_reason = f"Current adapter does not support {pricing_model.upper()} pricing"  # type: ignore[union-attr]
         except Exception as e:
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
 
