@@ -245,7 +245,7 @@ class TestCreateMediaBuyV24Format:
         response = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
-            packages=[p.model_dump_internal() for p in packages],  # Use internal to skip package_id validation
+            packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=5000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
@@ -299,7 +299,7 @@ class TestCreateMediaBuyV24Format:
         response = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_targeting",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Adidas UltraBoost 2025 running shoes"},
-            packages=[p.model_dump_internal() for p in packages],
+            packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=8000.0, currency="EUR"),  # REQUIRED per AdCP v2.2.0
@@ -362,7 +362,7 @@ class TestCreateMediaBuyV24Format:
         response = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_multi",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Puma RS-X 2025 training shoes"},
-            packages=[p.model_dump_internal() for p in packages],
+            packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=total_budget_value, currency="USD"),  # REQUIRED per AdCP v2.2.0
@@ -407,7 +407,7 @@ class TestCreateMediaBuyV24Format:
         response = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_a2a",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Reebok Nano 2025 cross-training shoes"},
-            packages=[p.model_dump_internal() for p in packages],
+            packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=6000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
