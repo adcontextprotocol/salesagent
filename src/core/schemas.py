@@ -196,7 +196,17 @@ class CreateMediaBuySuccess(AdCPCreateMediaBuySuccess):
                 if isinstance(field_value[0], BaseModel):
                     # Exclude internal fields from Package objects in AdCP responses
                     if field_name == "packages":
-                        data[field_name] = [item.model_dump(exclude={"platform_line_item_id"}) for item in field_value]
+                        serialized_packages = []
+                        for item in field_value:
+                            try:
+                                # Try with validate_required (for our Package class)
+                                serialized_packages.append(
+                                    item.model_dump(exclude={"platform_line_item_id"}, validate_required=True)
+                                )
+                            except TypeError:
+                                # Fall back without validate_required (for adcp library Package)
+                                serialized_packages.append(item.model_dump(exclude={"platform_line_item_id"}))
+                        data[field_name] = serialized_packages
                     else:
                         data[field_name] = [item.model_dump() for item in field_value]
             elif isinstance(field_value, BaseModel):
@@ -2468,7 +2478,15 @@ class Package(BaseModel):
 
         Internal fields (platform_line_item_id, tenant_id, etc.) are excluded from AdCP responses
         to maintain spec compliance. These fields are only used internally within the system.
+
+        Args:
+            validate_required: If True, validates that package_id and status are set (for AdCP responses).
+                              Default is False to allow dumping packages during internal processing.
+            **kwargs: Additional arguments passed to Pydantic's model_dump()
         """
+        # Check if this is an AdCP response dump (explicit validation requested)
+        validate_required = kwargs.pop("validate_required", False)
+
         # Default to excluding internal fields for AdCP compliance
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
@@ -2490,14 +2508,16 @@ class Package(BaseModel):
 
         data = super().model_dump(**kwargs)
 
-        # Ensure required AdCP fields are present for responses
-        # (These should be set during package creation/processing)
-        # Check the actual object attributes, not the serialized dict,
-        # because exclude_none=True (default) may exclude None values from the dict
-        if self.package_id is None:
-            raise ValueError("Package missing required package_id for AdCP response")
-        if self.status is None:
-            raise ValueError("Package missing required status for AdCP response")
+        # Ensure required AdCP fields are present ONLY for AdCP responses
+        # (not for internal processing like request validation)
+        # Callers must explicitly set validate_required=True to enable validation
+        if validate_required:
+            # Check the actual object attributes, not the serialized dict,
+            # because exclude_none=True (default) may exclude None values from the dict
+            if self.package_id is None:
+                raise ValueError("Package missing required package_id for AdCP response")
+            if self.status is None:
+                raise ValueError("Package missing required status for AdCP response")
 
         return data
 
