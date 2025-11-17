@@ -17,6 +17,7 @@ from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 from sqlalchemy import select
+from math import floor
 
 from src.core.tool_context import ToolContext
 
@@ -28,7 +29,7 @@ from adcp.types.generated_poc.push_notification_config import PushNotificationCo
 from src.core.auth import get_principal_object
 from src.core.config_loader import get_current_tenant
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, MediaPackage
+from src.core.database.models import MediaBuy, MediaPackage, PricingOption
 from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.schema_adapters import GetMediaBuyDeliveryResponse
@@ -38,6 +39,7 @@ from src.core.schemas import (
     MediaBuyDeliveryData,
     PackageDelivery,
     ReportingPeriod,
+    PricingModel
 )
 from src.core.testing_hooks import DeliverySimulator, TimeSimulator, apply_testing_hooks, get_testing_context
 from src.core.validation_helpers import format_validation_error
@@ -137,13 +139,15 @@ def _get_media_buy_delivery_impl(
     tenant = get_current_tenant()
 
     target_media_buys = _get_target_media_buys(req, principal_id, tenant, reference_date)
-    pricing_options = _get_pricing_options(target_media_buys)
+    pricing_option_ids = [buy.raw_request.get("pricing_option_id") for _, buy in target_media_buys if buy.raw_request and isinstance(buy.raw_request, dict) and buy.raw_request.get("pricing_option_id") is not None]
+    pricing_options = _get_pricing_options(pricing_option_ids)
 
     # Collect delivery data for each media buy
     deliveries = []
     total_spend = 0.0
     total_impressions = 0
     media_buy_count = 0
+    total_clicks = 0
 
     for media_buy_id, buy in target_media_buys:
         try:
@@ -298,12 +302,13 @@ def _get_media_buy_delivery_impl(
             # Create delivery data
             buyer_ref = buy.raw_request.get("buyer_ref", None)
             pricing_option_id = buy.raw_request.get("pricing_option_id", None)
-            pricing_option = pricing_options[pricing_option_id]
+            pricing_option = pricing_options.get(pricing_option_id, None) if pricing_option_id and isinstance(pricing_option_id, str) else None
 
             if not pricing_option:
                 logger.error(f"Error getting delivery for {media_buy_id}: Pricing option with id {pricing_option_id} is expected but not found")
 
                 return GetMediaBuyDeliveryResponse(
+                    reporting_period=reporting_period,
                     currency="USD",
                     aggregated_totals={
                         "impressions": 0,
@@ -319,10 +324,11 @@ def _get_media_buy_delivery_impl(
 
             # Calculate clicks and CTR (click-through rate) where applicable
             clicks = (
-                spend / pricing_option.rate
+                floor(spend / (float(pricing_option.rate)))
                 if pricing_option.pricing_model == PricingModel.CPC and pricing_option.rate
                 else None
             )
+
             ctr = (clicks / impressions) if clicks is not None and impressions > 0 else None
 
             # Type cast status to match Literal type
@@ -331,7 +337,7 @@ def _get_media_buy_delivery_impl(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
                 status=status_literal,  # type: ignore[arg-type]
-                pricing_model=pricing_option.pricing_model,
+                pricing_model=PricingModel(pricing_option.pricing_model) if pricing_option.pricing_model else None,
                 totals=DeliveryTotals(
                     impressions=impressions,
                     spend=spend,
@@ -348,6 +354,7 @@ def _get_media_buy_delivery_impl(
             total_spend += spend
             total_impressions += impressions
             media_buy_count += 1
+            total_clicks += clicks if clicks is not None else 0
 
         except Exception as e:
             logger.error(f"Error getting delivery for {media_buy_id}: {e}")
@@ -357,11 +364,11 @@ def _get_media_buy_delivery_impl(
     # Create AdCP-compliant response
     response = GetMediaBuyDeliveryResponse(
         reporting_period=reporting_period,
-        currency="USD", # TODO: @yusuf - This should not be the hardcoded USD
+        currency="USD", # TODO: @yusuf - This is wrong. Currency should be at the media buy delivery level, not on aggregated totals.
         aggregated_totals={
             "impressions": total_impressions,
             "spend": total_spend,
-            "clicks": None,
+            "clicks": clicks,
             "video_completions": None,
             "media_buy_count": media_buy_count,
         },
@@ -414,7 +421,7 @@ def _get_media_buy_delivery_impl(
                 {
                     "impressions": total_impressions,
                     "spend": total_spend,
-                    "clicks": None,
+                    "clicks": clicks,
                     "video_completions": None,
                     "media_buy_count": media_buy_count,
                 },
@@ -617,8 +624,8 @@ def _get_target_media_buys(
 
         return target_media_buys
 
-def _get_pricing_options(pricing_option_ids: list[str]) -> dict[str, PricingOption]:
+def _get_pricing_options(pricing_option_ids: list[Any | None]) -> dict[str, PricingOption]:
     with get_db_session() as session:
-        statement = select(PricingOption).where(PricingOption.pricing_option_id.in_(pricing_option_ids))
+        statement = select(PricingOption).where(PricingOption.id.in_(pricing_option_ids))
         pricing_options =session.scalars(statement).all()
-        return { pricing_option.pricing_option_id: pricing_option for pricing_option in pricing_options }
+        return { str(pricing_option.id): pricing_option for pricing_option in pricing_options }
