@@ -26,10 +26,6 @@ import pytest
 from src.core.schemas import (
     Budget,
     Creative,
-    CreativePolicy,
-    Measurement,
-    PriceGuidance,
-    PricingOption,
     Product,
     Signal,
     SignalDeployment,
@@ -141,22 +137,24 @@ class TestProductSchemaRoundtrip:
                 {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
             ],
             "delivery_type": "guaranteed",
-            "measurement": Measurement(
-                type="brand_lift", attribution="deterministic_purchase", reporting="weekly_dashboard"
-            ),
-            "creative_policy": CreativePolicy(co_branding="optional", landing_page="any", templates_available=True),
+            "delivery_measurement": {"provider": "Google Ad Manager"},
+            "measurement": {
+                "type": "brand_lift",
+                "attribution": "deterministic_purchase",
+                "reporting": "weekly_dashboard",
+            },
+            "creative_policy": {"co_branding": "optional", "landing_page": "any", "templates_available": True},
             "is_custom": False,
-            "property_tags": ["all_inventory"],
+            "publisher_properties": [
+                {"publisher_domain": "example.com", "selection_type": "by_tag", "property_tags": ["all_inventory"]}
+            ],
             "pricing_options": [
-                PricingOption(
-                    pricing_option_id="cpm_usd_fixed",
-                    pricing_model="cpm",
-                    rate=15.0,
-                    currency="USD",
-                    is_fixed=True,
-                    supported=True,
-                    min_spend_per_package=2500.0,
-                )
+                {
+                    "pricing_option_id": "cpm_usd_fixed",
+                    "pricing_model": "cpm",
+                    "rate": 15.0,
+                    "currency": "USD",
+                }
             ],
         }
 
@@ -173,18 +171,19 @@ class TestProductSchemaRoundtrip:
                 {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s"},
             ],
             "delivery_type": "non_guaranteed",
+            "delivery_measurement": {"provider": "Google Ad Manager"},
             "is_custom": True,
-            "property_tags": ["all_inventory"],
+            "publisher_properties": [
+                {"publisher_domain": "example.com", "selection_type": "by_tag", "property_tags": ["all_inventory"]}
+            ],
             "pricing_options": [
-                PricingOption(
-                    pricing_option_id="cpm_usd_auction",
-                    pricing_model="cpm",
-                    currency="USD",
-                    is_fixed=False,
-                    supported=True,
-                    price_guidance=PriceGuidance(floor=5.0, p50=10.0, p75=15.0, p90=20.0),
-                    min_spend_per_package=5000.0,
-                )
+                {
+                    "pricing_option_id": "cpm_usd_auction",
+                    "pricing_model": "cpm",
+                    "currency": "USD",
+                    "price_guidance": {"floor": 5.0, "p50": 10.0, "p75": 15.0, "p90": 20.0},
+                    "min_spend_per_package": 5000.0,
+                }
             ],
         }
 
@@ -198,17 +197,18 @@ class TestProductSchemaRoundtrip:
             "description": "Testing minimal product with required fields only",
             "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_320x50"}],
             "delivery_type": "non_guaranteed",
+            "delivery_measurement": {"provider": "Google Ad Manager"},
             "is_custom": False,
-            "property_tags": ["all_inventory"],
+            "publisher_properties": [
+                {"publisher_domain": "example.com", "selection_type": "by_tag", "property_tags": ["all_inventory"]}
+            ],
             "pricing_options": [
-                PricingOption(
-                    pricing_option_id="cpm_usd_auction",
-                    pricing_model="cpm",
-                    currency="USD",
-                    is_fixed=False,
-                    supported=True,
-                    price_guidance=PriceGuidance(floor=1.0, p50=3.0, p75=5.0, p90=7.0),
-                )
+                {
+                    "pricing_option_id": "cpm_usd_auction",
+                    "pricing_model": "cpm",
+                    "currency": "USD",
+                    "price_guidance": {"floor": 1.0, "p50": 3.0, "p75": 5.0, "p90": 7.0},
+                }
             ],
         }
 
@@ -227,25 +227,31 @@ class TestProductSchemaRoundtrip:
                 {"agent_url": "https://creative.adcontextprotocol.org", "id": "audio_30s"},
             ],
             "delivery_type": "guaranteed",
-            "measurement": Measurement(
-                type="incremental_sales_lift", attribution="probabilistic", window="30_days", reporting="real_time_api"
-            ),
-            "creative_policy": CreativePolicy(
-                co_branding="required", landing_page="retailer_site_only", templates_available=True
-            ),
+            "delivery_measurement": {"provider": "Google Ad Manager"},
+            "measurement": {
+                "type": "incremental_sales_lift",
+                "attribution": "probabilistic",
+                "window": "30_days",
+                "reporting": "real_time_api",
+            },
+            "creative_policy": {
+                "co_branding": "required",
+                "landing_page": "retailer_site_only",
+                "templates_available": True,
+            },
             "is_custom": True,
-            "property_tags": ["all_inventory"],
+            "publisher_properties": [
+                {"publisher_domain": "example.com", "selection_type": "by_tag", "property_tags": ["all_inventory"]}
+            ],
             "brief_relevance": "Highly relevant for video advertising campaigns",
             "pricing_options": [
-                PricingOption(
-                    pricing_option_id="cpm_usd_fixed",
-                    pricing_model="cpm",
-                    rate=25.75,
-                    currency="USD",
-                    is_fixed=True,
-                    supported=True,
-                    min_spend_per_package=10000.0,
-                )
+                {
+                    "pricing_option_id": "cpm_usd_fixed",
+                    "pricing_model": "cpm",
+                    "rate": 25.75,
+                    "currency": "USD",
+                    "min_spend_per_package": 10000.0,
+                }
             ],
         }
 
@@ -430,8 +436,14 @@ class TestRoundtripErrorScenarios:
             "description": "Testing field name mismatch detection",
             "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             "delivery_type": "guaranteed",
+            "delivery_measurement": {"provider": "Google Ad Manager"},
             "is_custom": False,
-            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "publisher_properties": [
+                {"publisher_domain": "example.com", "selection_type": "by_tag", "property_tags": ["all_inventory"]}
+            ],
+            "pricing_options": [
+                {"pricing_option_id": "cpm_usd_fixed", "pricing_model": "cpm", "rate": 10.0, "currency": "USD"}
+            ],
         }
 
         # This should now succeed (format_ids is a valid field)
@@ -446,8 +458,14 @@ class TestRoundtripErrorScenarios:
             "description": "Testing with different format",
             "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}],
             "delivery_type": "guaranteed",
+            "delivery_measurement": {"provider": "Google Ad Manager"},
             "is_custom": False,
-            "property_tags": ["all_inventory"],
+            "publisher_properties": [
+                {"publisher_domain": "example.com", "selection_type": "by_tag", "property_tags": ["all_inventory"]}
+            ],
+            "pricing_options": [
+                {"pricing_option_id": "cpm_usd_fixed", "pricing_model": "cpm", "rate": 10.0, "currency": "USD"}
+            ],
         }
 
         product2 = Product(**valid_product_dict_with_format_ids_2)
@@ -480,7 +498,17 @@ class TestRoundtripErrorScenarios:
                     "description": "Testing type conversion",
                     "format_ids": "display_300x250",  # WRONG: String instead of list
                     "delivery_type": "guaranteed",
-                    "is_fixed_price": True,
+                    "delivery_measurement": {"provider": "Google Ad Manager"},
+                    "publisher_properties": [
+                        {
+                            "publisher_domain": "example.com",
+                            "selection_type": "by_tag",
+                            "property_tags": ["all_inventory"],
+                        }
+                    ],
+                    "pricing_options": [
+                        {"pricing_option_id": "cpm_usd_fixed", "pricing_model": "cpm", "rate": 10.0, "currency": "USD"}
+                    ],
                     "is_custom": False,
                 },
                 "should_fail": True,
@@ -493,21 +521,46 @@ class TestRoundtripErrorScenarios:
                     "description": "Testing enum validation",
                     "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                     "delivery_type": "invalid_delivery_type",  # WRONG: Invalid enum value
-                    "is_fixed_price": True,
+                    "delivery_measurement": {"provider": "Google Ad Manager"},
+                    "publisher_properties": [
+                        {
+                            "publisher_domain": "example.com",
+                            "selection_type": "by_tag",
+                            "property_tags": ["all_inventory"],
+                        }
+                    ],
+                    "pricing_options": [
+                        {"pricing_option_id": "cpm_usd_fixed", "pricing_model": "cpm", "rate": 10.0, "currency": "USD"}
+                    ],
                     "is_custom": False,
                 },
                 "should_fail": True,
             },
             {
-                "name": "negative_min_spend",
+                "name": "negative_min_spend_in_pricing_option",
                 "data": {
                     "product_id": "type_test_3",
                     "name": "Type Test 3",
                     "description": "Testing numeric validation",
                     "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                     "delivery_type": "guaranteed",
-                    "is_fixed_price": True,
-                    "min_spend": -100.0,  # WRONG: Negative min_spend (has gt=-1 validation)
+                    "delivery_measurement": {"provider": "Google Ad Manager"},
+                    "publisher_properties": [
+                        {
+                            "publisher_domain": "example.com",
+                            "selection_type": "by_tag",
+                            "property_tags": ["all_inventory"],
+                        }
+                    ],
+                    "pricing_options": [
+                        {
+                            "pricing_option_id": "cpm_usd_fixed",
+                            "pricing_model": "cpm",
+                            "rate": 10.0,
+                            "currency": "USD",
+                            "min_spend_per_package": -100.0,
+                        }
+                    ],  # WRONG: Negative min_spend_per_package
                     "is_custom": False,
                 },
                 "should_fail": True,
@@ -537,29 +590,30 @@ class TestRoundtripErrorScenarios:
                 {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
             ],
             "delivery_type": "guaranteed",
-            "measurement": Measurement(
-                type="incremental_sales_lift",
-                attribution="probabilistic",
-                reporting="real_time_api",
-            ),
-            "creative_policy": CreativePolicy(
-                co_branding="none",
-                landing_page="any",
-                templates_available=False,
-            ),
+            "delivery_measurement": {"provider": "Google Ad Manager"},
+            "measurement": {
+                "type": "incremental_sales_lift",
+                "attribution": "probabilistic",
+                "reporting": "real_time_api",
+            },
+            "creative_policy": {
+                "co_branding": "none",
+                "landing_page": "any",
+                "templates_available": False,
+            },
             "is_custom": False,
-            "property_tags": ["all_inventory"],
+            "publisher_properties": [
+                {"publisher_domain": "example.com", "selection_type": "by_tag", "property_tags": ["all_inventory"]}
+            ],
             "brief_relevance": "Test relevance explanation",
             "pricing_options": [
-                PricingOption(
-                    pricing_option_id="cpm_usd_fixed",
-                    pricing_model="cpm",
-                    rate=20.0,
-                    currency="USD",
-                    is_fixed=True,
-                    supported=True,
-                    min_spend_per_package=3000.0,
-                )
+                {
+                    "pricing_option_id": "cpm_usd_fixed",
+                    "pricing_model": "cpm",
+                    "rate": 20.0,
+                    "currency": "USD",
+                    "min_spend_per_package": 3000.0,
+                }
             ],
         }
 
