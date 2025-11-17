@@ -34,6 +34,18 @@ from adcp.types.generated_poc.product import Product as LibraryProduct
 
 # Import AffectedPackage for UpdateMediaBuySuccess response
 from adcp.types.generated_poc.update_media_buy_response import AffectedPackage as LibraryAffectedPackage
+
+# Import Creative-related library types
+from adcp.types.generated_poc.sync_creatives_request import SyncCreativesRequest as LibrarySyncCreativesRequest
+from adcp.types.generated_poc.sync_creatives_response import SyncCreativesResponse as LibrarySyncCreativesResponse
+from adcp.types.generated_poc.list_creatives_request import ListCreativesRequest as LibraryListCreativesRequest
+from adcp.types.generated_poc.list_creatives_response import ListCreativesResponse as LibraryListCreativesResponse
+from adcp.types.generated_poc.list_creative_formats_request import (
+    ListCreativeFormatsRequest as LibraryListCreativeFormatsRequest,
+)
+from adcp.types.generated_poc.list_creative_formats_response import (
+    ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse,
+)
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
 
@@ -1458,41 +1470,25 @@ class GetProductsResponse(NestedModelSerializerMixin, AdCPBaseModel):
         return base_msg
 
 
-class ListCreativeFormatsRequest(AdCPBaseModel):
-    """Request for list_creative_formats tool.
+class ListCreativeFormatsRequest(LibraryListCreativeFormatsRequest):
+    """Extends library ListCreativeFormatsRequest from AdCP spec.
 
-    All parameters are optional filters per AdCP spec.
+    Inherits all AdCP-compliant fields from adcp library,
+    ensuring we stay in sync with spec updates.
+
+    Adds internal convenience fields for backward compatibility
+    (marked with exclude=True to prevent leaking to AdCP clients).
     """
 
-    context: dict[str, Any] | None = Field(
-        None, description="Application-level context provided by the client (echoed in responses)"
-    )
-
+    # Internal convenience fields (not in AdCP spec, excluded from serialization)
     adcp_version: str = Field(
         default="1.0.0",
         pattern=r"^\d+\.\d+\.\d+$",
         description="AdCP schema version for this request (e.g., '1.0.0')",
+        exclude=True,
     )
-    type: str | None = Field(None, description="Filter by format type (audio, video, display)")
-    standard_only: bool | None = Field(None, description="Only return IAB standard formats")
-    category: str | None = Field(None, description="Filter by format category (standard, custom)")
-    format_ids: list["FormatId"] | None = Field(
-        None, description="Return only these specific format IDs (e.g., from get_products response)"
-    )
-    asset_types: list[str] | None = Field(
-        None,
-        description="Filter to formats that include these asset types (e.g., ['image', 'text'], ['javascript'])",
-    )
-    max_width: int | None = Field(
-        None, description="Maximum width in pixels (inclusive). Returns formats with width <= this value"
-    )
-    max_height: int | None = Field(
-        None, description="Maximum height in pixels (inclusive). Returns formats with height <= this value"
-    )
-    min_width: int | None = Field(None, description="Minimum width in pixels (inclusive)")
-    min_height: int | None = Field(None, description="Minimum height in pixels (inclusive)")
-    is_responsive: bool | None = Field(None, description="Filter for responsive formats that adapt to container size")
-    name_search: str | None = Field(None, description="Search for formats by name (case-insensitive partial match)")
+    standard_only: bool | None = Field(None, description="Only return IAB standard formats", exclude=True)
+    category: str | None = Field(None, description="Filter by format category (standard, custom)", exclude=True)
 
     @model_validator(mode="before")
     @classmethod
@@ -1517,21 +1513,19 @@ class ListCreativeFormatsRequest(AdCPBaseModel):
         return values
 
 
-class ListCreativeFormatsResponse(NestedModelSerializerMixin, AdCPBaseModel):
-    """Response for list_creative_formats tool (AdCP v2.4 spec compliant).
+class ListCreativeFormatsResponse(NestedModelSerializerMixin, LibraryListCreativeFormatsResponse):
+    """Extends library ListCreativeFormatsResponse from AdCP spec.
+
+    Inherits all AdCP-compliant fields from adcp library,
+    ensuring we stay in sync with spec updates.
+
+    Adds NestedModelSerializerMixin for proper nested model serialization
+    and custom __str__ for human-readable protocol messages.
 
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
-
-    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
-
-    formats: list[Format] = Field(..., description="Full format definitions per AdCP spec")
-    creative_agents: list[dict[str, Any]] | None = Field(
-        None, description="Creative agents providing additional formats"
-    )
-    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer.
@@ -1761,6 +1755,9 @@ SubmitCreativesResponse = AddCreativeAssetsResponse
 class SyncCreativesRequest(AdCPBaseModel):
     """Request to sync creative assets to centralized library (AdCP v2.4 spec compliant).
 
+    NOTE: Uses Creative instead of library's CreativeAsset due to implementation differences.
+    Library uses CreativeAsset which has different structure than our Creative type.
+
     Supports bulk operations, patch updates, and assignment management.
     Creatives are synced to a central library and can be used across multiple media buys.
     """
@@ -1975,7 +1972,12 @@ class SyncCreativesResponse(AdCPBaseModel):
 
 
 class ListCreativesRequest(AdCPBaseModel):
-    """Request to list and search creative library (AdCP spec compliant)."""
+    """Request to list and search creative library (AdCP spec compliant).
+
+    NOTE: Does not extend library type due to significant differences in convenience fields.
+    Our implementation provides convenience fields (media_buy_id, buyer_ref, etc.) that are
+    mapped to the library's `filters` structure internally.
+    """
 
     media_buy_id: str | None = Field(None, description="Filter by media buy ID")
     buyer_ref: str | None = Field(None, description="Filter by buyer reference")

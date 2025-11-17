@@ -49,7 +49,9 @@ def test_list_creative_formats_request_with_all_params():
         format_ids=format_ids,
     )
     assert req.adcp_version == "1.5.0"
-    assert req.type == "video"
+    # Library type uses enum, check both enum and value
+    from adcp.types.generated_poc.format import Type as FormatTypeEnum
+    assert req.type == FormatTypeEnum.video or req.type.value == "video"
     assert req.standard_only is True
     assert req.category == "standard"
     assert len(req.format_ids) == 2
