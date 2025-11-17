@@ -399,10 +399,12 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
         ctx=context,
     )
 
-    # Verify response (AdCP 2.4 compliant)
+    # Verify response is success (AdCP 2.4 compliant)
+    # Success response has media_buy_id, error response has errors field
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
-    # Success = no errors (oneOf pattern - Success doesn't have errors field)
-    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # In dry-run mode, the response should succeed
     # In real mode, we'd verify GAM line item properties:
@@ -453,10 +455,12 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
         ctx=context,
     )
 
-    # Verify response (AdCP 2.4 compliant)
+    # Verify response is success (AdCP 2.4 compliant)
+    # Success response has media_buy_id, error response has errors field
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
-    # Success = no errors (oneOf pattern - Success doesn't have errors field)
-    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # In real GAM mode, line item would have:
     # - lineItemType = "PRICE_PRIORITY"
@@ -508,10 +512,12 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
         ctx=context,
     )
 
-    # Verify response (AdCP 2.4 compliant)
+    # Verify response is success (AdCP 2.4 compliant)
+    # Success response has media_buy_id, error response has errors field
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
-    # Success = no errors (oneOf pattern - Success doesn't have errors field)
-    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # In real GAM mode, line item would have:
     # - lineItemType = "STANDARD" (VCPM only works with STANDARD)
@@ -564,10 +570,12 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
         ctx=context,
     )
 
-    # Verify response (AdCP 2.4 compliant)
+    # Verify response is success (AdCP 2.4 compliant)
+    # Success response has media_buy_id, error response has errors field
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
-    # Success = no errors (oneOf pattern - Success doesn't have errors field)
-    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # In real GAM mode, line item would have:
     # - lineItemType = "SPONSORSHIP" (FLAT_RATE → CPD uses SPONSORSHIP)
@@ -631,10 +639,12 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
         ctx=context,
     )
 
-    # Verify response (AdCP 2.4 compliant)
+    # Verify response is success (AdCP 2.4 compliant)
+    # Success response has media_buy_id, error response has errors field
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
-    # Success = no errors (oneOf pattern - Success doesn't have errors field)
-    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # Each package should create a line item with correct pricing:
     # - pkg_1: CPM, STANDARD, priority 8
@@ -700,10 +710,12 @@ async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_
         ctx=context,
     )
 
-    # Verify response (AdCP 2.4 compliant)
+    # Verify response is success (AdCP 2.4 compliant)
+    # Success response has media_buy_id, error response has errors field
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
-    # Success = no errors (oneOf pattern - Success doesn't have errors field)
-    assert not hasattr(response, "errors") or response.errors is None or response.errors == []
 
     # Line item should use bid_price ($2.25) for costPerUnit
     # - lineItemType = "PRICE_PRIORITY" (auction = non-guaranteed)
