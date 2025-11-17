@@ -16,7 +16,7 @@ Related:
 
 from datetime import UTC, datetime
 
-from src.core.schemas import CreateCreativeResponse, Creative, CreativeStatus, GetCreativesResponse
+from src.core.schemas import CreateCreativeResponse, Creative, CreativeApprovalStatus, GetCreativesResponse
 
 
 def test_create_creative_response_excludes_internal_fields():
@@ -37,7 +37,7 @@ def test_create_creative_response_excludes_internal_fields():
     # Create response
     response = CreateCreativeResponse(
         creative=creative,
-        status=CreativeStatus(creative_id="test_123", status="pending_review", detail="Under review"),
+        status=CreativeApprovalStatus(creative_id="test_123", status="pending_review", detail="Under review"),
         suggested_adaptations=[],
     )
 
@@ -73,7 +73,7 @@ def test_get_creatives_response_excludes_internal_fields():
             principal_id=f"principal_{i}",
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
-            status="approved" if i % 2 == 0 else "pending",
+            status="approved" if i % 2 == 0 else "pending_review",
         )
         for i in range(3)
     ]

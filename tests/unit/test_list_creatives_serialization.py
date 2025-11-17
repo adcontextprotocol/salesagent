@@ -78,7 +78,7 @@ def test_list_creatives_response_with_multiple_creatives():
             principal_id=f"principal_{i}",
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
-            status="approved" if i % 2 == 0 else "pending",
+            status="approved" if i % 2 == 0 else "pending_review",
         )
         for i in range(3)
     ]

@@ -290,9 +290,11 @@ class TestAdditionalDateTimeValidation:
 
     def test_list_creatives_rejects_naive_created_after(self):
         """Test ListCreativesRequest rejects naive datetime for created_after."""
+        from pydantic import ValidationError
+
         from src.core.schemas import ListCreativesRequest
 
-        with pytest.raises(ValueError, match="created_after.*timezone-aware"):
+        with pytest.raises(ValidationError, match="timezone"):
             ListCreativesRequest(
                 created_after="2025-02-15T00:00:00",  # No timezone
                 created_before="2025-02-28T23:59:59Z",
@@ -300,9 +302,11 @@ class TestAdditionalDateTimeValidation:
 
     def test_list_creatives_rejects_naive_created_before(self):
         """Test ListCreativesRequest rejects naive datetime for created_before."""
+        from pydantic import ValidationError
+
         from src.core.schemas import ListCreativesRequest
 
-        with pytest.raises(ValueError, match="created_before.*timezone-aware"):
+        with pytest.raises(ValidationError, match="timezone"):
             ListCreativesRequest(
                 created_after="2025-02-15T00:00:00Z",
                 created_before="2025-02-28T23:59:59",  # No timezone
