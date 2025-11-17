@@ -36,6 +36,7 @@ AdCP v2.4 format (assets object in data JSON):
 """
 
 from typing import Sequence, Union
+import json
 
 from alembic import op
 import sqlalchemy as sa
@@ -154,16 +155,16 @@ def upgrade() -> None:
         for field in legacy_fields:
             new_data.pop(field, None)
 
-        # Update database
+        # Update database (convert dict to JSON string for PostgreSQL JSONB)
         conn.execute(
             text(
                 """
                 UPDATE creatives
-                SET data = :new_data
+                SET data = :new_data::jsonb
                 WHERE creative_id = :creative_id
             """
             ),
-            {"new_data": new_data, "creative_id": creative_id},
+            {"new_data": json.dumps(new_data), "creative_id": creative_id},
         )
 
         print(f"Migrated creative {creative_id}")
@@ -236,16 +237,16 @@ def downgrade() -> None:
         # Remove assets object
         new_data.pop("assets", None)
 
-        # Update database
+        # Update database (convert dict to JSON string for PostgreSQL JSONB)
         conn.execute(
             text(
                 """
                 UPDATE creatives
-                SET data = :new_data
+                SET data = :new_data::jsonb
                 WHERE creative_id = :creative_id
             """
             ),
-            {"new_data": new_data, "creative_id": creative_id},
+            {"new_data": json.dumps(new_data), "creative_id": creative_id},
         )
 
         print(f"Downgraded creative {creative_id}")
