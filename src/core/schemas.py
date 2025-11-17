@@ -3112,9 +3112,12 @@ class MediaBuyDeliveryData(BaseModel):
 
     media_buy_id: str = Field(description="Publisher's media buy identifier")
     buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this media buy")
-    status: Literal["ready", "active", "paused", "completed", "failed"] = Field(
+    status: Literal["ready", "active", "paused", "completed", "failed", "reporting_delayed"] = Field(
         description="Current media buy status. 'ready' means scheduled to go live at flight start date."
     )
+    expected_availability: str | None = Field(description="When delayed data is expected to be available (only present when status is reporting_delayed)", pattern=r"^\d{4}-\d{2}-\d{2}$")
+    is_adjusted: bool = Field(description="Indicates this delivery contains updated data for a previously reported period. Buyer should replace previous period data with these totals.", default=False)
+    pricing_model: PricingModel | None = Field(default=None, description="Pricing model for this media buy")
     totals: DeliveryTotals = Field(description="Aggregate metrics for this media buy across all packages")
     by_package: list[PackageDelivery] = Field(description="Metrics broken down by package")
     daily_breakdown: list[DailyBreakdown] | None = Field(None, description="Day-by-day delivery")

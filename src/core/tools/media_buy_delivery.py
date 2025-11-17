@@ -294,8 +294,8 @@ def _get_media_buy_delivery_impl(
             # Get pricing info from MediaPackage.package_config
             package_pricing_map = {}
             with get_db_session() as session:
-                stmt = select(MediaPackage).where(MediaPackage.media_buy_id == media_buy_id)
-                media_packages = session.scalars(stmt).all()
+                media_package_stmt = select(MediaPackage).where(MediaPackage.media_buy_id == media_buy_id)
+                media_packages = session.scalars(media_package_stmt).all()
                 for media_pkg in media_packages:
                     package_config = media_pkg.package_config or {}
                     pricing_info = package_config.get("pricing_info")
