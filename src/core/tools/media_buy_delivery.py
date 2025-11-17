@@ -40,7 +40,7 @@ from src.core.validation_helpers import format_validation_error
 
 
 def _get_media_buy_delivery_impl(
-    req: GetMediaBuyDeliveryRequest, context: Context | ToolContext | None
+    req: GetMediaBuyDeliveryRequest, ctx: Context | ToolContext | None
 ) -> GetMediaBuyDeliveryResponse:
     """Get delivery data for one or more media buys.
 
@@ -49,13 +49,13 @@ def _get_media_buy_delivery_impl(
     """
 
     # Validate context is provided
-    if context is None:
+    if ctx is None:
         raise ToolError("Context is required")
 
     # Extract testing context for time simulation and event jumping
-    testing_ctx = get_testing_context(context)
+    testing_ctx = get_testing_context(ctx)
 
-    principal_id = get_principal_id_from_context(context)
+    principal_id = get_principal_id_from_context(ctx)
     if not principal_id:
         # Return AdCP-compliant error response
         return GetMediaBuyDeliveryResponse(
@@ -224,7 +224,7 @@ def _get_media_buy_delivery_impl(
             else:
                 status = "active"
 
-            # Get real delivery metrics from adapter (if not in testing mode)
+            # Get delivery metrics from adapter
             adapter_package_metrics = {}  # Map package_id -> {impressions, spend, clicks}
             total_spend_from_adapter = 0.0
             total_impressions_from_adapter = 0
@@ -347,6 +347,27 @@ def _get_media_buy_delivery_impl(
                         )
                     )
 
+            # Create package delivery data
+            package_deliveries = []
+            if buy.raw_request and isinstance(buy.raw_request, dict) and "product_ids" in buy.raw_request:
+                product_ids = buy.raw_request.get("product_ids", [])
+                for i, product_id in enumerate(product_ids):
+                    package_spend = spend / len(product_ids) if product_ids else spend
+                    package_impressions = impressions / len(product_ids) if product_ids else impressions
+
+                    package_deliveries.append(
+                        PackageDelivery(
+                            package_id=f"pkg_{product_id}_{i}",
+                            buyer_ref=buy.raw_request.get("buyer_ref", None),
+                            impressions=package_impressions,
+                            spend=package_spend,
+                            # TODO: Calculate clicks for CPC pricing - extract pricing model from raw_request
+                            clicks=None,  # Optional field, not calculated in this implementation
+                            video_completions=None,  # Optional field, not calculated in this implementation
+                            pacing_index=1.0 if status == "active" else 0.0,
+                        )
+                    )
+
             # Create delivery data
             buyer_ref = buy.raw_request.get("buyer_ref", None) if buy.raw_request else None
             # Type cast status to match Literal type
@@ -392,6 +413,7 @@ def _get_media_buy_delivery_impl(
             "media_buy_count": media_buy_count,
         },
         media_buy_deliveries=deliveries,
+        context=req.context or None,
     )
 
     # Apply testing hooks if needed
@@ -459,6 +481,7 @@ def _get_media_buy_delivery_impl(
             sequence_number=filtered_data.get("sequence_number"),
             next_expected_at=filtered_data.get("next_expected_at"),
             errors=filtered_data.get("errors"),
+            context=req.context or None,
         )
 
     return response
