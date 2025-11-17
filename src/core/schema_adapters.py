@@ -189,7 +189,8 @@ class GetProductsResponse(AdCPBaseModel):
                         break
                 else:
                     if hasattr(p, "pricing_options") and p.pricing_options:
-                        if any(po.rate is not None for po in p.pricing_options):
+                        # Check if any pricing option has a rate attribute with non-None value
+                        if any(hasattr(po, "rate") and po.rate is not None for po in p.pricing_options):
                             all_missing_pricing = False
                             break
 
