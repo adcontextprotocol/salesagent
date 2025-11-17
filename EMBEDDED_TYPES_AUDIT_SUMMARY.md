@@ -23,20 +23,35 @@ These types correctly extend adcp library types with internal fields marked `exc
 
 **Verification**: All pass AdCP contract tests ✅
 
-### ❌ Cannot Extend (3 types - Documented)
-These types have documented reasons why they cannot extend library types:
+### ❌ Cannot Extend (1 type - Documented)
+This type has a documented reason why it cannot extend library type:
 
-1. **ListCreativesRequest** (line 1969)
-   - **Reason**: Has convenience fields (`media_buy_id`, `buyer_ref`, `page`, `limit`, `sort_by`) that don't map to library structure
-   - **Action**: Added docstring explaining convenience fields are implementation-specific ✅
-
-2. **SyncCreativesResponse** (line 1890)
+1. **SyncCreativesResponse** (line 1890)
    - **Reason**: Library uses RootModel discriminated union (success vs error variants) incompatible with protocol envelope pattern
    - **Action**: Added docstring explaining RootModel incompatibility ✅
+   - **Verified**: ✅ CORRECT - Library does use `RootModel[Response1 | Response2]` pattern
+
+### ⚠️ Should Extend But Don't Yet (2 types - Needs Refactoring)
+These types SHOULD extend library types but currently don't. **Requires follow-up refactoring**:
+
+2. **ListCreativesRequest** (line 1969)
+   - **Issue**: Uses flat convenience fields (`media_buy_id`, `buyer_ref`, `page`, `limit`) instead of library's structured objects
+   - **Library Has**: `filters: Filters`, `pagination: Pagination`, `sort: Sort` (all structured with proper types)
+   - **We Have**: Flat fields + `dict[str, Any]` instead of typed objects
+   - **Action Required**:
+     - ❌ Original audit claim was INCORRECT (library DOES have equivalents)
+     - Consider submitting `media_buy_id`, `buyer_ref` to spec if commonly needed (per user comment)
+     - Refactor to extend library, map convenience fields to structured objects via validator
+     - See `EMBEDDED_TYPES_CORRECTIONS.md` for full details
 
 3. **ListCreativesResponse** (line 2034)
-   - **Reason**: Library's nested Creative uses legacy format (media_url/width/height), ours is AdCP v1 spec-compliant (format_id + assets)
-   - **Action**: Added docstring explaining nested Creative structure difference ✅
+   - **Issue**: Original audit claimed library Creative uses "legacy format" - this was INCORRECT
+   - **Library Creative**: Supports BOTH modern (assets dict + format_id) AND legacy (media_url/width/height) - more complete than ours!
+   - **Action Required**:
+     - ❌ Original audit claim was INCORRECT (library supports both patterns)
+     - Our Creative (line 1569) should extend library Creative
+     - Library's Creative is MORE complete than ours
+     - See `EMBEDDED_TYPES_CORRECTIONS.md` for full details
 
 ### ⚠️ Questionable Extension (Not Pursued)
 These types could potentially extend library types, but we decided against it:
