@@ -70,7 +70,6 @@ class TestPricingValidation:
         product = Mock()
         product.product_id = "video_product"
         product.pricing_options = [pricing_option]
-        product.is_fixed_price = None
 
         package = Mock()
         package.package_id = "pkg_1"

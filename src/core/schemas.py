@@ -1356,10 +1356,6 @@ class ProductFilters(BaseModel):
         None,
         description="Filter by delivery type",
     )
-    is_fixed_price: bool | None = Field(
-        None,
-        description="Filter for fixed price vs auction products",
-    )
     format_types: list[FormatTypeEnum] | None = Field(
         None,
         description="Filter by format types",

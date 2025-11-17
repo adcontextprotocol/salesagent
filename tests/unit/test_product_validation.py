@@ -29,8 +29,6 @@ def test_ai_provider_bug_reproduction():
         "description": "Test description",
         "format_ids": ["display_300x250", "audio_15s", "audio_30s"],
         "delivery_type": "guaranteed",
-        "is_fixed_price": True,
-        "cpm": 10.0,
         # BUG: These fields were being passed to Product constructor but aren't valid
         "targeting_template": {"demographics": "adults"},  # INVALID - internal field
         "price_guidance": {"min": 5.0, "max": 15.0},  # INVALID - not in Product schema

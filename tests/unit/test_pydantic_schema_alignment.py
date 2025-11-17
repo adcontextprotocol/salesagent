@@ -453,7 +453,6 @@ class TestSpecificFieldValidation:
             filters={
                 "delivery_type": "guaranteed",
                 "format_types": ["video"],
-                "is_fixed_price": True,
             },
         )
         assert request.filters is not None

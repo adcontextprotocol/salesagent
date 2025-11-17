@@ -1606,14 +1606,12 @@ def edit_product(tenant_id, product_id):
 
             # Derive display values from pricing_options
             delivery_type = product.delivery_type
-            is_fixed_price = None
             cpm = None
             price_guidance = None
 
             if pricing_options_list:
                 first_pricing = pricing_options_list[0]
                 delivery_type = "guaranteed" if first_pricing["is_fixed"] else "non_guaranteed"
-                is_fixed_price = first_pricing["is_fixed"]
                 cpm = first_pricing["rate"]
                 price_guidance = first_pricing["price_guidance"]
 
@@ -1642,7 +1640,6 @@ def edit_product(tenant_id, product_id):
                 "description": product.description,
                 "inventory_profile_id": product.inventory_profile_id,
                 "delivery_type": delivery_type,
-                "is_fixed_price": is_fixed_price,
                 "cpm": cpm,
                 "price_guidance": price_guidance,
                 "formats": (

@@ -471,8 +471,7 @@ def create_test_product_with_pricing(
 ):
     """Create a Product with pricing_options using the new pricing model.
 
-    This helper provides a simple API that mirrors the old Product(is_fixed_price=True, cpm=15.0)
-    pattern but uses the new PricingOption table.
+    This helper provides a simple API for creating products with pricing options.
 
     Args:
         session: SQLAlchemy session
@@ -494,10 +493,6 @@ def create_test_product_with_pricing(
         Product instance with pricing_options populated
 
     Example:
-        # Old pattern (BROKEN):
-        product = Product(tenant_id="test", is_fixed_price=True, cpm=15.0)
-
-        # New pattern (WORKS):
         product = create_test_product_with_pricing(
             session, tenant_id="test", pricing_model="CPM", rate=15.0
         )

@@ -477,7 +477,7 @@ class TestRoundtripErrorScenarios:
         incomplete_product_dict = {
             "product_id": "missing_field_test",
             "name": "Missing Field Test",
-            # Missing: description, formats, delivery_type, is_fixed_price, is_custom
+            # Missing: description, formats, delivery_type, is_custom
         }
 
         from pydantic import ValidationError
