@@ -184,9 +184,17 @@ class SignalsAgentRegistry:
             signal_spec = brief
 
             # Build deliver_to (required in new schema)
-            # Default to "all" platforms if not specified
-            # NOTE: platforms must be an array of strings, not a single string
-            deliver_to = {"platforms": ["all"]}
+            # Per AdCP spec, deliver_to requires countries and destinations arrays
+            # destinations requires at least 1 item - use a generic "all platforms" destination
+            deliver_to = {
+                "countries": [],  # Empty = all countries
+                "destinations": [
+                    {
+                        "type": "platform",  # Generic platform destination
+                        "platform": "all",  # All platforms
+                    }
+                ],
+            }
 
             # Create typed request (AdCP v2.2.0 format)
             request = GetSignalsRequest(
@@ -209,9 +217,9 @@ class SignalsAgentRegistry:
                 signals = result.data.signals
                 total_duration = time.time() - start_time
                 logger.info(f"[TIMING] Got {len(signals)} signals synchronously in {total_duration:.2f}s total")
-                # Signals are already dicts (list[dict[str, Any]]) - no conversion needed
-                # This is by design in the AdCP spec - signals are untyped JSON objects
-                return signals
+                # Convert Signal objects to dicts for internal use
+                # AdCP library returns Signal objects, but our internal code expects dicts
+                return [signal.model_dump(mode="json") for signal in signals]
 
             elif result.status == "submitted":
                 # Asynchronous completion - webhook registered

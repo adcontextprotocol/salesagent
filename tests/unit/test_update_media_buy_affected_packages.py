@@ -22,7 +22,6 @@ def test_affected_packages_includes_creative_assignment_details():
     response = UpdateMediaBuySuccess(
         media_buy_id="test_buy_123",
         buyer_ref="buyer_ref_123",
-        packages=[],  # Required by AdCP spec
         affected_packages=affected_packages,
     )
 
@@ -53,7 +52,6 @@ def test_affected_packages_can_be_empty():
     response = UpdateMediaBuySuccess(
         media_buy_id="test_buy_456",
         buyer_ref="buyer_ref_456",
-        packages=[],  # Required by AdCP spec
         affected_packages=[],
     )
 
@@ -79,7 +77,6 @@ def test_affected_packages_shows_replaced_creatives():
     response = UpdateMediaBuySuccess(
         media_buy_id="test_buy_789",
         buyer_ref="buyer_ref_789",
-        packages=[],  # Required by AdCP spec
         affected_packages=affected_packages,
     )
 
@@ -94,7 +91,6 @@ def test_response_serialization_includes_affected_packages():
     response = UpdateMediaBuySuccess(
         media_buy_id="test_buy_serialization",
         buyer_ref="buyer_ref_serialization",
-        packages=[],  # Required by AdCP spec
         affected_packages=[
             {
                 "buyer_package_ref": "pkg_1",
