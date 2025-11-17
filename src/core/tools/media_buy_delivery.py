@@ -137,6 +137,7 @@ def _get_media_buy_delivery_impl(
     tenant = get_current_tenant()
 
     target_media_buys = _get_target_media_buys(req, principal_id, tenant, reference_date)
+    pricing_options = _get_pricing_options(target_media_buys)
 
     # Collect delivery data for each media buy
     deliveries = []
@@ -204,21 +205,21 @@ def _get_media_buy_delivery_impl(
                         impressions = total_impressions_from_adapter
                         
                 except Exception as e:
-                    # TODO: @yusuf - This seems wrong. What if the adapter (GAM) is failed due to some real buggy reason? We should not be using estimated metrics in that case.
-                    logger.warning(f"Could not get real delivery metrics from adapter for {media_buy_id}: {e}. Using estimated metrics.")
-                    # Fall back to estimated metrics
-                    buy_start_date_metrics: date = buy.start_date  # type: ignore[assignment]
-                    buy_end_date_metrics: date = buy.end_date  # type: ignore[assignment]
-                    campaign_days = (buy_end_date_metrics - buy_start_date_metrics).days
-                    days_elapsed = max(0, (simulation_datetime.date() - buy_start_date_metrics).days)
-
-                    if campaign_days > 0:
-                        progress = min(1.0, days_elapsed / campaign_days) if status != "ready" else 0.0
-                    else:
-                        progress = 1.0 if status == "completed" else 0.0
-
-                    spend = float(buy.budget) * progress if buy.budget else 0.0
-                    impressions = int(spend * 1000)  # Assume $1 CPM for simplicity
+                    logger.error(f"Error getting delivery for {media_buy_id}: {e}")
+                    return GetMediaBuyDeliveryResponse(
+                        reporting_period=reporting_period,
+                        currency="USD",
+                        aggregated_totals={
+                            "impressions": 0,
+                            "spend": 0,
+                            "clicks": None,
+                            "video_completions": None,
+                            "media_buy_count": 0,
+                        },
+                        media_buy_deliveries=[],
+                        errors=[{"code": "adapter_error", "message": f"Error getting delivery for {media_buy_id}"}],
+                        context=req.context or None,
+                    )
             else:
                 # Use simulation for testing
                 # Note: buy.start_date and buy.end_date are Python date objects
@@ -295,22 +296,47 @@ def _get_media_buy_delivery_impl(
                     )
 
             # Create delivery data
-            buyer_ref = buy.raw_request.get("buyer_ref", None) if buy.raw_request else None
+            buyer_ref = buy.raw_request.get("buyer_ref", None)
+            pricing_option_id = buy.raw_request.get("pricing_option_id", None)
+            pricing_option = pricing_options[pricing_option_id]
+
+            if not pricing_option:
+                logger.error(f"Error getting delivery for {media_buy_id}: Pricing option with id {pricing_option_id} is expected but not found")
+
+                return GetMediaBuyDeliveryResponse(
+                    currency="USD",
+                    aggregated_totals={
+                        "impressions": 0,
+                        "spend": 0,
+                        "clicks": None,
+                        "video_completions": None,
+                        "media_buy_count": 0,
+                    },
+                    media_buy_deliveries=[],
+                    errors=[{"code": "pricing_option_not_found", "message": f"Pricing option with id {pricing_option_id} is expected but not found"}],
+                    context=req.context or None,
+                )
+
+            # Calculate clicks and CTR (click-through rate) where applicable
+            clicks = (
+                spend / pricing_option.rate
+                if pricing_option.pricing_model == PricingModel.CPC and pricing_option.rate
+                else None
+            )
+            ctr = (clicks / impressions) if clicks is not None and impressions > 0 else None
+
             # Type cast status to match Literal type
             status_literal: str = status
             delivery_data = MediaBuyDeliveryData(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
                 status=status_literal,  # type: ignore[arg-type]
+                pricing_model=pricing_option.pricing_model,
                 totals=DeliveryTotals(
                     impressions=impressions,
                     spend=spend,
-                    # TODO: Calculate clicks for CPC pricing models - should be required for CPC
-                    # Need to: 1) Extract pricing model from raw_request packages
-                    #          2) Calculate clicks based on spend/CPC rate
-                    #          3) Make clicks required (not None) for CPC pricing
-                    clicks=None,  # Optional field
-                    ctr=None,  # Optional field
+                    clicks=clicks,  # Optional field
+                    ctr=ctr,  # Optional field
                     video_completions=None,  # Optional field
                     completion_rate=None,  # Optional field
                 ),
@@ -590,3 +616,9 @@ def _get_target_media_buys(
                 target_media_buys.append((buy.media_buy_id, buy))
 
         return target_media_buys
+
+def _get_pricing_options(pricing_option_ids: list[str]) -> dict[str, PricingOption]:
+    with get_db_session() as session:
+        statement = select(PricingOption).where(PricingOption.pricing_option_id.in_(pricing_option_ids))
+        pricing_options =session.scalars(statement).all()
+        return { pricing_option.pricing_option_id: pricing_option for pricing_option in pricing_options }
