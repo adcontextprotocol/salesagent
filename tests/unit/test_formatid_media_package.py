@@ -103,10 +103,12 @@ class TestFormatFormatIdFields:
             make_format_id("display_728x90"),
         ]
 
+        # Use 'universal' type for formats that can output multiple types
+        # Valid types per AdCP spec: audio, video, display, native, dooh, rich_media, universal
         format_obj = Format(
-            format_id=make_format_id("generative_banner"),
-            name="Generative Banner Format",
-            type="generative",
+            format_id=make_format_id("universal_banner"),
+            name="Universal Banner Format",
+            type="universal",
             output_format_ids=output_formats,
         )
 
