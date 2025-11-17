@@ -19,6 +19,7 @@ from src.core.database.models import (
     MediaPackage,
     PricingOption,
     Principal,
+    Product,
     PropertyTag,
     Tenant,
 )
@@ -254,6 +255,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -353,6 +360,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -448,6 +461,12 @@ class TestFormatConversionApproval:
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
+
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
 
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
@@ -545,6 +564,12 @@ class TestFormatConversionApproval:
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
+
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
 
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
@@ -645,6 +670,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -740,6 +771,12 @@ class TestFormatConversionApproval:
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
+
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
 
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
@@ -837,6 +874,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -927,6 +970,12 @@ class TestFormatConversionApproval:
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
+
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
 
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
@@ -1035,6 +1084,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -1125,6 +1180,12 @@ class TestFormatConversionApproval:
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
+
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
 
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)

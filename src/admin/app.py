@@ -15,8 +15,7 @@ from src.admin.blueprints.activity_stream import activity_stream_bp
 from src.admin.blueprints.adapters import adapters_bp
 from src.admin.blueprints.api import api_bp
 from src.admin.blueprints.auth import auth_bp, init_oauth
-
-# from src.admin.blueprints.authorized_properties import authorized_properties_bp  # DEPRECATED - moved to inventory tab
+from src.admin.blueprints.authorized_properties import authorized_properties_bp
 from src.admin.blueprints.core import core_bp
 from src.admin.blueprints.creative_agents import creative_agents_bp
 from src.admin.blueprints.creatives import creatives_bp
@@ -322,7 +321,7 @@ def create_app(config=None):
     app.register_blueprint(
         adapters_bp
     )  # No url_prefix - routes define their own paths like /adapters/{adapter}/config/{tenant_id}/{product_id}
-    # app.register_blueprint(authorized_properties_bp, url_prefix="/tenant")  # DEPRECATED - moved to inventory tab
+    app.register_blueprint(authorized_properties_bp, url_prefix="/tenant")
     app.register_blueprint(creative_agents_bp, url_prefix="/tenant/<tenant_id>/creative-agents")
     app.register_blueprint(signals_agents_bp, url_prefix="/tenant/<tenant_id>/signals-agents")
     app.register_blueprint(inventory_bp)  # Has its own internal routing
