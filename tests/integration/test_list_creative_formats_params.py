@@ -82,16 +82,12 @@ def test_filtering_by_type(integration_db, sample_tenant):
             type="video",
             name="Video 16:9",
             is_standard=True,
-            asset_schema={"type": "object"},
-            agent_url="https://creative.adcontextprotocol.org",
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
             type="display",
             name="Display 300x250",
             is_standard=True,
-            asset_schema={"type": "object"},
-            agent_url="https://creative.adcontextprotocol.org",
         ),
     ]
 
@@ -147,16 +143,12 @@ def test_filtering_by_standard_only(integration_db, sample_tenant):
             type="display",
             name="Display 300x250",
             is_standard=True,
-            asset_schema={"type": "object"},
-            agent_url="https://creative.adcontextprotocol.org",
         ),
         Format(
             format_id=FormatId(agent_url="https://custom.example.com", id="custom_banner"),
             type="display",
             name="Custom Banner",
             is_standard=False,
-            asset_schema={"type": "object"},
-            agent_url="https://custom.example.com",
         ),
     ]
 
@@ -211,24 +203,18 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
             type="display",
             name="Display 300x250",
             is_standard=True,
-            asset_schema={"type": "object"},
-            agent_url="https://creative.adcontextprotocol.org",
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
             type="display",
             name="Display 728x90",
             is_standard=True,
-            asset_schema={"type": "object"},
-            agent_url="https://creative.adcontextprotocol.org",
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
             type="video",
             name="Video 16:9",
             is_standard=True,
-            asset_schema={"type": "object"},
-            agent_url="https://creative.adcontextprotocol.org",
         ),
     ]
 
@@ -290,24 +276,18 @@ def test_filtering_combined(integration_db, sample_tenant):
             type="display",
             name="Display 300x250",
             is_standard=True,
-            asset_schema={"type": "object"},
-            agent_url="https://creative.adcontextprotocol.org",
         ),
         Format(
             format_id=FormatId(agent_url="https://custom.example.com", id="display_custom"),
             type="display",
             name="Display Custom",
             is_standard=False,
-            asset_schema={"type": "object"},
-            agent_url="https://custom.example.com",
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
             type="video",
             name="Video 16:9",
             is_standard=True,
-            asset_schema={"type": "object"},
-            agent_url="https://creative.adcontextprotocol.org",
         ),
     ]
 

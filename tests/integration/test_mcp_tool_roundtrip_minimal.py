@@ -64,10 +64,10 @@ class TestMCPToolRoundtripMinimal:
                     "brand_manifest": {"name": "Test Product"},
                     "packages": [
                         {
-                            "package_id": "pkg1",
-                            "products": [product_id],
+                            "buyer_ref": "test_buyer_minimal_pkg1",
+                            "product_id": product_id,
+                            "pricing_option_id": "cpm_option_1",
                             "budget": 1000.0,
-                            "impressions": 10000,
                         }
                     ],
                     "start_time": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
@@ -103,10 +103,10 @@ class TestMCPToolRoundtripMinimal:
                     "brand_manifest": {"name": "Test Product"},
                     "packages": [
                         {
-                            "package_id": "pkg1",
-                            "products": [product_id],
+                            "buyer_ref": "test_buyer_update_pkg1",
+                            "product_id": product_id,
+                            "pricing_option_id": "cpm_option_1",
                             "budget": 1000.0,
-                            "impressions": 10000,
                         }
                     ],
                     "start_time": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
@@ -207,10 +207,10 @@ class TestMCPToolRoundtripMinimal:
                     "brand_manifest": {"name": "Test Product"},
                     "packages": [
                         {
-                            "package_id": "pkg1",
-                            "products": [product_id],
+                            "buyer_ref": "test_buyer_perf_pkg1",
+                            "product_id": product_id,
+                            "pricing_option_id": "cpm_option_1",
                             "budget": 1000.0,
-                            "impressions": 10000,
                         }
                     ],
                     "start_time": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
