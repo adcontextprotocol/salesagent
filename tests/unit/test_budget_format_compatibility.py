@@ -11,6 +11,7 @@ Tests cover both Package.budget and CreateMediaBuyRequest.budget fields.
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 
 from src.core.schemas import Budget, CreateMediaBuyRequest, PackageRequest
 
@@ -273,14 +274,13 @@ class TestBudgetFormatCompatibility:
         assert budget_dict["currency"] == "USD"
 
     def test_package_with_none_budget(self):
-        """Test that None budget is handled correctly."""
-        package = PackageRequest(product_id="prod_1", budget=None, buyer_ref="pkg1", pricing_option_id="test_pricing")
+        """Test that None budget is rejected (budget is required per adcp library)."""
+        # PackageRequest now extends adcp library PackageRequest where budget is required
+        with pytest.raises(ValidationError) as exc_info:
+            PackageRequest(product_id="prod_1", budget=None, buyer_ref="pkg1", pricing_option_id="test_pricing")
 
-        # Skip extraction if budget is None
-        if package.budget:
-            pytest.fail("Should not extract budget when it's None")
-
-        assert package.budget is None
+        # Verify it's a budget validation error
+        assert "budget" in str(exc_info.value).lower()
 
 
 class TestBudgetExtractionHelpers:

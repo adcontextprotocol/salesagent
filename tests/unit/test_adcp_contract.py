@@ -2315,9 +2315,10 @@ class TestAdCPContract:
             end_time=end_date,
             packages=[
                 {
-                    "package_id": "pkg_flash_001",
-                    "products": ["product_1"],
-                    "status": "draft",
+                    "buyer_ref": "pkg_flash_001",
+                    "product_id": "product_1",
+                    "pricing_option_id": "test_pricing",
+                    "budget": 5000.0,
                 }
             ],
             budget={"total": 25000, "currency": "USD", "pacing": "asap"},
@@ -2361,9 +2362,10 @@ class TestAdCPContract:
             end_time=end_date,
             packages=[
                 {
-                    "package_id": "pkg_scheduled_001",
-                    "products": ["product_1"],
-                    "status": "draft",
+                    "buyer_ref": "pkg_scheduled_001",
+                    "product_id": "product_1",
+                    "pricing_option_id": "test_pricing",
+                    "budget": 5000.0,
                 }
             ],
             budget={"total": 10000, "currency": "USD", "pacing": "even"},
@@ -2445,9 +2447,10 @@ class TestAdCPContract:
             },
             packages=[
                 {
-                    "package_id": "pkg_001",
-                    "products": ["product_1"],
-                    "status": "draft",
+                    "buyer_ref": "pkg_001",
+                    "product_id": "product_1",
+                    "pricing_option_id": "test_pricing",
+                    "budget": 5000.0,
                 }
             ],
             start_time=start_date,
@@ -2474,9 +2477,10 @@ class TestAdCPContract:
             brand_manifest="https://nike.com/brand-manifest.json",
             packages=[
                 {
-                    "package_id": "pkg_001",
-                    "products": ["product_1"],
-                    "status": "draft",
+                    "buyer_ref": "pkg_001",
+                    "product_id": "product_1",
+                    "pricing_option_id": "test_pricing",
+                    "budget": 5000.0,
                 }
             ],
             start_time=start_date,

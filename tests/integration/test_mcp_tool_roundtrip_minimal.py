@@ -352,10 +352,10 @@ class TestParameterToSchemaMapping:
         # Legacy fields should be converted
         assert req.packages is not None
         assert len(req.packages) == 2
-        # Legacy conversion creates packages without budgets (budget must be set explicitly per package)
-        # The total_budget field is kept for backward compatibility but not distributed to packages
-        assert req.packages[0].budget is None  # Legacy conversion doesn't set package budgets
+        # Legacy conversion divides total_budget among packages
+        assert req.packages[0].budget == 5000.0  # 10000 / 2 packages
         assert req.packages[0].product_id == "prod_1"
+        assert req.packages[1].budget == 5000.0  # 10000 / 2 packages
         assert req.packages[1].product_id == "prod_2"
         assert req.start_time is not None
         assert req.end_time is not None

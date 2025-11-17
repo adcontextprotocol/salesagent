@@ -22,11 +22,10 @@ class TestDateTimeStringParsing:
             po_number="TEST-001",
             packages=[
                 {
-                    "package_id": "pkg_1",
                     "buyer_ref": "pkg_1",
-                    "products": ["prod_1"],
-                    "status": "draft",
+                    "product_id": "prod_1",
                     "budget": 5000.0,
+                    "pricing_option_id": "test_pricing",
                 }
             ],
             start_time="2025-02-15T00:00:00Z",  # String, not datetime object!
@@ -50,11 +49,10 @@ class TestDateTimeStringParsing:
             po_number="TEST-002",
             packages=[
                 {
-                    "package_id": "pkg_1",
                     "buyer_ref": "pkg_1",
-                    "products": ["prod_1"],
-                    "status": "draft",
+                    "product_id": "prod_1",
                     "budget": 5000.0,
+                    "pricing_option_id": "test_pricing",
                 }
             ],
             start_time="2025-02-15T00:00:00+00:00",
@@ -73,11 +71,10 @@ class TestDateTimeStringParsing:
             po_number="TEST-003",
             packages=[
                 {
-                    "package_id": "pkg_1",
                     "buyer_ref": "pkg_1",
-                    "products": ["prod_1"],
-                    "status": "draft",
+                    "product_id": "prod_1",
                     "budget": 5000.0,
+                    "pricing_option_id": "test_pricing",
                 }
             ],
             start_time="2025-02-15T00:00:00-08:00",
@@ -148,10 +145,9 @@ class TestDateTimeStringParsing:
                 po_number="TEST-006",
                 packages=[
                     {
-                        "package_id": "pkg_1",
                         "buyer_ref": "pkg_1",
-                        "products": ["prod_1"],
-                        "status": "draft",
+                        "product_id": "prod_1",
+                        "pricing_option_id": "test_pricing",
                         "budget": 5000.0,
                     }
                 ],
@@ -191,11 +187,10 @@ class TestDateTimeStringParsing:
             po_number="TEST-008",
             packages=[
                 {
-                    "package_id": "pkg_1",
                     "buyer_ref": "pkg_1",
-                    "products": ["prod_1"],
-                    "status": "draft",
+                    "product_id": "prod_1",
                     "budget": 5000.0,
+                    "pricing_option_id": "test_pricing",
                 }
             ],
             start_time="2025-02-15T00:00:00Z",
@@ -224,11 +219,10 @@ class TestDateTimeParsingEdgeCases:
             po_number="TEST-009",
             packages=[
                 {
-                    "package_id": "pkg_1",
                     "buyer_ref": "pkg_1",
-                    "products": ["prod_1"],
-                    "status": "draft",
+                    "product_id": "prod_1",
                     "budget": 5000.0,
+                    "pricing_option_id": "test_pricing",
                 }
             ],
             start_time="2025-02-15T00:00:00Z",
