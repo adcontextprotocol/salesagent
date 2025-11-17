@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.core.schemas import Budget, Package
+from src.core.schemas import Budget, PackageRequest
 
 
 @pytest.mark.requires_db
@@ -65,15 +65,17 @@ class TestDuplicateProductValidation:
         ):
             # Create packages with duplicate product_id
             packages = [
-                Package(
+                PackageRequest(
                     buyer_ref="pkg_1",
                     product_id="prod_test_1",
                     budget=1000.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
+                    pricing_option_id="test_pricing",
                 ),
-                Package(
+                PackageRequest(
                     buyer_ref="pkg_2",
                     product_id="prod_test_1",  # Same product as pkg_1
                     budget=1500.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
+                    pricing_option_id="test_pricing",
                 ),
             ]
 
@@ -142,25 +144,29 @@ class TestDuplicateProductValidation:
         ):
             # Create packages with multiple duplicates
             packages = [
-                Package(
+                PackageRequest(
                     buyer_ref="pkg_1",
                     product_id="prod_test_1",
                     budget=1000.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
+                    pricing_option_id="test_pricing",
                 ),
-                Package(
+                PackageRequest(
                     buyer_ref="pkg_2",
                     product_id="prod_test_1",  # Duplicate of pkg_1
                     budget=1500.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
+                    pricing_option_id="test_pricing",
                 ),
-                Package(
+                PackageRequest(
                     buyer_ref="pkg_3",
                     product_id="prod_test_2",
                     budget=2000.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
+                    pricing_option_id="test_pricing",
                 ),
-                Package(
+                PackageRequest(
                     buyer_ref="pkg_4",
                     product_id="prod_test_2",  # Duplicate of pkg_3
                     budget=1800.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
+                    pricing_option_id="test_pricing",
                 ),
             ]
 
@@ -222,15 +228,17 @@ class TestDuplicateProductValidation:
 
             # Create packages with different product_ids
             packages = [
-                Package(
+                PackageRequest(
                     buyer_ref="pkg_1",
                     product_id="prod_test_1",
                     budget=1000.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
+                    pricing_option_id="test_pricing",
                 ),
-                Package(
+                PackageRequest(
                     buyer_ref="pkg_2",
                     product_id="prod_test_2",  # Different product
                     budget=1500.0,  # Float budget per AdCP v2.2.0, currency from pricing_option
+                    pricing_option_id="test_pricing",
                 ),
             ]
 

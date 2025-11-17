@@ -4,7 +4,7 @@ Per AdCP specification, packages use product_id (singular) field, not products (
 This test verifies that get_product_ids() correctly extracts product IDs from packages.
 """
 
-from src.core.schemas import CreateMediaBuyRequest, Package
+from src.core.schemas import CreateMediaBuyRequest, PackageRequest
 
 
 class TestPackageProductExtraction:
@@ -19,7 +19,9 @@ class TestPackageProductExtraction:
             po_number="PO-001",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            packages=[Package(buyer_ref="pkg1", product_id="prod1", status="active")],
+            packages=[
+                PackageRequest(buyer_ref="pkg1", product_id="prod1", budget=1000.0, pricing_option_id="test_pricing")
+            ],
         )
 
         product_ids = req.get_product_ids()
@@ -35,9 +37,9 @@ class TestPackageProductExtraction:
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
             packages=[
-                Package(buyer_ref="pkg1", product_id="prod1", status="active"),
-                Package(buyer_ref="pkg2", product_id="prod2", status="active"),
-                Package(buyer_ref="pkg3", product_id="prod3", status="active"),
+                PackageRequest(buyer_ref="pkg1", product_id="prod1", budget=1000.0, pricing_option_id="test_pricing"),
+                PackageRequest(buyer_ref="pkg2", product_id="prod2", budget=1000.0, pricing_option_id="test_pricing"),
+                PackageRequest(buyer_ref="pkg3", product_id="prod3", budget=1000.0, pricing_option_id="test_pricing"),
             ],
         )
 
@@ -53,7 +55,7 @@ class TestPackageProductExtraction:
             po_number="PO-003",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            packages=[Package(buyer_ref="pkg1", status="active")],
+            packages=[PackageRequest(buyer_ref="pkg1", budget=1000.0, pricing_option_id="test_pricing")],
         )
 
         product_ids = req.get_product_ids()
@@ -81,7 +83,9 @@ class TestPackageProductExtraction:
             po_number="PO-005",
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            packages=[Package(buyer_ref="pkg1", product_id="prod1", status="active")],
+            packages=[
+                PackageRequest(buyer_ref="pkg1", product_id="prod1", budget=1000.0, pricing_option_id="test_pricing")
+            ],
             product_ids=["legacy1", "legacy2"],  # Should be ignored
         )
 
@@ -100,9 +104,9 @@ class TestPackageProductExtraction:
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
             packages=[
-                Package(buyer_ref="pkg1", product_id="prod1", status="active"),
-                Package(buyer_ref="pkg2", status="active"),  # No product_id
-                Package(buyer_ref="pkg3", product_id="prod3", status="active"),
+                PackageRequest(buyer_ref="pkg1", product_id="prod1", budget=1000.0, pricing_option_id="test_pricing"),
+                PackageRequest(buyer_ref="pkg2", budget=1000.0, pricing_option_id="test_pricing"),  # No product_id
+                PackageRequest(buyer_ref="pkg3", product_id="prod3", budget=1000.0, pricing_option_id="test_pricing"),
             ],
         )
 

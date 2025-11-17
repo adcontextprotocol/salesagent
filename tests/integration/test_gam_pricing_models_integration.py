@@ -22,7 +22,7 @@ from src.core.database.models import (
     PropertyTag,
     Tenant,
 )
-from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
+from src.core.schemas import CreateMediaBuyRequest, PackageRequest
 from src.core.tool_context import ToolContext
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
@@ -366,12 +366,11 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
         buyer_ref="test_buyer_cpm",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_cpm",
-                products=["prod_gam_cpm_guaranteed"],
-                pricing_model=PricingModel.CPM,
+            PackageRequest(
+                buyer_ref="pkg_cpm",
+                product_id="prod_gam_cpm_guaranteed",
+                pricing_option_id="cpm_guaranteed_option",
                 budget=10000.0,
-                impressions=100000,
             )
         ],
         budget={"total": 10000.0, "currency": "USD"},
@@ -421,12 +420,11 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
         buyer_ref="test_buyer_cpc",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_cpc",
-                products=["prod_gam_cpc"],
-                pricing_model=PricingModel.CPC,
+            PackageRequest(
+                buyer_ref="pkg_cpc",
+                product_id="prod_gam_cpc",
+                pricing_option_id="cpc_option",
                 budget=5000.0,
-                impressions=2000,  # 2000 clicks goal
             )
         ],
         budget={"total": 5000.0, "currency": "USD"},
@@ -477,12 +475,11 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
         buyer_ref="test_buyer_vcpm",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_vcpm",
-                products=["prod_gam_vcpm"],
-                pricing_model=PricingModel.VCPM,
+            PackageRequest(
+                buyer_ref="pkg_vcpm",
+                product_id="prod_gam_vcpm",
+                pricing_option_id="vcpm_option",
                 budget=12000.0,
-                impressions=50000,  # 50k viewable impressions
             )
         ],
         budget={"total": 12000.0, "currency": "USD"},
@@ -534,12 +531,11 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
         buyer_ref="test_buyer_flatrate",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_flat",
-                products=["prod_gam_flatrate"],
-                pricing_model=PricingModel.FLAT_RATE,
+            PackageRequest(
+                buyer_ref="pkg_flat",
+                product_id="prod_gam_flatrate",
+                pricing_option_id="flatrate_option",
                 budget=5000.0,
-                impressions=1000000,  # Impressions goal still tracked
             )
         ],
         budget={"total": 5000.0, "currency": "USD"},
@@ -590,26 +586,23 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
         buyer_ref="test_buyer_multi",
         brand_manifest={"name": "https://example.com/campaign"},
         packages=[
-            Package(
-                package_id="pkg_1_cpm",
-                products=["prod_gam_cpm_guaranteed"],
-                pricing_model=PricingModel.CPM,
+            PackageRequest(
+                buyer_ref="pkg_1_cpm",
+                product_id="prod_gam_cpm_guaranteed",
+                pricing_option_id="cpm_guaranteed_option",
                 budget=8000.0,
-                impressions=80000,
             ),
-            Package(
-                package_id="pkg_2_cpc",
-                products=["prod_gam_cpc"],
-                pricing_model=PricingModel.CPC,
+            PackageRequest(
+                buyer_ref="pkg_2_cpc",
+                product_id="prod_gam_cpc",
+                pricing_option_id="cpc_option",
                 budget=3000.0,
-                impressions=1200,  # 1200 clicks
             ),
-            Package(
-                package_id="pkg_3_vcpm",
-                products=["prod_gam_vcpm"],
-                pricing_model=PricingModel.VCPM,
+            PackageRequest(
+                buyer_ref="pkg_3_vcpm",
+                product_id="prod_gam_vcpm",
+                pricing_option_id="vcpm_option",
                 budget=9000.0,
-                impressions=40000,  # 40k viewable impressions
             ),
         ],
         budget={"total": 20000.0, "currency": "USD"},
@@ -673,12 +666,11 @@ async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_
         buyer_ref="test_buyer_auction",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_auction_cpc",
-                products=["prod_gam_cpc"],
-                pricing_model=PricingModel.CPC,
+            PackageRequest(
+                buyer_ref="pkg_auction_cpc",
+                product_id="prod_gam_cpc",
+                pricing_option_id="cpc_option",
                 budget=4000.0,
-                impressions=1500,  # 1500 clicks
                 bid_price=2.25,  # Bid within floor/ceiling
             )
         ],

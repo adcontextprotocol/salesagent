@@ -11,7 +11,7 @@ import pytest
 from src.core.database.database_session import get_db_session
 from src.core.database.models import CurrencyLimit, PricingOption, Principal, Product, PropertyTag, Tenant
 from src.core.schema_adapters import GetProductsRequest
-from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
+from src.core.schemas import CreateMediaBuyRequest, PackageRequest, PricingModel
 from src.core.tool_context import ToolContext
 from src.core.tools.media_buy_create import _create_media_buy_impl
 from src.core.tools.products import _get_products_impl
@@ -273,10 +273,10 @@ async def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_1",
-                products=["prod_cpm_fixed"],
-                pricing_model=PricingModel.CPM,
+            PackageRequest(
+                buyer_ref="pkg_1",
+                product_id="prod_cpm_fixed",
+                pricing_option_id="cpm_fixed_option",
                 budget=10000.0,
             )
         ],
@@ -317,10 +317,10 @@ async def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_prici
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_1",
-                products=["prod_cpm_auction"],
-                pricing_model=PricingModel.CPM,
+            PackageRequest(
+                buyer_ref="pkg_1",
+                product_id="prod_cpm_auction",
+                pricing_option_id="cpm_auction_option",
                 bid_price=15.0,  # Above floor of 8.0
                 budget=10000.0,
             )
@@ -361,10 +361,10 @@ async def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_1",
-                products=["prod_cpm_auction"],
-                pricing_model=PricingModel.CPM,
+            PackageRequest(
+                buyer_ref="pkg_1",
+                product_id="prod_cpm_auction",
+                pricing_option_id="cpm_auction_option",
                 bid_price=5.0,  # Below floor of 8.0
                 budget=10000.0,
             )
@@ -409,10 +409,10 @@ async def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_prod
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_1",
-                products=["prod_cpcv"],
-                pricing_model=PricingModel.CPCV,
+            PackageRequest(
+                buyer_ref="pkg_1",
+                product_id="prod_cpcv",
+                pricing_option_id="cpcv_option",
                 budget=8000.0,  # Above min spend of 5000
             )
         ],
@@ -452,10 +452,10 @@ async def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_1",
-                products=["prod_cpcv"],
-                pricing_model=PricingModel.CPCV,
+            PackageRequest(
+                buyer_ref="pkg_1",
+                product_id="prod_cpcv",
+                pricing_option_id="cpcv_option",
                 budget=3000.0,  # Below min spend of 5000
             )
         ],
@@ -499,10 +499,10 @@ async def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_prici
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_1",
-                products=["prod_multi"],
-                pricing_model=PricingModel.CPP,
+            PackageRequest(
+                buyer_ref="pkg_1",
+                product_id="prod_multi",
+                pricing_option_id="cpp_option",
                 budget=15000.0,  # Above min spend of 10000
             )
         ],
@@ -542,10 +542,10 @@ async def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pr
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_1",
-                products=["prod_cpm_fixed"],  # Only offers CPM
-                pricing_model=PricingModel.CPCV,  # Requesting CPCV
+            PackageRequest(
+                buyer_ref="pkg_1",
+                product_id="prod_cpm_fixed",  # Only offers CPM
+                pricing_option_id="cpcv_option",  # Requesting CPCV
                 budget=10000.0,
             )
         ],

@@ -24,8 +24,15 @@ from adcp.types.generated_poc.format import Format as LibraryFormat
 from adcp.types.generated_poc.format import Type as FormatTypeEnum
 from adcp.types.generated_poc.format_id import FormatId as LibraryFormatId
 
+# Import library Package and PackageRequest for proper request/response separation
+from adcp.types.generated_poc.package import Package as LibraryPackage
+from adcp.types.generated_poc.package_request import PackageRequest as LibraryPackageRequest
+
 # Import library Product, Format, and FormatId to ensure we use canonical AdCP schema
 from adcp.types.generated_poc.product import Product as LibraryProduct
+
+# Import AffectedPackage for UpdateMediaBuySuccess response
+from adcp.types.generated_poc.update_media_buy_response import AffectedPackage as LibraryAffectedPackage
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
 
@@ -252,6 +259,30 @@ class CreateMediaBuyError(AdCPCreateMediaBuyError):
 CreateMediaBuyResponse = CreateMediaBuySuccess | CreateMediaBuyError
 
 
+# --- Update Media Buy Response Components ---
+
+
+class AffectedPackage(LibraryAffectedPackage):
+    """Affected package in UpdateMediaBuySuccess response.
+
+    Extends adcp library AffectedPackage with internal tracking fields.
+
+    Library AffectedPackage required fields:
+    - buyer_ref: Buyer's reference for the package
+    - package_id: Publisher's package identifier
+    """
+
+    # Internal fields for tracking what changed (not in AdCP spec)
+    changes_applied: dict[str, Any] | None = Field(
+        None,
+        description="Internal: Detailed changes applied to package (creative_ids added/removed, etc.)",
+        exclude=True,
+    )
+    buyer_package_ref: str | None = Field(
+        None, description="Internal: Buyer's package reference (legacy compatibility)", exclude=True
+    )
+
+
 class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
     """Successful update_media_buy response extending adcp v1.2.1 type.
 
@@ -261,10 +292,10 @@ class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    # Override affected_packages to allow custom internal format
-    # AdCP spec defines affected_packages with buyer_ref + package_id
-    # We extend with buyer_package_ref + changes_applied for internal tracking
-    affected_packages: list[dict[str, Any]] | None = None  # type: ignore[assignment]
+    # Override affected_packages to use our extended AffectedPackage type
+    # This allows us to include internal tracking fields (changes_applied, buyer_package_ref)
+    # while still being AdCP-compliant (those fields are excluded via exclude=True)
+    affected_packages: list[AffectedPackage] | None = None  # type: ignore[assignment]
 
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
@@ -275,14 +306,21 @@ class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
         # Get base serialization
         data = serializer(self)
 
-        # Exclude internal fields from protocol responses
+        # Exclude workflow_step_id from protocol responses
         # (unless explicitly requested via model_dump_internal)
         if not info.context or not info.context.get("include_internal"):
             data.pop("workflow_step_id", None)
-            data.pop("affected_packages", None)
 
-        # Auto-handle nested Pydantic models
+        # Explicitly serialize affected_packages to ensure AffectedPackage.model_dump() is called
+        # This ensures internal fields (changes_applied, buyer_package_ref) are excluded via exclude=True
+        if "affected_packages" in data and self.affected_packages:
+            data["affected_packages"] = [pkg.model_dump() for pkg in self.affected_packages]
+
+        # Auto-handle other nested Pydantic models
         for field_name in self.__class__.model_fields:
+            if field_name == "affected_packages":
+                continue  # Already handled above
+
             field_value = getattr(self, field_name, None)
             if field_value is None:
                 continue
@@ -2338,71 +2376,39 @@ class BrandManifestRef(BaseModel):
         return values
 
 
-class Package(BaseModel):
-    """Package object - AdCP spec compliant.
+# --- Package Schemas (Extend adcp library for proper request/response separation) ---
 
-    Note: In create-media-buy-request, clients only provide buyer_ref+products.
-    Server generates package_id and sets initial status per AdCP package schema.
+
+class PackageRequest(LibraryPackageRequest):
+    """Package request schema (for CreateMediaBuyRequest).
+
+    Extends adcp library PackageRequest with internal fields.
+    Used when CREATING media buys - has creative_ids/creatives/format_ids but no package_id/status.
+
+    Library PackageRequest required fields:
+    - budget, buyer_ref, pricing_option_id, product_id
     """
 
-    # AdCP Package object fields (required in responses, generated during creation)
-    package_id: str | None = Field(None, description="Publisher's unique identifier for the package")
-    status: Literal["draft", "active", "paused", "completed"] | None = Field(None, description="Status of the package")
-
-    # AdCP optional fields
-    buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this package")
-    product_id: str | None = Field(None, description="ID of the product this package is based on (single product)")
-    products: list[str] | None = Field(None, description="Array of product IDs to include in this package")
-    budget: float | None = Field(
-        None, ge=0, description="Budget allocation for this package in the currency specified by the pricing option"
-    )
-    impressions: float | None = Field(None, description="Impression goal for this package", gt=-1)
-    targeting_overlay: Targeting | None = Field(None, description="Package-specific targeting")
-    creative_ids: list[str] | None = Field(None, description="Creative IDs to assign to this package")
-    creatives: list[Creative] | None = Field(
-        None,
-        description="Full creative objects to upload and assign to this package at creation time (alternative to creative_ids)",
-    )
-    creative_assignments: list[dict[str, Any]] | None = Field(
-        None, description="Creative assets assigned to this package"
-    )
-    # AdCP v2.4 request field (input) - array of FormatId objects
-    format_ids: list[FormatId] | None = Field(
-        None,
-        description="Format IDs for this package (array of FormatId objects with agent_url and id per AdCP v2.4)",
-    )
-
-    # AdCP v2.4 response field (output) - array of FormatId objects
-    format_ids_to_provide: list[FormatId] | None = Field(
-        None,
-        description="Format IDs that creative assets will be provided for this package (array of FormatId objects per AdCP v2.4)",
-    )
-
-    # NEW: Pricing option selection (AdCP v2.2.0 spec - REQUIRED in package-request.json)
-    pricing_option_id: str | None = Field(
-        None,
-        description="ID of the selected pricing option from the product's pricing_options array (REQUIRED in requests)",
-    )
-    bid_price: float | None = Field(
-        None, ge=0, description="Bid price for auction-based pricing (required if pricing option is auction-based)"
-    )
-    pacing: Literal["even", "asap", "front_loaded"] | None = Field(None, description="Pacing strategy for this package")
+    # Internal fields (not in AdCP spec) - excluded from API responses
+    tenant_id: str | None = Field(None, description="Internal: Tenant ID for multi-tenancy", exclude=True)
+    metadata: dict[str, Any] | None = Field(None, description="Internal: Additional metadata", exclude=True)
 
     # Legacy field (deprecated - use pricing_option_id instead)
     pricing_model: PricingModel | None = Field(
         None,
         description="DEPRECATED: Use pricing_option_id instead. Selected pricing model for backward compatibility.",
+        exclude=True,
     )
 
-    # Internal fields (not in AdCP spec)
-    tenant_id: str | None = Field(None, description="Internal: Tenant ID for multi-tenancy")
-    media_buy_id: str | None = Field(None, description="Internal: Associated media buy ID")
-    platform_line_item_id: str | None = Field(
-        None, description="Internal: Platform-specific line item ID for creative association"
+    # Legacy field for backward compatibility
+    products: list[str] | None = Field(
+        None, description="Legacy: Array of product IDs (use product_id instead)", exclude=True
     )
-    created_at: datetime | None = Field(None, description="Internal: Creation timestamp")
-    updated_at: datetime | None = Field(None, description="Internal: Last update timestamp")
-    metadata: dict[str, Any] | None = Field(None, description="Internal: Additional metadata")
+    impressions: float | None = Field(None, description="Legacy: Impression goal (use budget instead)", exclude=True)
+    creatives: list["Creative"] | None = Field(  # type: ignore[assignment]
+        None,
+        description="Full creative objects to upload and assign at creation time (alternative to creative_ids)",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -2426,43 +2432,52 @@ class Package(BaseModel):
 
         return values
 
-    def model_dump(self, **kwargs):
-        """Override to provide AdCP-compliant responses while preserving internal fields."""
-        # Default to excluding internal fields for AdCP compliance
-        exclude = kwargs.get("exclude", set())
-        if isinstance(exclude, set):
-            # Add internal fields to exclude by default
-            # Legacy format fields also excluded (migrated to format_ids_to_provide)
-            exclude.update(
-                {
-                    "tenant_id",
-                    "media_buy_id",
-                    "platform_line_item_id",
-                    "created_at",
-                    "updated_at",
-                    "metadata",
-                    "format_ids",
-                    "formats_to_provide",
-                }
-            )
-            kwargs["exclude"] = exclude
 
-        data = super().model_dump(**kwargs)
+class Package(LibraryPackage):
+    """Package response schema (for CreateMediaBuySuccess and responses).
 
-        # Ensure required AdCP fields are present for responses
-        # (These should be set during package creation/processing)
-        if data.get("package_id") is None:
-            raise ValueError("Package missing required package_id for AdCP response")
-        if data.get("status") is None:
-            raise ValueError("Package missing required status for AdCP response")
+    Extends adcp library Package with internal fields.
+    Used in RESPONSES - has package_id/status but no creative_ids/format_ids (those become creative_assignments/format_ids_to_provide).
 
-        return data
+    Library Package required fields:
+    - package_id, status
+    """
+
+    # Internal fields (not in AdCP spec) - excluded from API responses
+    tenant_id: str | None = Field(None, description="Internal: Tenant ID for multi-tenancy", exclude=True)
+    media_buy_id: str | None = Field(None, description="Internal: Associated media buy ID", exclude=True)
+    platform_line_item_id: str | None = Field(
+        None, description="Internal: Platform-specific line item ID for creative association", exclude=True
+    )
+    created_at: datetime | None = Field(None, description="Internal: Creation timestamp", exclude=True)
+    updated_at: datetime | None = Field(None, description="Internal: Last update timestamp", exclude=True)
+    metadata: dict[str, Any] | None = Field(None, description="Internal: Additional metadata", exclude=True)
+
+    # Legacy field (deprecated - use pricing_option_id instead)
+    pricing_model: PricingModel | None = Field(
+        None,
+        description="DEPRECATED: Use pricing_option_id instead. Selected pricing model for backward compatibility.",
+        exclude=True,
+    )
+
+    # Note: No need for validate_required hack - library Package already has package_id and status as required fields!
 
     def model_dump_internal(self, **kwargs):
         """Dump including internal fields for database storage and internal processing."""
-        # Don't exclude internal fields
-        kwargs.pop("exclude", None)  # Remove any exclude parameter
-        return super().model_dump(**kwargs)
+        # Get base dump with all AdCP fields
+        result = super().model_dump(mode="python", exclude_none=False, **kwargs)
+
+        # Manually add internal fields that are marked with exclude=True
+        # (Pydantic's exclude=True at field level cannot be overridden via parameters)
+        result["tenant_id"] = self.tenant_id
+        result["media_buy_id"] = self.media_buy_id
+        result["platform_line_item_id"] = self.platform_line_item_id
+        result["created_at"] = self.created_at
+        result["updated_at"] = self.updated_at
+        result["metadata"] = self.metadata
+        result["pricing_model"] = self.pricing_model
+
+        return result
 
 
 # --- Media Buy Lifecycle ---
@@ -2475,7 +2490,7 @@ class CreateMediaBuyRequest(AdCPBaseModel):
         ...,
         description="Brand information manifest (inline object or URL string). REQUIRED per AdCP v2.2.0 spec.",
     )
-    packages: list[Package] = Field(..., description="Array of packages with products and budgets (REQUIRED)")
+    packages: list[PackageRequest] = Field(..., description="Array of packages with products and budgets (REQUIRED)")
     start_time: datetime | Literal["asap"] = Field(
         ..., description="Campaign start time: ISO 8601 datetime or 'asap' for immediate start (REQUIRED)"
     )
@@ -2547,20 +2562,22 @@ class CreateMediaBuyRequest(AdCPBaseModel):
 
         # If using legacy format, convert to new format
         if "product_ids" in values and not values.get("packages"):
-            # Convert product_ids to packages
-            # Note: AdCP create-media-buy-request only requires products from client
-            # Server generates package_id and initial status per AdCP package schema
-            # buyer_ref is optional and should only be set by the buyer/client
+            # Convert product_ids to PackageRequest objects
+            # Note: PackageRequest is the request schema (not Package which is response schema)
+            # PackageRequest requires: product_id, buyer_ref, budget, pricing_option_id
             product_ids = values.get("product_ids") or []  # Handle None
+            total_budget = values.get("total_budget", 0.0)
+            budget_per_package = total_budget / len(product_ids) if product_ids else 0.0
+
             packages = []
             for i, pid in enumerate(product_ids):
                 package_uuid = uuid.uuid4().hex[:6]
                 packages.append(
                     {
-                        "package_id": f"pkg_{i}_{package_uuid}",  # Server-generated per AdCP spec
-                        # buyer_ref is NOT auto-generated - it's the buyer's identifier
-                        "product_id": pid,  # Use product_id (singular) per current validation
-                        "status": "draft",  # Server sets initial status per AdCP package schema
+                        "product_id": pid,  # Required: product being purchased
+                        "buyer_ref": f"pkg_{i}_{package_uuid}",  # Required: buyer's package identifier
+                        "budget": budget_per_package,  # Required: budget allocation
+                        "pricing_option_id": "legacy_conversion",  # Required: pricing option (placeholder for legacy)
                     }
                 )
             values["packages"] = packages

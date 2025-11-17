@@ -21,6 +21,7 @@ from src.core.schemas import (
     PricingModel,
     Principal,
     Product,
+    url,
 )
 
 # NOTE: Xandr adapter needs full refactor - it's using old schemas and patterns
@@ -343,9 +344,9 @@ class XandrAdapter(AdServerAdapter):
                     name="Display - Standard Banners",
                     description="Standard display banner placements (supports geo, device, os, browser targeting)",
                     format_ids=[
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),  # type: ignore[arg-type]
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),  # type: ignore[arg-type]
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_320x50"),  # type: ignore[arg-type]
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_728x90"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_300x250"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_320x50"),
                     ],
                     delivery_type="non_guaranteed",  # type: ignore[arg-type]
                     pricing_options=[
@@ -386,8 +387,8 @@ class XandrAdapter(AdServerAdapter):
                     name="Video - In-Stream",
                     description="Pre-roll, mid-roll, and post-roll video (supports geo, device, content targeting)",
                     format_ids=[
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),  # type: ignore[arg-type]
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_9x16"),  # type: ignore[arg-type]
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="video_16x9"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="video_9x16"),
                     ],
                     delivery_type="non_guaranteed",  # type: ignore[arg-type]
                     pricing_options=[
@@ -428,8 +429,8 @@ class XandrAdapter(AdServerAdapter):
                     name="Native Advertising",
                     description="Native ad placements (supports geo, device, context targeting)",
                     format_ids=[
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="native_1x1"),  # type: ignore[arg-type]
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="native_1.2x1"),  # type: ignore[arg-type]
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="native_1x1"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="native_1.2x1"),
                     ],
                     delivery_type="non_guaranteed",  # type: ignore[arg-type]
                     pricing_options=[
@@ -470,9 +471,9 @@ class XandrAdapter(AdServerAdapter):
                     name="Private Marketplace Deals",
                     description="Access to premium inventory through deals (pricing varies by deal)",
                     format_ids=[
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),  # type: ignore[arg-type]
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),  # type: ignore[arg-type]
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),  # type: ignore[arg-type]
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_300x250"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_728x90"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="video_16x9"),
                     ],
                     delivery_type="non_guaranteed",  # type: ignore[arg-type]
                     pricing_options=[

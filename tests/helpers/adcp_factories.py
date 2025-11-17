@@ -16,13 +16,12 @@ from adcp.types.generated import (
     CreativeAsset,
     Format,
     FormatId,
-    Package,
     Property,
 )
 from adcp.types.generated_poc.product import Product
 
-# Import url helper for type-safe AnyUrl construction
-from src.core.schemas import url
+# Import Package and PackageRequest from our schemas (they extend adcp library)
+from src.core.schemas import Package, PackageRequest, url
 
 
 def create_test_product(
@@ -360,6 +359,52 @@ def create_test_package(
         products = ["test_product"]
 
     return Package(package_id=package_id, status=status, products=products, **kwargs)
+
+
+def create_test_package_request(
+    product_id: str = "test_product",
+    buyer_ref: str | None = None,
+    budget: float | None = None,
+    pricing_option_id: str = "test_pricing_option",
+    **kwargs,
+) -> PackageRequest:
+    """Create a test PackageRequest object (for CreateMediaBuyRequest).
+
+    Args:
+        product_id: Product ID for the package (REQUIRED per adcp PackageRequest)
+        buyer_ref: Buyer reference for the package (REQUIRED per adcp PackageRequest)
+        budget: Budget allocation (REQUIRED per adcp PackageRequest)
+        pricing_option_id: Pricing option ID (REQUIRED per adcp PackageRequest)
+        **kwargs: Additional optional fields (creative_ids, format_ids, targeting_overlay, etc.)
+
+    Returns:
+        AdCP-compliant PackageRequest object for use in CreateMediaBuyRequest
+
+    Example:
+        # Minimal package request
+        pkg_request = create_test_package_request()
+
+        # Custom package request
+        pkg_request = create_test_package_request(
+            product_id="prod_video",
+            buyer_ref="buyer_pkg_001",
+            budget=5000.0,
+            creative_ids=["creative_1", "creative_2"]
+        )
+    """
+    # Set defaults for required fields if not provided
+    if buyer_ref is None:
+        buyer_ref = f"buyer_pkg_{product_id}"
+    if budget is None:
+        budget = 1000.0
+
+    return PackageRequest(
+        product_id=product_id,
+        buyer_ref=buyer_ref,
+        budget=budget,
+        pricing_option_id=pricing_option_id,
+        **kwargs,
+    )
 
 
 def create_test_creative_asset(

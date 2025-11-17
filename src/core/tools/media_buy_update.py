@@ -34,6 +34,7 @@ from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.schema_adapters import UpdateMediaBuyResponse
 from src.core.schemas import (
+    AffectedPackage,
     UpdateMediaBuyError,
     UpdateMediaBuyRequest,
     UpdateMediaBuySuccess,
@@ -201,7 +202,7 @@ def _update_media_buy_impl(
         raise ToolError(format_validation_error(e, context="update_media_buy request")) from e
 
     # Initialize tracking for affected packages (internal tracking, not part of schema)
-    affected_packages_list: list[dict] = []
+    affected_packages_list: list[AffectedPackage] = []
 
     if ctx is None:
         raise ValueError("Context is required for update_media_buy")
@@ -497,10 +498,12 @@ def _update_media_buy_impl(
 
                 # Track budget update in affected_packages
                 affected_packages_list.append(
-                    {
-                        "buyer_package_ref": pkg_update.package_id,
-                        "changes_applied": {"budget": {"updated": budget_amount, "currency": currency}},
-                    }
+                    AffectedPackage(
+                        buyer_ref=req.buyer_ref or "",  # Required by AdCP
+                        package_id=pkg_update.package_id,  # Required by AdCP
+                        buyer_package_ref=pkg_update.package_id,  # Internal field (for backward compat)
+                        changes_applied={"budget": {"updated": budget_amount, "currency": currency}},  # Internal field
+                    )
                 )
 
             # Handle creative_ids updates (AdCP v2.2.0+)
@@ -716,16 +719,18 @@ def _update_media_buy_impl(
 
                     # Store results for affected_packages response
                     affected_packages_list.append(
-                        {
-                            "buyer_package_ref": pkg_update.package_id,
-                            "changes_applied": {
+                        AffectedPackage(
+                            buyer_ref=req.buyer_ref or "",  # Required by AdCP
+                            package_id=pkg_update.package_id,  # Required by AdCP
+                            buyer_package_ref=pkg_update.package_id,  # Internal field (for backward compat)
+                            changes_applied={  # Internal field
                                 "creative_ids": {
                                     "added": list(added_ids),
                                     "removed": list(removed_ids),
                                     "current": pkg_update.creative_ids,
                                 }
                             },
-                        }
+                        )
                     )
 
     # Handle budget updates (handle both float and Budget object)
@@ -789,10 +794,11 @@ def _update_media_buy_impl(
                     package_ref = pkg.package_id if pkg.package_id else None
                     if package_ref:
                         affected_packages_list.append(
-                            {
-                                "buyer_package_ref": package_ref,
-                                "changes_applied": {"budget": {"updated": total_budget, "currency": budget_currency}},
-                            }
+                            AffectedPackage(
+                                buyer_ref=package_ref,  # Required: buyer's package reference
+                                package_id=package_ref,  # Required: package identifier
+                                changes_applied=["budget"],  # Internal tracking field
+                            )
                         )
 
     # Note: Budget validation already done above (lines 4318-4336)
@@ -818,14 +824,14 @@ def _update_media_buy_impl(
     logger.info(f"[update_media_buy] Final affected_packages before return: {affected_packages_list}")
 
     # UpdateMediaBuySuccess extends adcp v1.2.1 with internal fields (workflow_step_id, affected_packages)
-    # Don't convert to AffectedPackage objects - keep as dicts
-    # The affected_packages_list already contains the custom format with buyer_package_ref, changes_applied
-    # This is an internal extension beyond the AdCP spec's buyer_ref/package_id fields
+    # affected_packages_list contains AffectedPackage objects with both:
+    # - AdCP-required fields (buyer_ref, package_id) for spec compliance
+    # - Internal tracking fields (buyer_package_ref, changes_applied) excluded via exclude=True
 
     final_response = UpdateMediaBuySuccess(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
-        affected_packages=affected_packages_list,  # type: ignore[arg-type]
+        affected_packages=affected_packages_list,
         context=req.context,
     )
 

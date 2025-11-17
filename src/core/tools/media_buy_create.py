@@ -646,9 +646,8 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                                 if not format_id or not isinstance(format_id, str):
                                     raise ValueError(f"Format missing or invalid id: id={format_id!r}")
 
-                                format_ids_list.append(
-                                    FormatIdType(agent_url=agent_url, id=format_id)  # type: ignore[arg-type]
-                                )
+                                # Pydantic automatically converts string to AnyUrl per FormatId schema
+                                format_ids_list.append(FormatIdType(agent_url=agent_url, id=format_id))
 
                             # Already correct type (no conversion needed)
                             elif isinstance(fmt, FormatIdType):

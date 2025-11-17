@@ -99,14 +99,16 @@ class TestMCPContractValidation:
 
         Per AdCP spec, packages use product_id (singular) field.
         """
-        from src.core.schemas import Package
+        from src.core.schemas import PackageRequest
 
         # Test 1: Package with product_id=None
         request = CreateMediaBuyRequest(
             buyer_ref="test_ref_1",
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             po_number="PO-12345",
-            packages=[Package(buyer_ref="pkg1", product_id=None)],
+            packages=[
+                PackageRequest(buyer_ref="pkg1", product_id=None, budget=1000.0, pricing_option_id="test_pricing")
+            ],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
             budget={"total": 5000.0, "currency": "USD"},
@@ -118,7 +120,7 @@ class TestMCPContractValidation:
             buyer_ref="test_ref_2",
             brand_manifest={"name": "Adidas UltraBoost 2025 running shoes"},
             po_number="PO-12346",
-            packages=[Package(buyer_ref="pkg2")],
+            packages=[PackageRequest(buyer_ref="pkg2", budget=1000.0, pricing_option_id="test_pricing")],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
             budget={"total": 5000.0, "currency": "USD"},
@@ -131,9 +133,11 @@ class TestMCPContractValidation:
             brand_manifest={"name": "Puma RS-X 2025 training shoes"},
             po_number="PO-12347",
             packages=[
-                Package(buyer_ref="pkg_none", product_id=None),
-                Package(buyer_ref="pkg_with_product", product_id="prod1"),
-                Package(buyer_ref="pkg_no_product"),
+                PackageRequest(buyer_ref="pkg_none", product_id=None, budget=1000.0, pricing_option_id="test_pricing"),
+                PackageRequest(
+                    buyer_ref="pkg_with_product", product_id="prod1", budget=1000.0, pricing_option_id="test_pricing"
+                ),
+                PackageRequest(buyer_ref="pkg_no_product", budget=1000.0, pricing_option_id="test_pricing"),
             ],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
