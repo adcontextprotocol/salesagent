@@ -463,6 +463,21 @@ def _update_media_buy_impl(
 
             # Handle budget updates
             if pkg_update.budget is not None:
+                # Validate package_id is provided (required for budget updates)
+                if not pkg_update.package_id:
+                    error_msg = "package_id is required when updating package budget"
+                    response_data = UpdateMediaBuyError(
+                        errors=[Error(code="missing_package_id", message=error_msg)],  # type: ignore[list-item]
+                        context=req.context,
+                    )
+                    ctx_manager.update_workflow_step(
+                        step.step_id,
+                        status="failed",
+                        response_data=response_data.model_dump(),
+                        error_message=error_msg,
+                    )
+                    return response_data  # type: ignore[return-value]
+
                 # Extract budget amount - handle both float and Budget object
                 budget_amount: float
                 currency: str
@@ -497,10 +512,11 @@ def _update_media_buy_impl(
                     return response_data  # type: ignore[return-value]
 
                 # Track budget update in affected_packages
+                # At this point, pkg_update.package_id is guaranteed to be str (checked above)
                 affected_packages_list.append(
                     AffectedPackage(
                         buyer_ref=req.buyer_ref or "",  # Required by AdCP
-                        package_id=pkg_update.package_id,  # Required by AdCP
+                        package_id=pkg_update.package_id,  # Required by AdCP (guaranteed str)
                         buyer_package_ref=pkg_update.package_id,  # Internal field (for backward compat)
                         changes_applied={"budget": {"updated": budget_amount, "currency": currency}},  # Internal field
                     )
@@ -793,11 +809,16 @@ def _update_media_buy_impl(
                     # MediaPackage uses package_id as primary identifier
                     package_ref = pkg.package_id if pkg.package_id else None
                     if package_ref:
+                        # Type narrowing: package_ref is guaranteed to be str at this point
+                        package_ref_str: str = package_ref
                         affected_packages_list.append(
                             AffectedPackage(
-                                buyer_ref=package_ref,  # Required: buyer's package reference
-                                package_id=package_ref,  # Required: package identifier
-                                changes_applied=["budget"],  # Internal tracking field
+                                buyer_ref=package_ref_str,  # Required: buyer's package reference
+                                package_id=package_ref_str,  # Required: package identifier
+                                buyer_package_ref=None,  # Internal field (not applicable for top-level budget updates)
+                                changes_applied={
+                                    "budget": {"updated": total_budget, "currency": budget_currency}
+                                },  # Internal tracking field
                             )
                         )
 

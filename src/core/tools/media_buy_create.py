@@ -67,10 +67,14 @@ from src.core.schemas import (
     FormatId,
     MediaPackage,
     Package,
+    PackageRequest,
     Principal,
     Product,
     Targeting,
     TaskStatus,
+)
+from src.core.schemas import (
+    url as make_url,
 )
 from src.core.testing_hooks import TestingContext, apply_testing_hooks, get_testing_context
 from src.core.tool_context import ToolContext
@@ -82,7 +86,7 @@ from src.services.activity_feed import activity_feed
 # --- Helper Functions ---
 
 
-def _sanitize_package_status(status: str | None) -> str | None:
+def _sanitize_package_status(status: Any) -> str | None:
     """Ensure package status matches AdCP spec.
 
     Per AdCP spec, Package.status must be one of: draft, active, paused, completed.
@@ -103,14 +107,17 @@ def _sanitize_package_status(status: str | None) -> str | None:
     if status is None:
         return None
 
-    if status in VALID_PACKAGE_STATUSES:
-        return status
+    # Convert to string for validation
+    status_str = str(status)
+
+    if status_str in VALID_PACKAGE_STATUSES:
+        return status_str
 
     # Log error for non-spec-compliant status - this indicates a bug in our code
     logger.error(
-        f"[SPEC-VIOLATION] Package.status='{status}' violates AdCP spec! "
+        f"[SPEC-VIOLATION] Package.status='{status_str}' violates AdCP spec! "
         f"Valid PackageStatus values: {VALID_PACKAGE_STATUSES}. "
-        f"Note: '{status}' may be a TaskStatus (workflow state), which should be stored in WorkflowStep.status, NOT Package.status. "
+        f"Note: '{status_str}' may be a TaskStatus (workflow state), which should be stored in WorkflowStep.status, NOT Package.status. "
         f"Setting to None to prevent spec violation."
     )
     return None
@@ -647,7 +654,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                                     raise ValueError(f"Format missing or invalid id: id={format_id!r}")
 
                                 # Pydantic automatically converts string to AnyUrl per FormatId schema
-                                format_ids_list.append(FormatIdType(agent_url=agent_url, id=format_id))
+                                format_ids_list.append(FormatIdType(agent_url=make_url(agent_url), id=format_id))
 
                             # Already correct type (no conversion needed)
                             elif isinstance(fmt, FormatIdType):
@@ -934,7 +941,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
 
 def _validate_pricing_model_selection(
-    package: Package,
+    package: Package | PackageRequest,
     product: Any,  # ProductModel from database
     campaign_currency: str | None,
 ) -> dict[str, Any]:
@@ -1455,7 +1462,7 @@ async def _create_media_buy_impl(
         product_ids = req.get_product_ids()
         logger.info(f"DEBUG: Extracted product_ids: {product_ids}")
         logger.info(
-            f"DEBUG: Request packages: {[{'package_id': p.package_id, 'product_id': p.product_id, 'buyer_ref': p.buyer_ref, 'bid_price': p.bid_price, 'pricing_option_id': p.pricing_option_id} for p in (req.packages or [])]}"
+            f"DEBUG: Request packages: {[{'product_id': p.product_id, 'buyer_ref': p.buyer_ref, 'bid_price': p.bid_price, 'pricing_option_id': p.pricing_option_id} for p in (req.packages or [])]}"
         )
         if not product_ids:
             error_msg = "At least one product is required."
@@ -2003,7 +2010,7 @@ async def _create_media_buy_impl(
                                         req_pkg.targeting_overlay.model_dump() if req_pkg.targeting_overlay else None
                                     ),
                                     "creative_ids": req_pkg.creative_ids,
-                                    "format_ids_to_provide": req_pkg.format_ids_to_provide,
+                                    "format_ids": req_pkg.format_ids if hasattr(req_pkg, "format_ids") else None,
                                     "pricing_info": pricing_info_for_package,  # Store pricing info for UI display
                                     "impressions": req_pkg.impressions,  # Store impressions for display
                                 }
@@ -2328,7 +2335,7 @@ async def _create_media_buy_impl(
                 raise ValueError(error_msg)
 
             # Determine format_ids to use
-            format_ids_to_use = []
+            format_ids_to_use: list[FormatId] = []
 
             # Use format_ids from request package if provided
             matching_package = pkg  # The package we're iterating over
@@ -2433,19 +2440,18 @@ async def _create_media_buy_impl(
                     raise ValueError(error_msg)
 
                 # Preserve original format objects for format_ids_to_use
-                format_ids_to_use = list(matching_package.format_ids)
+                format_ids_to_use = list(matching_package.format_ids)  # type: ignore[arg-type]
 
             # Fallback to product's formats if no request format_ids
             if not format_ids_to_use:
                 if pkg_product.format_ids:
                     # Convert product.format_ids to FormatId objects if they're strings
-                    format_ids_to_use = []
                     # Get default creative agent URL from tenant config (tenant is dict[str, Any])
                     default_agent_url = tenant.get("creative_agent_url") or "https://creative.adcontextprotocol.org"
                     for fmt in pkg_product.format_ids:  # type: ignore[assignment]
                         if isinstance(fmt, str):
                             # Convert legacy string format to FormatId object
-                            format_ids_to_use.append(FormatId(agent_url=default_agent_url, id=fmt))
+                            format_ids_to_use.append(FormatId(agent_url=make_url(default_agent_url), id=fmt))
                         else:
                             # Already a FormatId or FormatReference object
                             format_ids_to_use.append(fmt)  # type: ignore[arg-type]
@@ -2504,7 +2510,7 @@ async def _create_media_buy_impl(
                     impressions=int(total_budget / cpm * 1000),
                     format_ids=format_ids_to_use,
                     targeting_overlay=(
-                        matching_package.targeting_overlay
+                        matching_package.targeting_overlay  # type: ignore[arg-type]
                         if matching_package and hasattr(matching_package, "targeting_overlay")
                         else None
                     ),
@@ -2696,7 +2702,7 @@ async def _create_media_buy_impl(
                     pricing_info_for_package = package_pricing_info.get(package_id)
 
                     # Get impressions from request package if available
-                    request_pkg: Package | None = req.packages[i] if i < len(req.packages) else None
+                    request_pkg: PackageRequest | None = req.packages[i] if i < len(req.packages) else None
                     impressions = request_pkg.impressions if request_pkg else None
 
                     package_config = {

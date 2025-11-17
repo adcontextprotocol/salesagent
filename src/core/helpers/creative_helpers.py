@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from fastmcp import Context
 
-    from src.core.schemas import Creative, Package
+    from src.core.schemas import Creative, PackageRequest
     from src.core.testing_context import TestingContext
     from src.core.tool_context import ToolContext
 
@@ -264,10 +264,10 @@ def _detect_snippet_type(snippet: str) -> str:
 
 
 def process_and_upload_package_creatives(
-    packages: list["Package"],
+    packages: list["PackageRequest"],
     context: "Context | ToolContext",
     testing_ctx: "TestingContext | None" = None,
-) -> tuple[list["Package"], dict[str, list[str]]]:
+) -> tuple[list["PackageRequest"], dict[str, list[str]]]:
     """Upload creatives from package.creatives arrays and return updated packages.
 
     For each package with a non-empty `creatives` array:
@@ -293,7 +293,7 @@ def process_and_upload_package_creatives(
         ToolError: If creative upload fails for any package (CREATIVES_UPLOAD_FAILED)
 
     Example:
-        >>> packages = [Package(product_id="p1", creatives=[creative1, creative2])]
+        >>> packages = [PackageRequest(product_id="p1", creatives=[creative1, creative2])]
         >>> updated_pkgs, uploaded_ids = process_and_upload_package_creatives(packages, ctx)
         >>> # updated_pkgs[0].creative_ids contains uploaded IDs
         >>> assert uploaded_ids["p1"] == ["c1", "c2"]
@@ -307,7 +307,7 @@ def process_and_upload_package_creatives(
 
     logger = logging.getLogger(__name__)
     uploaded_by_product: dict[str, list[str]] = {}
-    updated_packages: list[Package] = []
+    updated_packages: list[PackageRequest] = []
 
     for pkg_idx, pkg in enumerate(packages):
         # Skip packages without creatives (type system guarantees this attribute exists)
