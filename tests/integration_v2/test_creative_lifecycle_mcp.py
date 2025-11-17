@@ -442,6 +442,13 @@ class TestCreativeLifecycleMCP:
         with (
             patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch(
+                "fastmcp.server.dependencies.get_http_headers",
+                return_value={
+                    "x-adcp-auth": "test-token-123",
+                    "host": "creative-test.sales-agent.scope3.com",
+                },
+            ),
         ):
             response = core_list_creatives_tool(ctx=mock_context)
 
@@ -491,6 +498,13 @@ class TestCreativeLifecycleMCP:
         with (
             patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch(
+                "fastmcp.server.dependencies.get_http_headers",
+                return_value={
+                    "x-adcp-auth": "test-token-123",
+                    "host": "creative-test.sales-agent.scope3.com",
+                },
+            ),
         ):
             # Test approved filter
             response = core_list_creatives_tool(status="approved", ctx=mock_context)
@@ -543,6 +557,13 @@ class TestCreativeLifecycleMCP:
         with (
             patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch(
+                "fastmcp.server.dependencies.get_http_headers",
+                return_value={
+                    "x-adcp-auth": "test-token-123",
+                    "host": "creative-test.sales-agent.scope3.com",
+                },
+            ),
         ):
             # Test display format filter
             response = core_list_creatives_tool(format="display_300x250", ctx=mock_context)
@@ -618,6 +639,13 @@ class TestCreativeLifecycleMCP:
         with (
             patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch(
+                "fastmcp.server.dependencies.get_http_headers",
+                return_value={
+                    "x-adcp-auth": "test-token-123",
+                    "host": "creative-test.sales-agent.scope3.com",
+                },
+            ),
         ):
             # Test created_after filter
             created_after = (now - timedelta(days=5)).isoformat()
@@ -669,6 +697,13 @@ class TestCreativeLifecycleMCP:
         with (
             patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch(
+                "fastmcp.server.dependencies.get_http_headers",
+                return_value={
+                    "x-adcp-auth": "test-token-123",
+                    "host": "creative-test.sales-agent.scope3.com",
+                },
+            ),
         ):
             # Search for "Holiday"
             response = core_list_creatives_tool(search="Holiday", ctx=mock_context)
@@ -709,6 +744,13 @@ class TestCreativeLifecycleMCP:
         with (
             patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch(
+                "fastmcp.server.dependencies.get_http_headers",
+                return_value={
+                    "x-adcp-auth": "test-token-123",
+                    "host": "creative-test.sales-agent.scope3.com",
+                },
+            ),
         ):
             # Test first page
             response = core_list_creatives_tool(page=1, limit=10, ctx=mock_context)
@@ -778,6 +820,13 @@ class TestCreativeLifecycleMCP:
         with (
             patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch(
+                "fastmcp.server.dependencies.get_http_headers",
+                return_value={
+                    "x-adcp-auth": "test-token-123",
+                    "host": "creative-test.sales-agent.scope3.com",
+                },
+            ),
         ):
             # Filter by media_buy_id - should only return assigned creative
             response = core_list_creatives_tool(media_buy_id=self.test_media_buy_id, ctx=mock_context)
@@ -843,6 +892,13 @@ class TestCreativeLifecycleMCP:
         with (
             patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch(
+                "fastmcp.server.dependencies.get_http_headers",
+                return_value={
+                    "x-adcp-auth": "test-token-123",
+                    "host": "creative-test.sales-agent.scope3.com",
+                },
+            ),
         ):
             # Query with filters that match nothing
             response = core_list_creatives_tool(status="rejected", ctx=mock_context)  # No rejected creatives exist

@@ -222,7 +222,16 @@ class SignalsAgentRegistry:
                 logger.info(f"[TIMING] Got {len(signals)} signals synchronously in {total_duration:.2f}s total")
                 # Convert Signal objects to dicts for internal use
                 # AdCP library returns Signal objects, but our internal code expects dicts
-                return [signal.model_dump(mode="json") for signal in signals]
+                # Handle both Signal objects (from adcp library) and dicts (from some test/error scenarios)
+                result_signals = []
+                for signal in signals:
+                    if isinstance(signal, dict):
+                        # Already a dict, use as-is
+                        result_signals.append(signal)
+                    else:
+                        # Pydantic Signal object, convert to dict
+                        result_signals.append(signal.model_dump(mode="json"))
+                return result_signals
 
             elif result.status == "submitted":
                 # Asynchronous completion - webhook registered

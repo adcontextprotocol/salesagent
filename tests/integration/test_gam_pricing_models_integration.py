@@ -370,7 +370,7 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
             create_test_package_request(
                 buyer_ref="pkg_cpm",
                 product_id="prod_gam_cpm_guaranteed",
-                pricing_option_id="cpm_guaranteed_option",
+                pricing_option_id="cpm_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=10000.0,
             )
         ],
@@ -426,7 +426,7 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
             create_test_package_request(
                 buyer_ref="pkg_cpc",
                 product_id="prod_gam_cpc",
-                pricing_option_id="cpc_option",
+                pricing_option_id="cpc_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=5000.0,
             )
         ],
@@ -483,7 +483,7 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
             create_test_package_request(
                 buyer_ref="pkg_vcpm",
                 product_id="prod_gam_vcpm",
-                pricing_option_id="vcpm_option",
+                pricing_option_id="vcpm_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=12000.0,
             )
         ],
@@ -541,7 +541,7 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
             create_test_package_request(
                 buyer_ref="pkg_flat",
                 product_id="prod_gam_flatrate",
-                pricing_option_id="flatrate_option",
+                pricing_option_id="flat_rate_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=5000.0,
             )
         ],
@@ -598,19 +598,19 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
             create_test_package_request(
                 buyer_ref="pkg_1_cpm",
                 product_id="prod_gam_cpm_guaranteed",
-                pricing_option_id="cpm_guaranteed_option",
+                pricing_option_id="cpm_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=8000.0,
             ),
             create_test_package_request(
                 buyer_ref="pkg_2_cpc",
                 product_id="prod_gam_cpc",
-                pricing_option_id="cpc_option",
+                pricing_option_id="cpc_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=3000.0,
             ),
             create_test_package_request(
                 buyer_ref="pkg_3_vcpm",
                 product_id="prod_gam_vcpm",
-                pricing_option_id="vcpm_option",
+                pricing_option_id="vcpm_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=9000.0,
             ),
         ],
@@ -680,7 +680,7 @@ async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_
             create_test_package_request(
                 buyer_ref="pkg_auction_cpc",
                 product_id="prod_gam_cpc",
-                pricing_option_id="cpc_option",
+                pricing_option_id="cpc_usd_auction",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=4000.0,
                 bid_price=2.25,  # Bid within floor/ceiling
             )

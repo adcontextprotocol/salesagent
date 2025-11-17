@@ -22,7 +22,7 @@ import pytest
 from sqlalchemy import delete, select
 
 from src.core.database.database_session import get_db_session
-from src.core.schemas import Budget, Package, Targeting
+from src.core.schemas import Budget, PackageRequest, Targeting
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.asyncio]
@@ -151,12 +151,28 @@ class TestCreateMediaBuyV24Format:
                 }
             )
 
+            # Get pricing_option_ids for created products (needed for PackageRequest)
+            from src.core.database.models import PricingOption
+
+            stmt_usd = select(PricingOption).filter_by(tenant_id="test_tenant_v24", product_id="prod_test_v24_usd")
+            pricing_option_usd = session.scalars(stmt_usd).first()
+
+            stmt_eur = select(PricingOption).filter_by(tenant_id="test_tenant_v24", product_id="prod_test_v24_eur")
+            pricing_option_eur = session.scalars(stmt_eur).first()
+
+            stmt_gbp = select(PricingOption).filter_by(tenant_id="test_tenant_v24", product_id="prod_test_v24_gbp")
+            pricing_option_gbp = session.scalars(stmt_gbp).first()
+
             yield {
                 "tenant_id": "test_tenant_v24",
                 "principal_id": "test_principal_v24",
                 "product_id_usd": "prod_test_v24_usd",
                 "product_id_eur": "prod_test_v24_eur",
                 "product_id_gbp": "prod_test_v24_gbp",
+                # Convert integer id to string for pricing_option_id (AdCP field is string type)
+                "pricing_option_id_usd": str(pricing_option_usd.id),
+                "pricing_option_id_eur": str(pricing_option_eur.id),
+                "pricing_option_id_gbp": str(pricing_option_gbp.id),
             }
 
             # Cleanup - IMPORTANT: Delete in reverse dependency order
@@ -209,11 +225,12 @@ class TestCreateMediaBuyV24Format:
 
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        # Create Package with float budget (new format)
+        # Create PackageRequest with float budget (new format)
         packages = [
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_budget_test",
                 product_id=setup_test_tenant["product_id_usd"],  # Use USD product
+                pricing_option_id=setup_test_tenant["pricing_option_id_usd"],  # Required field
                 budget=5000.0,  # Float budget, currency from pricing_option
             )
         ]
@@ -261,11 +278,12 @@ class TestCreateMediaBuyV24Format:
 
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        # Create Package with nested Targeting object
+        # Create PackageRequest with nested Targeting object
         packages = [
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_targeting_test",
                 product_id=setup_test_tenant["product_id_eur"],  # Use EUR product
+                pricing_option_id=setup_test_tenant["pricing_option_id_eur"],  # Required field
                 budget=8000.0,  # Float budget, currency from pricing_option
                 targeting_overlay=Targeting(
                     geo_country_any_of=["US", "CA"],
@@ -314,19 +332,22 @@ class TestCreateMediaBuyV24Format:
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
         packages = [
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_usd",
                 product_id=setup_test_tenant["product_id_usd"],  # Use USD product
+                pricing_option_id=setup_test_tenant["pricing_option_id_usd"],  # Required field
                 budget=3000.0,  # Float budget, currency from pricing_option
             ),
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_eur",
                 product_id=setup_test_tenant["product_id_eur"],  # Use EUR product
+                pricing_option_id=setup_test_tenant["pricing_option_id_eur"],  # Required field
                 budget=2500.0,  # Float budget, currency from pricing_option
             ),
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_gbp",
                 product_id=setup_test_tenant["product_id_gbp"],  # Use GBP product
+                pricing_option_id=setup_test_tenant["pricing_option_id_gbp"],  # Required field
                 budget=2000.0,  # Float budget, currency from pricing_option
             ),
         ]
@@ -369,11 +390,12 @@ class TestCreateMediaBuyV24Format:
 
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        # Create Package with float budget (new format)
+        # Create PackageRequest with float budget (new format)
         packages = [
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_a2a_test",
                 product_id=setup_test_tenant["product_id_usd"],  # Use USD product
+                pricing_option_id=setup_test_tenant["pricing_option_id_usd"],  # Required field
                 budget=6000.0,  # Float budget, currency from pricing_option
             )
         ]

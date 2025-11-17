@@ -269,7 +269,7 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
             create_test_package_request(
                 buyer_ref="pkg_1",
                 product_id="prod_gam_cpcv",
-                pricing_option_id="cpcv_option",
+                pricing_option_id="cpcv_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=10000.0,
             )
         ],
@@ -325,7 +325,7 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
             create_test_package_request(
                 buyer_ref="pkg_1",
                 product_id="prod_gam_cpm",
-                pricing_option_id="cpm_option",
+                pricing_option_id="cpm_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=10000.0,
             )
         ],
@@ -375,7 +375,7 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
             create_test_package_request(
                 buyer_ref="pkg_1",
                 product_id="prod_gam_multi",
-                pricing_option_id="cpp_option",
+                pricing_option_id="cpp_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=15000.0,
             )
         ],
@@ -430,7 +430,7 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
             create_test_package_request(
                 buyer_ref="pkg_1",
                 product_id="prod_gam_multi",
-                pricing_option_id="cpm_option",
+                pricing_option_id="cpm_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=10000.0,
             )
         ],
