@@ -21,6 +21,7 @@ from src.core.schemas import (
     SignalDeliverTo,
     UpdateMediaBuyRequest,
 )
+from tests.helpers.adcp_factories import create_test_package_request
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -79,13 +80,11 @@ class TestMCPContractValidation:
 
     def test_create_media_buy_minimal(self):
         """Test create_media_buy with minimal required fields per AdCP v2.2.0 spec."""
-        from src.core.schemas import PackageRequest
-
         request = CreateMediaBuyRequest(
             buyer_ref="test_ref",
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             packages=[
-                PackageRequest(
+                create_test_package_request(
                     buyer_ref="pkg1", product_id="prod1", budget=1000.0, pricing_option_id="default-pricing-option"
                 )
             ],
@@ -105,17 +104,19 @@ class TestMCPContractValidation:
 
         Per AdCP spec, packages use product_id (singular, required) field.
         """
-        from src.core.schemas import PackageRequest
-
         # Test: Multiple packages with product IDs
         request = CreateMediaBuyRequest(
             buyer_ref="test_ref_1",
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             po_number="PO-12345",
             packages=[
-                PackageRequest(buyer_ref="pkg1", product_id="prod1", budget=1000.0, pricing_option_id="test_pricing"),
-                PackageRequest(buyer_ref="pkg2", product_id="prod2", budget=1000.0, pricing_option_id="test_pricing"),
-                PackageRequest(
+                create_test_package_request(
+                    buyer_ref="pkg1", product_id="prod1", budget=1000.0, pricing_option_id="test_pricing"
+                ),
+                create_test_package_request(
+                    buyer_ref="pkg2", product_id="prod2", budget=1000.0, pricing_option_id="test_pricing"
+                ),
+                create_test_package_request(
                     buyer_ref="pkg3", product_id="prod1", budget=1000.0, pricing_option_id="test_pricing"
                 ),  # Duplicate
             ],
@@ -225,8 +226,6 @@ class TestSchemaDefaultValues:
 
     def test_optional_fields_have_reasonable_defaults(self):
         """Test that optional fields have defaults that make sense."""
-        from src.core.schemas import PackageRequest
-
         # GetProductsRequest
         req = GetProductsRequest(brand_manifest={"name": "test"})
         assert req.brief == ""  # Empty string, not None
@@ -236,7 +235,7 @@ class TestSchemaDefaultValues:
             buyer_ref="test_ref",
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             packages=[
-                PackageRequest(
+                create_test_package_request(
                     buyer_ref="pkg1", product_id="prod1", budget=1000.0, pricing_option_id="default-pricing-option"
                 )
             ],

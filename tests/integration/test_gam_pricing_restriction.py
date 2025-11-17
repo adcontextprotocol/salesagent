@@ -21,8 +21,9 @@ from src.core.database.models import (
     PropertyTag,
     Tenant,
 )
-from src.core.schemas import CreateMediaBuyRequest, PackageRequest
+from src.core.schemas import CreateMediaBuyRequest
 from src.core.tool_context import ToolContext
+from tests.helpers.adcp_factories import create_test_package_request
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # Tests are now AdCP 2.4 compliant (removed status field, using errors field)
@@ -265,7 +266,7 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            PackageRequest(
+            create_test_package_request(
                 buyer_ref="pkg_1",
                 product_id="prod_gam_cpcv",
                 pricing_option_id="cpcv_option",
@@ -321,7 +322,7 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            PackageRequest(
+            create_test_package_request(
                 buyer_ref="pkg_1",
                 product_id="prod_gam_cpm",
                 pricing_option_id="cpm_option",
@@ -369,7 +370,7 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            PackageRequest(
+            create_test_package_request(
                 buyer_ref="pkg_1",
                 product_id="prod_gam_multi",
                 pricing_option_id="cpp_option",
@@ -424,7 +425,7 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            PackageRequest(
+            create_test_package_request(
                 buyer_ref="pkg_1",
                 product_id="prod_gam_multi",
                 pricing_option_id="cpm_option",
